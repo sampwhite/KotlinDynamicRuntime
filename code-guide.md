@@ -1,0 +1,137 @@
+## Overview
+
+This file specifies how general approach of how we implement code. Some choices are not consistent with
+standard practice and deliberately violate those standards as an experiment.
+
+### Meta-Rules
+
+These are general rules and not specific guidance.
+
+* Kotlin is used as much as possible. For example, that means configuration files will not be YAML but instead
+be Kotlin files using an appropriate config DSL. And in many cases, what would normally be a resources
+file in other coding projects will instead be written as a Kotlin class. 
+Non-disposable scripts will be written as Kotlin source code. We will try to avoid python and shell script tooling.
+
+* We will minimize the use of reflection. That means that for serialization to/from realized
+Kotlin objects, we will use explicit extraction and renderings from/into Map constructs. We will discuss
+this in more detail later on. Reflection can be used to discover whether a class exists, such as
+an override configuration class, but such classes should always implement an expected interface whose
+methods do not require reflection to call.
+
+* We will minimize the use of `internal` or `private`. In the cases where we want to signal that a
+declaration should be thought of as 'internal' or 'private' even though it is left with open visibility,
+we annotate it with `@KdrInternal` or `@KdrPrivate` (defined in the `common` project). These are
+source-level markers only and do not change actual visibility. They should be used sparingly. We will
+still use the real `private` or `internal` keyword in the occasional case where enforcement genuinely
+matters, such as a cache that is mutated without first synchronizing.
+
+* This code base will use environment variables more than is typical to create variations in configuration on startup.
+This will be something expanded on more later.
+
+* Generally, we will choose to write our own code instead of using a library to implement a feature. We will still
+use core libraries such as Jetty and libraries to interact with third parties such as AWS. If we do use libraries,
+we will tend to use commonly used libraries that have been stable for years.
+
+* We are not going to use Kotlin's async approach that requires yielding the current execution stack to others.
+Instead, we will use traditional synchronous call patterns and use Java's virtual threads if we need to support
+high-volume requests.
+
+* Deployments will be done by a pull from a git repository, and a Gradle build will be done on the source code
+as part of the launch of an application. There will be no CI process to generate deployable "jar" files. This
+means a deployment agent can add Kotlin code specific to the deployment and have it picked up by the build. References
+to this additional code can be loaded by adusting the `settings.gradle.kts` file. That file is always defined
+in a directory that is a parent to the source code directory and is not version-controlled. Examples of the
+settings file will be provided in the source code. This is how a deployment can inject configuration into
+the deployed code, though most of the common variations should be done by examining environment variables.
+
+* We will support dynamically discovering parts of our code base, using reflection, and use plugin architectures 
+to allow "compoents" to extend behavior. At the time this document was written, this part of the code base is 
+yet to be written.
+
+* Many different applications will be built from the same source code. Configuration and choice of components
+will dictate what a particular application does.
+
+### Constants
+
+* Generally, literal strings are to be avoided and string constants used instead. However, there are cases
+where raw string constants are acceptable. If the string is used only once or is defined as a requirement by
+a third party API and is limited to a single file, then the literal string can be used directly.
+
+* Constants can start with a lower-case letter, and we will tend to avoid all upper case constant names. 
+We knowingly violate Kotlin style on this, and we will need to add appropriate warning violations when we do this.
+If the constant is a string that is a key that is part of a schema, such as in a JSON schema, the name of the 
+string should match its value.
+
+* Constant declarations will always be wrappered by a Kotlin Object whose name is an acronym of 
+the topic to which the constants apply. If the string constants are used across more than one class, they will
+typically be put into a separate Kotlin file that ends with the suffix `Constants.kt` and the Objects will
+not be wrappered by another class or object. The acronym name will have at most five characters and will
+tend to be shorter for constants that are visible in more parts of the code. An exception is made for
+constants that are essentially private to a class. Those can be wrappered by a single upper case letter.
+
+* The acronym Object name is always upper-cased, and the constant is always referenced through it in a fully
+qualified form, such as `EXC.badInput`. We do not statically or wildcard import the constants so that they
+can be used bare. The upper-cased acronym prefix at the point of use is what signals that the value is a
+constant, taking over the role that all upper case constant names would normally play.
+
+### Extension Methods
+
+Use them any place they might make sense, and if they are likely to be commonly used, then try to keep the method
+names relatively short.
+
+### Schema
+
+We will be defining JSON schema for anything where such a choice might make sense. Not only will we define
+schema for endpoints, we will define schema for all configuration files as well. And these configuration files
+may be fairly complex defining client accounts or data processing rules. Note, in some cases, we will
+write functions in Kotlin to dynamically generate schema and configuration from patterns. When this
+is fully mature, we should have two levels of schema and configuration in some places. The higher level
+will be more conceptual and simpler, the schema it derives will be more detailed and allow for complete specifity.
+
+Schema will be used to completely define endpoints, including the HTTP method and relative context path. It
+will also dictate general security rules for access. The root context path for the endpoints will be 
+dictated by environment variable configuration.
+
+We will create Kotlin configuration builders for both the JSON schema and for the configuration data that
+is written against the schemas. The builders will tend not to be complete, allowing some adhoc extra options
+that are put into a free form Map instead of defined as a variable in a Kotlin class.
+
+One of the early projects for this code is to create a JSON schema parser from scratch. This parser will be followed,
+in some cases, by a linking and augmentation step where additional JSON schema is generated and linkage
+between schemas is validated. This second phase execution will be an evaluation of all the relevantly defined 
+JSON schema as a whole. The same will be true for complex application configuration data.
+
+Besides using "$ref" constructs to do linkage, we will also allow overrides where recursive map merges can
+modify either schema or configuration.
+
+### Universal Exception
+
+We will use a richly defined Exception class named "KdrException" which will have an attribute to
+specify the HTTP code that should be sent back to a REST call. It defaults to `500`. Generally, we will
+see exceptions in the lens of the HTTP codes they are likely to generate. The exception class will
+also have a `source` attribute indicating in generic terms where the issue showed up. The source code
+will **not** define any other exception classes.
+
+In general, we will groom our error handling so that if you look at the full stack or errors, you should
+get a good sense of where the error occurred and precisely the source of the issue. In some cases, errors
+will be caught, wrappered, and rethrown just so additional information can be injected in the error stack.
+
+### Universal Context
+
+We will define a context object whose class is named `KdrCxt`. We will use this as an alternative to scoped
+variables to pass context down a call stack. From this object you can retrieve current application configuration,
+information about the endpoint that initiated the activity, if such occurred, user information about any user
+that has been authenticated on the current executing thread, and so on. The `KdrCxt` will have map objects
+where a caller can do free form association to provide additional context to an implementer further
+down the call stack. All contexts will be named and have a context parent path. Sub context objects
+can be created and will incorporate the parent context paths into its parent path. This path is used in logging
+and debug. A context cannot be directly handed off to another thread, instead a sub context is generated
+and given to the thread, and the sub-context will clone data from the parent context to avoid cross-thread context
+pollution.
+
+At a certain point, a `KdrCxt` may get bound to a particular client account. If that potentially disagrees with
+the account associated with the acting user, then a sub-context should be generated and the desired
+account explicitly assigned. This is relevant for users with admin rights to edit data across client accounts.
+It is also relevant to background jobs that also can have cross-account scope. Once an account is assigned
+to a `KdrCxt` cached data specific to the account can be added to the context. For example, there may be
+complex rule sets particular to a client, and those can now be made conveniently available from the context.

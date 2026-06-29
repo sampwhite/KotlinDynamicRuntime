@@ -1,0 +1,16 @@
+# Gradle
+.gradle/
+build/
+
+# Kotlin compiler caches
+.kotlin/
+
+# IntelliJ IDEA compiler output (the .idea project dir itself lives in the
+# non-versioned parent, but ignore IDE artifacts defensively in case anyone
+# opens this directory directly).
+out/
+*.iml
+.idea/
+
+# macOS
+.DS_Store

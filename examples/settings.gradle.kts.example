@@ -1,0 +1,39 @@
+// ============================================================================
+// EXAMPLE settings file — this is a TEMPLATE, not a live build script.
+//
+// The real settings.gradle.kts is NOT version-controlled. It is supplied
+// per-deployment in the directory that *contains* `KotlinDynamicRuntime/`, so
+// that a single Gradle build can span multiple source repositories. This file
+// is the version-controlled example a deployment copies and adapts.
+//
+// To use it:
+//   1. Copy this file to the directory that contains `KotlinDynamicRuntime/`.
+//   2. Rename it to `settings.gradle.kts`.
+//   3. Adjust as needed (e.g. add more `includeBuild`/`include` lines to pull
+//      in code from additional source repositories for this deployment).
+//
+// The `.example` extension keeps Gradle and the IDE from treating this file as
+// an actual settings script.
+// ============================================================================
+
+// Wire in the version-controlled `build-logic` build so its convention plugins
+// (e.g. `kdr.kotlin-conventions`) are resolvable from each module's `plugins {}`
+// block. This is the only line of build wiring that the shared logic needs from
+// this non-versioned, per-deployment settings file.
+pluginManagement {
+    includeBuild("KotlinDynamicRuntime/build-logic")
+}
+
+rootProject.name = "KotlinDynamicRuntime"
+
+// The three Gradle subprojects. Their physical layout lives under the
+// `KotlinDynamicRuntime` directory, so the logical project paths below are
+// re-pointed at their real directories with `projectDir`.
+include("launch")
+include("base:common")
+include("base:kdn")
+
+project(":base").projectDir = file("KotlinDynamicRuntime/base")
+project(":launch").projectDir = file("KotlinDynamicRuntime/launch")
+project(":base:common").projectDir = file("KotlinDynamicRuntime/base/common")
+project(":base:kdn").projectDir = file("KotlinDynamicRuntime/base/kdn")
