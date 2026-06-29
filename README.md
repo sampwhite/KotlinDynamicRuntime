@@ -1,8 +1,8 @@
 # KotlinDynamicRuntime
 
-A Kotlin reimplementation of a dynamic, schema-driven application runtime. The
-coding philosophy and conventions for the project are described in
-[`code-guide.md`](code-guide.md).
+Dynamic schema and config: a Kotlin reimplementation of a dynamic,
+schema-driven application runtime. The coding philosophy and conventions for the
+project are described in [`code-guide.md`](code-guide.md).
 
 ## Layout
 
@@ -44,3 +44,7 @@ reflection, explicit Map-based serialization, lowerCamelCase constants wrapped
 in upper-cased acronym objects (always referenced qualified), JSON-schema-driven
 configuration, a single universal exception (`KdrException`) and context
 (`KdrCxt`) type, and synchronous code on virtual threads rather than coroutines.
+
+## License
+
+[MIT](LICENSE)
