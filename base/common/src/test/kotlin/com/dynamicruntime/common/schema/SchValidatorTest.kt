@@ -6,6 +6,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 
@@ -49,7 +50,7 @@ class SchValidatorTest : StringSpec({
         val failures = validate(
             person,
             mapOf(
-                // "name" omitted        -> missingRequired at "name"
+                // "name" omitted -> missingRequired at "name"
                 "count" to "not-an-int", // ref Count is integer -> wrongType at "count"
                 "tags" to listOf("ok", 5), // element 1 not a string -> wrongType at "tags[1]"
             ),
@@ -61,7 +62,7 @@ class SchValidatorTest : StringSpec({
         )
     }
 
-    "a \$ref to an unknown type throws KdrException" {
+    $$"a $ref to an unknown type throws KdrException" {
         shouldThrow<KdrException> {
             parseSchemaTypes(
                 schemaDefs(cxt, "core") {
@@ -119,5 +120,33 @@ class SchValidatorTest : StringSpec({
         validate(rec, mapOf("n" to "abc", "s" to "ok", "s2" to "ok", "nums" to "1, x"))
             .map { it.path to it.code } shouldContainExactlyInAnyOrder
             listOf("n" to SchFailCode.wrongType, "nums" to SchFailCode.wrongType)
+    }
+
+    "options: an invalid choice fails with the full options list; label defaults to value" {
+        val rec = parseSchemaTypes(
+            schemaDefs(cxt, "core") {
+                type("Rec") {
+                    type = SCT.kObject
+                    property("dept", "Department") {
+                        option("sec", "Security (Navy Blue)")
+                        option("ops", "Operations (Dark Gray)")
+                        option("mgt") // label defaults to value
+                    }
+                }
+            },
+        )["core.Rec"].shouldNotBeNull()
+
+        validate(rec, mapOf("dept" to "ops")).shouldBeEmpty()
+        validate(rec, mapOf("dept" to "mgt")).shouldBeEmpty() // label-defaulted option still valid
+
+        val failures = validate(rec, mapOf("dept" to "xyz"))
+        failures shouldHaveSize 1
+        failures[0].path shouldBe "dept"
+        failures[0].code shouldBe SchFailCode.invalidOption
+        failures[0].options shouldBe listOf(
+            SchOption("sec", "Security (Navy Blue)"),
+            SchOption("ops", "Operations (Dark Gray)"),
+            SchOption("mgt", "mgt"), // label defaulted to value
+        )
     }
 })

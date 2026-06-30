@@ -12,13 +12,21 @@ import com.dynamicruntime.common.util.splitComma
 enum class SchFailCode {
     missingRequired,
     wrongType,
+    invalidOption,
 }
 
 /**
  * A single validation failure: the [path] through the data to the offending value
  * (e.g. "address.street" or "tags[1]"), a [code] for why, and a human [message].
+ * For an [SchFailCode.invalidOption] failure, [options] carries the full list of
+ * currently valid choices, given first-class visibility to the caller.
  */
-data class SchFailure(val path: String, val code: SchFailCode, val message: String)
+data class SchFailure(
+    val path: String,
+    val code: SchFailCode,
+    val message: String,
+    val options: List<SchOption>? = null,
+)
 
 /**
  * Validates [data] against the parsed [type], collecting EVERY failure (not
@@ -40,6 +48,14 @@ fun validateValue(type: SchType, value: Any?, path: String, failures: MutableLis
         }
         failures.add(SchFailure(path, SchFailCode.wrongType, "expected type '${jsonType ?: "any"}'"))
         return // can't meaningfully recurse if the container type is wrong
+    }
+    val options = type.options
+    if (options != null) {
+        val choice = value as? String
+        if (choice == null || options.none { it.value == choice }) {
+            failures.add(SchFailure(path, SchFailCode.invalidOption, "'$value' is not a valid option", options))
+        }
+        return // an options field is a scalar choice; nothing to recurse into
     }
     when (jsonType) {
         SCT.kObject -> {

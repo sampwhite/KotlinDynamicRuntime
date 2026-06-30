@@ -91,6 +91,13 @@ object SCH {
     // Custom (kd2) keywords — not part of standard JSON Schema.
     /** Whether a value may be coerced to the property's type during validation. */
     const val allowCoerce = "allowCoerce"
+
+    /** A labeled choice list on a property (array of `{label, value}` entries). */
+    const val options = "options"
+    /** Display label of an `options` entry. */
+    const val label = "label"
+    /** Stored value of an `options` entry. */
+    const val value = "value"
 }
 
 /** Values of the JSON Schema `type` keyword (object/null collide with Kotlin

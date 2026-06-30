@@ -64,6 +64,18 @@ open class SchTypeBuilder(
     }
 
     /**
+     * Adds a choice to the custom `options` construct: a [value] (the stored data)
+     * and an optional display [label], which defaults to the value when redundant.
+     */
+    fun option(value: String, label: String = value) {
+        optionsList().add(linkedMapOf(SCH.label to label, SCH.value to value))
+    }
+
+    @KdrPrivate
+    fun optionsList(): MutableList<Any?> =
+        data.getOrPut(SCH.options) { ArrayList<Any?>() }!!.toT()
+
+    /**
      * Adds a property (field) subschema. A [description] is MANDATORY for fields
      * (unlike a type's description, which is optional). The field's type defaults
      * to `string` unless [build] sets a `type` or makes it a `$ref`. When

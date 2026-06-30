@@ -51,6 +51,15 @@ yet to be written.
 * Many different applications will be built from the same source code. Configuration and choice of components
 will dictate what a particular application does.
 
+* We intend, over time, to make parts of this code base cross-platform via Kotlin Multiplatform, cross-compiling
+Kotlin to JavaScript/TypeScript so that logic can be shared with frontend code. This is only the start of a
+broader cross-platform goal. When writing code, ask the question "would this be useful in the frontend?" — for
+example, schema parsing and validation that a client could run with the same rules as the server. If the answer
+is yes, write it with multiplatform awareness: keep it in pure Kotlin over plain data (Map, List, primitives),
+avoid JVM-only constructs (`java.*`, reflection, `java.util.Date`, atomics, and similar) that would not
+cross-compile, and isolate any platform-specific dependencies away from the shareable logic. The schema parser
+and validator are an early example written this way.
+
 ### Constants
 
 * Generally, literal strings are to be avoided and string constants used instead. However, there are cases
