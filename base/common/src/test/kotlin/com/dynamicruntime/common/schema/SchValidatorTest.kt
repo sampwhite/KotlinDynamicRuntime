@@ -149,4 +149,43 @@ class SchValidatorTest : StringSpec({
             SchOption("mgt", "mgt"), // label defaulted to value
         )
     }
+
+    "default: a required property with a default does not fail when missing" {
+        val rec = parseSchemaTypes(
+            schemaDefs(cxt, "core") {
+                type("Rec") {
+                    type = SCT.kObject
+                    property("name", "Name", required = true) { type = SCT.string }
+                    property("active", "Active", required = true) { type = SCT.boolean; default = true }
+                }
+            },
+        )["core.Rec"].shouldNotBeNull()
+
+        // "active" is missing but has a default -> no failure; "name" present -> ok.
+        validate(rec, mapOf("name" to "Bob")).shouldBeEmpty()
+        // Both missing -> only "name" fails (active is covered by its default).
+        validate(rec, emptyMap<String, Any?>())
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("name" to SchFailCode.missingRequired)
+    }
+
+    "coerceAndValidate injects defaults and coerces, leaving the input untouched" {
+        val rec = parseSchemaTypes(
+            schemaDefs(cxt, "core") {
+                type("Rec") {
+                    type = SCT.kObject
+                    property("count", "Count") { type = SCT.integer }                       // numeric -> coercible
+                    property("active", "Active", required = true) { type = SCT.boolean; default = true }
+                    property("tags", "Tags") { type = SCT.array; items { type = SCT.string }; allowCoerce = true }
+                }
+            },
+        )["core.Rec"].shouldNotBeNull()
+
+        val input = mapOf("count" to "42", "tags" to "a, b, c") // "active" omitted
+        val result = coerceAndValidate(rec, input)
+
+        result.failures.shouldBeEmpty()
+        result.value shouldBe mapOf("count" to 42L, "tags" to listOf("a", "b", "c"), "active" to true)
+        // The original input is not mutated.
+        input shouldBe mapOf("count" to "42", "tags" to "a, b, c")
+    }
 })

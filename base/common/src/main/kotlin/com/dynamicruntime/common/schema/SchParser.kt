@@ -6,14 +6,14 @@ import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * Parses a `$defs`-style map of JSON Schema types (e.g. the output of
+ * Parses a `$defs`-style map of JSON Schema types (e.g., the output of
  * `schemaDefs { ... }`) into resolved [SchType] / [SchProperty] objects.
  *
  * Every `$ref` is checked: its target must be one of the types in [defs] or in
  * [existingTypes]; otherwise a [KdrException] is thrown. `anyOf`/`allOf`/`if`/
  * `then`/`else` are not handled yet.
  *
- * @return the newly parsed types keyed by fully-qualified name.
+ * @return the newly parsed types keyed by fully qualified name.
  */
 fun parseSchemaTypes(
     defs: Map<String, Any?>,
@@ -32,7 +32,7 @@ fun parseSchemaTypes(
     for (prop in pendingRefs) {
         val refName = prop.refName ?: continue
         prop.valueType = registry[refName]
-            ?: throw KdrException.mkConv("Schema \$ref to unknown type '$refName'.")
+            ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$$refName'.")
     }
     return parsed
 }
@@ -61,6 +61,7 @@ fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<Sc
         required = parseRequired(map[SCH.required]),
         itemType = itemType,
         options = parseOptions(map[SCH.options]),
+        default = map[SCH.default],
     )
 }
 

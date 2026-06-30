@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.util.deepClone
 import com.dynamicruntime.common.util.splitComma
 
 /**
@@ -28,26 +29,42 @@ data class SchFailure(
     val options: List<SchOption>? = null,
 )
 
+/** Result of a coercing validation: the (possibly transformed) [value] and the [failures]. */
+data class SchResult(val value: Any?, val failures: List<SchFailure>)
+
 /**
  * Validates [data] against the parsed [type], collecting EVERY failure (not
- * fail-fast) into the returned list. Reads only declared attributes on [SchType] /
- * [SchProperty] — it never looks a value up in a raw schema map.
+ * fail-fast). Does not alter the data. Reads only declared attributes on [SchType]
+ * / [SchProperty] — it never looks a value up in a raw schema map.
  */
 fun validate(type: SchType, data: Any?): List<SchFailure> {
     val failures = mutableListOf<SchFailure>()
-    validateValue(type, data, "", failures)
+    validateValue(type, data, "", coerce = false, failures)
     return failures
 }
 
+/**
+ * Validates AND coerces [data]: applies `allowCoerce` conversions (string -> Long /
+ * Double / list) and injects `default` values for missing properties, returning the
+ * transformed value plus the failures. The input is never mutated — new maps/lists
+ * are built where anything changes.
+ */
+fun coerceAndValidate(type: SchType, data: Any?): SchResult {
+    val failures = mutableListOf<SchFailure>()
+    val value = validateValue(type, data, "", coerce = true, failures)
+    return SchResult(value, failures)
+}
+
+/** Validates [value] against [type], returning the (possibly coerced) value. */
 @KdrPrivate
-fun validateValue(type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>) {
+fun validateValue(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
     val jsonType = type.jsonType
     if (!matchesType(jsonType, value)) {
         if (canCoerce(type, value)) {
-            return // value can be coerced to the declared type (allowCoerce)
+            return if (coerce) coerceValue(type, value) else value
         }
         failures.add(SchFailure(path, SchFailCode.wrongType, "expected type '${jsonType ?: "any"}'"))
-        return // can't meaningfully recurse if the container type is wrong
+        return value
     }
     val options = type.options
     if (options != null) {
@@ -55,32 +72,103 @@ fun validateValue(type: SchType, value: Any?, path: String, failures: MutableLis
         if (choice == null || options.none { it.value == choice }) {
             failures.add(SchFailure(path, SchFailCode.invalidOption, "'$value' is not a valid option", options))
         }
-        return // an options field is a scalar choice; nothing to recurse into
+        return value
     }
-    when (jsonType) {
-        SCT.kObject -> {
-            val map = value as Map<*, *>
-            for (req in type.required) {
-                if (!map.containsKey(req)) {
-                    failures.add(
-                        SchFailure(childPath(path, req), SchFailCode.missingRequired,
-                            "required property '$req' is missing"),
-                    )
-                }
-            }
-            for ((k, v) in map) {
-                val key = k as? String ?: continue
-                val prop = type.properties[key] ?: continue // unknown property: not checked yet
-                validateValue(prop.valueType, v, childPath(path, key), failures)
-            }
-        }
+    return when (jsonType) {
+        SCT.kObject -> validateObject(type, value as Map<*, *>, path, coerce, failures)
+        SCT.array -> validateArray(type, value as List<*>, path, coerce, failures)
+        else -> value // scalar matched, unchanged
+    }
+}
 
-        SCT.array -> {
-            val list = value as List<*>
-            val itemType = type.itemType ?: return
-            list.forEachIndexed { i, elem -> validateValue(itemType, elem, indexPath(path, i), failures) }
+@KdrPrivate
+fun validateObject(
+    type: SchType,
+    map: Map<*, *>,
+    path: String,
+    coerce: Boolean,
+    failures: MutableList<SchFailure>,
+): Any {
+    // Only build a new map when coercing; otherwise the input is returned untouched.
+    val out: MutableMap<String, Any?>? = if (coerce) LinkedHashMap(map.size) else null
+    for ((k, v) in map) {
+        val key = k as? String ?: continue
+        val prop = type.properties[key]
+        if (prop == null) {
+            out?.put(key, v) // unknown property: not checked yet, kept as-is
+            continue
+        }
+        // Call validateValue unconditionally (it collects failures); only store when coercing.
+        val coerced = validateValue(prop.valueType, v, childPath(path, key), coerce, failures)
+        out?.put(key, coerced)
+    }
+    for (req in type.required) {
+        if (map.containsKey(req)) {
+            continue
+        }
+        val default = type.properties[req]?.valueType?.default
+        if (default != null) {
+            out?.put(req, cloneForInjection(default)) // a default supplies the value, so no failure
+        } else {
+            failures.add(
+                SchFailure(childPath(path, req), SchFailCode.missingRequired, "required property '$req' is missing"),
+            )
         }
     }
+    return out ?: map
+}
+
+@KdrPrivate
+fun validateArray(
+    type: SchType,
+    list: List<*>,
+    path: String,
+    coerce: Boolean,
+    failures: MutableList<SchFailure>,
+): Any {
+    val itemType = type.itemType
+    val out: MutableList<Any?>? = if (coerce) ArrayList(list.size) else null
+    list.forEachIndexed { i, elem ->
+        val coerced = if (itemType != null) {
+            validateValue(itemType, elem, indexPath(path, i), coerce, failures)
+        } else {
+            elem
+        }
+        out?.add(coerced)
+    }
+    return out ?: list
+}
+
+/**
+ * Produces the coerced value for a [value] that [canCoerce] has accepted. Numeric
+ * strings become Long / Double; any value becomes its toString for a string type;
+ * a comma-separated string becomes a list (see [splitComma]).
+ */
+@KdrPrivate
+fun coerceValue(type: SchType, value: Any?): Any? = when (type.jsonType) {
+    SCT.integer -> (value as String).trim().toLong()
+    SCT.number -> (value as String).trim().toDouble()
+    SCT.string -> value.toString()
+    SCT.array -> coerceStringToList(type.itemType, value as String)
+    else -> value
+}
+
+@KdrPrivate
+fun coerceStringToList(itemType: SchType?, value: String): List<Any?> {
+    val parts = value.splitComma()
+    return when (itemType?.jsonType) {
+        SCT.integer -> parts.map { it.toLong() }
+        SCT.number -> parts.map { it.toDouble() }
+        else -> parts // strings (or unconstrained)
+    }
+}
+
+/** Deep-clones a default before injecting it, so the schema's value is never shared. */
+@KdrPrivate
+fun cloneForInjection(value: Any?): Any? = when (value) {
+    is Map<*, *> -> value.deepClone()
+    is List<*> -> value.deepClone()
+    else -> value // scalars are immutable
 }
 
 /**

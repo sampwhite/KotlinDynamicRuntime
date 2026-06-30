@@ -55,6 +55,10 @@ open class SchTypeBuilder(
      *  numeric types, false otherwise). */
     var allowCoerce: Boolean? by SchAttr(data, SCH.allowCoerce)
 
+    /** JSON Schema `default` value. A required property with a default does not
+     *  fail validation when missing, and coercion injects the default. */
+    var default: Any? by SchAttr(data, SCH.default)
+
     /**
      * Makes this schema a `$ref` to another type. A bare [name] resolves within
      * this builder's [namespace]; a dotted name (e.g. "core.Count") is used as-is.

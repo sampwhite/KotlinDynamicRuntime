@@ -29,4 +29,10 @@ class SchType(
     val itemType: SchType?,
     /** Choice list for the custom `options` construct; null if not an options field. */
     val options: List<SchOption>?,
+    /**
+     * The JSON Schema `default` value, or null if none. A non-null default lets a
+     * missing required property pass validation, and is injected (cloned) when
+     * coercing. (An explicit `default: null` is treated as no default.)
+     */
+    val default: Any?,
 )
