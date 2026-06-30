@@ -60,12 +60,28 @@ fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<Sc
         properties = properties,
         required = parseRequired(map[SCH.required]),
         itemType = itemType,
+        options = parseOptions(map[SCH.options]),
     )
 }
 
 /** Whether a JSON Schema type is one of the numeric types (the [SCH.allowCoerce] default). */
 @KdrPrivate
 fun isNumericType(jsonType: String?): Boolean = jsonType == SCT.integer || jsonType == SCT.number
+
+/** Parses the custom `options` construct: a list of `{label, value}` entries.
+ *  A missing `label` defaults to the `value`. */
+@KdrPrivate
+fun parseOptions(raw: Any?): List<SchOption>? {
+    if (raw !is List<*>) return null
+    return raw.mapNotNull { entry ->
+        if (entry is Map<*, *>) {
+            val value = entry[SCH.value].toOptStr() ?: return@mapNotNull null
+            SchOption(value, entry[SCH.label].toOptStr() ?: value)
+        } else {
+            null
+        }
+    }
+}
 
 @KdrPrivate
 fun parseProperty(name: String, map: Map<String, Any?>, pendingRefs: MutableList<SchProperty>): SchProperty {
