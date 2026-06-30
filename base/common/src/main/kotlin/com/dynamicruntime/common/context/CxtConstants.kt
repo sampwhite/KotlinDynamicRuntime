@@ -34,3 +34,10 @@ object AC {
     // Placeholder id for the implicit system user.
     const val systemUserId = 0
 }
+
+/** Application configuration data keys. (A key's name matches its string value.) */
+@Suppress("ConstPropertyName")
+object ACFG {
+    const val env = "env"
+    const val inMemoryOnly = "inMemoryOnly"
+}

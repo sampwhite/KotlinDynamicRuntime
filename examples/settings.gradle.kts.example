@@ -30,10 +30,19 @@ rootProject.name = "KotlinDynamicRuntime"
 // `KotlinDynamicRuntime` directory, so the logical project paths below are
 // re-pointed at their real directories with `projectDir`.
 include("launch")
+include("config")
 include("base:common")
 include("base:kdn")
 
 project(":base").projectDir = file("KotlinDynamicRuntime/base")
 project(":launch").projectDir = file("KotlinDynamicRuntime/launch")
+project(":config").projectDir = file("KotlinDynamicRuntime/config")
 project(":base:common").projectDir = file("KotlinDynamicRuntime/base/common")
 project(":base:kdn").projectDir = file("KotlinDynamicRuntime/base/kdn")
+
+// To inject deployment-specific configuration code (discovered by reflection at
+// startup), define a `:customConfig` project here. See examples/custom-config.md
+// for the full setup (two lines below are all settings.gradle.kts needs):
+//
+//   include("customConfig")
+//   project(":customConfig").projectDir = file("customConfig")

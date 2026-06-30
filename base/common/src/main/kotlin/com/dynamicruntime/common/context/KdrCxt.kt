@@ -127,4 +127,8 @@ class KdrCxt(
         /** Creates a simple top-level context with placeholder config and user. */
         fun mkSimpleCxt(cxtName: String): KdrCxt = KdrCxt(cxtName)
     }
+
+    fun getEnvVar(key: String): String? {
+        return instanceConfig.getEnvVar(key)
+    }
 }

@@ -26,6 +26,12 @@ class KdrInstanceConfig(
     /** Returns a process-unique, increasing suffix for a context's logging id. */
     fun nextLoggingId(): Long = loggingIdCounter.incrementAndGet()
 
+    fun getEnvVar(key: String): String? {
+        // Eventually we will look to instance config data first.
+        return System.getenv(key)
+    }
+
+
     companion object {
         /** Placeholder instance config used for code and unit tests. */
         fun codeTest(): KdrInstanceConfig =

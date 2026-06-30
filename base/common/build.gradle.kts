@@ -6,3 +6,7 @@
 plugins {
     id("kdr.kotlin-conventions")
 }
+
+dependencies {
+    api("org.jetbrains.kotlin:kotlin-reflect")
+}
