@@ -1,0 +1,93 @@
+package com.dynamicruntime.common.schema
+
+import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toOptStr
+
+/**
+ * Parses a `$defs`-style map of JSON Schema types (e.g. the output of
+ * `schemaDefs { ... }`) into resolved [SchType] / [SchProperty] objects.
+ *
+ * Every `$ref` is checked: its target must be one of the types in [defs] or in
+ * [existingTypes]; otherwise a [KdrException] is thrown. `anyOf`/`allOf`/`if`/
+ * `then`/`else` are not handled yet.
+ *
+ * @return the newly parsed types keyed by fully-qualified name.
+ */
+fun parseSchemaTypes(
+    defs: Map<String, Any?>,
+    existingTypes: Map<String, SchType> = emptyMap(),
+): Map<String, SchType> {
+    val pendingRefs = mutableListOf<SchProperty>()
+    val parsed = LinkedHashMap<String, SchType>()
+    for ((name, raw) in defs) {
+        if (raw is Map<*, *>) {
+            parsed[name] = parseNode(name, raw.toJsonMap(), pendingRefs)
+        }
+    }
+    // Resolve $refs against the existing types plus the just-parsed ones.
+    val registry = HashMap<String, SchType>(existingTypes)
+    registry.putAll(parsed)
+    for (prop in pendingRefs) {
+        val refName = prop.refName ?: continue
+        prop.valueType = registry[refName]
+            ?: throw KdrException.mkConv("Schema \$ref to unknown type '$refName'.")
+    }
+    return parsed
+}
+
+@KdrPrivate
+fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<SchProperty>): SchType {
+    val properties = LinkedHashMap<String, SchProperty>()
+    val rawProps = map[SCH.properties]
+    if (rawProps is Map<*, *>) {
+        for ((k, v) in rawProps) {
+            val pName = k.toOptStr() ?: continue
+            if (v is Map<*, *>) {
+                properties[pName] = parseProperty(pName, v.toJsonMap(), pendingRefs)
+            }
+        }
+    }
+    val rawItems = map[SCH.items]
+    val itemType = if (rawItems is Map<*, *>) parseNode(null, rawItems.toJsonMap(), pendingRefs) else null
+    val jsonType = map[SCH.type].toOptStr()
+    return SchType(
+        name = name,
+        jsonType = jsonType,
+        allowCoerce = (map[SCH.allowCoerce] as? Boolean) ?: isNumericType(jsonType),
+        description = map[SCH.description].toOptStr(),
+        properties = properties,
+        required = parseRequired(map[SCH.required]),
+        itemType = itemType,
+    )
+}
+
+/** Whether a JSON Schema type is one of the numeric types (the [SCH.allowCoerce] default). */
+@KdrPrivate
+fun isNumericType(jsonType: String?): Boolean = jsonType == SCT.integer || jsonType == SCT.number
+
+@KdrPrivate
+fun parseProperty(name: String, map: Map<String, Any?>, pendingRefs: MutableList<SchProperty>): SchProperty {
+    val description = map[SCH.description].toOptStr()
+    val ref = map[SCH.dRef].toOptStr()
+    if (ref != null) {
+        val prop = SchProperty(name, description, refTargetName(ref))
+        pendingRefs.add(prop) // valueType bound in the resolution pass
+        return prop
+    }
+    val prop = SchProperty(name, description, refName = null)
+    prop.valueType = parseNode(null, map, pendingRefs)
+    return prop
+}
+
+@KdrPrivate
+fun parseRequired(raw: Any?): Set<String> =
+    if (raw is List<*>) raw.mapNotNullTo(LinkedHashSet()) { it.toOptStr() } else emptySet()
+
+/** Extracts the type name from a `$ref` like "#/${'$'}defs/core.Count". */
+@KdrPrivate
+fun refTargetName(ref: String): String {
+    val prefix = "#/${SCH.dDefs}/"
+    return if (ref.startsWith(prefix)) ref.substring(prefix.length) else ref
+}

@@ -87,6 +87,10 @@ object SCH {
     const val contentEncoding = "contentEncoding"
     const val contentMediaType = "contentMediaType"
     const val contentSchema = "contentSchema"
+
+    // Custom (kd2) keywords — not part of standard JSON Schema.
+    /** Whether a value may be coerced to the property's type during validation. */
+    const val allowCoerce = "allowCoerce"
 }
 
 /** Values of the JSON Schema `type` keyword (object/null collide with Kotlin

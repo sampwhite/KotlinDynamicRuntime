@@ -23,7 +23,7 @@ class SchTypesBuilder(val cxt: KdrCxt, val namespace: String) {
     }
 
     /**
-     * Convenience: declares a reusable [SchProperty] in this scope's namespace,
+     * Convenience: declares a reusable [SchBuilderProperty] in this scope's namespace,
      * so the namespace is named once for both types and properties. Equivalent to
      * the standalone [schemaProperty]. Override the namespace per call with
      * [namespace] (e.g., for a property whose bare `$ref`s resolve elsewhere).
@@ -33,7 +33,7 @@ class SchTypesBuilder(val cxt: KdrCxt, val namespace: String) {
         description: String,
         namespace: String = this.namespace,
         build: SchTypeBuilder.() -> Unit = {},
-    ): SchProperty = schemaProperty(cxt, namespace, name, description, build)
+    ): SchBuilderProperty = schemaProperty(cxt, namespace, name, description, build)
 }
 
 /**

@@ -74,6 +74,25 @@ qualified form, such as `EXC.badInput`. We do not statically or wildcard import 
 can be used bare. The upper-cased acronym prefix at the point of use is what signals that the value is a
 constant, taking over the role that all upper case constant names would normally play.
 
+### Enums
+
+We lean away from Kotlin `enum` types for values that are part of the dynamically defined model — schema
+choice values, configuration choices, and similar — because those are meant to be modifiable at runtime and
+are better represented as the string constants described above. There is no hard rule, but we do reach for an
+`enum` in specific cases:
+
+* When an attribute has a strict, closed list of possible values and those values carry operational or state
+meaning, an `enum` is appropriate. The compile-time enforcement is a feature there rather than a hindrance.
+
+* We almost always use an `enum` for internally defined error or failure codes — a fixed set known up front
+(for example, the data-validation failure codes). Note that `KdrException` deliberately does **not** follow
+this rule: its `code`, `source`, and `activity` values are intentionally free-form and not confined to a known
+list, so they remain plain values rather than an enum.
+
+* State machines — such as job states or two-phase / transaction states — are a good fit for an `enum`. Unlike
+the validation codes, these enums tend to get serialized. When an enum is serialized, treat its set of values
+as part of a data contract that must be evolved and migrated carefully.
+
 ### Extension Methods
 
 Use them any place they might make sense, and if they are likely to be commonly used, then try to keep the method

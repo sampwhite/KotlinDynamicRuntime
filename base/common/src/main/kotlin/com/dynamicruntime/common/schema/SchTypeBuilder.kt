@@ -51,6 +51,10 @@ open class SchTypeBuilder(
     var description: String? by SchAttr(data, SCH.description)
     var format: String? by SchAttr(data, SCH.format)
 
+    /** Custom `allowCoerce` keyword. When unset, the parser defaults it (true for
+     *  numeric types, false otherwise). */
+    var allowCoerce: Boolean? by SchAttr(data, SCH.allowCoerce)
+
     /**
      * Makes this schema a `$ref` to another type. A bare [name] resolves within
      * this builder's [namespace]; a dotted name (e.g. "core.Count") is used as-is.
@@ -89,7 +93,7 @@ open class SchTypeBuilder(
      * can adjust the clone for this use (e.g., refine its description or
      * constraints). When [required] is true its name is added to `required`.
      */
-    fun property(property: SchProperty, required: Boolean = false, mutate: SchTypeBuilder.() -> Unit = {}) {
+    fun property(property: SchBuilderProperty, required: Boolean = false, mutate: SchTypeBuilder.() -> Unit = {}) {
         val sub = SchTypeBuilder(cxt, namespace, property.data.deepClone())
         sub.apply(mutate)
         propertiesMap()[property.name] = sub.data
