@@ -28,4 +28,10 @@ class StrUtilTest : StringSpec({
     "splitComma on a blank (whitespace-only) string returns an empty list" {
         "   ".splitComma() shouldBe emptyList()
     }
+
+    "hex encoding should give exactly four characters" {
+        'a'.toUpperHex() shouldBe "0061"
+        '\n'.toUpperHex() shouldBe "000A"
+        '\u2567'.toUpperHex() shouldBe "2567"
+    }
 })

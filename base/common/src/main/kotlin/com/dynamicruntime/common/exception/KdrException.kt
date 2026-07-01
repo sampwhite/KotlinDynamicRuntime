@@ -13,6 +13,7 @@ package com.dynamicruntime.common.exception
  *    through the lens of the HTTP code they would generate.
  *  - [source]: a generic sign of where the issue showed up (see [SRC]).
  *  - [activity]: a generic sign of what was being done (see [ACT]).
+ *  - [extraData]: a map of additional data that may be useful for logging or error handling.
  *
  * Error handling is groomed so that, looking at the full stack of causes, one can
  * tell where an error occurred and what its precise source was. In some cases
@@ -26,6 +27,7 @@ class KdrException(
     val code: Int = EXC.internalError,
     val source: String = SRC.system,
     val activity: String = ACT.general,
+    val extraData: MutableMap<String, Any?> = LinkedHashMap(),
 ) : Exception(message, cause) {
 
     /**
