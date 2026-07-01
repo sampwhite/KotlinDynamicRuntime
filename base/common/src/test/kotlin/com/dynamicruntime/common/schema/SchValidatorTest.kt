@@ -2,6 +2,7 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.parseDate
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -9,6 +10,8 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
+import java.util.Date
 
 class SchValidatorTest : StringSpec({
 
@@ -51,13 +54,13 @@ class SchValidatorTest : StringSpec({
             person,
             mapOf(
                 // "name" omitted -> missingRequired at "name"
-                "count" to "not-an-int", // ref Count is integer -> wrongType at "count"
-                "tags" to listOf("ok", 5), // element 1 not a string -> wrongType at "tags[1]"
+                "count" to "not-an-int", // Count is coercible integer, string inspected -> badValue at "count"
+                "tags" to listOf("ok", 5), // element 1 not a string, strict -> wrongType at "tags[1]"
             ),
         )
         failures.map { it.path to it.code } shouldContainExactlyInAnyOrder listOf(
             "name" to SchFailCode.missingRequired,
-            "count" to SchFailCode.wrongType,
+            "count" to SchFailCode.badValue,
             "tags[1]" to SchFailCode.wrongType,
         )
     }
@@ -90,7 +93,7 @@ class SchValidatorTest : StringSpec({
         )
         val person = personTypes["core.Person"].shouldNotBeNull()
         validate(person, mapOf("count" to 7)).shouldBeEmpty()
-        validate(person, mapOf("count" to "x")).map { it.code } shouldBe listOf(SchFailCode.wrongType)
+        validate(person, mapOf("count" to "x")).map { it.code } shouldBe listOf(SchFailCode.badValue)
     }
 
     "allowCoerce: numeric defaults to coercible, string defaults strict" {
@@ -114,12 +117,13 @@ class SchValidatorTest : StringSpec({
         validate(rec, mapOf("n" to "5", "s" to "ok", "s2" to "ok", "nums" to "1, 2, 3")).shouldBeEmpty()
         validate(rec, mapOf("n" to 5, "s" to "ok", "s2" to 7, "nums" to listOf(1, 2))).shouldBeEmpty()
 
-        // Strict string fails for a non-string; bad numeric/csv coercions fail.
+        // Strict string fails for a non-string (plain type check -> wrongType).
         validate(rec, mapOf("n" to 1, "s" to 7, "s2" to "ok", "nums" to listOf(1)))
             .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("s" to SchFailCode.wrongType)
+        // Inspected-content coercion failures are badValue; a bad csv element is reported element-wise.
         validate(rec, mapOf("n" to "abc", "s" to "ok", "s2" to "ok", "nums" to "1, x"))
             .map { it.path to it.code } shouldContainExactlyInAnyOrder
-            listOf("n" to SchFailCode.wrongType, "nums" to SchFailCode.wrongType)
+            listOf("n" to SchFailCode.badValue, "nums[1]" to SchFailCode.badValue)
     }
 
     "options: an invalid choice fails with the full options list; label defaults to value" {
@@ -187,5 +191,140 @@ class SchValidatorTest : StringSpec({
         result.value shouldBe mapOf("count" to 42L, "tags" to listOf("a", "b", "c"), "active" to true)
         // The original input is not mutated.
         input shouldBe mapOf("count" to "42", "tags" to "a, b, c")
+    }
+
+    // --- date coercion (issue #10) ------------------------------------------
+
+    fun dateRec(): SchType = parseSchemaTypes(
+        schemaDefs(cxt, "core") {
+            type("Rec") {
+                type = SCT.kObject
+                property("birth", "Birth day") { dayOnlyDate() }                 // allowCoerce defaults true
+                property("created", "Created at") { dateTime() }
+                property("raw", "Kept as string") { dayOnlyDate(); allowCoerce = false }
+            }
+        },
+    )["core.Rec"]!!
+
+    "date format validates parseability regardless of allowCoerce" {
+        val rec = dateRec()
+        validate(rec, mapOf("birth" to "2021-06-01", "created" to "2021-06-01T08:00:00.000Z", "raw" to "2021-06-01"))
+            .shouldBeEmpty()
+        validate(rec, mapOf("birth" to "not-a-date", "raw" to "also-bad"))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder
+            listOf("birth" to SchFailCode.badValue, "raw" to SchFailCode.badValue)
+        // The badValue carries the underlying parse exception as its cause.
+        validate(rec, mapOf("birth" to "not-a-date")).single().cause.shouldNotBeNull()
+    }
+
+    "date coercion replaces the string with a Date only when allowCoerce is on" {
+        val rec = dateRec()
+        val result = coerceAndValidate(
+            rec,
+            mapOf("birth" to "2021-06-01", "created" to "2021-06-01T08:00:00.000Z", "raw" to "2021-06-01"),
+        )
+        result.failures.shouldBeEmpty()
+        val out = result.value as Map<*, *>
+        out["birth"].shouldBeInstanceOf<Date>()
+        out["created"].shouldBeInstanceOf<Date>()
+        out["raw"] shouldBe "2021-06-01" // allowCoerce off -> kept as the original string
+        // The parsed Date round-trips to the same instant DateUtil would produce.
+        out["created"] shouldBe "2021-06-01T08:00:00.000Z".parseDate()
+    }
+
+    "a non-string, non-date value for a date field is a plain wrongType" {
+        validate(dateRec(), mapOf("birth" to 12345))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("birth" to SchFailCode.wrongType)
+    }
+
+    // --- boolean coercion (issue #10) ---------------------------------------
+
+    fun boolRec(): SchType = parseSchemaTypes(
+        schemaDefs(cxt, "core") {
+            type("Rec") {
+                type = SCT.kObject
+                property("active", "Active") { type = SCT.boolean; allowCoerce = true }
+                property("strict", "Strict bool") { type = SCT.boolean } // allowCoerce defaults false
+            }
+        },
+    )["core.Rec"]!!
+
+    "boolean coercion reads loose spellings when allowCoerce is on" {
+        val rec = boolRec()
+        coerceAndValidate(rec, mapOf("active" to "yes")).let {
+            it.failures.shouldBeEmpty()
+            (it.value as Map<*, *>)["active"] shouldBe true
+        }
+        coerceAndValidate(rec, mapOf("active" to "0")).let {
+            (it.value as Map<*, *>)["active"] shouldBe false
+        }
+    }
+
+    "boolean coercion treats a blank string as an absent value, not a failure" {
+        coerceAndValidate(boolRec(), mapOf("active" to "   ")).let {
+            it.failures.shouldBeEmpty()
+            (it.value as Map<*, *>)["active"] shouldBe null
+        }
+    }
+
+    "an unrecognized non-blank boolean string is a badValue" {
+        validate(boolRec(), mapOf("active" to "purple"))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("active" to SchFailCode.badValue)
+    }
+
+    "without allowCoerce a boolean string is a plain wrongType" {
+        validate(boolRec(), mapOf("strict" to "true"))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("strict" to SchFailCode.wrongType)
+    }
+
+    // --- JSON coercion for lists and maps (issue #10) -----------------------
+
+    "a bracketed string coerces via the JSON parser and validates element-wise" {
+        val rec = parseSchemaTypes(
+            schemaDefs(cxt, "core") {
+                type("Rec") {
+                    type = SCT.kObject
+                    property("nums", "Numbers") { type = SCT.array; items { type = SCT.integer }; allowCoerce = true }
+                }
+            },
+        )["core.Rec"]!!
+
+        coerceAndValidate(rec, mapOf("nums" to "[1, 2, 3]")).let {
+            it.failures.shouldBeEmpty()
+            (it.value as Map<*, *>)["nums"] shouldBe listOf(1L, 2L, 3L)
+        }
+        // CSV fallback (no leading bracket).
+        coerceAndValidate(rec, mapOf("nums" to "4, 5")).let {
+            (it.value as Map<*, *>)["nums"] shouldBe listOf(4L, 5L)
+        }
+        // A bad element inside bracketed JSON is reported element-wise.
+        validate(rec, mapOf("nums" to """[1, "x"]"""))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("nums[1]" to SchFailCode.badValue)
+    }
+
+    "a string coerces to a map and the object schema is applied to the parsed value" {
+        val rec = parseSchemaTypes(
+            schemaDefs(cxt, "core") {
+                type("Rec") {
+                    type = SCT.kObject
+                    property("addr", "Address") {
+                        type = SCT.kObject
+                        allowCoerce = true
+                        property("zip", "Zip") { type = SCT.integer }
+                    }
+                }
+            },
+        )["core.Rec"]!!
+
+        coerceAndValidate(rec, mapOf("addr" to """{"zip": "90210"}""")).let {
+            it.failures.shouldBeEmpty()
+            (it.value as Map<*, *>)["addr"] shouldBe mapOf("zip" to 90210L) // nested string coerced too
+        }
+        // Malformed JSON is a badValue at the field, carrying the parser exception (with its position).
+        val failure = validate(rec, mapOf("addr" to "{not json")).single()
+        failure.path shouldBe "addr"
+        failure.code shouldBe SchFailCode.badValue
+        val cause = failure.cause.shouldNotBeNull()
+        cause.extraData.containsKey("offset") shouldBe true
     }
 })

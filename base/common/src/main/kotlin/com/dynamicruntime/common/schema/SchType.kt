@@ -19,6 +19,11 @@ class SchType(
      * numeric types (integer/number), false otherwise.
      */
     val allowCoerce: Boolean,
+    /**
+     * The JSON Schema `format` value (e.g. [SFMT.date] / [SFMT.dateTime]) for a string type, or null.
+     * A recognized date format makes a string field validate as a date and default [allowCoerce] to true.
+     */
+    val format: String?,
     @Suppress("unused")
     val description: String?,
     /** Fields, for an object type (empty otherwise). */

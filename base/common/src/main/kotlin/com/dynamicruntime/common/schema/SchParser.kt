@@ -52,10 +52,13 @@ fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<Sc
     val rawItems = map[SCH.items]
     val itemType = if (rawItems is Map<*, *>) parseNode(null, rawItems.toJsonMap(), pendingRefs) else null
     val jsonType = map[SCH.type].toOptStr()
+    val format = map[SCH.format].toOptStr()
     return SchType(
         name = name,
         jsonType = jsonType,
-        allowCoerce = (map[SCH.allowCoerce] as? Boolean) ?: isNumericType(jsonType),
+        // Numeric types and recognized date formats are coercible by default; everything else is strict.
+        allowCoerce = (map[SCH.allowCoerce] as? Boolean) ?: (isNumericType(jsonType) || isDateFormat(format)),
+        format = format,
         description = map[SCH.description].toOptStr(),
         properties = properties,
         required = parseRequired(map[SCH.required]),
@@ -68,6 +71,10 @@ fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<Sc
 /** Whether a JSON Schema type is one of the numeric types (the [SCH.allowCoerce] default). */
 @KdrPrivate
 fun isNumericType(jsonType: String?): Boolean = jsonType == SCT.integer || jsonType == SCT.number
+
+/** Whether a `format` value is one of the date formats we validate/coerce ([SFMT.date] / [SFMT.dateTime]). */
+@KdrPrivate
+fun isDateFormat(format: String?): Boolean = format == SFMT.date || format == SFMT.dateTime
 
 /** Parses the custom `options` construct: a list of `{label, value}` entries.
  *  A missing `label` defaults to the `value`. */

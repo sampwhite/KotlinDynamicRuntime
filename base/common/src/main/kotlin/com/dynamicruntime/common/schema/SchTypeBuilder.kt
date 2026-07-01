@@ -132,4 +132,16 @@ open class SchTypeBuilder(
     fun items(build: SchTypeBuilder.() -> Unit) {
         data[SCH.items] = SchTypeBuilder(cxt, namespace).apply(build).data
     }
+
+    /** Marks this schema as a day-only date string (JSON Schema `format: "date"`, e.g. `2021-06-01`). */
+    fun dayOnlyDate() {
+        type = SCT.string
+        format = SFMT.date
+    }
+
+    /** Marks this schema as a full date-time string (JSON Schema `format: "date-time"`). */
+    fun dateTime() {
+        type = SCT.string
+        format = SFMT.dateTime
+    }
 }

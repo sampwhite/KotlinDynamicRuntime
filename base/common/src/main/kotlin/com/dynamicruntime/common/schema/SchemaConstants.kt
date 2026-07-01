@@ -112,3 +112,14 @@ object SCT {
     const val kObject = "object"
     const val kNull = "null"
 }
+
+/** Values of the JSON Schema `format` keyword that we act on. The `dateTime` name does not match its
+ *  hyphenated value, which is the standard JSON Schema spelling. */
+@Suppress("ConstPropertyName", "unused")
+object SFMT {
+    /** A day-only date, e.g. `2021-06-01`. */
+    const val date = "date"
+
+    /** A full timestamp, e.g. `2021-06-01T08:00:00.000Z`. */
+    const val dateTime = "date-time"
+}
