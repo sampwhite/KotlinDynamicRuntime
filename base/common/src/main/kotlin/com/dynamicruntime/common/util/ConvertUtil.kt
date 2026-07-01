@@ -23,6 +23,31 @@ fun Any.toJsonMap(): Map<String, Any?> = toT()
  */
 fun Any?.toOptStr(): String? = if (this is CharSequence) this.toString() else null
 
+/**
+ * Loosely coerces this string to a boolean, tolerating the many spellings found in CSV and other loose
+ * data sources (yes/no, y/n, t/f, true/false, 1/0). Examines the first non-whitespace character
+ * (case-insensitively): 'y'/'t'/'1' -> true, 'n'/'f'/'0' -> false, anything else -> null. A string with
+ * no non-whitespace character also yields null.
+ *
+ * Mishandled booleans are one of the most common data errors, so this errs toward simplicity: it will
+ * over-accept (e.g. "tremendous" reads as true) rather than risk silently mangling a real boolean.
+ *
+ * Whitespace is treated as any character whose code point is <= a space; this deliberately does not
+ * forgive exotic locale-specific whitespace above a space.
+ */
+fun String.toOptBool(): Boolean? {
+    for (ch in this) {
+        if (ch > ' ') {
+            return when (ch.lowercaseChar()) {
+                'y', 't', '1' -> true
+                'n', 'f', '0' -> false
+                else -> null
+            }
+        }
+    }
+    return null
+}
+
 /** Alternative to normal toString() that creates output that is more friendly to humans.
  * This will be expanded later on for dates and objects with specialized interfaces. */
 fun Any?.fmt(): String {
