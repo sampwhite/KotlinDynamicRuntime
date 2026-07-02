@@ -1,6 +1,6 @@
 ---
 name: kdr-schema-builder
-description: Author or review JSON Schema type/property definitions in KotlinDynamicRuntime using the Sch* builder DSL — schemaDefs/type/property, the SCH/SCT keyword constants (d/k naming), required-on-the-side, $ref cross-references, reusable clone-and-mutate properties. Use when writing or reviewing schema definitions in this codebase.
+description: Author, review, or apply JSON Schema in KotlinDynamicRuntime using the Sch* layer — the builder DSL (schemaDefs/type/property, SCH/SCT/SFMT constants, required-on-the-side, $ref, reusable clone-and-mutate properties), plus parsing (parseSchemaTypes) and validate/coerceAndValidate with the allowCoerce coercion rules. Use when writing schema definitions or validating/coercing data against them.
 ---
 
 # Authoring schema definitions (Sch* builders)
@@ -58,6 +58,37 @@ Use constants, never string literals, from `SchemaConstants.kt`:
   collision → `k` prefix (`SCH.kIf`/`kThen`/`kElse`).
 - `SCT` — `type` values (`SCT.string`, `SCT.integer`, `SCT.kObject`, `SCT.kNull`, …).
 
+## Dates in a schema
+
+A string field can declare a date `format` (values in `object SFMT`): `dayOnlyDate()`
+(`format = SFMT.date`, `yyyy-MM-dd`) or `dateTime()` (`format = SFMT.dateTime`). A date
+format makes the field validate by parsing and defaults `allowCoerce` to true.
+
+## Validation & coercion
+
+Parse the built `$defs` map into resolved types, then validate/coerce data:
+
+```kotlin
+val types = parseSchemaTypes(defs, existingTypes = emptyMap()) // resolves $refs; unknown -> KdrException
+val type  = types["core.Person"]!!
+val failures: List<SchFailure> = validate(type, data)          // collects ALL failures, no transform
+val result: SchResult          = coerceAndValidate(type, data) // .value (coerced) + .failures; input never mutated
+```
+
+`allowCoerce` (custom keyword; default **true** for numeric + date-format types, **false**
+otherwise) governs coercion of a mismatched value — and changes validation even when no
+output is requested:
+
+- number/integer strings → `Long`/`Double`; string ← any non-null (`toString`).
+- boolean ← string via `toOptBool` (blank → null, unrecognized → failure).
+- date-format string → `Instant`; array/object ← JSON string (`[`→`jsonArray`, else comma-split;
+  `jsonMap`), then re-validated element/property-wise.
+- Missing required properties with a `default` are injected (deep-cloned), not failed.
+
+`SchFailCode`: `missingRequired`, `invalidOption`, **`wrongType`** (a plain type check
+rejected it), **`badValue`** (its content was inspected and failed to coerce). A
+parse-driven `badValue` carries the parser exception in `SchFailure.cause`.
+
 ## Casts
 
 Don't write `as`/`@Suppress("UNCHECKED_CAST")`. Use `com.dynamicruntime.common.util`:
@@ -65,9 +96,9 @@ Don't write `as`/`@Suppress("UNCHECKED_CAST")`. Use `com.dynamicruntime.common.u
 
 ## Source files
 
-- `schema/SchemaConstants.kt`, `schema/SchTypeBuilder.kt`, `schema/SchTypesBuilder.kt`,
-  `schema/SchProperty.kt`
+- `schema/SchemaConstants.kt` (SCH/SCT/SFMT), `schema/SchTypeBuilder.kt`,
+  `schema/SchTypesBuilder.kt`, `schema/SchParser.kt`, `schema/SchValidator.kt`
 - `util/CollectionUtil.kt` (`deepClone`), `util/ConvertUtil.kt` (`toT`/`toJsonMap`/`toOptStr`)
-- Tests: `schema/SchTypeBuilderTest.kt`
+- Tests: `schema/SchTypeBuilderTest.kt`, `schema/SchValidatorTest.kt`
 
-Planned (not yet built): custom `isEndpoint` / `isTable` keywords and their builders.
+For building HTTP endpoints on top of this layer, see the `kdr-endpoint-builder` skill.
