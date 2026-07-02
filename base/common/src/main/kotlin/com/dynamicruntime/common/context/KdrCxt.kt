@@ -27,7 +27,7 @@ class KdrCxt(
     instanceConfig: KdrInstanceConfig? = null,
     parentCxt: KdrCxt? = null,
     /** The current acting user for this context. May be reassigned. */
-    var userProfile: KdrUserProfile = KdrUserProfile.systemUser(),
+    var userProfile: UserProfile = UserProfile.systemUser(),
     /**
      * The client account this context is bound to. Defaults to the acting user's
      * account. It can be set to a different account -- for users with admin
@@ -78,6 +78,13 @@ class KdrCxt(
      */
     var forwardedFor: String? = null
 
+    /**
+     * The request being processed, or null when this context is not handling one (startup, background
+     * jobs, tests). Set when an endpoint invocation begins and inherited by sub contexts. The mutable
+     * response accumulator will be a separate field added when endpoint execution is built.
+     */
+    var request: KdrRequest? = null
+
     /** Cached read-only schema store; lazily populated via [getSchema]. */
     var schemaStore: KdrSchemaStore? = null
 
@@ -96,6 +103,7 @@ class KdrCxt(
         sub.locals.putAll(locals)
         sub.schemaStore = schemaStore
         sub.forwardedFor = forwardedFor
+        sub.request = request // a sub context is part of the same request
         return sub
     }
 

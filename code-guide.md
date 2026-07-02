@@ -107,6 +107,27 @@ as part of a data contract that must be evolved and migrated carefully.
 Use them any place they might make sense, and if they are likely to be commonly used, then try to keep the method
 names relatively short.
 
+### Naming and Disambiguation
+
+* We namespace with Kotlin packages, not with a prefix on every type. This is a deliberate break from the
+prior-art `Dn`-everything convention. A type name should be as short and plain as it can be without becoming
+ambiguous.
+
+* Add a disambiguating prefix or suffix only when the bare name is a common, collision-prone word — one that
+appears widely across the code and would clash with the standard library, third-party libraries, or the problem
+domain. `Context`/`Cxt`, `Exception`, `Request`, `Response`, `Session`, `Type`, `Field`, and `Config` are the
+usual offenders. Compound or specific names — `UserProfile`, `SchemaStore`, `InstanceConfig` — carry no "which
+one?" ambiguity, so a prefix on them is just noise; leave them bare. Done right, the prefix or suffix shows up
+precisely where ambiguity would otherwise arise, which makes it self-justifying rather than ceremonial.
+
+* When a type does need disambiguating, prefer whatever reads best. A distinctive suffix can carry the load on
+its own: `RequestCxt` needs no prefix because `Cxt` already sets it apart. A subsystem may use its own short
+prefix for the family of types it owns — the schema layer uses `Sch` (`SchType`, `SchProperty`).
+
+* The `Kdr` prefix is the always-available fallback. Use it for the core, cross-cutting runtime types when
+nothing more specific fits — `KdrCxt`, `KdrException`, `KdrRequest`, `KdrResponse`. If you cannot find a better
+disambiguator and the bare name would be ambiguous, `Kdr` is there.
+
 ### Schema
 
 We will be defining JSON schema for anything where such a choice might make sense. Not only will we define

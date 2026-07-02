@@ -9,7 +9,7 @@ import com.dynamicruntime.common.context.KdrCxt
  * `$defs` object, which is where all kd2 types implicitly live and what `$ref`
  * paths resolve into.
  */
-class SchTypesBuilder(val cxt: KdrCxt, val namespace: String) {
+open class SchTypesBuilder(val cxt: KdrCxt, val namespace: String) {
     /** Types keyed by fully qualified name (the `$defs` contents). */
     val defs: MutableMap<String, Any?> = LinkedHashMap()
 
