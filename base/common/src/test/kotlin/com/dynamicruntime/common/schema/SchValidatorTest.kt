@@ -11,7 +11,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
-import java.util.Date
+import kotlin.time.Instant
 
 class SchValidatorTest : StringSpec({
 
@@ -217,7 +217,7 @@ class SchValidatorTest : StringSpec({
         validate(rec, mapOf("birth" to "not-a-date")).single().cause.shouldNotBeNull()
     }
 
-    "date coercion replaces the string with a Date only when allowCoerce is on" {
+    "date coercion replaces the string with an Instant only when allowCoerce is on" {
         val rec = dateRec()
         val result = coerceAndValidate(
             rec,
@@ -225,10 +225,10 @@ class SchValidatorTest : StringSpec({
         )
         result.failures.shouldBeEmpty()
         val out = result.value as Map<*, *>
-        out["birth"].shouldBeInstanceOf<Date>()
-        out["created"].shouldBeInstanceOf<Date>()
+        out["birth"].shouldBeInstanceOf<Instant>()
+        out["created"].shouldBeInstanceOf<Instant>()
         out["raw"] shouldBe "2021-06-01" // allowCoerce off -> kept as the original string
-        // The parsed Date round-trips to the same instant DateUtil would produce.
+        // The parsed Instant round-trips to the same instant DateUtil would produce.
         out["created"] shouldBe "2021-06-01T08:00:00.000Z".parseDate()
     }
 

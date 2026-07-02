@@ -21,6 +21,9 @@ kotlin {
 }
 
 dependencies {
+    // KMP-friendly date/time (the Instant type itself comes from the kotlin.time stdlib).
+    "implementation"("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
+
     // Every module gets the Kotest stack on its test classpath.
     "testImplementation"("io.kotest:kotest-runner-junit5:6.2.1")
     "testImplementation"("io.kotest:kotest-assertions-core:6.2.1")

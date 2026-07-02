@@ -8,7 +8,7 @@ import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.parseDate
 import com.dynamicruntime.common.util.splitComma
 import com.dynamicruntime.common.util.toOptBool
-import java.util.Date
+import kotlin.time.Instant
 
 /**
  * Why a value failed schema validation. Internal and not serialized (so the lower
@@ -300,11 +300,11 @@ fun coerceStringToObject(type: SchType, value: Any?, path: String, coerce: Boole
 /**
  * Validates a date-format string field. An already-parsed [Date] passes untouched; a string is validated
  * by [parseDate] (a parse failure is a [SchFailCode.badValue]) and, when [coerce] and `allowCoerce` are
- * set, replaced by the resulting [Date]. A non-string, non-Date value is a plain [SchFailCode.wrongType].
+ * set, replaced by the resulting [Instant]. A non-string, non-Instant value is a plain [SchFailCode.wrongType].
  */
 @KdrPrivate
 fun validateDate(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
-    if (value is Date) {
+    if (value is Instant) {
         return value
     }
     val s = value as? String

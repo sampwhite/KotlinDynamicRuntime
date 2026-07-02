@@ -2,6 +2,7 @@ package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import kotlin.math.round
+import kotlin.time.Instant
 
 // Extension methods for converting / coercing values.
 
@@ -54,6 +55,7 @@ fun Any?.fmt(): String {
     if (this == null) return "null"
     if (this is Double) return fmtD()
     if (this is Float) return fmtF()
+    if (this is Instant) return formatDate() // ISO system timestamp, so coerced dates serialize as JSON strings
     return toString()
 }
 

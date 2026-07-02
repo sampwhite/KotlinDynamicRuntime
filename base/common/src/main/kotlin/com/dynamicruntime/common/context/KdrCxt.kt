@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.context
 
-import java.util.Date
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 /**
  * The universal context object for the runtime. It is passed down a call stack
@@ -65,7 +67,7 @@ class KdrCxt(
     var nowTimeOffsetInSeconds: Int = 0
 
     /** When this context was created. */
-    val creationDate: Date = Date()
+    val creationDate: Instant = Clock.System.now()
 
     /** Nano time at creation; used to time requests. */
     val nanoTime: Long = System.nanoTime()
@@ -121,7 +123,7 @@ class KdrCxt(
     fun durationMs(): Double = (System.nanoTime() - nanoTime) / 1_000_000.0
 
     /** Current time, adjusted by [nowTimeOffsetInSeconds] for test time travel. */
-    fun now(): Date = Date(System.currentTimeMillis() + 1000L * nowTimeOffsetInSeconds)
+    fun now(): Instant = Clock.System.now() + nowTimeOffsetInSeconds.seconds
 
     companion object {
         /** Creates a simple top-level context with placeholder config and user. */

@@ -50,8 +50,8 @@ class KdrCxtTest : StringSpec({
 
     "now is shifted by the time-travel offset" {
         val cxt = KdrCxt.mkSimpleCxt("root")
-        val base = cxt.now().time
+        val base = cxt.now().toEpochMilliseconds()
         cxt.nowTimeOffsetInSeconds = 60
-        (cxt.now().time - base >= 59_000) shouldBe true
+        (cxt.now().toEpochMilliseconds() - base >= 59_000) shouldBe true
     }
 })
