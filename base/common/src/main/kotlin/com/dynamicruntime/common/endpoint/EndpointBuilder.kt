@@ -85,7 +85,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
     }
 
     /**
-     * An endpoint that retrieves a single resource, returned under `item`. Once execution exists this
+     * An endpoint that retrieves a single resource, returned under `item`. Once execution exists, this
      * implies a 404 when the item is not found; the request is effectively a GET.
      */
     fun itemEndpoint(

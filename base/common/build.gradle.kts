@@ -9,4 +9,11 @@ plugins {
 
 dependencies {
     api("org.jetbrains.kotlin:kotlin-reflect")
+
+    // Logging backend. `implementation`, not `api`: KdrLogger hides log4j2 behind
+    // our own LogLevel/topic surface, so downstream modules never see log4j types
+    // on their compile classpath. log4j-core supplies both the runtime and the
+    // programmatic configuration API used by LogSetup.
+    implementation("org.apache.logging.log4j:log4j-api:2.26.1")
+    implementation("org.apache.logging.log4j:log4j-core:2.26.1")
 }

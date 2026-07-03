@@ -5,6 +5,9 @@ build/
 # Kotlin compiler caches
 .kotlin/
 
+# Runtime log output (LogSetup writes here; path overridable via KDR_LOG_PATH).
+logs/
+
 # IntelliJ IDEA compiler output (the .idea project dir itself lives in the
 # non-versioned parent, but ignore IDE artifacts defensively in case anyone
 # opens this directory directly).

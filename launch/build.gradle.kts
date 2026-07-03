@@ -43,5 +43,5 @@ dependencies {
 }
 
 application {
-    mainClass.set("kdn.MainKt")
+    mainClass.set("kdn.WiringCheckKt")
 }
