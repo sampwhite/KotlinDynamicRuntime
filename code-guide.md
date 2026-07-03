@@ -67,7 +67,10 @@ where raw string constants are acceptable. If the string is used only once or is
 a third party API and is limited to a single file, then the literal string can be used directly.
 
 * Constants can start with a lower-case letter, and we will tend to avoid all upper case constant names. 
-We knowingly violate Kotlin style on this, and we will need to add appropriate warning violations when we do this.
+We knowingly violate Kotlin style on this. Because a lowerCamelCase `const val` trips Kotlin's naming
+inspection, every acronym Object that holds such constants is annotated with `@Suppress("ConstPropertyName")`
+at the object level (one annotation covers all the constants inside it) — see the objects in
+`ExceptionConstants.kt` (`EXC`, `SRC`, `ACT`) and `LogSetup` for the pattern. Do not suppress per-constant.
 If the constant is a string that is a key that is part of a schema, such as in a JSON schema, the name of the 
 string should match its value.
 
@@ -101,6 +104,13 @@ list, so they remain plain values rather than an enum.
 * State machines — such as job states or two-phase / transaction states — are a good fit for an `enum`. Unlike
 the validation codes, these enums tend to get serialized. When an enum is serialized, treat its set of values
 as part of a data contract that must be evolved and migrated carefully.
+
+Enum entries follow the same lower-case-first naming as our constants (for example `ExpectedVal.array`,
+`SchFailCode.missingRequired`, `LogLevel.debug`), rather than the Kotlin-conventional upper case. This trips
+the enum-entry naming inspection, so the enum is annotated with `@Suppress("EnumEntryName")` at the enum-class
+level. The one exception mirrors the schema-key rule above: when an entry name deliberately matches an external
+or standard token, spell it as that token — for instance `HttpMethod.GET`/`POST`/`PUT`, which need no
+suppression because they are already upper case.
 
 ### Extension Methods
 
