@@ -1,22 +1,28 @@
 package com.dynamicruntime.common.context
 
-import com.dynamicruntime.common.schema.LogSchema
+import com.dynamicruntime.common.endpoint.KdrEndpoint
+import com.dynamicruntime.common.schema.SchType
 
 /**
- * Stubbed placeholder for the read-only schema store. A real implementation will
- * hold the parsed, linked JSON schema for the application and be fundamental to
- * most processing -- which is why a context caches a reference to it. For now it
- * is an empty placeholder.
+ * The read-only, compiled schema for an instance: resolved [types] (by fully
+ * qualified name) and [endpoints] (by path). It is built once at startup by the
+ * schema service from the collected schema and published into the instance
+ * config, from where [get] retrieves it. A context caches a reference to it (see
+ * [KdrCxt.getSchema]) because it is fundamental to most processing.
  */
-class KdrSchemaStore {
+class KdrSchemaStore(
+    val types: Map<String, SchType> = emptyMap(),
+    val endpoints: Map<String, KdrEndpoint> = emptyMap(),
+) {
+    @Suppress("ConstPropertyName")
     companion object {
+        /** Instance-config key under which the compiled store is published. */
+        const val key = "KdrSchemaStore"
+
         /**
-         * Builds (or, eventually, retrieves a cached) schema store for the given
-         * context. Placeholder: currently returns a fresh empty store.
+         * Returns the compiled schema store from the instance config, or an empty
+         * store when none has been built (e.g. a simple, non-booted context).
          */
-        fun get(cxt: KdrCxt): KdrSchemaStore {
-            LogSchema.debug(cxt, "Creating read only schema store from raw modifiable data inputs.")
-            return KdrSchemaStore()
-        }
+        fun get(cxt: KdrCxt): KdrSchemaStore = cxt.instanceConfig.get(key) as? KdrSchemaStore ?: KdrSchemaStore()
     }
 }

@@ -1,14 +1,18 @@
 package kdn
 
-import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.config.AppConfigApplier
 import com.dynamicruntime.config.AppConfigBuilder
+import com.dynamicruntime.kdn.Startup
 
 fun main() {
     LogSetup.initFromEnv()
-    val cxt = KdrCxt.mkSimpleCxt("start")
+
+    // Boot the application instance: register components, gather and compile schema,
+    // and create and initialize services. Creating this boot context is the core of
+    // full application initialization.
+    val cxt = Startup.mkBootCxt("start", "local")
 
     // Name of the deployment config object to discover (default package, so a
     // bare class name). Overridable per deployment via an environment variable.
@@ -24,4 +28,7 @@ fun main() {
     }
 
     LogStartup.info(cxt, "app config: ${curAppConfig.data}")
+
+    val schema = cxt.getSchema()
+    LogStartup.info(cxt, "Booted instance: ${schema.types.size} schema types, ${schema.endpoints.size} endpoints.")
 }
