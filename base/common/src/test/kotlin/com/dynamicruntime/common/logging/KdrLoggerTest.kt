@@ -37,26 +37,29 @@ class KdrLoggerTest : StringSpec({
 
     "isEnabled reflects the configured level" {
         val topic = "test.enabled"
+        // The backing log4j logger is named under the app namespace, so target that when setting the level.
+        val loggerName = "${KdrLogger.appNamespace}.$topic"
         val log = KdrLogger(topic)
 
-        Configurator.setLevel(topic, Level.ERROR)
+        Configurator.setLevel(loggerName, Level.ERROR)
         log.isEnabled(LogLevel.debug) shouldBe false
         log.isEnabled(LogLevel.error) shouldBe true
 
-        Configurator.setLevel(topic, Level.DEBUG)
+        Configurator.setLevel(loggerName, Level.DEBUG)
         log.isEnabled(LogLevel.debug) shouldBe true
     }
 
     "the lazy overload does not build its message when the level is disabled" {
         val topic = "test.lazy"
+        val loggerName = "${KdrLogger.appNamespace}.$topic"
         val log = KdrLogger(topic)
 
-        Configurator.setLevel(topic, Level.ERROR)
+        Configurator.setLevel(loggerName, Level.ERROR)
         var built = false
         log.debug(null) { built = true; "expensive" }
         built shouldBe false
 
-        Configurator.setLevel(topic, Level.DEBUG)
+        Configurator.setLevel(loggerName, Level.DEBUG)
         log.debug(null) { built = true; "expensive" }
         built shouldBe true
     }

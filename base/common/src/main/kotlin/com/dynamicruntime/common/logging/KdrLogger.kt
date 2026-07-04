@@ -31,11 +31,14 @@ import org.apache.logging.log4j.Logger
  * Rewritten from the prior-art `AppLogger` in the dynamicruntime project.
  */
 open class KdrLogger(
-    /** The flat topic name this logger emits under; also the backing logger's name. */
+    /** The flat topic name this logger emits under. */
     val topic: String,
 ) {
+    // Backed by a log4j logger named "<appNamespace>.<topic>", so every application topic shares the
+    // `appNamespace` parent. That lets configuration target all of our topics as a group -- e.g. run them
+    // at debug while third-party loggers stay at the root level (see LogSetup.init).
     @KdrInternal
-    val logger: Logger = LogManager.getLogger(topic)
+    val logger: Logger = LogManager.getLogger("$appNamespace.$topic")
 
     fun trace(cxt: KdrCxt?, message: String) = log(cxt, LogLevel.trace, message)
     fun debug(cxt: KdrCxt?, message: String) = log(cxt, LogLevel.debug, message)
@@ -104,6 +107,16 @@ open class KdrLogger(
      */
     fun format(cxt: KdrCxt?, message: String): String =
         if (cxt != null) "[${cxt.instanceConfig.instanceName}:${cxt.logInfo()}] $message" else message
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        /**
+         * Parent logger name shared by all application topics: a topic `t` is logged under `kdr.t`.
+         * Configuration can then set this one logger's level to govern every application topic at once,
+         * independently of third-party (root-governed) loggers.
+         */
+        const val appNamespace = "kdr"
+    }
 }
 
 /**
