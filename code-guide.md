@@ -36,6 +36,14 @@ we will tend to use commonly used libraries that have been stable for years.
 Instead, we will use traditional synchronous call patterns and use Java's virtual threads if we need to support
 high-volume requests.
 
+* Recursive functions that walk externally-supplied or map/list-shaped data must carry a `depth` parameter and
+fail fast once it exceeds a sane maximum, rather than risk a `StackOverflowError`. This guards against both bad
+data (a self-referential `Map`/`List`, or pathologically deep input) and bad code (an accidental cycle in our
+own logic) — we have found the check valuable on both counts. Pass the depth explicitly, defaulting the
+top-level entry to 0, increment it at each recursive step, and throw a `KdrException` when it passes the limit.
+Pick a limit well above any legitimate nesting (20–50 is typical). See `SchParser.parseNode` and `JsonUtil`
+(its formatting/parsing nesting guards) for prior art.
+
 * Deployments will be done by a pull from a git repository, and a Gradle build will be done on the source code
 as part of the launch of an application. There will be no CI process to generate deployable "jar" files. This
 means a deployment agent can add Kotlin code specific to the deployment and have it picked up by the build. References

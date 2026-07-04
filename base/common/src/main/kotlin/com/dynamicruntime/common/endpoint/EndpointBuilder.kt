@@ -10,6 +10,14 @@ import com.dynamicruntime.common.schema.SchTypesBuilder
 enum class HttpMethod { GET, POST, PUT }
 
 /**
+ * The shape of an endpoint's result, which determines how the executor wraps it in the
+ * protocol envelope: a [general] result goes under `results`, an [item] under `item`, and
+ * a [list] under `items` (with count/paging metadata).
+ */
+@Suppress("EnumEntryName")
+enum class EndpointKind { general, item, list }
+
+/**
  * Protocol field keys injected into endpoint input/output envelopes. The response/list keys keep the
  * prior-art `dn` spellings; `results`/`item`/`request` are new — they lift the "real" data out from
  * alongside the protocol metadata (the change users and frontend parsers preferred).
@@ -56,6 +64,7 @@ typealias KdrEndpointHandler = (cxt: KdrCxt, request: Map<String, Any?>) -> Any?
 class KdrEndpoint(
     val path: String,
     val method: HttpMethod,
+    val kind: EndpointKind,
     val inputSchema: Map<String, Any?>,
     val outputSchema: Map<String, Any?>,
     val handler: KdrEndpointHandler,
@@ -81,7 +90,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
-        endpoints.add(KdrEndpoint(path, method, buildInput(inputRef), output, handler))
+        endpoints.add(KdrEndpoint(path, method, EndpointKind.general, buildInput(inputRef), output, handler))
     }
 
     /**
@@ -96,7 +105,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.item, "The single resource item returned by the endpoint.", outputRef)
-        endpoints.add(KdrEndpoint(path, method, buildInput(inputRef), output, handler))
+        endpoints.add(KdrEndpoint(path, method, EndpointKind.item, buildInput(inputRef), output, handler))
     }
 
     /**
@@ -116,7 +125,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
     ) {
         val input = listInput(inputRef, noLimit)
         val output = listOutput(outputRef, hasMore, hasNumAvailable)
-        endpoints.add(KdrEndpoint(path, method, input, output, handler))
+        endpoints.add(KdrEndpoint(path, method, EndpointKind.list, input, output, handler))
     }
 
     // --- envelope construction (all realized immediately) -------------------

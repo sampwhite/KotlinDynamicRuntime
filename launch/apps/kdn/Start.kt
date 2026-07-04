@@ -1,5 +1,6 @@
 package kdn
 
+import com.dynamicruntime.common.http.server.HttpServer
 import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.config.AppConfigApplier
@@ -31,4 +32,7 @@ fun main() {
 
     val schema = cxt.getSchema()
     LogStartup.info(cxt, "Booted instance: ${schema.types.size} schema types, ${schema.endpoints.size} endpoints.")
+
+    // Start serving HTTP. Blocks until the server stops.
+    HttpServer.launch(cxt)
 }

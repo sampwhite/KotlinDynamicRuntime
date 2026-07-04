@@ -16,4 +16,12 @@ dependencies {
     // programmatic configuration API used by LogSetup.
     implementation("org.apache.logging.log4j:log4j-api:2.26.1")
     implementation("org.apache.logging.log4j:log4j-core:2.26.1")
+
+    // Jetty 12 core HTTP server. We use the core Handler API (handle(Request,
+    // Response, Callback)) directly -- no servlet layer -- so this is the only
+    // Jetty artifact we need (it brings jetty-http/io/util transitively).
+    implementation("org.eclipse.jetty:jetty-server:12.1.10")
+    // Jetty logs through slf4j; this binding routes that into our log4j2 config
+    // (and brings slf4j-api transitively).
+    implementation("org.apache.logging.log4j:log4j-slf4j2-impl:2.26.1")
 }

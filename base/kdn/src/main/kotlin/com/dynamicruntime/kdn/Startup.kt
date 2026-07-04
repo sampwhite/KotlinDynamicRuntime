@@ -3,7 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.startup.CommonComponent
+import com.dynamicruntime.common.CommonComponent
 import com.dynamicruntime.common.startup.InstanceRegistry
 
 /**

@@ -16,7 +16,7 @@ import com.dynamicruntime.common.schema.parseSchemaTypes
  * config so [KdrSchemaStore.get] can find it.
  *
  * This is an initial port of dn's `DnSchemaService`: it does the collected-to-built
- * compile, without dn's builder-keyword resolution pass, because kd2's endpoint and
+ * aggregation, without dn's builder-keyword resolution pass, because kd2's endpoint and
  * type schema are already realized eagerly by the `Sch*` builders.
  */
 class SchemaService : ServiceInitializer {

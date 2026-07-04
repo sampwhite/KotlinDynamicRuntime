@@ -43,5 +43,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("kdn.WiringCheckKt")
+    // The full application entry point: boots the instance and starts the HTTP server.
+    // (WiringCheck remains as a separate, server-free dependency-proof entry point.)
+    mainClass.set("kdn.StartKt")
 }

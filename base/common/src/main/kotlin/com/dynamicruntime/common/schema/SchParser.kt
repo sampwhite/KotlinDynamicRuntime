@@ -38,19 +38,24 @@ fun parseSchemaTypes(
 }
 
 @KdrPrivate
-fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<SchProperty>): SchType {
+fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<SchProperty>, depth: Int = 0): SchType {
+    // Guard against runaway recursion -- e.g., a raw schema Map that references itself (see JsonUtil for the
+    // same nesting guard on formatting). A legitimate schema never nests anywhere near this deep.
+    if (depth > 20) {
+        throw KdrException.mkConv("Schema is nested too deeply (over 20 levels); it may contain a self-reference.")
+    }
     val properties = LinkedHashMap<String, SchProperty>()
     val rawProps = map[SCH.properties]
     if (rawProps is Map<*, *>) {
         for ((k, v) in rawProps) {
             val pName = k.toOptStr() ?: continue
             if (v is Map<*, *>) {
-                properties[pName] = parseProperty(pName, v.toJsonMap(), pendingRefs)
+                properties[pName] = parseProperty(pName, v.toJsonMap(), pendingRefs, depth)
             }
         }
     }
     val rawItems = map[SCH.items]
-    val itemType = if (rawItems is Map<*, *>) parseNode(null, rawItems.toJsonMap(), pendingRefs) else null
+    val itemType = if (rawItems is Map<*, *>) parseNode(null, rawItems.toJsonMap(), pendingRefs, depth + 1) else null
     val jsonType = map[SCH.type].toOptStr()
     val format = map[SCH.format].toOptStr()
     return SchType(
@@ -92,7 +97,7 @@ fun parseOptions(raw: Any?): List<SchOption>? {
 }
 
 @KdrPrivate
-fun parseProperty(name: String, map: Map<String, Any?>, pendingRefs: MutableList<SchProperty>): SchProperty {
+fun parseProperty(name: String, map: Map<String, Any?>, pendingRefs: MutableList<SchProperty>, depth: Int): SchProperty {
     val description = map[SCH.description].toOptStr()
     val ref = map[SCH.dRef].toOptStr()
     if (ref != null) {
@@ -101,7 +106,7 @@ fun parseProperty(name: String, map: Map<String, Any?>, pendingRefs: MutableList
         return prop
     }
     val prop = SchProperty(name, description, refName = null)
-    prop.valueType = parseNode(null, map, pendingRefs)
+    prop.valueType = parseNode(null, map, pendingRefs, depth + 1)
     return prop
 }
 
