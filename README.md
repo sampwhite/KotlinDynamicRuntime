@@ -1,8 +1,9 @@
 # KotlinDynamicRuntime
 
 Dynamic schema and config: a Kotlin reimplementation of a dynamic,
-schema-driven application runtime. The coding philosophy and conventions for the
-project are described in [`code-guide.md`](code-guide.md).
+schema-driven application runtime. The proposal for this project can be found at
+[Kotlin, KMP, JSON Schema, SDUI, and Claude — the AI's rewrite](https://gyassa.com/personal/kdr-project-ai.html).
+The coding philosophy and conventions for the project are described in [`code-guide.md`](code-guide.md).
 
 ## Layout
 
