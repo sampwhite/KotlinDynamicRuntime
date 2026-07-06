@@ -12,9 +12,13 @@ class AppConfigBuilder(cxt: KdrCxt, data: MutableMap<String,Any?>) : KdrConfigDa
         // reads the env var only when the key is absent, so an existing value wins.
         data.getOrPut(ACFG.env) { cxt.getEnvVar("KDR_ENV") ?: ENV.local }
         data.getOrPut(ACFG.inMemoryOnly, { true })
+        data.getOrPut(ACFG.validateResponseSchema, { false })
     }
 
     // See ENV constants in CxtConstants.
     var env: String by data
     var inMemoryOnly: Boolean by data
+
+    /** When true, endpoint responses are validated against their output schema. Defaults false (on in tests). */
+    var validateResponseSchema: Boolean by data
 }

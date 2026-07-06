@@ -11,7 +11,7 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
  * The `common` module's component. It owns the foundational schema and services: the [SchemaService]
- * that compiles all contributed schema at startup, the [NodeService] (which also contributes the
+ * that compiles all contributed schemas at startup, the [NodeService] (which also contributes the
  * `/health` endpoint), and the [RequestService] dispatcher. Dn's separate `core` component is folded
  * in here (see [ComponentDefinition]).
  *
@@ -24,6 +24,7 @@ class CommonComponent : ComponentDefinition {
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         // Endpoints/types live with the services that own them; the component just wires them in.
         collector.addModule(NodeService.schema(cxt))
+        collector.addModule(SchemaService.schema(cxt))
     }
 
     /**

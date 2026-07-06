@@ -16,7 +16,7 @@ import kotlin.time.Instant
  * Node-level service: identity, a health report, and an internal-IP filter. Ported from dn's
  * `DnCoreNodeService`; the `Core` qualifier is dropped since kd2 has a single component per module.
  *
- * Registered as a **startup service** (see [CommonComponent]) so the node knows its own identity and
+ * Registered as a **startup service** (see CommonComponent), so the node knows its own identity and
  * basic facts about itself before any regular service initializes -- other services may need those
  * during their own init. (dn intended `DnCoreNodeService` to be a `StartupServiceInitializer` but a bug
  * left it a regular service; kd2 fixes that by placing it in the component's startup list.)
@@ -36,7 +36,7 @@ class NodeService : ServiceInitializer {
     @KdrPrivate
     lateinit var internalIpAddresses: Regex
 
-    /** Whether this node is acting as part of the cluster (toggled by ops endpoints). */
+    /** Whether this node is acting as part of the cluster (toggled by operator endpoints). */
     @Volatile
     var isInCluster: Boolean = true
 
@@ -83,7 +83,7 @@ class NodeService : ServiceInitializer {
     companion object {
         const val serviceName = "NodeService"
 
-        /** When this VM started; used to compute uptime. */
+        /** When this VM started, used to compute uptime. */
         val vmStartTime: Instant = Clock.System.now()
 
         fun get(cxt: KdrCxt): NodeService? = cxt.instanceConfig.get(serviceName) as? NodeService
@@ -105,7 +105,12 @@ class NodeService : ServiceInitializer {
                 }
                 property(ND.version, "Runtime version string.", required = true)
             }
-            generalEndpoint("/health", HttpMethod.GET, outputRef = "Health") { c, _ ->
+            generalEndpoint(
+                "/health",
+                "Basic health and identity of this node (uptime, node id, version, cluster membership).",
+                HttpMethod.GET,
+                outputRef = "Health",
+            ) { c, _ ->
                 (get(c) ?: throw KdrException("NodeService is not available.")).getHealth(c)
             }
         }

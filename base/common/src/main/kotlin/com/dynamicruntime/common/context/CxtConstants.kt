@@ -10,7 +10,7 @@ package com.dynamicruntime.common.context
 // object suppresses the const-naming inspection at the object level.
 
 /** Environment names and environment types. */
-@Suppress("ConstPropertyName")
+@Suppress("ConstPropertyName", "unused")
 object ENV {
     // Environment names: what kind of run this is.
     const val local = "local"
@@ -40,4 +40,7 @@ object AC {
 object ACFG {
     const val env = "env"
     const val inMemoryOnly = "inMemoryOnly"
+
+    /** When true, endpoint responses are validated against their `outputSchema`. Default false; on in tests. */
+    const val validateResponseSchema = "validateResponseSchema"
 }

@@ -24,12 +24,12 @@ class EndpointBuilderTest : StringSpec({
     fun sampleModule(): SchModule = schemaModule(cxt, "api") {
         type("FooIn") { type = SCT.kObject; property("q", "A query filter") }
         type("FooOut") { type = SCT.kObject; property("name", "The name") }
-        generalEndpoint("/foo", HttpMethod.POST, outputRef = "FooOut", inputRef = "FooIn") { _, _ ->
+        generalEndpoint("/foo", "Foo general endpoint", HttpMethod.POST, outputRef = "FooOut", inputRef = "FooIn") { _, _ ->
             mapOf("name" to "x")
         }
-        itemEndpoint("/foo/{id}", HttpMethod.GET, outputRef = "FooOut") { _, _ -> mapOf("name" to "y") }
+        itemEndpoint("/foo/{id}", "Foo item endpoint", HttpMethod.GET, outputRef = "FooOut") { _, _ -> mapOf("name" to "y") }
         listEndpoint(
-            "/foos", outputRef = "FooOut", inputRef = "FooIn", // method defaults to GET
+            "/foos", "Foo list endpoint", outputRef = "FooOut", inputRef = "FooIn", // method defaults to GET
             hasMore = true, hasNumAvailable = true,
         ) { _, _ -> emptyList<Any?>() }
     }
@@ -39,6 +39,13 @@ class EndpointBuilderTest : StringSpec({
         m.defs.keys shouldBe setOf("api.FooIn", "api.FooOut") // endpoint envelopes are inline, not in defs
         m.endpoints.map { it.path } shouldBe listOf("/foo", "/foo/{id}", "/foos")
         m.endpoints.map { it.method } shouldBe listOf(HttpMethod.POST, HttpMethod.GET, HttpMethod.GET)
+    }
+
+    "endpoints carry their declaring namespace and required description" {
+        val m = sampleModule()
+        m.endpoints.map { it.namespace } shouldBe listOf("api", "api", "api")
+        m.endpoints.single { it.path == "/foo" }.description shouldBe "Foo general endpoint"
+        m.endpoints.single { it.path == "/foos" }.description shouldBe "Foo list endpoint"
     }
 
     "a general endpoint wraps the output under results, with protocol metadata" {
@@ -77,7 +84,7 @@ class EndpointBuilderTest : StringSpec({
     "a list endpoint omits limit and paging fields when not requested" {
         val m = schemaModule(cxt, "api") {
             type("Out") { type = SCT.kObject; property("n", "n") }
-            listEndpoint("/xs", outputRef = "Out", noLimit = true) { _, _ -> emptyList<Any?>() }
+            listEndpoint("/xs", "Xs list endpoint", outputRef = "Out", noLimit = true) { _, _ -> emptyList<Any?>() }
         }
         val ep = m.endpoints.single()
         ep.inputSchema shouldBe mapOf(SCH.type to SCT.kObject) // no inputRef -> no request; noLimit -> no limit

@@ -36,7 +36,7 @@ we will tend to use commonly used libraries that have been stable for years.
 Instead, we will use traditional synchronous call patterns and use Java's virtual threads if we need to support
 high-volume requests.
 
-* Recursive functions that walk externally-supplied or map/list-shaped data must carry a `depth` parameter and
+* Recursive functions that walk externally supplied or map/list-shaped data must carry a `depth` parameter and
 fail fast once it exceeds a sane maximum, rather than risk a `StackOverflowError`. This guards against both bad
 data (a self-referential `Map`/`List`, or pathologically deep input) and bad code (an accidental cycle in our
 own logic) — we have found the check valuable on both counts. Pass the depth explicitly, defaulting the
@@ -61,7 +61,7 @@ will dictate what a particular application does.
 
 * We intend, over time, to make parts of this code base cross-platform via Kotlin Multiplatform, cross-compiling
 Kotlin to JavaScript/TypeScript so that logic can be shared with frontend code. This is only the start of a
-broader cross-platform goal. When writing code, ask the question "would this be useful in the frontend?" — for
+broader cross-platform goal. When writing code, ask "would this be useful in the frontend?" — for
 example, schema parsing and validation that a client could run with the same rules as the server. If the answer
 is yes, write it with multiplatform awareness: keep it in pure Kotlin over plain data (Map, List, primitives),
 avoid JVM-only constructs (`java.*`, reflection, `java.util.Date`, atomics, and similar) that would not
@@ -170,6 +170,33 @@ JSON schema as a whole. The same will be true for complex application configurat
 
 Besides using "$ref" constructs to do linkage, we will also allow overrides where recursive map merges can
 modify either schema or configuration.
+
+### Boilerplate: point-specific control, centralized definitions
+
+This code base is deliberately heavy on boilerplate, and we accept that. It is a consequence of the other
+decisions above rather than an accident. We want *point-specific customization* — the ability to adapt a
+schema, a log line, an error message, or the exact way a value is serialized, right at the point where it
+applies, with explicit code rather than reflection or framework magic (see the reflection and Kotlin-everywhere
+rules). We also intend to aggressively capture redundancies in both definitions and behavior, and eventually to
+write code that generates whole suites of endpoints and schema from higher-level rules of what is wanted.
+Explicit, uniform boilerplate is exactly what such generators emit and manipulate, so we treat the verbosity as
+a feature to be managed, not a smell to be hidden behind cleverness.
+
+Since we are embracing this style, we pay down its main cost — scattering — by **centralizing the boilerplate
+for a given type onto (or beside) the class that owns the data**. A type's schema-type definition, its
+serialization, and the string constants for its field names all live together in one file, rather than being
+spread across every place that consumes the type. The payoff is concrete: when you add or rename an attribute,
+you edit one file, and any misalignment between the schema, the serialization, and the constants is visible in
+that same file instead of drifting silently across the code base. We learned this the hard way on the prior
+(dynamic runtime) project, where the definition, the serialization map, and the field keys for one concept were
+scattered across many files and steadily fell out of sync; co-locating them removed most of that pain.
+
+Concretely, a data class hosts its own serialization — implementing a small shared interface (e.g.
+`JsonMappable` with `toJsonMap()`) so response handling can be written generically — and a companion method that
+defines its schema type and owns that type's name, with its field-name constants declared right beside it.
+Consumers call `x.toJsonMap()` and `TheType.defineSchema(builder)` rather than re-implementing the mapping or
+re-declaring the fields elsewhere. `KdrEndpoint` (with its `toJsonMap`, `defineInfoType`, and the `EI` field
+constants) is the reference example.
 
 ### Universal Exception
 

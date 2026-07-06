@@ -34,6 +34,8 @@ object Startup {
         val testOverlay = LinkedHashMap(overlay)
         testOverlay[ACFG.env] = ENV.unit
         testOverlay.putIfAbsent(ACFG.inMemoryOnly, true)
+        // Validate endpoint responses against their output schema in tests, so a non-conforming response fails fast.
+        testOverlay.putIfAbsent(ACFG.validateResponseSchema, true)
         return mkBootCxt(cxtName, instanceName, testOverlay)
     }
 }

@@ -1,8 +1,10 @@
 package com.dynamicruntime.common.http.request
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrRequest
+import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.KdrEndpoint
@@ -11,6 +13,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toJsonMap
 import java.util.concurrent.ConcurrentHashMap
@@ -37,8 +40,9 @@ class RequestService : ServiceInitializer {
     @KdrPrivate
     var isInit: Boolean = false
 
-    // Cache of compiled endpoint input types (parsed against the compiled schema store).
+    // Caches of compiled endpoint input/output types (parsed against the compiled schema store).
     private val inputTypeCache = ConcurrentHashMap<String, SchType>()
+    private val outputTypeCache = ConcurrentHashMap<String, SchType>()
 
     override fun checkInit(cxt: KdrCxt) {
         if (isInit) {
@@ -75,8 +79,9 @@ class RequestService : ServiceInitializer {
         // TODO: content serving (dn's DnContentService) is not ported yet.
 
         if (!handler.hasResponseBeenSent()) {
-            val endpoint = cxt.getSchema().endpoints[target]
-            if (endpoint != null && endpoint.method.name == method) {
+            // Endpoints are keyed by "path:method" (KdrEndpoint.collationKey), so the method is part of the lookup.
+            val endpoint = cxt.getSchema().endpoints["$target:$method"]
+            if (endpoint != null) {
                 executeEndpoint(cxt, handler, endpoint)
             }
         }
@@ -97,8 +102,13 @@ class RequestService : ServiceInitializer {
                 ?: throw KdrException("Could not compile input schema for '${endpoint.path}'.")
         }
 
-        val data = LinkedHashMap<String, Any?>(handler.queryParams)
+        var data = LinkedHashMap<String, Any?>(handler.queryParams)
         handler.postData?.let { data.putAll(it) }
+        // Endpoints whose input wraps the caller's data under `request` (list endpoints) receive flat HTTP
+        // input; regroup it so the declared top-level protocol fields stay put and the rest go under `request`.
+        if (EP.request in inputType.properties) {
+            data = regroupUnderRequest(data, inputType)
+        }
         val result = coerceAndValidate(inputType, data)
         if (result.failures.isNotEmpty()) {
             throw KdrException.mkInput("Validation failure in request data: ${result.failures}.")
@@ -114,7 +124,50 @@ class RequestService : ServiceInitializer {
         val inner = endpoint.handler(cxt, requestData)
 
         if (!handler.hasResponseBeenSent()) {
-            handler.sendJsonResponse(buildEnvelope(cxt, handler, endpoint, requestData, inner), EXC.ok)
+            val envelope = buildEnvelope(cxt, handler, endpoint, requestData, inner)
+            validateResponse(cxt, schema, endpoint, envelope)
+            handler.sendJsonResponse(envelope, EXC.ok)
+        }
+    }
+
+    /**
+     * Regroups flat HTTP input for an endpoint whose input declares a `request` wrapper. Keys matching a
+     * declared top-level property other than `request` (e.g. `limit`, a future `offset`) stay at the top
+     * level; every other key is the caller's data and is pushed under `request`. An explicitly sent
+     * `request` object is folded in. Reading the field names off the schema (rather than hardwiring `limit`)
+     * lets the input protocol grow without changing this code.
+     */
+    @KdrPrivate
+    fun regroupUnderRequest(data: Map<String, Any?>, inputType: SchType): LinkedHashMap<String, Any?> {
+        val topLevel = inputType.properties.keys
+        val request = LinkedHashMap<String, Any?>()
+        (data[EP.request] as? Map<*, *>)?.let { request.putAll(it.toJsonMap()) }
+        val regrouped = LinkedHashMap<String, Any?>()
+        for ((k, v) in data) {
+            when (k) {
+                EP.request -> {} // already folded into request
+                in topLevel -> regrouped[k] = v
+                else -> request[k] = v
+            }
+        }
+        regrouped[EP.request] = request
+        return regrouped
+    }
+
+    /** Validates the outgoing [envelope] against the endpoint's output schema, when the config flag is set. */
+    @KdrPrivate
+    fun validateResponse(cxt: KdrCxt, schema: KdrSchemaStore, endpoint: KdrEndpoint, envelope: Map<String, Any?>) {
+        if (cxt.instanceConfig.get(ACFG.validateResponseSchema) != true || endpoint.outputSchema.isEmpty()) {
+            return
+        }
+        val outputType = outputTypeCache.getOrPut(endpoint.path) {
+            val name = "${endpoint.path}#output"
+            parseSchemaTypes(mapOf(name to endpoint.outputSchema), schema.types)[name]
+                ?: throw KdrException("Could not compile output schema for '${endpoint.path}'.")
+        }
+        val failures = validate(outputType, envelope)
+        if (failures.isNotEmpty()) {
+            throw KdrException("Response for '${endpoint.path}' failed output-schema validation: $failures.")
         }
     }
 

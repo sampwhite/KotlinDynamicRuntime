@@ -2,9 +2,22 @@ package com.dynamicruntime.common.endpoint
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
+
+/** Attribute keys for an endpoint's `EndpointInfo` dump (see [KdrEndpoint.toJsonMap]). */
+@Suppress("ConstPropertyName")
+object EI {
+    const val path = "path"
+    const val method = "method"
+    const val kind = "kind"
+    const val namespace = "namespace"
+    const val description = "description"
+    const val inputSchema = "inputSchema"
+    const val outputSchema = "outputSchema"
+}
 
 /** The HTTP methods an endpoint may use. A closed, stable set, so an enum fits. */
 enum class HttpMethod { GET, POST, PUT }
@@ -57,18 +70,68 @@ const val defaultListLimit = 100
 typealias KdrEndpointHandler = (cxt: KdrCxt, request: Map<String, Any?>) -> Any?
 
 /**
- * A fully realized endpoint: its [path] and [method], the input and output schema envelopes (JSON schema
- * maps built immediately, with `$ref`s into the module's `$defs`), and the [handler] to run. There is no
- * deferred construction pass — the envelope is complete the moment the builder returns.
+ * A fully realized endpoint: its [path] and [method], the [namespace] it was declared in, a required
+ * [description] (endpoints are our documented API, so a description is mandatory), the input and output
+ * schema envelopes (JSON schema maps built immediately, with `$ref`s into the module's `$defs`), and the
+ * [handler] to run. There is no deferred construction pass — the envelope is complete the moment the
+ * builder returns. The [namespace] comes from the enclosing `schemaModule` when built via the DSL, or is
+ * supplied explicitly when a `KdrEndpoint` is constructed directly.
  */
 class KdrEndpoint(
     val path: String,
     val method: HttpMethod,
     val kind: EndpointKind,
+    val namespace: String,
+    val description: String,
     val inputSchema: Map<String, Any?>,
     val outputSchema: Map<String, Any?>,
     val handler: KdrEndpointHandler,
-)
+) : JsonMappable {
+    /**
+     * Derived key uniquely identifying this endpoint as `path:method` (e.g. `/health:GET`). Used both as
+     * the registry key (so the same path may be registered under two HTTP methods) and to collate/sort
+     * endpoints. It is *not* included in the `/schema/endpoints` attribute dump.
+     */
+    val collationKey: String = "$path:${method.name}"
+
+    /**
+     * Renders this endpoint's attributes as a JSON map (the form returned by `/schema/endpoints`).
+     * Serialization lives with the class -- and beside its schema ([defineInfoType]) -- so the two stay
+     * aligned in one file. [collationKey] and [handler] are intentionally omitted.
+     */
+    override fun toJsonMap(): Map<String, Any?> = linkedMapOf(
+        EI.path to path,
+        EI.method to method.name,
+        EI.kind to kind.name,
+        EI.namespace to namespace,
+        EI.description to description,
+        EI.inputSchema to inputSchema,
+        EI.outputSchema to outputSchema,
+    )
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        /** Schema type name for an endpoint's attribute dump (the shape of [toJsonMap]). */
+        const val infoTypeName = "EndpointInfo"
+
+        /**
+         * Defines the `EndpointInfo` schema type (the shape of [toJsonMap]) on [builder], naming it
+         * [infoTypeName]. Kept with the class so the type and the serialization cannot drift apart.
+         */
+        fun defineInfoType(builder: SchModuleBuilder) {
+            builder.type(infoTypeName) {
+                type = SCT.kObject
+                property(EI.path, "The endpoint's request path.", required = true)
+                property(EI.method, "The HTTP method.", required = true)
+                property(EI.kind, "The endpoint kind (general/item/list).", required = true)
+                property(EI.namespace, "The namespace the endpoint was declared in.", required = true)
+                property(EI.description, "Human description of the endpoint.", required = true)
+                property(EI.inputSchema, "The endpoint's input JSON schema.", required = true) { type = SCT.kObject }
+                property(EI.outputSchema, "The endpoint's output JSON schema.", required = true) { type = SCT.kObject }
+            }
+        }
+    }
+}
 
 /** The types (`$defs` contents) and endpoints declared together for one namespace. */
 class SchModule(val defs: Map<String, Any?>, val endpoints: List<KdrEndpoint>)
@@ -84,13 +147,16 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
     /** A general endpoint: the result is returned under `results`, always a map object. */
     fun generalEndpoint(
         path: String,
+        description: String,
         method: HttpMethod,
         outputRef: String,
         inputRef: String? = null,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
-        endpoints.add(KdrEndpoint(path, method, EndpointKind.general, buildInput(inputRef), output, handler))
+        endpoints.add(
+            KdrEndpoint(path, method, EndpointKind.general, namespace, description, buildInput(inputRef), output, handler),
+        )
     }
 
     /**
@@ -99,13 +165,16 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
      */
     fun itemEndpoint(
         path: String,
+        description: String,
         method: HttpMethod,
         outputRef: String,
         inputRef: String? = null,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.item, "The single resource item returned by the endpoint.", outputRef)
-        endpoints.add(KdrEndpoint(path, method, EndpointKind.item, buildInput(inputRef), output, handler))
+        endpoints.add(
+            KdrEndpoint(path, method, EndpointKind.item, namespace, description, buildInput(inputRef), output, handler),
+        )
     }
 
     /**
@@ -115,6 +184,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
      */
     fun listEndpoint(
         path: String,
+        description: String,
         outputRef: String,
         method: HttpMethod = HttpMethod.GET, // list endpoints are rarely anything but GET
         inputRef: String? = null,
@@ -125,7 +195,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
     ) {
         val input = listInput(inputRef, noLimit)
         val output = listOutput(outputRef, hasMore, hasNumAvailable)
-        endpoints.add(KdrEndpoint(path, method, EndpointKind.list, input, output, handler))
+        endpoints.add(KdrEndpoint(path, method, EndpointKind.list, namespace, description, input, output, handler))
     }
 
     // --- envelope construction (all realized immediately) -------------------
