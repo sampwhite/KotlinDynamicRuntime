@@ -1,27 +1,13 @@
 package com.dynamicruntime.webapp
 
-import kotlinx.serialization.Serializable
-
 /**
- * Client-side mirrors of the `:sample` Todo API DTOs. They deliberately match
- * the server's JSON shapes (see the sample module's Todo.kt) so the Ktor client
- * can (de)serialize them. Kept as a small, intentional duplication rather than
- * introducing a shared multiplatform module for this example.
+ * Client-side view of a todo, matching the JSON the `:sample` runtime's `todo` endpoints return (see the
+ * sample module's Todo.kt). Responses are read straight off the parsed JSON in [TodoApi] rather than through
+ * a serialization library, so no `@Serializable` is needed. Request bodies are built inline in [TodoApi],
+ * so the old Create/Update request DTOs are gone.
  */
-@Serializable
 data class Todo(
     val id: Int,
     val title: String,
     val completed: Boolean,
-)
-
-@Serializable
-data class CreateTodoRequest(
-    val title: String,
-)
-
-@Serializable
-data class UpdateTodoRequest(
-    val title: String? = null,
-    val completed: Boolean? = null,
 )

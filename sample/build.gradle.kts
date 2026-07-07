@@ -1,40 +1,20 @@
-// `sample` — a self-contained example module, isolated from the main launcher.
-// It runs a small Ktor HTTP server exposing an in-memory Todo REST API that the
-// `webapp` front end consumes. Nothing in the main build depends on it; it is a
-// standalone demo you start with `./gradlew :sample:run`.
+// `sample` — a self-contained example app, isolated from the main launcher. It boots the full
+// KotlinDynamicRuntime runtime plus its own component of Todo endpoints (built on the runtime's endpoint
+// framework, not an external web framework) and serves them over the runtime's Jetty server on :7070.
+// Nothing in the main build depends on it; it is a standalone demo you start with `./gradlew :sample:run`.
 plugins {
     id("kdr.kotlin-conventions")
-    // kotlinx.serialization compiler plugin — enables `@Serializable` on the DTOs
-    // so Ktor's JSON content negotiation can (de)serialize them. Version matches
-    // the Kotlin version pinned in build-logic (2.4.0).
-    kotlin("plugin.serialization") version "2.4.0"
     application
 }
 
-// Ktor 3.x. Kept as a local val rather than a version catalog to match this
-// module's self-contained, example nature.
-val ktorVersion = "3.2.0"
-
 dependencies {
-    // Ktor server: the engine (Netty), core routing, JSON content negotiation
-    // via kotlinx.serialization, and CORS so the webapp (served from :8080 in
-    // dev) can call this API on :8081.
-    implementation("io.ktor:ktor-server-core:$ktorVersion")
-    implementation("io.ktor:ktor-server-netty:$ktorVersion")
-    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
-    implementation("io.ktor:ktor-server-cors:$ktorVersion")
-
-    // Ktor logs through SLF4J; Logback is the runtime backend.
-    implementation("ch.qos.logback:logback-classic:1.5.18")
-
-    // Integration testing: `testApplication` boots the app in-process (no real
-    // socket), and the client-side content negotiation lets the test client
-    // send/receive the typed DTOs over the in-memory transport.
-    testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
-    testImplementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
+    // `config` re-exports the base modules (common + kdn) via `api`, so this single dependency brings the
+    // endpoint/schema DSL, the component + service model, the InstanceRegistry, and the HTTP server. It is
+    // the same dependency the real `launch` module uses.
+    implementation(project(":config"))
 }
 
 application {
-    mainClass.set("com.dynamicruntime.sample.todo.TodoServerKt")
+    // Boots the base runtime plus the SampleComponent and starts the HTTP server (see Start.kt).
+    mainClass.set("com.dynamicruntime.sample.StartKt")
 }

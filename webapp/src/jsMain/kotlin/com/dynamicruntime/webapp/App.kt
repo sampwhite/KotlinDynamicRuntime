@@ -90,6 +90,6 @@ val App = FC<Props> {
     }
 
     // The Todo list is a self-contained component with its own card; it talks to
-    // the `:sample` Ktor REST API. Rendered as a sibling card below the demo.
+    // the `:sample` runtime's Todo endpoints. Rendered as a sibling card below the demo.
     TodoList {}
 }

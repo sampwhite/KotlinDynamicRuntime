@@ -16,7 +16,7 @@ import web.cssom.ClassName
 private val todoScope = MainScope()
 
 /**
- * Todo list UI backed by the `:sample` Ktor REST API (see [TodoApi]).
+ * Todo list UI backed by the `:sample` runtime's Todo endpoints (see [TodoApi]).
  *
  * Demonstrates the full add / edit / toggle-complete / delete cycle against the
  * in-memory server, rendered with Ant Design components. All mutations re-fetch
@@ -52,7 +52,7 @@ val TodoList = FC<Props> {
         h1 { +"Todo list" }
         p {
             className = ClassName("subtitle")
-            +"Add / edit / complete / delete, served by the Ktor :sample API and rendered with Ant Design."
+            +"Add / edit / complete / delete, served by the :sample runtime's endpoints and rendered with Ant Design."
         }
 
         // --- Add row ---
@@ -87,7 +87,7 @@ val TodoList = FC<Props> {
                     checked = todo.completed
                     onChange = {
                         run {
-                            TodoApi.update(todo.id, UpdateTodoRequest(completed = !todo.completed))
+                            TodoApi.update(todo.id, completed = !todo.completed)
                             todos = TodoApi.list()
                         }
                     }
@@ -99,7 +99,7 @@ val TodoList = FC<Props> {
                         onChange = { event -> editTitle = event.target.value as String }
                         onPressEnter = {
                             run {
-                                TodoApi.update(todo.id, UpdateTodoRequest(title = editTitle))
+                                TodoApi.update(todo.id, title = editTitle)
                                 editingId = null; todos = TodoApi.list()
                             }
                         }
@@ -109,7 +109,7 @@ val TodoList = FC<Props> {
                         size = "small"
                         onClick = {
                             run {
-                                TodoApi.update(todo.id, UpdateTodoRequest(title = editTitle))
+                                TodoApi.update(todo.id, title = editTitle)
                                 editingId = null; todos = TodoApi.list()
                             }
                         }

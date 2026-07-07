@@ -4,9 +4,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * In-memory store of todos. Thread-safe because Netty serves requests from a
- * pool of threads: a [ConcurrentHashMap] holds the items and an [AtomicInteger]
- * hands out unique ids. No persistence — state resets when the server stops.
+ * In-memory store of todos, held by the per-instance [TodoService]. Thread-safe because the runtime serves
+ * requests from a pool of (virtual) threads: a [ConcurrentHashMap] holds the items and an [AtomicInteger]
+ * hands out unique ids. No persistence -- state resets when the server stops.
  */
 class TodoRepository {
     private val items = ConcurrentHashMap<Int, Todo>()
@@ -14,8 +14,8 @@ class TodoRepository {
 
     init {
         // A couple of seed items so the UI isn't empty on first load.
-        add(CreateTodoRequest("Try the Ktor todo API"))
-        add(CreateTodoRequest("Wire it into the React UI"))
+        add("Try the KDR endpoint framework")
+        add("Render it with Ant Design and React")
     }
 
     /** All todos, ordered by id (i.e. creation order). */
@@ -23,23 +23,23 @@ class TodoRepository {
 
     fun get(id: Int): Todo? = items[id]
 
-    /** Creates a new, not-completed todo and returns it. */
-    fun add(request: CreateTodoRequest): Todo {
+    /** Creates a new, not-completed todo (with a trimmed title) and returns it. */
+    fun add(title: String): Todo {
         val id = nextId.getAndIncrement()
-        val todo = Todo(id = id, title = request.title.trim(), completed = false)
+        val todo = Todo(id = id, title = title.trim(), completed = false)
         items[id] = todo
         return todo
     }
 
     /**
-     * Applies the non-null fields of [request] to the todo with [id]. Returns the
-     * updated todo, or null if no such todo exists.
+     * Applies the non-null arguments to the todo with [id], leaving the rest unchanged. Returns the updated
+     * todo, or null if no such todo exists.
      */
-    fun update(id: Int, request: UpdateTodoRequest): Todo? {
+    fun update(id: Int, title: String?, completed: Boolean?): Todo? {
         return items.computeIfPresent(id) { _, current ->
             current.copy(
-                title = request.title?.trim() ?: current.title,
-                completed = request.completed ?: current.completed,
+                title = title?.trim() ?: current.title,
+                completed = completed ?: current.completed,
             )
         }
     }

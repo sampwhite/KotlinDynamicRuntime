@@ -1,123 +1,87 @@
 package com.dynamicruntime.sample.todo
 
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.startup.InstanceRegistry
+import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.kdn.Startup
+import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
-import io.ktor.client.call.body
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
-import io.ktor.client.request.delete
-import io.ktor.client.request.get
-import io.ktor.client.request.post
-import io.ktor.client.request.put
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.HttpResponse
-import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
-import io.ktor.serialization.kotlinx.json.json
-import io.ktor.server.testing.testApplication
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Integration test that boots the whole Ktor application in-process via
- * `testApplication` and drives the real HTTP CRUD contract of [todoModule].
- * Each block gets a fresh application (and therefore a fresh in-memory
- * repository seeded with the two default todos), so the cases are independent.
+ * Integration test for the Todo endpoints. Instead of a separate HTTP server, it drives the real request
+ * pipeline in-process via [TestHttpClient] (which routes through [com.dynamicruntime.common.http.request.RequestHandler]
+ * exactly as a live request would, including input coercion and output-schema validation). Each case boots
+ * its own instance -- and therefore a fresh in-memory repository seeded with the two default todos -- so the
+ * cases are independent.
  */
 class TodoApiIntegrationTest : StringSpec({
+    val counter = AtomicInteger(0)
 
-    // A test client that can (de)serialize the JSON DTOs, mirroring a real caller.
-    fun io.ktor.server.testing.ApplicationTestBuilder.jsonClient() = createClient {
-        install(ClientContentNegotiation) { json() }
+    // Registers the sample component (idempotent, VM-global) and boots a brand-new instance so its
+    // TodoService/repository start fresh. mkTestBootCxt turns on output-schema validation, so a
+    // non-conforming endpoint response would fail these tests.
+    fun freshClient(): TestHttpClient {
+        InstanceRegistry.register(listOf(SampleComponent()))
+        val cxt = Startup.mkTestBootCxt("test", "sample-test-${counter.incrementAndGet()}")
+        return TestHttpClient(cxt.instanceConfig)
     }
 
-    "GET /api/todos returns the seed todos" {
-        testApplication {
-            application { todoModule() }
-            val todos: List<Todo> = jsonClient().get("/api/todos").body()
+    fun Map<String, Any?>.int(key: String): Int = (this[key] as Number).toInt()
+    fun Map<String, Any?>.items(): List<Map<String, Any?>> = (this["items"] as List<*>).map { it!!.toJsonMap() }
+    fun Map<String, Any?>.results(): Map<String, Any?> = this["results"]!!.toJsonMap()
 
-            todos.map { it.title } shouldBe listOf("Try the Ktor todo API", "Wire it into the React UI")
-        }
+    "GET /todo/list returns the seed todos under `items`" {
+        val client = freshClient()
+        val titles = client.sendJsonGetRequest("/todo/list").items().map { it["title"] }
+        titles shouldBe listOf("Try the KDR endpoint framework", "Render it with Ant Design and React")
     }
 
-    "POST /api/todos creates a todo and returns 201 with the created body" {
-        testApplication {
-            application { todoModule() }
-            val client = jsonClient()
+    "POST /todo/add creates a todo and it appears in the list" {
+        val client = freshClient()
+        val created = client.sendJsonPostRequest("/todo/add", mapOf("title" to "Buy milk")).results()
+        created["title"] shouldBe "Buy milk"
+        created["completed"] shouldBe false
 
-            val response = client.post("/api/todos") {
-                contentType(ContentType.Application.Json)
-                setBody(CreateTodoRequest("Buy milk"))
-            }
-            response.status shouldBe HttpStatusCode.Created
-
-            val created: Todo = response.body()
-            created.title shouldBe "Buy milk"
-            created.completed shouldBe false
-
-            // The new todo is now part of the list.
-            val titles = client.get("/api/todos").body<List<Todo>>().map { it.title }
-            titles.contains("Buy milk") shouldBe true
-        }
+        val titles = client.sendJsonGetRequest("/todo/list").items().map { it["title"] }
+        titles shouldContain "Buy milk"
     }
 
-    "POST with a blank title is rejected with 400" {
-        testApplication {
-            application { todoModule() }
-            val response = jsonClient().post("/api/todos") {
-                contentType(ContentType.Application.Json)
-                setBody(CreateTodoRequest("   "))
-            }
-            response.status shouldBe HttpStatusCode.BadRequest
-        }
+    "POST /todo/add with a blank title is rejected with 400" {
+        val client = freshClient()
+        val resp = client.sendJsonPostRequest("/todo/add", mapOf("title" to "   "))
+        resp.int("errorCode") shouldBe EXC.badInput
     }
 
-    "PUT /api/todos/{id} edits title and completion" {
-        testApplication {
-            application { todoModule() }
-            val client = jsonClient()
+    "POST /todo/update edits title and completion" {
+        val client = freshClient()
+        val updated = client.sendJsonPostRequest(
+            "/todo/update",
+            mapOf("id" to 1, "title" to "Renamed", "completed" to true),
+        ).results()
 
-            val updated: Todo = client.put("/api/todos/1") {
-                contentType(ContentType.Application.Json)
-                setBody(UpdateTodoRequest(title = "Renamed", completed = true))
-            }.body()
-
-            updated.id shouldBe 1
-            updated.title shouldBe "Renamed"
-            updated.completed shouldBe true
-        }
+        updated.int("id") shouldBe 1
+        updated["title"] shouldBe "Renamed"
+        updated["completed"] shouldBe true
     }
 
-    "PUT of a missing id returns 404" {
-        testApplication {
-            application { todoModule() }
-            val response = jsonClient().put("/api/todos/9999") {
-                contentType(ContentType.Application.Json)
-                setBody(UpdateTodoRequest(completed = true))
-            }
-            response.status shouldBe HttpStatusCode.NotFound
-        }
+    "POST /todo/update of a missing id returns 404" {
+        val client = freshClient()
+        val resp = client.sendJsonPostRequest("/todo/update", mapOf("id" to 9999, "completed" to true))
+        resp.int("errorCode") shouldBe EXC.notFound
     }
 
-    "DELETE removes a todo (204) and a second delete is 404" {
-        testApplication {
-            application { todoModule() }
-            val client = jsonClient()
+    "POST /todo/delete removes a todo; a second delete is 404" {
+        val client = freshClient()
 
-            val first: HttpResponse = client.delete("/api/todos/1")
-            first.status shouldBe HttpStatusCode.NoContent
+        client.sendJsonPostRequest("/todo/delete", mapOf("id" to 1)).results()["deleted"] shouldBe true
+        client.sendJsonPostRequest("/todo/delete", mapOf("id" to 1)).int("errorCode") shouldBe EXC.notFound
 
-            val second: HttpResponse = client.delete("/api/todos/1")
-            second.status shouldBe HttpStatusCode.NotFound
-
-            // Id 1 is gone; only the second seed remains.
-            val ids = client.get("/api/todos").body<List<Todo>>().map { it.id }
-            ids shouldBe listOf(2)
-        }
-    }
-
-    "a non-integer id returns 400" {
-        testApplication {
-            application { todoModule() }
-            jsonClient().get("/api/todos/abc").status shouldBe HttpStatusCode.BadRequest
-        }
+        // Id 1 is gone; only the second seed remains.
+        val ids = client.sendJsonGetRequest("/todo/list").items().map { it.int("id") }
+        ids shouldBe listOf(2)
     }
 })

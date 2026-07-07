@@ -9,13 +9,13 @@ class TodoRepositoryTest : StringSpec({
     "a fresh repository starts with the two seed todos" {
         val repo = TodoRepository()
         val all = repo.all()
-        all.map { it.title } shouldBe listOf("Try the Ktor todo API", "Wire it into the React UI")
+        all.map { it.title } shouldBe listOf("Try the KDR endpoint framework", "Render it with Ant Design and React")
         all.all { !it.completed } shouldBe true
     }
 
     "add creates a not-completed todo with a fresh id and trims the title" {
         val repo = TodoRepository()
-        val created = repo.add(CreateTodoRequest("  Buy milk  "))
+        val created = repo.add("  Buy milk  ")
 
         created.title shouldBe "Buy milk"
         created.completed shouldBe false
@@ -24,13 +24,13 @@ class TodoRepositoryTest : StringSpec({
 
     "update applies only the provided fields, leaving the rest unchanged" {
         val repo = TodoRepository()
-        val todo = repo.add(CreateTodoRequest("Original"))
+        val todo = repo.add("Original")
 
-        val completed = repo.update(todo.id, UpdateTodoRequest(completed = true))
+        val completed = repo.update(todo.id, title = null, completed = true)
         completed?.title shouldBe "Original"
         completed?.completed shouldBe true
 
-        val renamed = repo.update(todo.id, UpdateTodoRequest(title = "Renamed"))
+        val renamed = repo.update(todo.id, title = "Renamed", completed = null)
         renamed?.title shouldBe "Renamed"
         // completion set by the previous update is preserved.
         renamed?.completed shouldBe true
@@ -38,12 +38,12 @@ class TodoRepositoryTest : StringSpec({
 
     "update of a missing id returns null" {
         val repo = TodoRepository()
-        repo.update(9999, UpdateTodoRequest(title = "nope")).shouldBeNull()
+        repo.update(9999, title = "nope", completed = null).shouldBeNull()
     }
 
     "delete removes the todo and reports whether one was removed" {
         val repo = TodoRepository()
-        val todo = repo.add(CreateTodoRequest("Temporary"))
+        val todo = repo.add("Temporary")
 
         repo.delete(todo.id) shouldBe true
         repo.get(todo.id).shouldBeNull()

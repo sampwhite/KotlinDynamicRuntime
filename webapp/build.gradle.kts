@@ -11,13 +11,7 @@ import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
 
 plugins {
     id("kdr.kotlin-multiplatform-conventions")
-    // Enables `@Serializable` on the Todo DTOs so the Ktor client can decode the
-    // sample API's JSON. Version matches the Kotlin version pinned in build-logic.
-    kotlin("plugin.serialization") version "2.4.0"
 }
-
-// Ktor client — used from the browser to call the `:sample` Todo REST API.
-val ktorVersion = "3.2.0"
 
 // Version of the kotlin-wrappers BOM. It aligns the React/React-DOM wrapper
 // artifacts (and the npm React version they pull in) with this build's Kotlin
@@ -43,6 +37,16 @@ kotlin {
                     // listening. This avoids relying on IntelliJ's Debug
                     // launcher, which opens a random ephemeral port.
                     open = true,
+                    // Same-origin dev: proxy the API context root ("/kda") to the `:sample` runtime server
+                    // on :7070. The browser then makes same-origin calls to the dev server, which forwards
+                    // them to the API — so no CORS handling is needed (the runtime's HTTP server has none).
+                    // Start the API with `./gradlew :sample:run` before using the Todo list.
+                    proxy = mutableListOf(
+                        KotlinWebpackConfig.DevServer.Proxy(
+                            context = mutableListOf("/kda"),
+                            target = "http://localhost:7070",
+                        ),
+                    ),
                 )
             }
 
@@ -78,14 +82,9 @@ kotlin {
                 // is needed in index.html.
                 implementation(npm("antd", "6.5.0"))
 
-                // Ktor client (JS engine) + JSON content negotiation, to call
-                // the `:sample` Todo REST API from the browser. Coroutines back
-                // the suspend-based client calls; its version is governed by the
-                // kotlin-wrappers BOM above.
-                implementation("io.ktor:ktor-client-core:$ktorVersion")
-                implementation("io.ktor:ktor-client-js:$ktorVersion")
-                implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
-                implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
+                // Coroutines back the suspend-based Todo calls, which use the browser Fetch API directly
+                // (see TodoApi.kt) to hit the `:sample` runtime's endpoints — no HTTP-client library. Its
+                // version is governed by the kotlin-wrappers BOM above.
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
             }
         }
