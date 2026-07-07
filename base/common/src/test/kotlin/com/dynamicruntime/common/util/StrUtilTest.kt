@@ -29,6 +29,23 @@ class StrUtilTest : StringSpec({
         "   ".splitComma() shouldBe emptyList()
     }
 
+    "isVariableName accepts letters, digits and underscores starting with a letter or underscore" {
+        "name".isVariableName() shouldBe true
+        "_debug".isVariableName() shouldBe true
+        "explainInput".isVariableName() shouldBe true
+        "a1_b2".isVariableName() shouldBe true
+        "_".isVariableName() shouldBe true
+    }
+
+    "isVariableName rejects empty, leading digits, and non-word characters" {
+        "".isVariableName() shouldBe false
+        "1abc".isVariableName() shouldBe false
+        "a-b".isVariableName() shouldBe false
+        "a b".isVariableName() shouldBe false
+        "a.b".isVariableName() shouldBe false
+        $$"$note".isVariableName() shouldBe false
+    }
+
     "hex encoding should give exactly four characters" {
         'a'.toUpperHex() shouldBe "0061"
         '\n'.toUpperHex() shouldBe "000A"

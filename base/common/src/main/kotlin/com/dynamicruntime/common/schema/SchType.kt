@@ -30,13 +30,20 @@ class SchType(
     val properties: Map<String, SchProperty>,
     /** Required field names, for an object type. */
     val required: Set<String>,
+    /**
+     * Whether undeclared properties are allowed on an object. kd2 defaults this to **false when the type
+     * declares any properties** and **true when it declares none** (so a property-less generic map still
+     * accepts anything). Keys prefixed with `_` or a non-keyword `$` are exempt from this check regardless
+     * (see the validator).
+     */
+    val additionalProperties: Boolean,
     /** Element schema, for an array type (null otherwise). */
     val itemType: SchType?,
     /** Choice list for the custom `options` construct; null if not an options field. */
     val options: List<SchOption>?,
     /**
      * The JSON Schema `default` value, or null if none. A non-null default lets a
-     * missing required property pass validation, and is injected (cloned) when
+     * missing required property pass validation and is injected (cloned) when
      * coercing. (An explicit `default: null` is treated as no default.)
      */
     val default: Any?,

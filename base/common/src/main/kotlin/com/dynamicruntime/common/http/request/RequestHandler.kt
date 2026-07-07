@@ -6,7 +6,9 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.util.formatCookieDate
+import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.splitComma
 import com.dynamicruntime.common.util.toJsonStr
 import org.eclipse.jetty.io.Content
 import org.eclipse.jetty.server.Request
@@ -46,6 +48,9 @@ class RequestHandler : WebRequest {
 
     var queryParams: MutableMap<String, Any?> = LinkedHashMap()
     var postData: MutableMap<String, Any?>? = null
+
+    /** Validated `_debug` value (a comma-separated list of variable names), or null; assigned to [KdrCxt.debug]. */
+    var debug: String? = null
     var logRequestUri: String = ""
 
     /** Security rules for the request's context root; filled in by the dispatcher. */
@@ -155,6 +160,20 @@ class RequestHandler : WebRequest {
             if (body.isNotBlank()) {
                 postData = body.jsonMap()
             }
+        }
+
+        // Extract the off-contract `_debug` tag (query or body): <= 40 chars, comma-separated variable names.
+        val debugRaw = (queryParams[EP.debug] ?: postData?.get(EP.debug)) as? String
+        if (debugRaw != null) {
+            if (debugRaw.length > 40) {
+                throw KdrException.mkInput("_debug value exceeds the maximum of 40 characters.")
+            }
+            for (name in debugRaw.splitComma()) {
+                if (!name.isVariableName()) {
+                    throw KdrException.mkInput("_debug entry '$name' is not a valid variable name.")
+                }
+            }
+            debug = debugRaw
         }
     }
 

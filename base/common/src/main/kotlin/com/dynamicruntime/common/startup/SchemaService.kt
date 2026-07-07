@@ -158,6 +158,16 @@ class SchemaService : ServiceInitializer {
         @KdrPrivate
         fun sampleItems(cxt: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
             val query = (request[EP.request] as? Map<*, *>)?.toJsonMap() ?: emptyMap()
+            // Off-contract `$` annotations (e.g., $note) must have been dropped during coercion before we see them.
+            if (query.keys.any { it.startsWith("$") }) {
+                throw KdrException("An off-contract '$' annotation key leaked into the endpoint input.")
+            }
+
+            // With _debug=explainInput, echo the evaluated request parameters back under _meta.
+            if (cxt.debug?.contains(SS.explainInput) == true) {
+                cxt.request?.responseMeta?.put(SS.paramsEvaluated, query)
+            }
+
             val filter = (query[SS.filter] as? Map<*, *>)?.toJsonMap() ?: emptyMap()
             val minCount = (filter[SS.minCount] as? Number)?.toInt() ?: 0
             val now = cxt.now()
@@ -188,6 +198,10 @@ class SchemaService : ServiceInitializer {
 object SS {
     // Endpoint introspection query-only field.
     const val pathRegex = "pathRegex"
+
+    // Debug behavior: the debug tag that triggers echoing input under _meta, and the key it is echoed under.
+    const val explainInput = "explainInput"
+    const val paramsEvaluated = "paramsEvaluated"
 
     // Sample endpoint request/response fields.
     const val filter = "filter"

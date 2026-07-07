@@ -67,4 +67,23 @@ class SchemaEndpointsTest : StringSpec({
         // `limit` truncates the returned items.
         items(client.sendJsonPostRequest("/schema/sample", mapOf(EP.limit to 5))).size shouldBe 5
     }
+
+    $$"/schema/sample drops an off-contract $note yet honors a _debug=explainInput echo in the same call" {
+        val cxt = Startup.mkTestBootCxt("schemaOffContract", "schemaOffContractTest")
+        val client = TestHttpClient(cxt.instanceConfig)
+
+        val resp = client.sendJsonPostRequest(
+            "/schema/sample",
+            mapOf(
+                $$"$note" to "mimics standard query semantics", // off-contract annotation, dropped on coercing
+                EP.debug to SS.explainInput, // "_debug" -> echo the evaluated params under _meta
+                SS.filter to mapOf(SS.minCount to 1),
+            ),
+        )
+        // The handler throws if any `$` key leaks into its input, so a normal item list proves $note was dropped.
+        items(resp).size shouldBe 15
+        // The _meta echo only appears because _debug rode onto the context; the echoed params show $note is gone.
+        val evaluated = resp[EP.meta]!!.toJsonMap()[SS.paramsEvaluated]!!.toJsonMap()
+        evaluated.keys shouldContainAll listOf(SS.filter)
+    }
 })

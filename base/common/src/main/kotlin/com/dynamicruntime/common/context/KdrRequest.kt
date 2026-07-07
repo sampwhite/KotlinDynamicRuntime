@@ -14,8 +14,8 @@ import com.dynamicruntime.common.http.request.WebRequest
  */
 class KdrRequest(
     /**
-     * The context the request began in (the original parent; sub contexts inherit the same request). Lets
-     * code deep in the call stack that holds only a request reach back to the originating context — e.g.
+     * The context the request began in (the original parent; sub contexts inherit the same request). Let's
+     * code deep in the call stack that holds only a request reach back to the originating context — e.g.,
      * for interval timing in logs.
      */
     val cxt: KdrCxt,
@@ -24,10 +24,17 @@ class KdrRequest(
      * endpoint handler receives directly as a parameter, exposed here for code deep in the call stack.
      */
     val requestData: Map<String, Any?>,
-    /** The endpoint being applied, when the request is executing one. */
+    /** The endpoint being applied when the request is executing one. */
     val endpoint: KdrEndpoint? = null,
     /** The underlying web request/response, when the request arrived over the wire (null for local calls). */
     val webRequest: WebRequest? = null,
     /** HTTP-level metadata (user agent, forwarded-for, …), present when the request came over HTTP. */
     val requestInfo: RequestInfo? = null,
-)
+) {
+    /**
+     * Extra response structure a handler wants to return alongside the primary payload. When non-empty it is
+     * emitted under the off-contract `_meta` key of the response envelope. A minimal precursor to a full
+     * `KdrResponse`; lets a handler (e.g. `/schema/sample` under `explainInput`) attach diagnostic data.
+     */
+    val responseMeta: MutableMap<String, Any?> = mutableMapOf()
+}

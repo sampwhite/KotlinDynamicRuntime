@@ -327,4 +327,60 @@ class SchValidatorTest : StringSpec({
         val cause = failure.cause.shouldNotBeNull()
         cause.extraData.containsKey("offset") shouldBe true
     }
+
+    // --- additionalProperties + off-contract keys (issue #18) ----------------
+
+    "additionalProperties defaults false for a type that declares properties" {
+        val person = personTypes()["core.Person"].shouldNotBeNull()
+        person.additionalProperties shouldBe false
+        validate(person, mapOf("name" to "Bob", "extra" to 1))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("extra" to SchFailCode.additionalProperty)
+    }
+
+    "additionalProperties defaults true for a property-less generic map, so any key is kept" {
+        val generic = parseSchemaTypes(
+            schemaDefs(cxt, "core") { type("Bag") { type = SCT.kObject } },
+        )["core.Bag"].shouldNotBeNull()
+        generic.additionalProperties shouldBe true
+        validate(generic, mapOf("anything" to 1, "else" to "x")).shouldBeEmpty()
+    }
+
+    "an explicit additionalProperties = true allows undeclared keys on a type with properties" {
+        val rec = parseSchemaTypes(
+            schemaDefs(cxt, "core") {
+                type("Rec") {
+                    type = SCT.kObject
+                    additionalProperties = true
+                    property("name", "Name") { type = SCT.string }
+                }
+            },
+        )["core.Rec"].shouldNotBeNull()
+        rec.additionalProperties shouldBe true
+        validate(rec, mapOf("name" to "Bob", "extra" to 1)).shouldBeEmpty()
+        // Coercion keeps the extra key too.
+        coerceAndValidate(rec, mapOf("name" to "Bob", "extra" to 1)).value shouldBe
+            mapOf("name" to "Bob", "extra" to 1)
+    }
+
+    "an underscore-prefixed key is always allowed and kept, even when additionalProperties is false" {
+        val person = personTypes()["core.Person"].shouldNotBeNull()
+        validate(person, mapOf("name" to "Bob", "_debug" to "x")).shouldBeEmpty()
+        coerceAndValidate(person, mapOf("name" to "Bob", "_debug" to "x")).value shouldBe
+            mapOf("name" to "Bob", "_debug" to "x")
+    }
+
+    $$"a non-reserved $-key ($note) is allowed on validate but dropped on coerce" {
+        val person = personTypes()["core.Person"].shouldNotBeNull()
+        validate(person, mapOf("name" to "Bob", $$"$note" to "a human note")).shouldBeEmpty()
+        // Dropped from the coerced output.
+        coerceAndValidate(person, mapOf("name" to "Bob", $$"$note" to "a human note")).value shouldBe
+            mapOf("name" to "Bob")
+    }
+
+    $$"a reserved $-keyword ($ref) is treated as a normal key, so additionalProperties applies" {
+        val person = personTypes()["core.Person"].shouldNotBeNull()
+        // $ref is reserved, so it is not exempt: on a type with "additionalProperties=false" it is rejected.
+        validate(person, mapOf("name" to "Bob", $$"$ref" to "#/x"))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf($$"$ref" to SchFailCode.additionalProperty)
+    }
 })

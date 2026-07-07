@@ -55,6 +55,10 @@ open class SchTypeBuilder(
      *  numeric types, false otherwise). */
     var allowCoerce: Boolean? by SchAttr(data, SCH.allowCoerce)
 
+    /** Whether undeclared properties are allowed. When unset, the parser defaults it (false when the type
+     *  has declared properties, true when it has none). Set explicitly to allow extras on a defined type. */
+    var additionalProperties: Boolean? by SchAttr(data, SCH.additionalProperties)
+
     /** JSON Schema `default` value. A required property with a default does not
      *  fail validation when missing, and coercion injects the default. */
     var default: Any? by SchAttr(data, SCH.default)

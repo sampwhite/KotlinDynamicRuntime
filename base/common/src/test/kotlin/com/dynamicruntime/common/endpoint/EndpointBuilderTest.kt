@@ -64,7 +64,8 @@ class EndpointBuilderTest : StringSpec({
         val ep = sampleModule().endpoints.single { it.path == "/foo/{id}" }
         props(ep.outputSchema).keys shouldContainExactlyInAnyOrder listOf(EP.requestUri, EP.duration, EP.item)
         field(ep.outputSchema, EP.item)[SCH.dRef] shouldBe typeRefPath("FooOut", "api")
-        ep.inputSchema shouldBe mapOf(SCH.type to SCT.kObject)
+        // No input ref means "takes no parameters": a closed empty object, not a free-form map.
+        ep.inputSchema shouldBe mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to false)
     }
 
     "a list endpoint nests the request, adds limit, and builds the items envelope" {
@@ -87,7 +88,8 @@ class EndpointBuilderTest : StringSpec({
             listEndpoint("/xs", "Xs list endpoint", outputRef = "Out", noLimit = true) { _, _ -> emptyList<Any?>() }
         }
         val ep = m.endpoints.single()
-        ep.inputSchema shouldBe mapOf(SCH.type to SCT.kObject) // no inputRef -> no request; noLimit -> no limit
+        // No inputRef -> no request; noLimit -> no limit; so the wrapper is a closed no-parameters object.
+        ep.inputSchema shouldBe mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to false)
         props(ep.outputSchema).keys shouldContainExactlyInAnyOrder
             listOf(EP.numItems, EP.requestUri, EP.duration, EP.items) // no hasMore / numAvailable
     }

@@ -67,6 +67,8 @@ fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<Sc
         description = map[SCH.description].toOptStr(),
         properties = properties,
         required = parseRequired(map[SCH.required]),
+        // Default false when the type declares properties, true when it declares none (generic map).
+        additionalProperties = (map[SCH.additionalProperties] as? Boolean) ?: properties.isEmpty(),
         itemType = itemType,
         options = parseOptions(map[SCH.options]),
         default = map[SCH.default],

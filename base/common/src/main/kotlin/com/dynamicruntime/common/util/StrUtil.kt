@@ -5,6 +5,17 @@ fun String.splitComma(): List<String> {
     return this.split(",").map {it.trim()}
 }
 
+/**
+ * Whether this string is a legal variable name: non-empty, starting with a letter or underscore and
+ * otherwise made of letters, digits, and underscores. Written from scratch (rather than porting dn's
+ * JVM-only `isJavaName`) so it is KMP compatible -- `Char.isLetter`/`isLetterOrDigit` are common stdlib.
+ */
+fun String.isVariableName(): Boolean {
+    if (isEmpty()) return false
+    if (!(this[0].isLetter() || this[0] == '_')) return false
+    return all { it.isLetterOrDigit() || it == '_' }
+}
+
 // Creating a format that defines options for both byte arrays and numeric values.
 val customHexFormat = HexFormat {
     upperCase = true

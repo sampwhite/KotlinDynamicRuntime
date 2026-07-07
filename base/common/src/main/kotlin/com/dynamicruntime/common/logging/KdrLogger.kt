@@ -32,10 +32,10 @@ import org.apache.logging.log4j.Logger
  */
 open class KdrLogger(
     /** The flat topic name this logger emits under. */
-    val topic: String,
+    topic: String,
 ) {
     // Backed by a log4j logger named "<appNamespace>.<topic>", so every application topic shares the
-    // `appNamespace` parent. That lets configuration target all of our topics as a group -- e.g. run them
+    // `appNamespace` parent. That lets configuration target all of our topics as a group -- e.g., run them
     // at debug while third-party loggers stay at the root level (see LogSetup.init).
     @KdrInternal
     val logger: Logger = LogManager.getLogger("$appNamespace.$topic")
@@ -72,8 +72,8 @@ open class KdrLogger(
      * at [level], optionally with a [cause] throwable.
      *
      * [data] is an accepted-but-unused placeholder: a later structured-logging
-     * implementation (e.g. forwarding to a Fluentd-style collector) will carry the
-     * key/value pairs through here. It is present now so call sites that want to
+     * implementation (e.g., forwarding to a Fluentd-style collector) will carry the
+     * key/value pairs through here. It is present now, so call sites that want to
      * attach structured context can already do so without a signature change.
      */
     @Suppress("UNUSED_PARAMETER")
@@ -105,8 +105,14 @@ open class KdrLogger(
      * instance, context, and acting user; otherwise the bare message is used (for
      * logging that happens outside any context, such as early startup).
      */
-    fun format(cxt: KdrCxt?, message: String): String =
-        if (cxt != null) "[${cxt.instanceConfig.instanceName}:${cxt.logInfo()}] $message" else message
+    fun format(cxt: KdrCxt?, message: String): String {
+        if (cxt == null) {
+            return message
+        }
+        // A request's `_debug` tag, when present, is prefixed onto the message.
+        val debugPrefix = cxt.debug?.let { "$it " } ?: ""
+        return "[${cxt.instanceConfig.instanceName}:${cxt.logInfo()}] $debugPrefix$message"
+    }
 
     @Suppress("ConstPropertyName")
     companion object {

@@ -60,6 +60,7 @@ class RequestService : ServiceInitializer {
 
         handler.contextRules = contextRulesMap[handler.contextRoot]
         handler.decodeRequestData()
+        cxt.debug = handler.debug // the request's _debug tag, if any, rides on the context (and into logs)
 
         // Auth is stubbed until the auth subsystem is ported.
         extractAuth(cxt, handler)
@@ -201,6 +202,11 @@ class RequestService : ServiceInitializer {
                 env[EP.items] = limited
                 // TODO: hasMore / numAvailable paging metadata once list handlers can report them.
             }
+        }
+        // Any handler-injected response structure travels under the off-contract `_meta` key.
+        val meta = cxt.request?.responseMeta
+        if (!meta.isNullOrEmpty()) {
+            env[EP.meta] = meta
         }
         return env
     }

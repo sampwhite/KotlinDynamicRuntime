@@ -27,7 +27,21 @@ enum class SchFailCode {
     badValue,
 
     invalidOption,
+
+    /** An undeclared property was present on an object whose schema does not allow additional properties. */
+    additionalProperty,
 }
+
+/**
+ * The known JSON-Schema `$` keywords, which are treated as normal (non-exempt) keys when they appear as
+ * data properties -- so they are subject to the [SchType.additionalProperties] rule and are kept on coercing.
+ * Every *other* `$`-prefixed data key (e.g. `$note`) is off-contract: allowed on validating, dropped on coercing.
+ */
+@KdrPrivate
+val reservedSchemaKeys: Set<String> = setOf(
+    SCH.dSchema, SCH.dId, SCH.dRef, SCH.dDefs, SCH.dAnchor, SCH.dDynamicRef, SCH.dDynamicAnchor,
+    SCH.dVocabulary, SCH.dComment,
+)
 
 /**
  * A single validation failure: the [path] through the data to the offending value
@@ -119,13 +133,24 @@ fun validateObject(
     for ((k, v) in map) {
         val key = k as? String ?: continue
         val prop = type.properties[key]
-        if (prop == null) {
-            out?.put(key, v) // unknown property: not checked yet, kept as-is
+        if (prop != null) {
+            // Call validateValue unconditionally (it collects failures); only store when coercing. Kept on its
+            // own line: folding it into `out?.put(...)` would short-circuit (and skip validation) when out is null.
+            val coerced = validateValue(prop.valueType, v, childPath(path, key), coerce, failures)
+            out?.put(key, coerced)
             continue
         }
-        // Call validateValue unconditionally (it collects failures); only store when coercing.
-        val coerced = validateValue(prop.valueType, v, childPath(path, key), coerce, failures)
-        out?.put(key, coerced)
+        // Undeclared ("additional") property -- apply the additionalProperties rule with prefix exemptions.
+        when {
+            key.startsWith("_") -> out?.put(key, v) // off-contract, always allowed and kept
+            key.startsWith("$") && key !in reservedSchemaKeys -> {
+                // Off-contract annotation (e.g., $note): allowed on validating, dropped on coercing (not written to out).
+            }
+            type.additionalProperties -> out?.put(key, v) // allowed (incl. reserved $ keys, treated as normal)
+            else -> failures.add(
+                SchFailure(childPath(path, key), SchFailCode.additionalProperty, "additional property '$key' not allowed"),
+            )
+        }
     }
     for (req in type.required) {
         if (map.containsKey(req)) {
@@ -298,7 +323,7 @@ fun coerceStringToObject(type: SchType, value: Any?, path: String, coerce: Boole
 }
 
 /**
- * Validates a date-format string field. An already-parsed [Date] passes untouched; a string is validated
+ * Validates a date-format string field. An already-parsed Date passes untouched; a string is validated
  * by [parseDate] (a parse failure is a [SchFailCode.badValue]) and, when [coerce] and `allowCoerce` are
  * set, replaced by the resulting [Instant]. A non-string, non-Instant value is a plain [SchFailCode.wrongType].
  */

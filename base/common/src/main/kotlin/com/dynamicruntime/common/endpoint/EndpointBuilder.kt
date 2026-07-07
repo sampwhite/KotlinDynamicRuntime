@@ -54,6 +54,10 @@ object EP {
     // Input, list endpoints.
     const val request = "request" // the caller's request, nested so limit/offset stay siblings
     const val limit = "limit"
+
+    // Off-contract keys (underscore-prefixed): allowed regardless of additionalProperties, kept in data.
+    const val debug = "_debug" // request: comma-separated debug tags -> KdrCxt.debug
+    const val meta = "_meta" // response: handler-injected extra structure (KdrRequest.responseMeta)
 }
 
 /** Default cap on the number of items a list endpoint returns. */
@@ -212,10 +216,16 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         }
     }
 
-    /** Input for general/item endpoints: the caller's input type as-is (or an empty object if none). */
+    /**
+     * Input for general/item endpoints: the caller's input type as-is, or -- when no input type is declared --
+     * a *closed* empty object (`additionalProperties = false`), meaning "this endpoint takes no parameters".
+     * (Off-contract `_`/`$` keys are still allowed; only real query/body params are rejected.) An endpoint
+     * that genuinely wants a free-form map declares a type with `additionalProperties = true` and refs it.
+     */
     @KdrPrivate
     fun buildInput(inputRef: String?): Map<String, Any?> =
-        if (inputRef == null) newObject().data else SchTypeBuilder(cxt, namespace).also { it.ref(inputRef) }.data
+        if (inputRef == null) newObject().also { it.additionalProperties = false }.data
+        else SchTypeBuilder(cxt, namespace).also { it.ref(inputRef) }.data
 
     /** Output for general/item endpoints: protocol metadata plus the result under [resultKey]. */
     @KdrPrivate
@@ -238,6 +248,12 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
                 type = SCT.integer
                 default = defaultListLimit
             }
+        }
+        // A list endpoint with neither a request type nor a limit declares no parameters: close the wrapper
+        // so stray params are rejected (matching buildInput). With a request or limit present, the properties
+        // drive closedness by default.
+        if (inputRef == null && noLimit) {
+            b.additionalProperties = false
         }
         return b.data
     }

@@ -32,6 +32,17 @@ class HealthEndpointTest : StringSpec({
         results.containsKey(ND.uptime) shouldBe true
     }
 
+    "/health takes no parameters: a stray query param is rejected, but off-contract keys pass" {
+        val cxt = Startup.mkTestBootCxt("healthCheck", "healthEndpointTest3")
+        val client = TestHttpClient(cxt.instanceConfig)
+
+        // A real, undeclared parameter is rejected (the input is a closed empty object -> 400).
+        client.sendGetRequest("/health", mapOf("bogus" to "1")).rptStatusCode shouldBe 400
+
+        // Off-contract `_`/`$` keys are still allowed even though the endpoint declares no parameters.
+        client.sendGetRequest("/health", mapOf(EP.debug to "explainInput", $$"$note" to "hi")).rptStatusCode shouldBe 200
+    }
+
     "an unknown path yields a not-found error response" {
         val cxt = Startup.mkTestBootCxt("healthCheck", "healthEndpointTest2")
         val client = TestHttpClient(cxt.instanceConfig)

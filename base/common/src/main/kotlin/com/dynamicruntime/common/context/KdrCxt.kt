@@ -79,6 +79,13 @@ class KdrCxt(
     var forwardedFor: String? = null
 
     /**
+     * Optional debug tag(s) for this request: a validated, comma-separated list of variable names supplied
+     * via the off-contract `_debug` request key. When present it is prefixed onto every log message and can
+     * gate diagnostic behavior (e.g. the sample endpoint's `explainInput`). Carried down to sub contexts.
+     */
+    var debug: String? = null
+
+    /**
      * The request being processed, or null when this context is not handling one (startup, background
      * jobs, tests). Set when an endpoint invocation begins and inherited by sub contexts. The mutable
      * response accumulator will be a separate field added when endpoint execution is built.
@@ -103,6 +110,7 @@ class KdrCxt(
         sub.locals.putAll(locals)
         sub.schemaStore = schemaStore
         sub.forwardedFor = forwardedFor
+        sub.debug = debug // debug tags travel with the request
         sub.request = request // a sub context is part of the same request
         return sub
     }
