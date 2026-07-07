@@ -36,6 +36,18 @@ private val systemFormat = LocalDateTime.Format {
 }
 
 /**
+ * Compact UTC timestamp with no separators (`yyyyMMddHHmmssSSS`, millisecond precision) -- the system
+ * timestamp stripped of its `-`, `T`, `:`, `.`, and trailing `Z`. Used as the leading part of a unique id
+ * ([mkUniqueId]): it is all digits, so a log tokenizer keeps it whole, and it still sorts lexically in time
+ * order. There is deliberately no parser -- ids are opaque once created.
+ */
+private val compactIdFormat = LocalDateTime.Format {
+    year(); monthNumber(); day()
+    hour(); minute(); second()
+    secondFraction(3)
+}
+
+/**
  * RFC 1123 / HTTP IMF-fixdate for cookie expirations, e.g. `Tue, 01 Jun 2021 08:00:00 GMT`. Built by hand
  * (rather than `DateTimeComponents.Formats.RFC_1123`) because that predefined format omits zero seconds,
  * which is not valid HTTP date. English names keep the output locale-independent.
@@ -98,6 +110,9 @@ fun String.parseDate(): Instant {
 
 /** Formats this instant as a full system timestamp (ISO-8601, UTC, milliseconds). */
 fun Instant.formatDate(): String = this.toLocalDateTime(TimeZone.UTC).format(systemFormat) + "Z"
+
+/** Formats this instant as a compact, separator-free UTC timestamp (`yyyyMMddHHmmssSSS`); see [compactIdFormat]. */
+fun Instant.formatCompactId(): String = this.toLocalDateTime(TimeZone.UTC).format(compactIdFormat)
 
 /** Formats only this instant's day part (`yyyy-MM-dd`) in the [serverTimeZone]. */
 fun Instant.formatDayPart(): String = this.toLocalDateTime(serverTimeZone).date.format(dayOnlyFormat)

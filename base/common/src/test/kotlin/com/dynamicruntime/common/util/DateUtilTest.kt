@@ -23,6 +23,10 @@ class DateUtilTest : StringSpec({
         now.formatDayPart().parseDate() shouldBe now.toStartOfDay()
     }
 
+    "formatCompactId strips all separators to a 17-digit, time-sortable timestamp" {
+        "2021-06-01T08:00:00.250Z".parseDate().formatCompactId() shouldBe "20210601080000250"
+    }
+
     // --- parsing specific inputs --------------------------------------------
 
     "parses a full timestamp with milliseconds" {
