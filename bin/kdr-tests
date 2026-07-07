@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Run all module tests (the `test` task across every subproject). Pass --rebuild (or -r) as the first
+# argument to `clean` first, forcing a full recompile before the tests. Any further arguments pass through
+# to Gradle (e.g. --tests "SomeTest*", --info). Runnable from any directory.
+set -euo pipefail
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
+
+tasks=(test)
+case "${1:-}" in
+    --rebuild | -r | rebuild)
+        tasks=(clean test)
+        shift
+        ;;
+esac
+
+run_gradle "${tasks[@]}" "$@"

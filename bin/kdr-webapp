@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Start the Kotlin/JS webapp dev server on http://localhost:8080 (it proxies /kda -> the backend on :7070,
+# which must be running -- see kdr-backend). Extra arguments pass through to Gradle. Runnable from any
+# directory. Note: the first run downloads Node/npm and compiles, so it takes a minute or two.
+set -euo pipefail
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
+
+echo "kdr-webapp: starting the webapp dev server on http://localhost:8080 ..." >&2
+run_gradle :webapp:jsBrowserDevelopmentRun "$@"
