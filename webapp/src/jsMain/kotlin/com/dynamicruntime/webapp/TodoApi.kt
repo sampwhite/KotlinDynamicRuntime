@@ -63,7 +63,9 @@ object TodoApi {
         if (!(response.ok as Boolean)) {
             error("GET $url failed with status ${response.status}")
         }
-        return response.json().await()
+        // `response` is dynamic, so `response.json()` is dynamic too; cast it to a typed Promise so `.await()`
+        // resolves to the Kotlin coroutines extension rather than a (nonexistent) JS `await` method.
+        return (response.json() as Promise<dynamic>).await()
     }
 
     private suspend fun postJson(url: String, body: dynamic): dynamic {
@@ -77,7 +79,9 @@ object TodoApi {
         if (!(response.ok as Boolean)) {
             error("POST $url failed with status ${response.status}")
         }
-        return response.json().await()
+        // `response` is dynamic, so `response.json()` is dynamic too; cast it to a typed Promise so `.await()`
+        // resolves to the Kotlin coroutines extension rather than a (nonexistent) JS `await` method.
+        return (response.json() as Promise<dynamic>).await()
     }
 
     private fun toTodo(o: dynamic): Todo =
