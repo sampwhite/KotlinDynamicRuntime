@@ -6,6 +6,7 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
 
@@ -19,9 +20,13 @@ class SchemaEndpointsTest : StringSpec({
     fun items(resp: Map<String, Any?>): List<Map<String, Any?>> =
         (resp[EP.items] as List<*>).map { it!!.toJsonMap() }
 
+    // These tests all boot the same (default) instance and only read, so they share one instance -- its
+    // component/schema init is cached by instance name and runs once -- and vary only the cheap context name.
+    fun client(cxtName: String): TestHttpClient =
+        TestHttpClient(Startup.mkTestBootCxt(cxtName, "schemaEndpointsTest").instanceConfig)
+
     "/schema/endpoints lists every endpoint and dumps its attributes" {
-        val cxt = Startup.mkTestBootCxt("schemaEp", "schemaEndpointsTest")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = client("schemaList")
 
         val all = items(client.sendJsonGetRequest("/schema/endpoints"))
         all.map { it[EI.path] } shouldContainAll listOf("/health", "/schema/endpoints", "/schema/sample")
@@ -34,20 +39,20 @@ class SchemaEndpointsTest : StringSpec({
     }
 
     "/schema/endpoints filters by namespace, method, and path regex" {
-        val cxt = Startup.mkTestBootCxt("schemaEp2", "schemaEndpointsTest2")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = client("schemaFilters")
 
         items(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.namespace to "node")))
             .map { it[EI.path] } shouldBe listOf("/health")
-        items(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.method to "POST")))
-            .map { it[EI.path] } shouldBe listOf("/schema/sample")
+        // The method filter returns only POST endpoints (which include /schema/sample and the demo POSTs).
+        val posts = items(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.method to "POST")))
+        posts.map { it[EI.path] } shouldContain "/schema/sample"
+        posts.map { it[EI.method] }.toSet() shouldBe setOf("POST")
         items(client.sendJsonGetRequest("/schema/endpoints", mapOf(SS.pathRegex to "^/schema/")))
             .map { it[EI.path] } shouldBe listOf("/schema/endpoints", "/schema/sample")
     }
 
     "/schema/sample returns a nested, schema-conforming list, with limit truncation" {
-        val cxt = Startup.mkTestBootCxt("schemaSample", "schemaSampleTest")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = client("schemaSample")
 
         // A nested request exercising a choice list, a date, and a nested filter object.
         val full = client.sendJsonPostRequest(
@@ -69,8 +74,7 @@ class SchemaEndpointsTest : StringSpec({
     }
 
     $$"/schema/sample drops an off-contract $note yet honors a _debug=explainInput echo in the same call" {
-        val cxt = Startup.mkTestBootCxt("schemaOffContract", "schemaOffContractTest")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = client("schemaOffContract")
 
         val resp = client.sendJsonPostRequest(
             "/schema/sample",

@@ -69,6 +69,9 @@ class RequestHandler : WebRequest {
     /** Access rules for the request's section; filled in by the dispatcher. */
     var sectionRules: SectionRules? = null
 
+    /** The focus of the request's context root (api / content / …); set by the dispatcher after the gate. */
+    var focus: ContextFocus? = null
+
     private var sentResponse: Boolean = false
 
     // Test-mode input body + captured response.
@@ -229,6 +232,19 @@ class RequestHandler : WebRequest {
      * before any request decoding, so probing costs the server as little as possible.
      */
     fun sendShortNotFound() = sendStringResponse("Not Found", EXC.notFound, "text/plain")
+
+    /**
+     * Sends a friendly HTML 404 for a request under a known content context root that no [ContentServer]
+     * claimed -- a legitimate browser at a wrong content address, not a probe (so a readable page, not the
+     * terse [sendShortNotFound]).
+     */
+    fun sendFriendlyNotFound() = sendStringResponse(
+        "<!doctype html><meta charset=\"utf-8\"><title>Not Found</title>" +
+            "<body style=\"font:15px system-ui,sans-serif;margin:40px;color:#1c2126\">" +
+            "<h1>404 &mdash; Not Found</h1><p>No content is served at this address.</p></body>",
+        EXC.notFound,
+        "text/html; charset=utf-8",
+    )
 
     fun sendStringResponse(body: String, code: Int, mimeType: String) {
         setStatusCode(code)

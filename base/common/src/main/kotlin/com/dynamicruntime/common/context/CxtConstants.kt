@@ -46,9 +46,11 @@ object ACFG {
 
     /**
      * The context root (leading path segment) under which API endpoints are served; defaults to
-     * `ContextRoot.kda` when absent. Each kind of traffic binds to its own context root under its own key
-     * (a future `contentContextRoot` will serve content), and a request whose leading segment matches none
-     * of them is fast-failed with a short 404.
+     * `ContextRoot.kda` when absent. Each kind of traffic binds to its own context root under its own key,
+     * and a request whose leading segment matches none of them is fast-failed with a short 404.
      */
     const val apiContextRoot = "apiContextRoot"
+
+    /** The context root under which content (HTML/static, e.g., the portal) is served; defaults to `ContextRoot.cp`. */
+    const val contentContextRoot = "contentContextRoot"
 }
