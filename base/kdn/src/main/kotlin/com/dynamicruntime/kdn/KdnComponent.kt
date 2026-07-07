@@ -5,12 +5,13 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.kdn.demo.DemoEndpoints
 
 /**
- * The `kdn` module's component. For now it only contributes a small sample schema
- * in its own namespace, which is enough to prove that schema from more than one
- * component (and more than one module) is assembled into a single compiled store at
- * startup. Its services are ported in later issues.
+ * The `kdn` module's component. It contributes a small sample schema in its own namespace
+ * (proving schema from more than one component/module is assembled into a single compiled
+ * store at startup) and the [DemoEndpoints] -- illustrative endpoints with real input, so
+ * the endpoint portal has forms to render. Its services are ported in later issues.
  */
 class KdnComponent : ComponentDefinition {
     override val componentName: String = "kdn"
@@ -24,5 +25,6 @@ class KdnComponent : ComponentDefinition {
                 }
             }
         )
+        collector.addModule(DemoEndpoints.schema(cxt))
     }
 }

@@ -3,9 +3,13 @@ package com.dynamicruntime.common.endpoint
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.schema.JsonMappable
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
+import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.schema.refTargetName
 
 /** Attribute keys for an endpoint's `EndpointInfo` dump (see [KdrEndpoint.toJsonMap]). */
 @Suppress("ConstPropertyName")
@@ -286,4 +290,23 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
 fun schemaModule(cxt: KdrCxt, namespace: String, build: SchModuleBuilder.() -> Unit): SchModule {
     val b = SchModuleBuilder(cxt, namespace).apply(build)
     return SchModule(b.defs, b.endpoints)
+}
+
+/**
+ * Resolves an endpoint's input envelope to a consumption [SchType] against the compiled [types] (a
+ * store's `types` map). A general/item endpoint with an input type has a *top-level* `$ref` envelope;
+ * `parseNode` does not resolve a node-level `$ref`, so it is bound straight to the referenced type
+ * here. Any other envelope (an empty object, or a list endpoint's inline `request`/`limit` object) is
+ * parsed against [types] so its nested `$ref`s resolve. Returns null if the envelope cannot be compiled.
+ *
+ * Shared by the request dispatcher (to validate/coerce input) and the portal (to render its form), so
+ * both see exactly the same input shape.
+ */
+fun resolveEndpointInputType(endpoint: KdrEndpoint, types: Map<String, SchType>): SchType? {
+    val ref = endpoint.inputSchema[SCH.dRef]
+    if (ref is String) {
+        return types[refTargetName(ref)]
+    }
+    val name = "${endpoint.path}#input"
+    return parseSchemaTypes(mapOf(name to endpoint.inputSchema), types)[name]
 }

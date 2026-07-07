@@ -8,6 +8,7 @@ import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.KdrEndpoint
+import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchType
@@ -17,6 +18,7 @@ import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toJsonMap
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * The request dispatcher: given a decoded request, it applies (currently stubbed) security,
@@ -30,18 +32,19 @@ import java.util.concurrent.ConcurrentHashMap
 class RequestService : ServiceInitializer {
     override val serviceName: String = RequestService.serviceName
 
-    /**
-     * The context root under which API endpoints are served; from [ACFG.apiContextRoot], defaulting to
-     * [ContextRoot.kda]. Bound in [checkInit].
-     */
+    /** The context root under which API endpoints are served; from [ACFG.apiContextRoot]. Bound in [checkInit]. */
     var apiContextRoot: String = ContextRoot.kda
 
+    /** The context root under which content is served; from [ACFG.contentContextRoot]. Bound in [checkInit]. */
+    var contentContextRoot: String = ContextRoot.cp
+
     /**
-     * Every context root this node recognizes, across all kinds of traffic (API today; content later). A
-     * request whose leading segment is not in this set is fast-failed with a short 404. Assembled in
-     * [checkInit] from the per-kind roots ([apiContextRoot], and eventually a content root).
+     * Every context root this node recognizes, mapped to the [ContextFocus] it targets. A request whose
+     * leading segment is not a key here is fast-failed with a short 404; otherwise its focus decides dispatch
+     * (api → endpoints, anything else → content servers). Assembled in [checkInit] from the per-kind roots.
      */
-    var knownContextRoots: Set<String> = setOf(ContextRoot.kda)
+    var contextRootFocus: Map<String, ContextFocus> =
+        mapOf(ContextRoot.kda to ContextFocus.api, ContextRoot.cp to ContextFocus.content)
 
     /** Section → access rules. Sections not present are treated permissively for now. */
     val sectionRulesMap: MutableMap<String, SectionRules> = HashMap()
@@ -57,6 +60,28 @@ class RequestService : ServiceInitializer {
     private val inputTypeCache = ConcurrentHashMap<String, SchType>()
     private val outputTypeCache = ConcurrentHashMap<String, SchType>()
 
+    /**
+     * Content servers consulted (in registration order) before endpoint dispatch, so a
+     * service like the portal can serve HTML/static content from within the request
+     * pipeline. Registered by services during their init; see [ContentServer].
+     */
+    val contentServers = CopyOnWriteArrayList<ContentServer>()
+
+    /** Registers a [ContentServer] (idempotent by identity). */
+    fun addContentServer(server: ContentServer) {
+        if (contentServers.none { it === server }) {
+            contentServers.add(server)
+        }
+    }
+
+    /**
+     * The browser bootstrap config: the live context roots keyed by focus (`{"contextRoots":{"api":"kda",
+     * "content":"cp"}}`). A content server injects this into a served page (as `window.kdrCfg`) so its
+     * JavaScript can build backend URLs from the configured roots rather than hardcoding them.
+     */
+    fun frontendConfig(): Map<String, Any?> =
+        mapOf("contextRoots" to contextRootFocus.entries.associate { (root, focus) -> focus.name to root })
+
     override fun checkInit(cxt: KdrCxt) {
         if (isInit) {
             return
@@ -66,9 +91,9 @@ class RequestService : ServiceInitializer {
         for (s in adminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = ROLE.admin)
 
         apiContextRoot = (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
-        // The recognized set is the union of every configured context root. Only the API root exists today;
-        // a future content root is added here (and dispatch below branches on which root matched).
-        knownContextRoots = setOf(apiContextRoot)
+        contentContextRoot = (cxt.instanceConfig.get(ACFG.contentContextRoot) as? String) ?: ContextRoot.cp
+        // Each configured root maps to the focus it targets; the leading segment of a request is matched here.
+        contextRootFocus = mapOf(apiContextRoot to ContextFocus.api, contentContextRoot to ContextFocus.content)
         isInit = true
     }
 
@@ -76,11 +101,13 @@ class RequestService : ServiceInitializer {
         // Gate on the context root before touching the request body. An unrecognized leading segment is
         // almost always a hostile probe: reject it with a short 404 and do no decoding. (Future: route these
         // to a separate log sink rather than the normal request log.)
-        if (handler.contextRoot !in knownContextRoots) {
+        val focus = contextRootFocus[handler.contextRoot]
+        if (focus == null) {
             LogRequest.debug(cxt, "Rejecting request outside known context roots: ${handler.logRequestUri}")
             handler.sendShortNotFound()
             return
         }
+        handler.focus = focus
 
         val appPath = handler.appPath
         val method = handler.method
@@ -104,18 +131,32 @@ class RequestService : ServiceInitializer {
 
         loadProfile(cxt, handler)
 
-        // TODO: content serving (dn's DnContentService) is not ported yet.
-
+        // Dispatch by focus: the API root routes to JSON endpoints; every other root routes to content
+        // servers. Each content server self-selects on the request's focus (see [ContentServer]).
         if (!handler.hasResponseBeenSent()) {
-            // Endpoints are keyed by "path:method" (KdrEndpoint.collationKey) on the context-root-stripped
-            // application path, so endpoint definitions never carry the context root.
-            val endpoint = cxt.getSchema().endpoints["$appPath:$method"]
-            if (endpoint != null) {
-                executeEndpoint(cxt, handler, endpoint)
+            if (focus == ContextFocus.api) {
+                // Endpoints are keyed by "path:method" (KdrEndpoint.collationKey) on the context-root-stripped
+                // application path, so endpoint definitions never carry the context root.
+                val endpoint = cxt.getSchema().endpoints["$appPath:$method"]
+                if (endpoint != null) {
+                    executeEndpoint(cxt, handler, endpoint)
+                }
+            } else {
+                for (server in contentServers) {
+                    if (server.serve(cxt, handler)) {
+                        break
+                    }
+                }
             }
         }
         if (!handler.hasResponseBeenSent()) {
-            throw KdrException("Path '${handler.target}' had no matching endpoint.", code = EXC.notFound)
+            // Nothing served the request. Under the API focus that is a missing endpoint (a JSON 404 error
+            // envelope); under a content focus it is a missing page (a friendly HTML 404).
+            if (focus == ContextFocus.api) {
+                throw KdrException("Path '${handler.target}' had no matching endpoint.", code = EXC.notFound)
+            }
+            handler.sendFriendlyNotFound()
+            return
         }
 
         checkAddAuthCookies(cxt, handler)
@@ -126,8 +167,7 @@ class RequestService : ServiceInitializer {
     fun executeEndpoint(cxt: KdrCxt, handler: RequestHandler, endpoint: KdrEndpoint) {
         val schema = cxt.getSchema()
         val inputType = inputTypeCache.getOrPut(endpoint.path) {
-            val name = "${endpoint.path}#input"
-            parseSchemaTypes(mapOf(name to endpoint.inputSchema), schema.types)[name]
+            resolveEndpointInputType(endpoint, schema.types)
                 ?: throw KdrException("Could not compile input schema for '${endpoint.path}'.")
         }
 

@@ -16,9 +16,14 @@ import io.kotest.matchers.shouldBe
  */
 class HealthEndpointTest : StringSpec({
 
+    // The default-boot, read-only tests share one instance (its init is cached by instance name, so it runs
+    // once) and vary only the cheap context name. The context-root override test at the end needs its own
+    // instance -- it boots with a different apiContextRoot, and the instance cache is keyed on that name.
+    fun client(cxtName: String): TestHttpClient =
+        TestHttpClient(Startup.mkTestBootCxt(cxtName, "healthEndpointTest").instanceConfig)
+
     "GET /health returns a health envelope through the in-process client" {
-        val cxt = Startup.mkTestBootCxt("healthCheck", "healthEndpointTest")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = client("healthGet")
 
         val resp = client.sendJsonGetRequest("/health")
 
@@ -35,8 +40,7 @@ class HealthEndpointTest : StringSpec({
     }
 
     "/health takes no parameters: a stray query param is rejected, but off-contract keys pass" {
-        val cxt = Startup.mkTestBootCxt("healthCheck", "healthEndpointTest3")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = client("healthNoParams")
 
         // A real, undeclared parameter is rejected (the input is a closed empty object -> 400).
         client.sendGetRequest("/health", mapOf("bogus" to "1")).rptStatusCode shouldBe 400
@@ -46,8 +50,7 @@ class HealthEndpointTest : StringSpec({
     }
 
     "an unknown path yields a not-found error response" {
-        val cxt = Startup.mkTestBootCxt("healthCheck", "healthEndpointTest2")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = client("healthUnknownPath")
 
         val handler = client.sendGetRequest("/nope/missing")
 
@@ -55,8 +58,7 @@ class HealthEndpointTest : StringSpec({
     }
 
     "a request outside every context root is fast-failed with a short 404" {
-        val cxt = Startup.mkTestBootCxt("healthCheck", "healthGateTest")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = client("healthGate")
 
         // A bare endpoint path (no context root) is rejected...
         client.sendGetRequestRaw("/health").rptStatusCode shouldBe 404
