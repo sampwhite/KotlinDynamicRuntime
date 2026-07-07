@@ -1,7 +1,9 @@
-// `sample` — a self-contained example app, isolated from the main launcher. It boots the full
-// KotlinDynamicRuntime runtime plus its own component of Todo endpoints (built on the runtime's endpoint
-// framework, not an external web framework) and serves them over the runtime's Jetty server on :7070.
-// Nothing in the main build depends on it; it is a standalone demo you start with `./gradlew :sample:run`.
+// `sample` — an example app whose SampleComponent contributes demo Todo endpoints, built on the runtime's
+// own endpoint framework (not an external web framework). It can run two ways: standalone via its own
+// launcher (`./gradlew :sample:run`, which boots the full runtime plus this component on :7070), or folded
+// into the main `launch` app, which registers SampleComponent only in developer environments (see
+// shouldLoadSample in launch's Start.kt). The main build therefore depends on this module, but the demo
+// never enters a real deployment's endpoint set.
 plugins {
     id("kdr.kotlin-conventions")
     application
