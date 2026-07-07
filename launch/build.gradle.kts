@@ -37,6 +37,10 @@ val customConfig = findProject(":customConfig")
 
 dependencies {
     implementation(project(":config"))
+    // The demo `sample` module, so the launcher can optionally register its Todo endpoints. Start.kt only
+    // does so in developer environments (see shouldLoadSample there), so this dependency never puts the demo
+    // into a real deployment's running endpoint set.
+    implementation(project(":sample"))
     if (customConfig != null) {
         runtimeOnly(project(customConfig.path))
     }

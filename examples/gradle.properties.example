@@ -1,0 +1,22 @@
+# ============================================================================
+# EXAMPLE gradle.properties — this is a TEMPLATE, not a live properties file.
+#
+# Like settings.gradle.kts (see settings.gradle.kts.example), the real
+# gradle.properties is NOT version-controlled and lives in the directory that
+# *contains* `KotlinDynamicRuntime/` — the Gradle build root. Gradle reads daemon
+# JVM settings only from the build root (or GRADLE_USER_HOME), not from a
+# subproject, so heap settings must live here rather than inside this repo.
+#
+# To use it:
+#   1. Copy this file to the directory that contains `KotlinDynamicRuntime/`.
+#   2. Rename it to `gradle.properties`.
+#   3. Adjust the heap sizes to suit the machine.
+# ============================================================================
+
+# JVM heap for the Gradle daemon. The Kotlin/JS webpack tasks (e.g. the webapp's
+# jsBrowserDevelopmentRun) are memory-hungry and OOM under Gradle's default heap,
+# so raise it here at the build root. IntelliJ's Gradle integration reads this too.
+org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+
+# Heap for the Kotlin compiler daemon.
+kotlin.daemon.jvmargs=-Xmx2g
