@@ -3,6 +3,7 @@ package com.dynamicruntime.common
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.portal.PortalService
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.PRI
 import com.dynamicruntime.common.startup.SchemaCollector
@@ -34,8 +35,8 @@ class CommonComponent : ComponentDefinition {
      */
     override fun startupServices(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::SchemaService, ::NodeService)
 
-    /** The request-dispatch service. */
-    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::RequestService)
+    /** The request dispatcher, then the portal (which registers itself with the dispatcher as a content server). */
+    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::RequestService, ::PortalService)
 
     /** Load just ahead of the standard components (demonstrates relative priority). */
     override fun loadPriority(): Int = PRI.standard - 1

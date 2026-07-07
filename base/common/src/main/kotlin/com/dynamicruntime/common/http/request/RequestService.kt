@@ -8,6 +8,7 @@ import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.KdrEndpoint
+import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchType
@@ -17,6 +18,7 @@ import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toJsonMap
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * The request dispatcher: given a decoded request, it applies (currently stubbed) security,
@@ -56,6 +58,20 @@ class RequestService : ServiceInitializer {
     // Caches of compiled endpoint input/output types (parsed against the compiled schema store).
     private val inputTypeCache = ConcurrentHashMap<String, SchType>()
     private val outputTypeCache = ConcurrentHashMap<String, SchType>()
+
+    /**
+     * Content servers consulted (in registration order) before endpoint dispatch, so a
+     * service like the portal can serve HTML/static content from within the request
+     * pipeline. Registered by services during their init; see [ContentServer].
+     */
+    val contentServers = CopyOnWriteArrayList<ContentServer>()
+
+    /** Registers a [ContentServer] (idempotent by identity). */
+    fun addContentServer(server: ContentServer) {
+        if (contentServers.none { it === server }) {
+            contentServers.add(server)
+        }
+    }
 
     override fun checkInit(cxt: KdrCxt) {
         if (isInit) {
@@ -104,7 +120,15 @@ class RequestService : ServiceInitializer {
 
         loadProfile(cxt, handler)
 
-        // TODO: content serving (dn's DnContentService) is not ported yet.
+        // Content servers (e.g. the portal UI) get first refusal, ahead of endpoint dispatch.
+        // Full content serving (dn's DnContentService) is still TODO; this is the minimal hook.
+        if (!handler.hasResponseBeenSent()) {
+            for (server in contentServers) {
+                if (server.serve(cxt, handler)) {
+                    break
+                }
+            }
+        }
 
         if (!handler.hasResponseBeenSent()) {
             // Endpoints are keyed by "path:method" (KdrEndpoint.collationKey) on the context-root-stripped
@@ -126,8 +150,7 @@ class RequestService : ServiceInitializer {
     fun executeEndpoint(cxt: KdrCxt, handler: RequestHandler, endpoint: KdrEndpoint) {
         val schema = cxt.getSchema()
         val inputType = inputTypeCache.getOrPut(endpoint.path) {
-            val name = "${endpoint.path}#input"
-            parseSchemaTypes(mapOf(name to endpoint.inputSchema), schema.types)[name]
+            resolveEndpointInputType(endpoint, schema.types)
                 ?: throw KdrException("Could not compile input schema for '${endpoint.path}'.")
         }
 

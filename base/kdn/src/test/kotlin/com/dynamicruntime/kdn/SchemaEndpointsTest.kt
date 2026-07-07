@@ -6,6 +6,7 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
 
@@ -39,8 +40,10 @@ class SchemaEndpointsTest : StringSpec({
 
         items(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.namespace to "node")))
             .map { it[EI.path] } shouldBe listOf("/health")
-        items(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.method to "POST")))
-            .map { it[EI.path] } shouldBe listOf("/schema/sample")
+        // The method filter returns only POST endpoints (which include /schema/sample and the demo POSTs).
+        val posts = items(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.method to "POST")))
+        posts.map { it[EI.path] } shouldContain "/schema/sample"
+        posts.map { it[EI.method] }.toSet() shouldBe setOf("POST")
         items(client.sendJsonGetRequest("/schema/endpoints", mapOf(SS.pathRegex to "^/schema/")))
             .map { it[EI.path] } shouldBe listOf("/schema/endpoints", "/schema/sample")
     }
