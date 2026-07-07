@@ -30,12 +30,25 @@ import java.util.concurrent.ConcurrentHashMap
 class RequestService : ServiceInitializer {
     override val serviceName: String = RequestService.serviceName
 
-    /** Context-root → security rules. Roots not present are treated permissively for now. */
-    val contextRulesMap: MutableMap<String, ContextRootRules> = HashMap()
+    /**
+     * The context root under which API endpoints are served; from [ACFG.apiContextRoot], defaulting to
+     * [ContextRoot.kda]. Bound in [checkInit].
+     */
+    var apiContextRoot: String = ContextRoot.kda
 
-    val anonRoots: List<String> = listOf("health", "schema", "content", "portal", "site", "auth")
-    val userRoots: List<String> = listOf("user")
-    val adminRoots: List<String> = listOf("node", "admin")
+    /**
+     * Every context root this node recognizes, across all kinds of traffic (API today; content later). A
+     * request whose leading segment is not in this set is fast-failed with a short 404. Assembled in
+     * [checkInit] from the per-kind roots ([apiContextRoot], and eventually a content root).
+     */
+    var knownContextRoots: Set<String> = setOf(ContextRoot.kda)
+
+    /** Section → access rules. Sections not present are treated permissively for now. */
+    val sectionRulesMap: MutableMap<String, SectionRules> = HashMap()
+
+    val anonSections: List<String> = listOf("health", "schema", "content", "portal", "site", "auth")
+    val userSections: List<String> = listOf("user")
+    val adminSections: List<String> = listOf("node", "admin")
 
     @KdrPrivate
     var isInit: Boolean = false
@@ -48,26 +61,40 @@ class RequestService : ServiceInitializer {
         if (isInit) {
             return
         }
-        for (root in anonRoots) contextRulesMap[root] = ContextRootRules(root, needsLogin = false, requiredRole = null)
-        for (root in userRoots) contextRulesMap[root] = ContextRootRules(root, needsLogin = true, requiredRole = ROLE.user)
-        for (root in adminRoots) contextRulesMap[root] = ContextRootRules(root, needsLogin = false, requiredRole = ROLE.admin)
+        for (s in anonSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = null)
+        for (s in userSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.user)
+        for (s in adminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = ROLE.admin)
+
+        apiContextRoot = (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
+        // The recognized set is the union of every configured context root. Only the API root exists today;
+        // a future content root is added here (and dispatch below branches on which root matched).
+        knownContextRoots = setOf(apiContextRoot)
         isInit = true
     }
 
     fun handleRequest(cxt: KdrCxt, handler: RequestHandler) {
-        val target = handler.target
+        // Gate on the context root before touching the request body. An unrecognized leading segment is
+        // almost always a hostile probe: reject it with a short 404 and do no decoding. (Future: route these
+        // to a separate log sink rather than the normal request log.)
+        if (handler.contextRoot !in knownContextRoots) {
+            LogRequest.debug(cxt, "Rejecting request outside known context roots: ${handler.logRequestUri}")
+            handler.sendShortNotFound()
+            return
+        }
+
+        val appPath = handler.appPath
         val method = handler.method
 
-        handler.contextRules = contextRulesMap[handler.contextRoot]
+        handler.sectionRules = sectionRulesMap[handler.section]
         handler.decodeRequestData()
         cxt.debug = handler.debug // the request's _debug tag, if any, rides on the context (and into logs)
 
         // Auth is stubbed until the auth subsystem is ported.
         extractAuth(cxt, handler)
 
-        // Real role enforcement awaits auth. For now, a root that requires a role is rejected (there is no
-        // way to be authenticated yet); anonymous and unregistered roots pass through.
-        val requiredRole = handler.contextRules?.requiredRole
+        // Real role enforcement awaits auth. For now, a section that requires a role is rejected (there is no
+        // way to be authenticated yet); anonymous and unregistered sections pass through.
+        val requiredRole = handler.sectionRules?.requiredRole
         if (requiredRole != null) {
             throw KdrException(
                 "Request requires role '$requiredRole', but authentication is not yet implemented.",
@@ -80,14 +107,15 @@ class RequestService : ServiceInitializer {
         // TODO: content serving (dn's DnContentService) is not ported yet.
 
         if (!handler.hasResponseBeenSent()) {
-            // Endpoints are keyed by "path:method" (KdrEndpoint.collationKey), so the method is part of the lookup.
-            val endpoint = cxt.getSchema().endpoints["$target:$method"]
+            // Endpoints are keyed by "path:method" (KdrEndpoint.collationKey) on the context-root-stripped
+            // application path, so endpoint definitions never carry the context root.
+            val endpoint = cxt.getSchema().endpoints["$appPath:$method"]
             if (endpoint != null) {
                 executeEndpoint(cxt, handler, endpoint)
             }
         }
         if (!handler.hasResponseBeenSent()) {
-            throw KdrException("Path '$target' had no matching endpoint.", code = EXC.notFound)
+            throw KdrException("Path '${handler.target}' had no matching endpoint.", code = EXC.notFound)
         }
 
         checkAddAuthCookies(cxt, handler)

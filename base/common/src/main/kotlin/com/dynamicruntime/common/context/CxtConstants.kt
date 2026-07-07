@@ -43,4 +43,12 @@ object ACFG {
 
     /** When true, endpoint responses are validated against their `outputSchema`. Default false; on in tests. */
     const val validateResponseSchema = "validateResponseSchema"
+
+    /**
+     * The context root (leading path segment) under which API endpoints are served; defaults to
+     * `ContextRoot.kda` when absent. Each kind of traffic binds to its own context root under its own key
+     * (a future `contentContextRoot` will serve content), and a request whose leading segment matches none
+     * of them is fast-failed with a short 404.
+     */
+    const val apiContextRoot = "apiContextRoot"
 }

@@ -35,8 +35,21 @@ class RequestHandler : WebRequest {
     private val jettyCallback: Callback?
 
     override val target: String
+
+    /** The context root: the leading path segment (e.g. `kda` in `/kda/user/profile`). The dispatcher gates
+     *  on this before decoding anything -- an unknown root is a short 404. */
     val contextRoot: String
+
+    /** Everything after the context root, without a leading slash (e.g. `user/profile`). */
     val subTarget: String
+
+    /** The application path used to look up an endpoint: the request path with the context root stripped
+     *  (e.g. `/user/profile`, or `/` when nothing followed the context root). */
+    val appPath: String get() = if (subTarget.isEmpty()) "/" else "/$subTarget"
+
+    /** The section: the first path segment after the context root (e.g. `user`), used to select the
+     *  [SectionRules] access rules. */
+    val section: String get() = subTarget.substringBefore('/')
     val method: String
     val uri: String
     var queryStr: String?
@@ -53,8 +66,8 @@ class RequestHandler : WebRequest {
     var debug: String? = null
     var logRequestUri: String = ""
 
-    /** Security rules for the request's context root; filled in by the dispatcher. */
-    var contextRules: ContextRootRules? = null
+    /** Access rules for the request's section; filled in by the dispatcher. */
+    var sectionRules: SectionRules? = null
 
     private var sentResponse: Boolean = false
 
@@ -209,6 +222,13 @@ class RequestHandler : WebRequest {
 
     fun sendJsonResponse(data: Map<String, Any?>, code: Int) =
         sendStringResponse(data.toJsonStr(), code, "application/json")
+
+    /**
+     * Sends an abbreviated 404 for a request that falls outside every known context root -- almost always a
+     * hostile probe. Deliberately terse (a bare status and a short body, no protocol envelope) and reached
+     * before any request decoding, so probing costs the server as little as possible.
+     */
+    fun sendShortNotFound() = sendStringResponse("Not Found", EXC.notFound, "text/plain")
 
     fun sendStringResponse(body: String, code: Int, mimeType: String) {
         setStatusCode(code)

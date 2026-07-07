@@ -1,6 +1,8 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.ND
 import com.dynamicruntime.common.util.toJsonMap
@@ -50,5 +52,30 @@ class HealthEndpointTest : StringSpec({
         val handler = client.sendGetRequest("/nope/missing")
 
         handler.rptStatusCode shouldBe 404
+    }
+
+    "a request outside every context root is fast-failed with a short 404" {
+        val cxt = Startup.mkTestBootCxt("healthCheck", "healthGateTest")
+        val client = TestHttpClient(cxt.instanceConfig)
+
+        // A bare endpoint path (no context root) is rejected...
+        client.sendGetRequestRaw("/health").rptStatusCode shouldBe 404
+        // ...as is an unknown context root, with the abbreviated body -- not the JSON error envelope.
+        val probe = client.sendGetRequestRaw("/bogus/health")
+        probe.rptStatusCode shouldBe 404
+        probe.rptResponseData shouldBe "Not Found"
+    }
+
+    "the context root is configurable; the default is not served when overridden" {
+        val cxt = Startup.mkTestBootCxt(
+            "healthCheck",
+            "healthCfgTest",
+            mapOf(ACFG.apiContextRoot to "api2"),
+        )
+        val client = TestHttpClient(cxt.instanceConfig) // auto-routes under the configured "api2"
+
+        client.sendGetRequest("/health").rptStatusCode shouldBe 200
+        // The default kda root is no longer served on this instance.
+        client.sendGetRequestRaw("/${ContextRoot.kda}/health").rptStatusCode shouldBe 404
     }
 })
