@@ -64,6 +64,12 @@ runs from the parent directory, that parent needs its own copy: `bin/kdr-install
 it is missing, and — if the repository's Gradle version later changes — offers to update the parent's copy to
 match.
 
+### Running and debugging in IntelliJ
+
+For the IntelliJ run configurations that launch the server and the `webapp`
+front end — and the setup for debugging both the JVM server and the browser
+front end at once — see [`examples/intellij-dev-setup.md`](examples/intellij-dev-setup.md).
+
 ## Conventions
 
 See [`code-guide.md`](code-guide.md). In brief: Kotlin everywhere, minimal
