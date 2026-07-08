@@ -32,11 +32,17 @@ kotlin {
                 // any existing DevServer config so other settings aren't lost.
                 devServer = (devServer ?: KotlinWebpackConfig.DevServer()).copy(
                     port = 8080,
-                    // Let the dev server itself open the browser at the correct
-                    // URL (http://localhost:8080/) once it's compiled and
-                    // listening. This avoids relying on IntelliJ's Debug
-                    // launcher, which opens a random ephemeral port.
-                    open = true,
+                    // Let the dev server itself open the browser at the correct URL
+                    // (http://localhost:8080/) once it's compiled and listening, in
+                    // Google Chrome specifically rather than the OS default browser.
+                    // `open` is serialized to the webpack-dev-server config via Gson,
+                    // so this map becomes `open: { app: { name: "google chrome" } }`
+                    // (the macOS application name the `open` npm package expects).
+                    // NOTE: run the Gradle task with Run, not Debug — Debug makes
+                    // IntelliJ start a JavaScript Debug session that opens its OWN
+                    // Chrome window at a guessed remote-debug port that never matches
+                    // this server. With Run, the dev server is the only opener.
+                    open = mapOf("app" to mapOf("name" to "google chrome")),
                     // Same-origin dev: proxy the API context root ("/kda") to the `:sample` runtime server
                     // on :7070. The browser then makes same-origin calls to the dev server, which forwards
                     // them to the API — so no CORS handling is needed (the runtime's HTTP server has none).
