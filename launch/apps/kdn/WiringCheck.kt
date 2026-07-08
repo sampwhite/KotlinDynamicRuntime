@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.config.Config
+import kotlin.time.TimeSource
 
 /**
  * Minimal launcher whose sole purpose is to prove the Gradle module graph wires
@@ -16,10 +17,14 @@ import com.dynamicruntime.config.Config
  * proves the whole `launch -> config -> kdn -> common` graph is linked.
  */
 fun main() {
+    // Time the whole of main (from here, i.e. excluding JVM startup) to gauge how much work the body does.
+    val started = TimeSource.Monotonic.markNow()
+
     // Install the logging configuration first, before anything logs in earnest.
     LogSetup.initFromEnv()
 
     val cxt = KdrCxt.mkSimpleCxt("wiringCheck")
     LogStartup.info(cxt, "Dependency wiring check:")
     LogStartup.info(cxt, Config.wiringTag())
+    LogStartup.info(cxt, "WiringCheck main() completed in ${started.elapsedNow()}.")
 }

@@ -51,3 +51,27 @@ application {
     // (WiringCheck remains as a separate, server-free dependency-proof entry point.)
     mainClass.set("kdn.StartKt")
 }
+
+// A "fat" jar bundling this module's classes plus every runtime dependency into a single archive, so any
+// main class in the project can be launched with `java -cp <jar> <ClassName>`. This is the compiled bundle
+// behind running Kotlin from the command line like a shell/python script (see bin/kdr-run). It is distinct
+// from the `run` task: its purpose is to launch *arbitrary* mains, not just `application.mainClass`.
+tasks.register<Jar>("fatJar") {
+    group = "build"
+    description = "Builds a fat jar with all runtime dependencies, for launching any main class (see bin/kdr-run)."
+    archiveClassifier.set("all")
+    manifest {
+        // A default Main-Class for `java -jar`; kdr-run overrides it by naming a class via `-cp <jar> <Class>`.
+        attributes["Main-Class"] = application.mainClass.get()
+    }
+    from(sourceSets.main.get().output)
+    dependsOn(configurations.runtimeClasspath)
+    from({
+        configurations.runtimeClasspath.get().filter { it.name.endsWith(".jar") }.map { zipTree(it) }
+    })
+    // Bundled dependencies collide on shared metadata: keep the first, drop the rest. Also strip jar
+    // signatures (they would invalidate the repackaged archive) and duplicate module descriptors.
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+    exclude("module-info.class", "META-INF/versions/*/module-info.class")
+}
