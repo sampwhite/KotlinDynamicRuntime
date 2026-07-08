@@ -26,23 +26,28 @@ kotlin {
                 // The bundle index.html references via <script src="webapp.js">.
                 outputFileName = "webapp.js"
 
+                // Whether the dev server opens a browser itself. On by default (a plain Run of
+                // jsBrowserDevelopmentRun pops Chrome at :8080). Turn OFF with `-Pwebapp.open=false` when you
+                // want to attach a JS debugger: the debugger has to launch Chrome with a remote-debugging
+                // port, and Chrome allows only one process per profile — so if the dev server has already
+                // opened Chrome, the debugger's launch fails with IntelliJ's "Another browser process is
+                // already running" dialog. Disabling the auto-open leaves the debugger as the sole opener.
+                val openInBrowser = (project.findProperty("webapp.open") as? String) != "false"
+
                 // Pin the webpack dev server to a fixed port. Without this,
                 // Kotlin/JS defaults to 8080 and will silently hop to the next
                 // free port if it's taken, giving an unpredictable URL. Reuse
                 // any existing DevServer config so other settings aren't lost.
                 devServer = (devServer ?: KotlinWebpackConfig.DevServer()).copy(
                     port = 8080,
-                    // Let the dev server itself open the browser at the correct URL
-                    // (http://localhost:8080/) once it's compiled and listening, in
-                    // Google Chrome specifically rather than the OS default browser.
-                    // `open` is serialized to the webpack-dev-server config via Gson,
-                    // so this map becomes `open: { app: { name: "google chrome" } }`
-                    // (the macOS application name the `open` npm package expects).
-                    // NOTE: run the Gradle task with Run, not Debug — Debug makes
-                    // IntelliJ start a JavaScript Debug session that opens its OWN
-                    // Chrome window at a guessed remote-debug port that never matches
-                    // this server. With Run, the dev server is the only opener.
-                    open = mapOf("app" to mapOf("name" to "google chrome")),
+                    // Open Chrome specifically (not the OS default browser) at the fixed
+                    // http://localhost:8080/ once compiled and listening. `open` is serialized to the
+                    // webpack-dev-server config via Gson, so this map becomes
+                    // `open: { app: { name: "google chrome" } }` (the macOS name the `open` npm package
+                    // expects). NOTE: run the Gradle task with Run, not Debug — Debug makes IntelliJ start a
+                    // JavaScript Debug session that opens its OWN Chrome. For debugging, prefer Run +
+                    // `-Pwebapp.open=false` (see [openInBrowser]) and attach a JS Debug config at :8080.
+                    open = if (openInBrowser) mapOf("app" to mapOf("name" to "google chrome")) else false,
                     // Same-origin dev: proxy the API context root ("/kda") to the `:sample` runtime server
                     // on :7070. The browser then makes same-origin calls to the dev server, which forwards
                     // them to the API — so no CORS handling is needed (the runtime's HTTP server has none).
