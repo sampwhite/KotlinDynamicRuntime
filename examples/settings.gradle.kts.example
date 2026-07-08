@@ -26,19 +26,25 @@ pluginManagement {
 
 rootProject.name = "KotlinDynamicRuntime"
 
-// The three Gradle subprojects. Their physical layout lives under the
+// The Gradle subprojects. Their physical layout lives under the
 // `KotlinDynamicRuntime` directory, so the logical project paths below are
-// re-pointed at their real directories with `projectDir`.
+// re-pointed at their real directories with `projectDir`. `sample` (a demo the
+// launcher compile-depends on) and `webapp` (the Kotlin/JS front end) are part of
+// the default deployment; comment out an `include` line to leave a project out.
 include("launch")
 include("config")
 include("base:common")
 include("base:kdn")
+include("sample")
+include("webapp")
 
 project(":base").projectDir = file("KotlinDynamicRuntime/base")
 project(":launch").projectDir = file("KotlinDynamicRuntime/launch")
 project(":config").projectDir = file("KotlinDynamicRuntime/config")
 project(":base:common").projectDir = file("KotlinDynamicRuntime/base/common")
 project(":base:kdn").projectDir = file("KotlinDynamicRuntime/base/kdn")
+project(":sample").projectDir = file("KotlinDynamicRuntime/sample")
+project(":webapp").projectDir = file("KotlinDynamicRuntime/webapp")
 
 // To inject deployment-specific configuration code (discovered by reflection at
 // startup), define a `:customConfig` project here. See examples/custom-config.md

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Idempotent installer: gets a deployment ready to run Kotlin from the command line, then keeps it healthy.
+# This is the pure-shell bootstrap -- a sniff and a minimal config, the least needed for Kotlin to run -- which
+# then hands off to the clever, growing Kotlin installer (com.dynamicruntime.script.Install) via kdr-run.
+# Runnable from any directory; assumes these scripts stay in bin/.
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_dir="$(cd "$script_dir/.." && pwd)"      # the KotlinDynamicRuntime checkout
+root_dir="$(cd "$script_dir/../.." && pwd)"   # the deployment root (the dir that contains the checkout)
+os="$(uname -s)"
+
+# --- 1. Sniff: tools we cannot install for the user must already be present ----------------------------------
+if ! command -v java >/dev/null 2>&1; then
+    echo "kdr-install: 'java' was not found on your PATH -- a JDK is required to run anything here." >&2
+    case "$os" in
+        Darwin)
+            echo "  Install a JDK, e.g.:" >&2
+            echo "    - SDKMAN:    curl -s \"https://get.sdkman.io\" | bash   then   sdk install java" >&2
+            echo "    - Homebrew:  brew install openjdk" >&2
+            ;;
+        Linux)
+            echo "  Install a JDK, e.g.:" >&2
+            echo "    - SDKMAN:          curl -s \"https://get.sdkman.io\" | bash   then   sdk install java" >&2
+            echo "    - Debian/Ubuntu:   sudo apt-get install default-jdk" >&2
+            echo "    - Fedora/RHEL:     sudo dnf install java-latest-openjdk-devel" >&2
+            ;;
+        *)
+            echo "  Install a JDK for your platform ($os), put 'java' on your PATH, and re-run." >&2
+            ;;
+    esac
+    echo "  Then re-run: $script_dir/kdr-install" >&2
+    exit 1
+fi
+# TODO(#29): later, sniff for the tools needed to install Node.js (for the webapp) -- once that install lands.
+
+# --- 2. Minimal configuration: enough for gradlew/Kotlin to run against the source ---------------------------
+# The parent (the Gradle build root) needs its own copy of the wrapper to run Gradle at all. The repo ships
+# the canonical copy; copy it up when missing. (Keeping the parent's version in sync is the Kotlin half's job.)
+if [ ! -f "$root_dir/gradlew" ]; then
+    cp "$repo_dir/gradlew" "$root_dir/gradlew" && chmod +x "$root_dir/gradlew"
+    echo "kdr-install: copied gradlew to $root_dir."
+fi
+if [ ! -d "$root_dir/gradle" ]; then
+    cp -R "$repo_dir/gradle" "$root_dir/gradle"
+    echo "kdr-install: copied the gradle/ wrapper directory to $root_dir."
+fi
+
+settings="$root_dir/settings.gradle.kts"
+if [ ! -f "$settings" ]; then
+    # Copy the example, dropping its leading "EXAMPLE ... TEMPLATE, copy and rename me" fenced comment block
+    # (delete from the first `// =====` fence to the next), then any leading blank lines.
+    sed '/^\/\/ *=====/,/^\/\/ *=====/d' "$repo_dir/examples/settings.gradle.kts.example" | sed '/./,$!d' > "$settings"
+    echo "kdr-install: created settings.gradle.kts in $root_dir (from the example)."
+fi
+
+# --- 3. Hand off to the Kotlin installer (kdr-run builds the fat jar on first run) ---------------------------
+echo "kdr-install: running the Kotlin installer ..."
+exec "$script_dir/kdr-run" com.dynamicruntime.script.InstallKt "$repo_dir"
