@@ -41,6 +41,9 @@ dependencies {
     // does so in developer environments (see shouldLoadSample there), so this dependency never puts the demo
     // into a real deployment's running endpoint set.
     implementation(project(":sample"))
+    // The webapp host: its AppUiComponent serves the self-contained front end (embedded `:webapp` bundle)
+    // under the `wa` context root. Registered unconditionally in Start.kt.
+    implementation(project(":appui"))
     if (customConfig != null) {
         runtimeOnly(project(customConfig.path))
     }

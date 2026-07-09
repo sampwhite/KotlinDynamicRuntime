@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.http.server.HttpServer
 import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.logging.LogStartup
+import com.dynamicruntime.appui.AppUiComponent
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.config.AppConfigApplier
 import com.dynamicruntime.config.AppConfigBuilder
@@ -20,6 +21,12 @@ fun main() {
     if (loadSample) {
         InstanceRegistry.register(listOf(SampleComponent()))
     }
+
+    // The webapp host serves the self-contained front end under its own context root (e.g. /wa). Register it
+    // before booting (schema/services are wired during boot), the same ordering the sample registration needs.
+    // Registered unconditionally -- it is a real feature, not a demo; the shell serves even when the sample
+    // Todo endpoints it exercises are absent.
+    InstanceRegistry.register(listOf(AppUiComponent()))
 
     // Boot the application instance: register components, gather and compile schema,
     // and create and initialize services. Creating this boot context is the core of

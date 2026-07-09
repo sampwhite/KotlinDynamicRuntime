@@ -31,8 +31,18 @@ object PortalPage {
   }
   header h1 { margin: 0 0 4px; font-size: 20px; }
   header .sub { margin: 0; opacity: .75; font-size: 13px; }
+  header nav {
+    margin-top: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  header nav a {
+    color: #cdd7e2; text-decoration: none; font-size: 13px; font-weight: 600;
+    padding: 6px 12px; border-radius: 6px; background: rgba(255, 255, 255, .06);
+  }
+  header nav a:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+  header nav a.active { background: #3b82f6; color: #fff; }
+  header nav a.active:hover { background: #2f6fd6; }
   header button {
-    margin-top: 12px; background: #3b82f6; color: #fff; border: 0; border-radius: 6px;
+    background: #3b82f6; color: #fff; border: 0; border-radius: 6px;
     padding: 7px 14px; font-size: 13px; cursor: pointer;
   }
   header button:hover { background: #2f6fd6; }
@@ -87,7 +97,11 @@ object PortalPage {
 <header>
   <h1>KDR Endpoint Portal</h1>
   <p class="sub">Form-based console for the endpoints served by this instance.</p>
-  <button id="reload" type="button">Reload endpoints</button>
+  <nav>
+    <a class="active" href="#">Endpoint Portal</a>
+    <a id="webappLink" href="#">Webapp</a>
+    <button id="reload" type="button">Reload endpoints</button>
+  </nav>
 </header>
 <main id="app"><p class="muted">Loading endpoints…</p></main>
 <script>window.kdrCfg = $${cfgJson};</script>
@@ -103,6 +117,9 @@ var ENDPOINTS_API = API_ROOT + '$${PTL.endpointsApi}';
 var FIELDS_FEED = CONTENT_ROOT + '$${PTL.fieldsFeed}';
 var app = document.getElementById('app');
 document.getElementById('reload').addEventListener('click', load);
+// The webapp lives under its own context root (focus "app"); build the menu link from the injected config
+// so it tracks the configured root rather than hardcoding it.
+document.getElementById('webappLink').href = '/' + (CFG.app || 'wa');
 
 function el(tag, cls, text) {
   var e = document.createElement(tag);
