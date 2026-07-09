@@ -53,4 +53,7 @@ object ACFG {
 
     /** The context root under which content (HTML/static, e.g., the portal) is served; defaults to `ContextRoot.cp`. */
     const val contentContextRoot = "contentContextRoot"
+
+    /** The context root under which the self-contained webapp is served; defaults to `ContextRoot.wa`. */
+    const val appContextRoot = "appContextRoot"
 }

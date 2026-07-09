@@ -38,13 +38,19 @@ class RequestService : ServiceInitializer {
     /** The context root under which content is served; from [ACFG.contentContextRoot]. Bound in [checkInit]. */
     var contentContextRoot: String = ContextRoot.cp
 
+    /** The context root under which the self-contained webapp is served; from [ACFG.appContextRoot]. Bound in [checkInit]. */
+    var appContextRoot: String = ContextRoot.wa
+
     /**
      * Every context root this node recognizes, mapped to the [ContextFocus] it targets. A request whose
      * leading segment is not a key here is fast-failed with a short 404; otherwise its focus decides dispatch
      * (api → endpoints, anything else → content servers). Assembled in [checkInit] from the per-kind roots.
      */
-    var contextRootFocus: Map<String, ContextFocus> =
-        mapOf(ContextRoot.kda to ContextFocus.api, ContextRoot.cp to ContextFocus.content)
+    var contextRootFocus: Map<String, ContextFocus> = mapOf(
+        ContextRoot.kda to ContextFocus.api,
+        ContextRoot.cp to ContextFocus.content,
+        ContextRoot.wa to ContextFocus.app,
+    )
 
     /** Section → access rules. Sections not present are treated permissively for now. */
     val sectionRulesMap: MutableMap<String, SectionRules> = HashMap()
@@ -92,8 +98,13 @@ class RequestService : ServiceInitializer {
 
         apiContextRoot = (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
         contentContextRoot = (cxt.instanceConfig.get(ACFG.contentContextRoot) as? String) ?: ContextRoot.cp
+        appContextRoot = (cxt.instanceConfig.get(ACFG.appContextRoot) as? String) ?: ContextRoot.wa
         // Each configured root maps to the focus it targets; the leading segment of a request is matched here.
-        contextRootFocus = mapOf(apiContextRoot to ContextFocus.api, contentContextRoot to ContextFocus.content)
+        contextRootFocus = mapOf(
+            apiContextRoot to ContextFocus.api,
+            contentContextRoot to ContextFocus.content,
+            appContextRoot to ContextFocus.app,
+        )
         isInit = true
     }
 
