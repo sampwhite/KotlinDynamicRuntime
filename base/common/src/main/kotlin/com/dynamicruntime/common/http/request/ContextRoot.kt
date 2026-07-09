@@ -13,13 +13,18 @@ object ContextRoot {
 
     /** The default content context root -- "content port" (serves HTML/static content, e.g. the portal). */
     const val cp = "cp"
+
+    /** The default webapp context root -- "web app" (serves the self-contained Kotlin/JS front end). */
+    const val wa = "wa"
 }
 
 /**
  * The kind of functionality a context root targets, which decides how the dispatcher handles a request under
  * it: [api] routes to JSON endpoints; every other focus routes to [ContentServer]s (with a friendly 404 when
  * none serves it). The value for the matched root is set on the request ([RequestHandler.focus]) so content
- * servers can decide whether a given request is theirs to serve.
+ * servers can decide whether a given request is theirs to serve. [app] is a content-style focus reserved for
+ * the self-contained webapp host, kept distinct from [content] so its server and the portal's do not collide on
+ * the bare-root request (both would otherwise match `appPath == "/"`).
  */
 @Suppress("EnumEntryName")
-enum class ContextFocus { api, content }
+enum class ContextFocus { api, content, app }

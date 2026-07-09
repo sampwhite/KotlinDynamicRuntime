@@ -29,14 +29,17 @@ rootProject.name = "KotlinDynamicRuntime"
 // The Gradle subprojects. Their physical layout lives under the
 // `KotlinDynamicRuntime` directory, so the logical project paths below are
 // re-pointed at their real directories with `projectDir`. `sample` (a demo the
-// launcher compile-depends on) and `webapp` (the Kotlin/JS front end) are part of
-// the default deployment; comment out an `include` line to leave a project out.
+// launcher compile-depends on), `webapp` (the Kotlin/JS front end), and `appui`
+// (the JVM host that serves the webapp's bundle under the `wa` context root) are
+// part of the default deployment; comment out an `include` line to leave a project
+// out.
 include("launch")
 include("config")
 include("base:common")
 include("base:kdn")
 include("sample")
 include("webapp")
+include("appui")
 
 project(":base").projectDir = file("KotlinDynamicRuntime/base")
 project(":launch").projectDir = file("KotlinDynamicRuntime/launch")
@@ -45,6 +48,7 @@ project(":base:common").projectDir = file("KotlinDynamicRuntime/base/common")
 project(":base:kdn").projectDir = file("KotlinDynamicRuntime/base/kdn")
 project(":sample").projectDir = file("KotlinDynamicRuntime/sample")
 project(":webapp").projectDir = file("KotlinDynamicRuntime/webapp")
+project(":appui").projectDir = file("KotlinDynamicRuntime/appui")
 
 // To inject deployment-specific configuration code (discovered by reflection at
 // startup), define a `:customConfig` project here. See examples/custom-config.md

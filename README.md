@@ -43,14 +43,15 @@ base/kdn         # dynamic-runtime core, depends on common (com.dynamicruntime.k
 config           # configuration builders; re-exports the base modules (com.dynamicruntime.config)
 launch           # application entry points; source root is launch/apps (package roots there)
 sample           # demo app (Todo endpoints) the launcher loads in developer environments
-webapp           # Kotlin/JS + React (antd) front end
+webapp           # Kotlin/JS + React (antd) front end (the browser bundle)
+appui            # JVM host that serves the webapp bundle under the /wa context root
 bin              # convenience command-line scripts (kdr-install, kdr-run, ...)
 build-logic      # included build providing the kdr.kotlin-conventions convention plugins
 examples         # templates a deployment copies into the workspace directory
 ```
 
 Module dependencies: `base/kdn` → `base/common`; `config` → `base/common` + `base/kdn`;
-`sample` → `config`; `launch` → `config` + `sample`.
+`sample` → `config`; `appui` → `config`; `launch` → `config` + `sample` + `appui`.
 
 ## Building
 
@@ -75,6 +76,37 @@ The repository ships the canonical Gradle wrapper (`gradlew` and the `gradle/` d
 runs from the workspace directory, that directory needs its own copy: `bin/kdr-install` copies the wrapper up
 when it is missing, and — if the repository's Gradle version later changes — offers to update the workspace
 copy to match.
+
+### The webapp (front end)
+
+The `webapp` module compiles Kotlin/JS + React into a browser bundle. There are two ways to run it, both
+talking to the same runtime API on `:7070`:
+
+- **Served by the runtime (self-contained).** The `appui` module embeds `webapp`'s *production* bundle as a
+  classpath resource (a Gradle task copies `:webapp:jsBrowserDistribution`'s output into `appui`'s resources)
+  and serves it as a content server under the `wa` context root. Nothing extra to run: building or running the
+  app builds and embeds the bundle automatically, so
+
+  ```sh
+  ./gradlew :launch:run          # boots the server on :7070; the bundle is built and embedded as part of this
+  ```
+
+  then open `http://localhost:7070/wa` — also reachable from the **Webapp** link in the endpoint portal at
+  `http://localhost:7070/cp/portal`. Because the page is served same-origin with the API, the webapp's
+  relative `/kda/...` calls reach the runtime directly (no CORS, no proxy). After a front-end change, rebuild
+  (`./gradlew :launch:run` or `:appui:build`) and hard-reload the page — the embedded bundle is a build
+  artifact, so there is no hot reload on this path.
+
+- **Webpack dev server (iterative development).** For live reload and browser debugging, run the dev server on
+  `:8080`, which proxies `/kda` to the runtime on `:7070`:
+
+  ```sh
+  ./gradlew :launch:run                           # the API (and /wa) on :7070
+  ./gradlew :webapp:jsBrowserDevelopmentRun       # the dev server on :8080, proxying /kda -> :7070
+  ```
+
+  This uses the development (unminified) bundle with hot reload. See the IntelliJ setup below for attaching a
+  JS debugger.
 
 ### Running and debugging in IntelliJ
 
