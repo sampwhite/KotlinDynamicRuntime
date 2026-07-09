@@ -43,17 +43,20 @@ object LogSetup {
             "%style{%d{yyyy-MM-dd HH:mm:ss.SSS}}{dim} [%t] %style{%c{3}}{cyan} - %msg %throwable%n"
 
     /**
-     * Reads [appLogLevelEnvVar] / [rootLogLevelEnvVar] / [logPathEnvVar] from the environment and applies
-     * [init], using the supplied defaults where an env var is absent.
+     * Reads [appLogLevelEnvVar] / [rootLogLevelEnvVar] / [logPathEnvVar] via [getEnv] and applies [init],
+     * using the supplied defaults where a variable is absent. [getEnv] defaults to the process environment,
+     * but the booting application passes `cxt::getEnvVar` so instance-config defaults (e.g. from the
+     * default-environment-variables file) are honored too.
      */
     fun initFromEnv(
         defaultAppLevel: LogLevel = LogLevel.debug,
         defaultRootLevel: LogLevel = LogLevel.info,
         defaultLogPath: String = "logs",
+        getEnv: (String) -> String? = System::getenv,
     ) {
-        val appLevel = System.getenv(appLogLevelEnvVar)?.let { logLevelOf(it) } ?: defaultAppLevel
-        val rootLevel = System.getenv(rootLogLevelEnvVar)?.let { logLevelOf(it) } ?: defaultRootLevel
-        val logPath = System.getenv(logPathEnvVar) ?: defaultLogPath
+        val appLevel = getEnv(appLogLevelEnvVar)?.let { logLevelOf(it) } ?: defaultAppLevel
+        val rootLevel = getEnv(rootLogLevelEnvVar)?.let { logLevelOf(it) } ?: defaultRootLevel
+        val logPath = getEnv(logPathEnvVar) ?: defaultLogPath
         init(rootLevel, appLevel, logPath)
     }
 
