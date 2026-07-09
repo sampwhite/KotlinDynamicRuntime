@@ -4,26 +4,27 @@ This describes the IntelliJ run configurations for running the server and the
 `webapp` front end, and for debugging both at once. Like `settings.gradle.kts`
 and `gradle.properties` (see [`settings.gradle.kts.example`](settings.gradle.kts.example)
 and [`gradle.properties.example`](gradle.properties.example)), these configs are
-a **deployment-local** artifact: they live in the directory that *contains*
-`KotlinDynamicRuntime/` — the Gradle build root and the IntelliJ project root —
-under `.idea/runConfigurations/`, and are **not** version-controlled. This file
-is the checked-in instructions for recreating them.
+a **deployment-local** artifact: they live in the **workspace directory** — the
+directory that *contains* `KotlinDynamicRuntime/` (also the Gradle build root and
+the IntelliJ project root, where `settings.gradle.kts` lives) — under
+`.idea/runConfigurations/`, and are **not** version-controlled. This file is the
+checked-in instructions for recreating them.
 
 > Why not commit the config files? IntelliJ reads run configurations from the
-> project base dir (the parent), and `$PROJECT_DIR$` resolves there too — not to
-> this repo. Given the deliberate parent-root layout, the config files can only
-> live in the (non-versioned) parent, so the repo carries the recipe instead.
+> workspace directory, and `$PROJECT_DIR$` resolves there too — not to this repo.
+> Given the deliberate layout, the config files can only live in the
+> (non-versioned) workspace directory, so the repo carries the recipe instead.
 
 ## Prerequisites
 
-- **`gradle.properties` at the build root** with a raised heap, or the Kotlin/JS
-  webpack tasks OOM. Copy [`gradle.properties.example`](gradle.properties.example)
-  to the parent directory as `gradle.properties`.
+- **`gradle.properties` in the workspace directory** with a raised heap, or the
+  Kotlin/JS webpack tasks OOM. Copy [`gradle.properties.example`](gradle.properties.example)
+  there as `gradle.properties`.
 - **IntelliJ IDEA Ultimate** (or the JavaScript/TypeScript plugin) for the
   JavaScript Debug configuration used to debug the front end.
 - After changing the `webapp` npm dependency set, regenerate the Kotlin/JS
-  lockfile once with `./gradlew kotlinUpgradeYarnLock` (the lockfile lives at
-  the build root under `kotlin-js-store/`).
+  lockfile once with `./gradlew kotlinUpgradeYarnLock` (the lockfile lives in the
+  workspace directory under `kotlin-js-store/`).
 
 ## How the pieces fit
 
@@ -38,8 +39,9 @@ is the checked-in instructions for recreating them.
 ## Run configurations to create
 
 Create these under **Run → Edit Configurations → +**. IntelliJ stores each as an
-XML file under the parent's `.idea/runConfigurations/`. For the Gradle ones, set
-the **Gradle project** to the build root and the **Run** field to the task shown.
+XML file under the workspace directory's `.idea/runConfigurations/`. For the
+Gradle ones, set the **Gradle project** to the workspace directory and the
+**Run** field to the task shown.
 
 | Name | Type | Task / setting |
 | --- | --- | --- |
@@ -131,7 +133,7 @@ on by default.)
   task with **Debug**, which triggers IntelliJ's own Kotlin/JS browser launch at a
   guessed port. Use **Run** for the dev server and debug via the JavaScript Debug
   config instead (above). Close any leftover debug-Chrome window before retrying.
-- **`java.lang.OutOfMemoryError` during the webapp build:** the build root has no
-  `gradle.properties` with a raised heap — see Prerequisites.
+- **`java.lang.OutOfMemoryError` during the webapp build:** the workspace
+  directory has no `gradle.properties` with a raised heap — see Prerequisites.
 - **"Lock file was changed. Run the `kotlinUpgradeYarnLock` task":** the webapp's
   npm dependencies changed; run that task once (see Prerequisites).
