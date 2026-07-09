@@ -165,6 +165,10 @@ class KdrCxt(
     companion object {
         /** Creates a simple top-level context with placeholder config and user. */
         fun mkSimpleCxt(cxtName: String): KdrCxt = KdrCxt(cxtName)
+
+        /** Creates a simple top-level context bound to the given [instanceConfig] (e.g. a pre-boot config). */
+        fun mkSimpleCxt(cxtName: String, instanceConfig: KdrInstanceConfig): KdrCxt =
+            KdrCxt(cxtName, instanceConfig)
     }
 
     fun getEnvVar(key: String): String? {

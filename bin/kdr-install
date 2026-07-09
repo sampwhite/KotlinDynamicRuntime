@@ -6,8 +6,21 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_dir="$(cd "$script_dir/.." && pwd)"      # the KotlinDynamicRuntime checkout
-root_dir="$(cd "$script_dir/../.." && pwd)"   # the deployment root (the dir that contains the checkout)
+repo_name="$(basename "$(cd "$script_dir/.." && pwd)")"   # the checkout directory name (e.g. KotlinDynamicRuntime)
+# The workspace directory honors KDR_WORKSPACE_DIR (set once in a shell to control which checkout every script
+# targets), else it is the directory that contains this checkout. It is exported so the Kotlin installer and
+# the kdr-run below key off the identical directory; the checkout is resolved as its same-named child.
+if [ -n "${KDR_WORKSPACE_DIR:-}" ]; then
+    root_dir="$(cd -P "$KDR_WORKSPACE_DIR" 2>/dev/null && pwd || true)"
+    if [ -z "$root_dir" ]; then
+        echo "kdr-install: KDR_WORKSPACE_DIR=$KDR_WORKSPACE_DIR does not exist" >&2
+        exit 1
+    fi
+else
+    root_dir="$(cd "$script_dir/../.." && pwd)"   # the workspace directory (the dir that contains the checkout)
+fi
+export KDR_WORKSPACE_DIR="$root_dir"
+repo_dir="$root_dir/$repo_name"                   # the checkout under the (possibly overridden) workspace
 os="$(uname -s)"
 
 # --- 1. Sniff: tools we cannot install for the user must already be present ----------------------------------
