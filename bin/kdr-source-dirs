@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Regenerate current-source-directories.txt (the source-dir manifest) in the deployment root. A "dumb"
+# Regenerate current-source-directories.txt (the source-dir manifest) in the workspace directory. A "dumb"
 # wrapper: it just hands off to the clever Kotlin utility via kdr-run, which builds the fat jar if needed and
-# runs with its working directory at the deployment root. Extra args pass through.
+# runs with its working directory at the workspace directory. Extra args pass through.
 set -euo pipefail
 exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/kdr-run" com.dynamicruntime.script.CurrentSourceDirectoriesKt "$@"

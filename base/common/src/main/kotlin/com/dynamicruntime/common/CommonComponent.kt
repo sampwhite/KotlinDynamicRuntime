@@ -2,10 +2,12 @@ package com.dynamicruntime.common
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.request.RequestService
+import com.dynamicruntime.common.node.InstanceConfigStore
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.portal.PortalService
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.PRI
+import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
@@ -26,6 +28,10 @@ class CommonComponent : ComponentDefinition {
         // Endpoints/types live with the services that own them; the component just wires them in.
         collector.addModule(NodeService.schema(cxt))
         collector.addModule(SchemaService.schema(cxt))
+        // The topic service contributes the list-tables endpoint.
+        collector.addModule(SqlTopicService.schema(cxt))
+        // Domain tables: the node's private InstanceConfig table.
+        collector.addTables(InstanceConfigStore.tables(cxt))
     }
 
     /**
@@ -35,8 +41,12 @@ class CommonComponent : ComponentDefinition {
      */
     override fun startupServices(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::SchemaService, ::NodeService)
 
-    /** The request dispatcher, then the portal (which registers itself with the dispatcher as a content server). */
-    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::RequestService, ::PortalService)
+    /**
+     * The request dispatcher, the portal (which registers itself with the dispatcher as a content server),
+     * and the SQL topic service (operational database access; reads table definitions from the compiled store).
+     */
+    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
+        listOf(::RequestService, ::PortalService, ::SqlTopicService)
 
     /** Load just ahead of the standard components (demonstrates relative priority). */
     override fun loadPriority(): Int = PRI.standard - 1

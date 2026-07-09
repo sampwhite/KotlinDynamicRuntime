@@ -49,7 +49,7 @@ class RequestService : ServiceInitializer {
     /** Section → access rules. Sections not present are treated permissively for now. */
     val sectionRulesMap: MutableMap<String, SectionRules> = HashMap()
 
-    val anonSections: List<String> = listOf("health", "schema", "content", "portal", "site", "auth")
+    val anonSections: List<String> = listOf("health", "schema", "content", "portal", "site", "auth", "db")
     val userSections: List<String> = listOf("user")
     val adminSections: List<String> = listOf("node", "admin")
 

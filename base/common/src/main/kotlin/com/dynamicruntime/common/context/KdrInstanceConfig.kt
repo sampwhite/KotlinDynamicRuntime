@@ -52,8 +52,9 @@ class KdrInstanceConfig(
     fun nextLoggingId(): Long = loggingIdCounter.incrementAndGet()
 
     fun getEnvVar(key: String): String? {
-        // Eventually we will look to instance config data first.
-        return System.getenv(key)
+        // Instance-config entries win over the real process environment, so configuration (and tests) can
+        // inject or override an "environment variable" without touching the process environment.
+        return (get(key) as? String) ?: System.getenv(key)
     }
 
 

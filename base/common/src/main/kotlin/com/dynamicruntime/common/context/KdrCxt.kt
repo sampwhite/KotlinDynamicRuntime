@@ -7,9 +7,9 @@ import kotlin.time.Instant
 /**
  * The universal context object for the runtime. It is passed down a call stack
  * as an explicit alternative to scoped / thread-local variables: from it, you can
- * reach the application configuration, the acting user, the bound client
- * account, the schema store, and free-form association maps for handing extra
- * information to implementers further down the stack.
+ * reach the application configuration, the acting user, the bound owner
+ * ([account] / [userId]), the schema store, and free-form association maps for
+ * handing extra information to implementers further down the stack.
  *
  * Every context is named and carries a parent context path (the chain of parent
  * logging ids), which is used in logging and debugging. A context is never handed
@@ -29,13 +29,22 @@ class KdrCxt(
     /** The current acting user for this context. May be reassigned. */
     var userProfile: UserProfile = UserProfile.systemUser(),
     /**
-     * The client account this context is bound to. Defaults to the acting user's
-     * account. It can be set to a different account -- for users with admin
-     * rights editing across client accounts, or for background jobs with
-     * cross-account scope -- typically by creating a sub context with
-     * [mkSubContext] and supplying the alternate account.
+     * The client account that *owns* the data this context is operating on. Defaults to the acting user's
+     * account. This is distinct from [userProfile], which is who is *acting*: [account]/[userId] answer "who
+     * owns the row?" (consulted by the account/user table features), while [userProfile] answers "who is
+     * acting on the row?" (consulted to stamp `createdBy`/`updatedBy`). It can be pointed at a different
+     * account -- for admins editing across client accounts, or background jobs with cross-account scope --
+     * by creating a sub context with [mkSubContext] and supplying the alternate account, via
+     * [bindToUserProfile], or by direct assignment when a request decides it is operating on another owner's
+     * data.
      */
     var account: String = userProfile.account,
+    /**
+     * The numeric id of the user that *owns* the data this context is operating on (companion to [account];
+     * see that field for the owner-vs-actor distinction). Defaults to the acting user's
+     * [UserProfile.userId] and can likewise be reassigned when operating on another user's data.
+     */
+    var userId: Long = userProfile.userId,
 ) {
     /** Configuration of the running instance/application. */
     val instanceConfig: KdrInstanceConfig = instanceConfig ?: KdrInstanceConfig.codeTest()
@@ -81,7 +90,7 @@ class KdrCxt(
     /**
      * Optional debug tag(s) for this request: a validated, comma-separated list of variable names supplied
      * via the off-contract `_debug` request key. When present it is prefixed onto every log message and can
-     * gate diagnostic behavior (e.g. the sample endpoint's `explainInput`). Carried down to sub contexts.
+     * gate diagnostic behavior (e.g., the sample endpoint's `explainInput`). Carried down to sub contexts.
      */
     var debug: String? = null
 
@@ -106,13 +115,25 @@ class KdrCxt(
      * the schema store and originating address, but does NOT carry over [session].
      */
     fun mkSubContext(subCxtName: String, account: String): KdrCxt {
-        val sub = KdrCxt(subCxtName, instanceConfig, this, userProfile, account)
+        val sub = KdrCxt(subCxtName, instanceConfig, this, userProfile, account, userId)
         sub.locals.putAll(locals)
         sub.schemaStore = schemaStore
         sub.forwardedFor = forwardedFor
         sub.debug = debug // debug tags travel with the request
         sub.request = request // a sub context is part of the same request
         return sub
+    }
+
+    /**
+     * Binds this context to an authenticated [userProfile]: makes it the acting user and resets the owning
+     * [account] and [userId] to that user's own. Called when a request has been authenticated as acting on
+     * behalf of a particular user. Afterward a request may point [account]/[userId] at a different owner
+     * (e.g., when operating on data owned by another user) without changing who is acting ([userProfile]).
+     */
+    fun bindToUserProfile(userProfile: UserProfile) {
+        this.userProfile = userProfile
+        this.account = userProfile.account
+        this.userId = userProfile.userId
     }
 
     /** Returns the schema store, lazily creating and caching it on first access. */

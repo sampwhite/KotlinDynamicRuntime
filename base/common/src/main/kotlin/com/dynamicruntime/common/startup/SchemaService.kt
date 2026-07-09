@@ -56,7 +56,8 @@ class SchemaService : ServiceInitializer {
 
         val types = parseSchemaTypes(collected.defs)
         val endpoints = collected.endpoints.associateBy { it.collationKey }
-        val store = KdrSchemaStore(types, endpoints)
+        val tables = collected.tables.associateBy { it.tableName }
+        val store = KdrSchemaStore(types, endpoints, tables)
         schemaStore = store
         cxt.instanceConfig.put(KdrSchemaStore.key, store)
         isInit = true
