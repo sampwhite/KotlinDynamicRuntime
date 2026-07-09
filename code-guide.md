@@ -229,3 +229,26 @@ account explicitly assigned. This is relevant for users with admin rights to edi
 It is also relevant to background jobs that also can have cross-account scope. Once an account is assigned
 to a `KdrCxt` cached data specific to the account can be added to the context. For example, there may be
 complex rule sets particular to a client, and those can now be made conveniently available from the context.
+
+### Command-line tasks in Kotlin, not shell or python
+
+The glue work that usually lands in shell or python — installers, environment setup, code generation, one-off
+maintenance jobs — we prefer to write in Kotlin, so it gets the same types, testing, and IDE support as the
+rest of the code. The division of labor is **clever Kotlin, dumb shell**: a thin wrapper in `bin/` does only
+what genuinely must be shell (sniffing the environment, the minimal bootstrap, an `exec`) and hands off to
+Kotlin for anything with real logic. The two call each other freely — a shell script launches Kotlin, and
+Kotlin shells out (via `ProcessBuilder`) when a subprocess really is the right tool — but the intelligence
+lives in Kotlin.
+
+The mechanism: `launch`'s `fatJar` task bundles the whole runtime into one jar, and `bin/kdr-run` launches any
+`main` from it with a fast, plain-`java` start (rebuilding only when sources actually changed — it consults a
+source-directory manifest to decide). Utility "scripts" are ordinary Kotlin `main` functions in the `config`
+module under the `com.dynamicruntime.script` package.
+
+`kdr-install` is the worked example. Its shell half (`bin/kdr-install`) does the irreducible bootstrap — check
+that a JDK is present, copy a minimal `settings.gradle.kts` so Gradle can run at all — then hands off to the
+clever half, `com.dynamicruntime.script.Install`, which idempotently brings the deployment's per-machine
+configuration up to date (heap settings, project inclusions, PATH), prompting only for changes a user might
+not want. `com.dynamicruntime.script.CurrentSourceDirectories` is a second example: it drives `gradlew` with a
+throwaway init script to compute the very manifest `kdr-run` relies on. As this work grows — installing
+databases, search, and the like — that logic stays in Kotlin.

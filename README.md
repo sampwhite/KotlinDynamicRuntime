@@ -17,17 +17,40 @@ Tooling finds the workspace directory by walking up from its own location to the
 a `settings.gradle.kts`; it can be set explicitly with the `KDR_WORKSPACE_DIR` environment variable (see
 [Configuration](#configuration)).
 
+## Getting started
+
+Setup is bootstrapped by an idempotent installer, `bin/kdr-install`. It checks that a JDK is present,
+creates the per-deployment configuration (`settings.gradle.kts` and `gradle.properties`) from the templates
+if they are missing, and offers to add the command-line scripts to your `PATH`.
+
+Run it from the **workspace directory** — the directory that **contains** your `KotlinDynamicRuntime`
+checkout, where the per-deployment `settings.gradle.kts` lives:
+
+```sh
+cd /path/to/workspace              # the workspace directory, which holds KotlinDynamicRuntime/
+./KotlinDynamicRuntime/bin/kdr-install
+```
+
+`kdr-install` is safe to re-run at any time — it only changes what needs changing. Re-run it to sync new
+configuration (for example, projects a newer `settings.gradle.kts.example` introduces) or to pick up new
+install options as they are added.
+
 ## Layout
 
 ```
 base/common      # foundational module (com.dynamicruntime.common)
 base/kdn         # dynamic-runtime core, depends on common (com.dynamicruntime.kdn)
+config           # configuration builders; re-exports the base modules (com.dynamicruntime.config)
 launch           # application entry points; source root is launch/apps (package roots there)
-build-logic      # included build providing the kdr.kotlin-conventions plugin
+sample           # demo app (Todo endpoints) the launcher loads in developer environments
+webapp           # Kotlin/JS + React (antd) front end
+bin              # convenience command-line scripts (kdr-install, kdr-run, ...)
+build-logic      # included build providing the kdr.kotlin-conventions convention plugins
 examples         # templates a deployment copies into the workspace directory
 ```
 
-Module dependencies: `base/kdn` → `base/common`; `launch` → `base/common` + `base/kdn`.
+Module dependencies: `base/kdn` → `base/common`; `config` → `base/common` + `base/kdn`;
+`sample` → `config`; `launch` → `config` + `sample`.
 
 ## Building
 
@@ -40,15 +63,24 @@ declares `plugins { id("kdr.kotlin-conventions") }` plus its own dependencies.
 ### The settings file is supplied per-deployment
 
 By design, `settings.gradle.kts` is **not** part of this repository. It is
-provided in the workspace directory — the directory that *contains* this one — so
-that a single Gradle build can compose source from multiple repositories for a
+provided in the **workspace directory** (the directory that *contains* this one),
+so that a single Gradle build can compose source from multiple repositories for a
 given deployment. A ready-to-adapt template is provided at
-[`examples/settings.gradle.kts.example`](examples/settings.gradle.kts.example):
-copy it to the workspace directory, rename it to `settings.gradle.kts`, and adjust
-as needed. The workspace directory is also where the (deployment-specific) Gradle
-invocation runs.
+[`examples/settings.gradle.kts.example`](examples/settings.gradle.kts.example);
+`bin/kdr-install` copies it into the workspace directory as `settings.gradle.kts` for you (or copy it by hand
+and adjust as needed). The workspace directory is also where the (deployment-specific) Gradle invocation
+runs.
 
-A copy of the Gradle wrapper is included here for convenience.
+The repository ships the canonical Gradle wrapper (`gradlew` and the `gradle/` directory). Because Gradle
+runs from the workspace directory, that directory needs its own copy: `bin/kdr-install` copies the wrapper up
+when it is missing, and — if the repository's Gradle version later changes — offers to update the workspace
+copy to match.
+
+### Running and debugging in IntelliJ
+
+For the IntelliJ run configurations that launch the server and the `webapp`
+front end — and the setup for debugging both the JVM server and the browser
+front end at once — see [`examples/intellij-dev-setup.md`](examples/intellij-dev-setup.md).
 
 ## Conventions
 
