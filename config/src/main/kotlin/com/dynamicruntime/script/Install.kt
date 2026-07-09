@@ -1,6 +1,16 @@
 package com.dynamicruntime.script
 
+import com.dynamicruntime.common.sql.DbEnv
+import com.dynamicruntime.common.sql.DbType
+import com.dynamicruntime.common.sql.SecretsUtil
+import com.dynamicruntime.common.sql.SqlDbBuilder
 import java.io.File
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
+import java.sql.DriverManager
+import java.util.Properties
 import kotlin.system.exitProcess
 
 /**
@@ -29,6 +39,7 @@ fun main(args: Array<String>) {
     syncSettingsWithExample(workDir, examples)
     syncGradleWrapper(workDir, repoDir)
     ensureBinOnPath(repoDir)
+    ensurePostgres(workDir)
     println("kdr-install: done.")
 }
 
@@ -256,4 +267,231 @@ private fun stripExampleHeader(text: String): String {
         return text
     }
     return lines.drop(close + 2).dropWhile { it.isBlank() }.joinToString("\n") + "\n"
+}
+
+// --- PostgreSQL setup -------------------------------------------------------------------------------------
+
+/** The Homebrew formula used to install PostgreSQL on macOS. The user can edit it in the generated script. */
+private const val postgresBrewFormula = "postgresql@16"
+
+/**
+ * Offers to set up a local PostgreSQL database when one is not yet configured. A no-op once the database
+ * password secret is present, so a configured (or H2-only) deployment is never re-nagged after setup. It
+ * probes for a running local PostgreSQL and, with the user's consent and a password they supply, generates a
+ * one-time setup script for them to run, verifies the result by connecting, writes the password into the
+ * secrets file, and prints how to select PostgreSQL. The script carries the password, so it is always deleted
+ * before this function returns.
+ *
+ * This targets a *local* PostgreSQL (the generated script installs it via the OS package manager); a remote
+ * host (via `KDR_DB_HOST`) is left for the operator to configure by hand.
+ */
+private fun ensurePostgres(workDir: File) {
+    val osName = System.getProperty("os.name").orEmpty()
+    val isMac = osName.contains("mac", ignoreCase = true)
+    val isLinux = osName.contains("linux", ignoreCase = true)
+    if (!isMac && !isLinux) {
+        return // Automated PostgreSQL setup is only scripted for macOS and Linux.
+    }
+
+    // Already configured? The password secret being present means there is nothing to do.
+    val secretsFile = File(workDir, SecretsUtil.secretsPath)
+    if (!readProperty(secretsFile, SqlDbBuilder.defaultPasswordSecretKey).isNullOrBlank()) {
+        return
+    }
+
+    // Only handle a local database here; a configured remote host is the operator's responsibility.
+    val configuredHost = System.getenv(DbEnv.dbHost)?.substringBefore(':')?.trim()
+    if (!configuredHost.isNullOrEmpty() && configuredHost != "localhost" && configuredHost != "127.0.0.1") {
+        return
+    }
+
+    val port = SqlDbBuilder.defaultPostgresPort
+    val dbName = SqlDbBuilder.defaultDbName
+    val dbUser = SqlDbBuilder.defaultDbUser
+    val running = isListening("localhost", port)
+
+    if (running) {
+        println("PostgreSQL is running on localhost:$port, but this deployment has no database password")
+        println("configured (no '${SqlDbBuilder.defaultPasswordSecretKey}' in ${secretsFile.path}).")
+        print("Create the '$dbName' database and user now? [y/N] ")
+    } else {
+        println("PostgreSQL does not appear to be running on localhost:$port.")
+        print("Generate a script to install PostgreSQL and create the '$dbName' database? [y/N] ")
+    }
+    if (!readYes()) {
+        println("Skipping PostgreSQL setup.")
+        return
+    }
+
+    val password = readSecret("Enter a password for the '$dbUser' database user: ")
+    if (password.isBlank()) {
+        println("No password entered; skipping PostgreSQL setup.")
+        return
+    }
+
+    val script = postgresSetupScript(isMac = isMac, dbName = dbName, dbUser = dbUser, password = password, install = !running)
+    val scriptFile = File.createTempFile("kdr-postgres-setup", ".sh")
+    scriptFile.deleteOnExit() // Backstop in case this process is killed before the finally below runs.
+    try {
+        writeSecureExecutable(scriptFile, script)
+        println()
+        println("Wrote a setup script to: ${scriptFile.path}")
+        println("It contains the password you just entered, so it is deleted when kdr-install exits.")
+        println("Review and run it in another terminal:")
+        println("  less ${scriptFile.path}      # to inspect it first")
+        println("  sudo bash ${scriptFile.path} # to run it")
+        println()
+
+        var verified = false
+        while (true) {
+            print("Press Enter once it has completed (or type 'skip' to abort): ")
+            if (readLine()?.trim().equals("skip", ignoreCase = true)) {
+                break
+            }
+            if (canConnect("localhost", port, dbName, dbUser, password)) {
+                verified = true
+                break
+            }
+            println("Could not connect to '$dbName' yet — if the script is still running, wait a moment and retry.")
+        }
+        if (!verified) {
+            println("PostgreSQL was not verified; leaving the secret unset. Re-run kdr-install to try again.")
+            return
+        }
+
+        writeProperty(secretsFile, SqlDbBuilder.defaultPasswordSecretKey, password)
+        println("Connected successfully; wrote the database password to ${secretsFile.path}.")
+        printPostgresEnvGuidance()
+    } finally {
+        scriptFile.delete()
+    }
+}
+
+/**
+ * Builds the PostgreSQL setup script for the OS. When [install] is false the install/start section is omitted
+ * (PostgreSQL is already running) and only the database and user are created. Values are inlined directly; the
+ * password is placed in a single-quoted SQL literal (with `'` doubled) inside a quoted heredoc, so no shell
+ * expansion occurs. Left non-private so it can be unit-tested.
+ */
+fun postgresSetupScript(isMac: Boolean, dbName: String, dbUser: String, password: String, install: Boolean): String {
+    val sqlPassword = password.replace("'", "''")
+    val createSql = "CREATE USER $dbUser WITH ENCRYPTED PASSWORD '$sqlPassword';\n" +
+        "CREATE DATABASE $dbName OWNER $dbUser;\n"
+
+    val sb = StringBuilder()
+    sb.append("#!/usr/bin/env bash\n#\n")
+    sb.append("# Generated by kdr-install to set up a local PostgreSQL database for this deployment.\n")
+    sb.append("# It contains a database password, so kdr-install deletes it when it exits. Review, then run:\n")
+    sb.append("#   sudo bash <this file>\n\n")
+    if (isMac) {
+        if (install) {
+            sb.append("echo \"Installing PostgreSQL via Homebrew ($postgresBrewFormula)...\"\n")
+            sb.append("brew install $postgresBrewFormula\n\n")
+            sb.append("echo \"Starting the PostgreSQL service...\"\n")
+            sb.append("brew services start $postgresBrewFormula\n\n")
+            sb.append("bindir=\"\$(brew --prefix $postgresBrewFormula)/bin\"\n")
+            sb.append("echo \"Waiting for PostgreSQL to accept connections...\"\n")
+            sb.append("for _ in \$(seq 1 30); do \"\$bindir/pg_isready\" -q && break; sleep 1; done\n\n")
+            sb.append("echo \"Creating the database and user...\"\n")
+            sb.append("\"\$bindir/psql\" postgres <<'EOF'\n")
+        } else {
+            sb.append("echo \"Creating the database and user...\"\n")
+            sb.append("psql postgres <<'EOF'\n")
+        }
+    } else {
+        if (install) {
+            sb.append("echo \"Installing PostgreSQL...\"\n")
+            sb.append("sudo apt update\n")
+            sb.append("sudo apt install -y postgresql postgresql-contrib\n\n")
+            sb.append("echo \"Starting the PostgreSQL service...\"\n")
+            sb.append("sudo systemctl start postgresql\n")
+            sb.append("sudo systemctl enable postgresql\n\n")
+        }
+        sb.append("echo \"Creating the database and user...\"\n")
+        sb.append("sudo -u postgres psql <<'EOF'\n")
+    }
+    sb.append(createSql)
+    sb.append("EOF\n\n")
+    sb.append("echo \"Done.\"\n")
+    return sb.toString()
+}
+
+/** True if a TCP connection to [host]:[port] can be established quickly (a cheap "is PostgreSQL up?" probe). */
+private fun isListening(host: String, port: Int): Boolean =
+    try {
+        Socket().use { it.connect(InetSocketAddress(host, port), 800); true }
+    } catch (_: Exception) {
+        false
+    }
+
+/** True if a PostgreSQL connection succeeds with the given credentials (verifies the user ran the script). */
+private fun canConnect(host: String, port: Int, dbName: String, user: String, password: String): Boolean =
+    try {
+        // Force driver registration explicitly, since the fat jar's merged service files may not include it.
+        runCatching { Class.forName("org.postgresql.Driver") }
+        DriverManager.getConnection("jdbc:postgresql://$host:$port/$dbName", user, password).use { true }
+    } catch (_: Exception) {
+        false
+    }
+
+/** Prompts for a secret without echoing when a console is available; falls back to a normal (echoed) read. */
+private fun readSecret(prompt: String): String {
+    val console = System.console()
+    if (console != null) {
+        return console.readPassword(prompt)?.concatToString().orEmpty()
+    }
+    print(prompt)
+    return readLine().orEmpty()
+}
+
+/** Reads a single property value from a properties [file], or null if the file or key is absent. */
+private fun readProperty(file: File, key: String): String? {
+    if (!file.isFile) {
+        return null
+    }
+    val props = Properties()
+    file.inputStream().use { props.load(it) }
+    return props.getProperty(key)
+}
+
+/** Sets [key]=[value] in a properties [file] (creating it and its parent), preserving other entries; owner-only. */
+private fun writeProperty(file: File, key: String, value: String) {
+    file.parentFile?.mkdirs()
+    val props = Properties()
+    if (file.isFile) {
+        file.inputStream().use { props.load(it) }
+    }
+    props.setProperty(key, value)
+    file.outputStream().use { props.store(it, "kdr-install: database secrets") }
+    setOwnerOnly(file, executable = false)
+}
+
+/** Writes [content] to [file] as an owner-only executable script (perms restricted before the content lands). */
+private fun writeSecureExecutable(file: File, content: String) {
+    setOwnerOnly(file, executable = true)
+    file.writeText(content)
+}
+
+/** Restricts [file] to owner-only permissions (rwx for an executable, rw otherwise). Best-effort on non-POSIX. */
+private fun setOwnerOnly(file: File, executable: Boolean) {
+    try {
+        val perms = if (executable) "rwx------" else "rw-------"
+        Files.setPosixFilePermissions(file.toPath(), PosixFilePermissions.fromString(perms))
+    } catch (_: Exception) {
+        // Non-POSIX filesystem: fall back to the java.io.File permission bits.
+        file.setReadable(false, false); file.setReadable(true, true)
+        file.setWritable(false, false); file.setWritable(true, true)
+        if (executable) {
+            file.setExecutable(false, false); file.setExecutable(true, true)
+        }
+    }
+}
+
+/** Prints how to select the PostgreSQL database via environment variables (shell and IntelliJ). */
+private fun printPostgresEnvGuidance() {
+    println()
+    println("To run against this PostgreSQL database, select it with these environment variables:")
+    println("  export ${DbEnv.dbType}=${DbType.postgres.name}")
+    println("  export ${DbEnv.inMemoryOnly}=false   # in-memory mode otherwise forces in-memory H2")
+    println("You can also set them in an IntelliJ run configuration's \"Environment variables\" field.")
 }
