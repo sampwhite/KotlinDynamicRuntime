@@ -26,7 +26,7 @@ still use the real `private` or `internal` keyword in the occasional case where 
 matters, such as a cache that is mutated without first synchronizing.
 
 * This code base will use environment variables more than is typical to create variations in configuration on startup.
-This will be something expanded on more later.
+The full set of variables in use is documented in [`environment-variables.md`](environment-variables.md).
 
 * Generally, we will choose to write our own code instead of using a library to implement a feature. We will still
 use core libraries such as Jetty and libraries to interact with third parties such as AWS. If we do use libraries,

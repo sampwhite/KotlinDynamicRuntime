@@ -3,6 +3,7 @@ package com.dynamicruntime.common.startup
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
+import com.dynamicruntime.common.sql.KdrTable
 
 /**
  * Gathers schema during startup, before it is compiled. Each
@@ -23,10 +24,18 @@ class SchemaCollector {
     /** Every contributed endpoint, in contribution order. */
     val endpoints: MutableList<KdrEndpoint> = mutableListOf()
 
+    /** Every contributed table definition, in contribution order. */
+    val tables: MutableList<KdrTable> = mutableListOf()
+
     /** Folds a module's types and endpoints into the collector. */
     fun addModule(module: SchModule) {
         defs.putAll(module.defs)
         endpoints.addAll(module.endpoints)
+    }
+
+    /** Adds contributed table definitions (from a `tableModule`) into the collector. */
+    fun addTables(tables: List<KdrTable>) {
+        this.tables.addAll(tables)
     }
 
     @Suppress("ConstPropertyName")

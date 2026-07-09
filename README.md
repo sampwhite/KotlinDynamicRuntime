@@ -5,6 +5,18 @@ schema-driven application runtime. The proposal for this project can be found at
 [Kotlin, KMP, JSON Schema, SDUI, and Claude — the AI's rewrite](https://gyassa.com/personal/kdr-project-ai.html).
 The coding philosophy and conventions for the project are described in [`code-guide.md`](code-guide.md).
 
+## The workspace
+
+Two terms recur throughout this project and its documentation. The **workspace directory** is the directory
+that *contains* this repository — the (non-versioned) directory that holds the per-deployment
+`settings.gradle.kts`, the Gradle wrapper, the deployment configuration, and the runtime data (`h2Database/`,
+`private/`, `logs/`). The **workspace** is the whole ensemble: the code and data under that directory that
+together constitute a running deployment.
+
+Tooling finds the workspace directory by walking up from its own location to the nearest ancestor that holds
+a `settings.gradle.kts`; it can be set explicitly with the `KDR_WORKSPACE_DIR` environment variable (see
+[Configuration](#configuration)).
+
 ## Getting started
 
 Setup is bootstrapped by an idempotent installer, `bin/kdr-install`. It checks that a JDK is present,
@@ -77,6 +89,12 @@ reflection, explicit Map-based serialization, lowerCamelCase constants wrapped
 in upper-cased acronym objects (always referenced qualified), JSON-schema-driven
 configuration, a single universal exception (`KdrException`) and context
 (`KdrCxt`) type, and synchronous code on virtual threads rather than coroutines.
+
+## Configuration
+
+Application behavior is varied at startup largely through environment variables (a deliberate choice
+explained in [`code-guide.md`](code-guide.md)). The complete set — application, logging, database, and
+workspace variables — is documented in [`environment-variables.md`](environment-variables.md).
 
 ## License
 

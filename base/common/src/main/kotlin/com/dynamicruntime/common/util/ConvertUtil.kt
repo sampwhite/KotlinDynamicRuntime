@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.exception.KdrException
 import kotlin.math.round
 import kotlin.time.Instant
 
@@ -49,6 +50,55 @@ fun String.toOptBool(): Boolean? {
     return null
 }
 
+/**
+ * Loosely coerces this value to a [Long]: null (and a blank string) yield null; a [Number] is narrowed; a
+ * numeric string is parsed (tolerating a fractional part, which is truncated). A non-numeric string or an
+ * otherwise unconvertible value throws [KdrException.mkConv] -- unlike [toOptStr]/[toOptBool], a malformed
+ * number is surfaced rather than silently dropped, since it usually signals bad stored data or a bad bind.
+ */
+fun Any?.toOptLong(): Long? = when (this) {
+    null -> null
+    is Long -> this
+    is Number -> this.toLong()
+    is CharSequence -> {
+        val s = this.trim()
+        if (s.isEmpty()) null
+        else s.toString().toLongOrNull() ?: s.toString().toDoubleOrNull()?.toLong()
+            ?: throw KdrException.mkConv("Cannot convert '$s' to an integer.")
+    }
+    else -> throw KdrException.mkConv("Cannot convert value of type ${this::class.simpleName} to an integer.")
+}
+
+/** Loosely coerces this value to a [Double]; see [toOptLong] for the null/parse/throw semantics. */
+fun Any?.toOptDouble(): Double? = when (this) {
+    null -> null
+    is Double -> this
+    is Number -> this.toDouble()
+    is CharSequence -> {
+        val s = this.trim()
+        if (s.isEmpty()) null
+        else s.toString().toDoubleOrNull() ?: throw KdrException.mkConv("Cannot convert '$s' to a number.")
+    }
+    else -> throw KdrException.mkConv("Cannot convert value of type ${this::class.simpleName} to a number.")
+}
+
+/**
+ * Loosely coerces this value to an [Instant]: null (and a blank string) yield null; an [Instant] passes
+ * through; a JDBC [java.sql.Timestamp] / [java.util.Date] or an epoch-millis [Number] is converted at
+ * millisecond precision; a string is parsed via [parseDate]. Anything else throws [KdrException.mkConv].
+ */
+fun Any?.toOptInstant(): Instant? = when (this) {
+    null -> null
+    is Instant -> this
+    is java.util.Date -> Instant.fromEpochMilliseconds(this.time)
+    is Number -> Instant.fromEpochMilliseconds(this.toLong())
+    is CharSequence -> {
+        val s = this.trim()
+        if (s.isEmpty()) null else s.toString().parseDate()
+    }
+    else -> throw KdrException.mkConv("Cannot convert value of type ${this::class.simpleName} to a date.")
+}
+
 /** Alternative to normal toString() that creates output that is more friendly to humans.
  * This will be expanded later on for dates and objects with specialized interfaces. */
 fun Any?.fmt(): String {
@@ -72,8 +122,8 @@ val pow10 = longArrayOf(1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_00
 
 /**
  * Rounds [value] to at most [maxDigits] fractional digits (ties to even) and trims trailing zeros. The
- * result is always a valid JSON number: the integer part carries no leading zeros, any fractional part is
- * introduced by a leading digit and holds at least one digit, and there is never a trailing decimal point.
+ * result is always a valid JSON number: the integer part carries no leading zeros, a leading digit
+ * introduces any fractional part and holds at least one digit, and there is never a trailing decimal point.
  *
  * Non-finite values (NaN and the infinities) have no JSON number representation, so they render as `null` --
  * consistent with how the parser forgives such values when `strictValues` is off.

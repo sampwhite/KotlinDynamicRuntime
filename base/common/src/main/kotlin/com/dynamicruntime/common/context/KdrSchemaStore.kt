@@ -2,18 +2,24 @@ package com.dynamicruntime.common.context
 
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.sql.KdrTable
 
 /**
  * The read-only, compiled schema for an instance: resolved [types] (by fully
- * qualified name) and [endpoints] (keyed by [KdrEndpoint.collationKey], i.e.
- * "path:method"). It is built once at startup by the
- * schema service from the collected schema and published into the instance
- * config, from where [get] retrieves it. A context caches a reference to it (see
- * [KdrCxt.getSchema]) because it is fundamental to most processing.
+ * qualified name), [endpoints] (keyed by [KdrEndpoint.collationKey], i.e.
+ * "path:method"), and [tables] (keyed by [KdrTable.tableName]). It is built once
+ * at startup by the schema service from the collected schema and published into
+ * the instance config, from where [get] retrieves it. A context caches a reference
+ * to it (see [KdrCxt.getSchema]) because it is fundamental to most processing.
+ *
+ * Tables are held here — beside types and endpoints — because a table definition is
+ * "schema for data stored in a database"; the topic service reads its topic's tables
+ * from here rather than owning the definitions itself.
  */
 class KdrSchemaStore(
     val types: Map<String, SchType> = emptyMap(),
     val endpoints: Map<String, KdrEndpoint> = emptyMap(),
+    val tables: Map<String, KdrTable> = emptyMap(),
 ) {
     @Suppress("ConstPropertyName")
     companion object {

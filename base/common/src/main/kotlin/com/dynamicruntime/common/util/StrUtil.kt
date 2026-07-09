@@ -16,6 +16,28 @@ fun String.isVariableName(): Boolean {
     return all { it.isLetterOrDigit() || it == '_' }
 }
 
+/**
+ * Converts a camelCase identifier to lower_snake_case (e.g. `myField` -> `my_field`) by inserting an
+ * underscore before each interior uppercase letter and lowercasing throughout. Used to turn code-side field
+ * names into database column/table names when the target database does not preserve the case of the identifier.
+ */
+fun String.toLowerCaseIdentifier(): String {
+    val sb = StringBuilder(length + 4)
+    for ((i, ch) in this.withIndex()) {
+        if (ch.isUpperCase()) {
+            if (i > 0) sb.append('_')
+            sb.append(ch.lowercaseChar())
+        } else {
+            sb.append(ch)
+        }
+    }
+    return sb.toString()
+}
+
+/** Upper-cases the first character, leaving the rest unchanged (empty string passes through). */
+fun String.capitalizeFirst(): String =
+    if (isEmpty()) this else this[0].uppercaseChar() + substring(1)
+
 // Creating a format that defines options for both byte arrays and numeric values.
 val customHexFormat = HexFormat {
     upperCase = true

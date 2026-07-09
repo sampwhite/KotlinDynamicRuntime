@@ -12,6 +12,11 @@ package com.dynamicruntime.common.context
 class UserProfile(
     /** Authenticated identity, or null when no user is authenticated. */
     val authId: String? = null,
+    /**
+     * Numeric identity of the user, used by the database layer to stamp `createdBy`/`updatedBy` and to own
+     * user-scoped rows. Defaults to [AC.systemUserId] (the implicit system user) until real auth exists.
+     */
+    val userId: Long = AC.systemUserId.toLong(),
     /** The client account this user belongs to. */
     val account: String = AC.local,
     /**
