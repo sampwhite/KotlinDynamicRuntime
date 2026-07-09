@@ -11,11 +11,11 @@ Setup is bootstrapped by an idempotent installer, `bin/kdr-install`. It checks t
 creates the per-deployment configuration (`settings.gradle.kts` and `gradle.properties`) from the templates
 if they are missing, and offers to add the command-line scripts to your `PATH`.
 
-Run it from the directory that **contains** your `KotlinDynamicRuntime` checkout — the deployment root (the
-parent directory, where the per-deployment `settings.gradle.kts` lives):
+Run it from the **workspace directory** — the directory that **contains** your `KotlinDynamicRuntime`
+checkout, where the per-deployment `settings.gradle.kts` lives:
 
 ```sh
-cd /path/to/deployment-root        # the directory that holds KotlinDynamicRuntime/
+cd /path/to/workspace              # the workspace directory, which holds KotlinDynamicRuntime/
 ./KotlinDynamicRuntime/bin/kdr-install
 ```
 
@@ -34,7 +34,7 @@ sample           # demo app (Todo endpoints) the launcher loads in developer env
 webapp           # Kotlin/JS + React (antd) front end
 bin              # convenience command-line scripts (kdr-install, kdr-run, ...)
 build-logic      # included build providing the kdr.kotlin-conventions convention plugins
-examples         # templates a deployment copies into the parent directory
+examples         # templates a deployment copies into the workspace directory
 ```
 
 Module dependencies: `base/kdn` → `base/common`; `config` → `base/common` + `base/kdn`;
@@ -51,18 +51,24 @@ declares `plugins { id("kdr.kotlin-conventions") }` plus its own dependencies.
 ### The settings file is supplied per-deployment
 
 By design, `settings.gradle.kts` is **not** part of this repository. It is
-provided in the directory that *contains* this one, so that a single Gradle
-build can compose source from multiple repositories for a given deployment.
-A ready-to-adapt template is provided at
+provided in the **workspace directory** (the directory that *contains* this one),
+so that a single Gradle build can compose source from multiple repositories for a
+given deployment. A ready-to-adapt template is provided at
 [`examples/settings.gradle.kts.example`](examples/settings.gradle.kts.example);
-`bin/kdr-install` copies it into the parent directory as `settings.gradle.kts` for you (or copy it by hand
-and adjust as needed). The same parent directory is also where the (deployment-specific) Gradle invocation
+`bin/kdr-install` copies it into the workspace directory as `settings.gradle.kts` for you (or copy it by hand
+and adjust as needed). The workspace directory is also where the (deployment-specific) Gradle invocation
 runs.
 
 The repository ships the canonical Gradle wrapper (`gradlew` and the `gradle/` directory). Because Gradle
-runs from the parent directory, that parent needs its own copy: `bin/kdr-install` copies the wrapper up when
-it is missing, and — if the repository's Gradle version later changes — offers to update the parent's copy to
-match.
+runs from the workspace directory, that directory needs its own copy: `bin/kdr-install` copies the wrapper up
+when it is missing, and — if the repository's Gradle version later changes — offers to update the workspace
+copy to match.
+
+### Running and debugging in IntelliJ
+
+For the IntelliJ run configurations that launch the server and the `webapp`
+front end — and the setup for debugging both the JVM server and the browser
+front end at once — see [`examples/intellij-dev-setup.md`](examples/intellij-dev-setup.md).
 
 ## Conventions
 
