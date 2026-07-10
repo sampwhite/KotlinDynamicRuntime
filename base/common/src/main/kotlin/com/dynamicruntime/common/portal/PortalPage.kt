@@ -1,14 +1,14 @@
 package com.dynamicruntime.common.portal
 
 /**
- * The portal's single HTML page, rendered as a Kotlin string rather than a bundled resource file (the house
+ * The portal's a single HTML page, rendered as a Kotlin string rather than a bundled resource file (the house
  * style: what would elsewhere be a static asset is a Kotlin declaration). Self-contained -- inline CSS and
  * vanilla JS, no build step, no external assets. [render] injects the frontend bootstrap config
  * (`window.kdrCfg`, the context roots by focus) so the page's JS builds backend URLs from the live roots:
  * it lists endpoints via the API root's `/schema/endpoints` and renders a form per endpoint.
  *
- * Written as a multi-dollar (`$$`) string so a bare `$` is literal; the injected values are the bootstrap
- * config ([cfgJson]) and the context-root-relative feed paths.
+ * Written as a multi-dollar (`$$`) string so a bare `$` is literal; the interpolated values are the bootstrap
+ * config (the `cfgJson` parameter) and the context-root-relative `/schema/endpoints` path.
  */
 object PortalPage {
     fun render(cfgJson: String): String = $$"""
@@ -19,7 +19,7 @@ object PortalPage {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KDR Endpoint Portal</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root { color-scheme: light; } /* the portal is an all-light design; opt out of dark-mode UA control colors */
   * { box-sizing: border-box; }
   body {
     margin: 0; font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -72,7 +72,7 @@ object PortalPage {
   .row { display: flex; flex-direction: column; gap: 4px; }
   .row label { font-size: 13px; font-weight: 600; }
   .row input[type=text], .row input[type=number], .row select, .row textarea {
-    padding: 7px 9px; border: 1px solid #cfd6dd; border-radius: 6px; font: inherit; background: #fff;
+    padding: 7px 9px; border: 1px solid #cfd6dd; border-radius: 6px; font: inherit; background: #fff; color: #1c2126;
   }
   .row textarea { font: 13px ui-monospace, monospace; resize: vertical; }
   .row input[type=checkbox] { width: 18px; height: 18px; }
@@ -108,13 +108,11 @@ object PortalPage {
 <script>
 "use strict";
 // Backend URLs are built from the injected bootstrap config (window.kdrCfg): the context roots keyed by
-// focus. The endpoint catalog and every endpoint call go under the API root; the portal's own fields feed
-// goes under the content root. The catalog is merged with the fields feed by collationKey (path:method).
+// focus. The endpoint catalog and every endpoint call go under the API root. The catalog returns each
+// endpoint's input schema plus a shared `$defs`; the page resolves the `$ref`s against `$defs` itself.
 var CFG = (window.kdrCfg && window.kdrCfg.contextRoots) || {};
 var API_ROOT = '/' + (CFG.api || '');
-var CONTENT_ROOT = '/' + (CFG.content || '');
 var ENDPOINTS_API = API_ROOT + '$${PTL.endpointsApi}';
-var FIELDS_FEED = CONTENT_ROOT + '$${PTL.fieldsFeed}';
 var app = document.getElementById('app');
 document.getElementById('reload').addEventListener('click', load);
 // The webapp lives under its own context root (focus "app"); build the menu link from the injected config
@@ -132,22 +130,22 @@ async function load() {
   app.innerHTML = '';
   app.appendChild(el('p', 'muted', 'Loading endpoints…'));
   try {
-    var responses = await Promise.all([
-      fetch(ENDPOINTS_API, { headers: { 'Accept': 'application/json' } }),
-      fetch(FIELDS_FEED, { headers: { 'Accept': 'application/json' } })
-    ]);
-    var listBody = await responses[0].json();
-    var fieldsByKey = await responses[1].json();
-    // The platform endpoint is a list endpoint, so its payload is under `items`.
-    var items = (listBody && listBody.items) || [];
-    var endpoints = items.map(function (it) {
+    var res = await fetch(ENDPOINTS_API, { headers: { 'Accept': 'application/json' } });
+    var body = await res.json();
+    // /schema/endpoints is a general endpoint: its result holds the endpoint renderings and a shared `$defs`
+    // that the renderings' `$ref`s bind to.
+    var results = (body && body.results) || {};
+    var defs = results['$defs'] || {};
+    var eps = results.endpoints || [];
+    var endpoints = eps.map(function (it) {
       return {
         path: it.path,
         method: it.method,
         kind: it.kind,
         namespace: it.namespace,
         description: it.description,
-        fields: fieldsByKey[it.path + ':' + it.method] || []
+        // Resolve the input schema's `$ref`s against `$defs`, flattening to form-field descriptors.
+        fields: describeFields(it.inputSchema, defs, 0)
       };
     });
     render(endpoints);
@@ -155,6 +153,48 @@ async function load() {
     app.innerHTML = '';
     app.appendChild(el('p', 'error', 'Failed to load endpoints: ' + String(e)));
   }
+}
+
+// Follows a chain of `$ref`s (resolving against `defs`) to a concrete schema node; returns {} when a ref
+// cannot be resolved. Bounded hops guard against a ref cycle.
+function resolveRef(node, defs) {
+  var hops = 0;
+  while (node && node['$ref'] && hops++ < 50) {
+    var ref = node['$ref'];
+    var prefix = '#/$defs/';
+    var name = ref.indexOf(prefix) === 0 ? ref.substring(prefix.length) : ref;
+    node = defs[name] || {};
+  }
+  return node || {};
+}
+
+// Flattens an object schema's properties into form-field descriptors (name/type/required/description/default/
+// format/options; nested `fields` for objects, `itemType` for arrays), resolving `$ref`s against `defs`.
+// Bounded depth guards a self-referential schema.
+function describeFields(schema, defs, depth) {
+  schema = resolveRef(schema, defs);
+  var props = schema.properties;
+  if (depth > 20 || !props) return [];
+  var required = schema.required || [];
+  var out = [];
+  for (var name in props) {
+    if (!Object.prototype.hasOwnProperty.call(props, name)) continue;
+    var raw = props[name];
+    var vt = resolveRef(raw, defs);
+    var field = {
+      name: name,
+      required: required.indexOf(name) >= 0,
+      description: (raw && raw.description) || vt.description,
+      type: vt.type || 'string'
+    };
+    if (vt['default'] !== undefined) field['default'] = vt['default'];
+    if (vt.format) field.format = vt.format;
+    if (vt.options) field.options = vt.options;
+    if (vt.type === 'object' && vt.properties) field.fields = describeFields(vt, defs, depth + 1);
+    if (vt.type === 'array') field.itemType = (vt.items && resolveRef(vt.items, defs).type) || 'object';
+    out.push(field);
+  }
+  return out;
 }
 
 function render(endpoints) {

@@ -14,7 +14,7 @@ import io.kotest.matchers.string.shouldContain
 class PortalHttpTest : StringSpec({
 
     // One shared instance (the expensive part -- component/schema/service init -- is cached by instance name,
-    // so it happens once); each test varies only the cheap context name.
+    // so it happens once); each test varies only the inexpensive context name.
     fun client(cxtName: String): TestHttpClient =
         TestHttpClient(Startup.mkTestBootCxt(cxtName, "portalHttpTest").instanceConfig)
 
@@ -30,19 +30,16 @@ class PortalHttpTest : StringSpec({
         body shouldContain "\"content\":\"cp\""
     }
 
-    "GET /cp/portal/fields serves the resolved-fields catalog as JSON, keyed by collationKey" {
-        val resp = client("portalFields").sendGetRequestRaw("/cp/portal/fields")
-        resp.rptStatusCode shouldBe 200
-        resp.rptResponseMimeType shouldBe "application/json"
-        val body = resp.rptResponseData!!
-        body shouldContain "/demo/greeting:POST" // a demo endpoint's fields are catalogued
-        body shouldContain "/health:GET"
-    }
-
     "GET /cp redirects to the portal page" {
         val resp = client("portalRoot").sendGetRequestRaw("/cp")
         resp.rptStatusCode shouldBe 303
         resp.rptResponseHeaders["location"] shouldBe mutableListOf("/cp/portal")
+    }
+
+    "GET / (the bare root) redirects to the content root, which then lands on the portal" {
+        val resp = client("bareRoot").sendGetRequestRaw("/")
+        resp.rptStatusCode shouldBe 303
+        resp.rptResponseHeaders["location"] shouldBe mutableListOf("/cp")
     }
 
     "GET /cp/does-not-exist yields a friendly HTML 404 (content root, no match)" {
