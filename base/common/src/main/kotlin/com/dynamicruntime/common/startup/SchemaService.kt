@@ -4,10 +4,10 @@ import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.endpoint.EI
-import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
+import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.LogSchema
@@ -58,6 +58,17 @@ class SchemaService : ServiceInitializer {
         val endpoints = collected.endpoints.associateBy { it.collationKey }
         val tables = collected.tables.associateBy { it.tableName }
         val store = KdrSchemaStore(types, endpoints, tables)
+
+        // Fail fast: input resolution is deferred to request time (it needs the compiled types), so resolve
+        // every endpoint's input once here. A missing referenced input type surfaces at boot instead of on
+        // the first request. (Explicit-field parse errors already thrown from parseSchemaTypes.)
+        for (endpoint in endpoints.values) {
+            resolveEndpointInputType(endpoint, types)
+                ?: throw KdrException(
+                    "Endpoint '${endpoint.collationKey}' references an unknown input type '${endpoint.inputTypeRef}'.",
+                )
+        }
+
         schemaStore = store
         cxt.instanceConfig.put(KdrSchemaStore.key, store)
         isInit = true
@@ -139,7 +150,8 @@ class SchemaService : ServiceInitializer {
         /** Handler for `/schema/endpoints`: filter the registered endpoints and dump their attributes. */
         @KdrPrivate
         fun listEndpoints(cxt: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
-            val query = (request[EP.request] as? Map<*, *>)?.toJsonMap() ?: emptyMap()
+            // Input is flat (issue #40): the filter fields are top-level, alongside the framework `limit`.
+            val query = request
             val namespace = query[EI.namespace] as? String
             val method = (query[EI.method] as? String)?.uppercase()
             val pathRegex = (query[SS.pathRegex] as? String)?.let { Regex(it) }
@@ -158,7 +170,8 @@ class SchemaService : ServiceInitializer {
         /** Handler for `/schema/sample`: generate an interesting, schema-conforming set of items. */
         @KdrPrivate
         fun sampleItems(cxt: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
-            val query = (request[EP.request] as? Map<*, *>)?.toJsonMap() ?: emptyMap()
+            // Input is flat (issue #40): the query fields are top-level, alongside the framework `limit`.
+            val query = request
             // Off-contract `$` annotations (e.g., $note) must have been dropped during coercion before we see them.
             if (query.keys.any { it.startsWith("$") }) {
                 throw KdrException("An off-contract '$' annotation key leaked into the endpoint input.")

@@ -21,7 +21,7 @@ class PortalServiceTest : StringSpec({
     val cxt = KdrCxt.mkSimpleCxt("test")
 
     // A module whose input type has a required string, an options field, and a plain integer, exercised
-    // through a general endpoint (top-level $ref input) and a list endpoint (request nested under `request`).
+    // through a general endpoint and a list endpoint (both flatten the referenced type's fields to the top).
     val module = schemaModule(cxt, "api") {
         type("Query") {
             type = SCT.kObject
@@ -63,14 +63,14 @@ class PortalServiceTest : StringSpec({
         fields["age"]!![PTL.type] shouldBe SCT.integer
     }
 
-    "a list endpoint exposes the nested request object plus the limit sibling" {
+    "a list endpoint flattens its request fields and exposes the limit sibling" {
         val fields = fieldsByName(PortalService.buildFieldsCatalog(cxt), "/tickets:GET")
-        fields.keys.toList() shouldContainExactly listOf("request", "limit")
+        // The referenced type's fields are flattened to the top level (no `request` wrapper), with limit appended.
+        fields.keys.toList() shouldContainExactly listOf("namePrefix", "status", "age", "limit")
 
-        // `request` is an object carrying the caller's query fields as nested descriptors.
-        fields["request"]!![PTL.type] shouldBe SCT.kObject
-        val nested = (fields["request"]!![PTL.fields] as List<*>).map { it!!.toJsonMap()[PTL.name] }
-        nested shouldContainExactly listOf("namePrefix", "status", "age")
+        fields["namePrefix"]!![PTL.required] shouldBe true
+        fields["status"]!![PTL.type] shouldBe SCT.string
+        fields["age"]!![PTL.type] shouldBe SCT.integer
 
         // `limit` is an integer with the framework default injected.
         fields["limit"]!![PTL.type] shouldBe SCT.integer

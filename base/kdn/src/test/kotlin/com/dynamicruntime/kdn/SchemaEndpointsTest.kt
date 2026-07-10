@@ -8,6 +8,7 @@ import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 
 /**
@@ -21,7 +22,7 @@ class SchemaEndpointsTest : StringSpec({
         (resp[EP.items] as List<*>).map { it!!.toJsonMap() }
 
     // These tests all boot the same (default) instance and only read, so they share one instance -- its
-    // component/schema init is cached by instance name and runs once -- and vary only the cheap context name.
+    // component/schema init is cached by instance name and runs once -- and vary only the inexpensive context name.
     fun client(cxtName: String): TestHttpClient =
         TestHttpClient(Startup.mkTestBootCxt(cxtName, "schemaEndpointsTest").instanceConfig)
 
@@ -33,9 +34,14 @@ class SchemaEndpointsTest : StringSpec({
 
         val health = all.first { it[EI.path] == "/health" }
         health.keys shouldContainAll
-            listOf(EI.path, EI.method, EI.kind, EI.namespace, EI.description, EI.inputSchema, EI.outputSchema)
+            listOf(EI.path, EI.method, EI.kind, EI.namespace, EI.description, EI.outputSchema)
         health[EI.namespace] shouldBe "node"
         health[EI.method] shouldBe "GET"
+        // /health takes no input, so neither input key is emitted.
+        health.keys shouldNotContain EI.inputTypeRef
+        health.keys shouldNotContain EI.inputFields
+        // An endpoint that references a named input type reports it as a fully qualified inputTypeRef.
+        all.first { it[EI.path] == "/schema/sample" }[EI.inputTypeRef] shouldBe "schema.SampleQuery"
     }
 
     "/schema/endpoints filters by namespace, method, and path regex" {
