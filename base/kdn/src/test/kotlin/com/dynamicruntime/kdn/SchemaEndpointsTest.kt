@@ -3,9 +3,11 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldNotContain
@@ -14,10 +16,16 @@ import io.kotest.matchers.shouldBe
 /**
  * Exercises the two SchemaService endpoints through the in-process client. Because these run under
  * [Startup.mkTestBootCxt] (which sets `validateResponseSchema`), every response is also validated against
- * the endpoint's output schema, so a non-conforming dump or sample item would fail the call.
+ * the endpoint's output schema, so a non-conforming catalog or sample item would fail the call.
  */
 class SchemaEndpointsTest : StringSpec({
 
+    // /schema/endpoints is a general endpoint: its result carries the endpoint renderings and a shared $defs.
+    fun results(resp: Map<String, Any?>): Map<String, Any?> = resp[EP.results]!!.toJsonMap()
+    fun catalogEndpoints(resp: Map<String, Any?>): List<Map<String, Any?>> =
+        (results(resp)[SS.endpoints] as List<*>).map { it!!.toJsonMap() }
+
+    // /schema/sample is a list endpoint: its payload is under `items`.
     fun items(resp: Map<String, Any?>): List<Map<String, Any?>> =
         (resp[EP.items] as List<*>).map { it!!.toJsonMap() }
 
@@ -26,35 +34,69 @@ class SchemaEndpointsTest : StringSpec({
     fun client(cxtName: String): TestHttpClient =
         TestHttpClient(Startup.mkTestBootCxt(cxtName, "schemaEndpointsTest").instanceConfig)
 
-    "/schema/endpoints lists every endpoint and dumps its attributes" {
+    $$"/schema/endpoints renders every endpoint and a shared $defs" {
         val client = client("schemaList")
 
-        val all = items(client.sendJsonGetRequest("/schema/endpoints"))
-        all.map { it[EI.path] } shouldContainAll listOf("/health", "/schema/endpoints", "/schema/sample")
+        val resp = client.sendJsonGetRequest("/schema/endpoints")
+        val eps = catalogEndpoints(resp)
+        eps.map { it[EI.path] } shouldContainAll listOf("/health", "/schema/endpoints", "/schema/sample")
 
-        val health = all.first { it[EI.path] == "/health" }
+        val health = eps.first { it[EI.path] == "/health" }
         health.keys shouldContainAll
-            listOf(EI.path, EI.method, EI.kind, EI.namespace, EI.description, EI.outputSchema)
+            listOf(EI.path, EI.method, EI.kind, EI.namespace, EI.description, EI.inputSchema, EI.outputSchema)
         health[EI.namespace] shouldBe "node"
         health[EI.method] shouldBe "GET"
-        // /health takes no input, so neither input key is emitted.
-        health.keys shouldNotContain EI.inputTypeRef
-        health.keys shouldNotContain EI.inputFields
-        // An endpoint that references a named input type reports it as a fully qualified inputTypeRef.
-        all.first { it[EI.path] == "/schema/sample" }[EI.inputTypeRef] shouldBe "schema.SampleQuery"
+        // /health takes no parameters: its rendered input schema is a closed, empty object.
+        health[EI.inputSchema]!!.toJsonMap()[SCH.additionalProperties] shouldBe false
+
+        // The shared $defs closes over the types the renderings reference (by $ref), returned once each:
+        // /health's output refs node.Health; /schema/sample's input flattens SampleQuery, whose `filter` refs
+        // SampleFilter, and its output refs SampleItem, which refs SampleDetails.
+        val defs = results(resp)[SCH.dDefs]!!.toJsonMap()
+        defs.keys shouldContainAll listOf("node.Health", "schema.SampleFilter", "schema.SampleItem", "schema.SampleDetails")
+        // SampleQuery itself is dissolved into flat input fields, so it is NOT a returned def.
+        defs.keys shouldNotContain "schema.SampleQuery"
     }
 
     "/schema/endpoints filters by namespace, method, and path regex" {
         val client = client("schemaFilters")
 
-        items(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.namespace to "node")))
-            .map { it[EI.path] } shouldBe listOf("/health")
+        fun paths(params: Map<String, Any?>): List<Any?> =
+            catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", params)).map { it[EI.path] }
+
+        paths(mapOf(EI.namespace to "node")) shouldBe listOf("/health")
         // The method filter returns only POST endpoints (which include /schema/sample and the demo POSTs).
-        val posts = items(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.method to "POST")))
+        val posts = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.method to "POST")))
         posts.map { it[EI.path] } shouldContain "/schema/sample"
         posts.map { it[EI.method] }.toSet() shouldBe setOf("POST")
-        items(client.sendJsonGetRequest("/schema/endpoints", mapOf(SS.pathRegex to "^/schema/")))
-            .map { it[EI.path] } shouldBe listOf("/schema/endpoints", "/schema/sample")
+        paths(mapOf(SS.pathRegex to "^/schema/")) shouldBe
+            listOf("/schema/complex", "/schema/endpoint", "/schema/endpoints", "/schema/sample")
+    }
+
+    "/schema/endpoints caps the number of endpoints by limit" {
+        val client = client("schemaLimit")
+        catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.limit to 2))).size shouldBe 2
+    }
+
+    "/schema/endpoint looks up a single endpoint by exact method and path, in the catalog shape" {
+        val client = client("schemaOne")
+        val resp = client.sendJsonGetRequest("/schema/endpoint", mapOf(EI.method to "GET", EI.path to "/health"))
+        // Same shape as /schema/endpoints: an `endpoints` list (here of one) plus a shared `$defs`.
+        val eps = catalogEndpoints(resp)
+        eps.map { it[EI.path] } shouldBe listOf("/health")
+        eps.single()[EI.method] shouldBe "GET"
+        (results(resp)[SCH.dDefs]!!.toJsonMap()).keys shouldContain "node.Health"
+    }
+
+    "/schema/endpoint returns an empty list (not a 404) when nothing matches" {
+        val client = client("schemaOneMiss")
+        val resp = client.sendJsonGetRequest("/schema/endpoint", mapOf(EI.method to "GET", EI.path to "/nope"))
+        catalogEndpoints(resp).shouldBeEmpty()
+    }
+
+    "/schema/endpoint requires both method and path" {
+        val client = client("schemaOneBad")
+        client.sendGetRequest("/schema/endpoint", mapOf(EI.method to "GET")).rptStatusCode shouldBe 400
     }
 
     "/schema/sample returns a nested, schema-conforming list, with limit truncation" {

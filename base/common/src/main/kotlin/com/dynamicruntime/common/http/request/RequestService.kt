@@ -114,6 +114,14 @@ class RequestService : ServiceInitializer {
         // to a separate log sink rather than the normal request log.)
         val focus = contextRootFocus[handler.contextRoot]
         if (focus == null) {
+            // A GET for the bare root ("/" or empty context root) is a browser landing on the site: send it to
+            // the content root, whose content server (the portal) serves the landing page. Redirecting to the
+            // content root -- rather than straight to the portal page -- keeps the dispatcher unaware of the
+            // portal specifically. Any other unrecognized root stays a terse 404 (no decoding).
+            if (handler.contextRoot.isEmpty() && handler.method.equals("GET", ignoreCase = true)) {
+                handler.sendRedirect("/$contentContextRoot")
+                return
+            }
             LogRequest.debug(cxt, "Rejecting request outside known context roots: ${handler.logRequestUri}")
             handler.sendShortNotFound()
             return
