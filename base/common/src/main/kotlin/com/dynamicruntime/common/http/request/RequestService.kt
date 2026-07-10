@@ -182,13 +182,11 @@ class RequestService : ServiceInitializer {
                 ?: throw KdrException("Could not compile input schema for '${endpoint.path}'.")
         }
 
-        var data = LinkedHashMap<String, Any?>(handler.queryParams)
+        val data = LinkedHashMap<String, Any?>(handler.queryParams)
         handler.postData?.let { data.putAll(it) }
-        // Endpoints whose input wraps the caller's data under `request` (list endpoints) receive flat HTTP
-        // input; regroup it so the declared top-level protocol fields stay put and the rest go under `request`.
-        if (EP.request in inputType.properties) {
-            data = regroupUnderRequest(data, inputType)
-        }
+        // Endpoint input is a flat set of top-level fields (issue #40), so the flat HTTP input -- query params
+        // and/or POST body -- validates directly, with no re-grouping. The input type is closed to undeclared
+        // properties, though off-contract `_`/`$` keys remain exempt (see the validator).
         val result = coerceAndValidate(inputType, data)
         if (result.failures.isNotEmpty()) {
             throw KdrException.mkInput("Validation failure in request data: ${result.failures}.")
@@ -208,30 +206,6 @@ class RequestService : ServiceInitializer {
             validateResponse(cxt, schema, endpoint, envelope)
             handler.sendJsonResponse(envelope, EXC.ok)
         }
-    }
-
-    /**
-     * Regroups flat HTTP input for an endpoint whose input declares a `request` wrapper. Keys matching a
-     * declared top-level property other than `request` (e.g. `limit`, a future `offset`) stay at the top
-     * level; every other key is the caller's data and is pushed under `request`. An explicitly sent
-     * `request` object is folded in. Reading the field names off the schema (rather than hardwiring `limit`)
-     * lets the input protocol grow without changing this code.
-     */
-    @KdrPrivate
-    fun regroupUnderRequest(data: Map<String, Any?>, inputType: SchType): LinkedHashMap<String, Any?> {
-        val topLevel = inputType.properties.keys
-        val request = LinkedHashMap<String, Any?>()
-        (data[EP.request] as? Map<*, *>)?.let { request.putAll(it.toJsonMap()) }
-        val regrouped = LinkedHashMap<String, Any?>()
-        for ((k, v) in data) {
-            when (k) {
-                EP.request -> {} // already folded into request
-                in topLevel -> regrouped[k] = v
-                else -> request[k] = v
-            }
-        }
-        regrouped[EP.request] = request
-        return regrouped
     }
 
     /** Validates the outgoing [envelope] against the endpoint's output schema, when the config flag is set. */

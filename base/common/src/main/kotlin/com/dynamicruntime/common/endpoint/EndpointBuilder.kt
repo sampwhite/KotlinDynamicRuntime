@@ -2,14 +2,16 @@ package com.dynamicruntime.common.endpoint
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.schema.parseSchemaTypes
-import com.dynamicruntime.common.schema.refTargetName
+import com.dynamicruntime.common.schema.qualifyTypeName
 
 /** Attribute keys for an endpoint's `EndpointInfo` dump (see [KdrEndpoint.toJsonMap]). */
 @Suppress("ConstPropertyName")
@@ -19,8 +21,14 @@ object EI {
     const val kind = "kind"
     const val namespace = "namespace"
     const val description = "description"
-    const val inputSchema = "inputSchema"
+    const val inputTypeRef = "inputTypeRef"
+    const val inputFields = "inputFields"
     const val outputSchema = "outputSchema"
+
+    // Keys within an `inputFields` descriptor (see [EndpointField.toJsonMap]).
+    const val name = "name"
+    const val required = "required"
+    const val schema = "schema"
 }
 
 /** The HTTP methods an endpoint may use. A closed, stable set, so an enum fits. */
@@ -56,7 +64,6 @@ object EP {
     const val item = "item" // single-resource endpoints
 
     // Input, list endpoints.
-    const val request = "request" // the caller's request, nested so limit/offset stay siblings
     const val limit = "limit"
 
     // Off-contract keys (underscore-prefixed): allowed regardless of additionalProperties, kept in data.
@@ -78,12 +85,29 @@ const val defaultListLimit = 100
 typealias KdrEndpointHandler = (cxt: KdrCxt, request: Map<String, Any?>) -> Any?
 
 /**
+ * One declared input field of an endpoint -- the explicit-fields alternative to referencing a named input
+ * type. Carries a [name], whether it is [required], and its JSON-schema node [schema] (type / description /
+ * format / options / `$ref` / ... exactly as the `property` DSL builds it). Collected by [InputFieldsBuilder]
+ * and flattened into the endpoint's input type by [resolveEndpointInputType].
+ */
+class EndpointField(val name: String, val required: Boolean, val schema: Map<String, Any?>) : JsonMappable {
+    override fun toJsonMap(): Map<String, Any?> =
+        linkedMapOf(EI.name to name, EI.required to required, EI.schema to schema)
+}
+
+/**
  * A fully realized endpoint: its [path] and [method], the [namespace] it was declared in, a required
- * [description] (endpoints are our documented API, so a description is mandatory), the input and output
- * schema envelopes (JSON schema maps built immediately, with `$ref`s into the module's `$defs`), and the
- * [handler] to run. There is no deferred construction pass — the envelope is complete the moment the
- * builder returns. The [namespace] comes from the enclosing `schemaModule` when built via the DSL, or is
- * supplied explicitly when a `KdrEndpoint` is constructed directly.
+ * [description] (endpoints are our documented API, so a description is mandatory), its input declaration,
+ * the output schema envelope (a JSON schema map built immediately, with `$ref`s into the module's `$defs`),
+ * and the [handler] to run. The [namespace] comes from the enclosing `schemaModule` when built via the DSL,
+ * or is supplied explicitly when a `KdrEndpoint` is constructed directly.
+ *
+ * Input is declared one of two mutually exclusive ways: [inputTypeRef], the fully qualified name of a named
+ * input type whose top-level properties become the input fields; or [inputFields], an explicit list of
+ * fields. Either may be null (both nulls mean the endpoint takes no parameters). Unlike the output envelope,
+ * the input type is NOT realized here -- a type ref cannot be flattened until its target is bound -- so it is
+ * resolved on demand by [resolveEndpointInputType] against the compiled types (always closed to undeclared
+ * properties). For a `list` endpoint with [includeLimit], resolution appends the `limit` field.
  */
 class KdrEndpoint(
     val path: String,
@@ -91,10 +115,23 @@ class KdrEndpoint(
     val kind: EndpointKind,
     val namespace: String,
     val description: String,
-    val inputSchema: Map<String, Any?>,
+    /** Explicit input fields, or null when the input is a [inputTypeRef] or absent. Mutually exclusive with it. */
+    val inputFields: List<EndpointField>?,
+    /** Fully qualified name of the input type, or null when the input is [inputFields] or absent. */
+    val inputTypeRef: String?,
+    /** Whether input resolution appends the `limit` field (list endpoints that did not opt out). */
+    val includeLimit: Boolean,
     val outputSchema: Map<String, Any?>,
     val handler: KdrEndpointHandler,
 ) : JsonMappable {
+    init {
+        if (inputFields != null && inputTypeRef != null) {
+            throw KdrException(
+                "Endpoint '$path' declares both explicit inputFields and an inputTypeRef; only one is allowed.",
+            )
+        }
+    }
+
     /**
      * Derived key uniquely identifying this endpoint as `path:method` (e.g. `/health:GET`). Used both as
      * the registry key (so the same path may be registered under two HTTP methods) and to collate/sort
@@ -105,17 +142,25 @@ class KdrEndpoint(
     /**
      * Renders this endpoint's attributes as a JSON map (the form returned by `/schema/endpoints`).
      * Serialization lives with the class -- and beside its schema ([defineInfoType]) -- so the two stay
-     * aligned in one file. [collationKey] and [handler] are intentionally omitted.
+     * aligned in one file. Input is reported as declared ([inputTypeRef] / [inputFields]); the resolved,
+     * flattened input type is served separately (the portal's fields feed). [collationKey], [includeLimit]
+     * and [handler] are intentionally omitted.
      */
-    override fun toJsonMap(): Map<String, Any?> = linkedMapOf(
-        EI.path to path,
-        EI.method to method.name,
-        EI.kind to kind.name,
-        EI.namespace to namespace,
-        EI.description to description,
-        EI.inputSchema to inputSchema,
-        EI.outputSchema to outputSchema,
-    )
+    override fun toJsonMap(): Map<String, Any?> {
+        val m = linkedMapOf<String, Any?>(
+            EI.path to path,
+            EI.method to method.name,
+            EI.kind to kind.name,
+            EI.namespace to namespace,
+            EI.description to description,
+        )
+        // Only the declared input form is emitted (null keys are omitted so the dump validates against the
+        // optional EndpointInfo input fields).
+        inputTypeRef?.let { m[EI.inputTypeRef] = it }
+        inputFields?.let { m[EI.inputFields] = it.map(EndpointField::toJsonMap) }
+        m[EI.outputSchema] = outputSchema
+        return m
+    }
 
     @Suppress("ConstPropertyName")
     companion object {
@@ -124,7 +169,8 @@ class KdrEndpoint(
 
         /**
          * Defines the `EndpointInfo` schema type (the shape of [toJsonMap]) on [builder], naming it
-         * [infoTypeName]. Kept with the class so the type and the serialization cannot drift apart.
+         * [infoTypeName]. Kept with the class so the type and the serialization cannot drift apart. The two
+         * input keys are optional: an endpoint declares at most one, and neither for a no-parameter endpoint.
          */
         fun defineInfoType(builder: SchModuleBuilder) {
             builder.type(infoTypeName) {
@@ -134,7 +180,11 @@ class KdrEndpoint(
                 property(EI.kind, "The endpoint kind (general/item/list).", required = true)
                 property(EI.namespace, "The namespace the endpoint was declared in.", required = true)
                 property(EI.description, "Human description of the endpoint.", required = true)
-                property(EI.inputSchema, "The endpoint's input JSON schema.", required = true) { type = SCT.kObject }
+                property(EI.inputTypeRef, "The fully qualified name of the endpoint's input type, if it references one.")
+                property(EI.inputFields, "The endpoint's explicit input fields, if it declares them inline.") {
+                    type = SCT.array
+                    items { type = SCT.kObject }
+                }
                 property(EI.outputSchema, "The endpoint's output JSON schema.", required = true) { type = SCT.kObject }
             }
         }
@@ -145,6 +195,25 @@ class KdrEndpoint(
 class SchModule(val defs: Map<String, Any?>, val endpoints: List<KdrEndpoint>)
 
 /**
+ * Collects an endpoint's explicit input fields. [field] mirrors [SchTypeBuilder.property] (a description is
+ * mandatory; the type defaults to string unless [build] sets a `type` or a `$ref`), so declaring fields
+ * inline reads the same as declaring a named type's properties.
+ */
+class InputFieldsBuilder(private val cxt: KdrCxt, private val namespace: String) {
+    val fields: MutableList<EndpointField> = mutableListOf()
+
+    fun field(name: String, description: String, required: Boolean = false, build: SchTypeBuilder.() -> Unit = {}) {
+        val sub = SchTypeBuilder(cxt, namespace)
+        sub.description = description
+        sub.apply(build)
+        if (SCH.type !in sub.data && SCH.dRef !in sub.data) {
+            sub.type = SCT.string
+        }
+        fields.add(EndpointField(name, required, sub.data))
+    }
+}
+
+/**
  * A [SchTypesBuilder] that also declares endpoints, so a namespace's types and endpoints are built in one
  * block. Each endpoint's input/output envelope is realized immediately from the protocol fields plus
  * `$ref`s to the named input/output types.
@@ -152,24 +221,31 @@ class SchModule(val defs: Map<String, Any?>, val endpoints: List<KdrEndpoint>)
 class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, namespace) {
     val endpoints: MutableList<KdrEndpoint> = mutableListOf()
 
-    /** A general endpoint: the result is returned under `results`, always a map object. */
+    /**
+     * A general endpoint: the result is returned under `results`, always a map object. Input is declared
+     * either by [inputRef] (a named type) or [inputFields] (declared inline via the [InputFieldsBuilder]
+     * DSL), never both; omit both for a no-parameter endpoint.
+     */
     fun generalEndpoint(
         path: String,
         description: String,
         method: HttpMethod,
         outputRef: String,
         inputRef: String? = null,
+        inputFields: (InputFieldsBuilder.() -> Unit)? = null,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
+        val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
-            KdrEndpoint(path, method, EndpointKind.general, namespace, description, buildInput(inputRef), output, handler),
+            KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output, handler),
         )
     }
 
     /**
      * An endpoint that retrieves a single resource, returned under `item`. Once execution exists, this
-     * implies a 404 when the item is not found; the request is effectively a GET.
+     * implies a 404 when the item is not found; the request is effectively a GET. Input is declared by
+     * [inputRef] or [inputFields] (never both).
      */
     fun itemEndpoint(
         path: String,
@@ -177,18 +253,20 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         method: HttpMethod,
         outputRef: String,
         inputRef: String? = null,
+        inputFields: (InputFieldsBuilder.() -> Unit)? = null,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.item, "The single resource item returned by the endpoint.", outputRef)
+        val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
-            KdrEndpoint(path, method, EndpointKind.item, namespace, description, buildInput(inputRef), output, handler),
+            KdrEndpoint(path, method, EndpointKind.item, namespace, description, fields, typeRef, false, output, handler),
         )
     }
 
     /**
-     * An endpoint whose payload is a list under `items`, with the caller's request nested under `request`
-     * and a `limit` sibling (so nothing is merged into the request type). Method-agnostic: a POST/PUT may
-     * also be list-style.
+     * An endpoint whose payload is a list under `items`. The caller's input is a flat set of top-level
+     * fields (declared by [inputRef] or [inputFields], never both), to which resolution appends a `limit`
+     * field unless [noLimit] is set. Method-agnostic: a POST/PUT may also be list-style.
      */
     fun listEndpoint(
         path: String,
@@ -196,17 +274,38 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         outputRef: String,
         method: HttpMethod = HttpMethod.GET, // list endpoints are rarely anything but GET
         inputRef: String? = null,
+        inputFields: (InputFieldsBuilder.() -> Unit)? = null,
         hasMore: Boolean = false,
         hasNumAvailable: Boolean = false,
         noLimit: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
-        val input = listInput(inputRef, noLimit)
         val output = listOutput(outputRef, hasMore, hasNumAvailable)
-        endpoints.add(KdrEndpoint(path, method, EndpointKind.list, namespace, description, input, output, handler))
+        val (fields, typeRef) = captureInput(inputRef, inputFields)
+        endpoints.add(
+            KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output, handler),
+        )
     }
 
-    // --- envelope construction (all realized immediately) -------------------
+    /**
+     * Captures an endpoint's input declaration: at most one of a named-type [inputRef] (kept as a fully
+     * qualified inputTypeRef or an inline [inputFields] block collected into [EndpointField]s). Fails
+     * fast if both are given, so the mutually exclusive contract is enforced at construction.
+     */
+    @KdrPrivate
+    fun captureInput(
+        inputRef: String?,
+        inputFields: (InputFieldsBuilder.() -> Unit)?,
+    ): Pair<List<EndpointField>?, String?> {
+        if (inputRef != null && inputFields != null) {
+            throw KdrException("Endpoint input may be declared with inputRef or inputFields, not both.")
+        }
+        val fields = inputFields?.let { InputFieldsBuilder(cxt, namespace).apply(it).fields }
+        val typeRef = inputRef?.let { qualifyTypeName(it, namespace) }
+        return fields to typeRef
+    }
+
+    // --- envelope construction (output realized immediately; input resolved on demand) ------------------
 
     @KdrPrivate
     fun newObject(): SchTypeBuilder = SchTypeBuilder(cxt, namespace).also { it.type = SCT.kObject }
@@ -220,45 +319,12 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         }
     }
 
-    /**
-     * Input for general/item endpoints: the caller's input type as-is, or -- when no input type is declared --
-     * a *closed* empty object (`additionalProperties = false`), meaning "this endpoint takes no parameters".
-     * (Off-contract `_`/`$` keys are still allowed; only real query/body params are rejected.) An endpoint
-     * that genuinely wants a free-form map declares a type with `additionalProperties = true` and refs it.
-     */
-    @KdrPrivate
-    fun buildInput(inputRef: String?): Map<String, Any?> =
-        if (inputRef == null) newObject().also { it.additionalProperties = false }.data
-        else SchTypeBuilder(cxt, namespace).also { it.ref(inputRef) }.data
-
     /** Output for general/item endpoints: protocol metadata plus the result under [resultKey]. */
     @KdrPrivate
     fun scalarOutput(resultKey: String, resultDesc: String, outputRef: String): Map<String, Any?> {
         val b = newObject()
         b.addProtocolMeta()
         b.property(resultKey, resultDesc, required = true) { ref(outputRef) }
-        return b.data
-    }
-
-    /** Input for list endpoints: the caller's request under `request`, plus `limit` unless suppressed. */
-    @KdrPrivate
-    fun listInput(inputRef: String?, noLimit: Boolean): Map<String, Any?> {
-        val b = newObject()
-        if (inputRef != null) {
-            b.property(EP.request, "The request parameters for the query.", required = true) { ref(inputRef) }
-        }
-        if (!noLimit) {
-            b.property(EP.limit, "The maximum number of items to return.") {
-                type = SCT.integer
-                default = defaultListLimit
-            }
-        }
-        // A list endpoint with neither a request type nor a limit declares no parameters: close the wrapper
-        // so stray params are rejected (matching buildInput). With a request or limit present, the properties
-        // drive closedness by default.
-        if (inputRef == null && noLimit) {
-            b.additionalProperties = false
-        }
         return b.data
     }
 
@@ -293,20 +359,84 @@ fun schemaModule(cxt: KdrCxt, namespace: String, build: SchModuleBuilder.() -> U
 }
 
 /**
- * Resolves an endpoint's input envelope to a consumption [SchType] against the compiled [types] (a
- * store's `types` map). A general/item endpoint with an input type has a *top-level* `$ref` envelope;
- * `parseNode` does not resolve a node-level `$ref`, so it is bound straight to the referenced type
- * here. Any other envelope (an empty object, or a list endpoint's inline `request`/`limit` object) is
- * parsed against [types] so its nested `$ref`s resolve. Returns null if the envelope cannot be compiled.
+ * Resolves an endpoint's declared input into the flat consumption [SchType] the dispatcher validates
+ * against (and the portal renders), computed against the compiled [types] (a store's `types` map). The two
+ * declaration forms converge here: an [KdrEndpoint.inputTypeRef] contributes the referenced type's top-level
+ * properties; explicit [KdrEndpoint.inputFields] are parsed into properties (so any `$ref` inside a field
+ * resolves against [types]); no declaration contributes nothing. To that base, a `limit` field is appended
+ * for a list endpoint with [KdrEndpoint.includeLimit], and the result is always closed to undeclared
+ * properties (`additionalProperties = false`) -- off-contract `_`/`$` keys stay exempt (see the validator).
  *
- * Shared by the request dispatcher (to validate/coerce input) and the portal (to render its form), so
- * both see exactly the same input shape.
+ * The referenced type in [types] is never mutated: a fresh object type is built wrapping its (shared,
+ * already-resolved) property objects. Returns null if a referenced input type is absent (a fail-fast signal
+ * for a bad `inputRef`).
  */
 fun resolveEndpointInputType(endpoint: KdrEndpoint, types: Map<String, SchType>): SchType? {
-    val ref = endpoint.inputSchema[SCH.dRef]
-    if (ref is String) {
-        return types[refTargetName(ref)]
+    val base: SchType = when {
+        endpoint.inputTypeRef != null -> types[endpoint.inputTypeRef] ?: return null
+        endpoint.inputFields != null -> parseInputFieldsType(endpoint, types) ?: return null
+        else -> emptyInputType
     }
-    val name = "${endpoint.path}#input"
-    return parseSchemaTypes(mapOf(name to endpoint.inputSchema), types)[name]
+    val props = LinkedHashMap(base.properties)
+    if (endpoint.includeLimit) {
+        props[EP.limit] = limitInputProperty
+    }
+    return inputObjectType("${endpoint.path}#input", props, base.required)
 }
+
+/** Parses an endpoint's explicit [KdrEndpoint.inputFields] into an object [SchType] (resolving nested `$ref`s
+ *  against [types]), so its properties/required can seed the flat input type. */
+@KdrPrivate
+fun parseInputFieldsType(endpoint: KdrEndpoint, types: Map<String, SchType>): SchType? {
+    val fields = endpoint.inputFields ?: return emptyInputType
+    val properties = LinkedHashMap<String, Any?>()
+    val required = ArrayList<String>()
+    for (field in fields) {
+        properties[field.name] = field.schema
+        if (field.required) required.add(field.name)
+    }
+    val schema = linkedMapOf<String, Any?>(SCH.type to SCT.kObject, SCH.properties to properties)
+    if (required.isNotEmpty()) schema[SCH.required] = required
+    val name = "${endpoint.path}#fields"
+    return parseSchemaTypes(mapOf(name to schema), types)[name]
+}
+
+/** Builds the closed object [SchType] for an endpoint's resolved input, wrapping the given [properties]. */
+@KdrPrivate
+fun inputObjectType(name: String, properties: Map<String, SchProperty>, required: Set<String>): SchType =
+    SchType(
+        name = name,
+        jsonType = SCT.kObject,
+        allowCoerce = false,
+        format = null,
+        description = null,
+        properties = properties,
+        required = required,
+        additionalProperties = false,
+        itemType = null,
+        options = null,
+        default = null,
+    )
+
+/** The empty (no-parameters) input base: a closed object with no properties. */
+@KdrPrivate
+val emptyInputType: SchType = inputObjectType("#emptyInput", emptyMap(), emptySet())
+
+/** The `limit` field appended to list-endpoint input during resolution (a single shared, immutable property). */
+@KdrPrivate
+val limitInputProperty: SchProperty =
+    SchProperty(EP.limit, "The maximum number of items to return.", refName = null).also {
+        it.valueType = SchType(
+            name = null,
+            jsonType = SCT.integer,
+            allowCoerce = true,
+            format = null,
+            description = "The maximum number of items to return.",
+            properties = emptyMap(),
+            required = emptySet(),
+            additionalProperties = false,
+            itemType = null,
+            options = null,
+            default = defaultListLimit,
+        )
+    }

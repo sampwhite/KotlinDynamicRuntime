@@ -1,13 +1,11 @@
 package com.dynamicruntime.kdn.demo
 
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.util.toJsonMap
 
 /**
  * Demo field keys and choice values. Schema keys, so each constant's name matches its value
@@ -111,21 +109,26 @@ object DemoEndpoints {
             calc(request)
         }
 
-        // --- GET /demo/fibonacci : a GET whose single required integer rides in the query string ---
-        type("FibRequest") {
-            type = SCT.kObject
-            property(DMO.n, "Which Fibonacci number to compute (0-92).", required = true) { type = SCT.integer }
-        }
+        // --- GET /demo/fibonacci : a GET whose single required integer rides in the query string. Uses the
+        //     explicit `inputFields` declaration (issue #40) rather than a named input type. ---
         type("FibResult") {
             type = SCT.kObject
             property(DMO.n, "The requested index.", required = true) { type = SCT.integer }
             property(DMO.value, "The nth Fibonacci number.", required = true) { type = SCT.integer }
         }
-        generalEndpoint("/demo/fibonacci", "Compute the nth Fibonacci number (input rides in the query string).", HttpMethod.GET, outputRef = "FibResult", inputRef = "FibRequest") { _, request ->
+        generalEndpoint(
+            "/demo/fibonacci",
+            "Compute the nth Fibonacci number (input rides in the query string).",
+            HttpMethod.GET,
+            outputRef = "FibResult",
+            inputFields = {
+                field(DMO.n, "Which Fibonacci number to compute (0-92).", required = true) { type = SCT.integer }
+            },
+        ) { _, request ->
             fibonacci(request)
         }
 
-        // --- POST /demo/todos : a list endpoint whose request (with a select) nests under `request` --
+        // --- POST /demo/todos : a list endpoint with a flat, filterable request (a select plus a text field) --
         type("TodoQuery") {
             type = SCT.kObject
             property(DMO.status, "Filter by completion status.") {
@@ -140,7 +143,7 @@ object DemoEndpoints {
             property(DMO.title, "What needs doing.", required = true)
             property(DMO.done, "Whether it is complete.", required = true) { type = SCT.boolean }
         }
-        // POST (not the usual GET) so the portal can submit the nested `request` object as a JSON body.
+        // POST (not the usual GET) so the portal can submit the request fields as a JSON body.
         listEndpoint("/demo/todos", "List sample todos, filtered by status and title text.", outputRef = "Todo", method = HttpMethod.POST, inputRef = "TodoQuery") { _, request ->
             queryTodos(request)
         }
@@ -191,7 +194,8 @@ object DemoEndpoints {
     }
 
     private fun queryTodos(request: Map<String, Any?>): List<Map<String, Any?>> {
-        val query = (request[EP.request] as? Map<*, *>)?.toJsonMap() ?: emptyMap()
+        // Input is flat (issue #40): the filter fields are top-level, alongside the framework `limit`.
+        val query = request
         val status = query[DMO.status] as? String ?: DMO.all
         val needle = (query[DMO.contains] as? String)?.trim()?.lowercase().orEmpty()
         return todos.filter { todo ->

@@ -68,10 +68,10 @@ class DemoEndpointsTest : StringSpec({
         handler.rptStatusCode shouldBe 400
     }
 
-    "POST /demo/todos filters by the nested request and wraps results in the list envelope" {
+    "POST /demo/todos filters by its request fields and wraps results in the list envelope" {
         val resp = client("todos").sendJsonPostRequest(
             "/demo/todos",
-            mapOf(EP.request to mapOf(DMO.status to DMO.open)),
+            mapOf(DMO.status to DMO.open),
         )
         @Suppress("UNCHECKED_CAST")
         val items = resp.getValue(EP.items) as List<Map<String, Any?>>
@@ -82,7 +82,7 @@ class DemoEndpointsTest : StringSpec({
     "POST /demo/todos honors a text filter and the limit sibling" {
         val resp = client("todosFilter").sendJsonPostRequest(
             "/demo/todos",
-            mapOf(EP.request to mapOf(DMO.contains to "port"), EP.limit to 1),
+            mapOf(DMO.contains to "port", EP.limit to 1),
         )
         @Suppress("UNCHECKED_CAST")
         val items = resp.getValue(EP.items) as List<Map<String, Any?>>
