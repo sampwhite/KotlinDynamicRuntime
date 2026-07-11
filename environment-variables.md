@@ -57,6 +57,16 @@ Notes:
   [workspace directory](README.md#the-workspace)) under a property whose name defaults to `dbPassword`. A
   missing required secret fails startup. Only PostgreSQL needs one; the H2 variants require no password.
 
+## Node identity
+
+These control the running node's HTTP port and the identity shown in its label / health report.
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `KDR_PORT` | The HTTP port the server binds to. Set this to run a second instance alongside another (e.g. an automated agent's server beside a developer's) without a port collision — usually together with `KDR_IN_MEMORY_ONLY=true` so the two do not contend on a database. A set-but-non-integer value fails startup. | `7070` |
+| `KDR_NODE_IP_ADDRESS` | The node's IP identity, used in the node label. | `127.0.0.1` |
+| `KDR_HOSTNAME` | The node's host name, used in the node label. Falls back to the OS `HOSTNAME` when unset. | the OS `HOSTNAME`, or `localhost` |
+
 ## Workspace / infrastructure
 
 | Variable | Purpose | Default |
@@ -72,5 +82,4 @@ These are not defined by this project but are consulted when present:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `NODE_IP_ADDRESS` | The node's IP identity, used in the node label. | `127.0.0.1` |
-| `HOSTNAME` | The host name, used in the node label. | (system-provided) |
+| `HOSTNAME` | The OS/container host name. Used for the node label only as a fallback when `KDR_HOSTNAME` is unset. | (system-provided) |
