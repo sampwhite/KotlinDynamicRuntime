@@ -2,7 +2,7 @@ package com.dynamicruntime.common
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.request.RequestService
-import com.dynamicruntime.common.node.InstanceConfigStore
+import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.portal.PortalService
 import com.dynamicruntime.common.startup.ComponentDefinition
@@ -30,23 +30,27 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(SchemaService.schema(cxt))
         // The topic service contributes the list-tables endpoint.
         collector.addModule(SqlTopicService.schema(cxt))
-        // Domain tables: the node's private InstanceConfig table.
-        collector.addTables(InstanceConfigStore.tables(cxt))
+        // Domain tables: the node's private InstanceConfig table (owned by InstanceConfigService).
+        collector.addTables(InstanceConfigService.tables(cxt))
     }
 
     /**
-     * Startup services -- fully initialized before regular services. Schema compilation must be ready
-     * first; [NodeService] is here too so the node's identity and basic facts about itself are known
-     * early, since regular services (and future startup services) may need them during their own init.
+     * Startup services -- fully initialized before regular services. Schema compilation must be ready first;
+     * [NodeService] is here so the node's identity and basic facts are known early; [SqlTopicService] is here
+     * so its database configuration is resolved before any regular service's `onCreate` -- notably
+     * [InstanceConfigService], which touches the database during its own `onCreate`. Regular services (and
+     * future startup services) may need all three during their init.
      */
-    override fun startupServices(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::SchemaService, ::NodeService)
+    override fun startupServices(cxt: KdrCxt): List<() -> ServiceInitializer> =
+        listOf(::SchemaService, ::NodeService, ::SqlTopicService)
 
     /**
      * The request dispatcher, the portal (which registers itself with the dispatcher as a content server),
-     * and the SQL topic service (operational database access; reads table definitions from the compiled store).
+     * and the instance-config service (whose `onCreate` connects to the database and loads/creates the node's
+     * encryption key, relying on the startup-tier [SqlTopicService] already being initialized).
      */
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
-        listOf(::RequestService, ::PortalService, ::SqlTopicService)
+        listOf(::RequestService, ::PortalService, ::InstanceConfigService)
 
     /** Load just ahead of the standard components (demonstrates relative priority). */
     override fun loadPriority(): Int = PRI.standard - 1

@@ -8,7 +8,10 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.decrypt
+import com.dynamicruntime.common.util.encrypt
 import com.dynamicruntime.common.util.formatDate
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -24,8 +27,11 @@ import kotlin.time.Instant
  * Following the newer convention, this service also *defines its own endpoints* ([schema]) rather than
  * a separate `NodeEndpoints`, because the service file is small. The `common` component wires them in.
  *
- * Encryption is intentionally stubbed here -- real encryption/hashing (and the auth-config/key storage
- * that dn kept in its separate `DnNodeService`, to become a future `AuthConfigService`) is deferred.
+ * Node-level encryption lives here: the shared encryption key(s) are held in [authKeys] and used by
+ * [encryptString] / [decryptString]. The key itself is loaded (or created) at startup and pushed in by
+ * `InstanceConfigService`, mirroring the CRDR split where the core node service holds only the key and the
+ * instance-config service owns loading it from the database. NodeService deliberately knows nothing more
+ * about instance config than the encryption key.
  */
 class NodeService : ServiceInitializer {
     override val serviceName: String = NodeService.serviceName
@@ -35,6 +41,20 @@ class NodeService : ServiceInitializer {
 
     @KdrPrivate
     lateinit var internalIpAddresses: Regex
+
+    /**
+     * Lookup name of the instance's active encryption key: the [configName] its auth-config row is stored
+     * under, and the prefix stamped onto ciphertext so [decryptString] can pick the right key. From config
+     * `node.instance.authConfigKey`, defaulting to [defaultAuthConfigKey].
+     */
+    lateinit var instanceAuthConfigKey: String
+
+    /**
+     * Encryption keys by lookup name. Populated once at startup by `InstanceConfigService` (before any
+     * request thread reads it), so a concurrent map suffices without further synchronization.
+     */
+    @KdrPrivate
+    val authKeys: ConcurrentHashMap<String, String> = ConcurrentHashMap()
 
     /** Whether this node is acting as part of the cluster (toggled by operator endpoints). */
     @Volatile
@@ -48,6 +68,12 @@ class NodeService : ServiceInitializer {
         // Trusted/internal addresses -- used to relax limits or gate expensive APIs. NOT an auth bypass.
         val addressFilter = cxt.instanceConfig.get("node.internalIpAddressFilter") as? String ?: "127.0.0.1|206.*"
         internalIpAddresses = Regex(addressFilter)
+        instanceAuthConfigKey = cxt.instanceConfig.get("node.instance.authConfigKey") as? String ?: defaultAuthConfigKey
+    }
+
+    /** Registers an encryption key under a lookup name (called at startup by `InstanceConfigService`). */
+    fun registerEncryptionKey(configKey: String, encryptionKey: String) {
+        authKeys[configKey] = encryptionKey
     }
 
     val nodeLabel: String get() = nodeId.label
@@ -70,18 +96,37 @@ class NodeService : ServiceInitializer {
     fun checkIsInternalAddress(ipAddress: String?): Boolean =
         ipAddress == null || internalIpAddresses.matches(ipAddress)
 
-    // Encryption is deferred to a dedicated issue; these are stubs so callers can be wired now.
-    @Suppress("UNUSED_PARAMETER")
-    fun encryptString(plainText: String): String =
-        throw KdrException("Encryption is not yet implemented (deferred to a future issue).")
+    /**
+     * Encrypts [plainText] with the instance's active key, stamping the key's lookup name as a prefix
+     * (`ak|<ciphertext>`) so [decryptString] can select the matching key even after the active key rotates.
+     */
+    fun encryptString(plainText: String): String {
+        val key = authKeys[instanceAuthConfigKey]
+            ?: throw KdrException("No encryption key '$instanceAuthConfigKey' is loaded (is InstanceConfigService initialized?).")
+        return "$instanceAuthConfigKey|${plainText.encrypt(key)}"
+    }
 
-    @Suppress("UNUSED_PARAMETER")
-    fun decryptString(encryptedText: String): String =
-        throw KdrException("Encryption is not yet implemented (deferred to a future issue).")
+    /** Decrypts a value produced by [encryptString], selecting the key named in its `keyName|data` prefix. */
+    fun decryptString(encryptedText: String): String {
+        val index = encryptedText.indexOf('|')
+        if (index < 0) {
+            throw KdrException.mkInput("Encrypted text is not in the expected 'keyName|data' format.")
+        }
+        val configKey = encryptedText.substring(0, index)
+        val key = authKeys[configKey]
+            ?: throw KdrException("No encryption key named '$configKey' is available.")
+        return encryptedText.substring(index + 1).decrypt(key)
+    }
 
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "NodeService"
+
+        /**
+         * Default lookup name for the active encryption key when `node.instance.authConfigKey` is not set.
+         * Deliberately terse: it appears in plain text as the prefix of every encrypted value.
+         */
+        const val defaultAuthConfigKey = "ak"
 
         /** When this VM started, used to compute uptime. */
         val vmStartTime: Instant = Clock.System.now()

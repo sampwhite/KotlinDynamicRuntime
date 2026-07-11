@@ -14,8 +14,15 @@ import java.util.concurrent.atomic.AtomicLong
  * publishes during startup. Services locate each other by reading their own key
  * from this store (the `get(cxt)` convention).
  *
- * A fuller implementation will source configuration from environment variables and
- * Kotlin config classes; that resolution is not wired up here yet.
+ * Configuration keeps its natural map nesting: a key containing `.` is a path into
+ * nested maps, so `get("node.internalIpAddressFilter")` reads the "node" entry as a
+ * map and then its "internalIpAddressFilter" entry (and [put] builds that nesting).
+ * This lets a deployment configure a whole entity (e.g. a database connection) as a
+ * sub-map and read either the map or an individual field, rather than forcing every
+ * setting into a single flat namespace. A key with no `.` is a plain top-level entry
+ * (service singletons and simple config are always stored flat -- their names have no
+ * dots). The store is populated during single-threaded startup, so the nested maps
+ * need not themselves be concurrent.
  */
 class KdrInstanceConfig(
     /** Name identifying this running instance. */
@@ -34,15 +41,69 @@ class KdrInstanceConfig(
     // concurrently and must only be reached through the accessors below.
     private val store: ConcurrentHashMap<String, Any> = ConcurrentHashMap()
 
-    /** Reads a value (config entry or service) by key, or null if absent. */
-    fun get(key: String): Any? = store[key]
+    /**
+     * Reads a value (config entry or service) by [key], or null if absent. A key containing `.` is a path
+     * into nested maps: each `.`-separated segment reads deeper, so "node.internalIpAddressFilter" reads the
+     * "node" map's "internalIpAddressFilter" entry. Returns null if any segment along the path is missing or
+     * is not a map (so an unset nested key reads as null, just like a flat one).
+     */
+    fun get(key: String): Any? {
+        if ('.' !in key) {
+            return store[key]
+        }
+        val parts = key.split('.')
+        var current: Any? = store[parts[0]]
+        for (i in 1 until parts.size) {
+            val map = current as? Map<*, *> ?: return null
+            current = map[parts[i]]
+        }
+        return current
+    }
 
     /**
-     * Publishes or overwrites a value under [key]. A null [value] removes the key
-     * (the backing store cannot hold nulls, and an absent key already reads as null).
+     * Publishes or overwrites a value under [key]. A key containing `.` is a nested path: intermediate maps
+     * are created (or reused/copied) as needed, so "node.instance.authConfigKey" sets "authConfigKey" inside
+     * the "instance" map inside the "node" map, merging into any existing maps rather than replacing them. A
+     * null [value] removes the (possibly nested) key -- the backing store cannot hold nulls, and an absent key
+     * already reads as null.
      */
     fun put(key: String, value: Any?) {
-        if (value == null) store.remove(key) else store[key] = value
+        if ('.' !in key) {
+            if (value == null) store.remove(key) else store[key] = value
+            return
+        }
+        val parts = key.split('.')
+        if (value == null) {
+            removeNested(parts)
+            return
+        }
+        var current: MutableMap<String, Any> = store
+        for (i in 0 until parts.size - 1) {
+            current = childMap(current, parts[i])
+        }
+        current[parts.last()] = value
+    }
+
+    /**
+     * The mutable child map under [name] in [parent], created when absent (or copied into a mutable map when
+     * an existing read-only map is found). A non-map value in the way is replaced by a new map.
+     */
+    private fun childMap(parent: MutableMap<String, Any>, name: String): MutableMap<String, Any> {
+        @Suppress("UNCHECKED_CAST")
+        return when (val existing = parent[name]) {
+            is MutableMap<*, *> -> existing as MutableMap<String, Any>
+            is Map<*, *> -> LinkedHashMap(existing as Map<String, Any>).also { parent[name] = it }
+            else -> LinkedHashMap<String, Any>().also { parent[name] = it }
+        }
+    }
+
+    /** Removes the leaf of a dotted [parts] path, without creating intermediate maps. */
+    private fun removeNested(parts: List<String>) {
+        var current: Any? = store[parts[0]]
+        for (i in 1 until parts.size - 1) {
+            current = (current as? Map<*, *>)?.get(parts[i]) ?: return
+        }
+        (current as? MutableMap<*, *>)?.remove(parts.last())
     }
 
     /** Merges all non-null entries from [values] into the store. */

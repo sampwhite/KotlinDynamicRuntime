@@ -25,4 +25,54 @@ class KdrInstanceConfigTest : StringSpec({
     "readDefaultEnvVars returns empty when the file is absent" {
         KdrInstanceConfig.readDefaultEnvVars(File("no-such-file.properties")) { null } shouldBe emptyMap()
     }
+
+    // --- dotted keys are nested-map paths -------------------------------------
+
+    "a dotted key builds and reads nested maps" {
+        val config = KdrInstanceConfig.codeTest()
+        config.put("node.internalIpAddressFilter", "127.0.0.1")
+        config.get("node.internalIpAddressFilter") shouldBe "127.0.0.1"
+        // Requesting the intermediate segment returns the sub-map.
+        (config.get("node") as Map<*, *>)["internalIpAddressFilter"] shouldBe "127.0.0.1"
+    }
+
+    "dotted puts under the same prefix merge rather than clobber" {
+        val config = KdrInstanceConfig.codeTest()
+        config.put("node.a", 1)
+        config.put("node.instance.authConfigKey", "ak")
+        config.get("node.a") shouldBe 1
+        config.get("node.instance.authConfigKey") shouldBe "ak"
+    }
+
+    "a pre-nested map value is readable via a dotted key" {
+        val config = KdrInstanceConfig.codeTest()
+        config.put("db", mapOf("type" to "postgres", "name" to "kdr"))
+        config.get("db.type") shouldBe "postgres"
+        config.get("db.name") shouldBe "kdr"
+    }
+
+    "a missing or non-map nested path reads as null" {
+        val config = KdrInstanceConfig.codeTest()
+        config.get("node.internalIpAddressFilter") shouldBe null
+        config.put("node.a", 1)
+        config.get("node.b.c") shouldBe null // "node" present, deeper segments absent
+        config.get("node.a.deeper") shouldBe null // "node.a" is a scalar, not a map
+    }
+
+    "a null value removes a nested key without disturbing its siblings" {
+        val config = KdrInstanceConfig.codeTest()
+        config.put("node.a", 1)
+        config.put("node.b", 2)
+        config.put("node.a", null)
+        config.get("node.a") shouldBe null
+        config.get("node.b") shouldBe 2
+    }
+
+    "flat keys (services, env vars) are unaffected by dotted handling" {
+        val config = KdrInstanceConfig.codeTest()
+        config.put("NodeService", "svc")
+        config.put("KDR_DB_TYPE", "h2File")
+        config.get("NodeService") shouldBe "svc"
+        config.getEnvVar("KDR_DB_TYPE") shouldBe "h2File"
+    }
 })
