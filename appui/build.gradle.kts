@@ -18,7 +18,7 @@ dependencies {
 // under `webapp/`, so AppUiService can read it at `/webapp/webapp.js` from the classpath — identically whether
 // launched via `:launch:run` or from a built jar. Referencing the webapp's build dir lazily (a DirectoryProperty
 // provider) plus a task-path `dependsOn` avoids eagerly evaluating the sibling project.
-val embedWebapp by tasks.registering(Copy::class) {
+val embedWebapp = tasks.register<Copy>("embedWebapp") {
     dependsOn(":webapp:jsBrowserDistribution")
     from(project(":webapp").layout.buildDirectory.dir("dist/js/productionExecutable")) {
         include("webapp.js", "webapp.js.map")
