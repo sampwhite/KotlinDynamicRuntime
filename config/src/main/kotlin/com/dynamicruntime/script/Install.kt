@@ -39,6 +39,7 @@ fun main(args: Array<String>) {
     ensureGradleProperties(workDir, examples)
     syncSettingsWithExample(workDir, examples)
     syncGradleWrapper(workDir, repoDir)
+    ensureYarnLock(workDir)
     ensureBinOnPath(repoDir)
     ensurePostgres(workDir)
     println("kdr-install: done.")
@@ -204,6 +205,39 @@ private fun distributionUrl(props: File): String? =
 
 /** The Gradle version encoded in a `distributionUrl` (e.g. `...gradle-9.6.0-bin.zip` -> `9.6.0`), else the URL. */
 private fun gradleVersion(url: String): String = Regex("""gradle-([\d.]+)""").find(url)?.groupValues?.get(1) ?: url
+
+// --- Kotlin/JS yarn lock ----------------------------------------------------------------------------------
+
+/**
+ * Keeps the Kotlin/JS lock file (`kotlin-js-store/yarn.lock`) in sync with the build's current JS
+ * dependencies. That lock lives in the (non-versioned) workspace, and the Kotlin/JS build refuses to run —
+ * `kotlinStoreYarnLock` fails with "Lock file was changed" — when it is stale. So a deployment that pulls a
+ * change to the frontend's npm dependency set (e.g. `base:kernel`'s JS target adding kotlinx-datetime) needs
+ * the lock regenerated before `:webapp:jsBrowserDevelopmentRun` or `:appui:build` will work.
+ * `kotlinUpgradeYarnLock` rewrites it to match; it is idempotent, so an already-current lock ends up unchanged.
+ *
+ * Skipped when the deployment does not include `webapp` (no Kotlin/JS bundle build, so no lock to maintain).
+ * A failure here is a warning, not a stop: the rest of the install (and the JVM backend) is unaffected.
+ */
+private fun ensureYarnLock(workDir: File) {
+    val settings = File(workDir, "settings.gradle.kts")
+    val includesWebapp = settings.isFile &&
+        parseIncludes(settings.readText(), includeCommented = false).any { it.path == "webapp" }
+    if (!includesWebapp) {
+        return
+    }
+    val gradlew = File(workDir, "gradlew")
+    if (!gradlew.canExecute()) {
+        return // The wrapper is not in place yet; nothing to run against.
+    }
+    println("Syncing the Kotlin/JS lock file (kotlin-js-store/yarn.lock)...")
+    if (runProcess(listOf(gradlew.path, "kotlinUpgradeYarnLock", "--quiet"), quiet = true)) {
+        println("kotlin-js-store/yarn.lock is in sync with the build's JS dependencies.")
+    } else {
+        println("WARNING: could not run 'kotlinUpgradeYarnLock'. If a webapp build later fails on a stale lock,")
+        println("         run it yourself from $workDir:  ./gradlew kotlinUpgradeYarnLock")
+    }
+}
 
 // --- PATH / shell rc --------------------------------------------------------------------------------------
 
