@@ -1,7 +1,10 @@
 package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.exception.ACT
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.exception.SRC
 import kotlin.math.min
 
 fun Any?.toJsonStr(compact: Boolean = false, preserveNulls: Boolean = false): String {
@@ -665,11 +668,12 @@ fun parseToNextComma(state: PState) {
 @KdrPrivate
 fun mkJsonParseException(state: PState?, msg: String, ex: Exception? = null): KdrException {
     val errMsg = "$msg Error originates at offset ${state?.offset ?: 0} in input."
-    val ke = KdrException(errMsg, ex)
+    // A parse failure is bad input (400), not an internal error: the malformed text came from a caller.
+    val ke = KdrException(errMsg, ex, EXC.badInput, SRC.system, ACT.conversion)
     if (state != null) {
-        ke.extraData["offset"] = state.offset
-        ke.extraData["line"] = state.line + 1
-        ke.extraData["lineCol"] = state.lineOffset + 1
+        ke.extraData[KdrException.offsetKey] = state.offset
+        ke.extraData[KdrException.lineKey] = state.line + 1
+        ke.extraData[KdrException.lineColKey] = state.lineOffset + 1
     }
     return ke
 }

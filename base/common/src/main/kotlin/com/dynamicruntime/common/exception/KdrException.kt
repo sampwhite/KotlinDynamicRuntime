@@ -64,7 +64,26 @@ class KdrException(
         return chain.joinToString(" ") { it.message ?: "" }
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
+        /**
+         * Standard [extraData] key under which an error-code value should be placed when reporting an error.
+         * Always use this one key so a consumer (notably the frontend) has a single, predictable place to
+         * read the code regardless of which functional area raised the error. The *set* of possible values
+         * still varies by area -- each area defines its own error-code enum -- but the key does not. This
+         * shared key exists to avoid the sprawl of per-area key names that made prior work hard to consume.
+         */
+        const val errorCodeKey = "errorCode"
+
+        /**
+         * Standard [extraData] keys locating where in a parsed input an error originates: the 0-based
+         * character [offsetKey], the 1-based [lineKey], and the 1-based column-within-line [lineColKey].
+         * Shared by every string parser (JSON, the script evaluator, ...) so one convention serves them all.
+         */
+        const val offsetKey = "offset"
+        const val lineKey = "line"
+        const val lineColKey = "lineCol"
+
         /**
          * A bad-input (HTTP 400) error -- typically from schema validation. If a
          * [cause] is itself a [KdrException], its [source]/[activity] are carried
