@@ -76,6 +76,12 @@ kotlin {
     sourceSets {
         getByName("jsMain") {
             dependencies {
+                // The shared multiplatform kernel (issue #56): JSON/date/string utilities, the template
+                // evaluator, and the JSON-Schema model/parser/validator, compiled to JS. Wired now so the
+                // frontend depends on the same code as the backend; later issues replace the webapp's
+                // hand-rolled schema/constant duplicates with these.
+                implementation(project(":base:kernel"))
+
                 // The BOM governs the versions of every kotlin-wrappers artifact
                 // below, so they are declared without explicit versions.
                 implementation(project.dependencies.platform("org.jetbrains.kotlin-wrappers:kotlin-wrappers-bom:$kotlinWrappersBom"))
