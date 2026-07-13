@@ -74,12 +74,19 @@ object SqlTopicUtil {
      * only if absent (so an update preserves the original creator/creation time); `updatedBy`/`updatedAt`
      * are always set (`updatedAt` advancing monotonically). Ownership columns are filled from the context's
      * bound owner only when the table declares the matching feature.
+     *
+     * A standard "execute" also marks the row [PF.enabled] (issue #48). This is unconditional -- not
+     * put-if-absent -- so "creating" over an existing disabled row re-enables it, which is the intended
+     * behavior for a transaction table's "create" path.
      */
     fun prepForStdExecute(cxt: KdrCxt, table: KdrTable, data: MutableMap<String, Any?>) {
         val actor = cxt.userProfile.userId
         data.putIfAbsent(PF.createdBy, actor)
         data[PF.updatedBy] = actor
         prepDates(cxt, data)
+        if (table.columnsByName.containsKey(PF.enabled)) {
+            data[PF.enabled] = true
+        }
         if (TableFeature.account in table.features) {
             data.putIfAbsent(PF.account, cxt.account)
         }

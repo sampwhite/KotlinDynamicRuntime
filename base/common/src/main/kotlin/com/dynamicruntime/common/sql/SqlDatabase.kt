@@ -31,7 +31,7 @@ class SqlDatabase(
     val driver: Driver,
     val connectionUrl: String,
     val connectionProperties: Properties,
-    /** Fields reserved for common query activities (e.g. paging), keyed by field name. */
+    /** Fields reserved for common query activities (e.g., paging), keyed by field name. */
     val reservedFields: Map<String, KdrColumn>,
     val options: SqlDbOptions,
     maxConnections: Int,
@@ -320,6 +320,18 @@ class SqlDatabase(
     /** Queries and returns only the first row (best for existence tests and unique-index lookups), or null. */
     fun queryOneStatement(cxt: KdrCxt, stmt: SqlStatement, data: Map<String, Any?>): Map<String, Any?>? =
         queryStatement(cxt, stmt, data).firstOrNull()
+
+    /**
+     * Queries a single row but returns it only when it is enabled (issue #48): a [PF.enabled] value that is
+     * not boolean `true` -- including a null or an absent column -- counts as disabled, and the row is
+     * returned as null, i.e., as if it were not there. This is the standard read for application data. Works
+     * well outside transactions and against a unique index; inside a transaction the row is locked and read
+     * with [queryOneStatement] instead. Ported from the prior-art `queryOneEnabled`.
+     */
+    fun queryOneEnabled(cxt: KdrCxt, stmt: SqlStatement, data: Map<String, Any?>): Map<String, Any?>? {
+        val row = queryOneStatement(cxt, stmt, data) ?: return null
+        return if (row[PF.enabled] == true) row else null
+    }
 
     fun getAndBindPreparedStatement(
         cxt: KdrCxt,

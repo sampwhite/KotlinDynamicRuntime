@@ -2,6 +2,9 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.node.IC
 import com.dynamicruntime.common.node.InstanceConfigService
+import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.sql.SqlStmtUtil
+import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -28,5 +31,34 @@ class InstanceConfigTest : StringSpec({
 
         // A missing entry reads back as null.
         service.getConfig(cxt, "absent") shouldBe null
+    }
+
+    "getConfig treats a disabled row as absent (issue #48)" {
+        val cxt = Startup.mkTestBootCxt("icDisabled", "instanceConfigDisabledTest")
+        val service = InstanceConfigService.get(cxt).shouldNotBeNull()
+
+        service.setConfig(cxt, "system", "settings", mapOf("a" to 1L))
+        service.getConfig(cxt, "settings").shouldNotBeNull()
+
+        // Disable the row directly (there is no soft-delete write path yet). Once disabled, getConfig treats
+        // it as if it were not there -- the same handling a legacy null-enabled row receives.
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, InstanceConfigService.topic)
+        val table = cxt.getSchema().tables[InstanceConfigService.tableName].shouldNotBeNull()
+        val query = SqlStmtUtil.mkUpdateQuery2(
+            InstanceConfigService.tableName, listOf(PF.enabled), listOf(IC.instanceName, IC.configName),
+        )
+        val stmt = SqlStmtUtil.prepareSql(sqlCxt, "disableSettings", table.columns, query)
+        sqlCxt.sqlDb.withSession(cxt) {
+            sqlCxt.sqlDb.executeStatement(
+                cxt, stmt,
+                mapOf(
+                    IC.instanceName to cxt.instanceConfig.instanceName,
+                    IC.configName to "settings",
+                    PF.enabled to false,
+                ),
+            ) shouldBe 1
+        }
+
+        service.getConfig(cxt, "settings") shouldBe null
     }
 })
