@@ -26,6 +26,15 @@ object PF {
     /** Date the row was last updated. */
     const val updatedAt = "updatedAt"
 
+    /**
+     * Soft-delete flag present on every table unless suppressed (see [TableBuilder.withoutEnabled]). A row
+     * whose value is not boolean `true` -- including a null or absent value -- is treated as disabled, i.e.,
+     * as if it were not there; application reads therefore go through [SqlDatabase.queryOneEnabled]. The
+     * standard write (see [SqlTopicUtil.prepForStdExecute]) sets it `true`, so "creating" over a disabled
+     * row re-enables it.
+     */
+    const val enabled = "enabled"
+
     /** Owning the client-account (added by the [TableFeature.account] feature). */
     const val account = "account"
 

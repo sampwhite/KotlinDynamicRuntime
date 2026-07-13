@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.KdrTable
+import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
@@ -79,7 +80,10 @@ class InstanceConfigService : ServiceInitializer {
         }
     }
 
-    /** Reads a configuration entry for this instance, or null if it does not exist. */
+    /**
+     * Reads a configuration entry for this instance, or null if it does not exist. A row whose [PF.enabled]
+     * flag is not set (issue #48) is treated as absent, so a disabled config entry reads back as null.
+     */
     fun getConfig(cxt: KdrCxt, configName: String): Map<String, Any?>? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, topic)
         val table = cxt.getSchema().tables[tableName]
@@ -91,7 +95,7 @@ class InstanceConfigService : ServiceInitializer {
         )
         var result: Map<String, Any?>? = null
         sqlCxt.sqlDb.withSession(cxt) {
-            result = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, keys)
+            result = sqlCxt.sqlDb.queryOneEnabled(cxt, stmt, keys)
         }
         return result
     }

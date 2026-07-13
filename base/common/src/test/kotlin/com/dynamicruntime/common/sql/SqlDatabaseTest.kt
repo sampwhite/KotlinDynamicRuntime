@@ -3,7 +3,9 @@ package com.dynamicruntime.common.sql
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.schema.SCT
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 
@@ -82,5 +84,56 @@ class SqlDatabaseTest : StringSpec({
         val t = tables.single()
         t.features shouldBe setOf(TableFeature.user, TableFeature.account)
         t.columnsByName.keys shouldContainAll setOf(PF.userId, PF.account)
+    }
+
+    "the enabled column is injected and queryOneEnabled hides non-enabled rows (issue #48)" {
+        val cxt = KdrCxt.mkSimpleCxt("test")
+        val db = SqlDatabase.mkInMemoryH2("test_sqldb_enabled")
+        val topic = "app"
+        val table = tableModule(cxt, topic) {
+            table("Item", "An item") {
+                column("itemKey", "Key of the item.")
+                primaryKey("itemKey")
+            }
+        }.single()
+
+        // The enabled flag is injected automatically alongside the declared and audit columns.
+        table.columnsByName.keys shouldContain PF.enabled
+
+        val sqlCxt = SqlCxt(cxt, db, topic)
+        db.withSession(cxt) {
+            SqlTableUtil.checkCreateTable(sqlCxt, table) shouldBe true
+            val insert = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
+            val select = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
+
+            // A standard "write" stamps enabled = true, so queryOneEnabled returns the row.
+            val liveRow = mutableMapOf<String, Any?>("itemKey" to "live")
+            SqlTopicUtil.prepForStdExecute(cxt, table, liveRow)
+            liveRow[PF.enabled] shouldBe true
+            db.executeStatement(cxt, insert, liveRow) shouldBe 1
+            db.queryOneEnabled(cxt, select, mapOf("itemKey" to "live")).shouldNotBeNull()
+
+            // An explicitly disabled row is treated as if it were not there...
+            db.executeStatement(cxt, insert, mapOf("itemKey" to "off", PF.enabled to false)) shouldBe 1
+            db.queryOneEnabled(cxt, select, mapOf("itemKey" to "off")) shouldBe null
+            // ...though the plain query still finds it.
+            db.queryOneStatement(cxt, select, mapOf("itemKey" to "off")).shouldNotBeNull()
+
+            // A null (here: absent) enabled value also counts as disabled.
+            db.executeStatement(cxt, insert, mapOf("itemKey" to "nul")) shouldBe 1
+            db.queryOneEnabled(cxt, select, mapOf("itemKey" to "nul")) shouldBe null
+        }
+    }
+
+    "withoutEnabled suppresses the enabled column" {
+        val cxt = KdrCxt.mkSimpleCxt("test")
+        val table = tableModule(cxt, "app") {
+            table("Ledger", "A table where every row is unconditionally live") {
+                column("entryKey", "Key of the entry.")
+                primaryKey("entryKey")
+                withoutEnabled()
+            }
+        }.single()
+        table.columnsByName.keys shouldNotContain PF.enabled
     }
 })
