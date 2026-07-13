@@ -16,6 +16,13 @@ object ContextRoot {
 
     /** The default webapp context root -- "web app" (serves the self-contained Kotlin/JS front end). */
     const val wa = "wa"
+
+    /**
+     * The default static-content context root -- "static". Serves immutable, versioned resources (e.g.,
+     * Markdown fragment maps) that carry a permanent `Cache-Control`, so in a CDN deployment this whole root
+     * can be fronted by the CDN and served from the edge after the first hit.
+     */
+    const val st = "st"
 }
 
 /**
@@ -27,4 +34,4 @@ object ContextRoot {
  * the bare-root request (both would otherwise match `appPath == "/"`).
  */
 @Suppress("EnumEntryName")
-enum class ContextFocus { api, content, app }
+enum class ContextFocus { api, content, app, static }

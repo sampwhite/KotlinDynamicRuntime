@@ -78,4 +78,29 @@ class ScriptUtilTest : StringSpec({
         ex.extraData[KdrException.lineKey] shouldBe 2
         ex.extraData[KdrException.lineColKey] shouldBe 8
     }
+
+    "a dotted path resolves through nested maps (issue #59)" {
+        // The natural pairing: a two-tier fragment map resolved as ${namespace.key}.
+        val fragments = mapOf("email" to mapOf("code" to "1234"))
+        $$"Your code is ${email.code}.".evalTemplate(fragments) shouldBe "Your code is 1234."
+    }
+
+    "a deeper dotted path drills multiple levels" {
+        val data = mapOf("a" to mapOf("b" to mapOf("c" to "deep")))
+        $$"${a.b.c}".evalTemplate(data) shouldBe "deep"
+    }
+
+    "a missing dotted segment throws missingKey" {
+        val ex = shouldThrow<KdrException> {
+            $$"${a.missing}".evalTemplate(mapOf("a" to mapOf("b" to "x")))
+        }
+        ex.extraData[KdrException.errorCodeKey] shouldBe ScriptError.missingKey
+    }
+
+    "drilling into a non-map throws notAnObject" {
+        val ex = shouldThrow<KdrException> {
+            $$"${a.b}".evalTemplate(mapOf("a" to "not a map"))
+        }
+        ex.extraData[KdrException.errorCodeKey] shouldBe ScriptError.notAnObject
+    }
 })

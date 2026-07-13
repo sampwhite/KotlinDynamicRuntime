@@ -56,4 +56,7 @@ object ACFG {
 
     /** The context root under which the self-contained webapp is served; defaults to `ContextRoot.wa`. */
     const val appContextRoot = "appContextRoot"
+
+    /** The context root under which immutable static content is served; defaults to `ContextRoot.st`. */
+    const val staticContextRoot = "staticContextRoot"
 }
