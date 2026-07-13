@@ -38,7 +38,7 @@ private val systemFormat = LocalDateTime.Format {
 /**
  * Compact UTC timestamp with no separators (`yyyyMMddHHmmssSSS`, millisecond precision) -- the system
  * timestamp stripped of its `-`, `T`, `:`, `.`, and trailing `Z`. Used as the leading part of a unique id
- * ([mkUniqueId]): it is all digits, so a log tokenizer keeps it whole, and it still sorts lexically in time
+ * (`mkUniqueId`): it is all digits, so a log tokenizer keeps it whole, and it still sorts lexically in time
  * order. There is deliberately no parser -- ids are opaque once created.
  */
 private val compactIdFormat = LocalDateTime.Format {

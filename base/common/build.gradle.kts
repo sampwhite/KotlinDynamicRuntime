@@ -8,6 +8,12 @@ plugins {
 }
 
 dependencies {
+    // The shared multiplatform kernel (issue #56): the universal exception, the JSON/date/string/collection
+    // utilities, the template evaluator, and the JSON-Schema model/parser/validator. `api` because these
+    // types appear throughout `common`'s own public surface, so downstream modules must see them too. Package
+    // names were preserved on the move, so call sites are unchanged.
+    api(project(":base:kernel"))
+
     api("org.jetbrains.kotlin:kotlin-reflect")
 
     // Logging backend. `implementation`, not `api`: KdrLogger hides log4j2 behind
