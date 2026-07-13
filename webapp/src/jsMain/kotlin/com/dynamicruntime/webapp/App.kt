@@ -89,7 +89,7 @@ val App = FC<Props> {
         }
     }
 
-    // The Todo list is a self-contained component with its own card; it talks to
-    // the `:sample` runtime's Todo endpoints. Rendered as a sibling card below the demo.
-    TodoList {}
+    // The endpoint catalog is a self-contained component with its own card; it fetches the runtime's
+    // `/schema/endpoints` catalog and renders it generically. Rendered as a sibling card below the demo.
+    EndpointCatalog {}
 }
