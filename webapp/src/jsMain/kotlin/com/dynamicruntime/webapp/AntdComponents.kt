@@ -48,11 +48,30 @@ external val Input: ComponentType<InputProps>
 
 external interface CheckboxProps : PropsWithChildren {
     var checked: Boolean?
+    var disabled: Boolean?
     /** antd passes a change event; read `event.target.checked`. */
     var onChange: ((event: dynamic) -> Unit)?
 }
 
 external val Checkbox: ComponentType<CheckboxProps>
+
+external interface SelectProps : PropsWithChildren {
+    /** Selected value: a `String` for single-select, or an array of strings when [mode] is "multiple". */
+    var value: Any?
+    /** "multiple" | "tags" for multi-select; leave null/undefined for a single choice. */
+    var mode: String?
+    /** The choices, as antd `{ label, value }` objects (build with [optionsToJs]). */
+    var options: Array<dynamic>?
+    var disabled: Boolean?
+    var placeholder: String?
+    var allowClear: Boolean?
+    /** React style object (e.g. `js("({ minWidth: 180 })")`); antd Selects otherwise collapse narrow. */
+    var style: dynamic
+    /** antd passes the new value (a string, or an array for multi-select). */
+    var onChange: ((value: dynamic) -> Unit)?
+}
+
+external val Select: ComponentType<SelectProps>
 
 external interface DatePickerProps : PropsWithChildren {
     /** antd calls this with (date, dateString); we only need the string form. */
