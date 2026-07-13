@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.portal.PortalService
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.PRI
@@ -50,7 +51,7 @@ class CommonComponent : ComponentDefinition {
      * encryption key, relying on the startup-tier [SqlTopicService] already being initialized).
      */
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
-        listOf(::RequestService, ::PortalService, ::InstanceConfigService)
+        listOf(::RequestService, ::PortalService, ::MarkdownFragmentService, ::InstanceConfigService)
 
     /** Load just ahead of the standard components (demonstrates relative priority). */
     override fun loadPriority(): Int = PRI.standard - 1
