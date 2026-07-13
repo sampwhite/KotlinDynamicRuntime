@@ -6,6 +6,7 @@ import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
+import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.useEffectOnce
@@ -16,19 +17,20 @@ import web.cssom.ClassName
 private val catalogScope = MainScope()
 
 /**
- * Phase 1 of the display engine: fetch the runtime's endpoint catalog (`/schema/endpoints`) and list every
- * registered endpoint (method, path, description). This proves the generic catalog data flow end-to-end and
- * is the seam the schema-driven forms plug into next: selecting an endpoint will render its input schema as an
- * editable/read-only form. Replaces the bespoke Todo client, which hardcoded one endpoint set.
+ * The display engine's endpoint browser. It fetches the runtime's `/schema/endpoints` catalog (Phase 1) and,
+ * when an endpoint is selected, renders its input schema as a read-only [SchemaForm] (Phase 2) — proving the
+ * generic field dispatch across required/optional params, booleans, strings, dates, choice lists, and nested
+ * map schemas. Editing and execution follow in later phases.
  */
 val EndpointCatalog = FC<Props> {
-    var endpoints by useState(emptyList<EndpointInfo>())
+    var catalog by useState<Catalog?>(null)
+    var selected by useState<EndpointInfo?>(null)
     var error by useState<String?>(null)
 
     useEffectOnce {
         catalogScope.launch {
             try {
-                endpoints = SchemaCatalogApi.fetchCatalog().endpoints
+                catalog = SchemaCatalogApi.fetchCatalog()
                 error = null
             } catch (e: Throwable) {
                 error = "Catalog fetch failed — is `./gradlew :sample:run` running? (${e.message})"
@@ -42,25 +44,21 @@ val EndpointCatalog = FC<Props> {
         h1 { +"Endpoint catalog" }
         p {
             className = ClassName("subtitle")
-            +"Every registered endpoint, discovered from the runtime's /schema/endpoints catalog and rendered generically."
+            +"Every registered endpoint, discovered from the runtime's /schema/endpoints catalog. Select one to render its input schema."
         }
 
-        endpoints.forEach { ep ->
+        catalog?.endpoints?.forEach { ep ->
             div {
                 className = ClassName("row")
-                span {
-                    className = ClassName("count")
+                Button {
+                    size = "small"
+                    type = if (selected === ep) "primary" else "default"
+                    onClick = { selected = ep }
                     +ep.method
                 }
                 span {
                     className = ClassName("todo-title")
                     +ep.path
-                }
-            }
-            ep.description?.let {
-                p {
-                    className = ClassName("subtitle")
-                    +it
                 }
             }
         }
@@ -69,6 +67,27 @@ val EndpointCatalog = FC<Props> {
             p {
                 className = ClassName("todo-error")
                 +it
+            }
+        }
+    }
+
+    // Detail card: the selected endpoint's input schema rendered read-only.
+    val current = selected
+    val defs = catalog?.defs
+    if (current != null && defs != null) {
+        div {
+            className = ClassName("card")
+            h1 { +"${current.method} ${current.path}" }
+            current.description?.let {
+                p {
+                    className = ClassName("subtitle")
+                    +it
+                }
+            }
+            h2 { +"Input parameters" }
+            SchemaForm {
+                fields = toFields(current.inputSchema, defs)
+                values = emptyMap()
             }
         }
     }
