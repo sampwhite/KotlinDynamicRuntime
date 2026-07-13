@@ -84,13 +84,16 @@ fun Any?.toOptDouble(): Double? = when (this) {
 
 /**
  * Loosely coerces this value to an [Instant]: null (and a blank string) yield null; an [Instant] passes
- * through; a JDBC [java.sql.Timestamp] / [java.util.Date] or an epoch-millis [Number] is converted at
- * millisecond precision; a string is parsed via [parseDate]. Anything else throws [KdrException.mkConv].
+ * through; an epoch-millis [Number] is converted at millisecond precision; a string is parsed via
+ * [parseDate]. Anything else throws [KdrException.mkConv].
+ *
+ * Deliberately KMP-safe: it knows nothing about JVM/JDBC date types. The only place a `java.util.Date` /
+ * `java.sql.Timestamp` enters the runtime is the JDBC boundary, so the SQL layer's `toDbInstant` layers
+ * those on top of this shared coercer rather than burdening it (and every transpile target) with them.
  */
 fun Any?.toOptInstant(): Instant? = when (this) {
     null -> null
     is Instant -> this
-    is java.util.Date -> Instant.fromEpochMilliseconds(this.time)
     is Number -> Instant.fromEpochMilliseconds(this.toLong())
     is CharSequence -> {
         val s = this.trim()

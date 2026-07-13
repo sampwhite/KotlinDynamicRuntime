@@ -18,6 +18,7 @@ import com.dynamicruntime.common.util.toOptStr
 import java.sql.PreparedStatement
 import java.sql.Timestamp
 import java.sql.Types
+import kotlin.time.Instant
 
 /**
  * Maps between column [StoreType]s and the database: deriving a store type from a column's JSON schema,
@@ -95,7 +96,7 @@ object SqlTypeUtil {
                     if (b != null) pStmt.setBoolean(index, b) else pStmt.setNull(index, Types.BOOLEAN)
                 }
                 StoreType.date -> {
-                    val d = obj.toOptInstant()
+                    val d = obj.toDbInstant()
                     pStmt.setTimestamp(index, d?.let { Timestamp(it.toEpochMilliseconds()) })
                 }
                 StoreType.float -> {
@@ -146,7 +147,7 @@ object SqlTypeUtil {
             StoreType.boolean -> toBool(obj)
             StoreType.integer -> runCatching { obj.toOptLong() }.getOrNull()
             StoreType.float -> runCatching { obj.toOptDouble() }.getOrNull()
-            StoreType.date -> runCatching { obj.toOptInstant() }.getOrNull()
+            StoreType.date -> runCatching { obj.toDbInstant() }.getOrNull()
             StoreType.map -> {
                 val s = obj.toString().trim()
                 if (s.startsWith("{")) {
@@ -190,4 +191,13 @@ object SqlTypeUtil {
         is Boolean -> obj
         else -> obj.toString().toOptBool()
     }
+
+    /**
+     * Coerces a value to an [Instant] for the database, additionally accepting the `java.util.Date` /
+     * `java.sql.Timestamp` that JDBC hands back on reads. The shared [toOptInstant] is kept KMP-safe and
+     * deliberately does not know these JVM types, so this JDBC-adapter-local helper layers them on top; every
+     * other (`Instant` / `Number` / `String`) case is delegated unchanged.
+     */
+    private fun Any?.toDbInstant(): Instant? =
+        if (this is java.util.Date) Instant.fromEpochMilliseconds(this.time) else toOptInstant()
 }
