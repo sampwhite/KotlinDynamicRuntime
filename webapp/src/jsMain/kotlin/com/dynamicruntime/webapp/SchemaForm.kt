@@ -6,11 +6,13 @@ import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonStr
 import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
 import web.cssom.ClassName
 
@@ -161,6 +163,15 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
  * named in words. No form control — this is a value being shown, not an input.
  */
 private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
+    // A JSON structure (a generic object, or an array with structured elements) reads far better as pretty
+    // JSON than a flattened toString; the kernel's JsonUtil formats it (indented, non-compact by default).
+    if (value is Map<*, *> || (value is List<*> && value.any { it is Map<*, *> || it is List<*> })) {
+        pre {
+            className = ClassName("code json-value")
+            +value.toJsonStr()
+        }
+        return
+    }
     val text = displayValue(value)
     if (text.isNotEmpty()) {
         span {
