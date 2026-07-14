@@ -37,8 +37,12 @@ class SchType(
      * (see the validator).
      */
     val additionalProperties: Boolean,
-    /** Element schema, for an array type (null otherwise). */
-    val itemType: SchType?,
+    /**
+     * Element schema, for an array type (null otherwise). Usually set at construction, but — like
+     * [SchProperty.valueType] — an array whose `items` is a `$ref` has it bound in the reference-resolution
+     * pass once all types are parsed (see [parseSchemaTypes]).
+     */
+    var itemType: SchType?,
     /** Choice list for the custom `options` construct; null if not an options field. */
     val options: List<SchOption>?,
     /**

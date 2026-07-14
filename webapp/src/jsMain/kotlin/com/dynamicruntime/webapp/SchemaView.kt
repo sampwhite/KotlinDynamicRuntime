@@ -74,9 +74,9 @@ class Catalog(val endpoints: List<EndpointInfo>, val defs: Map<String, Any?>) {
 
     /**
      * The resolved [SchType] of an endpoint's response payload — the type under the envelope's `results`/`item`
-     * key, or the array element type under `items` — looked up in the shared [defTypes]. Resolving from
-     * [defTypes] (rather than the envelope's parsed array item type) sidesteps the kernel parser not binding a
-     * `$ref` that sits directly on an array's `items` node. Null when the output has no typed `$ref` payload.
+     * key, or the array element type under `items` — looked up by name in the shared [defTypes]. Reading the
+     * `$ref` name straight from the output schema keeps this independent of the envelope's own parse. Null when
+     * the output has no typed `$ref` payload.
      */
     fun payloadType(ep: EndpointInfo): SchType? {
         val props = ep.outputSchema[SCH.properties].asMap()
