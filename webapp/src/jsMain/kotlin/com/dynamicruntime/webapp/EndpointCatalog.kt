@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
+import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -14,6 +15,7 @@ import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
+import react.useEffect
 import react.useEffectOnce
 import react.useState
 import web.cssom.ClassName
@@ -39,15 +41,37 @@ val EndpointCatalog = FC<Props> {
     var runError by useState<String?>(null)
     var running by useState(false)
     var error by useState<String?>(null)
+    // True once the initial URL-hash restore has run; until then the URL is not written back (so the
+    // mount-time sync effect can't clobber a hash we are about to read).
+    var restored by useState(false)
 
     useEffectOnce {
         catalogScope.launch {
             try {
-                catalog = SchemaCatalogApi.fetchCatalog()
+                val fetched = SchemaCatalogApi.fetchCatalog()
+                catalog = fetched
                 error = null
+                // Restore the selected endpoint (and any entered values) from the URL hash, so a refresh or a
+                // shared link lands back on the same endpoint with the same input.
+                readHash()?.let { hs ->
+                    fetched.endpoints.firstOrNull { it.method == hs.method && it.path == hs.path }?.let { ep ->
+                        selected = ep
+                        values = hs.values
+                    }
+                }
             } catch (e: Throwable) {
                 error = "Catalog fetch failed — is `./gradlew :sample:run` running? (${e.message})"
+            } finally {
+                restored = true
             }
+        }
+    }
+
+    // Keep the URL hash in sync with the current selection and input values (replaceState: no history spam,
+    // no hashchange loop). Gated on `restored` so it never overwrites the hash before it has been read.
+    useEffect(selected, values, restored) {
+        if (restored) {
+            writeHash(selected, values)
         }
     }
 
@@ -293,3 +317,56 @@ private fun Any?.asMap(): Map<String, Any?> = (this as? Map<String, Any?>) ?: em
 
 /** Null-tolerant view of a value as a `List`. */
 private fun Any?.asList(): List<Any?> = (this as? List<*>) ?: emptyList()
+
+// --- URL-hash routing -------------------------------------------------------------------------------------
+// The selected endpoint (method + path) and the entered input values (as JSON) live in the URL hash, so a
+// refresh or a shared link restores the same endpoint page and the same input. The hash is client-only and
+// survives a refresh, and needs no server-side routing (works under any static host, incl. the appui bundle).
+
+/** The endpoint identity and input values decoded from the URL hash. */
+private class HashState(val method: String, val path: String, val values: Map<String, Any?>)
+
+/** Parses the current URL hash into a [HashState], or null when it names no endpoint. */
+private fun readHash(): HashState? {
+    val raw = windowHash().removePrefix("#")
+    if (raw.isEmpty()) {
+        return null
+    }
+    val parts = HashMap<String, String>()
+    for (segment in raw.split("&")) {
+        val eq = segment.indexOf('=')
+        if (eq > 0) {
+            parts[segment.substring(0, eq)] = decodeUri(segment.substring(eq + 1))
+        }
+    }
+    val method = parts["m"] ?: return null
+    val path = parts["p"] ?: return null
+    val values = parts["v"]?.let { runCatching { it.jsonMap() }.getOrNull() } ?: emptyMap()
+    return HashState(method, path, values)
+}
+
+/** Writes the current selection + input values into the URL hash (clearing it when nothing is selected). */
+private fun writeHash(endpoint: EndpointInfo?, values: Map<String, Any?>) {
+    val base = windowLocationBase()
+    if (endpoint == null) {
+        replaceUrl(base)
+        return
+    }
+    val hash = buildString {
+        append("m=").append(encodeUri(endpoint.method))
+        append("&p=").append(encodeUri(endpoint.path))
+        if (values.isNotEmpty()) {
+            append("&v=").append(encodeUri(values.toJsonStr(compact = true)))
+        }
+    }
+    replaceUrl("$base#$hash")
+}
+
+private fun windowHash(): String = js("window.location.hash") as String
+private fun windowLocationBase(): String = js("window.location.pathname + window.location.search") as String
+private fun replaceUrl(url: String) {
+    js("window.history.replaceState(null, '', url)")
+}
+
+private fun encodeUri(s: String): String = js("encodeURIComponent(s)") as String
+private fun decodeUri(s: String): String = js("decodeURIComponent(s)") as String
