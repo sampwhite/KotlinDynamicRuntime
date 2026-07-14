@@ -311,9 +311,10 @@ class RequestService : ServiceInitializer {
     }
 
     /**
-     * After dispatch, writes the session cookie for a fresh login and clears it on logout. On login it also
-     * records the device (and issues a long-lived device cookie if the browser has none) -- minimal for now;
-     * the familiar-device step-up gate arrives with passwords.
+     * After dispatch, writes the session cookie for a fresh login and clears it on logout. On login, it also
+     * records the device, issuing a long-lived device cookie if the browser has none. A verification-code
+     * login (flagged via [KdrRequest.trustDevice]) additionally marks that device *familiar*, which is what
+     * later permits a password login from it (issue #69).
      */
     fun checkAddAuthCookies(cxt: KdrCxt, handler: RequestHandler) {
         val req = cxt.request ?: return
@@ -328,13 +329,16 @@ class RequestService : ServiceInitializer {
         val cookie = UserAuthCookie(profile.userId, profile.account, profile.roles.toList(), expireMs)
         handler.addResponseCookie(AUTHC.authCookie, cookie.encode(node), Instant.fromEpochMilliseconds(expireMs))
 
-        // Device recording + a long-lived device cookie when the browser has none yet.
+        // Device recording + a long-lived device cookie when the browser has none yet. An existing device
+        // cookie is reused, never re-minted -- a code login just flips that same device to trusted.
         var deviceGuid = handler.getRequestCookies()[AUTHC.deviceCookie]
         if (deviceGuid == null) {
             deviceGuid = cxt.mkUniqueId()
             handler.addResponseCookie(AUTHC.deviceCookie, deviceGuid, Instant.fromEpochMilliseconds(expireMs + AUTHC.sessionMillis))
         }
-        UserService.get(cxt)?.recordDevice(cxt, profile.userId, deviceGuid, handler.forwardedFor, handler.userAgent)
+        UserService.get(cxt)?.recordDevice(
+            cxt, profile.userId, deviceGuid, handler.forwardedFor, handler.userAgent, markTrusted = req.trustDevice,
+        )
     }
 
     @Suppress("ConstPropertyName")

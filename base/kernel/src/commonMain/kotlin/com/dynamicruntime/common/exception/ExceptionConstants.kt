@@ -11,7 +11,7 @@ package com.dynamicruntime.common.exception
  * through the lens of the HTTP code they would produce. Generally a 500 or a 504
  * is worth retrying (possibly against another cluster node).
  */
-@Suppress("ConstPropertyName")
+@Suppress("ConstPropertyName", "unused")
 object EXC {
     const val ok = 200
     const val okCreated = 201
@@ -20,6 +20,9 @@ object EXC {
     const val notAuthorized = 403
     const val notFound = 404
     const val conflict = 409
+
+    /** The caller has made too many attempts and is being throttled (rate limiting). */
+    const val tooManyRequests = 429
 
     /** The default error code. */
     const val internalError = 500

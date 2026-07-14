@@ -8,6 +8,8 @@ import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.toOptInstant
+import kotlin.time.Instant
 
 /**
  * The user/auth service (issue #67): owns the [AuthFormHandler] and the SQL access to the `AuthUsers` and
@@ -78,31 +80,60 @@ class UserService : ServiceInitializer {
         }
     }
 
-    // --- AuthUserDevices recording ------------------------------------------
+    // --- AuthUserDevices: familiar-device trust -----------------------------
 
     /**
-     * Records a device the user logged in from, if not already recorded (minimal for Piece 1 -- the familiar
-     * device step-up gate and the multi-IP/agent merge come with passwords in a follow-up). Inserts a row
-     * keyed by ([userId], [deviceGuid]) capturing the [ipAddress] and [userAgent]. Absent/duplicate is
-     * tolerated: a device already recorded is left alone.
+     * Records the device a user logged in from, and -- when [markTrusted] -- marks it *familiar* (verified)
+     * with a fresh [AUTHC.deviceTrustMillis] expiration. Only a verification-code login sets [markTrusted]
+     * (see KdrRequest.trustDevice); a password login records presence but never grants trust. Upserts the
+     * row keyed by ([userId], [deviceGuid]): an existing untrusted row is left untouched when there is no
+     * trust to grant. The multi-IP/user-agent merge is still deferred; deviceData holds the latest only.
      */
-    fun recordDevice(cxt: KdrCxt, userId: Long, deviceGuid: String, ipAddress: String?, userAgent: String?) {
+    fun recordDevice(
+        cxt: KdrCxt, userId: Long, deviceGuid: String, ipAddress: String?, userAgent: String?, markTrusted: Boolean,
+    ) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUserDevicesTable(cxt)
-        val selectStmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
-        val insertStmt = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
         val key = mapOf(AU.userId to userId, AUD.deviceGuid to deviceGuid)
         sqlCxt.sqlDb.withSession(cxt) {
-            if (sqlCxt.sqlDb.queryOneStatement(cxt, selectStmt, key) != null) return@withSession
-            val row = mutableMapOf<String, Any?>(
+            val existing = sqlCxt.sqlDb.queryOneStatement(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), key)
+            if (existing != null && !markTrusted) return@withSession // presence already recorded; nothing to add
+            val expiration = if (markTrusted) {
+                Instant.fromEpochMilliseconds(cxt.now().toEpochMilliseconds() + AUTHC.deviceTrustMillis)
+            } else {
+                null
+            }
+            val row = mutableMapOf(
                 AU.userId to userId,
                 AUD.deviceGuid to deviceGuid,
                 AUD.deviceData to mapOf("ipAddress" to ipAddress, "userAgent" to userAgent),
-                AUD.deviceVerified to false,
+                AUD.deviceVerified to markTrusted,
+                AUD.verifyExpiration to expiration,
             )
             SqlTopicUtil.prepForStdExecute(cxt, table, row)
-            sqlCxt.sqlDb.executeStatement(cxt, insertStmt, row)
+            val stmt = if (existing != null) SqlTopicUtil.mkTableUpdateStmt(sqlCxt, table)
+            else SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
+            sqlCxt.sqlDb.executeStatement(cxt, stmt, row)
         }
+    }
+
+    /**
+     * Whether [deviceGuid] is a *familiar* device for [userId]: a recorded row that is verified and whose
+     * trust has not expired. This is the hard precondition for password login (issue #69) -- an unfamiliar
+     * device cannot use a password at all and must fall back to a verification code.
+     */
+    fun isDeviceTrusted(cxt: KdrCxt, userId: Long, deviceGuid: String): Boolean {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = authUserDevicesTable(cxt)
+        val stmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
+        var row: Map<String, Any?>? = null
+        sqlCxt.sqlDb.withSession(cxt) {
+            row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(AU.userId to userId, AUD.deviceGuid to deviceGuid))
+        }
+        val r = row ?: return false
+        if (r[AUD.deviceVerified] != true) return false
+        val expiration = r[AUD.verifyExpiration].toOptInstant() ?: return false
+        return cxt.now() <= expiration
     }
 
     @Suppress("ConstPropertyName")

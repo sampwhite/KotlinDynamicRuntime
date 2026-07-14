@@ -39,10 +39,11 @@ class AuthUserRow(val userId: Long, val account: String, val primaryId: String) 
      * for now; a future variant may load only part of the profile for high-volume paths.
      */
     fun toUserProfile(): UserProfile = UserProfile(
-        authId = userId.toString(), userId = userId, account = account, roles = roles.toSet(), publicName = publicName(),
+        authId = userId.toString(), userId = userId, account = account, roles = roles.toSet(),
+        publicName = publicName(), hasPassword = encodedPassword != null,
     )
 
-    /** Repackages the typed fields into a storage map (roles + password folded back into `authUserData`). */
+    /** Repackages the typed fields into a storage map (roles and password folded back into `authUserData`). */
     fun toMap(): Map<String, Any?> {
         val newAuthData = authUserData.toMutableMap()
         newAuthData[AD.roles] = roles
@@ -76,7 +77,7 @@ class AuthUserRow(val userId: Long, val account: String, val primaryId: String) 
             return row
         }
 
-        /** The initial provisioned row for a freshly verified [primaryId] contact (placeholder username). */
+        /** The initially provisioned row for a freshly verified [primaryId] contact (placeholder username). */
         fun mkInitialUser(primaryId: String, account: String, role: String): Map<String, Any?> = mapOf(
             AU.primaryId to primaryId,
             AU.username to (usernameTmpPrefix + primaryId),

@@ -48,4 +48,11 @@ class KdrRequest(
 
     /** Set true by the logout handler to have the auth hook clear the session auth cookie. */
     var clearAuth: Boolean = false
+
+    /**
+     * Set true by a **verification-code** login handler to have the auth hook mark the current device
+     * (the `kdrDevice` cookie) *familiar* for this user, so a later password login is permitted from it.
+     * A password login leaves this false: passwords ride existing trust but never grant it (issue #69).
+     */
+    var trustDevice: Boolean = false
 }
