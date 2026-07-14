@@ -57,7 +57,7 @@ val EndpointCatalog = FC<Props> {
     if (current == null || cat == null) {
         // ---- Catalog page: the endpoint table ----
         div {
-            className = ClassName("card")
+            className = ClassName("card wide")
             h1 { +"Endpoint catalog" }
             p {
                 className = ClassName("subtitle")
@@ -100,7 +100,7 @@ val EndpointCatalog = FC<Props> {
         }
 
         div {
-            className = ClassName("card")
+            className = ClassName("card wide")
 
             div {
                 className = ClassName("row")
@@ -222,6 +222,16 @@ val EndpointCatalog = FC<Props> {
                 pre {
                     className = ClassName("code")
                     +resp.toJsonStr()
+                }
+            }
+
+            // A second back link at the bottom, so a long response page doesn't force a scroll back up.
+            div {
+                className = ClassName("row")
+                Button {
+                    type = "link"
+                    onClick = { selected = null }
+                    +"← Back to catalog"
                 }
             }
         }
