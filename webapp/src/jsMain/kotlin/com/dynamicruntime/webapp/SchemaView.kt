@@ -1,7 +1,10 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.schema.refTargetName
+import com.dynamicruntime.common.util.toJsonMap
 
 /**
  * Client-side model of the endpoint catalog the display engine renders. It consumes the catalog form emitted
@@ -25,7 +28,20 @@ object EK {
     const val inputSchema = "inputSchema"
     const val outputSchema = "outputSchema"
     const val endpoints = "endpoints"
+
+    // Response-envelope payload keys, by endpoint kind (see :base:common's EP): general -> results,
+    // item -> item, list -> items.
     const val results = "results"
+    const val item = "item"
+    const val items = "items"
+}
+
+/** Endpoint kinds (mirror `:base:common`'s `EndpointKind`), determining where the payload sits in a response. */
+@Suppress("ConstPropertyName")
+object EKind {
+    const val general = "general"
+    const val item = "item"
+    const val list = "list"
 }
 
 /** One endpoint's catalog rendering. [inputSchema]/[outputSchema] are JSON-schema object maps with `$ref`s intact. */
@@ -55,4 +71,24 @@ class Catalog(val endpoints: List<EndpointInfo>, val defs: Map<String, Any?>) {
      *  against [defTypes]. This is the type the form renders and the validator checks against. */
     fun inputType(ep: EndpointInfo): SchType =
         parseSchemaTypes(mapOf(anonInputName to ep.inputSchema), defTypes).getValue(anonInputName)
+
+    /**
+     * The resolved [SchType] of an endpoint's response payload — the type under the envelope's `results`/`item`
+     * key, or the array element type under `items` — looked up in the shared [defTypes]. Resolving from
+     * [defTypes] (rather than the envelope's parsed array item type) sidesteps the kernel parser not binding a
+     * `$ref` that sits directly on an array's `items` node. Null when the output has no typed `$ref` payload.
+     */
+    fun payloadType(ep: EndpointInfo): SchType? {
+        val props = ep.outputSchema[SCH.properties].asMap()
+        val refNode = when (ep.kind) {
+            EKind.list -> props[EK.items].asMap()[SCH.items]
+            EKind.item -> props[EK.item]
+            else -> props[EK.results]
+        }
+        val ref = refNode.asMap()[SCH.dRef] as? String ?: return null
+        return defTypes[refTargetName(ref)]
+    }
 }
+
+/** Null-tolerant view of a parsed-schema node as a `Map`, via the kernel's `toJsonMap` coercion. */
+private fun Any?.asMap(): Map<String, Any?> = if (this is Map<*, *>) toJsonMap() else emptyMap()
