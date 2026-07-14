@@ -102,6 +102,19 @@ fun Any?.toOptInstant(): Instant? = when (this) {
     else -> throw KdrException.mkConv("Cannot convert value of type ${this::class.simpleName} to a date.")
 }
 
+// --- map-field accessors (a required/optional value at a key) ---------------------------------------------
+
+/** The value at [key] rendered as a String, or a bad-input error if it is absent/null. */
+fun Map<String, Any?>.getReqStr(key: String): String =
+    this[key]?.toString() ?: throw KdrException.mkInput("Missing required field '$key'.")
+
+/** The value at [key] rendered as a String, or null if it is absent/null. */
+fun Map<String, Any?>.getOptStr(key: String): String? = this[key]?.toString()
+
+/** The value at [key] coerced to a Long, or a bad-input error if it is absent/null. */
+fun Map<String, Any?>.getReqLong(key: String): Long =
+    this[key].toOptLong() ?: throw KdrException.mkInput("Missing required field '$key'.")
+
 /** Alternative to normal toString() that creates output that is more friendly to humans.
  * This will be expanded later on for dates and objects with specialized interfaces. */
 fun Any?.fmt(): String {

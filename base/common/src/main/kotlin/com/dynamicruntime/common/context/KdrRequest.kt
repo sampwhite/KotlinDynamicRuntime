@@ -37,4 +37,15 @@ class KdrRequest(
      * `KdrResponse`; lets a handler (e.g. `/schema/sample` under `explainInput`) attach diagnostic data.
      */
     val responseMeta: MutableMap<String, Any?> = mutableMapOf()
+
+    /**
+     * Set true by a login handler once it has authenticated the user (and set [KdrCxt.userProfile]), to have
+     * the post-dispatch auth hook write the session auth cookie (and record/refresh the device cookie). A
+     * request whose profile was merely *restored* from an existing cookie leaves this false, so the cookie is
+     * not needlessly rewritten. (Auth handling is minimal until a full `KdrResponse` lands; issue #67.)
+     */
+    var setAuthCookie: Boolean = false
+
+    /** Set true by the logout handler to have the auth hook clear the session auth cookie. */
+    var clearAuth: Boolean = false
 }
