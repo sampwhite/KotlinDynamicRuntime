@@ -42,11 +42,10 @@ class KdrIndex(
     /** Whether the index carries a uniqueness constraint. */
     val unique: Boolean,
 ) : JsonMappable {
-    override fun toJsonMap(): Map<String, Any?> = linkedMapOf(
-        TI.name to name,
+    override fun toJsonMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
         TI.fields to fieldNames,
         TI.unique to unique,
-    )
+    ).also { if (name != null) it[TI.name] = name } // optional "if given" -- omit rather than emit null
 }
 
 /**

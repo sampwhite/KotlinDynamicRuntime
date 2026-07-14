@@ -14,6 +14,9 @@ import com.dynamicruntime.common.util.toReadableChars
 fun computeVerifyCode(formAuthToken: String, contactAddress: String): String =
     (contactAddress + formAuthToken).stdHashToBytes().toReadableChars(4)
 
+/** The shortest password we accept when a user opts into one. */
+const val minPasswordLength = 8
+
 /** Validates a username: starts with a letter, contains only letters/digits/underscore, at least 4 chars. */
 fun checkValidUsername(username: String) {
     val valid = username.length >= 4 && username[0].isLetter() &&
@@ -33,9 +36,28 @@ fun checkValidUsername(username: String) {
  */
 fun updateUsernameAndPassword(row: AuthUserRow, username: String?, password: String?) {
     if (username != null) checkValidUsername(username)
+    requireUsableForLogin(row)
+    if (username != null) row.username = username
+    if (password != null) setPassword(row, password)
+}
+
+/** Hashes and stores [password] on [row] (opting the user into password login). Enforces [minPasswordLength]. */
+fun setPassword(row: AuthUserRow, password: String) {
+    requireUsableForLogin(row)
+    if (password.length < minPasswordLength) {
+        throw KdrException.mkInput("A password must be at least $minPasswordLength characters long.")
+    }
+    row.encodedPassword = password.hashPassword()
+}
+
+/** Clears [row]'s password, opting the user back out of password login (code login still works). */
+fun clearPassword(row: AuthUserRow) {
+    row.encodedPassword = null
+}
+
+/** Guards that [row] is a real, enabled user with a contact -- the precondition for assigning login data. */
+private fun requireUsableForLogin(row: AuthUserRow) {
     if (!row.enabled || !row.roles.contains(ROLE.user) || !row.authUserData.containsKey(AD.contacts)) {
         throw KdrException("User is not in a state where a login can be assigned to it.")
     }
-    if (username != null) row.username = username
-    if (password != null) row.encodedPassword = password.hashPassword()
 }

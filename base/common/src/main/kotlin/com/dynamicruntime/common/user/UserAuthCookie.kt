@@ -18,6 +18,12 @@ object AUTHC {
     /** How long a session auth cookie is valid, in milliseconds (30 days). */
     const val sessionMillis = 30L * 24 * 3600 * 1000
 
+    /**
+     * How long a device stays "familiar" (trusted for password login) after a verification-code login, in
+     * milliseconds (30 days). Every code login refreshes it; password login rides it but never extends it.
+     */
+    const val deviceTrustMillis = 30L * 24 * 3600 * 1000
+
     /** How long a form auth token is valid before a fresh one is needed, in milliseconds (15 minutes). */
     const val formTokenMillis = 15L * 60 * 1000
 }

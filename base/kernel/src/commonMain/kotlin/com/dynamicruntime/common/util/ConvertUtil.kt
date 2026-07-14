@@ -115,6 +115,13 @@ fun Map<String, Any?>.getOptStr(key: String): String? = this[key]?.toString()
 fun Map<String, Any?>.getReqLong(key: String): Long =
     this[key].toOptLong() ?: throw KdrException.mkInput("Missing required field '$key'.")
 
+/** The value at [key] coerced to a Boolean, or null if it is absent/null/unrecognized. */
+fun Map<String, Any?>.getOptBool(key: String): Boolean? = when (val v = this[key]) {
+    null -> null
+    is Boolean -> v
+    else -> v.toString().toOptBool()
+}
+
 /** Alternative to normal toString() that creates output that is more friendly to humans.
  * This will be expanded later on for dates and objects with specialized interfaces. */
 fun Any?.fmt(): String {

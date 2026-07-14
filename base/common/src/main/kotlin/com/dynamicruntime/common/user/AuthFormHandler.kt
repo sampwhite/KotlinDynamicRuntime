@@ -5,30 +5,42 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.util.checkPassword
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.mkRndString
 
+/** Topic logger for the auth subsystem (placed beside the code that owns the `"auth"` topic). */
+object LogAuth : KdrLogger("auth")
+
 /**
- * The auth flow orchestrator (issue #67), ported from dn's `AuthFormHandler` and pared to the verify-code
- * core. It issues and validates the encrypted, timeout-bounded **form token** (dn's captcha `formAuthCode` is
- * dropped -- no captcha), emails **verification codes** (a deterministic hash of the token + contact, never
- * stored), provisions initial users, and logs users in **by verification code**. Passwords are optional: a
- * user may set one via [setLoginData], but login-by-password (and the familiar-device step-up gate) are a
- * follow-up.
+ * The auth flow orchestrator (issues #67, #69), ported from dn's `AuthFormHandler`. It issues and validates
+ * the encrypted, timeout-bounded **form token** (dn's captcha `formAuthCode` is dropped -- no captcha), emails
+ * **verification codes** (a deterministic hash of the token and contact, never stored), provisions users, and
+ * logs users in.
+ *
+ * Two login paths: **by verification code** (the primary path, which also marks the current device *familiar*),
+ * and **by password** (optional, opt-in), which is permitted **only from a familiar device** -- a hard
+ * precondition, not a post-success step-up. A password login rides existing device trust but never grants it,
+ * so every trust decision traces back to proving control of the contact via a code.
+ *
+ * Brute force and email flooding are throttled by an in-memory [AuthRateLimiter] *before* codes/passwords are
+ * validated; the throttle is independent of the future single-use verify-code table.
  *
  * On a successful login it binds [KdrCxt.userProfile] and flags the request so the post-dispatch auth hook
- * writes the session cookie; it never touches cookies directly.
- *
- * Deferred from dn (not needed for the verify-code core): the per-hour/per-IP/per-token rate limiting, and
- * login-by-password with the familiar-device step-up gate.
+ * writes the session cookie (and, for a code login, marks the device familiar); it never touches cookies
+ * directly.
  */
 class AuthFormHandler(
     private val userService: UserService,
     private val node: NodeService,
     private val mail: MailService,
 ) {
+    /** Throttles for auth brute force / email flooding (issue #69). Per-node and non-durable by design. */
+    val rateLimiter = AuthRateLimiter()
+
     // --- form token ---------------------------------------------------------
 
     /** Issues a fresh encrypted form token stamping the creation time (for the timeout) plus random salt. */
@@ -49,26 +61,69 @@ class AuthFormHandler(
         }
     }
 
+    /**
+     * Rate-limits, then validates, a verification [verifyCode] for [contactAddress]. The throttle runs first,
+     * so the short code cannot be cheaply brute-forced; a correct code clears the counter for that contact.
+     */
+    private fun verifyCodeOrThrow(cxt: KdrCxt, contactAddress: String, formAuthToken: String, verifyCode: String) {
+        val key = "vc:$contactAddress"
+        if (!rateLimiter.allow(key, RL.verifyMax, RL.verifyWindowMs, cxt.now().toEpochMilliseconds())) {
+            throw KdrException(
+                "Too many verification attempts; please request a new code and try again.",
+                code = EXC.tooManyRequests,
+            )
+        }
+        if (computeVerifyCode(formAuthToken, contactAddress) != verifyCode) {
+            throw KdrException.mkInput("The verification code is incorrect.")
+        }
+        rateLimiter.reset(key)
+    }
+
     // --- sending verification codes -----------------------------------------
 
     /** Emails a verification code to a new email [contactAddress] (registration). */
     fun sendVerifyToContact(cxt: KdrCxt, contactAddress: String, formAuthToken: String) {
         requireValidToken(cxt, formAuthToken)
         if (!contactAddress.contains("@")) throw KdrException.mkInput("An email address must contain an '@'.")
-        sendVerifyEmail(cxt, contactAddress, computeVerifyCode(formAuthToken, contactAddress))
+        requireSendAllowed(cxt, contactAddress)
+        sendVerifyEmail(cxt, contactAddress, computeVerifyCode(formAuthToken, contactAddress), addPassword = false)
     }
 
-    /** Emails a verification code to an existing user (by [username]) at their primary contact. */
-    fun sendVerifyToUser(cxt: KdrCxt, username: String, formAuthToken: String) {
+    /**
+     * Emails a verification code to an existing user (by [username]) at their primary contact. When
+     * [addPassword] is set, the email is framed for setting/changing a password -- kept deliberately
+     * ambiguous about whether the user already has one.
+     */
+    fun sendVerifyToUser(cxt: KdrCxt, username: String, formAuthToken: String, addPassword: Boolean = false) {
         requireValidToken(cxt, formAuthToken)
         val user = userService.queryByUsername(cxt, username)
             ?: throw KdrException("Username '$username' is not in the system.", code = EXC.notFound)
-        sendVerifyEmail(cxt, user.primaryId, computeVerifyCode(formAuthToken, user.primaryId))
+        requireSendAllowed(cxt, user.primaryId)
+        sendVerifyEmail(cxt, user.primaryId, computeVerifyCode(formAuthToken, user.primaryId), addPassword)
     }
 
-    private fun sendVerifyEmail(cxt: KdrCxt, address: String, verifyCode: String) {
-        val text = $$"Your verification code is ${verifyCode}. It expires in fifteen minutes."
-            .evalTemplate(mapOf("verifyCode" to verifyCode))
+    /** Throttles verification emails per source IP and per targeted contact, to blunt flooding. */
+    private fun requireSendAllowed(cxt: KdrCxt, contactAddress: String) {
+        val nowMs = cxt.now().toEpochMilliseconds()
+        val ip = cxt.forwardedFor ?: unknownIp
+        if (!rateLimiter.allow("svip:$ip", RL.sendPerIpMax, RL.sendPerIpWindowMs, nowMs) ||
+            !rateLimiter.allow("svc:$contactAddress", RL.sendPerContactMax, RL.sendPerContactWindowMs, nowMs)
+        ) {
+            throw KdrException(
+                "Too many verification requests; please wait a while before requesting another code.",
+                code = EXC.tooManyRequests,
+            )
+        }
+    }
+
+    private fun sendVerifyEmail(cxt: KdrCxt, address: String, verifyCode: String, addPassword: Boolean) {
+        val template = if (addPassword) {
+            $$"Your verification code is ${verifyCode}. Enter it to set or change your password. " +
+                "It expires in fifteen minutes."
+        } else {
+            $$"Your verification code is ${verifyCode}. It expires in fifteen minutes."
+        }
+        val text = template.evalTemplate(mapOf("verifyCode" to verifyCode))
         mail.sendEmail(cxt, to = address, subject = "Your verification code", text = text)
     }
 
@@ -81,9 +136,7 @@ class AuthFormHandler(
      */
     fun createInitialUser(cxt: KdrCxt, contactAddress: String, formAuthToken: String, verifyCode: String): Long {
         requireValidToken(cxt, formAuthToken)
-        if (computeVerifyCode(formAuthToken, contactAddress) != verifyCode) {
-            throw KdrException.mkInput("The verification code is incorrect.")
-        }
+        verifyCodeOrThrow(cxt, contactAddress, formAuthToken, verifyCode)
         val existing = userService.queryByPrimaryId(cxt, contactAddress)
         if (existing != null && existing.enabled && (!existing.needsRealUsername || existing.encodedPassword != null)) {
             throw KdrException(
@@ -121,9 +174,7 @@ class AuthFormHandler(
         requireValidToken(cxt, formAuthToken)
         val row = userService.queryByUserId(cxt, userId)
             ?: throw KdrException("User $userId could not be found.", code = EXC.notFound)
-        if (computeVerifyCode(formAuthToken, row.primaryId) != verifyCode) {
-            throw KdrException.mkInput("The verification code is incorrect.")
-        }
+        verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
         if (username != null) {
             val other = userService.queryByUsername(cxt, username)
             if (other != null && other.userId != userId) {
@@ -132,7 +183,7 @@ class AuthFormHandler(
         }
         updateUsernameAndPassword(row, username, password)
         userService.updateUser(cxt, row)
-        return completeLogin(cxt, row)
+        return completeLogin(cxt, row, byCode = true)
     }
 
     /** Logs a user in by verification code (username + code), the primary login path. */
@@ -140,18 +191,90 @@ class AuthFormHandler(
         requireValidToken(cxt, formAuthToken)
         val row = userService.queryByUsername(cxt, username)
             ?: throw KdrException("Username '$username' could not be found.", code = EXC.notFound)
-        if (computeVerifyCode(formAuthToken, row.primaryId) != verifyCode) {
-            throw KdrException.mkInput("The verification code is incorrect.")
-        }
-        return completeLogin(cxt, row)
+        verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
+        return completeLogin(cxt, row, byCode = true)
     }
 
-    /** Binds the acting profile and flags the request for the cookie hook; returns the user-info payload. */
-    private fun completeLogin(cxt: KdrCxt, row: AuthUserRow): Map<String, Any?> {
+    /**
+     * Logs a user in by [password] -- permitted **only from a familiar device** (issue #69). Every failure
+     * (unknown user, unverified device, no password, or a wrong password) returns the *same* opaque message;
+     * the real reason is only logged, so the caller cannot tell whether the password was wrong or the device
+     * was unfamiliar. Attempts are throttled per username and per source IP before any password works.
+     */
+    fun loginByPassword(cxt: KdrCxt, username: String, password: String): Map<String, Any?> {
+        val nowMs = cxt.now().toEpochMilliseconds()
+        val ip = cxt.forwardedFor ?: unknownIp
+        if (!rateLimiter.allow("pw:$username", RL.pwPerUserMax, RL.pwWindowMs, nowMs) ||
+            !rateLimiter.allow("pwip:$ip", RL.pwPerIpMax, RL.pwWindowMs, nowMs)
+        ) {
+            throw KdrException(
+                "Too many failed login attempts; please wait and try again, or log in by verification code.",
+                code = EXC.tooManyRequests,
+            )
+        }
+
+        val row = userService.queryByUsername(cxt, username)
+        val deviceGuid = cxt.request?.webRequest?.getRequestCookies()?.get(AUTHC.deviceCookie)
+        val stored = row?.encodedPassword
+        val failReason: String? = when {
+            row == null -> "unknown username"
+            deviceGuid == null -> "no device cookie"
+            !userService.isDeviceTrusted(cxt, row.userId, deviceGuid) -> "unverified device"
+            stored == null -> "no password set"
+            !password.checkPassword(stored) -> "incorrect password"
+            else -> null
+        }
+        if (failReason != null) {
+            LogAuth.info(cxt) { "Password login failed for '$username': $failReason." }
+            throw KdrException(passwordLoginFailedMessage, code = EXC.authNeeded)
+        }
+        rateLimiter.reset("pw:$username")
+        return completeLogin(cxt, row!!, byCode = false)
+    }
+
+    // --- password management ------------------------------------------------
+
+    /**
+     * Sets or changes the user's password after verifying a code (the code, sent to the user's contact, is the
+     * authorization). Because it is a code login, it also completes a login: the session cookie is written and
+     * the current device becomes familiar -- so the just-set password is usable from this browser next time.
+     */
+    fun changePassword(
+        cxt: KdrCxt, username: String, password: String, formAuthToken: String, verifyCode: String,
+    ): Map<String, Any?> {
+        requireValidToken(cxt, formAuthToken)
+        val row = userService.queryByUsername(cxt, username)
+            ?: throw KdrException("Username '$username' could not be found.", code = EXC.notFound)
+        verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
+        setPassword(row, password)
+        userService.updateUser(cxt, row)
+        return completeLogin(cxt, row, byCode = true)
+    }
+
+    /**
+     * Removes the currently-logged-in user's password (opt back out of password login; code login still
+     * works). Reached from the profile page, so it relies on the authenticated session rather than a code.
+     */
+    fun removePassword(cxt: KdrCxt): Map<String, Any?> {
+        val row = userService.queryByUserId(cxt, cxt.userProfile.userId)
+            ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
+        clearPassword(row)
+        userService.updateUser(cxt, row)
+        return row.toUserProfile().toUserInfo()
+    }
+
+    /**
+     * Binds the acting profile and flags the request for the cookie hook; returns the user-info payload. A
+     * [byCode] login additionally flags the device to be marked familiar (see KdrRequest.trustDevice).
+     */
+    private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean): Map<String, Any?> {
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
         val profile = row.toUserProfile()
         cxt.bindToUserProfile(profile)
-        cxt.request?.setAuthCookie = true
+        cxt.request?.let {
+            it.setAuthCookie = true
+            if (byCode) it.trustDevice = true
+        }
         return profile.toUserInfo()
     }
 
@@ -159,5 +282,13 @@ class AuthFormHandler(
     private companion object {
         /** Separator between the creation timestamp and salt inside a form token's plaintext. */
         const val tokenSep = "|"
+
+        /** Placeholder source IP for rate-limit keys when the request carries no forwarded-for address. */
+        const val unknownIp = "unknown"
+
+        /** The single opaque message returned for every password-login failure (issue #69). */
+        const val passwordLoginFailedMessage =
+            "Password login failed either because of an incorrect password or because you need to log in by " +
+                "verification code to activate password logins."
     }
 }

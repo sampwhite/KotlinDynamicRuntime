@@ -11,6 +11,7 @@ object UPF {
     const val account = "account"
     const val roles = "roles"
     const val publicName = "publicName"
+    const val hasPassword = "hasPassword"
 }
 
 /**
@@ -42,6 +43,12 @@ class UserProfile(
     val roles: Set<String> = emptySet(),
     /** The user's public display name, when known. */
     val publicName: String? = null,
+    /**
+     * Whether the user has opted into a password (login by code always works regardless). Known only on a
+     * profile freshly loaded from the auth row; null (and omitted from [toUserInfo]) on the fast path where
+     * the profile was restored from the session cookie without a database read.
+     */
+    val hasPassword: Boolean? = null,
 ) {
     /**
      * A JSON-friendly map dump of this profile's attributes -- the payload returned by user-info endpoints so
@@ -54,8 +61,10 @@ class UserProfile(
         put(UPF.account, account)
         put(UPF.roles, roles.toList())
         if (publicName != null) put(UPF.publicName, publicName)
+        if (hasPassword != null) put(UPF.hasPassword, hasPassword)
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
         /** The `authId` used for the anonymous (not-logged-in) profile. */
         const val anonymousAuthId = "anonymous"
@@ -70,7 +79,7 @@ class UserProfile(
         fun anonymous(): UserProfile = UserProfile(authId = anonymousAuthId, account = AC.public)
 
         /**
-         * Defines the `UserInfo` schema type (the shape of [toUserInfo]) on [builder]. Kept with the class so
+         * Defines the `UserInfo` schema type (the shape of [toUserInfo]) on [builder]. Kept with the class, so
          * the type and the serialization cannot drift apart (mirrors `KdrTable.defineInfoType`); an endpoint
          * module that returns user info pulls it in and references it by [infoTypeName].
          */
@@ -85,6 +94,7 @@ class UserProfile(
                     items { type = SCT.string }
                 }
                 property(UPF.publicName, "The user's public display name, when known.")
+                property(UPF.hasPassword, "Whether the user has opted into a password.") { type = SCT.boolean }
             }
         }
     }
