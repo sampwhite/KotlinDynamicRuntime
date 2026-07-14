@@ -53,10 +53,14 @@ class EndpointInfo(
     val description: String?,
     val inputSchema: Map<String, Any?>,
     val outputSchema: Map<String, Any?>,
-)
+) {
+    /** Stable identity for a `method:path` endpoint (used as a table row key). */
+    val key: String get() = "$method:$path"
+}
 
 /** Wrapper names for parsing an endpoint's anonymous input/output schema against the shared `$defs`. */
 private const val anonInputName = "#endpointInput"
+private const val anonOutputName = "#endpointOutput"
 
 /**
  * The whole `/schema/endpoints` result: the rendered endpoints and the shared `$defs` their `$ref`s resolve
@@ -71,6 +75,11 @@ class Catalog(val endpoints: List<EndpointInfo>, val defs: Map<String, Any?>) {
      *  against [defTypes]. This is the type the form renders and the validator checks against. */
     fun inputType(ep: EndpointInfo): SchType =
         parseSchemaTypes(mapOf(anonInputName to ep.inputSchema), defTypes).getValue(anonInputName)
+
+    /** Parses an endpoint's output envelope schema into a resolved object [SchType] (its `$ref`s — including
+     *  a list endpoint's `items` element ref — resolve against [defTypes]). Rendered by the output-schema view. */
+    fun outputType(ep: EndpointInfo): SchType =
+        parseSchemaTypes(mapOf(anonOutputName to ep.outputSchema), defTypes).getValue(anonOutputName)
 
     /**
      * The resolved [SchType] of an endpoint's response payload — the type under the envelope's `results`/`item`

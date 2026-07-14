@@ -14,7 +14,6 @@ import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
-import react.dom.html.ReactHTML.span
 import react.useEffectOnce
 import react.useState
 import web.cssom.ClassName
@@ -23,17 +22,17 @@ import web.cssom.ClassName
 private val catalogScope = MainScope()
 
 /**
- * The display engine's endpoint browser. It fetches the runtime's `/schema/endpoints` catalog and, when an
- * endpoint is selected, renders its input schema as an editable or read-only [SchemaForm] driven by the shared
- * kernel's parsed `SchType`. "Validate" runs the kernel's `coerceAndValidate` (the exact backend logic),
- * surfacing failures and the coerced payload; "Run" validates, executes the endpoint with that coerced payload,
- * and renders the response through the SAME engine (read-only) over the endpoint's output schema.
+ * The display engine's endpoint browser, in two "pages": the catalog (an [EndpointTable] of every registered
+ * endpoint) and, once a row is selected, that endpoint's page — its identity, description, an interactive
+ * input form (validate + run + rendered response), and a link that reveals the output schema. Navigation is a
+ * simple view swap on the selection; a "Back to catalog" link clears it.
  */
 val EndpointCatalog = FC<Props> {
     var catalog by useState<Catalog?>(null)
     var selected by useState<EndpointInfo?>(null)
     var values by useState<Map<String, Any?>>(emptyMap())
     var editable by useState(true)
+    var showOutput by useState(false)
     var failures by useState<List<SchFailure>?>(null)
     var coerced by useState<String?>(null)
     var response by useState<Map<String, Any?>?>(null)
@@ -52,50 +51,44 @@ val EndpointCatalog = FC<Props> {
         }
     }
 
-    div {
-        className = ClassName("card")
+    val current = selected
+    val cat = catalog
 
-        h1 { +"Endpoint catalog" }
-        p {
-            className = ClassName("subtitle")
-            +"Every registered endpoint, discovered from the runtime's /schema/endpoints catalog. Select one to render, validate, and run it."
-        }
-
-        catalog?.endpoints?.forEach { ep ->
-            div {
-                className = ClassName("row")
-                Button {
-                    size = "small"
-                    type = if (selected === ep) "primary" else "default"
-                    onClick = {
+    if (current == null || cat == null) {
+        // ---- Catalog page: the endpoint table ----
+        div {
+            className = ClassName("card")
+            h1 { +"Endpoint catalog" }
+            p {
+                className = ClassName("subtitle")
+                +"Every registered endpoint, discovered from the runtime's /schema/endpoints catalog. Select one to view and run it."
+            }
+            when {
+                error != null -> p {
+                    className = ClassName("todo-error")
+                    +error!!
+                }
+                cat == null -> p {
+                    className = ClassName("subtitle")
+                    +"Loading…"
+                }
+                else -> EndpointTable {
+                    endpoints = cat.endpoints
+                    onSelect = { ep ->
                         selected = ep
                         values = emptyMap()
+                        editable = true
+                        showOutput = false
                         failures = null
                         coerced = null
                         response = null
                         runError = null
                     }
-                    +ep.method
-                }
-                span {
-                    className = ClassName("todo-title")
-                    +ep.path
                 }
             }
         }
-
-        error?.let {
-            p {
-                className = ClassName("todo-error")
-                +it
-            }
-        }
-    }
-
-    // Detail card: the selected endpoint's input schema (editable/read-only), validation, and the run + response.
-    val current = selected
-    val cat = catalog
-    if (current != null && cat != null) {
+    } else {
+        // ---- Endpoint page ----
         val inputType = cat.inputType(current)
 
         // Validates the entered values with the kernel; returns the coerced payload when there are no failures.
@@ -108,6 +101,16 @@ val EndpointCatalog = FC<Props> {
 
         div {
             className = ClassName("card")
+
+            div {
+                className = ClassName("row")
+                Button {
+                    type = "link"
+                    onClick = { selected = null }
+                    +"← Back to catalog"
+                }
+            }
+
             h1 { +"${current.method} ${current.path}" }
             current.description?.let {
                 p {
@@ -116,6 +119,21 @@ val EndpointCatalog = FC<Props> {
                 }
             }
 
+            // Separate link to reveal the output schema (structure only).
+            div {
+                className = ClassName("row")
+                Button {
+                    type = "link"
+                    onClick = { showOutput = !showOutput }
+                    +if (showOutput) "Hide output schema" else "View output schema"
+                }
+            }
+            if (showOutput) {
+                h2 { +"Output schema" }
+                SchemaOutline { type = cat.outputType(current) }
+            }
+
+            h2 { +"Input parameters" }
             div {
                 className = ClassName("row")
                 Button {
@@ -124,8 +142,6 @@ val EndpointCatalog = FC<Props> {
                     +if (editable) "Switch to read-only" else "Switch to edit"
                 }
             }
-
-            h2 { +"Input parameters" }
             SchemaForm {
                 type = inputType
                 this.values = values

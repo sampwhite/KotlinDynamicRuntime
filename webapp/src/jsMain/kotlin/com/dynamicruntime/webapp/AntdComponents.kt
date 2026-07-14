@@ -4,6 +4,7 @@
 package com.dynamicruntime.webapp
 
 import react.ComponentType
+import react.Props
 import react.PropsWithChildren
 
 /**
@@ -84,3 +85,20 @@ external val DatePicker: ComponentType<DatePickerProps>
 external interface SpaceProps : PropsWithChildren
 
 external val Space: ComponentType<SpaceProps>
+
+external interface TableProps : Props {
+    /** Column configs, each an antd `{ title, dataIndex, key, width? }` object. */
+    var columns: Array<dynamic>
+    /** Row data, each a plain object keyed by the columns' dataIndex plus a `key`. */
+    var dataSource: Array<dynamic>
+    /** `false` to hide paging, or a paging config object. */
+    var pagination: dynamic
+    /** Per-row props; antd calls it with (record, index) and uses the returned `{ onClick, style }`. */
+    var onRow: ((record: dynamic, index: Int) -> dynamic)?
+    /** Field on each row used as its React key. */
+    var rowKey: String?
+    /** "large" | "middle" | "small". */
+    var size: String?
+}
+
+external val Table: ComponentType<TableProps>

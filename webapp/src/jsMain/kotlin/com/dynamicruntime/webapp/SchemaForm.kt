@@ -255,3 +255,78 @@ private fun Any?.asKMap(): Map<String, Any?> = if (this is Map<*, *>) toJsonMap(
 
 /** Null-tolerant view of a value-tree node as a `List`. */
 private fun Any?.asKList(): List<Any?> = this as? List<*> ?: emptyList()
+
+// --- output-schema outline --------------------------------------------------------------------------------
+
+/**
+ * A read-only structural view of a [SchType] — the shape, not any data. Each field shows its name (with a
+ * required marker) and type in words; an object expands its fields, an array of objects expands its element
+ * type, and a choice field lists its options. Used for the endpoint page's output-schema view (the input side
+ * is the interactive form). A self-referential type renders a collapsed marker rather than expanding forever.
+ */
+external interface SchemaOutlineProps : Props {
+    var type: SchType
+}
+
+val SchemaOutline = FC<SchemaOutlineProps> { props ->
+    div {
+        className = ClassName("schema-form")
+        outlineObject(props.type, emptySet())
+    }
+}
+
+private fun ChildrenBuilder.outlineObject(type: SchType, seen: Set<String>) {
+    if (type.properties.isEmpty()) {
+        p {
+            className = ClassName("type-hint")
+            +"(no fields)"
+        }
+        return
+    }
+    type.properties.forEach { (name, prop) -> outlineField(name, prop, name in type.required, seen) }
+}
+
+private fun ChildrenBuilder.outlineField(name: String, prop: SchProperty, required: Boolean, seen: Set<String>) {
+    val vt = prop.valueType
+    div {
+        className = ClassName("row")
+        labelSpan(name, required)
+        span {
+            className = ClassName("field-type")
+            +"(${typeWord(vt)})"
+        }
+    }
+    prop.description?.let { desc(it) }
+
+    // Expand structure: an object's fields, an array-of-object's element fields, or a choice field's options.
+    val element = if (vt.jsonType == SCT.array) vt.itemType else null
+    when {
+        vt.jsonType == SCT.kObject && vt.properties.isNotEmpty() -> outlineNested(vt, seen)
+        element != null && element.jsonType == SCT.kObject && element.properties.isNotEmpty() -> outlineNested(element, seen)
+        vt.options != null -> optionList(vt.options!!)
+        element?.options != null -> optionList(element.options!!)
+    }
+}
+
+/** Renders a nested object's structure indented, guarding against a self-/mutually-referential type. */
+private fun ChildrenBuilder.outlineNested(type: SchType, seen: Set<String>) {
+    val typeName = type.name
+    if (typeName != null && typeName in seen) {
+        p {
+            className = ClassName("type-hint")
+            +"↻ $typeName (recursive)"
+        }
+        return
+    }
+    div {
+        className = ClassName("nested")
+        outlineObject(type, if (typeName != null) seen + typeName else seen)
+    }
+}
+
+private fun ChildrenBuilder.optionList(options: List<SchOption>) {
+    p {
+        className = ClassName("type-hint")
+        +"one of: ${options.joinToString(", ") { it.value }}"
+    }
+}
