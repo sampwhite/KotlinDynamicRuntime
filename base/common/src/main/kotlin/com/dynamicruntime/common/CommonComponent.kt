@@ -5,7 +5,11 @@ import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.portal.PortalService
+import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.user.authSchema
+import com.dynamicruntime.common.user.authTables
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.PRI
 import com.dynamicruntime.common.sql.SqlTopicService
@@ -33,6 +37,9 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(SqlTopicService.schema(cxt))
         // Domain tables: the node's private InstanceConfig table (owned by InstanceConfigService).
         collector.addTables(InstanceConfigService.tables(cxt))
+        // Auth (issue #67): the user/auth endpoints and the AuthUsers/AuthUserDevices tables.
+        collector.addModule(authSchema(cxt))
+        collector.addTables(authTables(cxt))
     }
 
     /**
@@ -51,7 +58,7 @@ class CommonComponent : ComponentDefinition {
      * encryption key, relying on the startup-tier [SqlTopicService] already being initialized).
      */
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
-        listOf(::RequestService, ::PortalService, ::MarkdownFragmentService, ::InstanceConfigService)
+        listOf(::RequestService, ::PortalService, ::MarkdownFragmentService, ::InstanceConfigService, ::MailService, ::UserService)
 
     /** Load just ahead of the standard components (demonstrates relative priority). */
     override fun loadPriority(): Int = PRI.standard - 1

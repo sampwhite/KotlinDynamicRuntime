@@ -5,6 +5,13 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrRequest
 import com.dynamicruntime.common.context.KdrSchemaStore
+import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.user.AUTHC
+import com.dynamicruntime.common.user.UserAuthCookie
+import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.mkUniqueId
+import kotlin.time.Instant
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.KdrEndpoint
@@ -144,12 +151,12 @@ class RequestService : ServiceInitializer {
         // Auth is stubbed until the auth subsystem is ported.
         extractAuth(cxt, handler)
 
-        // Real role enforcement awaits auth. For now, a section that requires a role is rejected (there is no
-        // way to be authenticated yet); anonymous and unregistered sections pass through.
+        // Enforce the section's required role against the acting profile (restored by extractAuth). A missing
+        // role -- including the unauthenticated system profile, which has none -- is a 401.
         val requiredRole = handler.sectionRules?.requiredRole
-        if (requiredRole != null) {
+        if (requiredRole != null && requiredRole !in cxt.userProfile.roles) {
             throw KdrException(
-                "Request requires role '$requiredRole', but authentication is not yet implemented.",
+                "Request requires the '$requiredRole' role.",
                 code = EXC.authNeeded,
             )
         }
@@ -278,21 +285,56 @@ class RequestService : ServiceInitializer {
         return env
     }
 
-    // --- stubbed auth touchpoints (no-ops until the auth subsystem is ported) ---
+    // --- auth touchpoints (issue #67) ---
 
-    @Suppress("UNUSED_PARAMETER")
+    /**
+     * Restores the acting [KdrCxt.userProfile] from the session auth cookie: decrypt it (via the node key),
+     * and if it is valid and unexpired, bind the user. Silently leaves the (system) profile in place otherwise
+     * -- an absent/expired/forged cookie simply means "not logged in". Header-token auth is a follow-up.
+     */
     fun extractAuth(cxt: KdrCxt, handler: RequestHandler) {
-        // TODO(auth): parse the auth cookie (decrypt via NodeService) and call the auth-extraction hook.
+        val cookie = handler.getRequestCookies()[AUTHC.authCookie] ?: return
+        val node = NodeService.get(cxt) ?: return
+        val decoded = UserAuthCookie.decode(node, cookie) ?: return
+        if (cxt.now().toEpochMilliseconds() > decoded.expireEpochMs) return
+        cxt.bindToUserProfile(
+            UserProfile(
+                authId = decoded.userId.toString(), userId = decoded.userId,
+                account = decoded.account, roles = decoded.roles.toSet(),
+            ),
+        )
     }
 
     @Suppress("UNUSED_PARAMETER")
     fun loadProfile(cxt: KdrCxt, handler: RequestHandler) {
-        // TODO(auth): load the acting user's profile via the load-profile hook.
+        // Extended profile data (the separate user-profile store) is stubbed: a different approach is coming.
     }
 
-    @Suppress("UNUSED_PARAMETER")
+    /**
+     * After dispatch, writes the session cookie for a fresh login and clears it on logout. On login it also
+     * records the device (and issues a long-lived device cookie if the browser has none) -- minimal for now;
+     * the familiar-device step-up gate arrives with passwords.
+     */
     fun checkAddAuthCookies(cxt: KdrCxt, handler: RequestHandler) {
-        // TODO(auth): prepare and set refreshed auth cookies via the prep-auth-cookies hook.
+        val req = cxt.request ?: return
+        val node = NodeService.get(cxt) ?: return
+        if (req.clearAuth) {
+            handler.addResponseCookie(AUTHC.authCookie, "", Instant.fromEpochMilliseconds(0))
+            return
+        }
+        if (!req.setAuthCookie) return
+        val profile = cxt.userProfile
+        val expireMs = cxt.now().toEpochMilliseconds() + AUTHC.sessionMillis
+        val cookie = UserAuthCookie(profile.userId, profile.account, profile.roles.toList(), expireMs)
+        handler.addResponseCookie(AUTHC.authCookie, cookie.encode(node), Instant.fromEpochMilliseconds(expireMs))
+
+        // Device recording + a long-lived device cookie when the browser has none yet.
+        var deviceGuid = handler.getRequestCookies()[AUTHC.deviceCookie]
+        if (deviceGuid == null) {
+            deviceGuid = cxt.mkUniqueId()
+            handler.addResponseCookie(AUTHC.deviceCookie, deviceGuid, Instant.fromEpochMilliseconds(expireMs + AUTHC.sessionMillis))
+        }
+        UserService.get(cxt)?.recordDevice(cxt, profile.userId, deviceGuid, handler.forwardedFor, handler.userAgent)
     }
 
     @Suppress("ConstPropertyName")
