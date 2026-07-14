@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.await
 import kotlin.js.Promise
 
@@ -11,6 +12,9 @@ import kotlin.js.Promise
  * `/kda` to the runtime on :7070 (see build.gradle.kts), so the calls are same-origin and need no CORS.
  */
 private const val schemaBase = "/kda/schema"
+
+/** The API context root every runtime endpoint is served under (proxied to :7070 in dev). */
+private const val apiRoot = "/kda"
 
 /** Binding to the browser's global `fetch` (named to avoid clashing with any wrapper `fetch`). */
 @JsName("fetch")
@@ -49,15 +53,61 @@ object SchemaCatalogApi {
         outputSchema = m[EK.outputSchema].jsonObj(),
     )
 
+    /**
+     * Executes [endpoint] with the (already coerced) [body] and returns its parsed response envelope. A GET
+     * carries the fields in the query string (a nested value is JSON-encoded, which the runtime's coercion
+     * re-parses); a POST/PUT sends them as a JSON body, serialized with the shared kernel's [toJsonStr]. A
+     * non-2xx response raises the runtime's error `message`.
+     */
+    suspend fun invoke(endpoint: EndpointInfo, body: Map<String, Any?>): Map<String, Any?> {
+        val url = apiRoot + endpoint.path
+        val response = if (endpoint.method == "GET") {
+            browserFetch(url + queryString(body)).await()
+        } else {
+            val init: dynamic = js("({})")
+            init.method = endpoint.method
+            val headers: dynamic = js("({})")
+            headers["Content-Type"] = "application/json"
+            init.headers = headers
+            init.body = body.toJsonStr(compact = true)
+            browserFetch(url, init).await()
+        }
+        val map = readJson(response)
+        if (!(response.ok as Boolean)) {
+            error(map["message"] as? String ?: "${endpoint.method} $url failed with status ${response.status}")
+        }
+        return map
+    }
+
     private suspend fun getJson(url: String): Map<String, Any?> {
         val response = browserFetch(url).await()
         if (!(response.ok as Boolean)) {
             error("GET $url failed with status ${response.status}")
         }
+        return readJson(response)
+    }
+
+    /** Reads a fetch [response]'s body as JSON via the kernel parser (plain Kotlin Map/List/values). */
+    private suspend fun readJson(response: dynamic): Map<String, Any?> {
         // `response` is dynamic, so `response.text()` is too; cast to a typed Promise so `.await()` resolves via
         // the Kotlin coroutines extension. The kernel's JSON parser then produces plain Kotlin Map/List/values.
         val text = (response.text() as Promise<String>).await()
         return text.jsonMap() ?: emptyMap()
+    }
+
+    /** Serializes [body] as a query string; scalars are stringified, a nested map/list is JSON-encoded. */
+    private fun queryString(body: Map<String, Any?>): String {
+        if (body.isEmpty()) {
+            return ""
+        }
+        return "?" + body.entries.joinToString("&") { (k, v) ->
+            val s = when (v) {
+                null -> ""
+                is Map<*, *>, is List<*> -> v.toJsonStr(compact = true)
+                else -> v.toString()
+            }
+            "${encode(k)}=${encode(s)}"
+        }
     }
 }
 

@@ -20,10 +20,11 @@ fun parseSchemaTypes(
     existingTypes: Map<String, SchType> = emptyMap(),
 ): Map<String, SchType> {
     val pendingRefs = mutableListOf<SchProperty>()
+    val pendingItemRefs = mutableListOf<PendingItemRef>()
     val parsed = LinkedHashMap<String, SchType>()
     for ((name, raw) in defs) {
         if (raw is Map<*, *>) {
-            parsed[name] = parseNode(name, raw.toJsonMap(), pendingRefs)
+            parsed[name] = parseNode(name, raw.toJsonMap(), pendingRefs, pendingItemRefs)
         }
     }
     // Resolve $refs against the existing types plus the just-parsed ones.
@@ -34,11 +35,27 @@ fun parseSchemaTypes(
         prop.valueType = registry[refName]
             ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$$refName'.")
     }
+    // Bind array element types whose `items` was a $ref (deferred the same way as property refs, so a target
+    // parsed later -- or a self-reference via items -- resolves without expanding during parsing).
+    for (item in pendingItemRefs) {
+        item.array.itemType = registry[item.refName]
+            ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$${item.refName}'.")
+    }
     return parsed
 }
 
+/** An array [SchType] whose `items` is a `$ref` ([refName]), awaiting binding in the resolution pass. */
 @KdrPrivate
-fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<SchProperty>, depth: Int = 0): SchType {
+class PendingItemRef(val array: SchType, val refName: String)
+
+@KdrPrivate
+fun parseNode(
+    name: String?,
+    map: Map<String, Any?>,
+    pendingRefs: MutableList<SchProperty>,
+    pendingItemRefs: MutableList<PendingItemRef>,
+    depth: Int = 0,
+): SchType {
     // Guard against runaway recursion -- e.g., a raw schema Map that references itself (see JsonUtil for the
     // same nesting guard on formatting). A legitimate schema never nests anywhere near this deep.
     if (depth > 20) {
@@ -50,15 +67,27 @@ fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<Sc
         for ((k, v) in rawProps) {
             val pName = k.toOptStr() ?: continue
             if (v is Map<*, *>) {
-                properties[pName] = parseProperty(pName, v.toJsonMap(), pendingRefs, depth)
+                properties[pName] = parseProperty(pName, v.toJsonMap(), pendingRefs, pendingItemRefs, depth)
             }
         }
     }
+    // The element schema of an array. A `$ref` here is deferred (bound in the resolution pass, like a property
+    // ref) so a not-yet-parsed target -- or a self-reference via items -- resolves instead of expanding.
     val rawItems = map[SCH.items]
-    val itemType = if (rawItems is Map<*, *>) parseNode(null, rawItems.toJsonMap(), pendingRefs, depth + 1) else null
+    var itemType: SchType? = null
+    var itemRefName: String? = null
+    if (rawItems is Map<*, *>) {
+        val itemsMap = rawItems.toJsonMap()
+        val itemRef = itemsMap[SCH.dRef].toOptStr()
+        if (itemRef != null) {
+            itemRefName = refTargetName(itemRef)
+        } else {
+            itemType = parseNode(null, itemsMap, pendingRefs, pendingItemRefs, depth + 1)
+        }
+    }
     val jsonType = map[SCH.type].toOptStr()
     val format = map[SCH.format].toOptStr()
-    return SchType(
+    val schType = SchType(
         name = name,
         jsonType = jsonType,
         // Numeric types and recognized date formats are coercible by default; everything else is strict.
@@ -73,6 +102,10 @@ fun parseNode(name: String?, map: Map<String, Any?>, pendingRefs: MutableList<Sc
         options = parseOptions(map[SCH.options]),
         default = map[SCH.default],
     )
+    if (itemRefName != null) {
+        pendingItemRefs.add(PendingItemRef(schType, itemRefName))
+    }
+    return schType
 }
 
 /** Whether a JSON Schema type is one of the numeric types (the [SCH.allowCoerce] default). */
@@ -99,7 +132,13 @@ fun parseOptions(raw: Any?): List<SchOption>? {
 }
 
 @KdrPrivate
-fun parseProperty(name: String, map: Map<String, Any?>, pendingRefs: MutableList<SchProperty>, depth: Int): SchProperty {
+fun parseProperty(
+    name: String,
+    map: Map<String, Any?>,
+    pendingRefs: MutableList<SchProperty>,
+    pendingItemRefs: MutableList<PendingItemRef>,
+    depth: Int,
+): SchProperty {
     val description = map[SCH.description].toOptStr()
     val ref = map[SCH.dRef].toOptStr()
     if (ref != null) {
@@ -108,7 +147,7 @@ fun parseProperty(name: String, map: Map<String, Any?>, pendingRefs: MutableList
         return prop
     }
     val prop = SchProperty(name, description, refName = null)
-    prop.valueType = parseNode(null, map, pendingRefs, depth + 1)
+    prop.valueType = parseNode(null, map, pendingRefs, pendingItemRefs, depth + 1)
     return prop
 }
 

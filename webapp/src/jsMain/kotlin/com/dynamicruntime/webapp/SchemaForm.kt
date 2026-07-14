@@ -6,11 +6,13 @@ import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonStr
 import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
 import web.cssom.ClassName
 
@@ -107,58 +109,93 @@ private fun ChildrenBuilder.renderField(
     prop.description?.let { desc(it) }
 }
 
-/** The disabled/editable widget for a scalar / choice / array field. [emit] reports the field's new value. */
+/**
+ * A field's value cell. In read-only mode ([editable] false — the response view and the read-only input view)
+ * it is plain text: the value, annotated with the field's type in words, with no form control. In edit mode it
+ * is the control appropriate to the field's kind, reporting changes through [emit].
+ */
 private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, emit: (Any?) -> Unit) {
+    if (!editable) {
+        readOnlyValue(vt, value)
+        return
+    }
     val arrayOptions = if (vt.jsonType == SCT.array) vt.itemType?.options else null
     val singleOptions = vt.options
     when {
         // Multi-select: an array of choices.
         arrayOptions != null -> Select {
-            disabled = !editable
             mode = "multiple"
             options = optionsToJs(arrayOptions)
             this.value = value.asKList().map { it.toString() }.toTypedArray()
             placeholder = "(choose)"
             style = js("({ minWidth: 200 })")
-            if (editable) onChange = { v -> emit(jsToList(v)) }
+            onChange = { v -> emit(jsToList(v)) }
         }
         // Single choice.
         singleOptions != null -> Select {
-            disabled = !editable
             options = optionsToJs(singleOptions)
             this.value = value?.toString()
             placeholder = "(choose)"
             allowClear = true
             style = js("({ minWidth: 200 })")
-            if (editable) onChange = { v -> emit(v as? String) }
+            onChange = { v -> emit(v as? String) }
         }
         vt.jsonType == SCT.boolean -> Checkbox {
             checked = value == true
-            disabled = !editable
-            if (editable) onChange = { e -> emit(e.target.checked as Boolean) }
+            onChange = { e -> emit(e.target.checked as Boolean) }
         }
-        // Date string field: a DatePicker when editable (antd hands back the formatted string), else static.
-        vt.jsonType == SCT.string && isDateFormat(vt.format) -> {
-            if (editable) {
-                DatePicker {
-                    onChange = { _, dateString -> emit(dateString) }
-                }
-            } else {
-                Input {
-                    disabled = true
-                    this.value = displayValue(value)
-                }
-            }
+        // Date string field: a DatePicker (antd hands back the formatted string).
+        vt.jsonType == SCT.string && isDateFormat(vt.format) -> DatePicker {
+            onChange = { _, dateString -> emit(dateString) }
         }
         // string / integer / number / non-choice array / unknown: a text box. The kernel validator coerces
         // the entered string to the declared type (and splits a comma list into an array) on validation.
         else -> Input {
-            disabled = !editable
             this.value = displayValue(value)
             placeholder = typeHint(vt)
-            if (editable) onChange = { e -> emit(e.target.value as String) }
+            onChange = { e -> emit(e.target.value as String) }
         }
     }
+}
+
+/**
+ * Read-only presentation of a field: its value as text (nothing when absent) followed by the field's type
+ * named in words. No form control — this is a value being shown, not an input.
+ */
+private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
+    // A JSON structure (a generic object, or an array with structured elements) reads far better as pretty
+    // JSON than a flattened toString; the kernel's JsonUtil formats it (indented, non-compact by default).
+    if (value is Map<*, *> || (value is List<*> && value.any { it is Map<*, *> || it is List<*> })) {
+        pre {
+            className = ClassName("code json-value")
+            +value.toJsonStr()
+        }
+        return
+    }
+    val text = displayValue(value)
+    if (text.isNotEmpty()) {
+        span {
+            className = ClassName("field-value")
+            +text
+        }
+    }
+    span {
+        className = ClassName("field-type")
+        +"(${typeWord(vt)})"
+    }
+}
+
+/** The field's type named in words, e.g. "string", "boolean", "date", "choice", "list". */
+private fun typeWord(vt: SchType): String = when {
+    vt.options != null -> "choice"
+    vt.jsonType == SCT.array && vt.itemType?.options != null -> "choices"
+    vt.jsonType == SCT.array -> "list"
+    vt.jsonType == SCT.string && isDateFormat(vt.format) -> vt.format ?: SCT.string
+    vt.jsonType == SCT.boolean -> "boolean"
+    vt.jsonType == SCT.integer -> "integer"
+    vt.jsonType == SCT.number -> "number"
+    vt.jsonType == SCT.string -> "string"
+    else -> vt.jsonType ?: "value"
 }
 
 /** The field name plus a red `*` when required. */
