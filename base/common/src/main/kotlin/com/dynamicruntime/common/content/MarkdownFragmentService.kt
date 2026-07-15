@@ -8,6 +8,7 @@ import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.parseMarkdownFragments
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.CRC32
 
 /**
@@ -78,17 +79,35 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             cxt.instanceConfig.get(serviceName) as? MarkdownFragmentService
 
         /**
+         * Memoized build ids, keyed by fileId. Classpath resources are immutable within a running deployment,
+         * so a fragment's hash is computed once per process. The [absentMarker] empty-string sentinel caches a
+         * "resource not present" result too (an absent file stays absent for the deployment).
+         */
+        private val buildIdCache = ConcurrentHashMap<String, String>()
+
+        /** Sentinel stored in [buildIdCache] for a fileId whose resource is absent (distinct from any hash). */
+        private const val absentMarker = ""
+
+        /**
          * The cache-busting build id for a fragment file: a content hash (CRC32, hex) of the resource bytes,
          * or null if the resource is absent. A content hash (rather than a timestamp) is jar-agnostic and
-         * changes only when the content changes -- so an unchanged file keeps its URL across rebuilds. Used by
-         * the (future) code that hands a component its `fileId:buildId`; the endpoint itself only strips it.
+         * changes only when the content changes -- so an unchanged file keeps its URL across rebuilds. The
+         * result is cached (computed once per fileId per process); used by the code that hands a component its
+         * `fileId:buildId` (see the UI-config endpoints), the fragment endpoint itself only strips it.
          */
         fun fragmentBuildId(fileId: String): String? {
             if (!isSafeFileId(fileId)) return null
-            val bytes = readResourceBytes("/$resourceDir/$fileId.md") ?: return null
-            val crc = CRC32()
-            crc.update(bytes)
-            return crc.value.toString(16)
+            val computed = buildIdCache.getOrPut(fileId) {
+                val bytes = readResourceBytes("/$resourceDir/$fileId.md")
+                if (bytes == null) {
+                    absentMarker
+                } else {
+                    val crc = CRC32()
+                    crc.update(bytes)
+                    crc.value.toString(16)
+                }
+            }
+            return computed.ifEmpty { null }
         }
 
         /** A fragment id must be a plain file-name token (guards the classpath lookup against traversal). */

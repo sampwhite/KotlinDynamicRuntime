@@ -53,13 +53,13 @@ class AuthFlowTest : StringSpec({
         val token = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
         client.sendJsonPostRequest(
             "/auth/user/sendVerify",
-            mapOf("username" to name, "formAuthToken" to token, "addPassword" to true),
+            mapOf("loginId" to name, "formAuthToken" to token, "addPassword" to true),
         )
         MailService.get(cxt)!!.lastEmailTo(contact)!!.text.contains("password") shouldBe true
         val code = computeVerifyCode(token, contact)
         return client.sendJsonPutRequest(
             "/auth/user/setPassword",
-            mapOf("username" to name, "password" to password, "formAuthToken" to token, "verifyCode" to code),
+            mapOf("loginId" to name, "password" to password, "formAuthToken" to token, "verifyCode" to code),
         )
     }
 
@@ -107,12 +107,12 @@ class AuthFlowTest : StringSpec({
         val token2 = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
         client.sendJsonPostRequest(
             "/auth/user/sendVerify",
-            mapOf("username" to username, "formAuthToken" to token2),
+            mapOf("loginId" to username, "formAuthToken" to token2),
         )
         val code2 = computeVerifyCode(token2, email)
         val login2 = client.sendJsonPostRequest(
             "/auth/login/byCode",
-            mapOf("username" to username, "formAuthToken" to token2, "verifyCode" to code2),
+            mapOf("loginId" to username, "formAuthToken" to token2, "verifyCode" to code2),
         )
         results(login2)["userId"] shouldBe userId
 
@@ -135,15 +135,15 @@ class AuthFlowTest : StringSpec({
         client.sendGetRequest("/logout")
         results(client.sendJsonGetRequest("/auth/self/info"))["authId"] shouldBe UserProfile.anonymousAuthId
         val byPw = client.sendJsonPostRequest(
-            "/auth/login/byPassword", mapOf("username" to "amelia", "password" to "sekret-pw-123"),
+            "/auth/login/byPassword", mapOf("loginId" to "amelia", "password" to "sekret-pw-123"),
         )
         results(byPw)["userId"] shouldBe userId
 
         // Opt out (needs the logged-in session), then password login is refused.
-        results(client.sendJsonPostRequest("/user/self/clearPassword", emptyMap()))["hasPassword"] shouldBe false
+        results(client.sendJsonPostRequest("/profile/self/clearPassword", emptyMap()))["hasPassword"] shouldBe false
         client.sendGetRequest("/logout")
         client.sendEditRequest(
-            "/auth/login/byPassword", null, mapOf("username" to "amelia", "password" to "sekret-pw-123"), isPut = false,
+            "/auth/login/byPassword", null, mapOf("loginId" to "amelia", "password" to "sekret-pw-123"), isPut = false,
         ).rptStatusCode shouldBe 401
     }
 
@@ -161,23 +161,23 @@ class AuthFlowTest : StringSpec({
         other.setHeader("User-Agent", "Other Browser")
         other.setHeader("X-Forwarded-For", "10.0.0.2")
         other.sendEditRequest(
-            "/auth/login/byPassword", null, mapOf("username" to "robert", "password" to "sekret-pw-123"), isPut = false,
+            "/auth/login/byPassword", null, mapOf("loginId" to "robert", "password" to "sekret-pw-123"), isPut = false,
         ).rptStatusCode shouldBe 401
 
         // But a code login from the new browser works and makes it familiar...
         val token = results(other.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
-        other.sendJsonPostRequest("/auth/user/sendVerify", mapOf("username" to "robert", "formAuthToken" to token))
+        other.sendJsonPostRequest("/auth/user/sendVerify", mapOf("loginId" to "robert", "formAuthToken" to token))
         val code = computeVerifyCode(token, contact)
         results(
             other.sendJsonPostRequest(
-                "/auth/login/byCode", mapOf("username" to "robert", "formAuthToken" to token, "verifyCode" to code),
+                "/auth/login/byCode", mapOf("loginId" to "robert", "formAuthToken" to token, "verifyCode" to code),
             ),
         )["userId"] shouldBe userId
 
         // ...so now the password works from this browser too.
         other.sendGetRequest("/logout")
         results(
-            other.sendJsonPostRequest("/auth/login/byPassword", mapOf("username" to "robert", "password" to "sekret-pw-123")),
+            other.sendJsonPostRequest("/auth/login/byPassword", mapOf("loginId" to "robert", "password" to "sekret-pw-123")),
         )["userId"] shouldBe userId
     }
 
@@ -185,12 +185,33 @@ class AuthFlowTest : StringSpec({
         val cxt = Startup.mkTestBootCxt("authPw3", "authPwTest3")
         val client = TestHttpClient(cxt.instanceConfig)
         client.setHeader("X-Forwarded-For", "10.5.5.5")
-        val attempt = mapOf("username" to "ghost", "password" to "whatever")
+        val attempt = mapOf("loginId" to "ghost", "password" to "whatever")
 
         // No such user: every attempt fails 401 until the per-username limit trips, then it is 429.
         repeat(RL.pwPerUserMax) {
             client.sendEditRequest("/auth/login/byPassword", null, attempt, isPut = false).rptStatusCode shouldBe 401
         }
         client.sendEditRequest("/auth/login/byPassword", null, attempt, isPut = false).rptStatusCode shouldBe 429
+    }
+
+    "a returning user can log in by email as the login id, not just username" {
+        val cxt = Startup.mkTestBootCxt("authEmail", "authEmailTest")
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.setHeader("User-Agent", "Fake Chrome (test)")
+        client.setHeader("X-Forwarded-For", "10.20.20.20")
+        val contact = "erin@example.com"
+
+        val userId = registerByCode(client, contact, "erinny")
+        client.sendGetRequest("/logout")
+
+        // Log back in by code using the EMAIL as the login id (the frontend never surfaces the username).
+        val token = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
+        client.sendJsonPostRequest("/auth/user/sendVerify", mapOf("loginId" to contact, "formAuthToken" to token))
+        val code = computeVerifyCode(token, contact)
+        results(
+            client.sendJsonPostRequest(
+                "/auth/login/byCode", mapOf("loginId" to contact, "formAuthToken" to token, "verifyCode" to code),
+            ),
+        )["userId"] shouldBe userId
     }
 })
