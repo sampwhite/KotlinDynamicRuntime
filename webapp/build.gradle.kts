@@ -48,13 +48,17 @@ kotlin {
                     // JavaScript Debug session that opens its OWN Chrome. For debugging, prefer Run +
                     // `-Pwebapp.open=false` (see [openInBrowser]) and attach a JS Debug config at :8080.
                     open = if (openInBrowser) mapOf("app" to mapOf("name" to "google chrome")) else false,
-                    // Same-origin dev: proxy the API context root ("/kda") to the `:sample` runtime server
-                    // on :7070. The browser then makes same-origin calls to the dev server, which forwards
-                    // them to the API — so no CORS handling is needed (the runtime's HTTP server has none).
-                    // Start the API with `./gradlew :sample:run` before using the Todo list.
+                    // Same-origin dev: proxy the runtime's context roots to the backend on :7070. The browser
+                    // then makes same-origin calls to the dev server, which forwards them — so no CORS
+                    // handling is needed (the runtime's HTTP server has none). Start the backend with
+                    // `./gradlew :launch:run` (or `:sample:run`) first.
+                    //   "/kda" — the API context root (endpoints).
+                    //   "/st"  — the static context root: Markdown fragments (a group's copy) and whole
+                    //            Markdown documents. In production these are same-origin already; only the
+                    //            dev server needs to be told.
                     proxy = mutableListOf(
                         KotlinWebpackConfig.DevServer.Proxy(
-                            context = mutableListOf("/kda"),
+                            context = mutableListOf("/kda", "/st"),
                             target = "http://localhost:7070",
                         ),
                     ),

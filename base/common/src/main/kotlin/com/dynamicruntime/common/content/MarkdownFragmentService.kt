@@ -8,8 +8,6 @@ import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.parseMarkdownFragments
-import java.util.concurrent.ConcurrentHashMap
-import java.util.zip.CRC32
 
 /**
  * Serves Markdown *fragment* files as a two-tier `namespace -> (key -> value)` JSON map (issue #59), under the
@@ -46,11 +44,11 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             return false
         }
         val fileId = segments[3].substringBefore(':') // strip the ":buildId" cache-busting suffix
-        if (!isSafeFileId(fileId)) {
+        if (!ContentResources.isSafeFileId(fileId)) {
             handler.sendStringResponse("Bad fragment file id.", EXC.badInput, "text/plain")
             return true
         }
-        val text = readResource("/$resourceDir/$fileId.md")
+        val text = ContentResources.readText(resourceDir, fileId)
         if (text == null) {
             handler.sendStringResponse("No fragment file '$fileId'.", EXC.notFound, "text/plain")
             return true
@@ -67,7 +65,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         const val serviceName = "MarkdownFragmentService"
 
         /** The `md` path segment marking a Markdown-fragment request under the static root. */
-        const val mdMarker = "md"
+        const val mdMarker = CMK.md
 
         /** Classpath resource directory holding the `<fileId>.md` fragment files. */
         const val resourceDir = "md-fragments"
@@ -79,45 +77,10 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             cxt.instanceConfig.get(serviceName) as? MarkdownFragmentService
 
         /**
-         * Memoized build ids, keyed by fileId. Classpath resources are immutable within a running deployment,
-         * so a fragment's hash is computed once per process. The [absentMarker] empty-string sentinel caches a
-         * "resource not present" result too (an absent file stays absent for the deployment).
+         * The cache-busting build id for a fragment file (see [ContentResources.buildId]): a memoized content
+         * hash, or null if the resource is absent. Used by the code that hands a component its
+         * `fileId:buildId` (the UI-config endpoints); the fragment request itself only strips it.
          */
-        private val buildIdCache = ConcurrentHashMap<String, String>()
-
-        /** Sentinel stored in [buildIdCache] for a fileId whose resource is absent (distinct from any hash). */
-        private const val absentMarker = ""
-
-        /**
-         * The cache-busting build id for a fragment file: a content hash (CRC32, hex) of the resource bytes,
-         * or null if the resource is absent. A content hash (rather than a timestamp) is jar-agnostic and
-         * changes only when the content changes -- so an unchanged file keeps its URL across rebuilds. The
-         * result is cached (computed once per fileId per process); used by the code that hands a component its
-         * `fileId:buildId` (see the UI-config endpoints), the fragment endpoint itself only strips it.
-         */
-        fun fragmentBuildId(fileId: String): String? {
-            if (!isSafeFileId(fileId)) return null
-            val computed = buildIdCache.getOrPut(fileId) {
-                val bytes = readResourceBytes("/$resourceDir/$fileId.md")
-                if (bytes == null) {
-                    absentMarker
-                } else {
-                    val crc = CRC32()
-                    crc.update(bytes)
-                    crc.value.toString(16)
-                }
-            }
-            return computed.ifEmpty { null }
-        }
-
-        /** A fragment id must be a plain file-name token (guards the classpath lookup against traversal). */
-        private fun isSafeFileId(fileId: String): Boolean =
-            fileId.isNotEmpty() && fileId.all { it.isLetterOrDigit() || it == '-' || it == '_' }
-
-        private fun readResourceBytes(path: String): ByteArray? =
-            MarkdownFragmentService::class.java.getResourceAsStream(path)?.use { it.readBytes() }
-
-        private fun readResource(path: String): String? =
-            readResourceBytes(path)?.toString(Charsets.UTF_8)
+        fun fragmentBuildId(fileId: String): String? = ContentResources.buildId(resourceDir, fileId)
     }
 }

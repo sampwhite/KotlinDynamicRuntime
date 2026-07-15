@@ -36,3 +36,29 @@ dependencies {
     implementation("com.h2database:h2:2.4.240")
     implementation("org.postgresql:postgresql:42.7.13")
 }
+
+// Publish the repository's README as a Markdown *document* resource, so MarkdownDocService can serve it (and
+// the home page can link to it) from the classpath -- identically whether launched via Gradle or from a built
+// jar. The README lives at the repo root, outside any source set, so it is copied into a generated resources
+// directory laid out as `md-docs/readme.md` rather than duplicated in the tree (the same arrangement `appui`
+// uses to embed the webapp bundle). Because the served build id is a content hash, re-copying an unchanged
+// README keeps its URL stable.
+val embedDocs by tasks.registering(Copy::class) {
+    // Resolved from this module's own directory (base/common -> the repo root), so it does not depend on what
+    // the checkout directory is named.
+    from(layout.projectDirectory.file("../../README.md")) {
+        rename { "readme.md" }
+    }
+    into(layout.buildDirectory.dir("docResources/md-docs"))
+}
+
+sourceSets {
+    main {
+        // The generated docs join this module's resources, so they land on the runtime classpath.
+        resources.srcDir(layout.buildDirectory.dir("docResources"))
+    }
+}
+
+tasks.named("processResources") {
+    dependsOn(embedDocs)
+}
