@@ -36,6 +36,16 @@ class AppUiHttpTest : StringSpec({
         // The frontend bootstrap: context roots by focus, including this new `app` focus.
         body shouldContain "window.kdrCfg"
         body shouldContain "\"app\":\"wa\""
+        // The icon, like the bundle, is referenced by an absolute path built from the live app context root.
+        body shouldContain "href=\"/wa/favicon.svg\""
+    }
+
+    "GET /wa/favicon.svg serves the embedded app icon" {
+        val resp = client("appIcon").sendGetRequestRaw("/wa/favicon.svg")
+        resp.rptStatusCode shouldBe 200
+        resp.rptResponseMimeType shouldBe "image/svg+xml"
+        // The icon the webapp authored, embedded from its distribution rather than duplicated here.
+        resp.rptResponseData!! shouldContain "<svg"
     }
 
     "GET /wa/webapp.js serves the embedded JS bundle" {

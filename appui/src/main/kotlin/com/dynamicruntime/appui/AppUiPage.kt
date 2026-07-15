@@ -6,8 +6,8 @@ package com.dynamicruntime.appui
  * same `#root` mount point and the same CSS the React components style against (`card`, `row`, `count`,
  * `todo-title`, ...) -- with two differences for same-origin serving from the runtime:
  *
- *  - the bundle `<script>` src is built as an absolute path from the live app context root
- *    ([appRoot], e.g. `/wa/webapp.js`) rather than a bare relative name, and
+ *  - the bundle `<script>` src and the icon `<link>` href are built as absolute paths from the live app
+ *    context root ([appRoot], e.g. `/wa/webapp.js`) rather than bare relative names, and
  *  - the frontend bootstrap config is injected as `window.kdrCfg` (as the portal does), so the app can build
  *    backend URLs from the live context roots if it needs to.
  *
@@ -22,6 +22,7 @@ object AppUiPage {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kotlin React Webapp</title>
+<link rel="icon" type="image/svg+xml" href="/$${appRoot}/favicon.svg">
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }

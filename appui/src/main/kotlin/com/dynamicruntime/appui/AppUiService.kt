@@ -29,9 +29,16 @@ object AUI {
     /** Classpath location of the embedded sourcemap. */
     const val bundleMapResource = "/webapp/webapp.js.map"
 
+    /** Application path of the app's icon, e.g. reached at `/wa/favicon.svg`; declared by [AppUiPage]. */
+    const val faviconPath = "/favicon.svg"
+
+    /** Classpath location of the embedded icon (authored in `webapp/src/jsMain/resources`). */
+    const val faviconResource = "/webapp/favicon.svg"
+
     const val htmlMimeType = "text/html; charset=utf-8"
     const val jsMimeType = "application/javascript; charset=utf-8"
     const val jsonMimeType = "application/json"
+    const val svgMimeType = "image/svg+xml"
 }
 
 /**
@@ -40,8 +47,9 @@ object AUI {
  * [ContentServer] -- registered with the [RequestService] during init -- and contributes no endpoints. It
  * serves:
  *
- *  - The HTML shell at the app root (`appPath == "/"`), rendered by [AppUiPage]; and
- *  - The webapp's JS bundle (and sourcemap), read from the classpath resource the build embedded.
+ *  - The HTML shell at the app root (`appPath == "/"`), rendered by [AppUiPage];
+ *  - The webapp's JS bundle (and sourcemap), read from the classpath resource the build embedded; and
+ *  - The app's icon, embedded from the same `:webapp` distribution the dev server serves it from.
  *
  * The bundle is the Kotlin/JS `:webapp` module's *production* output. Because the page is served same-origin
  * with the API context root, the webapp's relative `/kda/...` calls reach the runtime directly -- no CORS, no
@@ -74,6 +82,7 @@ class AppUiService : ServiceInitializer, ContentServer {
             }
             AUI.bundlePath -> serveResource(cxt, handler, AUI.bundleResource, AUI.jsMimeType)
             AUI.bundleMapPath -> serveResource(cxt, handler, AUI.bundleMapResource, AUI.jsonMimeType)
+            AUI.faviconPath -> serveResource(cxt, handler, AUI.faviconResource, AUI.svgMimeType)
             else -> false
         }
     }

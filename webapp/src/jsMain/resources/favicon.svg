@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The application's icon: the "KDR" brand mark (see the webapp's AppBar), a white K on a Nile-teal tile.
+
+  The teal is deliberate and is NOT the app bar's indigo accent (#6366f1). A tab strip is light grey, which
+  the indigo tile sits close to in value; the teal separates from it and carries the gyassa (the Nile sailing
+  vessel the site is named for). So don't "correct" this back to the UI palette in index.html / AppUiPage —
+  the divergence is the point.
+
+  It is the single source of the icon for BOTH shells: the dev server serves this file straight out of the
+  webapp's resources, and `appui` embeds it as a classpath resource (alongside webapp.js) to serve same-origin
+  in production.
+
+  SVG rather than a binary .ico: it is text (so it reviews and diffs), it is one file at every size, and every
+  browser this dev tool targets honours `rel="icon" type="image/svg+xml"`. The K is stroked geometry, not
+  <text>, so it never depends on a font being installed.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="KDR">
+    <defs>
+        <linearGradient id="kdrTile" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#2dd4bf"/>
+            <stop offset="1" stop-color="#0d9488"/>
+        </linearGradient>
+    </defs>
+    <rect width="64" height="64" rx="14" fill="url(#kdrTile)"/>
+    <g fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+        <!-- The K: a stem, then an arm folded at the stem's midpoint. -->
+        <path d="M21 16 V48"/>
+        <path d="M43 16 L24 32 L43 48"/>
+    </g>
+</svg>
