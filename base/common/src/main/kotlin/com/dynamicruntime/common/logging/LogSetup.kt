@@ -1,118 +1,122 @@
 package com.dynamicruntime.common.logging
 
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrCxtBase
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.core.config.Configurator
 import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilderFactory
 
 /**
- * Configures the logging backend entirely in Kotlin code, replacing the prior
- * art's `log4j2.yaml` resource. Per the code guide, what would conventionally be a
- * config resource file is instead built programmatically here, so the whole logging
- * configuration lives in the same language and build as everything else.
+ * Wires up the backend logging (issue #79): our own topics go through the two-way [KdrLogger] to a
+ * [StdoutLogSink] (optionally async), and third-party libraries (Jetty, etc.) keep logging through log4j2 --
+ * so the two paths only need their *formats* to agree, which they do by design ([LogFormat] mirrors the log4j
+ * pattern below). Everything is configured in Kotlin, no config resource files; env vars are the tuning
+ * channel. An application calls [initFromEnv] once at startup.
  *
- * An application calls [init] once at startup, before it begins logging in earnest.
- * Defaults can be overridden per deployment through environment variables -- the
- * code base's preferred configuration channel -- via [initFromEnv].
- *
- * Application topics all live under the [KdrLogger.appNamespace] parent logger, so they can be
- * configured as a group: by default they log at debug (`appLevel`) while everything else -- third-party
- * libraries such as Jetty, which log under their own package names -- follows the root level
- * (`rootLevel`, info). Both are tunable via environment variables.
+ * There is deliberately no rolling-file appender: the app writes to stdout, and a deployment tool captures and
+ * rolls it, while durable/queryable storage will arrive as a separate (OpenSearch) sink.
  */
 @Suppress("ConstPropertyName")
 object LogSetup {
-    /** Env var naming the [LogLevel] for application topics; falls back to the [init] default (debug). */
+    /** Env var naming the [LogLevel] for our application topics; falls back to the [initFromEnv] default. */
     const val appLogLevelEnvVar = "KDR_LOG_LEVEL"
 
-    /** Env var naming the root [LogLevel] for everything else (third-party); falls back to the default (info). */
+    /** Env var naming the root [LogLevel] for everything else (third-party log4j2 loggers). */
     const val rootLogLevelEnvVar = "KDR_ROOT_LOG_LEVEL"
 
-    /** Env var naming the directory for the rolling log file; falls back to the [init] default. */
-    const val logPathEnvVar = "KDR_LOG_PATH"
+    /** Env var toggling async delivery of our logs (`true`/`false`); default sync for immediate, ordered output. */
+    const val asyncEnvVar = "KDR_LOG_ASYNC"
 
-    /** The plain line format, used by the file appender (no ANSI codes belong in a log file). */
-    const val pattern = "[%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %c{3} - %msg %throwable%n"
-
-    /**
-     * The console line format: like [pattern] but with ANSI coloration a terminal renders. The level is
-     * colored by severity (red errors, yellow warnings, …), the timestamp dimmed, and the topic cyan;
-     * the message keeps the default color. `%highlight`/`%style` emit the ANSI escapes.
-     */
-    const val consolePattern =
+    /** The log4j2 console pattern for third-party loggers -- shaped to match [LogFormat]'s line. */
+    const val thirdPartyPattern =
         "[%highlight{%-5level}{FATAL=bright red, ERROR=red, WARN=yellow, INFO=green, DEBUG=cyan, TRACE=white}] " +
             "%style{%d{yyyy-MM-dd HH:mm:ss.SSS}}{dim} [%t] %style{%c{3}}{cyan} - %msg %throwable%n"
 
+    /** The async sink currently installed (kept so a re-init or shutdown can flush it). */
+    private var asyncSink: AsyncLogSink? = null
+
     /**
-     * Reads [appLogLevelEnvVar] / [rootLogLevelEnvVar] / [logPathEnvVar] via [getEnv] and applies [init],
-     * using the supplied defaults where a variable is absent. [getEnv] defaults to the process environment,
-     * but the booting application passes `cxt::getEnvVar` so instance-config defaults (e.g. from the
-     * default-environment-variables file) are honored too.
+     * Reads [appLogLevelEnvVar] / [rootLogLevelEnvVar] / [asyncEnvVar] via [getEnv] and applies [init], using
+     * the supplied defaults where a variable is absent. [getEnv] defaults to the process environment; the
+     * booting application passes `cxt::getEnvVar` so instance-config defaults are honored too.
      */
     fun initFromEnv(
         defaultAppLevel: LogLevel = LogLevel.debug,
         defaultRootLevel: LogLevel = LogLevel.info,
-        defaultLogPath: String = "logs",
+        defaultAsync: Boolean = false,
         getEnv: (String) -> String? = System::getenv,
     ) {
         val appLevel = getEnv(appLogLevelEnvVar)?.let { logLevelOf(it) } ?: defaultAppLevel
         val rootLevel = getEnv(rootLogLevelEnvVar)?.let { logLevelOf(it) } ?: defaultRootLevel
-        val logPath = getEnv(logPathEnvVar) ?: defaultLogPath
-        init(rootLevel, appLevel, logPath)
+        val async = getEnv(asyncEnvVar)?.trim()?.equals("true", ignoreCase = true) ?: defaultAsync
+        init(appLevel, rootLevel, async)
     }
 
     /**
-     * Builds and installs the logging configuration: a console appender and a rolling file appender under
-     * [logPath], both using [pattern]. The root logger is set to [rootLevel] (governing third-party
-     * loggers), and the [KdrLogger.appNamespace] logger to [appLevel] (governing all application topics).
-     * Replaces any existing configuration.
+     * Installs the logging configuration: our topics at [appLevel] through a [StdoutLogSink] (wrapped in an
+     * [AsyncLogSink] when [async]), and a log4j2 console at [rootLevel] for third-party loggers. Color is on in
+     * sync mode (interactive dev) and off in async mode (captured production output). Replaces any prior setup.
      */
-    fun init(rootLevel: LogLevel = LogLevel.info, appLevel: LogLevel = LogLevel.debug, logPath: String = "logs") {
-        val builder = ConfigurationBuilderFactory.newConfigurationBuilder()
-        builder.setConfigurationName("KdrLogging")
-        // Keep log4j's own internal status logging quiet unless something is wrong.
-        builder.setStatusLevel(Level.WARN)
+    fun init(appLevel: LogLevel = LogLevel.debug, rootLevel: LogLevel = LogLevel.info, async: Boolean = false) {
+        // --- our own topics: kernel logger -> stdout sink ---
+        asyncSink?.flush()
+        asyncSink = null
+        LogSinks.clear()
+        LogConfig.appLevel = appLevel
+        LogConfig.contextSnapshot = ::snapshotContext
 
+        val stdout = StdoutLogSink(color = !async)
+        if (async) {
+            val wrapped = AsyncLogSink(stdout)
+            asyncSink = wrapped
+            Runtime.getRuntime().addShutdownHook(Thread { wrapped.flush() })
+            LogSinks.add(wrapped)
+        } else {
+            LogSinks.add(stdout)
+        }
+
+        // --- third-party (Jetty, etc.): a minimal log4j2 console at the root level, colored to match ours ---
+        configureThirdPartyLog4j(rootLevel, color = !async)
+    }
+
+    /** Snapshots a [KdrCxt] into the label/thread a record carries; a non-KdrCxt context yields just the thread. */
+    private fun snapshotContext(cxt: KdrCxtBase?): LogContext {
+        val label = (cxt as? KdrCxt)?.let { c ->
+            val debug = c.debug?.let { " $it" } ?: ""
+            "[${c.instanceConfig.instanceName}:${c.logInfo()}]$debug"
+        }
+        return LogContext(label = label, thread = Thread.currentThread().name)
+    }
+
+    private fun configureThirdPartyLog4j(rootLevel: LogLevel, color: Boolean) {
+        val builder = ConfigurationBuilderFactory.newConfigurationBuilder()
+        builder.setConfigurationName("KdrThirdPartyLogging")
+        builder.setStatusLevel(Level.WARN)
         val console = builder.newAppender("console", "Console")
             .addAttribute("target", "SYSTEM_OUT")
             .add(
                 builder.newLayout("PatternLayout")
-                    .addAttribute("pattern", consolePattern)
-                    // Force ANSI on: emit the color escapes (the file appender uses the plain pattern instead).
-                    .addAttribute("disableAnsi", false),
+                    .addAttribute("pattern", thirdPartyPattern)
+                    .addAttribute("disableAnsi", !color),
             )
         builder.add(console)
-
-        val rolling = builder.newAppender("rolling", "RollingFile")
-            .addAttribute("fileName", "$logPath/rollfile.log")
-            .addAttribute("filePattern", "$logPath/rollfile.log.%d{yyyy-MM-dd-HH-mm}.gz")
-            .add(builder.newLayout("PatternLayout").addAttribute("pattern", pattern))
-            .addComponent(
-                builder.newComponent("Policies").addComponent(
-                    builder.newComponent("SizeBasedTriggeringPolicy").addAttribute("size", "1 MB")
-                )
-            )
-            .addComponent(builder.newComponent("DefaultRolloverStrategy").addAttribute("max", "5"))
-        builder.add(rolling)
-
-        val root = builder.newRootLogger(rootLevel.toLog4j())
-            .add(builder.newAppenderRef("console"))
-            .add(builder.newAppenderRef("rolling"))
-        builder.add(root)
-
-        // Application topics (every logger under KdrLogger.appNamespace, e.g. "kdr.schema") log at
-        // appLevel, independent of the root level that governs third-party loggers. It is additive (the
-        // default), so its events flow up to the root's appenders -- no separate appender refs needed.
-        builder.add(builder.newLogger(KdrLogger.appNamespace, appLevel.toLog4j()))
-
-        // `initialize` (rather than `reconfigure`) so that, when the logger context
-        // has not been started yet, it starts directly with this configuration --
-        // avoiding log4j2 first spinning up its default configuration and printing a
-        // "no configuration file found" status warning. If a context is already
-        // running (e.g., across tests), it is reconfigured in place.
+        builder.add(
+            builder.newRootLogger(rootLevel.toLog4jLevel()).add(builder.newAppenderRef("console")),
+        )
         Configurator.initialize(builder.build())
     }
 
     /** Parses a [LogLevel] from its (case-insensitive) name, or null if unrecognized. */
     fun logLevelOf(name: String): LogLevel? =
         LogLevel.entries.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) }
+
+    /** Maps our [LogLevel] to a log4j2 [Level] -- used only to set the third-party root logger. */
+    private fun LogLevel.toLog4jLevel(): Level = when (this) {
+        LogLevel.trace -> Level.TRACE
+        LogLevel.debug -> Level.DEBUG
+        LogLevel.info -> Level.INFO
+        LogLevel.warn -> Level.WARN
+        LogLevel.error -> Level.ERROR
+        LogLevel.off -> Level.OFF
+    }
 }

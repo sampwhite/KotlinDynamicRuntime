@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 /**
  * Proves the issue-#78 split on BOTH targets (JVM + JS): the schema *builder* now lives in the kernel and runs
  * against a lightweight [LiteCxt] (no backend `KdrCxt`), so a shared data class like [UserProfile] can keep its
- * `defineInfoType` schema definition co-located and still be kernel code. Also the drift guard: the schema
+ * `defineInfoType` schema definition co-located and still be kernel code. Also, the drift guard: the schema
  * built by `defineInfoType` accepts what `toUserInfo()` emits, and `fromUserInfo` inverts `toUserInfo`.
  */
 class CxtSchemaBuilderTest {

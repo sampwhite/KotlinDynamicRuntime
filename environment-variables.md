@@ -26,11 +26,15 @@ Conventions:
 
 ## Logging
 
+The application's own topics log through the two-way (KMP) `KdrLogger` to a stdout sink; third-party libraries
+(Jetty, etc.) keep logging through log4j2, format-matched so the two look consistent. There is deliberately no
+rolling-file appender — the app writes to stdout and a deployment tool captures/rolls it.
+
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `KDR_LOG_LEVEL` | Log level for the application's own topics (`trace`/`debug`/`info`/`warn`/`error`/`off`). | `debug` |
-| `KDR_ROOT_LOG_LEVEL` | Log level for everything else (third-party libraries). | `info` |
-| `KDR_LOG_PATH` | Directory for the rolling log file. | `logs` |
+| `KDR_ROOT_LOG_LEVEL` | Log level for everything else (third-party libraries, via log4j2). | `info` |
+| `KDR_LOG_ASYNC` | Deliver our logs asynchronously (`true`) via a background worker, or synchronously (`false`). Sync gives immediate, ordered, crash-safe output (ideal for local/dev); async decouples the write off the caller's thread for production. Also selects ANSI color — on in sync mode, off in async. | `false` |
 
 ## Database
 
