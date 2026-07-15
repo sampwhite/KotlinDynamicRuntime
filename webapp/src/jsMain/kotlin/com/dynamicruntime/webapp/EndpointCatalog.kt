@@ -17,6 +17,7 @@ import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
 import react.useEffect
 import react.useEffectOnce
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 
@@ -45,6 +46,11 @@ val EndpointCatalog = FC<Props> {
     // mount-time sync effect can't clobber a hash we are about to read).
     var restored by useState(false)
 
+    // The latest catalog, readable from the once-registered hashchange listener below (which would otherwise
+    // close over the null catalog of the first render).
+    val catalogRef = useRef<Catalog>(null)
+    catalogRef.current = catalog
+
     useEffectOnce {
         catalogScope.launch {
             try {
@@ -72,6 +78,28 @@ val EndpointCatalog = FC<Props> {
     useEffect(selected, values, restored) {
         if (restored) {
             writeHash(selected, values)
+        }
+    }
+
+    // React to hash changes made from OUTSIDE this component -- the app-bar menu ("Endpoint catalog" drops the
+    // `m=`/`p=` params) and the back/forward buttons -- by re-deriving the selection from the hash. Our own
+    // navigation uses replaceState, which does not fire hashchange, so this never fights the sync effect above.
+    // The catalog is read through a ref because this listener is registered once and would otherwise capture
+    // the (still null) catalog from the first render.
+    useEffectOnce {
+        onHashChange {
+            val loaded = catalogRef.current
+            if (loaded != null) {
+                val target = readHash()
+                selected = target?.let { hs ->
+                    loaded.endpoints.firstOrNull { it.method == hs.method && it.path == hs.path }
+                }
+                values = target?.values ?: emptyMap()
+                failures = null
+                coerced = null
+                response = null
+                runError = null
+            }
         }
     }
 
@@ -319,54 +347,32 @@ private fun Any?.asMap(): Map<String, Any?> = (this as? Map<String, Any?>) ?: em
 private fun Any?.asList(): List<Any?> = (this as? List<*>) ?: emptyList()
 
 // --- URL-hash routing -------------------------------------------------------------------------------------
-// The selected endpoint (method + path) and the entered input values (as JSON) live in the URL hash, so a
-// refresh or a shared link restores the same endpoint page and the same input. The hash is client-only and
-// survives a refresh, and needs no server-side routing (works under any static host, incl. the appui bundle).
+// Within the catalog page, the selected endpoint (method + path) and the entered input values (as JSON) live
+// in the URL hash (under `page=catalog`), so a refresh or a shared link restores the same endpoint page and
+// the same input. Shared hash helpers live in HashRoute.kt.
 
 /** The endpoint identity and input values decoded from the URL hash. */
 private class HashState(val method: String, val path: String, val values: Map<String, Any?>)
 
 /** Parses the current URL hash into a [HashState], or null when it names no endpoint. */
 private fun readHash(): HashState? {
-    val raw = windowHash().removePrefix("#")
-    if (raw.isEmpty()) {
-        return null
-    }
-    val parts = HashMap<String, String>()
-    for (segment in raw.split("&")) {
-        val eq = segment.indexOf('=')
-        if (eq > 0) {
-            parts[segment.substring(0, eq)] = decodeUri(segment.substring(eq + 1))
-        }
-    }
-    val method = parts["m"] ?: return null
-    val path = parts["p"] ?: return null
-    val values = parts["v"]?.let { runCatching { it.jsonMap() }.getOrNull() } ?: emptyMap()
+    val params = hashParams()
+    val method = params["m"] ?: return null
+    val path = params["p"] ?: return null
+    val values = params["v"]?.let { runCatching { it.jsonMap() }.getOrNull() } ?: emptyMap()
     return HashState(method, path, values)
 }
 
-/** Writes the current selection + input values into the URL hash (clearing it when nothing is selected). */
+/** Writes the current selection + input values into the URL hash. Stays on `page=catalog`; adds the endpoint
+ *  (and its values) when one is selected. */
 private fun writeHash(endpoint: EndpointInfo?, values: Map<String, Any?>) {
-    val base = windowLocationBase()
-    if (endpoint == null) {
-        replaceUrl(base)
-        return
-    }
-    val hash = buildString {
-        append("m=").append(encodeUri(endpoint.method))
-        append("&p=").append(encodeUri(endpoint.path))
+    val params = mutableListOf("page" to "catalog")
+    if (endpoint != null) {
+        params.add("m" to endpoint.method)
+        params.add("p" to endpoint.path)
         if (values.isNotEmpty()) {
-            append("&v=").append(encodeUri(values.toJsonStr(compact = true)))
+            params.add("v" to values.toJsonStr(compact = true))
         }
     }
-    replaceUrl("$base#$hash")
+    replaceHash(params)
 }
-
-private fun windowHash(): String = js("window.location.hash") as String
-private fun windowLocationBase(): String = js("window.location.pathname + window.location.search") as String
-private fun replaceUrl(url: String) {
-    js("window.history.replaceState(null, '', url)")
-}
-
-private fun encodeUri(s: String): String = js("encodeURIComponent(s)") as String
-private fun decodeUri(s: String): String = js("decodeURIComponent(s)") as String
