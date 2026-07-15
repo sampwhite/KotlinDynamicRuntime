@@ -23,7 +23,7 @@ class SchemaEndpointsTest : StringSpec({
     // /schema/endpoints is a general endpoint: its result carries the endpoint renderings and a shared $defs.
     fun results(resp: Map<String, Any?>): Map<String, Any?> = resp[EP.results]!!.toJsonMap()
     fun catalogEndpoints(resp: Map<String, Any?>): List<Map<String, Any?>> =
-        (results(resp)[SS.endpoints] as List<*>).map { it!!.toJsonMap() }
+        (results(resp)[EI.endpoints] as List<*>).map { it!!.toJsonMap() }
 
     // /schema/sample is a list endpoint: its payload is under `items`.
     fun items(resp: Map<String, Any?>): List<Map<String, Any?>> =

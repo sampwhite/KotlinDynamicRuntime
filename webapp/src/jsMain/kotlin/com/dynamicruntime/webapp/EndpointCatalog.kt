@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
@@ -20,6 +22,8 @@ import react.useEffectOnce
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 
 /** Coroutine scope for firing suspend catalog calls from React effects. */
 private val catalogScope = MainScope()
@@ -42,7 +46,7 @@ val EndpointCatalog = FC<Props> {
     var runError by useState<String?>(null)
     var running by useState(false)
     var error by useState<String?>(null)
-    // True once the initial URL-hash restore has run; until then the URL is not written back (so the
+    // True, once the initial URL-hash restore has run; until then the URL is not written back (so the
     // mount-time sync effect can't clobber a hash we are about to read).
     var restored by useState(false)
 
@@ -148,7 +152,7 @@ val EndpointCatalog = FC<Props> {
             val result = coerceAndValidate(inputType, values)
             failures = result.failures
             coerced = result.value.toJsonStr()
-            return if (result.failures.isEmpty()) result.value.asMap() else null
+            return if (result.failures.isEmpty()) result.value.toJsonMapOrEmpty() else null
         }
 
         div {
@@ -213,7 +217,7 @@ val EndpointCatalog = FC<Props> {
                     type = "primary"
                     loading = running
                     onClick = {
-                        // Validate first; only send when the coerced payload has no failures (they're shown).
+                        // Validate first; only send it when the coerced payload has no failures (they're shown).
                         val payload = validate()
                         if (payload != null) {
                             running = true
@@ -277,7 +281,7 @@ val EndpointCatalog = FC<Props> {
                 }
             }
 
-            // A second back link at the bottom, so a long response page doesn't force a scroll back up.
+            // A second backlink at the bottom, so a long response page doesn't force a scroll back up.
             div {
                 className = ClassName("row")
                 Button {
@@ -293,13 +297,13 @@ val EndpointCatalog = FC<Props> {
 /**
  * Renders an endpoint's response payload through the read-only [SchemaForm], unwrapping the protocol envelope
  * by [kind]: a `general` result (`results`) and an `item` are single objects; a `list` (`items`) renders each
- * element. [payloadType] is the resolved element/object type; when it is null (an untyped payload) the payload
+ * element. [payloadType] is the resolved element/object type; when it is null (an untyped payload), the payload
  * falls back to formatted JSON.
  */
 private fun ChildrenBuilder.renderResponse(kind: String, payloadType: SchType?, response: Map<String, Any?>) {
     when (kind) {
-        EKind.list -> {
-            val items = response[EK.items].asList()
+        EndpointKind.list.name -> {
+            val items = response[EP.items].toJsonListOrEmpty()
             if (items.isEmpty()) {
                 p {
                     className = ClassName("type-hint")
@@ -313,12 +317,12 @@ private fun ChildrenBuilder.renderResponse(kind: String, payloadType: SchType?, 
                         className = ClassName("type-hint")
                         +"[$i]"
                     }
-                    renderPayload(payloadType, item.asMap())
+                    renderPayload(payloadType, item.toJsonMapOrEmpty())
                 }
             }
         }
-        EKind.item -> renderPayload(payloadType, response[EK.item].asMap())
-        else -> renderPayload(payloadType, response[EK.results].asMap())
+        EndpointKind.item.name -> renderPayload(payloadType, response[EP.item].toJsonMapOrEmpty())
+        else -> renderPayload(payloadType, response[EP.results].toJsonMapOrEmpty())
     }
 }
 
@@ -341,10 +345,7 @@ private fun ChildrenBuilder.renderPayload(type: SchType?, data: Map<String, Any?
 
 /** Null-tolerant view of a value as a `Map`. */
 @Suppress("UNCHECKED_CAST")
-private fun Any?.asMap(): Map<String, Any?> = (this as? Map<String, Any?>) ?: emptyMap()
 
-/** Null-tolerant view of a value as a `List`. */
-private fun Any?.asList(): List<Any?> = (this as? List<*>) ?: emptyList()
 
 // --- URL-hash routing -------------------------------------------------------------------------------------
 // Within the catalog page, the selected endpoint (method + path) and the entered input values (as JSON) live

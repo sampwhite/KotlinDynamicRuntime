@@ -53,6 +53,13 @@ class UserProfile(
     val hasPassword: Boolean? = null,
 ) {
     /**
+     * Whether this profile represents an authenticated user -- as opposed to the anonymous profile
+     * ([anonymousAuthId]) or the unauthenticated system profile (null [authId]). The frontend reads this off
+     * the profile it reconstructs from a user-info payload ([fromUserInfo]) to drive login-vs-logout UI.
+     */
+    val isLoggedIn: Boolean get() = authId != null && authId != anonymousAuthId
+
+    /**
      * A JSON-friendly map dump of this profile's attributes -- the payload returned by user-info endpoints so
      * a frontend can learn who the caller is. `authId` falls back to [anonymousAuthId], and a null
      * `publicName` is simply omitted; the shape is described by [defineInfoType].

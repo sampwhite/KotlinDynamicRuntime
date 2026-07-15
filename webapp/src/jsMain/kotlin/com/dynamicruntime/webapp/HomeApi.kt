@@ -1,22 +1,24 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.util.jsonMap
-import com.dynamicruntime.common.util.toJsonMap
 import kotlinx.coroutines.await
 import kotlin.js.Promise
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 
 /**
  * The home widget-group's backend calls, all keyed off the shared kernel constants so the frontend never
  * re-hardcodes a path or a JSON key the backend serves:
- *  - the **UI-config** ([fetchConfig]) -- the construction manifest: which fragment holds the copy, which
+ *  - The **UI-config** (fetchConfig) -- the construction manifest: which fragment holds the copy, which
  *    layout affordances are on, and which documents to link to;
- *  - the group's **copy** ([fetchFragments]) -- a Markdown fragment file;
- *  - a linked **document** ([fetchDoc]) -- whole Markdown, rendered by [Markdown].
+ *  - The group's **copy** (fetchFragments) -- a Markdown fragment file;
+ *  - A linked **document** (fetchDoc) -- whole Markdown, rendered by [Markdown].
  *
  * The two content calls go to the static root and carry a `:buildId`, so they are immutably cacheable.
  */
@@ -48,13 +50,13 @@ class HomeConfig(
 )
 
 object HomeApi {
-    /** GET the home UI-config -- cheap, and meant to be re-fetched on navigation. */
+    /** GET the home UI-config -- cheap and meant to be re-fetched on navigation. */
     suspend fun fetchConfig(): HomeConfig {
-        val results = getJson("$apiRoot${HEP.homeUiConfig}")[EK.results].asMap()
-        val fragment = results[UIC.fragments].asList().firstOrNull().asMap()
-        val features = results[UIC.features].asMap()
-        val links = results[UIC.state].asMap()[HFLD.links].asList().map { raw ->
-            val link = raw.asMap()
+        val results = getJson("$apiRoot${HEP.homeUiConfig}")[EP.results].toJsonMapOrEmpty()
+        val fragment = results[UIC.fragments].toJsonListOrEmpty().firstOrNull().toJsonMapOrEmpty()
+        val features = results[UIC.features].toJsonMapOrEmpty()
+        val links = results[UIC.state].toJsonMapOrEmpty()[HFLD.links].toJsonListOrEmpty().map { raw ->
+            val link = raw.toJsonMapOrEmpty()
             HomeLink(
                 id = link[HFLD.id] as? String ?: "",
                 label = link[HFLD.label] as? String ?: "",
@@ -78,7 +80,7 @@ object HomeApi {
     suspend fun fetchFragments(fileId: String, buildId: String): Map<String, Map<String, String>> {
         val raw = getJson("$staticRoot/$appId/${CMK.md}/$fileId:$buildId")
         return raw.mapValues { (_, namespace) ->
-            namespace.asMap().mapValues { (_, value) -> value?.toString() ?: "" }
+            namespace.toJsonMapOrEmpty().mapValues { (_, value) -> value?.toString() ?: "" }
         }
     }
 
@@ -99,8 +101,4 @@ object HomeApi {
     }
 }
 
-/** Null-tolerant view of a parsed-JSON value as a `Map`, via the kernel's `toJsonMap` coercion. */
-private fun Any?.asMap(): Map<String, Any?> = if (this is Map<*, *>) toJsonMap() else emptyMap()
 
-/** Null-tolerant view of a parsed-JSON value as a `List`. */
-private fun Any?.asList(): List<Any?> = this as? List<*> ?: emptyList()

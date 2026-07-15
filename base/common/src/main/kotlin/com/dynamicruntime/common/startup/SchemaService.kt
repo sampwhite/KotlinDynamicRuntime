@@ -114,7 +114,7 @@ class SchemaService : ServiceInitializer {
             KdrEndpoint.defineInfoType(this)
             type("EndpointCatalog") {
                 type = SCT.kObject
-                property(SS.endpoints, "The matching endpoints, each rendered with its `\$ref`s intact.", required = true) {
+                property(EI.endpoints, "The matching endpoints, each rendered with its `\$ref`s intact.", required = true) {
                     type = SCT.array
                     items { ref(KdrEndpoint.infoTypeName) }
                 }
@@ -287,7 +287,7 @@ class SchemaService : ServiceInitializer {
                 .sortedBy { it.collationKey }
                 .take(limit)
                 .map { renderEndpoint(it, schema.defs) }
-            return linkedMapOf(SS.endpoints to renderings, SCH.dDefs to collectDefs(renderings, schema.defs))
+            return linkedMapOf(EI.endpoints to renderings, SCH.dDefs to collectDefs(renderings, schema.defs))
         }
 
         /**
@@ -302,7 +302,7 @@ class SchemaService : ServiceInitializer {
             val schema = cxt.getSchema()
             val endpoint = schema.endpoints["$path:$method"]
             val renderings = listOfNotNull(endpoint).map { renderEndpoint(it, schema.defs) }
-            return linkedMapOf(SS.endpoints to renderings, SCH.dDefs to collectDefs(renderings, schema.defs))
+            return linkedMapOf(EI.endpoints to renderings, SCH.dDefs to collectDefs(renderings, schema.defs))
         }
 
         /** Handler for `/schema/sample`: generate an interesting, schema-conforming set of items. */
@@ -379,10 +379,9 @@ class SchemaService : ServiceInitializer {
  */
 @Suppress("ConstPropertyName")
 object SS {
-    // Endpoint introspection: the path-regex query filter, and the `endpoints` result key (the `$defs` result
-    // key is the JSON Schema keyword itself, SCH.dDefs).
+    // Endpoint introspection: the path-regex query filter. The `endpoints` result key is now the shared
+    // kernel EI.endpoints (the `$defs` result key is the JSON Schema keyword itself, SCH.dDefs).
     const val pathRegex = "pathRegex"
-    const val endpoints = "endpoints"
 
     // Debug behavior: the debug tag that triggers echoing input under _meta, and the key it is echoed under.
     const val explainInput = "explainInput"

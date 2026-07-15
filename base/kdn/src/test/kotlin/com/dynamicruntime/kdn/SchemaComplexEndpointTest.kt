@@ -6,7 +6,6 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.typeRefPath
 import com.dynamicruntime.common.startup.CX
-import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
@@ -136,7 +135,7 @@ class SchemaComplexEndpointTest : StringSpec({
         val resp = client("complexCatalog")
             .sendJsonGetRequest("/schema/endpoint", mapOf(EI.method to "PUT", EI.path to "/schema/complex"))
         val results = resp[EP.results]!!.toJsonMap()
-        val eps = (results[SS.endpoints] as List<*>).map { it!!.toJsonMap() }
+        val eps = (results[EI.endpoints] as List<*>).map { it!!.toJsonMap() }
         eps.size shouldBe 1 // the lookup returns exactly the one requested endpoint
         val complex = eps.single()
         complex[EI.path] shouldBe "/schema/complex"
