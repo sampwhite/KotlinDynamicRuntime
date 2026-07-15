@@ -4,7 +4,9 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.home.homeSchema
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.portal.PortalService
 import com.dynamicruntime.common.user.UserService
@@ -43,6 +45,9 @@ class CommonComponent : ComponentDefinition {
         collector.addTables(authTables(cxt))
         // Profile (issue #70): the login-gated profile page endpoints (its own widget-group namespace).
         collector.addModule(profileSchema(cxt))
+        // Home/shell: the UI-config endpoint that tells the frontend which layout to build and which
+        // Markdown documents to link to.
+        collector.addModule(homeSchema(cxt))
     }
 
     /**
@@ -61,7 +66,10 @@ class CommonComponent : ComponentDefinition {
      * encryption key, relying on the startup-tier [SqlTopicService] already being initialized).
      */
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
-        listOf(::RequestService, ::PortalService, ::MarkdownFragmentService, ::InstanceConfigService, ::MailService, ::UserService)
+        listOf(
+            ::RequestService, ::PortalService, ::MarkdownFragmentService, ::MarkdownDocService,
+            ::InstanceConfigService, ::MailService, ::UserService,
+        )
 
     /** Load just ahead of the standard components (demonstrates relative priority). */
     override fun loadPriority(): Int = PRI.standard - 1
