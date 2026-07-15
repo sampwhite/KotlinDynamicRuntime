@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.content.fragmentRefs
+import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -12,143 +15,178 @@ import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.util.getReqLong
 import com.dynamicruntime.common.util.getReqStr
 
-/** The user/auth endpoints (issue #67). Registered by the `common` component. */
+/**
+ * The user/auth endpoints (issues #67, #69, #70). Registered by the `common` component. Paths, field names,
+ * feature flags, and type names come from the kernel auth constants ([AEP]/[AFLD]/[AFEAT]/[ATYPE]/[AFRAG]) so
+ * the frontend references the same strings; see also [ProfileEndpoints].
+ */
 fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
-    type("FormToken") {
+    type(ATYPE.formToken) {
         type = SCT.kObject
-        property("formAuthToken", "The encrypted, timeout-bounded form token to include in auth requests.", required = true)
+        property(AFLD.formAuthToken, "The encrypted, timeout-bounded form token to include in auth requests.", required = true)
     }
-    type("AuthAck") { type = SCT.kObject } // an empty acknowledgement (e.g., a code was emailed)
-    type("UserIdResult") {
+    type(ATYPE.authAck) { type = SCT.kObject } // an empty acknowledgement (e.g., a code was emailed)
+    type(ATYPE.userIdResult) {
         type = SCT.kObject
-        property("userId", "The user's numeric id.", required = true) { type = SCT.integer }
+        property(AFLD.userId, "The user's numeric id.", required = true) { type = SCT.integer }
     }
     // The shared UserInfo type (declared with UserProfile) is what login and self-info endpoints return.
     UserProfile.defineInfoType(this)
 
+    // The auth widget-group's UI config (issue #70): the manifest the frontend fetches to build the
+    // register/login flow -- which fragment file holds its copy, which features are on, and the caller's state.
+    type(ATYPE.authUiConfig) {
+        type = SCT.kObject
+        uiFragmentsProperty()
+        property(UIC.features, "Which auth features are offered.", required = true) {
+            type = SCT.kObject
+            property(AFEAT.registration, "Whether new-user registration is offered.", required = true) { type = SCT.boolean }
+            property(AFEAT.codeLogin, "Whether verification-code login is offered.", required = true) { type = SCT.boolean }
+            property(AFEAT.passwordLogin, "Whether password login is offered.", required = true) { type = SCT.boolean }
+        }
+        property(UIC.state, "Dynamic state for constructing the auth flow.", required = true) {
+            type = SCT.kObject
+            property(AFLD.userInfo, "The caller's user info (anonymous when not logged in).", required = true) {
+                ref(UserProfile.infoTypeName)
+            }
+        }
+    }
+
     // Issue a form token. No captcha (dn's formAuthCode is dropped): the token alone is what later requests carry.
-    generalEndpoint("/auth/form/createToken", "Issues a form auth token for subsequent auth requests.",
-        HttpMethod.GET, outputRef = "FormToken") { c, _ ->
-        mapOf("formAuthToken" to handler(c).generateFormToken(c))
+    generalEndpoint(AEP.createToken, "Issues a form auth token for subsequent auth requests.",
+        HttpMethod.GET, outputRef = ATYPE.formToken) { c, _ ->
+        mapOf(AFLD.formAuthToken to authHandler(c).generateFormToken(c))
     }
 
     // Email a verification code to a new contact (registration).
-    generalEndpoint("/auth/newContact/sendVerify", "Emails a verification code to a new email contact.",
-        HttpMethod.POST, outputRef = "AuthAck", inputFields = {
-            field("contactAddress", "The email address to verify.", required = true)
-            field("contactType", "The contact type (currently only 'email').", required = true)
-            field("formAuthToken", "The form auth token.", required = true)
+    generalEndpoint(AEP.newContactSendVerify, "Emails a verification code to a new email contact.",
+        HttpMethod.POST, outputRef = ATYPE.authAck, inputFields = {
+            field(AFLD.contactAddress, "The email address to verify.", required = true)
+            field(AFLD.contactType, "The contact type (currently only 'email').", required = true)
+            field(AFLD.formAuthToken, "The form auth token.", required = true)
         }) { c, req ->
-        handler(c).sendVerifyToContact(c, req.getReqStr("contactAddress"), req.getReqStr("formAuthToken"))
+        authHandler(c).sendVerifyToContact(c, req.getReqStr(AFLD.contactAddress), req.getReqStr(AFLD.formAuthToken))
         emptyMap<String, Any?>()
     }
 
     // Email a verification code to an existing user (for code login / forgot-password / activating a password).
-    generalEndpoint("/auth/user/sendVerify", "Emails a verification code to an existing user.",
-        HttpMethod.POST, outputRef = "AuthAck", inputFields = {
-            field("username", "The user's username.", required = true)
-            field("formAuthToken", "The form auth token.", required = true)
-            field("addPassword", "When true, the emailed code is framed for setting/changing a password.") {
+    generalEndpoint(AEP.userSendVerify, "Emails a verification code to an existing user.",
+        HttpMethod.POST, outputRef = ATYPE.authAck, inputFields = {
+            field(AFLD.loginId, "The user's username or email address.", required = true)
+            field(AFLD.formAuthToken, "The form auth token.", required = true)
+            field(AFLD.addPassword, "When true, the emailed code is framed for setting/changing a password.") {
                 type = SCT.boolean
             }
         }) { c, req ->
-        handler(c).sendVerifyToUser(
-            c, req.getReqStr("username"), req.getReqStr("formAuthToken"), req.getOptBool("addPassword") == true,
+        authHandler(c).sendVerifyToUser(
+            c, req.getReqStr(AFLD.loginId), req.getReqStr(AFLD.formAuthToken), req.getOptBool(AFLD.addPassword) == true,
         )
         emptyMap<String, Any?>()
     }
 
     // Provision the initial user row from a verified contact.
-    generalEndpoint("/auth/user/createInitial", "Creates the initial user row from a verified email contact.",
-        HttpMethod.PUT, outputRef = "UserIdResult", inputFields = {
-            field("contactAddress", "The verified email address.", required = true)
-            field("contactType", "The contact type (currently only 'email').", required = true)
-            field("formAuthToken", "The form auth token.", required = true)
-            field("verifyCode", "The verification code emailed to the contact.", required = true)
+    generalEndpoint(AEP.createInitial, "Creates the initial user row from a verified email contact.",
+        HttpMethod.PUT, outputRef = ATYPE.userIdResult, inputFields = {
+            field(AFLD.contactAddress, "The verified email address.", required = true)
+            field(AFLD.contactType, "The contact type (currently only 'email').", required = true)
+            field(AFLD.formAuthToken, "The form auth token.", required = true)
+            field(AFLD.verifyCode, "The verification code emailed to the contact.", required = true)
         }) { c, req ->
-        val userId = handler(c).createInitialUser(
-            c, req.getReqStr("contactAddress"), req.getReqStr("formAuthToken"), req.getReqStr("verifyCode"),
+        val userId = authHandler(c).createInitialUser(
+            c, req.getReqStr(AFLD.contactAddress), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
         )
-        mapOf("userId" to userId)
+        mapOf(AFLD.userId to userId)
     }
 
     // Set username (and optional password) after verifying, then log in.
-    generalEndpoint("/auth/user/setLoginData", "Sets the user's username (and optional password) and logs in.",
-        HttpMethod.PUT, outputRef = "UserInfo", inputFields = {
-            field("userId", "The user's numeric id.", required = true) { type = SCT.integer }
-            field("username", "The chosen username.")
-            field("password", "An optional password to set (login by code works without one).")
-            field("formAuthToken", "The form auth token.", required = true)
-            field("verifyCode", "The verification code.", required = true)
+    generalEndpoint(AEP.setLoginData, "Sets the user's username (and optional password) and logs in.",
+        HttpMethod.PUT, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.userId, "The user's numeric id.", required = true) { type = SCT.integer }
+            field(AFLD.username, "The chosen username.")
+            field(AFLD.password, "An optional password to set (login by code works without one).")
+            field(AFLD.formAuthToken, "The form auth token.", required = true)
+            field(AFLD.verifyCode, "The verification code.", required = true)
         }) { c, req ->
-        handler(c).setLoginData(
-            c, req.getReqLong("userId"), req.getOptStr("username"), req.getOptStr("password"),
-            req.getReqStr("formAuthToken"), req.getReqStr("verifyCode"),
+        authHandler(c).setLoginData(
+            c, req.getReqLong(AFLD.userId), req.getOptStr(AFLD.username), req.getOptStr(AFLD.password),
+            req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
         )
     }
 
     // Log in by verification code (the primary login path).
-    generalEndpoint("/auth/login/byCode", "Logs a user in with a username and verification code.",
-        HttpMethod.POST, outputRef = "UserInfo", inputFields = {
-            field("username", "The user's username.", required = true)
-            field("formAuthToken", "The form auth token.", required = true)
-            field("verifyCode", "The verification code.", required = true)
+    generalEndpoint(AEP.loginByCode, "Logs a user in with a username/email and verification code.",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.loginId, "The user's username or email address.", required = true)
+            field(AFLD.formAuthToken, "The form auth token.", required = true)
+            field(AFLD.verifyCode, "The verification code.", required = true)
         }) { c, req ->
-        handler(c).loginByCode(c, req.getReqStr("username"), req.getReqStr("formAuthToken"), req.getReqStr("verifyCode"))
+        authHandler(c).loginByCode(c, req.getReqStr(AFLD.loginId), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode))
     }
 
     // Log in by password -- permitted only from a familiar (verified) device. On any failure the caller gets a
     // single opaque message (the real reason is only logged); the client then falls back to code login.
-    generalEndpoint("/auth/login/byPassword", "Logs a user in by password (familiar devices only).",
-        HttpMethod.POST, outputRef = "UserInfo", inputFields = {
-            field("username", "The user's username.", required = true)
-            field("password", "The user's password.", required = true)
+    generalEndpoint(AEP.loginByPassword, "Logs a user in by password (familiar devices only).",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.loginId, "The user's username or email address.", required = true)
+            field(AFLD.password, "The user's password.", required = true)
         }) { c, req ->
-        handler(c).loginByPassword(c, req.getReqStr("username"), req.getReqStr("password"))
+        authHandler(c).loginByPassword(c, req.getReqStr(AFLD.loginId), req.getReqStr(AFLD.password))
     }
 
     // Set or change the user's password after verifying a code. This is a code login, so it also logs the user
     // in and makes the current device familiar (so the new password is usable from this browser next time).
-    generalEndpoint("/auth/user/setPassword", "Sets or changes the user's password (verified by a code).",
-        HttpMethod.PUT, outputRef = "UserInfo", inputFields = {
-            field("username", "The user's username.", required = true)
-            field("password", "The new password.", required = true)
-            field("formAuthToken", "The form auth token.", required = true)
-            field("verifyCode", "The verification code.", required = true)
+    generalEndpoint(AEP.setPassword, "Sets or changes the user's password (verified by a code).",
+        HttpMethod.PUT, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.loginId, "The user's username or email address.", required = true)
+            field(AFLD.password, "The new password.", required = true)
+            field(AFLD.formAuthToken, "The form auth token.", required = true)
+            field(AFLD.verifyCode, "The verification code.", required = true)
         }) { c, req ->
-        handler(c).changePassword(
-            c, req.getReqStr("username"), req.getReqStr("password"),
-            req.getReqStr("formAuthToken"), req.getReqStr("verifyCode"),
+        authHandler(c).changePassword(
+            c, req.getReqStr(AFLD.loginId), req.getReqStr(AFLD.password),
+            req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
         )
     }
 
-    // Opt back out of password login. Under the `user` section, so it requires a logged-in user (the profile
-    // page action); it relies on the session rather than a verification code.
-    generalEndpoint("/user/self/clearPassword", "Removes the caller's password (opt out of password login).",
-        HttpMethod.POST, outputRef = "UserInfo") { c, _ ->
-        handler(c).removePassword(c)
+    // A manifest for building the auth flow (issue #70). Under the anonymous `auth` section, so a logged-out
+    // caller can bootstrap the register/login UI; the returned state carries the (anonymous or real) user info.
+    generalEndpoint(AEP.authUiConfig, "Returns the config for constructing the auth (register/login) UI.",
+        HttpMethod.GET, outputRef = ATYPE.authUiConfig) { c, _ ->
+        mapOf(
+            UIC.fragments to fragmentRefs(AFRAG.auth),
+            UIC.features to mapOf(AFEAT.registration to true, AFEAT.codeLogin to true, AFEAT.passwordLogin to true),
+            UIC.state to mapOf(AFLD.userInfo to currentUserInfo(c)),
+        )
     }
 
     // The caller's own info. Under the anonymous `auth` section, so it never 401s: a logged-in caller gets
     // their profile (freshly loaded for the display name), a logged-out caller gets the anonymous profile.
     // (Renamed from `/user/self/info`; per CRDR/cedar, self-info should be callable without a login.)
-    generalEndpoint("/auth/self/info", "Returns the caller's user info (anonymous when not logged in).",
-        HttpMethod.GET, outputRef = "UserInfo") { c, _ ->
-        val profile = c.userProfile
-        val loaded = if (profile.authId != null) UserService.get(c)?.queryByUserId(c, profile.userId)?.toUserProfile() else null
-        (loaded ?: UserProfile.anonymous()).toUserInfo()
-    }
+    generalEndpoint(AEP.selfInfo, "Returns the caller's user info (anonymous when not logged in).",
+        HttpMethod.GET, outputRef = UserProfile.infoTypeName) { c, _ -> currentUserInfo(c) }
 
     // Log out: flag the request so the auth hook clears the session cookie.
-    generalEndpoint("/logout", "Logs the current user out (clears the session cookie).",
-        HttpMethod.GET, outputRef = "AuthAck") { c, _ ->
+    generalEndpoint(AEP.logout, "Logs the current user out (clears the session cookie).",
+        HttpMethod.GET, outputRef = ATYPE.authAck) { c, _ ->
         c.request?.clearAuth = true
         emptyMap<String, Any?>()
     }
 }
 
-private fun handler(cxt: KdrCxt): AuthFormHandler {
+/** Resolves the [AuthFormHandler] (ensuring it is built). Shared with the profile endpoints (same package). */
+internal fun authHandler(cxt: KdrCxt): AuthFormHandler {
     val service = UserService.get(cxt) ?: throw KdrException("UserService is not available.")
     service.checkInit(cxt) // idempotent; ensures the handler is built
     return service.authFormHandler
+}
+
+/**
+ * The caller's user info: a logged-in caller's profile (freshly loaded from the row for the display name and
+ * password status), or the anonymous profile when not logged in. Shared by `/auth/self/info`, the auth UI
+ * config, and the profile UI config (all in this package).
+ */
+internal fun currentUserInfo(cxt: KdrCxt): Map<String, Any?> {
+    val profile = cxt.userProfile
+    val loaded = if (profile.authId != null) UserService.get(cxt)?.queryByUserId(cxt, profile.userId)?.toUserProfile() else null
+    return (loaded ?: UserProfile.anonymous()).toUserInfo()
 }

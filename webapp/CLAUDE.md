@@ -32,5 +32,31 @@ is an inline value; `# +key` alone starts a next-line value (ends at two blank l
 `MarkdownFragmentUtil` + `ScriptUtil` in `base:kernel` (both transpile-clean, so you can parse/resolve on the
 frontend too).
 
-**Still open:** how a React component learns its `fileId:buildId` — a component will get it from
-backend-provided configuration, an area still to be built out.
+## UI-config endpoints: how a widget-group learns what to build (issue #70)
+
+A React **widget-group** (the auth flow, the profile page, later the nav/home) fetches a normal API endpoint
+— its **UI-config** — to learn how to construct itself. Every such endpoint returns the same envelope:
+
+```
+{ fragments: [ { fileId, buildId } ], features: { … }, state: { … } }
+```
+
+- `fragments` — the Markdown fragment file(s) this group's copy comes from, **each already carrying its
+  `buildId`**. This is how a component learns its `fileId:buildId` (the previously-open question): fetch each
+  at `/st/<appId>/md/<fileId:buildId>`. `features` and `state` are group-specific.
+- These calls are cheap and meant to be **re-fetched on navigation/invalidation** — err on calling too often.
+  It's fine for each widget in a group to fetch independently.
+
+**Endpoint model:** one config endpoint **per widget-group**, not a swiss-army endpoint switching on a
+"group" arg (a per-endpoint output schema is what the schema/validation layer and the runtime's
+dynamic-endpoint story need). Slice namespaces by "who authors the copy"; be pragmatic in leaf namespaces,
+disciplined in a hub (`nav`/`shell`) everything composes through.
+
+Current UI-config endpoints:
+- `GET /auth/ui/config` — anonymous; features `{registration, codeLogin, passwordLogin}`, state `{userInfo}`
+  (anonymous `userInfo` when logged out). Fragment file `auth`.
+- `GET /profile/ui/config` — **login-required** (`profile` section); features `{hasPassword, canSetPassword}`,
+  state `{userInfo}`. Fragment file `profile`.
+
+The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
+the envelope consistent across groups.

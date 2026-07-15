@@ -42,6 +42,15 @@ class UserService : ServiceInitializer {
 
     fun queryByUserId(cxt: KdrCxt, userId: Long): AuthUserRow? = queryOne(cxt, AU.userId, userId)
 
+    /**
+     * Resolves a login identifier that is *either* a username *or* a primary contact (email): looks up by
+     * username first, then by primaryId. The two spaces are disjoint -- a valid username cannot contain '@'
+     * and an email must -- so the fallback is unambiguous. This lets a username-less frontend log a returning
+     * user in by email while the backend keeps full username support (issue #70).
+     */
+    fun queryByLoginId(cxt: KdrCxt, loginId: String): AuthUserRow? =
+        queryByUsername(cxt, loginId) ?: queryByPrimaryId(cxt, loginId)
+
     /** Selects a single `AuthUsers` row by an indexed [field], or null. Returns the row even if disabled. */
     private fun queryOne(cxt: KdrCxt, field: String, value: Any?): AuthUserRow? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)

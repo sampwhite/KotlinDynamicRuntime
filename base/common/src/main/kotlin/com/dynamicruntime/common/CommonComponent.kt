@@ -10,6 +10,7 @@ import com.dynamicruntime.common.portal.PortalService
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.authSchema
 import com.dynamicruntime.common.user.authTables
+import com.dynamicruntime.common.user.profileSchema
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.PRI
 import com.dynamicruntime.common.sql.SqlTopicService
@@ -40,6 +41,8 @@ class CommonComponent : ComponentDefinition {
         // Auth (issue #67): the user/auth endpoints and the AuthUsers/AuthUserDevices tables.
         collector.addModule(authSchema(cxt))
         collector.addTables(authTables(cxt))
+        // Profile (issue #70): the login-gated profile page endpoints (its own widget-group namespace).
+        collector.addModule(profileSchema(cxt))
     }
 
     /**

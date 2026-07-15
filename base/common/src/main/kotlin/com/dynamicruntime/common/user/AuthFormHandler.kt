@@ -90,14 +90,14 @@ class AuthFormHandler(
     }
 
     /**
-     * Emails a verification code to an existing user (by [username]) at their primary contact. When
-     * [addPassword] is set, the email is framed for setting/changing a password -- kept deliberately
-     * ambiguous about whether the user already has one.
+     * Emails a verification code to an existing user (by [loginId] -- username or email) at their primary
+     * contact. When [addPassword] is set, the email is framed for setting/changing a password -- kept
+     * deliberately ambiguous about whether the user already has one.
      */
-    fun sendVerifyToUser(cxt: KdrCxt, username: String, formAuthToken: String, addPassword: Boolean = false) {
+    fun sendVerifyToUser(cxt: KdrCxt, loginId: String, formAuthToken: String, addPassword: Boolean = false) {
         requireValidToken(cxt, formAuthToken)
-        val user = userService.queryByUsername(cxt, username)
-            ?: throw KdrException("Username '$username' is not in the system.", code = EXC.notFound)
+        val user = userService.queryByLoginId(cxt, loginId)
+            ?: throw KdrException("No account found for '$loginId'.", code = EXC.notFound)
         requireSendAllowed(cxt, user.primaryId)
         sendVerifyEmail(cxt, user.primaryId, computeVerifyCode(formAuthToken, user.primaryId), addPassword)
     }
@@ -186,25 +186,26 @@ class AuthFormHandler(
         return completeLogin(cxt, row, byCode = true)
     }
 
-    /** Logs a user in by verification code (username + code), the primary login path. */
-    fun loginByCode(cxt: KdrCxt, username: String, formAuthToken: String, verifyCode: String): Map<String, Any?> {
+    /** Logs a user in by verification code ([loginId] -- username or email -- plus code), the primary path. */
+    fun loginByCode(cxt: KdrCxt, loginId: String, formAuthToken: String, verifyCode: String): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
-        val row = userService.queryByUsername(cxt, username)
-            ?: throw KdrException("Username '$username' could not be found.", code = EXC.notFound)
+        val row = userService.queryByLoginId(cxt, loginId)
+            ?: throw KdrException("No account found for '$loginId'.", code = EXC.notFound)
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
         return completeLogin(cxt, row, byCode = true)
     }
 
     /**
-     * Logs a user in by [password] -- permitted **only from a familiar device** (issue #69). Every failure
-     * (unknown user, unverified device, no password, or a wrong password) returns the *same* opaque message;
-     * the real reason is only logged, so the caller cannot tell whether the password was wrong or the device
-     * was unfamiliar. Attempts are throttled per username and per source IP before any password works.
+     * Logs a user in by [password] ([loginId] is a username or email) -- permitted **only from a familiar
+     * device** (issue #69). Every failure (unknown user, unverified device, no password, or a wrong password)
+     * returns the *same* opaque message; the real reason is only logged, so the caller cannot tell whether the
+     * password was wrong or the device was unfamiliar. Attempts are throttled per login id and per source IP
+     * before any password work.
      */
-    fun loginByPassword(cxt: KdrCxt, username: String, password: String): Map<String, Any?> {
+    fun loginByPassword(cxt: KdrCxt, loginId: String, password: String): Map<String, Any?> {
         val nowMs = cxt.now().toEpochMilliseconds()
         val ip = cxt.forwardedFor ?: unknownIp
-        if (!rateLimiter.allow("pw:$username", RL.pwPerUserMax, RL.pwWindowMs, nowMs) ||
+        if (!rateLimiter.allow("pw:$loginId", RL.pwPerUserMax, RL.pwWindowMs, nowMs) ||
             !rateLimiter.allow("pwip:$ip", RL.pwPerIpMax, RL.pwWindowMs, nowMs)
         ) {
             throw KdrException(
@@ -213,11 +214,11 @@ class AuthFormHandler(
             )
         }
 
-        val row = userService.queryByUsername(cxt, username)
+        val row = userService.queryByLoginId(cxt, loginId)
         val deviceGuid = cxt.request?.webRequest?.getRequestCookies()?.get(AUTHC.deviceCookie)
         val stored = row?.encodedPassword
         val failReason: String? = when {
-            row == null -> "unknown username"
+            row == null -> "unknown account"
             deviceGuid == null -> "no device cookie"
             !userService.isDeviceTrusted(cxt, row.userId, deviceGuid) -> "unverified device"
             stored == null -> "no password set"
@@ -225,10 +226,10 @@ class AuthFormHandler(
             else -> null
         }
         if (failReason != null) {
-            LogAuth.info(cxt) { "Password login failed for '$username': $failReason." }
+            LogAuth.info(cxt) { "Password login failed for '$loginId': $failReason." }
             throw KdrException(passwordLoginFailedMessage, code = EXC.authNeeded)
         }
-        rateLimiter.reset("pw:$username")
+        rateLimiter.reset("pw:$loginId")
         return completeLogin(cxt, row!!, byCode = false)
     }
 
@@ -240,11 +241,11 @@ class AuthFormHandler(
      * the current device becomes familiar -- so the just-set password is usable from this browser next time.
      */
     fun changePassword(
-        cxt: KdrCxt, username: String, password: String, formAuthToken: String, verifyCode: String,
+        cxt: KdrCxt, loginId: String, password: String, formAuthToken: String, verifyCode: String,
     ): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
-        val row = userService.queryByUsername(cxt, username)
-            ?: throw KdrException("Username '$username' could not be found.", code = EXC.notFound)
+        val row = userService.queryByLoginId(cxt, loginId)
+            ?: throw KdrException("No account found for '$loginId'.", code = EXC.notFound)
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
         setPassword(row, password)
         userService.updateUser(cxt, row)
