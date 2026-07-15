@@ -1,11 +1,14 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.jsonMap
-import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.await
 import kotlin.js.Promise
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 
 /**
  * The runtime's schema-catalog endpoints, under the `kda` API context root. In dev the webpack server proxies
@@ -30,33 +33,33 @@ object SchemaCatalogApi {
     /** GET the whole catalog: every registered endpoint's rendering plus the shared `$defs`. An optional
      *  [namespace] narrows the results. */
     suspend fun fetchCatalog(namespace: String? = null): Catalog {
-        val query = if (namespace != null) "?${EK.namespace}=$namespace" else ""
-        val results = getJson("$schemaBase/endpoints$query")[EK.results].jsonObj()
-        val endpoints = results[EK.endpoints].jsonArr().map { toEndpointInfo(it.jsonObj()) }
-        return Catalog(endpoints, results[SCH.dDefs].jsonObj())
+        val query = if (namespace != null) "?${EI.namespace}=$namespace" else ""
+        val results = getJson("$schemaBase/endpoints$query")[EP.results].toJsonMapOrEmpty()
+        val endpoints = results[EI.endpoints].toJsonListOrEmpty().map { toEndpointInfo(it.toJsonMapOrEmpty()) }
+        return Catalog(endpoints, results[SCH.dDefs].toJsonMapOrEmpty())
     }
 
     /** GET a single endpoint by exact method + path, in the same shape as the full catalog. */
     suspend fun fetchEndpoint(method: String, path: String): Catalog {
-        val results = getJson("$schemaBase/endpoint?${EK.method}=$method&${EK.path}=${encode(path)}")[EK.results].jsonObj()
-        val endpoints = results[EK.endpoints].jsonArr().map { toEndpointInfo(it.jsonObj()) }
-        return Catalog(endpoints, results[SCH.dDefs].jsonObj())
+        val results = getJson("$schemaBase/endpoint?${EI.method}=$method&${EI.path}=${encode(path)}")[EP.results].toJsonMapOrEmpty()
+        val endpoints = results[EI.endpoints].toJsonListOrEmpty().map { toEndpointInfo(it.toJsonMapOrEmpty()) }
+        return Catalog(endpoints, results[SCH.dDefs].toJsonMapOrEmpty())
     }
 
     private fun toEndpointInfo(m: Map<String, Any?>): EndpointInfo = EndpointInfo(
-        path = m[EK.path] as? String ?: "",
-        method = m[EK.method] as? String ?: "",
-        kind = m[EK.kind] as? String ?: "",
-        namespace = m[EK.namespace] as? String ?: "",
-        description = m[EK.description] as? String,
-        inputSchema = m[EK.inputSchema].jsonObj(),
-        outputSchema = m[EK.outputSchema].jsonObj(),
+        path = m[EI.path] as? String ?: "",
+        method = m[EI.method] as? String ?: "",
+        kind = m[EI.kind] as? String ?: "",
+        namespace = m[EI.namespace] as? String ?: "",
+        description = m[EI.description] as? String,
+        inputSchema = m[EI.inputSchema].toJsonMapOrEmpty(),
+        outputSchema = m[EI.outputSchema].toJsonMapOrEmpty(),
     )
 
     /**
      * Executes [endpoint] with the (already coerced) [body] and returns its parsed response envelope. A GET
      * carries the fields in the query string (a nested value is JSON-encoded, which the runtime's coercion
-     * re-parses); a POST/PUT sends them as a JSON body, serialized with the shared kernel's [toJsonStr]. A
+     * reparses); a POST/PUT sends them as a JSON body, serialized with the shared kernel's [toJsonStr]. A
      * non-2xx response raises the runtime's error `message`.
      */
     suspend fun invoke(endpoint: EndpointInfo, body: Map<String, Any?>): Map<String, Any?> {
@@ -111,10 +114,11 @@ object SchemaCatalogApi {
     }
 }
 
-private fun encode(s: String): String = js("encodeURIComponent(s)") as String
+/** Percent-encodes a query value via the browser's global `encodeURIComponent`. */
+private fun encode(s: String): String = encodeURIComponent(s)
 
-/** Null-tolerant view of a parsed-JSON value as a `Map`, via the kernel's `toJsonMap` coercion. */
-private fun Any?.jsonObj(): Map<String, Any?> = if (this is Map<*, *>) toJsonMap() else emptyMap()
+/** The browser's global `encodeURIComponent`, declared so [encode] actually passes its argument (rather than
+ *  relying on a `js(...)` string capturing the local by name). */
+private external fun encodeURIComponent(s: String): String
 
-/** Null-tolerant view of a parsed-JSON value as a `List`. */
-private fun Any?.jsonArr(): List<Any?> = if (this is List<*>) this else emptyList()
+

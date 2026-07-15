@@ -5,7 +5,6 @@ import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.isDateFormat
-import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import react.ChildrenBuilder
 import react.FC
@@ -15,6 +14,8 @@ import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
 import web.cssom.ClassName
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 
 /**
  * Renders a kernel [SchType] as a form — the generic display engine. It dispatches each field to a widget by
@@ -95,7 +96,7 @@ private fun ChildrenBuilder.renderField(
             div {
                 className = ClassName("nested")
                 val childSeen = if (typeName != null) seen + typeName else seen
-                renderObject(vt, value.asKMap(), childSeen, editable) { newSub -> emit(newSub) }
+                renderObject(vt, value.toJsonMapOrEmpty(), childSeen, editable) { newSub -> emit(newSub) }
             }
         }
         return
@@ -126,7 +127,7 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
         arrayOptions != null -> Select {
             mode = "multiple"
             options = optionsToJs(arrayOptions)
-            this.value = value.asKList().map { it.toString() }.toTypedArray()
+            this.value = value.toJsonListOrEmpty().map { it.toString() }.toTypedArray()
             placeholder = "(choose)"
             style = js("({ minWidth: 200 })")
             onChange = { v -> emit(jsToList(v)) }
@@ -250,11 +251,7 @@ private fun jsToList(v: dynamic): List<Any?> {
     return out
 }
 
-/** Null-tolerant view of a value-tree node as a `Map`, via the kernel's `toJsonMap` coercion. */
-private fun Any?.asKMap(): Map<String, Any?> = if (this is Map<*, *>) toJsonMap() else emptyMap()
 
-/** Null-tolerant view of a value-tree node as a `List`. */
-private fun Any?.asKList(): List<Any?> = this as? List<*> ?: emptyList()
 
 // --- output-schema outline --------------------------------------------------------------------------------
 
