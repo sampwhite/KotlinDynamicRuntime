@@ -45,7 +45,7 @@ class KdrCxt(
      * [UserProfile.userId] and can likewise be reassigned when operating on another user's data.
      */
     var userId: Long = userProfile.userId,
-) {
+) : KdrCxtBase {
     /** Configuration of the running instance/application. */
     val instanceConfig: KdrInstanceConfig = instanceConfig ?: KdrInstanceConfig.codeTest()
 
@@ -160,7 +160,7 @@ class KdrCxt(
     fun durationMs(): Double = (System.nanoTime() - nanoTime) / 1_000_000.0
 
     /** Current time, adjusted by [nowTimeOffsetInSeconds] for test time travel. */
-    fun now(): Instant = Clock.System.now() + nowTimeOffsetInSeconds.seconds
+    override fun now(): Instant = Clock.System.now() + nowTimeOffsetInSeconds.seconds
 
     companion object {
         /** Creates a simple top-level context with placeholder config and user. */

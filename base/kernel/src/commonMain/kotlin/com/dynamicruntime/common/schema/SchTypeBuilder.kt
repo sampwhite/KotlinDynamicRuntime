@@ -2,7 +2,7 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.config.KdrConfigData
-import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.util.deepClone
 import com.dynamicruntime.common.util.toT
 import kotlin.reflect.KProperty
@@ -42,7 +42,7 @@ fun typeRefPath(name: String, namespace: String): String =
  * on the field.
  */
 open class SchTypeBuilder(
-    cxt: KdrCxt,
+    cxt: KdrCxtBase,
     val namespace: String,
     data: MutableMap<String, Any?> = LinkedHashMap(),
 ) : KdrConfigData(cxt, data) {

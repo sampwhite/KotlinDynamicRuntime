@@ -24,16 +24,8 @@ object ENV {
     const val deployed = "deployed"
 }
 
-/** Account-related constants. */
-@Suppress("ConstPropertyName")
-object AC {
-    // Default account names.
-    const val local = "local"
-    const val public = "public"
-
-    // Placeholder id for the implicit system user.
-    const val systemUserId = 0
-}
+// AC (account constants) moved to the kernel (AccountConstants.kt), so shared data classes like UserProfile
+// can live in the kernel too (issue #78); still referenced as `com.dynamicruntime.common.context.AC`.
 
 /** Application configuration data keys. (A key's name matches its string value.) */
 @Suppress("ConstPropertyName")

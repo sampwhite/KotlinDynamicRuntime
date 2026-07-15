@@ -2,6 +2,7 @@ package com.dynamicruntime.common.endpoint
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -169,7 +170,7 @@ class SchModule(val defs: Map<String, Any?>, val endpoints: List<KdrEndpoint>)
  * mandatory; the type defaults to string unless [build] sets a `type` or a `$ref`), so declaring fields
  * inline reads the same as declaring a named type's properties.
  */
-class InputFieldsBuilder(private val cxt: KdrCxt, private val namespace: String) {
+class InputFieldsBuilder(private val cxt: KdrCxtBase, private val namespace: String) {
     val fields: MutableList<EndpointField> = mutableListOf()
 
     fun field(name: String, description: String, required: Boolean = false, build: SchTypeBuilder.() -> Unit = {}) {

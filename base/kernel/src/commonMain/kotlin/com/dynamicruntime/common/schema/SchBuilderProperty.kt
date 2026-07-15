@@ -1,6 +1,6 @@
 package com.dynamicruntime.common.schema
 
-import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrCxtBase
 
 /**
  * A reusable, standalone property (field) declaration: a [name] plus a built
@@ -16,7 +16,7 @@ class SchBuilderProperty(val name: String, val data: Map<String, Any?>)
  * a `$ref`. [namespace] is used to resolve any bare `$ref` written in [build].
  */
 fun schemaProperty(
-    cxt: KdrCxt,
+    cxt: KdrCxtBase,
     namespace: String,
     name: String,
     description: String,

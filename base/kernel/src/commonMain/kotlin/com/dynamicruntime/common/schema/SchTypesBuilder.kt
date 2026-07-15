@@ -1,6 +1,6 @@
 package com.dynamicruntime.common.schema
 
-import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrCxtBase
 
 /**
  * Builds a set of JSON Schema types (and, as a convenience, reusable properties)
@@ -9,7 +9,7 @@ import com.dynamicruntime.common.context.KdrCxt
  * `$defs` object, which is where all kd2 types implicitly live and what `$ref`
  * paths resolve into.
  */
-open class SchTypesBuilder(val cxt: KdrCxt, val namespace: String) {
+open class SchTypesBuilder(val cxt: KdrCxtBase, val namespace: String) {
     /** Types keyed by fully qualified name (the `$defs` contents). */
     val defs: MutableMap<String, Any?> = LinkedHashMap()
 
@@ -41,5 +41,5 @@ open class SchTypesBuilder(val cxt: KdrCxt, val namespace: String) {
  * a Kotlin DSL. Wrap with `mapOf(SCH.dDefs to result)` for a standalone schema
  * document; `result.values` gives the bare array of type schemas.
  */
-fun schemaDefs(cxt: KdrCxt, namespace: String, build: SchTypesBuilder.() -> Unit): Map<String, Any?> =
+fun schemaDefs(cxt: KdrCxtBase, namespace: String, build: SchTypesBuilder.() -> Unit): Map<String, Any?> =
     SchTypesBuilder(cxt, namespace).apply(build).defs
