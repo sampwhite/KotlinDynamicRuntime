@@ -2,6 +2,8 @@ package com.dynamicruntime.common.context
 
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
+import com.dynamicruntime.common.util.getOptStr
+import com.dynamicruntime.common.util.toOptLong
 
 /** Attribute keys for a [UserProfile]'s info dump ([UserProfile.toUserInfo]). Each name matches its value. */
 @Suppress("ConstPropertyName")
@@ -15,7 +17,7 @@ object UPF {
 }
 
 /**
- * The authenticated-user information carried by a [KdrCxt]: identity, roles, the client account, and a
+ * The authenticated-user information carried by a KdrCxt: identity, roles, the client account, and a
  * display name. A real login populates it from the user's row (see the auth layer); an unauthenticated
  * request carries the anonymous profile ([anonymous]). Still lightweight -- richer profile data will load on
  * demand.
@@ -77,6 +79,20 @@ class UserProfile(
 
         /** The profile for a caller who is not logged in: an anonymous identity in the public account. */
         fun anonymous(): UserProfile = UserProfile(authId = anonymousAuthId, account = AC.public)
+
+        /**
+         * Reconstructs a [UserProfile] from a [toUserInfo] map -- the mirror of [toUserInfo], so the frontend
+         * (or any KMP consumer) can turn a `UserInfo` response back into the typed object. Missing/blank fields
+         * fall back to the same defaults the constructor uses.
+         */
+        fun fromUserInfo(info: Map<String, Any?>): UserProfile = UserProfile(
+            authId = info.getOptStr(UPF.authId),
+            userId = info[UPF.userId].toOptLong() ?: AC.systemUserId.toLong(),
+            account = info.getOptStr(UPF.account) ?: AC.local,
+            roles = (info[UPF.roles] as? List<*>)?.mapNotNull { it?.toString() }?.toSet() ?: emptySet(),
+            publicName = info.getOptStr(UPF.publicName),
+            hasPassword = info[UPF.hasPassword] as? Boolean,
+        )
 
         /**
          * Defines the `UserInfo` schema type (the shape of [toUserInfo]) on [builder]. Kept with the class, so
