@@ -32,7 +32,18 @@
             border-bottom: 1px solid #334155;
             box-shadow: 0 2px 12px rgba(0, 0, 0, .35);
         }
-        .app-bar-brand { color: #e2e8f0; font-weight: 700; font-size: 1.15rem; text-decoration: none; letter-spacing: .5px; }
+        /* The brand lockup: mark + wordmark, sitting on one baseline. */
+        .app-bar-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            color: #e2e8f0;
+            font-weight: 700;
+            font-size: 1.15rem;
+            text-decoration: none;
+            letter-spacing: .5px;
+        }
+        .app-bar-logo { display: block; width: 26px; height: 26px; }
         .app-bar-right { position: relative; }
         .hamburger {
             background: transparent;
@@ -82,6 +93,10 @@
             border-radius: 12px;
             background: #1e293b;
         }
+        /* The home hero: the mark at display size beside the wordmark. */
+        .home-hero { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+        .home-hero-mark { display: block; width: 64px; height: 64px; flex: none; }
+        .home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 1px; color: #e2e8f0; }
         .home-inline-links { display: flex; flex-wrap: wrap; gap: 8px; }
         .link-button {
             background: transparent;

@@ -25,7 +25,7 @@ dependencies {
 val embedWebapp = tasks.register<Copy>("embedWebapp") {
     dependsOn(":webapp:jsBrowserDistribution")
     from(project(":webapp").layout.buildDirectory.dir("dist/js/productionExecutable")) {
-        include("webapp.js", "webapp.js.map", "favicon.svg")
+        include("webapp.js", "webapp.js.map", "favicon.svg", "brand-mark.svg")
     }
     into(layout.buildDirectory.dir("webappResources/webapp"))
 }

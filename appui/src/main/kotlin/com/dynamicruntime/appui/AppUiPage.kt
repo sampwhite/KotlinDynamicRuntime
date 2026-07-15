@@ -42,6 +42,22 @@ object AppUiPage {
     background: #1e293b;
     box-shadow: 0 20px 60px rgba(0, 0, 0, .45);
   }
+  /* The brand lockup (app bar) and the home hero: mark + wordmark. Sizing the mark matters even where the
+     surrounding chrome is unstyled — without it the SVG renders at its natural 64px. */
+  .app-bar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: #e2e8f0;
+    font-weight: 700;
+    font-size: 1.15rem;
+    text-decoration: none;
+    letter-spacing: .5px;
+  }
+  .app-bar-logo { display: block; width: 26px; height: 26px; }
+  .home-hero { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .home-hero-mark { display: block; width: 64px; height: 64px; flex: none; }
+  .home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 1px; color: #e2e8f0; }
   h1 { margin: 0 0 4px; font-size: 1.6rem; }
   h2 { margin: 28px 0 12px; font-size: 1.05rem; color: #94a3b8; }
   .subtitle { margin: 0; color: #94a3b8; }

@@ -48,6 +48,22 @@ class AppUiHttpTest : StringSpec({
         resp.rptResponseData!! shouldContain "<svg"
     }
 
+    "GET /wa/brand-mark.svg serves the embedded brand mark" {
+        val resp = client("appMark").sendGetRequestRaw("/wa/brand-mark.svg")
+        resp.rptStatusCode shouldBe 200
+        resp.rptResponseMimeType shouldBe "image/svg+xml"
+        resp.rptResponseData!! shouldContain "<svg"
+    }
+
+    // The frontend builds the brand mark's URL from the app context root in this bootstrap (it cannot hardcode
+    // the path: the dev server serves from the origin root, appui from a context root). If the bootstrap ever
+    // stops carrying `contextRoots.app`, the mark silently 404s in production only -- so pin the shape here.
+    "the shell's bootstrap carries the app context root the frontend builds asset URLs from" {
+        val body = client("appBootstrap").sendGetRequestRaw("/wa").rptResponseData!!
+        body shouldContain "\"contextRoots\""
+        body shouldContain "\"app\":\"wa\""
+    }
+
     "GET /wa/webapp.js serves the embedded JS bundle" {
         val resp = client("appBundle").sendGetRequestRaw("/wa/webapp.js")
         resp.rptStatusCode shouldBe 200
