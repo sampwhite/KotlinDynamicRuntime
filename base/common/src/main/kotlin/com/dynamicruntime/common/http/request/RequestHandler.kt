@@ -232,7 +232,7 @@ class RequestHandler : WebRequest {
 
     /**
      * Rejects a change to a response that has already gone out. Once the body is written the exchange is
-     * committed: a status, a header, a `Set-Cookie` set afterwards reaches nobody. Jetty drops it silently and
+     * committed: a status, a header, a `Set-Cookie` set afterward reaches nobody. Jetty drops it silently, and
      * the in-process test client never notices at all -- it captures headers into a map, order-independently,
      * so a test can pass on a response a browser would never receive. That is not hypothetical: it is exactly
      * how the auth session cookie was lost (issue #81), found only by driving a real browser.
@@ -278,7 +278,7 @@ class RequestHandler : WebRequest {
     )
 
     /**
-     * Sends [content] -- the content itself and everything about how to handle it. The one response path for a
+     * Sends [content] -- the content itself and everything about how to handle it. The one-response path for a
      * body; the [sendStringResponse]/[sendBytesResponse] overloads below are shorthands onto it for callers
      * who have nothing to say beyond a MIME type.
      *

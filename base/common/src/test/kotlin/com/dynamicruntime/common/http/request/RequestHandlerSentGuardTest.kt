@@ -15,8 +15,8 @@ import kotlin.time.Instant
  * stayed anonymous (issue #81). Nothing failed. The in-process client captures headers into a map without
  * regard to when they were set, so the test suite was perfectly happy; only a real browser noticed.
  *
- * That is the point here: this handler is what the tests see, so if *it* tolerates a late write, no test can
- * be trusted to catch one. Hence the guard, and hence these.
+ * That is the point here: this handler is what the tests see, so if *it* tolerates a late "write", no test can
+ * be trusted to catch one. Hence, the guard, and hence these.
  */
 class RequestHandlerSentGuardTest : StringSpec({
 
@@ -86,7 +86,7 @@ class RequestHandlerSentGuardTest : StringSpec({
     }
 
     "asking whether the response was sent is not a change, and stays allowed" {
-        // The legitimate pattern: read the flag, and stand down when someone else has already responded.
+        // The legitimate pattern: read the flag and stand down when someone else has already responded.
         val h = sentHandler()
         val asSent = h.rptResponseData
         h.hasResponseBeenSent() shouldBe true

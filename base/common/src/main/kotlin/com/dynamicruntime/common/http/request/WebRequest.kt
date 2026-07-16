@@ -29,7 +29,7 @@ interface WebRequest {
 
     fun addResponseHeader(header: String, value: String)
 
-    /** Adds a `Set-Cookie` response header (Path=/, HttpOnly, secure when proxied), optionally with an expiry. */
+    /** Adds a `Set-Cookie` response header (Path=/, HttpOnly, secure when proxied), optionally with expiry. */
     fun addResponseCookie(name: String, value: String, expire: Instant?)
 
     fun sendRedirect(url: String)

@@ -8,7 +8,6 @@ import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.ASE
 import com.dynamicruntime.common.util.toJsonListOfMaps
-import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 

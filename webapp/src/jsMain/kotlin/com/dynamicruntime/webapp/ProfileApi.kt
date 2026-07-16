@@ -1,13 +1,11 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.util.getOptStr
-import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /** Which password affordances apply to the current user (from the profile UI-config `features`). */
@@ -62,5 +60,7 @@ object ProfileApi {
 
     /** Removes the caller's password (opting back out of password login); returns the updated user info. */
     suspend fun clearPassword(): UserProfile =
-        UserProfile.fromUserInfo(Http.sendApi("POST", AEP.profileClearPassword, emptyMap())[EP.results].toJsonMapOrEmpty())
+        UserProfile.fromUserInfo(
+            Http.sendApi("POST", AEP.profileClearPassword, emptyMap())[EP.results].toJsonMapOrEmpty(),
+        )
 }

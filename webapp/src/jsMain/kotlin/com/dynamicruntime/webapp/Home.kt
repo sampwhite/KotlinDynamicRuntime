@@ -28,10 +28,10 @@ private const val docParam = "doc"
 /**
  * The home page — assembled from data rather than hardcoded. It fetches its UI-config (the "construction
  * manifest") and builds itself from it:
- *  - its **copy** comes from the `home` Markdown fragment file the config names (nothing here is a literal);
- *  - its **layout** comes from the config's feature flags — the document links may be shown as a top menu
+ *  - Its **copy** comes from the `home` Markdown fragment file the config names (nothing here is a literal);
+ *  - Its **layout** comes from the config's feature flags — the document links may be shown as a top menu
  *    bar, a left nav bar, inline in the body, any combination, or not at all;
- *  - its **links** come from the config's state, each naming a Markdown document to open.
+ *  - Its **links** come from the config's state, each naming a Markdown document to open.
  *
  * Selecting a link opens that document (rendered by [Markdown]) and records it in the URL hash, so a document
  * page can be refreshed or shared.
@@ -39,7 +39,7 @@ private const val docParam = "doc"
 val Home = FC<Props> {
     var config by useState<HomeConfig?>(null)
     var copy by useState(Copy.empty)
-    var openDoc by useState<String?>(hashParams()[docParam])
+    var openDoc by useState(hashParams()[docParam])
     var docText by useState<String?>(null)
     var error by useState<String?>(null)
 
@@ -60,7 +60,7 @@ val Home = FC<Props> {
     }
 
     // Fetch whichever document the selection names (and drop the old text when nothing is open). Keyed on the
-    // selection and the config, so it also runs for a doc named by the hash on first load.
+    // selection and the config, so it also runs for a doc named by the hash on the first load.
     useEffect(openDoc, config) {
         val link = config?.links?.firstOrNull { it.id == openDoc }
         if (link == null) {
@@ -120,7 +120,7 @@ val Home = FC<Props> {
                         className = ClassName("todo-error")
                         +error!!
                     }
-                    // A document page: its rendered Markdown, plus a way back to the welcome copy.
+                    // A document page: it's rendered Markdown, plus a way back to the welcome copy.
                     doc != null -> {
                         button {
                             className = ClassName("link-button")
@@ -132,7 +132,7 @@ val Home = FC<Props> {
                     }
                     // The welcome page: copy from the fragment file, and optionally the links inline.
                     current != null -> {
-                        // The hero: the brand mark beside the wordmark. The wordmark is copy like everything
+                        // The hero: the brand mark beside the wordmark. The wordmark is copied like everything
                         // else here, so a deployment that names no brand simply gets no hero.
                         copy.opt("home", "brand")?.let { brandName ->
                             div {
