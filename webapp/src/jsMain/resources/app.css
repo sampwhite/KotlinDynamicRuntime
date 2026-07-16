@@ -17,15 +17,56 @@
  * The class names are the contract with the React components; grep a name here to find its component.
  */
 
-:root { color-scheme: light dark; }
+/*
+ * The palette, named by the job each colour does rather than by what it looks like. This file carried 52
+ * colour literals for 11 actual colours -- the same slate re-spelled in fifteen places -- and no rule said
+ * which of them meant "a border" as opposed to "happens to be #334155". Every colour below is now named once
+ * and referenced; a rule that spells a hex is either a new colour or a mistake.
+ *
+ * The names describe the four text weights and the accent pair the design already used, rather than inventing
+ * a scheme: they were read off the rules, not chosen.
+ *
+ * These are custom properties, not preprocessor variables: they resolve in the browser, so a deployment or an
+ * account can later be varied by emitting a different `:root` block, without touching a single rule below.
+ * If that day comes, note that antd is themed from its *own* tokens (see App.kt's ConfigProvider) and covers
+ * roughly half this app's surface, so the two token sets have to be driven from one source -- otherwise a
+ * brand colour would apply to our half and not antd's.
+ */
+:root {
+    color-scheme: light dark;
+
+    /* The page itself, and the inset wells that sit *into* it: code, pre, inputs. */
+    --surface-page: #0f172a;
+    /* Raised above the page: the app bar, the menu, a card. */
+    --surface-raised: #1e293b;
+    /* Every border in the app, the hairline between sections, and a hover wash. */
+    --border: #334155;
+
+    /* Body text, and the three steps down from it. */
+    --text: #e2e8f0;
+    /* Labels and button text: softened, still foreground. */
+    --text-dim: #cbd5e1;
+    /* Secondary prose: subtitles, menu labels. */
+    --text-muted: #94a3b8;
+    /* Annotations that must not compete: type hints. */
+    --text-faint: #64748b;
+
+    /* The indigo pair: the accent, and the brighter one it moves to on hover (also links). */
+    --accent: #6366f1;
+    --accent-bright: #818cf8;
+
+    --danger: #f87171;
+    --success: #4ade80;
+}
+
 * { box-sizing: border-box; }
 
 body {
     margin: 0;
     min-height: 100vh;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #0f172a;
-    color: #e2e8f0;
+    background: var(--surface-page);
+    color: var(--text);
 }
 
 /* The app bar sits at the top; the page content fills the rest and centers its card. */
@@ -39,8 +80,8 @@ body {
     align-items: center;
     justify-content: space-between;
     padding: 12px 24px;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border);
     box-shadow: 0 2px 12px rgba(0, 0, 0, .35);
 }
 
@@ -49,7 +90,7 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 9px;
-    color: #e2e8f0;
+    color: var(--text);
     font-weight: 700;
     font-size: 1.15rem;
     text-decoration: none;
@@ -61,14 +102,14 @@ body {
 .hamburger {
     background: transparent;
     border: none;
-    color: #e2e8f0;
+    color: var(--text);
     font-size: 1.5rem;
     line-height: 1;
     cursor: pointer;
     padding: 4px 10px;
     border-radius: 8px;
 }
-.hamburger:hover { background: #334155; }
+.hamburger:hover { background: var(--border); }
 
 /* Sits under the menu (but over the page) so a click anywhere outside the menu closes it. */
 .app-menu-overlay { position: fixed; inset: 0; z-index: 8; }
@@ -77,8 +118,8 @@ body {
     right: 0;
     top: calc(100% + 8px);
     z-index: 30;
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, .5);
     min-width: 190px;
@@ -91,22 +132,22 @@ body {
     width: 100%;
     text-align: left;
     padding: 12px 16px;
-    color: #e2e8f0;
+    color: var(--text);
     text-decoration: none;
     background: none;
     border: none;
     font: inherit;
     cursor: pointer;
 }
-.app-menu-item:hover { background: #334155; }
+.app-menu-item:hover { background: var(--border); }
 
 /* A non-clickable menu header, e.g. "Signed in as …". */
 .app-menu-label {
     display: block;
     padding: 12px 16px 6px;
-    color: #94a3b8;
+    color: var(--text-muted);
     font-size: 0.85em;
-    border-top: 1px solid #334155;
+    border-top: 1px solid var(--border);
 }
 
 /* Home shell: the three link presentations (top bar / left bar / inline) around the content. */
@@ -120,7 +161,7 @@ body {
     gap: 6px;
     padding: 16px;
     border-radius: 12px;
-    background: #1e293b;
+    background: var(--surface-raised);
 }
 .home-leftbar h2 { margin: 0 0 8px; font-size: .9rem; }
 .home-main {
@@ -128,69 +169,88 @@ body {
     min-width: 0;
     padding: 24px 28px;
     border-radius: 12px;
-    background: #1e293b;
+    background: var(--surface-raised);
 }
 
 /* The home hero: the mark at display size beside the wordmark. */
 .home-hero { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
 .home-hero-mark { display: block; width: 64px; height: 64px; flex: none; }
-.home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 0.03em; color: #e2e8f0; }
+.home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 0.03em; color: var(--text); }
 
 .home-inline-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .link-button {
     background: transparent;
-    border: 1px solid #334155;
+    border: 1px solid var(--border);
     border-radius: 8px;
-    color: #cbd5e1;
+    color: var(--text-dim);
     padding: 8px 12px;
     font-size: .9rem;
     font-weight: 600;
     text-align: left;
     cursor: pointer;
 }
-.link-button:hover { background: #334155; color: #e2e8f0; }
-.link-button.open { border-color: #6366f1; color: #e2e8f0; }
+.link-button:hover { background: var(--border); color: var(--text); }
+.link-button.open { border-color: var(--accent); color: var(--text); }
 
 /* Rendered Markdown (fragment copy and whole documents). */
 .markdown { line-height: 1.6; overflow-wrap: anywhere; }
 .markdown h1, .markdown h2, .markdown h3 { margin: 20px 0 8px; }
-.markdown code {
-    background: #0f172a;
-    border: 1px solid #334155;
+/* `markdown-inline` is a phrase rendered inside markup the caller owns (MarkdownInline): it shares these
+   inline looks, but never the block spacing above -- it has no line-height or margins of its own. */
+.markdown code, .markdown-inline code {
+    background: var(--surface-page);
+    border: 1px solid var(--border);
     border-radius: 5px;
     padding: 1px 5px;
     font-size: .85em;
 }
-.markdown pre {
-    background: #0f172a;
-    border: 1px solid #334155;
+/* An inset block well: a rendered Markdown code block, or one the display engine builds by hand (`.code`).
+   The same box either way -- they differ only in the text inside it. */
+.markdown pre, .code {
+    background: var(--surface-page);
+    border: 1px solid var(--border);
     border-radius: 10px;
     padding: 12px 14px;
     overflow-x: auto;
 }
 .markdown pre code { background: none; border: none; padding: 0; }
-.markdown a { color: #818cf8; }
+.markdown a, .markdown-inline a { color: var(--accent-bright); }
 .markdown blockquote {
     margin: 12px 0;
     padding-left: 12px;
-    border-left: 3px solid #334155;
-    color: #94a3b8;
+    border-left: 3px solid var(--border);
+    color: var(--text-muted);
 }
-.markdown hr { border: none; border-top: 1px solid #334155; }
+.markdown hr { border: none; border-top: 1px solid var(--border); }
 
 .card {
     width: min(560px, 92vw);
     padding: 32px 36px;
     border-radius: 16px;
-    background: #1e293b;
+    background: var(--surface-raised);
     box-shadow: 0 20px 60px rgba(0, 0, 0, .45);
 }
+
+/* Vertical rhythm for the hand-written widget-groups (the auth flow, the profile page), whose rows would
+   otherwise stack flush against each other -- `.row` only spaces its contents horizontally. Applied through
+   `.card` rather than to `.row` itself, because `.row` is also the display engine's (SchemaForm, the endpoint
+   catalog) and density is right there: those list many fields at once, these ask for two or three. */
+.card > * + * { margin-top: 14px; }
+/* Headings keep the section spacing they have everywhere else: a clear break above the new section (which the
+   rhythm rule above would otherwise flatten), and tight to the block they introduce. */
+.card > h2 { margin-top: 28px; }
+.card > h1 + *, .card > h2 + * { margin-top: 8px; }
+/* A hint captions the block above it, so in a card it takes the rhythm rather than `.type-hint`'s own 2px --
+   which is meant for the display engine's dense field rows, and which ties with the rule above on specificity
+   (both one class) and so would otherwise win on source order alone. Consecutive hints stay a tight group. */
+.card > .type-hint { margin-top: 14px; }
+.card > .type-hint + .type-hint { margin-top: 2px; }
 /* The endpoint browser needs room for the table and wide responses. */
 .card.wide { width: min(1040px, 95vw); }
 
 h1 { margin: 0 0 4px; font-size: 1.6rem; }
-h2 { margin: 28px 0 12px; font-size: 1.05rem; color: #94a3b8; }
-.subtitle { margin: 0; color: #94a3b8; }
+h2 { margin: 28px 0 12px; font-size: 1.05rem; color: var(--text-muted); }
+.subtitle { margin: 0; color: var(--text-muted); }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 button {
@@ -200,11 +260,11 @@ button {
     padding: 10px 18px;
     font-size: 1rem;
     font-weight: 600;
-    background: #6366f1;
+    background: var(--accent);
     color: white;
 }
-button:hover { background: #818cf8; }
-button.ghost { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+button:hover { background: var(--accent-bright); }
+button.ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
 
 .count { min-width: 48px; text-align: center; font-size: 1.5rem; font-weight: 700; }
 input {
@@ -212,32 +272,25 @@ input {
     min-width: 180px;
     padding: 10px 14px;
     border-radius: 10px;
-    border: 1px solid #334155;
-    background: #0f172a;
-    color: #e2e8f0;
+    border: 1px solid var(--border);
+    background: var(--surface-page);
+    color: var(--text);
     font-size: 1rem;
 }
 .greeting { font-size: 1.2rem; margin-top: 12px; }
 .todo-title { flex: 1; min-width: 120px; }
-.todo-title.done { text-decoration: line-through; color: #94a3b8; }
-.todo-error { color: #f87171; margin-top: 12px; }
+.todo-title.done { text-decoration: line-through; color: var(--text-muted); }
+.todo-error { color: var(--danger); margin-top: 12px; }
 
 /* The schema display engine: one field per row, label + widget or read-only value. */
 .schema-form { width: 100%; }
-.field-label { font-weight: 600; min-width: 140px; color: #cbd5e1; }
-.field-required { color: #f87171; }
-.field-value { color: #e2e8f0; }
-.field-type { color: #64748b; font-style: italic; font-size: .85rem; }
+.field-label { font-weight: 600; min-width: 140px; color: var(--text-dim); }
+.field-required { color: var(--danger); }
+.field-value { color: var(--text); }
+.field-type { color: var(--text-faint); font-style: italic; font-size: .85rem; }
 .json-value { flex: 1 1 100%; margin: 4px 0 0; white-space: pre; }
-.nested { margin: 4px 0 8px 16px; padding-left: 12px; border-left: 2px solid #334155; }
-.type-hint { color: #64748b; font-style: italic; margin: 2px 0; }
-.form-ok { color: #4ade80; margin-top: 12px; }
-.code {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 10px;
-    padding: 12px 14px;
-    overflow-x: auto;
-    font-size: .85rem;
-    color: #cbd5e1;
-}
+.nested { margin: 4px 0 8px 16px; padding-left: 12px; border-left: 2px solid var(--border); }
+.type-hint { color: var(--text-faint); font-style: italic; margin: 2px 0; }
+.form-ok { color: var(--success); margin-top: 12px; }
+/* The box is shared with `.markdown pre` above; only its text differs. */
+.code { font-size: .85rem; color: var(--text-dim); }

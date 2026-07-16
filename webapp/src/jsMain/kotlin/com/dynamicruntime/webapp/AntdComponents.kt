@@ -20,6 +20,26 @@ import react.PropsWithChildren
  * straight into the kotlin-react builder DSL: `Button { type = "primary"; +"Go" }`.
  */
 
+/**
+ * antd's `theme` export, whose `darkAlgorithm` is the dark token set handed to [ConfigProvider]. antd v5 has
+ * no stylesheet to swap: it derives every component's colors from these tokens at runtime. Opaque functions
+ * we only pass straight back to antd, so `dynamic` (as with [SelectProps.style]).
+ */
+external val theme: dynamic
+
+external interface ConfigProviderProps : PropsWithChildren {
+    /** A theme config object, e.g. `js("({})")` with `algorithm` set to one of [theme]'s algorithms. */
+    var theme: dynamic
+}
+
+/**
+ * antd's app-wide configuration context. Wrapping the tree in one carrying [theme]'s `darkAlgorithm` is what
+ * makes antd's controls dark. Without it antd renders its **light** default inside our permanently-dark
+ * shell, which is legible only by luck: disabled text lands at `rgba(0,0,0,.25)` on a dark card -- 1.44:1,
+ * well under WCAG's 4.5:1 -- and inputs come out as white slabs (issue #96).
+ */
+external val ConfigProvider: ComponentType<ConfigProviderProps>
+
 external interface ButtonProps : PropsWithChildren {
     /** "primary" | "default" | "dashed" | "text" | "link". */
     var type: String?

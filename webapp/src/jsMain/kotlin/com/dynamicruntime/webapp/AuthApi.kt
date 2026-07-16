@@ -8,7 +8,6 @@ import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.ASE
 import com.dynamicruntime.common.util.toJsonListOfMaps
-import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 
@@ -24,8 +23,7 @@ class AuthFeatures(
 /** The auth widget-group's construction manifest: where its copy lives, which features are on, and who (if
  *  anyone) is currently signed in. */
 class AuthConfig(
-    val fragmentFileId: String,
-    val fragmentBuildId: String,
+    val fragment: FragmentRef,
     val features: AuthFeatures,
     val user: UserProfile,
 )
@@ -44,28 +42,18 @@ object AuthApi {
     private const val emailContactType = "email"
 
     suspend fun fetchConfig(): AuthConfig {
-        val results = Http.getApi(AEP.authUiConfig)[EP.results].toJsonMapOrEmpty()
-        val fragment = results[UIC.fragments].toJsonListOrEmpty().firstOrNull().toJsonMapOrEmpty()
-        val features = results[UIC.features].toJsonMapOrEmpty()
-        val userInfo = results[UIC.state].toJsonMapOrEmpty()[AFLD.userInfo].toJsonMapOrEmpty()
+        val config = fetchUiConfig(AEP.authUiConfig)
         return AuthConfig(
-            fragmentFileId = fragment[UIC.fileId] as? String ?: "",
-            fragmentBuildId = fragment[UIC.buildId] as? String ?: "",
+            fragment = config.fragment,
             features = AuthFeatures(
-                registration = features[AFEAT.registration] == true,
-                codeLogin = features[AFEAT.codeLogin] == true,
-                passwordLogin = features[AFEAT.passwordLogin] == true,
-                simulatedEmail = features[AFEAT.simulatedEmail] == true,
+                registration = config.features[AFEAT.registration] == true,
+                codeLogin = config.features[AFEAT.codeLogin] == true,
+                passwordLogin = config.features[AFEAT.passwordLogin] == true,
+                simulatedEmail = config.features[AFEAT.simulatedEmail] == true,
             ),
-            user = UserProfile.fromUserInfo(userInfo),
+            user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
         )
     }
-
-    /** The auth group's copy: a Markdown fragment file as `namespace -> (key -> value)`. */
-    suspend fun fetchFragments(fileId: String, buildId: String): Map<String, Map<String, String>> =
-        Http.getFragments(fileId, buildId).mapValues { (_, namespace) ->
-            namespace.toJsonMapOrEmpty().mapValues { (_, value) -> value?.toString() ?: "" }
-        }
 
     /** Issues a fresh form token; the same token is used for the send-verify and the following code call. */
     suspend fun createToken(): String =
@@ -80,9 +68,15 @@ object AuthApi {
         )
     }
 
-    /** Emails a verification code to an existing user (by [loginId] -- email or username). */
-    suspend fun sendVerifyUser(loginId: String, token: String) {
-        Http.sendApi("POST", AEP.userSendVerify, mapOf(AFLD.loginId to loginId, AFLD.formAuthToken to token))
+    /**
+     * Emails a verification code to an existing user (by [loginId] -- email or username). [addPassword] frames
+     * the emailed copy for setting a password, so the caller has to decide before the code is sent.
+     */
+    suspend fun sendVerifyUser(loginId: String, token: String, addPassword: Boolean = false) {
+        Http.sendApi(
+            "POST", AEP.userSendVerify,
+            mapOf(AFLD.loginId to loginId, AFLD.formAuthToken to token, AFLD.addPassword to addPassword),
+        )
     }
 
     /** Provisions the initial user row from a verified email + code, returning the new userId. */
@@ -97,12 +91,20 @@ object AuthApi {
         return results[AFLD.userId].toOptLong() ?: error("The server did not return a user id.")
     }
 
-    /** Finishes registration: no username/password (the frontend doesn't use usernames), which logs the user in. */
-    suspend fun finishRegistration(userId: Long, token: String, code: String): UserProfile =
+    /**
+     * Finishes registration, which logs the user in. No username (the frontend doesn't use them); [password] is
+     * optional -- login by code works without one -- and when given, the account has it from the outset.
+     */
+    suspend fun finishRegistration(userId: Long, token: String, code: String, password: String? = null): UserProfile =
         userFrom(
             Http.sendApi(
                 "PUT", AEP.setLoginData,
-                mapOf(AFLD.userId to userId, AFLD.formAuthToken to token, AFLD.verifyCode to code),
+                buildMap {
+                    put(AFLD.userId, userId)
+                    put(AFLD.formAuthToken, token)
+                    put(AFLD.verifyCode, code)
+                    if (!password.isNullOrEmpty()) put(AFLD.password, password)
+                },
             ),
         )
 
@@ -118,6 +120,22 @@ object AuthApi {
     /** Logs a returning user in by password (familiar devices only; failure raises the opaque message). */
     suspend fun loginByPassword(loginId: String, password: String): UserProfile =
         userFrom(Http.sendApi("POST", AEP.loginByPassword, mapOf(AFLD.loginId to loginId, AFLD.password to password)))
+
+    /**
+     * Sets or changes the user's password, verified by an emailed code. This *is* a code login: the backend
+     * also logs the user in and makes the device familiar, so the new password is usable from this browser
+     * next time. Used both by the login flow (log in and set a password in one step) and by the profile page.
+     */
+    suspend fun setPassword(loginId: String, password: String, token: String, code: String): UserProfile =
+        userFrom(
+            Http.sendApi(
+                "PUT", AEP.setPassword,
+                mapOf(
+                    AFLD.loginId to loginId, AFLD.password to password,
+                    AFLD.formAuthToken to token, AFLD.verifyCode to code,
+                ),
+            ),
+        )
 
     /** Clears the session cookie. */
     suspend fun logout() {

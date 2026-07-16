@@ -1,9 +1,11 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.util.renderMarkdown
+import com.dynamicruntime.common.util.renderMarkdownInline
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.span
 import web.cssom.ClassName
 
 /**
@@ -22,6 +24,22 @@ val Markdown = FC<MarkdownProps> { props ->
     div {
         className = ClassName("markdown")
         dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdown())
+    }
+}
+
+/**
+ * Renders a *phrase* of Markdown inline, as a `<span>` carrying no styling of its own -- so it inherits from
+ * whatever it is dropped into and stays valid inside a paragraph or label, where [Markdown]'s `<div>` would
+ * not be. Used for copy that emphasizes a substituted value, e.g., an address in `` `${user.email}` ``.
+ *
+ * Safe on the same terms as [Markdown]: the kernel renderer escapes all text and neutralizes unsafe URLs. Note
+ * the substitution (`evalTemplate`) must run *before* this, so a value carrying Markdown or HTML is escaped as
+ * text rather than interpreted.
+ */
+val MarkdownInline = FC<MarkdownProps> { props ->
+    span {
+        className = ClassName("markdown-inline")
+        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdownInline())
     }
 }
 

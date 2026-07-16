@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
@@ -42,11 +43,11 @@ object Http {
 
     /** GET a Markdown *fragment* file (`/st/<appId>/md/<fileId:buildId>`) as its `namespace -> key -> value` map. */
     suspend fun getFragments(fileId: String, buildId: String): Map<String, Any?> =
-        requestJson("GET", "$staticRoot/$appId/md/$fileId:$buildId", null)
+        requestJson("GET", "$staticRoot/$appId/${CMK.md}/$fileId:$buildId", null)
 
     /** GET a whole Markdown *document* (`/st/<appId>/doc/<docId:buildId>`) verbatim as text. */
     suspend fun getDoc(docId: String, buildId: String): String =
-        requestText("GET", "$staticRoot/$appId/doc/$docId:$buildId", null)
+        requestText("GET", "$staticRoot/$appId/${CMK.doc}/$docId:$buildId", null)
 
     /** Runs a request and parses the JSON body; a non-2xx raises the runtime's [EP.errorMessage]. */
     private suspend fun requestJson(method: String, url: String, body: Map<String, Any?>?): Map<String, Any?> =

@@ -299,6 +299,30 @@ class RequestHandler : WebRequest {
 
     // --- response writing (Jetty or rpt* capture) ---------------------------
 
+    /**
+     * Rejects a change to a response that has already gone out. Once the body is written the exchange is
+     * committed: a status, a header, a `Set-Cookie` set afterward reaches nobody. Jetty drops it silently, and
+     * the in-process test client never notices at all -- it captures headers into a map, order-independently,
+     * so a test can pass on a response a browser would never receive. That is not hypothetical: it is exactly
+     * how the auth session cookie was lost (issue #81), found only by driving a real browser.
+     *
+     * So this is deliberately loud. [what] names the attempted change, since by the time it is caught the
+     * stack says only "somebody touched the response too late".
+     *
+     * Reading [hasResponseBeenSent] first, and doing nothing when it is true, remains the correct way to hand
+     * off to whoever already responded -- this guards the *change*, not the question.
+     */
+    private fun requireNotSent(what: String) {
+        if (sentResponse) {
+            // The default code (an internal error) is the honest one: this is a bug in the request's ordering,
+            // not a condition a caller can do anything about.
+            throw KdrException(
+                "Cannot $what for $logRequestUri: the response has already been sent, so anything set now " +
+                    "would be dropped.",
+            )
+        }
+    }
+
     fun sendJsonResponse(data: Map<String, Any?>, code: Int) =
         sendStringResponse(data.toJsonStr(), code, "application/json")
 
@@ -323,7 +347,7 @@ class RequestHandler : WebRequest {
     )
 
     /**
-     * Sends [content] -- the content itself and everything about how to handle it. The one response path for a
+     * Sends [content] -- the content itself and everything about how to handle it. The one-response path for a
      * body; the [sendStringResponse]/[sendBytesResponse] overloads below are shorthands onto it for callers
      * who have nothing to say beyond a MIME type.
      *
@@ -337,6 +361,7 @@ class RequestHandler : WebRequest {
      * content; the other stays null.
      */
     fun sendContentResponse(content: ContentData, code: Int) {
+        requireNotSent("send a second response")
         setStatusCode(code)
         setResponseContentType(content.mimeType)
         // Null means the header adds nothing (plain inline content), so it is left off entirely.
@@ -369,21 +394,25 @@ class RequestHandler : WebRequest {
         sendContentResponse(ContentData(body, mimeType), code)
 
     fun setStatusCode(code: Int) {
+        requireNotSent("set the status to $code")
         jettyResponse?.status = code
         rptStatusCode = code
     }
 
     fun setResponseContentType(mimeType: String) {
+        requireNotSent("set the content type to $mimeType")
         jettyResponse?.headers?.put("Content-Type", mimeType)
         rptResponseMimeType = mimeType
     }
 
     fun setResponseHeader(header: String, value: String) {
+        requireNotSent("set the '$header' header")
         jettyResponse?.headers?.put(header, value)
         rptResponseHeaders[header.lowercase()] = mutableListOf(value)
     }
 
     override fun addResponseHeader(header: String, value: String) {
+        requireNotSent("add a '$header' header")
         jettyResponse?.headers?.add(header, value)
         rptResponseHeaders.getOrPut(header.lowercase()) { mutableListOf() }.add(value)
     }
@@ -402,6 +431,7 @@ class RequestHandler : WebRequest {
     }
 
     override fun sendRedirect(url: String) {
+        requireNotSent("redirect to $url")
         setStatusCode(303)
         addResponseHeader("Location", url)
         sentResponse = true
@@ -444,10 +474,6 @@ class RequestHandler : WebRequest {
     }
 
     override fun hasResponseBeenSent(): Boolean = sentResponse
-
-    override fun setResponseHasBeenSent(sent: Boolean) {
-        sentResponse = sent
-    }
 
     @Suppress("ConstPropertyName")
     companion object {

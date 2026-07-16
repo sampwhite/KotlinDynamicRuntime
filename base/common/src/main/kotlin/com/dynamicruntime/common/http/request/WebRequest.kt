@@ -29,11 +29,15 @@ interface WebRequest {
 
     fun addResponseHeader(header: String, value: String)
 
-    /** Adds a `Set-Cookie` response header (Path=/, HttpOnly, secure when proxied), optionally with an expiry. */
+    /** Adds a `Set-Cookie` response header (Path=/, HttpOnly, secure when proxied), optionally with expiry. */
     fun addResponseCookie(name: String, value: String, expire: Instant?)
 
     fun sendRedirect(url: String)
 
+    /**
+     * Whether the response has gone out. Once it has, nothing about it can be changed -- see [RequestHandler],
+     * which rejects the attempt rather than dropping it silently. Check this before work that would write a
+     * response, to hand off cleanly to whoever already did.
+     */
     fun hasResponseBeenSent(): Boolean
-    fun setResponseHasBeenSent(sent: Boolean)
 }
