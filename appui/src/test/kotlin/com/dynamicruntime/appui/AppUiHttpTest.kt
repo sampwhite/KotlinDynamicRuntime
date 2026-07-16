@@ -7,6 +7,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotBeBlank
+import io.kotest.matchers.string.shouldNotContain
 
 /**
  * End-to-end coverage for the webapp host's content-serving path through the in-process [TestHttpClient]. The
@@ -36,8 +37,34 @@ class AppUiHttpTest : StringSpec({
         // The frontend bootstrap: context roots by focus, including this new `app` focus.
         body shouldContain "window.kdrCfg"
         body shouldContain "\"app\":\"wa\""
-        // The icon, like the bundle, is referenced by an absolute path built from the live app context root.
+        // The icon and stylesheet, like the bundle, are referenced by absolute paths built from the live app
+        // context root.
         body shouldContain "href=\"/wa/favicon.svg\""
+        body shouldContain "href=\"/wa/app.css\""
+    }
+
+    // The two shells (this one and the dev server's index.html) must not carry their own CSS -- that is how
+    // they drifted apart before, leaving production largely unstyled while the dev server looked right. Both
+    // link the webapp's single app.css instead, so an inline <style> block here is the bug growing back.
+    "the shell carries no CSS of its own -- it links the webapp's single stylesheet" {
+        val body = client("appNoInlineCss").sendGetRequestRaw("/wa").rptResponseData!!
+        body shouldNotContain "<style>"
+    }
+
+    "GET /wa/app.css serves the webapp's stylesheet, whole" {
+        val resp = client("appCss").sendGetRequestRaw("/wa/app.css")
+        resp.rptStatusCode shouldBe 200
+        resp.rptResponseMimeType shouldBe "text/css; charset=utf-8"
+        val css = resp.rptResponseData!!
+        // Production gets the SAME sheet the dev server serves, not a subset. These are the classes the
+        // previous hand-copied production sheet was missing -- one per area of the app -- so this fails if
+        // production ever regresses to a partial copy.
+        css shouldContain ".app-bar"
+        css shouldContain ".app-menu"
+        css shouldContain ".home-shell"
+        css shouldContain ".markdown"
+        css shouldContain ".schema-form"
+        css shouldContain ".card"
     }
 
     "GET /wa/favicon.svg serves the embedded app icon" {
