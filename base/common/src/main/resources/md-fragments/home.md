@@ -4,6 +4,8 @@
    only their surrounding wording lives here. -/
 
 # @home
+/- The wordmark shown beside the brand mark in the home page's hero. Absent = no hero. -/
+# +brand KDR
 # +title Welcome
 # +intro
 This is the **KotlinDynamicRuntime** runtime shell. Everything you see is assembled from data the backend

@@ -1,0 +1,33 @@
+<!--
+  The application's icon: the "schema braces" product mark — JSON-schema braces wrapping ascending chart bars
+  ("structured data becomes insight"). Artwork is Fable's, copied verbatim from the branding set; do not
+  redraw it here. That set is the source of truth, and it also holds the master mark, a mono variant, and a
+  raster/ICO/apple-touch/PWA set that this build does not (yet) serve — see the notes below.
+
+  This is the small-size variant: same mark as the master, drawn with heavier strokes so the braces and bars
+  stay legible at 16px. Do not swap the master mark in here; it thins out and turns to mush in a tab.
+
+  The mark is TRANSPARENT by design (no tile), so it sits on the browser's own chrome. The colours are
+  mid-ramp values chosen to hold up against both light and dark chrome — which is why they are neither the
+  darkest nor the most saturated form of each hue. Don't "fix" the contrast against one chrome without
+  checking the other.
+
+  Serving: this file is the single source of the icon for BOTH shells. The dev server serves it straight out
+  of the webapp's resources, and `appui` embeds it as a classpath resource (alongside webapp.js) to serve
+  same-origin in production.
+
+  SVG-only, deliberately: `AppUiService` serves content through `RequestHandler.sendStringResponse`, which
+  writes a String — so it can serve text (this file) but would corrupt the branding set's PNG/ICO. Wiring
+  those up needs a byte-capable response path in the core HTTP layer first. Every browser this targets
+  honours `rel="icon" type="image/svg+xml"`, so the SVG alone is sufficient meanwhile.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Schema braces favicon</title>
+  <g fill="none" stroke="#7F77DD" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21.5 8 C16.5 8 15.5 11 15.5 16 V24 C15.5 28.5 14 30.5 10.5 32 C14 33.5 15.5 35.5 15.5 40 V48 C15.5 53 16.5 56 21.5 56"/>
+    <path d="M42.5 8 C47.5 8 48.5 11 48.5 16 V24 C48.5 28.5 50 30.5 53.5 32 C50 33.5 48.5 35.5 48.5 40 V48 C48.5 53 47.5 56 42.5 56"/>
+  </g>
+  <rect x="21" y="35" width="6" height="11" rx="2" fill="#1D9E75"/>
+  <rect x="29" y="28" width="6" height="18" rx="2" fill="#1D9E75"/>
+  <rect x="37" y="21" width="6" height="25" rx="2" fill="#D85A30"/>
+</svg>

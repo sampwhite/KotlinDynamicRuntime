@@ -1,0 +1,31 @@
+<!--
+  The brand mark, shown in the app bar beside the "KDR" wordmark and as the home page's hero. Artwork is
+  Fable's, copied verbatim from the branding set (its `schema-braces.svg`); do not redraw it here — that set
+  is the source of truth.
+
+  This is the MASTER mark, for display sizes. Its sibling `favicon.svg` is the same mark drawn with heavier
+  strokes for 16px legibility. Keep them in their lanes: the master thins out to mush in a browser tab, and
+  the favicon's strokes read as clumsy at hero size.
+
+  Named for its role rather than its artwork, so a future mark can replace it without leaving a filename that
+  describes a drawing nobody uses any more.
+
+  The mark is transparent by design and inherits no colour; it sits on whatever background it is placed on.
+  Colours are mid-ramp values chosen to hold against both light and dark, so it works on the dark app bar and
+  on the light card alike.
+
+  Both the dev shell and the production shell need it, so — like favicon.svg — it is authored once here: the
+  dev server serves it from the webapp's resources, and `appui` embeds it as a classpath resource. Because the
+  production app is served under a context root (`/wa`) and dev is served from the origin root, the frontend
+  must not hardcode this path: see `brandMarkUrl` in Brand.kt.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Schema braces mark</title>
+  <g fill="none" stroke="#7F77DD" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M23 8 C18 8 17 11 17 16 V24 C17 28.5 15.5 30.5 12 32 C15.5 33.5 17 35.5 17 40 V48 C17 53 18 56 23 56"/>
+    <path d="M41 8 C46 8 47 11 47 16 V24 C47 28.5 48.5 30.5 52 32 C48.5 33.5 47 35.5 47 40 V48 C47 53 46 56 41 56"/>
+  </g>
+  <rect x="22.5" y="36" width="5" height="10" rx="1.5" fill="#1D9E75"/>
+  <rect x="29.5" y="29" width="5" height="17" rx="1.5" fill="#1D9E75"/>
+  <rect x="36.5" y="22" width="5" height="24" rx="1.5" fill="#D85A30"/>
+</svg>

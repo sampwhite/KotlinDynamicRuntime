@@ -10,6 +10,7 @@ import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.header
+import react.dom.html.ReactHTML.img
 import react.dom.html.ReactHTML.span
 import react.useEffectOnce
 import react.useState
@@ -64,6 +65,13 @@ val AppBar = FC<Props> {
         a {
             className = ClassName("app-bar-brand")
             href = "#"
+            img {
+                className = ClassName("app-bar-logo")
+                src = brandMarkUrl
+                // Decorative: the wordmark beside it already says "KDR", so alt text here would only make a
+                // screen reader announce the brand twice.
+                alt = ""
+            }
             +"KDR"
         }
         div {
