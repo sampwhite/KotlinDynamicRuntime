@@ -1,15 +1,22 @@
 package com.dynamicruntime.appui
 
 /**
- * The webapp's HTML shell, rendered as a Kotlin string (the house style: what would elsewhere be a static
- * `index.html` asset is a Kotlin declaration). It mirrors `webapp/src/jsMain/resources/index.html` -- the
- * same `#root` mount point and the same CSS the React components style against (`card`, `row`, `count`,
- * `todo-title`, ...) -- with two differences for same-origin serving from the runtime:
+ * The webapp's **production** HTML shell, rendered as a Kotlin string (the house style: what would elsewhere
+ * be a static `index.html` asset is a Kotlin declaration). It is the counterpart of
+ * `webapp/src/jsMain/resources/index.html`, which the webpack dev server serves; both mount the app at the
+ * same `#root` and load the same assets, with two differences for same-origin serving from the runtime:
  *
- *  - the bundle `<script>` src and the icon `<link>` href are built as absolute paths from the live app
- *    context root ([appRoot], e.g. `/wa/webapp.js`) rather than bare relative names, and
+ *  - the bundle `<script>` src and the stylesheet/icon `<link>` hrefs are built as absolute paths from the
+ *    live app context root ([appRoot], e.g. `/wa/webapp.js`) rather than the bare relative names the dev
+ *    shell can use, and
  *  - the frontend bootstrap config is injected as `window.kdrCfg` (as the portal does), so the app can build
- *    backend URLs from the live context roots if it needs to.
+ *    backend URLs from the live context roots -- `Brand.kt` in the webapp does exactly that.
+ *
+ * **This shell holds no CSS.** Both shells `<link>` the webapp's single `app.css`, which `appui` embeds and
+ * serves like the bundle. That is deliberate and load-bearing: each shell used to carry its own inline copy,
+ * and every feature added after the app bar styled only the dev shell -- so a built jar rendered the app
+ * largely unstyled while the dev server looked right. Two copies of the CSS is the bug; do not reintroduce a
+ * `<style>` block here.
  *
  * Written as a multi-dollar (`$$`) string so a bare `$` is literal; the injected values are the bootstrap
  * config ([cfgJson]) and the app context root ([appRoot]).
@@ -23,73 +30,7 @@ object AppUiPage {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kotlin React Webapp</title>
 <link rel="icon" type="image/svg+xml" href="/$${appRoot}/favicon.svg">
-<style>
-  :root { color-scheme: light dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    display: grid;
-    place-items: center;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #0f172a;
-    color: #e2e8f0;
-  }
-  .card {
-    width: min(560px, 92vw);
-    padding: 32px 36px;
-    border-radius: 16px;
-    background: #1e293b;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, .45);
-  }
-  /* The brand lockup (app bar) and the home hero: mark + wordmark. Sizing the mark matters even where the
-     surrounding chrome is unstyled — without it the SVG renders at its natural 64px. */
-  .app-bar-brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    color: #e2e8f0;
-    font-weight: 700;
-    font-size: 1.15rem;
-    text-decoration: none;
-    letter-spacing: .5px;
-  }
-  .app-bar-logo { display: block; width: 26px; height: 26px; }
-  .home-hero { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
-  .home-hero-mark { display: block; width: 64px; height: 64px; flex: none; }
-  .home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 1px; color: #e2e8f0; }
-  h1 { margin: 0 0 4px; font-size: 1.6rem; }
-  h2 { margin: 28px 0 12px; font-size: 1.05rem; color: #94a3b8; }
-  .subtitle { margin: 0; color: #94a3b8; }
-  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  button {
-    cursor: pointer;
-    border: none;
-    border-radius: 10px;
-    padding: 10px 18px;
-    font-size: 1rem;
-    font-weight: 600;
-    background: #6366f1;
-    color: white;
-  }
-  button:hover { background: #818cf8; }
-  button.ghost { background: transparent; color: #94a3b8; border: 1px solid #334155; }
-  .count { min-width: 48px; text-align: center; font-size: 1.5rem; font-weight: 700; }
-  input {
-    flex: 1;
-    min-width: 180px;
-    padding: 10px 14px;
-    border-radius: 10px;
-    border: 1px solid #334155;
-    background: #0f172a;
-    color: #e2e8f0;
-    font-size: 1rem;
-  }
-  .greeting { font-size: 1.2rem; margin-top: 12px; }
-  .todo-title { flex: 1; min-width: 120px; }
-  .todo-title.done { text-decoration: line-through; color: #94a3b8; }
-  .todo-error { color: #f87171; margin-top: 12px; }
-</style>
+<link rel="stylesheet" href="/$${appRoot}/app.css">
 </head>
 <body>
 <div id="root"></div>

@@ -14,18 +14,23 @@ dependencies {
 }
 
 // Embed the webapp's production bundle as a classpath resource. The copy pulls the assets produced by
-// `:webapp:jsBrowserDistribution` (webapp.js + its sourcemap, plus the favicon the webapp declares) into a
-// generated resources directory laid out under `webapp/`, so AppUiService can read them at
-// `/webapp/webapp.js` from the classpath — identically whether launched via `:launch:run` or from a built
-// jar. Referencing the webapp's build dir lazily (a DirectoryProperty provider) plus a task-path `dependsOn`
-// avoids eagerly evaluating the sibling project.
+// `:webapp:jsBrowserDistribution` (webapp.js + its sourcemap, plus the stylesheet, favicon and brand mark the
+// webapp authors) into a generated resources directory laid out under `webapp/`, so AppUiService can read
+// them at `/webapp/webapp.js` from the classpath — identically whether launched via `:launch:run` or from a
+// built jar. Referencing the webapp's build dir lazily (a DirectoryProperty provider) plus a task-path
+// `dependsOn` avoids eagerly evaluating the sibling project.
+//
+// Embedding `app.css` (rather than the production shell keeping its own copy of the CSS) is what keeps the
+// two shells from drifting: the webapp authors one stylesheet and both shells link it. See the note at the
+// top of `webapp/src/jsMain/resources/app.css`.
 //
 // `index.html` is deliberately NOT copied: the production shell is rendered by AppUiPage (it has to inject the
 // live context roots), so only the assets that shell references are embedded.
 val embedWebapp = tasks.register<Copy>("embedWebapp") {
+    description = "Embed the web application"
     dependsOn(":webapp:jsBrowserDistribution")
     from(project(":webapp").layout.buildDirectory.dir("dist/js/productionExecutable")) {
-        include("webapp.js", "webapp.js.map", "favicon.svg", "brand-mark.svg")
+        include("webapp.js", "webapp.js.map", "app.css", "favicon.svg", "brand-mark.svg")
     }
     into(layout.buildDirectory.dir("webappResources/webapp"))
 }

@@ -42,10 +42,18 @@ object AUI {
     /** Classpath location of the embedded brand mark. */
     const val brandMarkResource = "/webapp/brand-mark.svg"
 
+    /** Application path of the webapp's stylesheet, e.g. reached at `/wa/app.css`; declared by [AppUiPage].
+     *  It is the *same* sheet the dev server serves — the webapp authors exactly one. */
+    const val stylesheetPath = "/app.css"
+
+    /** Classpath location of the embedded stylesheet. */
+    const val stylesheetResource = "/webapp/app.css"
+
     const val htmlMimeType = "text/html; charset=utf-8"
     const val jsMimeType = "application/javascript; charset=utf-8"
     const val jsonMimeType = "application/json"
     const val svgMimeType = "image/svg+xml"
+    const val cssMimeType = "text/css; charset=utf-8"
 }
 
 /**
@@ -56,8 +64,8 @@ object AUI {
  *
  *  - The HTML shell at the app root (`appPath == "/"`), rendered by [AppUiPage];
  *  - The webapp's JS bundle (and sourcemap), read from the classpath resource the build embedded; and
- *  - The app's static assets — its icon and brand mark — embedded from the same `:webapp` distribution the
- *    dev server serves them from.
+ *  - The app's static assets — its stylesheet, icon and brand mark — embedded from the same `:webapp`
+ *    distribution the dev server serves them from, so both shells load byte-identical assets.
  *
  * The bundle is the Kotlin/JS `:webapp` module's *production* output. Because the page is served same-origin
  * with the API context root, the webapp's relative `/kda/...` calls reach the runtime directly -- no CORS, no
@@ -90,6 +98,7 @@ class AppUiService : ServiceInitializer, ContentServer {
             }
             AUI.bundlePath -> serveResource(cxt, handler, AUI.bundleResource, AUI.jsMimeType)
             AUI.bundleMapPath -> serveResource(cxt, handler, AUI.bundleMapResource, AUI.jsonMimeType)
+            AUI.stylesheetPath -> serveResource(cxt, handler, AUI.stylesheetResource, AUI.cssMimeType)
             AUI.faviconPath -> serveResource(cxt, handler, AUI.faviconResource, AUI.svgMimeType)
             AUI.brandMarkPath -> serveResource(cxt, handler, AUI.brandMarkResource, AUI.svgMimeType)
             else -> false
