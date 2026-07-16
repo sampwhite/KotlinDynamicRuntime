@@ -38,6 +38,8 @@ external val Button: ComponentType<ButtonProps>
 external interface InputProps : PropsWithChildren {
     var value: String?
     var placeholder: String?
+    /** HTML input type, e.g. "password" (antd masks it); omit for a normal text input. */
+    var type: String?
     var disabled: Boolean?
     /** antd passes a change event; read `event.target.value`. */
     var onChange: ((event: dynamic) -> Unit)?

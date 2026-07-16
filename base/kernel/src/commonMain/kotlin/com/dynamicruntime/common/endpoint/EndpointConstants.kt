@@ -53,6 +53,10 @@ object EP {
     const val results = "results" // general endpoints: always a map object
     const val item = "item" // single-resource endpoints
 
+    // Error envelope (a non-2xx response): the HTTP-style code and the human message.
+    const val errorCode = "errorCode"
+    const val errorMessage = "errorMessage"
+
     // Input, list endpoints.
     const val limit = "limit"
 

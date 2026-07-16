@@ -1,6 +1,6 @@
-/- Copy for the auth widget-group (issue #70): the register/login flow and the account menu.
+/- Copy for the auth widget-group (issues #70, #81): the register/login flow and the account menu.
    Fetched via /st/<appId>/md/auth:<buildId>. The frontend resolves ${...} placeholders at render time;
-   ${user.*} values are supplied from live state (e.g. the config endpoint's state.userInfo). -/
+   ${user.*} values are supplied from live state (the account name in the menu, the email in the code note). -/
 
 # @menu
 # +signedInAs Signed in as ${user.publicName}
@@ -11,12 +11,11 @@
 
 # @login
 # +title Log in
-# +usernameLabel Username
+# +emailLabel Email address
 # +passwordLabel Password
 # +codeLabel Verification code
 # +submit Log in
-# +useCodeInstead Log in with a verification code instead
-# +sendCode Email me a code
+# +sendCode Email me a code to use for login
 # +failed Password login failed either because of an incorrect password or because you need to log in by verification code to activate password logins.
 
 # @register
@@ -25,8 +24,6 @@
 # +sendCode Send verification code
 # +codeSent A code was sent to ${user.email}. Enter it below.
 # +codeLabel Verification code
-# +chooseUsername Choose a username
-# +usernameHelp At least four characters: letters, digits, or underscores, starting with a letter.
 # +finish Create account
 
 # @verify

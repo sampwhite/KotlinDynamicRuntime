@@ -45,6 +45,20 @@ fun onHashChange(handler: () -> Unit) {
     js("window.addEventListener('hashchange', handler)")
 }
 
+/**
+ * Navigates by setting `window.location.hash` from [params] -- unlike [replaceHash], this **does** fire
+ * `hashchange`, so the [App] router switches pages and the [AppBar] re-reads its auth state. Empty [params]
+ * clears the hash (home). The keys/values here are page names, so no percent-encoding is needed.
+ */
+fun navigateHash(params: List<Pair<String, String>>) {
+    val hash = params.joinToString("&") { (k, v) -> "$k=$v" }
+    setHash(hash)
+}
+
+private fun setHash(hash: String) {
+    js("window.location.hash = hash")
+}
+
 private fun rawHash(): String = js("window.location.hash") as String
 private fun locationBase(): String = js("window.location.pathname + window.location.search") as String
 private fun replaceUrl(url: String) {

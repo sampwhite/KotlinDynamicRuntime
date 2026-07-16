@@ -10,6 +10,7 @@ import com.dynamicruntime.common.util.jsonMap
 import kotlinx.coroutines.await
 import kotlin.js.Promise
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 
 /**
@@ -55,8 +56,7 @@ object HomeApi {
         val results = getJson("$apiRoot${HEP.homeUiConfig}")[EP.results].toJsonMapOrEmpty()
         val fragment = results[UIC.fragments].toJsonListOrEmpty().firstOrNull().toJsonMapOrEmpty()
         val features = results[UIC.features].toJsonMapOrEmpty()
-        val links = results[UIC.state].toJsonMapOrEmpty()[HFLD.links].toJsonListOrEmpty().map { raw ->
-            val link = raw.toJsonMapOrEmpty()
+        val links = results[UIC.state].toJsonMapOrEmpty()[HFLD.links].toJsonListOfMaps().map { link ->
             HomeLink(
                 id = link[HFLD.id] as? String ?: "",
                 label = link[HFLD.label] as? String ?: "",

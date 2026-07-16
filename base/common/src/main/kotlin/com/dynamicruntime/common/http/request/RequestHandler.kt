@@ -210,7 +210,7 @@ class RequestHandler : WebRequest {
         try {
             if (!sentResponse) {
                 sendJsonResponse(
-                    linkedMapOf("errorCode" to code, "errorMessage" to message, EP.requestUri to logRequestUri),
+                    linkedMapOf(EP.errorCode to code, EP.errorMessage to message, EP.requestUri to logRequestUri),
                     code,
                 )
             } else {

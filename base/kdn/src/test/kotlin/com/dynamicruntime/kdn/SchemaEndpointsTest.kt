@@ -6,6 +6,7 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
@@ -23,11 +24,11 @@ class SchemaEndpointsTest : StringSpec({
     // /schema/endpoints is a general endpoint: its result carries the endpoint renderings and a shared $defs.
     fun results(resp: Map<String, Any?>): Map<String, Any?> = resp[EP.results]!!.toJsonMap()
     fun catalogEndpoints(resp: Map<String, Any?>): List<Map<String, Any?>> =
-        (results(resp)[EI.endpoints] as List<*>).map { it!!.toJsonMap() }
+        results(resp)[EI.endpoints].toJsonListOfMaps()
 
     // /schema/sample is a list endpoint: its payload is under `items`.
     fun items(resp: Map<String, Any?>): List<Map<String, Any?>> =
-        (resp[EP.items] as List<*>).map { it!!.toJsonMap() }
+        resp[EP.items].toJsonListOfMaps()
 
     // These tests all boot the same (default) instance and only read, so they share one instance -- its
     // component/schema init is cached by instance name and runs once -- and vary only the inexpensive context name.

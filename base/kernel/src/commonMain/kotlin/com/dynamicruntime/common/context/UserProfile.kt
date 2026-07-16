@@ -2,8 +2,9 @@ package com.dynamicruntime.common.context
 
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
+import com.dynamicruntime.common.util.getOptLong
 import com.dynamicruntime.common.util.getOptStr
-import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toJsonListOfStrings
 
 /** Attribute keys for a [UserProfile]'s info dump ([UserProfile.toUserInfo]). Each name matches its value. */
 @Suppress("ConstPropertyName")
@@ -94,9 +95,9 @@ class UserProfile(
          */
         fun fromUserInfo(info: Map<String, Any?>): UserProfile = UserProfile(
             authId = info.getOptStr(UPF.authId),
-            userId = info[UPF.userId].toOptLong() ?: AC.systemUserId.toLong(),
+            userId = info.getOptLong(UPF.userId) ?: AC.systemUserId.toLong(),
             account = info.getOptStr(UPF.account) ?: AC.local,
-            roles = (info[UPF.roles] as? List<*>)?.mapNotNull { it?.toString() }?.toSet() ?: emptySet(),
+            roles = info[UPF.roles].toJsonListOfStrings().toSet(),
             publicName = info.getOptStr(UPF.publicName),
             hasPassword = info[UPF.hasPassword] as? Boolean,
         )
