@@ -10,6 +10,7 @@ import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
+import react.dom.html.ReactHTML.img
 import react.dom.html.ReactHTML.main
 import react.dom.html.ReactHTML.nav
 import react.dom.html.ReactHTML.p
@@ -131,6 +132,23 @@ val Home = FC<Props> {
                     }
                     // The welcome page: copy from the fragment file, and optionally the links inline.
                     current != null -> {
+                        // The hero: the brand mark beside the wordmark. The wordmark is copy like everything
+                        // else here, so a deployment that names no brand simply gets no hero.
+                        copy["home"]?.get("brand")?.let { brandName ->
+                            div {
+                                className = ClassName("home-hero")
+                                img {
+                                    className = ClassName("home-hero-mark")
+                                    src = brandMarkUrl
+                                    // Decorative: the wordmark beside it carries the name.
+                                    alt = ""
+                                }
+                                div {
+                                    className = ClassName("home-hero-name")
+                                    +brandName
+                                }
+                            }
+                        }
                         copy["home"]?.get("title")?.let { h1 { +it } }
                         copy["home"]?.get("intro")?.let { Markdown { source = it } }
                         if (layout?.inlineLinks == true) {

@@ -36,6 +36,32 @@ class AppUiHttpTest : StringSpec({
         // The frontend bootstrap: context roots by focus, including this new `app` focus.
         body shouldContain "window.kdrCfg"
         body shouldContain "\"app\":\"wa\""
+        // The icon, like the bundle, is referenced by an absolute path built from the live app context root.
+        body shouldContain "href=\"/wa/favicon.svg\""
+    }
+
+    "GET /wa/favicon.svg serves the embedded app icon" {
+        val resp = client("appIcon").sendGetRequestRaw("/wa/favicon.svg")
+        resp.rptStatusCode shouldBe 200
+        resp.rptResponseMimeType shouldBe "image/svg+xml"
+        // The icon the webapp authored, embedded from its distribution rather than duplicated here.
+        resp.rptResponseData!! shouldContain "<svg"
+    }
+
+    "GET /wa/brand-mark.svg serves the embedded brand mark" {
+        val resp = client("appMark").sendGetRequestRaw("/wa/brand-mark.svg")
+        resp.rptStatusCode shouldBe 200
+        resp.rptResponseMimeType shouldBe "image/svg+xml"
+        resp.rptResponseData!! shouldContain "<svg"
+    }
+
+    // The frontend builds the brand mark's URL from the app context root in this bootstrap (it cannot hardcode
+    // the path: the dev server serves from the origin root, appui from a context root). If the bootstrap ever
+    // stops carrying `contextRoots.app`, the mark silently 404s in production only -- so pin the shape here.
+    "the shell's bootstrap carries the app context root the frontend builds asset URLs from" {
+        val body = client("appBootstrap").sendGetRequestRaw("/wa").rptResponseData!!
+        body shouldContain "\"contextRoots\""
+        body shouldContain "\"app\":\"wa\""
     }
 
     "GET /wa/webapp.js serves the embedded JS bundle" {
