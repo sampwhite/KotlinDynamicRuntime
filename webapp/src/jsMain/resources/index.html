@@ -4,11 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kotlin React Webapp</title>
-    <!-- The stylesheet and the icon are served straight from jsMain/resources by the dev server, from the
-         origin root. AppUiPage declares the same two for the production shell, where `appui` embeds them and
+    <!-- The stylesheet and the icons are served straight from jsMain/resources by the dev server, from the
+         origin root. AppUiPage declares the same set for the production shell, where `appui` embeds them and
          serves them under the app context root. The CSS lives in app.css, NOT inline here: both shells link
-         that one file, which is what keeps them from drifting apart (see the note at the top of app.css). -->
+         that one file, which is what keeps them from drifting apart (see the note at the top of app.css).
+
+         The icon links are the branding set's documented integration: browsers that understand SVG favicons
+         take the first, older ones fall back to the PNG. See jsMain/resources/README.md. -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <link rel="stylesheet" href="app.css">
 </head>
 <body>

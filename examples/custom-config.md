@@ -93,6 +93,64 @@ project(":customConfig").projectDir = file("customConfig")
 
 That's it. No edits to `launch` or any version-controlled build file are needed.
 
+## Branding the webapp
+
+A deployment can serve its own artwork — favicon, logo — without forking
+`:webapp`. Name a classpath directory with the `appUiBrandingDir` config key and
+ship the files there:
+
+```kotlin
+object KdrConfig : AppConfigApplier {
+    override fun AppConfigBuilder.applyAppConfig() {
+        data["appUiBrandingDir"] = "acmeBranding"
+    }
+}
+```
+
+`customConfig` is already on the runtime classpath, so it is the natural carrier
+— but **the example build script above disables resources**, so re-enable them:
+
+```kotlin
+sourceSets {
+    main {
+        kotlin.setSrcDirs(listOf("apps"))
+        resources.setSrcDirs(listOf("resources"))   // was emptyList()
+    }
+    // ...
+}
+```
+
+Then place the files under that source root, in a directory matching the key:
+
+```
+customConfig/
+├── apps/KdrConfig.kt
+└── resources/
+    └── acmeBranding/
+        ├── favicon.svg          # tab icon (heavier strokes, for 16px)
+        ├── brand-mark.svg       # the app bar logo and home hero
+        ├── favicon-32.png       # tab-icon fallback
+        ├── apple-touch-icon.png # 180×180, opaque — iOS home screen
+        └── favicon.ico          # legacy
+```
+
+Notes:
+
+- **Every file is optional.** Resolution is per asset, so you can override just
+  `brand-mark.svg` and inherit the rest. Anything you omit falls back to the
+  built-in.
+- **The URLs do not change** (`/wa/favicon.svg` and friends) — config swaps the
+  bytes behind them, so the page's `<link>` tags are the same either way.
+- **Watch the startup log.** A directory that overrides nothing logs a warning:
+  the usual cause is a typo or resources not reaching the classpath, and without
+  the warning it just looks like the branding "didn't take" (the app serves its
+  built-in set and appears fine).
+- **Production only.** The webpack dev server serves `:webapp`'s own resources,
+  so it always shows the built-in set. Only the deployed app (`appui`) is branded.
+- **The stylesheet is not brandable.** Replacing `app.css` wholesale would fork
+  it and re-create the drift a single sheet exists to prevent; theming wants CSS
+  variables instead.
+
 ## Notes
 
 - **The project must be named `customConfig`.** That is the name the versioned

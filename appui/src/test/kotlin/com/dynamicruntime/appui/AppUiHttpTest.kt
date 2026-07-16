@@ -4,6 +4,7 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotBeBlank
@@ -26,6 +27,11 @@ class AppUiHttpTest : StringSpec({
     fun client(cxtName: String): TestHttpClient =
         TestHttpClient(Startup.mkTestBootCxt(cxtName, "appUiHttpTest").instanceConfig)
 
+    // The embedded resource a request should serve, read from the classpath the same way AppUiService does --
+    // so a byte comparison against it proves the response path preserved the file exactly.
+    fun resourceBytes(path: String): ByteArray =
+        AppUiHttpTest::class.java.getResourceAsStream(path).shouldNotBeNull().use { it.readBytes() }
+
     "GET /wa serves the webapp HTML shell with the injected bootstrap config" {
         val resp = client("appPage").sendGetRequestRaw("/wa")
         resp.rptStatusCode shouldBe 200
@@ -37,9 +43,11 @@ class AppUiHttpTest : StringSpec({
         // The frontend bootstrap: context roots by focus, including this new `app` focus.
         body shouldContain "window.kdrCfg"
         body shouldContain "\"app\":\"wa\""
-        // The icon and stylesheet, like the bundle, are referenced by absolute paths built from the live app
+        // The icons and stylesheet, like the bundle, are referenced by absolute paths built from the live app
         // context root.
         body shouldContain "href=\"/wa/favicon.svg\""
+        body shouldContain "href=\"/wa/favicon-32.png\""
+        body shouldContain "href=\"/wa/apple-touch-icon.png\""
         body shouldContain "href=\"/wa/app.css\""
     }
 
@@ -89,6 +97,42 @@ class AppUiHttpTest : StringSpec({
         val body = client("appBootstrap").sendGetRequestRaw("/wa").rptResponseData!!
         body shouldContain "\"contextRoots\""
         body shouldContain "\"app\":\"wa\""
+    }
+
+    // --- the raster icons: binary, so they must survive as bytes ------------------------------------------
+
+    // The point of the binary response path. A PNG's header is 0x89 'P' 'N' 'G' -- 0x89 is not valid UTF-8,
+    // so if these bytes ever went out through the text path they would come back as U+FFFD and the image
+    // would be silently corrupt. Comparing against the resource on the classpath proves the whole chain
+    // (Gradle copy -> classpath -> read -> response) is byte-exact, which is the only thing that matters here.
+    "GET /wa/favicon-32.png serves the PNG icon byte-for-byte" {
+        val resp = client("appPng").sendGetRequestRaw("/wa/favicon-32.png")
+        resp.rptStatusCode shouldBe 200
+        resp.rptResponseMimeType shouldBe "image/png"
+        val bytes = resp.rptResponseBytes.shouldNotBeNull()
+        // A binary response is bytes only -- it is never also offered as a (lossy) String.
+        resp.rptResponseData shouldBe null
+        bytes.toList() shouldBe resourceBytes("/webapp/favicon-32.png").toList()
+        // The PNG magic number, intact: the high bit in 0x89 is exactly what a UTF-8 round trip destroys.
+        bytes.take(4) shouldBe listOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte())
+    }
+
+    "GET /wa/apple-touch-icon.png serves the iOS icon byte-for-byte" {
+        val resp = client("appTouchIcon").sendGetRequestRaw("/wa/apple-touch-icon.png")
+        resp.rptStatusCode shouldBe 200
+        resp.rptResponseMimeType shouldBe "image/png"
+        resp.rptResponseBytes.shouldNotBeNull().toList() shouldBe
+            resourceBytes("/webapp/apple-touch-icon.png").toList()
+    }
+
+    "GET /wa/favicon.ico serves the ICO byte-for-byte" {
+        val resp = client("appIco").sendGetRequestRaw("/wa/favicon.ico")
+        resp.rptStatusCode shouldBe 200
+        resp.rptResponseMimeType shouldBe "image/x-icon"
+        val bytes = resp.rptResponseBytes.shouldNotBeNull()
+        bytes.toList() shouldBe resourceBytes("/webapp/favicon.ico").toList()
+        // ICO header: reserved 0x0000 then type 0x0001.
+        bytes.take(4) shouldBe listOf(0, 0, 1, 0).map { it.toByte() }
     }
 
     "GET /wa/webapp.js serves the embedded JS bundle" {

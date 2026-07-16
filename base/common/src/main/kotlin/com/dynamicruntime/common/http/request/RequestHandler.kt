@@ -82,7 +82,14 @@ class RequestHandler : WebRequest {
     var rptStatusCode: Int = 0
     var rptResponseMimeType: String? = null
     val rptResponseHeaders: MutableMap<String, MutableList<String>> = LinkedHashMap()
+
+    /** The captured body of a *text* response ([sendStringResponse]); null when the response was binary. */
     var rptResponseData: String? = null
+
+    /** The captured body of a *binary* response ([sendBytesResponse]); null when the response was text. A
+     *  response sets exactly one of this and [rptResponseData] -- there is no honest String for arbitrary
+     *  bytes, so a binary body is never also offered as one. */
+    var rptResponseBytes: ByteArray? = null
 
     /** The context created to process this request; captured for tests. */
     var createdCxt: KdrCxt? = null
@@ -246,6 +253,7 @@ class RequestHandler : WebRequest {
         "text/html; charset=utf-8",
     )
 
+    /** Sends a text response body, written as UTF-8. For bytes that are not text, use [sendBytesResponse]. */
     fun sendStringResponse(body: String, code: Int, mimeType: String) {
         setStatusCode(code)
         setResponseContentType(mimeType)
@@ -255,6 +263,24 @@ class RequestHandler : WebRequest {
         if (resp != null) {
             Content.Sink.write(resp, true, body, jettyCallback)
         }
+    }
+
+    /**
+     * Sends a **binary** response body -- an image, a font, an archive: any content whose bytes are not text.
+     * The counterpart of [sendStringResponse], and not a convenience over it: that path is UTF-8 only, and
+     * routing arbitrary bytes through a String silently corrupts them (every byte that is not valid UTF-8
+     * decodes to U+FFFD and re-encodes as three different bytes). Binary content has to bypass the String
+     * entirely, which is what this does -- straight to a [ByteBuffer], as [sendRedirect] already does for its
+     * empty body.
+     *
+     * In test mode the body is captured in [rptResponseBytes]; [rptResponseData] stays null.
+     */
+    fun sendBytesResponse(body: ByteArray, code: Int, mimeType: String) {
+        setStatusCode(code)
+        setResponseContentType(mimeType)
+        sentResponse = true
+        rptResponseBytes = body
+        jettyResponse?.write(true, ByteBuffer.wrap(body), jettyCallback)
     }
 
     fun setStatusCode(code: Int) {

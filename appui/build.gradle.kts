@@ -30,7 +30,12 @@ val embedWebapp = tasks.register<Copy>("embedWebapp") {
     description = "Embed the web application"
     dependsOn(":webapp:jsBrowserDistribution")
     from(project(":webapp").layout.buildDirectory.dir("dist/js/productionExecutable")) {
-        include("webapp.js", "webapp.js.map", "app.css", "favicon.svg", "brand-mark.svg")
+        include(
+            "webapp.js", "webapp.js.map", "app.css",
+            // Artwork. The rasters are binary, so AppUiService serves them as bytes; a Copy task moves them
+            // verbatim (verified: md5 matches the branding source through the webpack distribution).
+            "favicon.svg", "brand-mark.svg", "favicon.ico", "favicon-32.png", "apple-touch-icon.png",
+        )
     }
     into(layout.buildDirectory.dir("webappResources/webapp"))
 }
