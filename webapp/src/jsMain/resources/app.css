@@ -53,7 +53,7 @@ body {
     font-weight: 700;
     font-size: 1.15rem;
     text-decoration: none;
-    letter-spacing: .5px;
+    letter-spacing: 0.03em;
 }
 .app-bar-logo { display: block; width: 26px; height: 26px; }
 .app-bar-right { position: relative; }
@@ -84,8 +84,30 @@ body {
     min-width: 190px;
     overflow: hidden;
 }
-.app-menu-item { display: block; padding: 12px 16px; color: #e2e8f0; text-decoration: none; }
+/* Both an anchor (a nav item) and a button (Log out, which acts rather than navigates) carry this class, so
+   it resets the button chrome to make the two presentations identical. */
+.app-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 12px 16px;
+    color: #e2e8f0;
+    text-decoration: none;
+    background: none;
+    border: none;
+    font: inherit;
+    cursor: pointer;
+}
 .app-menu-item:hover { background: #334155; }
+
+/* A non-clickable menu header, e.g. "Signed in as …". */
+.app-menu-label {
+    display: block;
+    padding: 12px 16px 6px;
+    color: #94a3b8;
+    font-size: 0.85em;
+    border-top: 1px solid #334155;
+}
 
 /* Home shell: the three link presentations (top bar / left bar / inline) around the content. */
 .home-shell { width: min(1040px, 95vw); }
@@ -112,7 +134,7 @@ body {
 /* The home hero: the mark at display size beside the wordmark. */
 .home-hero { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
 .home-hero-mark { display: block; width: 64px; height: 64px; flex: none; }
-.home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 1px; color: #e2e8f0; }
+.home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 0.03em; color: #e2e8f0; }
 
 .home-inline-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .link-button {

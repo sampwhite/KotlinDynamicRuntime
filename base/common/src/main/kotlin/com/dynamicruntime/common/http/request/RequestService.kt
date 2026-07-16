@@ -191,7 +191,6 @@ class RequestService : ServiceInitializer {
             return
         }
 
-        checkAddAuthCookies(cxt, handler)
         handler.logSuccess(cxt, EXC.ok)
     }
 
@@ -225,6 +224,10 @@ class RequestService : ServiceInitializer {
         if (!handler.hasResponseBeenSent()) {
             val envelope = buildEnvelope(cxt, handler, endpoint, requestData, inner)
             validateResponse(cxt, schema, endpoint, envelope)
+            // Write any auth cookies BEFORE sending: sendJsonResponse commits the (Jetty) response, and headers
+            // added after commit are silently dropped. (The in-memory test client captures headers regardless of
+            // order, so this ordering matters only for a real browser -- which is how the bug hid.)
+            checkAddAuthCookies(cxt, handler)
             handler.sendJsonResponse(envelope, EXC.ok)
         }
     }

@@ -8,7 +8,9 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.getOptStr
@@ -18,7 +20,7 @@ import com.dynamicruntime.common.util.getReqStr
 /**
  * The user/auth endpoints (issues #67, #69, #70). Registered by the `common` component. Paths, field names,
  * feature flags, and type names come from the kernel auth constants ([AEP]/[AFLD]/[AFEAT]/[ATYPE]/[AFRAG]) so
- * the frontend references the same strings; see also [ProfileEndpoints].
+ * the frontend references the same strings; see also [profileSchema].
  */
 fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     type(ATYPE.formToken) {
@@ -43,6 +45,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             property(AFEAT.registration, "Whether new-user registration is offered.", required = true) { type = SCT.boolean }
             property(AFEAT.codeLogin, "Whether verification-code login is offered.", required = true) { type = SCT.boolean }
             property(AFEAT.passwordLogin, "Whether password login is offered.", required = true) { type = SCT.boolean }
+            property(AFEAT.simulatedEmail, "Whether email is simulated (dev: the code can be read back).", required = true) { type = SCT.boolean }
         }
         property(UIC.state, "Dynamic state for constructing the auth flow.", required = true) {
             type = SCT.kObject
@@ -154,7 +157,10 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
         HttpMethod.GET, outputRef = ATYPE.authUiConfig) { c, _ ->
         mapOf(
             UIC.fragments to fragmentRefs(AFRAG.auth),
-            UIC.features to mapOf(AFEAT.registration to true, AFEAT.codeLogin to true, AFEAT.passwordLogin to true),
+            UIC.features to mapOf(
+                AFEAT.registration to true, AFEAT.codeLogin to true, AFEAT.passwordLogin to true,
+                AFEAT.simulatedEmail to (MailService.get(c)?.useSimulatedEmail == true),
+            ),
             UIC.state to mapOf(AFLD.userInfo to currentUserInfo(c)),
         )
     }
@@ -170,6 +176,37 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
         HttpMethod.GET, outputRef = ATYPE.authAck) { c, _ ->
         c.request?.clearAuth = true
         emptyMap<String, Any?>()
+    }
+
+    // Dev-only: the recently "sent" (simulated) emails, so a dev UI (or a test) can read a verification code
+    // without real mail. Served only when email is simulated (MailService.useSimulatedEmail); a real
+    // deployment -- where email is transmitted -- returns 404, so this never leaks mail in production.
+    type(ATYPE.simulatedEmail) {
+        type = SCT.kObject
+        property(ASE.to, "The recipient address.", required = true)
+        property(ASE.subject, "The subject line.", required = true)
+        property(ASE.text, "The full message text (it contains the verification code).", required = true)
+    }
+    type(ATYPE.simulatedEmails) {
+        type = SCT.kObject
+        property(ASE.emails, "The recent simulated emails, most recent first.", required = true) {
+            type = SCT.array
+            items { ref(ATYPE.simulatedEmail) }
+        }
+    }
+    generalEndpoint(AEP.simulatedEmails, "Dev-only: recent simulated emails (only when email is simulated).",
+        HttpMethod.GET, outputRef = ATYPE.simulatedEmails, inputFields = {
+            field(ASE.to, "Only include emails addressed to this recipient.")
+        }) { c, req ->
+        val mail = MailService.get(c) ?: throw KdrException("MailService is not available.")
+        if (!mail.useSimulatedEmail) {
+            throw KdrException("Recent emails are only available when email is simulated.", code = EXC.notFound)
+        }
+        val to = req.getOptStr(ASE.to)
+        val emails = mail.recentSentEmails()
+            .filter { to == null || it.to == to }
+            .map { mapOf(ASE.to to it.to, ASE.subject to it.subject, ASE.text to it.text) }
+        mapOf(ASE.emails to emails)
     }
 }
 

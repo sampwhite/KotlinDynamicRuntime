@@ -8,15 +8,15 @@ import react.Props
 import react.PropsWithChildren
 
 /**
- * Hand-written Kotlin bindings for a few Ant Design components.
+ * Handwritten Kotlin bindings for a few Ant Design components.
  *
  * `@file:JsModule("antd")` maps every top-level `external val` in this file to a
  * named export of the `antd` npm package (so `Button` here is antd's `Button`).
  * There are no official kotlin-wrappers for antd and the old TS→Kotlin generator
- * (Dukat) is discontinued, so we declare only the props we actually use. antd
+ * (Dukat) is discontinued, so we declare only the props we actually use. The antd library
  * ignores unknown/absent props, so these thin interfaces are safe to grow later.
  *
- * Each component is a [ComponentType], i.e. a React `ElementType`, so it plugs
+ * Each component is a [ComponentType], i.e., a React `ElementType`, so it plugs
  * straight into the kotlin-react builder DSL: `Button { type = "primary"; +"Go" }`.
  */
 
@@ -38,6 +38,8 @@ external val Button: ComponentType<ButtonProps>
 external interface InputProps : PropsWithChildren {
     var value: String?
     var placeholder: String?
+    /** HTML input type, e.g. "password" (antd masks it); omit for a normal text input. */
+    var type: String?
     var disabled: Boolean?
     /** antd passes a change event; read `event.target.value`. */
     var onChange: ((event: dynamic) -> Unit)?
@@ -91,7 +93,7 @@ external interface TableProps : Props {
     var columns: Array<dynamic>
     /** Row data, each a plain object keyed by the columns' dataIndex plus a `key`. */
     var dataSource: Array<dynamic>
-    /** `false` to hide paging, or a paging config object. */
+    /** `false` to hide paging or a paging config object. */
     var pagination: dynamic
     /** Per-row props; antd calls it with (record, index) and uses the returned `{ onClick, style }`. */
     var onRow: ((record: dynamic, index: Int) -> dynamic)?

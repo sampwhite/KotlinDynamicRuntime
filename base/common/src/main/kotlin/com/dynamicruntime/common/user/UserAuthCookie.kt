@@ -2,6 +2,7 @@ package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
@@ -56,7 +57,7 @@ class UserAuthCookie(
             val m = node.decryptString(cookie).jsonMap() ?: return null
             val userId = m[K_USER].toOptLong() ?: return null
             val account = m[K_ACCOUNT].toOptStr() ?: return null
-            val roles = (m[K_ROLES] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+            val roles = m[K_ROLES].toJsonListOfStrings()
             val expire = m[K_EXPIRE].toOptLong() ?: return null
             UserAuthCookie(userId, account, roles, expire)
         } catch (_: Exception) {

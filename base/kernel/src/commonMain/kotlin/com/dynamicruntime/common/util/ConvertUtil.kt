@@ -21,12 +21,27 @@ fun Any.toJsonMap(): Map<String, Any?> = toT()
 /**
  * A null-tolerant view of a (loosely typed) parsed-JSON value as a `Map<String, Any?>`, or empty when it is
  * null or not a map. Unlike [toJsonMap] (which assumes a map), this guards first -- handy when reaching into a
- * decoded JSON tree, e.g. an endpoint response envelope or a UI-config payload.
+ * decoded JSON tree, e.g., an endpoint response envelope or a UI-config payload.
  */
 fun Any?.toJsonMapOrEmpty(): Map<String, Any?> = if (this is Map<*, *>) toJsonMap() else emptyMap()
 
 /** A null-tolerant view of a parsed-JSON value as a `List<Any?>`, or empty when it is null or not a list. */
 fun Any?.toJsonListOrEmpty(): List<Any?> = this as? List<*> ?: emptyList()
+
+/**
+ * A parsed-JSON value viewed as a `List<Map<String, Any?>>` -- each element coerced with [toJsonMapOrEmpty]
+ * (a non-map element becomes an empty map); empty when the value is null or not a list. The common shape for a
+ * JSON array of objects (a UI-config's links, the endpoint catalog, a list-endpoint payload). Ported from dn's
+ * `toOptListOfMaps`, renamed to sit beside [toJsonMap] / [toJsonListOrEmpty].
+ */
+fun Any?.toJsonListOfMaps(): List<Map<String, Any?>> = toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
+
+/**
+ * A parsed-JSON value viewed as a `List<String>` -- each element rendered via `toString()`, nulls dropped;
+ * empty when the value is null or not a list. The common shape for a JSON array of strings (roles, tags,
+ * choice values). Ported from dn's `toOptListOfStrings`.
+ */
+fun Any?.toJsonListOfStrings(): List<String> = (this as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
 
 /**
  * Returns this value's `toString()` rendering only if it is a [CharSequence]
@@ -124,6 +139,13 @@ fun Map<String, Any?>.getOptStr(key: String): String? = this[key]?.toString()
 /** The value at [key] coerced to a Long, or a bad-input error if it is absent/null. */
 fun Map<String, Any?>.getReqLong(key: String): Long =
     this[key].toOptLong() ?: throw KdrException.mkInput("Missing required field '$key'.")
+
+/** The value at [key] coerced to a Long, or null if it is absent/null/unparseable (the optional [getReqLong]). */
+fun Map<String, Any?>.getOptLong(key: String): Long? = this[key].toOptLong()
+
+/** The value at [key] as a `Map<String, Any?>`, or null if it is absent or not a map. */
+fun Map<String, Any?>.getOptMap(key: String): Map<String, Any?>? =
+    this[key].let { if (it is Map<*, *>) it.toJsonMap() else null }
 
 /** The value at [key] coerced to a Boolean, or null if it is absent/null/unrecognized. */
 fun Map<String, Any?>.getOptBool(key: String): Boolean? = when (val v = this[key]) {

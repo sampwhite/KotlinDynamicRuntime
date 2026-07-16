@@ -26,15 +26,27 @@ val App = FC<Props> {
         className = ClassName("app-content")
         when (page) {
             pageCatalog -> EndpointCatalog {}
+            pageLogin -> AuthFlow { mode = pageLogin }
+            pageRegister -> AuthFlow { mode = pageRegister }
             else -> Home {}
         }
     }
 }
 
 private const val pageCatalog = "catalog"
+private const val pageLogin = "login"
+private const val pageRegister = "register"
 
-/** Resolves the page from the hash: the catalog when `page=catalog` or an endpoint (`m=`) is present, else home. */
+/**
+ * Resolves the page from the hash: `page=catalog` (or an endpoint deep-link carrying `m=`) shows the catalog,
+ * `page=login`/`page=register` the auth flow, anything else home.
+ */
 private fun currentPage(): String {
     val params = hashParams()
-    return if (params["page"] == pageCatalog || params.containsKey("m")) pageCatalog else "home"
+    return when {
+        params["page"] == pageCatalog || params.containsKey("m") -> pageCatalog
+        params["page"] == pageLogin -> pageLogin
+        params["page"] == pageRegister -> pageRegister
+        else -> "home"
+    }
 }

@@ -15,7 +15,7 @@ import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
 import web.cssom.ClassName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.toJsonListOrEmpty
+import com.dynamicruntime.common.util.toJsonListOfStrings
 
 /**
  * Renders a kernel [SchType] as a form — the generic display engine. It dispatches each field to a widget by
@@ -127,7 +127,7 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
         arrayOptions != null -> Select {
             mode = "multiple"
             options = optionsToJs(arrayOptions)
-            this.value = value.toJsonListOrEmpty().map { it.toString() }.toTypedArray()
+            this.value = value.toJsonListOfStrings().toTypedArray()
             placeholder = "(choose)"
             style = js("({ minWidth: 200 })")
             onChange = { v -> emit(jsToList(v)) }

@@ -7,6 +7,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.typeRefPath
 import com.dynamicruntime.common.startup.CX
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
@@ -26,7 +27,7 @@ class SchemaComplexEndpointTest : StringSpec({
         TestHttpClient(Startup.mkTestBootCxt(cxtName, "schemaComplexTest").instanceConfig)
 
     fun items(resp: Map<String, Any?>): List<Map<String, Any?>> =
-        (resp[EP.items] as? List<*>).orEmpty().map { it!!.toJsonMap() }
+        resp[EP.items].toJsonListOfMaps()
 
     // Navigate to a nested, mutable sub-map (the builders below produce LinkedHashMaps all the way down, so a
     // test can corrupt one leaf to prove validation without rebuilding the whole structure).
@@ -135,7 +136,7 @@ class SchemaComplexEndpointTest : StringSpec({
         val resp = client("complexCatalog")
             .sendJsonGetRequest("/schema/endpoint", mapOf(EI.method to "PUT", EI.path to "/schema/complex"))
         val results = resp[EP.results]!!.toJsonMap()
-        val eps = (results[EI.endpoints] as List<*>).map { it!!.toJsonMap() }
+        val eps = results[EI.endpoints].toJsonListOfMaps()
         eps.size shouldBe 1 // the lookup returns exactly the one requested endpoint
         val complex = eps.single()
         complex[EI.path] shouldBe "/schema/complex"

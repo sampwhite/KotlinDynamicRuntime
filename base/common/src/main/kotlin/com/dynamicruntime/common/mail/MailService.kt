@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.mail
 
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
@@ -38,6 +39,13 @@ object MAIL {
 
     /** Default secret-property name the [mailgunApiKeySecretKey] indirection points at. */
     const val defaultMailgunApiKeySecret = "mailgunApiKey"
+
+    /**
+     * When true, email is **simulated** -- recorded in-memory and not transmitted -- and no Mailgun API key is
+     * loaded; the recent-emails endpoint is available (so a dev UI or test can read back a code). Defaults to
+     * the instance's `inMemoryOnly`, so local/in-memory runs simulate while a real deployment sends for real.
+     */
+    const val useSimulatedEmail = "useSimulatedEmail"
 }
 
 /** A "sent" (or simulated) email, retained briefly so tests and troubleshooting can inspect what went out. */
@@ -70,6 +78,11 @@ class MailService : ServiceInitializer {
     lateinit var mailgunUri: String
     lateinit var fromAddressForApp: String
     private var apiKey: String? = null
+
+    /** Whether email is simulated (no transmit, no API key, recent-emails endpoint enabled). See [MAIL.useSimulatedEmail]. */
+    var useSimulatedEmail: Boolean = false
+        private set
+
     private val httpClient: HttpClient by lazy { HttpClient.newHttpClient() }
 
     private val mailId = AtomicInteger(1)
@@ -79,12 +92,20 @@ class MailService : ServiceInitializer {
 
     override fun onCreate(cxt: KdrCxt) {
         mailgunUri = (cxt.instanceConfig.get(MAIL.mailgunUri) as? String)
-            ?: "https://api.mailgun.net/v3/mg.example.org/messages"
+            ?: "https://api.mailgun.net/v3/mg.dynamicruntime.org/messages"
         fromAddressForApp = (cxt.instanceConfig.get(MAIL.appFromAddress) as? String)
-            ?: "kdr-automail@mg.example.org"
-        val secretName = (cxt.instanceConfig.get(MAIL.mailgunApiKeySecretKey) as? String)
-            ?: MAIL.defaultMailgunApiKeySecret
-        apiKey = SecretsUtil.getSecret(secretName)
+            ?: "kdr-automail@mg.dynamicruntime.org"
+        // Simulate by default when the instance is in-memory (local/dev/tests); a real deployment overrides it.
+        useSimulatedEmail = (cxt.instanceConfig.get(MAIL.useSimulatedEmail) as? Boolean)
+            ?: ((cxt.instanceConfig.get(ACFG.inMemoryOnly) as? Boolean) ?: true)
+        // Only load the (secret) API key when we actually transmit; simulated mail never needs it.
+        apiKey = if (useSimulatedEmail) {
+            null
+        } else {
+            val secretName = (cxt.instanceConfig.get(MAIL.mailgunApiKeySecretKey) as? String)
+                ?: MAIL.defaultMailgunApiKeySecret
+            SecretsUtil.getSecret(secretName)
+        }
     }
 
     /**
@@ -93,7 +114,7 @@ class MailService : ServiceInitializer {
      */
     fun sendEmail(cxt: KdrCxt, to: String, subject: String, text: String, from: String = fromAddressForApp): SentEmail {
         val key = apiKey
-        val sent = if (key != null) {
+        val sent = if (!useSimulatedEmail && key != null) {
             transmit(cxt, to, from, subject, text, key)
             SentEmail(mailId.getAndIncrement().toString(), to, from, subject, text, simulated = false)
         } else {

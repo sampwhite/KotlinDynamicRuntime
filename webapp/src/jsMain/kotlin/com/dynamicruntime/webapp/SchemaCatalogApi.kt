@@ -8,7 +8,7 @@ import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.await
 import kotlin.js.Promise
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.toJsonListOrEmpty
+import com.dynamicruntime.common.util.toJsonListOfMaps
 
 /**
  * The runtime's schema-catalog endpoints, under the `kda` API context root. In dev the webpack server proxies
@@ -35,14 +35,14 @@ object SchemaCatalogApi {
     suspend fun fetchCatalog(namespace: String? = null): Catalog {
         val query = if (namespace != null) "?${EI.namespace}=$namespace" else ""
         val results = getJson("$schemaBase/endpoints$query")[EP.results].toJsonMapOrEmpty()
-        val endpoints = results[EI.endpoints].toJsonListOrEmpty().map { toEndpointInfo(it.toJsonMapOrEmpty()) }
+        val endpoints = results[EI.endpoints].toJsonListOfMaps().map { toEndpointInfo(it) }
         return Catalog(endpoints, results[SCH.dDefs].toJsonMapOrEmpty())
     }
 
     /** GET a single endpoint by exact method + path, in the same shape as the full catalog. */
     suspend fun fetchEndpoint(method: String, path: String): Catalog {
         val results = getJson("$schemaBase/endpoint?${EI.method}=$method&${EI.path}=${encode(path)}")[EP.results].toJsonMapOrEmpty()
-        val endpoints = results[EI.endpoints].toJsonListOrEmpty().map { toEndpointInfo(it.toJsonMapOrEmpty()) }
+        val endpoints = results[EI.endpoints].toJsonListOfMaps().map { toEndpointInfo(it) }
         return Catalog(endpoints, results[SCH.dDefs].toJsonMapOrEmpty())
     }
 
