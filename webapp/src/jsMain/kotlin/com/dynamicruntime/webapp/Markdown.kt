@@ -30,7 +30,7 @@ val Markdown = FC<MarkdownProps> { props ->
 /**
  * Renders a *phrase* of Markdown inline, as a `<span>` carrying no styling of its own -- so it inherits from
  * whatever it is dropped into and stays valid inside a paragraph or label, where [Markdown]'s `<div>` would
- * not be. Used for copy that emphasises a substituted value, e.g. an address in `` `${user.email}` ``.
+ * not be. Used for copy that emphasizes a substituted value, e.g., an address in `` `${user.email}` ``.
  *
  * Safe on the same terms as [Markdown]: the kernel renderer escapes all text and neutralizes unsafe URLs. Note
  * the substitution (`evalTemplate`) must run *before* this, so a value carrying Markdown or HTML is escaped as

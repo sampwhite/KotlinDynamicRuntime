@@ -6,7 +6,6 @@ package com.dynamicruntime.common.user
 // would confidently describe a rule the server does not actually apply.
 
 /** The shortest password we accept when a user opts into one. */
-@Suppress("ConstPropertyName")
 const val minPasswordLength = 8
 
 /**
@@ -16,7 +15,7 @@ const val minPasswordLength = 8
  * The single place to add a rule (an upper-case character, a digit, ...). Because the backend throws this same
  * text and the frontend shows it inline, a new rule lands in both at once, worded identically.
  *
- * The text is not fragment copy: it is a runtime message, the same string the server returns when it rejects
+ * The text is not a fragment copy: it is a runtime message, the same string the server returns when it rejects
  * the request, and it is the *agreement* between the two that matters here.
  */
 fun passwordRuleError(password: String): String? = when {

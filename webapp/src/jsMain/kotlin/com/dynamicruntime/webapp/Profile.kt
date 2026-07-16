@@ -19,9 +19,9 @@ private val profileScope = MainScope()
 
 /**
  * The profile widget-group (issue #70 Piece 3): the login-required account page, and the home of setting,
- * changing and removing a password (issue #96).
+ * changing, and removing a password (issue #96).
  *
- * Like [AuthFlow] this is the config-driven mode, not the generic [SchemaForm]: hand-written React whose copy
+ * Like [AuthFlow] this is the config-driven mode, not the generic [SchemaForm]: handwritten React whose copy
  * is the `profile` Markdown fragment file and whose affordances come from `GET /profile/ui/config`.
  *
  * Setting a password is **code-verified** even here, where the caller is already logged in -- it is a step-up,
@@ -41,7 +41,7 @@ val Profile = FC<Props> {
     var busy by useState(false)
     var devFilled by useState(false)
 
-    /** Loads (or reloads) the config; the page re-reads it after a password change so the copy follows. */
+    /** Loads (or reloads) the config; the page re-reads it after a password change, so the copy follows. */
     fun loadConfig(onLoaded: (ProfileConfig) -> Unit = {}) {
         profileScope.launch {
             try {
@@ -64,9 +64,10 @@ val Profile = FC<Props> {
         }
     }
 
+    @Suppress("DuplicatedCode")
     fun t(ns: String, key: String, dflt: String): String = copy[ns]?.get(key) ?: dflt
 
-    /** Runs a suspend [block] with busy/error bookkeeping. */
+    /** Runs a "suspend" [block] with busy/error bookkeeping. */
     fun run(block: suspend () -> Unit) {
         busy = true
         error = null
