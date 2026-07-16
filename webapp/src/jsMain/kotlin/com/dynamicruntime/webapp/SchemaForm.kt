@@ -4,16 +4,19 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.toJsonStr
 import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.input
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
 import web.cssom.ClassName
+import web.html.InputType
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfStrings
 
@@ -149,6 +152,21 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
         vt.jsonType == SCT.string && isDateFormat(vt.format) -> DatePicker {
             onChange = { _, dateString -> emit(dateString) }
         }
+        // File content (OpenAPI's `type: string, format: binary`): a file picker. What it emits is the
+        // browser's own File object, not text -- which is exactly why the kernel validator leaves a binary
+        // field's value alone rather than coercing it, and why SchemaCatalogApi sends this endpoint as
+        // multipart/form-data rather than JSON. A plain <input type="file"> rather than antd's Upload: that
+        // component wants to own the upload itself, which is the runtime's job here.
+        vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> input {
+            // `type` is web.html.InputType, an external value over the HTML attribute string; "file" is that
+            // attribute's value, cast rather than spelled through the wrapper's own constant so this does not
+            // ride on which of them the current kotlin-wrappers exposes.
+            type = "file".unsafeCast<InputType>()
+            onChange = { e ->
+                val files = e.target.asDynamic().files
+                emit(if (files != null && (files.length as Int) > 0) files[0] else null)
+            }
+        }
         // string / integer / number / non-choice array / unknown: a text box. The kernel validator coerces
         // the entered string to the declared type (and splits a comma list into an array) on validation.
         else -> Input {
@@ -188,6 +206,7 @@ private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
 
 /** The field's type named in words, e.g. "string", "boolean", "date", "choice", "list". */
 private fun typeWord(vt: SchType): String = when {
+    vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> "file"
     vt.options != null -> "choice"
     vt.jsonType == SCT.array && vt.itemType?.options != null -> "choices"
     vt.jsonType == SCT.array -> "list"
@@ -222,6 +241,7 @@ private fun ChildrenBuilder.desc(text: String) {
 
 /** A short label of the expected value shape, used as an empty text widget's placeholder. */
 private fun typeHint(vt: SchType): String = when (vt.jsonType) {
+    SCT.string if isBinaryFormat(vt.format) -> "file"
     SCT.string if isDateFormat(vt.format) -> vt.format ?: SCT.string
     SCT.array -> "list (comma-separated)"
     else -> vt.jsonType ?: "value"

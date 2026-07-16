@@ -62,17 +62,28 @@ object SchemaCatalogApi {
      * reparses); a POST/PUT sends them as a JSON body, serialized with the shared kernel's [toJsonStr]. A
      * non-2xx response raises the runtime's error `message`.
      */
-    suspend fun invoke(endpoint: EndpointInfo, body: Map<String, Any?>): Map<String, Any?> {
+    suspend fun invoke(
+        endpoint: EndpointInfo,
+        body: Map<String, Any?>,
+        multipart: Boolean = false,
+    ): Map<String, Any?> {
         val url = apiRoot + endpoint.path
         val response = if (endpoint.method == "GET") {
             browserFetch(url + queryString(body)).await()
         } else {
             val init: dynamic = js("({})")
             init.method = endpoint.method
-            val headers: dynamic = js("({})")
-            headers["Content-Type"] = "application/json"
-            init.headers = headers
-            init.body = body.toJsonStr(compact = true)
+            if (multipart) {
+                // An upload: the body is form parts, one of them the file itself. Deliberately no
+                // Content-Type header -- the browser must set it, because only it knows the multipart
+                // boundary it generated. Setting it by hand here produces a body the server cannot parse.
+                init.body = formData(body)
+            } else {
+                val headers: dynamic = js("({})")
+                headers["Content-Type"] = "application/json"
+                init.headers = headers
+                init.body = body.toJsonStr(compact = true)
+            }
             browserFetch(url, init).await()
         }
         val map = readJson(response)
@@ -80,6 +91,29 @@ object SchemaCatalogApi {
             error(map["message"] as? String ?: "${endpoint.method} $url failed with status ${response.status}")
         }
         return map
+    }
+
+    /**
+     * The URL a file-download endpoint's content is at, for handing to the browser to fetch itself.
+     *
+     * A download is deliberately *not* run through [invoke]: the response is bytes, so parsing it as JSON
+     * would corrupt it, and holding a file in memory to re-offer it would throw away the `Content-Disposition`
+     * the server already sent. Letting the browser navigate to the URL is what makes that header do its job.
+     */
+    fun downloadUrl(endpoint: EndpointInfo, body: Map<String, Any?>): String =
+        apiRoot + endpoint.path + queryString(body)
+
+    /** Builds a `FormData` body: a picked file appends as a file part, anything else as its text value. */
+    private fun formData(body: Map<String, Any?>): dynamic {
+        val fd = newFormData()
+        for ((k, v) in body) {
+            when {
+                v == null -> {}
+                isBrowserFile(v) -> fd.append(k, v)
+                else -> fd.append(k, v.toString())
+            }
+        }
+        return fd
     }
 
     private suspend fun getJson(url: String): Map<String, Any?> {
@@ -112,6 +146,51 @@ object SchemaCatalogApi {
             "${encode(k)}=${encode(s)}"
         }
     }
+}
+
+/** A new, empty browser `FormData`. */
+private fun newFormData(): dynamic = js("new FormData()")
+
+/**
+ * Whether [v] is a browser `File` — what the schema form's file picker emits for a binary field, as opposed to
+ * the strings and numbers every other widget produces.
+ *
+ * Duck-typed rather than an `instanceof File`, because the value crosses from a `dynamic` DOM event into a
+ * Kotlin `Map<String, Any?>` and the wrapper type it lands as is not worth pinning: a thing with a name, a
+ * size and a `slice` is a `Blob`/`File` for the purpose at hand, which is deciding whether `FormData.append`
+ * should treat it as a part or as text.
+ */
+fun isBrowserFile(v: Any?): Boolean {
+    val d = v.asDynamic()
+    return jsTypeOf(d) == "object" && d.name != undefined && d.size != undefined && jsTypeOf(d.slice) == "function"
+}
+
+/** A picked file's name and size, for showing what was chosen where the file itself cannot go. ASCII only:
+ *  this lands in a JSON preview, and the formatter escapes anything else into `\uXXXX` noise. */
+fun browserFileLabel(v: Any?): String {
+    val d = v.asDynamic()
+    return "(file: ${d.name}, ${d.size} bytes)"
+}
+
+/**
+ * Starts a browser download of [url]. Uses a transient anchor rather than navigating: a response carrying
+ * `Content-Disposition: attachment` downloads without leaving the page, but an *error* response (a JSON 404)
+ * would navigate the console away — and the whole point of a download button is not to lose your place. The
+ * empty `download` attribute asks for a download while leaving the filename to the server's header.
+ */
+fun startDownload(url: String) {
+    js(
+        """
+        (function () {
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = '';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        })()
+        """,
+    )
 }
 
 /** Percent-encodes a query value via the browser's global `encodeURIComponent`. */

@@ -151,7 +151,11 @@ val EndpointCatalog = FC<Props> {
         fun validate(): Map<String, Any?>? {
             val result = coerceAndValidate(inputType, values)
             failures = result.failures
-            coerced = result.value.toJsonStr()
+            // The preview is JSON, and a picked file has no JSON form -- show what was chosen instead of
+            // trying to serialize it. The payload itself keeps the real file; only this display substitutes.
+            coerced = result.value.toJsonMapOrEmpty()
+                .mapValues { (_, v) -> if (isBrowserFile(v)) browserFileLabel(v) else v }
+                .toJsonStr()
             return if (result.failures.isEmpty()) result.value.toJsonMapOrEmpty() else null
         }
 
@@ -220,21 +224,33 @@ val EndpointCatalog = FC<Props> {
                         // Validate first; only send it when the coerced payload has no failures (they're shown).
                         val payload = validate()
                         if (payload != null) {
-                            running = true
-                            response = null
-                            runError = null
-                            catalogScope.launch {
-                                try {
-                                    response = SchemaCatalogApi.invoke(current, payload)
-                                } catch (e: Throwable) {
-                                    runError = e.message
-                                } finally {
-                                    running = false
+                            if (cat.isFileDownload(current)) {
+                                // The response is the file itself, so hand the URL to the browser and let it
+                                // do what the server's Content-Disposition told it to. Fetching and parsing it
+                                // here would corrupt the bytes and throw that header away.
+                                startDownload(SchemaCatalogApi.downloadUrl(current, payload))
+                            } else {
+                                running = true
+                                response = null
+                                runError = null
+                                catalogScope.launch {
+                                    try {
+                                        response = SchemaCatalogApi.invoke(
+                                            current,
+                                            payload,
+                                            multipart = cat.hasFileInput(current),
+                                        )
+                                    } catch (e: Throwable) {
+                                        runError = e.message
+                                    } finally {
+                                        running = false
+                                    }
                                 }
                             }
                         }
                     }
-                    +"Run"
+                    // A download is not a "run" -- nothing comes back to this page to show.
+                    +if (cat.isFileDownload(current)) "Download" else "Run"
                 }
             }
 
@@ -371,9 +387,18 @@ private fun writeHash(endpoint: EndpointInfo?, values: Map<String, Any?>) {
     if (endpoint != null) {
         params.add("m" to endpoint.method)
         params.add("p" to endpoint.path)
-        if (values.isNotEmpty()) {
-            params.add("v" to values.toJsonStr(compact = true))
+        val shareable = values.withoutFiles()
+        if (shareable.isNotEmpty()) {
+            params.add("v" to shareable.toJsonStr(compact = true))
         }
     }
     replaceHash(params)
 }
+
+/**
+ * The values with any picked file dropped. A file is the one input that cannot travel here: it has no JSON
+ * form to serialize into, and a link that restored one would mean a URL could make someone's browser upload a
+ * file off their disk. The other fields still round-trip, so a shared link puts you back on the endpoint with
+ * everything filled in but the file to pick again.
+ */
+private fun Map<String, Any?>.withoutFiles(): Map<String, Any?> = filterValues { !isBrowserFile(it) }

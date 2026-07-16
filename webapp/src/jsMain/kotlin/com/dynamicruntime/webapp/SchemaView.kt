@@ -4,6 +4,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.refTargetName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -55,6 +56,22 @@ class Catalog(val endpoints: List<EndpointInfo>, val defs: Map<String, Any?>) {
      *  a list endpoint's `items` element ref — resolve against [defTypes]). Rendered by the output-schema view. */
     fun outputType(ep: EndpointInfo): SchType =
         parseSchemaTypes(mapOf(anonOutputName to ep.outputSchema), defTypes).getValue(anonOutputName)
+
+    /**
+     * True when this endpoint's response **is a file** rather than a JSON envelope: its output schema is
+     * OpenAPI's `{"type": "string", "format": "binary"}` (see the kernel's `SFMT.binary`). Such a response must
+     * be downloaded rather than parsed — reading bytes as JSON would fail, and reading them as text would
+     * corrupt them.
+     */
+    fun isFileDownload(ep: EndpointInfo): Boolean =
+        ep.kind == EndpointKind.file.name && isBinaryFormat(ep.outputSchema[SCH.format] as? String)
+
+    /**
+     * True when this endpoint **takes a file**: one of its input fields is binary content. Such a request goes
+     * as `multipart/form-data` rather than JSON, since a JSON body has nowhere to put a file.
+     */
+    fun hasFileInput(ep: EndpointInfo): Boolean =
+        inputType(ep).properties.values.any { isBinaryFormat(it.valueType.format) }
 
     /**
      * The resolved [SchType] of an endpoint's response payload — the type under the envelope's `results`/`item`
