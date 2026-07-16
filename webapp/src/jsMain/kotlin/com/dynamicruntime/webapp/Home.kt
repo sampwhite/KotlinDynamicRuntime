@@ -28,18 +28,18 @@ private const val docParam = "doc"
 /**
  * The home page — assembled from data rather than hardcoded. It fetches its UI-config (the "construction
  * manifest") and builds itself from it:
- *  - its **copy** comes from the `home` Markdown fragment file the config names (nothing here is a literal);
- *  - its **layout** comes from the config's feature flags — the document links may be shown as a top menu
+ *  - Its **copy** comes from the `home` Markdown fragment file the config names (nothing here is a literal);
+ *  - Its **layout** comes from the config's feature flags — the document links may be shown as a top menu
  *    bar, a left nav bar, inline in the body, any combination, or not at all;
- *  - its **links** come from the config's state, each naming a Markdown document to open.
+ *  - Its **links** come from the config's state, each naming a Markdown document to open.
  *
  * Selecting a link opens that document (rendered by [Markdown]) and records it in the URL hash, so a document
  * page can be refreshed or shared.
  */
 val Home = FC<Props> {
     var config by useState<HomeConfig?>(null)
-    var copy by useState<Map<String, Map<String, String>>>(emptyMap())
-    var openDoc by useState<String?>(hashParams()[docParam])
+    var copy by useState(Copy.empty)
+    var openDoc by useState(hashParams()[docParam])
     var docText by useState<String?>(null)
     var error by useState<String?>(null)
 
@@ -48,7 +48,7 @@ val Home = FC<Props> {
             try {
                 val loaded = HomeApi.fetchConfig()
                 config = loaded
-                copy = HomeApi.fetchFragments(loaded.fragmentFileId, loaded.fragmentBuildId)
+                copy = fetchCopy(loaded.fragment)
                 error = null
             } catch (e: Throwable) {
                 error = "Could not load the home page — is the runtime running? (${e.message})"
@@ -60,7 +60,7 @@ val Home = FC<Props> {
     }
 
     // Fetch whichever document the selection names (and drop the old text when nothing is open). Keyed on the
-    // selection and the config, so it also runs for a doc named by the hash on first load.
+    // selection and the config, so it also runs for a doc named by the hash on the first load.
     useEffect(openDoc, config) {
         val link = config?.links?.firstOrNull { it.id == openDoc }
         if (link == null) {
@@ -105,7 +105,7 @@ val Home = FC<Props> {
             if (layout?.leftBar == true && links.isNotEmpty()) {
                 aside {
                     className = ClassName("home-leftbar")
-                    copy["nav"]?.get("title")?.let {
+                    copy.opt("nav", "title")?.let {
                         h2 { +it }
                     }
                     linkButtons(links, openDoc) { show(it) }
@@ -125,16 +125,16 @@ val Home = FC<Props> {
                         button {
                             className = ClassName("link-button")
                             onClick = { show(null) }
-                            +"← ${copy["nav"]?.get("homeLabel") ?: "Home"}"
+                            +"← ${copy.t("nav", "homeLabel", "Home")}"
                         }
                         h1 { +doc.label }
                         docText?.let { Markdown { source = it } }
                     }
                     // The welcome page: copy from the fragment file, and optionally the links inline.
                     current != null -> {
-                        // The hero: the brand mark beside the wordmark. The wordmark is copy like everything
+                        // The hero: the brand mark beside the wordmark. The wordmark is "copy" like everything
                         // else here, so a deployment that names no brand simply gets no hero.
-                        copy["home"]?.get("brand")?.let { brandName ->
+                        copy.opt("home", "brand")?.let { brandName ->
                             div {
                                 className = ClassName("home-hero")
                                 img {
@@ -149,8 +149,8 @@ val Home = FC<Props> {
                                 }
                             }
                         }
-                        copy["home"]?.get("title")?.let { h1 { +it } }
-                        copy["home"]?.get("intro")?.let { Markdown { source = it } }
+                        copy.opt("home", "title")?.let { h1 { +it } }
+                        copy.opt("home", "intro")?.let { Markdown { source = it } }
                         if (layout?.inlineLinks == true) {
                             renderInlineLinks(links, copy) { show(it) }
                         }
@@ -168,14 +168,14 @@ val Home = FC<Props> {
 /** The links as inline body content (the third presentation). */
 private fun ChildrenBuilder.renderInlineLinks(
     links: List<HomeLink>,
-    copy: Map<String, Map<String, String>>,
+    copy: Copy,
     onSelect: (HomeLink) -> Unit,
 ) {
-    copy["nav"]?.get("title")?.let { h2 { +it } }
+    copy.opt("nav", "title")?.let { h2 { +it } }
     if (links.isEmpty()) {
         p {
             className = ClassName("type-hint")
-            +(copy["nav"]?.get("emptyNote") ?: "")
+            +copy.t("nav", "emptyNote", "")
         }
         return
     }

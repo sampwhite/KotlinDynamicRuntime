@@ -8,7 +8,6 @@ import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.ASE
 import com.dynamicruntime.common.util.toJsonListOfMaps
-import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 
@@ -24,8 +23,7 @@ class AuthFeatures(
 /** The auth widget-group's construction manifest: where its copy lives, which features are on, and who (if
  *  anyone) is currently signed in. */
 class AuthConfig(
-    val fragmentFileId: String,
-    val fragmentBuildId: String,
+    val fragment: FragmentRef,
     val features: AuthFeatures,
     val user: UserProfile,
 )
@@ -44,28 +42,18 @@ object AuthApi {
     private const val emailContactType = "email"
 
     suspend fun fetchConfig(): AuthConfig {
-        val results = Http.getApi(AEP.authUiConfig)[EP.results].toJsonMapOrEmpty()
-        val fragment = results[UIC.fragments].toJsonListOrEmpty().firstOrNull().toJsonMapOrEmpty()
-        val features = results[UIC.features].toJsonMapOrEmpty()
-        val userInfo = results[UIC.state].toJsonMapOrEmpty()[AFLD.userInfo].toJsonMapOrEmpty()
+        val config = fetchUiConfig(AEP.authUiConfig)
         return AuthConfig(
-            fragmentFileId = fragment[UIC.fileId] as? String ?: "",
-            fragmentBuildId = fragment[UIC.buildId] as? String ?: "",
+            fragment = config.fragment,
             features = AuthFeatures(
-                registration = features[AFEAT.registration] == true,
-                codeLogin = features[AFEAT.codeLogin] == true,
-                passwordLogin = features[AFEAT.passwordLogin] == true,
-                simulatedEmail = features[AFEAT.simulatedEmail] == true,
+                registration = config.features[AFEAT.registration] == true,
+                codeLogin = config.features[AFEAT.codeLogin] == true,
+                passwordLogin = config.features[AFEAT.passwordLogin] == true,
+                simulatedEmail = config.features[AFEAT.simulatedEmail] == true,
             ),
-            user = UserProfile.fromUserInfo(userInfo),
+            user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
         )
     }
-
-    /** The auth group's copy: a Markdown fragment file as `namespace -> (key -> value)`. */
-    suspend fun fetchFragments(fileId: String, buildId: String): Map<String, Map<String, String>> =
-        Http.getFragments(fileId, buildId).mapValues { (_, namespace) ->
-            namespace.toJsonMapOrEmpty().mapValues { (_, value) -> value?.toString() ?: "" }
-        }
 
     /** Issues a fresh form token; the same token is used for the send-verify and the following code call. */
     suspend fun createToken(): String =

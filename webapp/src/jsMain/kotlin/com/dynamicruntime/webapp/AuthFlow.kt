@@ -4,13 +4,11 @@ import com.dynamicruntime.common.user.passwordRuleError
 import com.dynamicruntime.common.util.evalTemplate
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
-import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
-import react.dom.html.ReactHTML.span
 import react.useEffectOnce
 import react.useState
 import web.cssom.ClassName
@@ -34,7 +32,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     val register = props.mode == "register"
 
     var config by useState<AuthConfig?>(null)
-    var copy by useState<Map<String, Map<String, String>>>(emptyMap())
+    var copy by useState(Copy.empty)
     var email by useState("")
     var password by useState("")
     var code by useState("")
@@ -44,7 +42,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     var busy by useState(false)
     // True when the code was autofilled from a simulated email (local dev only).
     var devFilled by useState(false)
-    // True when this round is setting a password: the emailed copy is framed for it (the addPassword flag), so
+    // This is true when this round is setting a password: the emailed copy is framed for it (the addPassword flag), so
     // the choice is made before the code is sent and remembered until it is submitted.
     var settingPassword by useState(false)
 
@@ -53,7 +51,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             try {
                 val c = AuthApi.fetchConfig()
                 config = c
-                copy = AuthApi.fetchFragments(c.fragmentFileId, c.fragmentBuildId)
+                copy = fetchCopy(c.fragment)
             } catch (e: Throwable) {
                 error = "Could not load the sign-in page. (${e.message})"
             }
@@ -75,8 +73,8 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         settingPassword = false
     }
 
-    // Copy lookup with a fallback, so the page renders even before the fragments arrive.
-    fun t(ns: String, key: String, dflt: String): String = copy[ns]?.get(key) ?: dflt
+    @Suppress("DuplicatedCode")
+    fun t(ns: String, key: String, dflt: String): String = copy.t(ns, key, dflt)
 
     /** Runs a "suspend" [block] with busy/error bookkeeping. */
     fun run(block: suspend () -> Unit) {
@@ -185,7 +183,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                     onClick = { sendCode() }
                     +t(ns, "sendCode", if (register) "Send verification code" else "Email me a code")
                 }
-                // Log in by code *and* set a password, for a user who has none yet or has forgotten theirs.
+                // Log in by code *and* set a password for a user who has none yet or has forgotten theirs.
                 // Offered only where password login is on -- otherwise a password would be unusable.
                 if (!register && config?.features?.passwordLogin == true) {
                     Button {
@@ -200,7 +198,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         } else {
             p {
                 className = ClassName("subtitle")
-                // Rendered as Markdown so the copy can set the address apart from the prose around it; the
+                // Rendered as Markdown so the copy can set the address apart from the surrounding prose; the
                 // substitution runs first, so an address is escaped as text rather than read as Markdown.
                 MarkdownInline {
                     source = t(ns, "codeSent", $$"A code was sent to `${user.email}`.")
@@ -232,7 +230,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             // The shared rule the backend enforces. Held back until they have typed something: it is a
             // correction, not an instruction, and an empty field has nothing to correct yet.
             val passwordError = if (wantsPassword && password.isNotEmpty()) passwordRuleError(password) else null
-            // Registering, a password is optional -- an empty one is fine, a bad one is not.
+            // Registering with a password is optional -- an empty one is fine, a bad one is not.
             val passwordBlocks = passwordError != null || (settingPassword && password.isEmpty())
 
             div {
