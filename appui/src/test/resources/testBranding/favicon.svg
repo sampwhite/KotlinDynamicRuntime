@@ -1,0 +1,8 @@
+<!--
+  Stands in for a deployment's own artwork: a file shipped in a branding directory on the runtime classpath,
+  exactly as a real deployment's :customConfig project would carry it. Deliberately NOT the built-in mark, so
+  a test can tell which one was served.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><title>Deployment override</title>
+  <rect width="64" height="64" fill="#ff00ff"/>
+</svg>

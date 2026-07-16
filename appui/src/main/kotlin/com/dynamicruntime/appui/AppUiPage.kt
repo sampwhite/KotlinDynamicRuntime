@@ -12,6 +12,10 @@ package com.dynamicruntime.appui
  *  - the frontend bootstrap config is injected as `window.kdrCfg` (as the portal does), so the app can build
  *    backend URLs from the live context roots -- `Brand.kt` in the webapp does exactly that.
  *
+ * The icon links mirror the dev shell's, and are the branding set's documented integration: an SVG icon for
+ * browsers that take one, a PNG fallback for those that do not, and the iOS home-screen icon. The rasters are
+ * served as bytes by [AppUiService] -- see the webapp's `jsMain/resources/README.md`.
+ *
  * **This shell holds no CSS.** Both shells `<link>` the webapp's single `app.css`, which `appui` embeds and
  * serves like the bundle. That is deliberate and load-bearing: each shell used to carry its own inline copy,
  * and every feature added after the app bar styled only the dev shell -- so a built jar rendered the app
@@ -30,6 +34,8 @@ object AppUiPage {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kotlin React Webapp</title>
 <link rel="icon" type="image/svg+xml" href="/$${appRoot}/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/$${appRoot}/favicon-32.png">
+<link rel="apple-touch-icon" href="/$${appRoot}/apple-touch-icon.png">
 <link rel="stylesheet" href="/$${appRoot}/app.css">
 </head>
 <body>
