@@ -38,7 +38,7 @@ private const val docParam = "doc"
  */
 val Home = FC<Props> {
     var config by useState<HomeConfig?>(null)
-    var copy by useState<Map<String, Map<String, String>>>(emptyMap())
+    var copy by useState(Copy.empty)
     var openDoc by useState<String?>(hashParams()[docParam])
     var docText by useState<String?>(null)
     var error by useState<String?>(null)
@@ -48,7 +48,7 @@ val Home = FC<Props> {
             try {
                 val loaded = HomeApi.fetchConfig()
                 config = loaded
-                copy = HomeApi.fetchFragments(loaded.fragmentFileId, loaded.fragmentBuildId)
+                copy = fetchCopy(loaded.fragment)
                 error = null
             } catch (e: Throwable) {
                 error = "Could not load the home page — is the runtime running? (${e.message})"
@@ -105,7 +105,7 @@ val Home = FC<Props> {
             if (layout?.leftBar == true && links.isNotEmpty()) {
                 aside {
                     className = ClassName("home-leftbar")
-                    copy["nav"]?.get("title")?.let {
+                    copy.opt("nav", "title")?.let {
                         h2 { +it }
                     }
                     linkButtons(links, openDoc) { show(it) }
@@ -125,7 +125,7 @@ val Home = FC<Props> {
                         button {
                             className = ClassName("link-button")
                             onClick = { show(null) }
-                            +"← ${copy["nav"]?.get("homeLabel") ?: "Home"}"
+                            +"← ${copy.t("nav", "homeLabel", "Home")}"
                         }
                         h1 { +doc.label }
                         docText?.let { Markdown { source = it } }
@@ -134,7 +134,7 @@ val Home = FC<Props> {
                     current != null -> {
                         // The hero: the brand mark beside the wordmark. The wordmark is copy like everything
                         // else here, so a deployment that names no brand simply gets no hero.
-                        copy["home"]?.get("brand")?.let { brandName ->
+                        copy.opt("home", "brand")?.let { brandName ->
                             div {
                                 className = ClassName("home-hero")
                                 img {
@@ -149,8 +149,8 @@ val Home = FC<Props> {
                                 }
                             }
                         }
-                        copy["home"]?.get("title")?.let { h1 { +it } }
-                        copy["home"]?.get("intro")?.let { Markdown { source = it } }
+                        copy.opt("home", "title")?.let { h1 { +it } }
+                        copy.opt("home", "intro")?.let { Markdown { source = it } }
                         if (layout?.inlineLinks == true) {
                             renderInlineLinks(links, copy) { show(it) }
                         }
@@ -168,14 +168,14 @@ val Home = FC<Props> {
 /** The links as inline body content (the third presentation). */
 private fun ChildrenBuilder.renderInlineLinks(
     links: List<HomeLink>,
-    copy: Map<String, Map<String, String>>,
+    copy: Copy,
     onSelect: (HomeLink) -> Unit,
 ) {
-    copy["nav"]?.get("title")?.let { h2 { +it } }
+    copy.opt("nav", "title")?.let { h2 { +it } }
     if (links.isEmpty()) {
         p {
             className = ClassName("type-hint")
-            +(copy["nav"]?.get("emptyNote") ?: "")
+            +copy.t("nav", "emptyNote", "")
         }
         return
     }

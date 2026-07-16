@@ -31,7 +31,7 @@ private val profileScope = MainScope()
  */
 val Profile = FC<Props> {
     var config by useState<ProfileConfig?>(null)
-    var copy by useState<Map<String, Map<String, String>>>(emptyMap())
+    var copy by useState(Copy.empty)
     var password by useState("")
     var code by useState("")
     // The form token, set once a verification code has been sent, also marks the "enter the code" step.
@@ -58,14 +58,12 @@ val Profile = FC<Props> {
     useEffectOnce {
         loadConfig { c ->
             profileScope.launch {
-                copy = runCatching { ProfileApi.fetchFragments(c.fragmentFileId, c.fragmentBuildId) }
-                    .getOrDefault(emptyMap())
+                copy = runCatching { fetchCopy(c.fragment) }.getOrDefault(Copy.empty)
             }
         }
     }
 
-    @Suppress("DuplicatedCode")
-    fun t(ns: String, key: String, dflt: String): String = copy[ns]?.get(key) ?: dflt
+    fun t(ns: String, key: String, dflt: String): String = copy.t(ns, key, dflt)
 
     /** Runs a "suspend" [block] with busy/error bookkeeping. */
     fun run(block: suspend () -> Unit) {

@@ -34,7 +34,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     val register = props.mode == "register"
 
     var config by useState<AuthConfig?>(null)
-    var copy by useState<Map<String, Map<String, String>>>(emptyMap())
+    var copy by useState(Copy.empty)
     var email by useState("")
     var password by useState("")
     var code by useState("")
@@ -53,7 +53,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             try {
                 val c = AuthApi.fetchConfig()
                 config = c
-                copy = AuthApi.fetchFragments(c.fragmentFileId, c.fragmentBuildId)
+                copy = fetchCopy(c.fragment)
             } catch (e: Throwable) {
                 error = "Could not load the sign-in page. (${e.message})"
             }
@@ -75,8 +75,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         settingPassword = false
     }
 
-    // Copy lookup with a fallback, so the page renders even before the fragments arrive.
-    fun t(ns: String, key: String, dflt: String): String = copy[ns]?.get(key) ?: dflt
+    fun t(ns: String, key: String, dflt: String): String = copy.t(ns, key, dflt)
 
     /** Runs a "suspend" [block] with busy/error bookkeeping. */
     fun run(block: suspend () -> Unit) {

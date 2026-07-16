@@ -25,8 +25,7 @@ class ProfileFeatures(
  * user is, and the [loginId] its password calls need.
  */
 class ProfileConfig(
-    val fragmentFileId: String,
-    val fragmentBuildId: String,
+    val fragment: FragmentRef,
     val features: ProfileFeatures,
     val user: UserProfile,
     /**
@@ -48,28 +47,18 @@ class ProfileConfig(
 object ProfileApi {
     /** GET the profile UI-config. Login-required: a logged-out caller raises, and the page sends them to login. */
     suspend fun fetchConfig(): ProfileConfig {
-        val results = Http.getApi(AEP.profileUiConfig)[EP.results].toJsonMapOrEmpty()
-        val fragment = results[UIC.fragments].toJsonListOrEmpty().firstOrNull().toJsonMapOrEmpty()
-        val features = results[UIC.features].toJsonMapOrEmpty()
-        val state = results[UIC.state].toJsonMapOrEmpty()
+        val config = fetchUiConfig(AEP.profileUiConfig)
         return ProfileConfig(
-            fragmentFileId = fragment[UIC.fileId] as? String ?: "",
-            fragmentBuildId = fragment[UIC.buildId] as? String ?: "",
+            fragment = config.fragment,
             features = ProfileFeatures(
-                hasPassword = features[AFEAT.hasPassword] == true,
-                canSetPassword = features[AFEAT.canSetPassword] == true,
-                simulatedEmail = features[AFEAT.simulatedEmail] == true,
+                hasPassword = config.features[AFEAT.hasPassword] == true,
+                canSetPassword = config.features[AFEAT.canSetPassword] == true,
+                simulatedEmail = config.features[AFEAT.simulatedEmail] == true,
             ),
-            user = UserProfile.fromUserInfo(state[AFLD.userInfo].toJsonMapOrEmpty()),
-            loginId = state.getOptStr(AFLD.loginId) ?: "",
+            user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
+            loginId = config.state.getOptStr(AFLD.loginId) ?: "",
         )
     }
-
-    /** The group's copy: the `profile` Markdown fragment file as `namespace -> (key -> value)`. */
-    suspend fun fetchFragments(fileId: String, buildId: String): Map<String, Map<String, String>> =
-        Http.getFragments(fileId, buildId).mapValues { (_, namespace) ->
-            namespace.toJsonMapOrEmpty().mapValues { (_, value) -> value?.toString() ?: "" }
-        }
 
     /** Removes the caller's password (opting back out of password login); returns the updated user info. */
     suspend fun clearPassword(): UserProfile =

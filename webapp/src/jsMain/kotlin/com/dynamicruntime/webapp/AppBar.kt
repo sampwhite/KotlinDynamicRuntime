@@ -28,14 +28,14 @@ private val appBarScope = MainScope()
 val AppBar = FC<Props> {
     var open by useState(false)
     var config by useState<AuthConfig?>(null)
-    var copy by useState<Map<String, Map<String, String>>>(emptyMap())
+    var copy by useState(Copy.empty)
 
     useEffectOnce {
         appBarScope.launch {
             try {
                 val c = AuthApi.fetchConfig()
                 config = c
-                copy = AuthApi.fetchFragments(c.fragmentFileId, c.fragmentBuildId)
+                copy = fetchCopy(c.fragment)
             } catch (_: Throwable) {
                 // The menu degrades to signed-out defaults if the config can't load; not worth surfacing here.
             }
@@ -48,7 +48,8 @@ val AppBar = FC<Props> {
         }
     }
 
-    fun t(key: String, dflt: String): String = copy["menu"]?.get(key) ?: dflt
+    /** The bar's copy all sits in the auth fragment's `menu` namespace, so the namespace is implied here. */
+    fun t(key: String, dflt: String): String = copy.t("menu", key, dflt)
 
     fun logout() {
         open = false

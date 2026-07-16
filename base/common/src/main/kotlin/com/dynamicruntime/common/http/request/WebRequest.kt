@@ -34,6 +34,10 @@ interface WebRequest {
 
     fun sendRedirect(url: String)
 
+    /**
+     * Whether the response has gone out. Once it has, nothing about it can be changed -- see [RequestHandler],
+     * which rejects the attempt rather than dropping it silently. Check this before work that would write a
+     * response, to hand off cleanly to whoever already did.
+     */
     fun hasResponseBeenSent(): Boolean
-    fun setResponseHasBeenSent(sent: Boolean)
 }
