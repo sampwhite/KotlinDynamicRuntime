@@ -43,6 +43,17 @@ fun String.renderMarkdown(): String {
     return sb.toString()
 }
 
+/**
+ * Renders only the **inline** constructs of [this] -- code spans, links, bold, italic -- with no surrounding
+ * block element. The counterpart of [renderMarkdown] for a *phrase* that already sits inside markup the caller
+ * owns: a line of copy dropped into an existing paragraph, label or menu item, where a `<p>` (let alone a
+ * `<div>`) would be wrong or invalid.
+ *
+ * Same safety as [renderMarkdown] -- it shares the renderer -- so all text is escaped and link URLs are
+ * restricted. Block syntax is not interpreted: a leading `#` or `-` is simply text.
+ */
+fun String.renderMarkdownInline(): String = renderInline(this, 0)
+
 // --- block constructs -------------------------------------------------------------------------------------
 
 /** Whether [line] starts a block that terminates a running paragraph. */

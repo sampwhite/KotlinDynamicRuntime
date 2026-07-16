@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.user.passwordRuleError
 import com.dynamicruntime.common.util.evalTemplate
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -199,13 +200,19 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         } else {
             p {
                 className = ClassName("subtitle")
-                +codeSentNote(register, email) { n, k, d -> t(n, k, d) }
+                // Rendered as Markdown so the copy can set the address apart from the prose around it; the
+                // substitution runs first, so an address is escaped as text rather than read as Markdown.
+                MarkdownInline {
+                    source = t(ns, "codeSent", $$"A code was sent to `${user.email}`.")
+                        .evalTemplate(mapOf("user" to mapOf("email" to email.trim())))
+                }
             }
             textField(t(ns, "codeLabel", "Verification code"), code, disabled = busy) { code = it }
 
             // A password at this step is optional when registering (code login works without one) and required
             // when the round was started to set one.
-            if (register || settingPassword) {
+            val wantsPassword = register || settingPassword
+            if (wantsPassword) {
                 val label = if (register) {
                     t("register", "passwordLabel", "Password (optional)")
                 } else {
@@ -217,17 +224,23 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                     +if (register) {
                         t("register", "passwordHelp", "Optional -- you can add one later from your profile.")
                     } else {
-                        t("login", "newPasswordHelp", "At least eight characters.")
+                        t("login", "newPasswordHelp", "You can use it to sign in from this browser next time.")
                     }
                 }
             }
+
+            // The shared rule the backend enforces. Held back until they have typed something: it is a
+            // correction, not an instruction, and an empty field has nothing to correct yet.
+            val passwordError = if (wantsPassword && password.isNotEmpty()) passwordRuleError(password) else null
+            // Registering, a password is optional -- an empty one is fine, a bad one is not.
+            val passwordBlocks = passwordError != null || (settingPassword && password.isEmpty())
 
             div {
                 className = ClassName("row")
                 Button {
                     type = "primary"
                     loading = busy
-                    disabled = code.isBlank() || (settingPassword && password.isEmpty())
+                    disabled = code.isBlank() || passwordBlocks
                     onClick = { submitCode() }
                     +t(ns, "finish", if (register) "Create account" else "Log in")
                 }
@@ -241,6 +254,12 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                         settingPassword = false
                     }
                     +t("verify", "resend", "Send a new code")
+                }
+            }
+            passwordError?.let {
+                p {
+                    className = ClassName("todo-error")
+                    +it
                 }
             }
             if (devFilled) {
@@ -274,12 +293,4 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     }
 }
 
-/** The "we sent a code" note: the register fragment (with `${user.email}` resolved), or a login default. */
-private fun codeSentNote(register: Boolean, email: String, t: (String, String, String) -> String): String =
-    if (register) {
-        t("register", "codeSent", "A code was sent to your email. Enter it below.")
-            .evalTemplate(mapOf("user" to mapOf("email" to email)))
-    } else {
-        "We emailed a verification code to $email."
-    }
 

@@ -97,8 +97,12 @@ val AppBar = FC<Props> {
                     if (user != null && user.isLoggedIn) {
                         span {
                             className = ClassName("app-menu-label")
-                            +t("signedInAs", $$"Signed in as ${user.publicName}")
-                                .evalTemplate(mapOf("user" to mapOf("publicName" to (user.publicName ?: "your account"))))
+                            // Markdown, so the copy can set the name apart; MarkdownInline renders a span,
+                            // which (unlike a div) is valid inside this one.
+                            MarkdownInline {
+                                source = t("signedInAs", $$"Signed in as **${user.publicName}**")
+                                    .evalTemplate(mapOf("user" to mapOf("publicName" to (user.publicName ?: "your account"))))
+                            }
                         }
                         menuLink("#page=profile", t("profile", "Profile")) { open = false }
                         button {

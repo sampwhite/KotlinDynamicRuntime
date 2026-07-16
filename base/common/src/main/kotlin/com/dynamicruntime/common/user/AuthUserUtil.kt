@@ -14,9 +14,6 @@ import com.dynamicruntime.common.util.toReadableChars
 fun computeVerifyCode(formAuthToken: String, contactAddress: String): String =
     (contactAddress + formAuthToken).stdHashToBytes().toReadableChars(4)
 
-/** The shortest password we accept when a user opts into one. */
-const val minPasswordLength = 8
-
 /** Validates a username: starts with a letter, contains only letters/digits/underscore, at least 4 chars. */
 fun checkValidUsername(username: String) {
     val valid = username.length >= 4 && username[0].isLetter() &&
@@ -41,12 +38,14 @@ fun updateUsernameAndPassword(row: AuthUserRow, username: String?, password: Str
     if (password != null) setPassword(row, password)
 }
 
-/** Hashes and stores [password] on [row] (opting the user into password login). Enforces [minPasswordLength]. */
+/**
+ * Hashes and stores [password] on [row] (opting the user into password login). Enforces the shared
+ * [passwordRuleError] rules -- the same ones the frontend explains before submitting, so what it tells the
+ * user and what this rejects cannot disagree.
+ */
 fun setPassword(row: AuthUserRow, password: String) {
     requireUsableForLogin(row)
-    if (password.length < minPasswordLength) {
-        throw KdrException.mkInput("A password must be at least $minPasswordLength characters long.")
-    }
+    passwordRuleError(password)?.let { throw KdrException.mkInput(it) }
     row.encodedPassword = password.hashPassword()
 }
 

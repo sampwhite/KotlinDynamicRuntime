@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.user.passwordRuleError
 import com.dynamicruntime.common.util.evalTemplate
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -130,8 +131,12 @@ val Profile = FC<Props> {
         val user = config?.user
         p {
             className = ClassName("subtitle")
-            +t("profile", "signedInAs", $$"Signed in as ${user.publicName}")
-                .evalTemplate(mapOf("user" to mapOf("publicName" to (user?.publicName ?: "your account"))))
+            // Markdown, so the copy can set the name apart from the prose; substitution runs first, so a name
+            // carrying Markdown or HTML is escaped as text rather than interpreted.
+            MarkdownInline {
+                source = t("profile", "signedInAs", $$"Signed in as **${user.publicName}**")
+                    .evalTemplate(mapOf("user" to mapOf("publicName" to (user?.publicName ?: "your account"))))
+            }
         }
 
         error?.let {
@@ -167,7 +172,12 @@ val Profile = FC<Props> {
                     Button {
                         loading = busy
                         onClick = { sendCode() }
-                        +t("password", "sendCode", "Email me a verification code")
+                        // The button says what the code is for -- on its own it reads as unrelated to passwords.
+                        +if (has) {
+                            t("password", "sendCodeChange", "Email me a code so I can change my password")
+                        } else {
+                            t("password", "sendCodeSet", "Email me a code so I can set a password")
+                        }
                     }
                     if (has) {
                         Button {
@@ -179,20 +189,29 @@ val Profile = FC<Props> {
                     }
                 }
             } else {
+                p {
+                    className = ClassName("subtitle")
+                    MarkdownInline {
+                        source = t("password", "codeSent", $$"We emailed a verification code to `${user.email}`.")
+                            .evalTemplate(mapOf("user" to mapOf("email" to (config?.loginId ?: ""))))
+                    }
+                }
                 textField(t("password", "newPasswordLabel", "New password"), password, isPassword = true, disabled = busy) {
                     password = it
                 }
-                p {
-                    className = ClassName("type-hint")
-                    +t("password", "passwordHelp", "At least eight characters.")
-                }
                 textField(t("password", "codeLabel", "Verification code"), code, disabled = busy) { code = it }
+
+                // The shared rule the backend enforces, surfaced as a correction below the action rather than
+                // an instruction under the field -- and only once there is something to correct. Further rules
+                // (an upper-case character, a digit) will arrive through the same one message.
+                val passwordError = if (password.isEmpty()) null else passwordRuleError(password)
+
                 div {
                     className = ClassName("row")
                     Button {
                         type = "primary"
                         loading = busy
-                        disabled = password.isEmpty() || code.isBlank()
+                        disabled = password.isEmpty() || code.isBlank() || passwordError != null
                         onClick = { savePassword() }
                         +t("password", "save", "Save password")
                     }
@@ -206,6 +225,12 @@ val Profile = FC<Props> {
                             devFilled = false
                         }
                         +t("password", "cancel", "Cancel")
+                    }
+                }
+                passwordError?.let {
+                    p {
+                        className = ClassName("todo-error")
+                        +it
                     }
                 }
                 if (devFilled) {

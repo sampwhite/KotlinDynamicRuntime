@@ -154,7 +154,9 @@ body {
 /* Rendered Markdown (fragment copy and whole documents). */
 .markdown { line-height: 1.6; overflow-wrap: anywhere; }
 .markdown h1, .markdown h2, .markdown h3 { margin: 20px 0 8px; }
-.markdown code {
+/* `markdown-inline` is a phrase rendered inside markup the caller owns (MarkdownInline): it shares these
+   inline looks, but never the block spacing above -- it has no line-height or margins of its own. */
+.markdown code, .markdown-inline code {
     background: #0f172a;
     border: 1px solid #334155;
     border-radius: 5px;
@@ -169,7 +171,7 @@ body {
     overflow-x: auto;
 }
 .markdown pre code { background: none; border: none; padding: 0; }
-.markdown a { color: #818cf8; }
+.markdown a, .markdown-inline a { color: #818cf8; }
 .markdown blockquote {
     margin: 12px 0;
     padding-left: 12px;
@@ -195,6 +197,11 @@ body {
    rhythm rule above would otherwise flatten), and tight to the block they introduce. */
 .card > h2 { margin-top: 28px; }
 .card > h1 + *, .card > h2 + * { margin-top: 8px; }
+/* A hint captions the block above it, so in a card it takes the rhythm rather than `.type-hint`'s own 2px --
+   which is meant for the display engine's dense field rows, and which ties with the rule above on specificity
+   (both one class) and so would otherwise win on source order alone. Consecutive hints stay a tight group. */
+.card > .type-hint { margin-top: 14px; }
+.card > .type-hint + .type-hint { margin-top: 2px; }
 /* The endpoint browser needs room for the table and wide responses. */
 .card.wide { width: min(1040px, 95vw); }
 

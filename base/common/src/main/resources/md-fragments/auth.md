@@ -3,7 +3,7 @@
    ${user.*} values are supplied from live state (the account name in the menu, the email in the code note). -/
 
 # @menu
-# +signedInAs Signed in as ${user.publicName}
+# +signedInAs Signed in as **${user.publicName}**
 # +profile Profile
 # +logout Log out
 # +login Log in
@@ -17,15 +17,16 @@
 # +submit Log in
 # +sendCode Email me a code to use for login
 # +sendCodeSetPassword Email me a code and set a password
+# +codeSent We emailed a verification code to `${user.email}`.
 # +newPasswordLabel New password
-# +newPasswordHelp At least eight characters. You can use it to sign in from this browser next time.
+# +newPasswordHelp You can use it to sign in from this browser next time.
 # +failed Password login failed either because of an incorrect password or because you need to log in by verification code to activate password logins.
 
 # @register
 # +title Create your account
 # +emailLabel Email address
 # +sendCode Send verification code
-# +codeSent A code was sent to ${user.email}. Enter it below.
+# +codeSent A code was sent to `${user.email}`. Enter it below.
 # +codeLabel Verification code
 # +passwordLabel Password (optional)
 # +passwordHelp Optional -- you can sign in with an emailed code, and add a password later from your profile.
