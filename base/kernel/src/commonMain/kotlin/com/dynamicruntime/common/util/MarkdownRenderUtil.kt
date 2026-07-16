@@ -43,6 +43,17 @@ fun String.renderMarkdown(): String {
     return sb.toString()
 }
 
+/**
+ * Renders only the **inline** constructs of [this] -- code spans, links, bold, italic -- with no surrounding
+ * block element. The counterpart of [renderMarkdown] for a *phrase* that already sits inside markup the caller
+ * owns: a line of copy dropped into an existing paragraph, label, or menu item, where a `<p>` (let alone a
+ * `<div>`) would be wrong or invalid.
+ *
+ * Same safety as [renderMarkdown] -- it shares the renderer -- so all text is escaped and link URLs are
+ * restricted. Block syntax is not interpreted: a leading `#` or `-` is simply text.
+ */
+fun String.renderMarkdownInline(): String = renderInline(this, 0)
+
 // --- block constructs -------------------------------------------------------------------------------------
 
 /** Whether [line] starts a block that terminates a running paragraph. */
@@ -273,7 +284,7 @@ fun appendLink(sb: StringBuilder, text: String, start: Int, depth: Int): Int {
 fun appendEmphasis(sb: StringBuilder, text: String, start: Int, depth: Int): Int {
     val c = text[start]
     if (c == '_' && start > 0 && isWordChar(text[start - 1])) {
-        return 0 // intraword underscore: not emphasis
+        return 0 // intra word underscore: not emphasis
     }
     val double = start + 1 < text.length && text[start + 1] == c
     val marker = if (double) "$c$c" else "$c"
@@ -286,7 +297,7 @@ fun appendEmphasis(sb: StringBuilder, text: String, start: Int, depth: Int): Int
         return 0 // no closing run, or an empty run (`**`)
     }
     if (c == '_' && end + marker.length < text.length && isWordChar(text[end + marker.length])) {
-        return 0 // closing underscore is intraword
+        return 0 // closing underscore is intra word
     }
     val tag = if (double) "strong" else "em"
     sb.append('<').append(tag).append('>')
@@ -299,7 +310,7 @@ fun appendEmphasis(sb: StringBuilder, text: String, start: Int, depth: Int): Int
 fun isWordChar(c: Char): Boolean = c.isLetterOrDigit() || c == '_'
 
 /**
- * A link URL restricted to schemes that cannot execute script: http, https, and mailto, plus relative paths
+ * A link URL restricted to schemes that cannot execute a script: http, https, and mailto, plus relative paths
  * and same-page fragments. Anything else (notably `javascript:`) becomes an inert empty target rather than
  * being dropped, so the link text still renders.
  */
