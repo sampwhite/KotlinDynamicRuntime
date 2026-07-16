@@ -43,6 +43,9 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     var busy by useState(false)
     // True when the code was autofilled from a simulated email (local dev only).
     var devFilled by useState(false)
+    // True when this round is setting a password: the emailed copy is framed for it (the addPassword flag), so
+    // the choice is made before the code is sent and remembered until it is submitted.
+    var settingPassword by useState(false)
 
     useEffectOnce {
         authScope.launch {
@@ -68,6 +71,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         token = null
         error = null
         devFilled = false
+        settingPassword = false
     }
 
     // Copy lookup with a fallback, so the page renders even before the fragments arrive.
@@ -92,15 +96,22 @@ val AuthFlow = FC<AuthFlowProps> { props ->
 
     val ns = if (register) "register" else "login"
 
-    fun sendCode() {
+    /**
+     * Emails a verification code. [withPassword] asks for the code that also *sets* a password (login only):
+     * the backend frames the emailed copy from it, which is why it is chosen here rather than at the code step.
+     */
+    fun sendCode(withPassword: Boolean = false) {
         val id = email.trim()
         if (!id.contains("@")) {
             error = "Enter your email address."
             return
         }
+        // Any password typed against the password-login field belongs to that path, not to this round.
+        password = ""
+        settingPassword = withPassword
         run {
             val tk = AuthApi.createToken()
-            if (register) AuthApi.sendVerifyNewContact(id, tk) else AuthApi.sendVerifyUser(id, tk)
+            if (register) AuthApi.sendVerifyNewContact(id, tk) else AuthApi.sendVerifyUser(id, tk, withPassword)
             token = tk
             // Local dev only: when email is simulated (per the config), read the code back and pre-fill it.
             // Gated on the flag so a real-email deployment never calls the (404) dev endpoint.
@@ -115,12 +126,17 @@ val AuthFlow = FC<AuthFlowProps> { props ->
 
     fun submitCode() {
         val tk = token ?: return
+        val id = email.trim()
         run {
-            if (register) {
-                val userId = AuthApi.createInitial(email.trim(), tk, code.trim())
-                AuthApi.finishRegistration(userId, tk, code.trim())
-            } else {
-                AuthApi.loginByCode(email.trim(), tk, code.trim())
+            when {
+                // Registration takes the password (if any) straight into the account it is creating.
+                register -> {
+                    val userId = AuthApi.createInitial(id, tk, code.trim())
+                    AuthApi.finishRegistration(userId, tk, code.trim(), password.ifEmpty { null })
+                }
+                // Setting a password *is* a code login, so this both saves it and signs the user in.
+                settingPassword -> AuthApi.setPassword(id, password, tk, code.trim())
+                else -> AuthApi.loginByCode(id, tk, code.trim())
             }
             goHomeSignedIn()
         }
@@ -160,11 +176,25 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                     +t("login", "submit", "Log in")
                 }
             }
-            Button {
-                loading = busy
-                disabled = email.isBlank()
-                onClick = { sendCode() }
-                +t(ns, "sendCode", if (register) "Send verification code" else "Email me a code")
+            div {
+                className = ClassName("row")
+                Button {
+                    loading = busy
+                    disabled = email.isBlank()
+                    onClick = { sendCode() }
+                    +t(ns, "sendCode", if (register) "Send verification code" else "Email me a code")
+                }
+                // Log in by code *and* set a password, for a user who has none yet or has forgotten theirs.
+                // Offered only where password login is on -- otherwise a password would be unusable.
+                if (!register && config?.features?.passwordLogin == true) {
+                    Button {
+                        type = "link"
+                        loading = busy
+                        disabled = email.isBlank()
+                        onClick = { sendCode(withPassword = true) }
+                        +t("login", "sendCodeSetPassword", "Email me a code and set a password")
+                    }
+                }
             }
         } else {
             p {
@@ -172,22 +202,46 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 +codeSentNote(register, email) { n, k, d -> t(n, k, d) }
             }
             textField(t(ns, "codeLabel", "Verification code"), code, disabled = busy) { code = it }
-            Button {
-                type = "primary"
-                loading = busy
-                disabled = code.isBlank()
-                onClick = { submitCode() }
-                +t(ns, "finish", if (register) "Create account" else "Log in")
-            }
-            Button {
-                type = "link"
-                disabled = busy
-                onClick = {
-                    token = null
-                    code = ""
-                    devFilled = false
+
+            // A password at this step is optional when registering (code login works without one) and required
+            // when the round was started to set one.
+            if (register || settingPassword) {
+                val label = if (register) {
+                    t("register", "passwordLabel", "Password (optional)")
+                } else {
+                    t("login", "newPasswordLabel", "New password")
                 }
-                +t("verify", "resend", "Send a new code")
+                textField(label, password, isPassword = true, disabled = busy) { password = it }
+                p {
+                    className = ClassName("type-hint")
+                    +if (register) {
+                        t("register", "passwordHelp", "Optional -- you can add one later from your profile.")
+                    } else {
+                        t("login", "newPasswordHelp", "At least eight characters.")
+                    }
+                }
+            }
+
+            div {
+                className = ClassName("row")
+                Button {
+                    type = "primary"
+                    loading = busy
+                    disabled = code.isBlank() || (settingPassword && password.isEmpty())
+                    onClick = { submitCode() }
+                    +t(ns, "finish", if (register) "Create account" else "Log in")
+                }
+                Button {
+                    type = "link"
+                    disabled = busy
+                    onClick = {
+                        token = null
+                        code = ""
+                        devFilled = false
+                        settingPassword = false
+                    }
+                    +t("verify", "resend", "Send a new code")
+                }
             }
             if (devFilled) {
                 p {
@@ -229,25 +283,3 @@ private fun codeSentNote(register: Boolean, email: String, t: (String, String, S
         "We emailed a verification code to $email."
     }
 
-/** A labeled antd text/password input row. */
-private fun ChildrenBuilder.textField(
-    label: String,
-    value: String,
-    isPassword: Boolean = false,
-    disabled: Boolean = false,
-    onChange: (String) -> Unit,
-) {
-    div {
-        className = ClassName("row")
-        span {
-            className = ClassName("field-label")
-            +label
-        }
-        Input {
-            this.value = value
-            this.disabled = disabled
-            if (isPassword) type = "password"
-            this.onChange = { event -> onChange(event.target.value as String) }
-        }
-    }
-}

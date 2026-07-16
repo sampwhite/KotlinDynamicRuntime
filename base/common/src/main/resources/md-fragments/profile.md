@@ -16,5 +16,7 @@
 # +sendCode Email me a verification code
 # +codeLabel Verification code
 # +save Save password
+# +cancel Cancel
 # +remove Remove password
+# +saved Your password was saved. You can use it to sign in from this browser next time.
 # +removedNote Your password was removed. You can still sign in with a verification code.

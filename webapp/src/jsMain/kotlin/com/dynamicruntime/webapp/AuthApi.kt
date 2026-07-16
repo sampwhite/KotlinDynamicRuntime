@@ -80,9 +80,15 @@ object AuthApi {
         )
     }
 
-    /** Emails a verification code to an existing user (by [loginId] -- email or username). */
-    suspend fun sendVerifyUser(loginId: String, token: String) {
-        Http.sendApi("POST", AEP.userSendVerify, mapOf(AFLD.loginId to loginId, AFLD.formAuthToken to token))
+    /**
+     * Emails a verification code to an existing user (by [loginId] -- email or username). [addPassword] frames
+     * the emailed copy for setting a password, so the caller has to decide before the code is sent.
+     */
+    suspend fun sendVerifyUser(loginId: String, token: String, addPassword: Boolean = false) {
+        Http.sendApi(
+            "POST", AEP.userSendVerify,
+            mapOf(AFLD.loginId to loginId, AFLD.formAuthToken to token, AFLD.addPassword to addPassword),
+        )
     }
 
     /** Provisions the initial user row from a verified email + code, returning the new userId. */
@@ -97,12 +103,20 @@ object AuthApi {
         return results[AFLD.userId].toOptLong() ?: error("The server did not return a user id.")
     }
 
-    /** Finishes registration: no username/password (the frontend doesn't use usernames), which logs the user in. */
-    suspend fun finishRegistration(userId: Long, token: String, code: String): UserProfile =
+    /**
+     * Finishes registration, which logs the user in. No username (the frontend doesn't use them); [password] is
+     * optional -- login by code works without one -- and when given, the account has it from the outset.
+     */
+    suspend fun finishRegistration(userId: Long, token: String, code: String, password: String? = null): UserProfile =
         userFrom(
             Http.sendApi(
                 "PUT", AEP.setLoginData,
-                mapOf(AFLD.userId to userId, AFLD.formAuthToken to token, AFLD.verifyCode to code),
+                buildMap {
+                    put(AFLD.userId, userId)
+                    put(AFLD.formAuthToken, token)
+                    put(AFLD.verifyCode, code)
+                    if (!password.isNullOrEmpty()) put(AFLD.password, password)
+                },
             ),
         )
 
@@ -118,6 +132,22 @@ object AuthApi {
     /** Logs a returning user in by password (familiar devices only; failure raises the opaque message). */
     suspend fun loginByPassword(loginId: String, password: String): UserProfile =
         userFrom(Http.sendApi("POST", AEP.loginByPassword, mapOf(AFLD.loginId to loginId, AFLD.password to password)))
+
+    /**
+     * Sets or changes the user's password, verified by an emailed code. This *is* a code login: the backend
+     * also logs the user in and makes the device familiar, so the new password is usable from this browser
+     * next time. Used both by the login flow (log in and set a password in one step) and by the profile page.
+     */
+    suspend fun setPassword(loginId: String, password: String, token: String, code: String): UserProfile =
+        userFrom(
+            Http.sendApi(
+                "PUT", AEP.setPassword,
+                mapOf(
+                    AFLD.loginId to loginId, AFLD.password to password,
+                    AFLD.formAuthToken to token, AFLD.verifyCode to code,
+                ),
+            ),
+        )
 
     /** Clears the session cookie. */
     suspend fun logout() {

@@ -100,6 +100,7 @@ val AppBar = FC<Props> {
                             +t("signedInAs", $$"Signed in as ${user.publicName}")
                                 .evalTemplate(mapOf("user" to mapOf("publicName" to (user.publicName ?: "your account"))))
                         }
+                        menuLink("#page=profile", t("profile", "Profile")) { open = false }
                         button {
                             className = ClassName("app-menu-item")
                             onClick = { logout() }

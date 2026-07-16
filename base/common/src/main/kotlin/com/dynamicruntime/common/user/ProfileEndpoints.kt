@@ -10,6 +10,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
 
 /**
@@ -33,10 +34,12 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "profile") {
             type = SCT.kObject
             property(AFEAT.hasPassword, "Whether the user currently has a password set.", required = true) { type = SCT.boolean }
             property(AFEAT.canSetPassword, "Whether the user may set or change a password.", required = true) { type = SCT.boolean }
+            property(AFEAT.simulatedEmail, "Whether email is simulated (dev: the code can be read back).", required = true) { type = SCT.boolean }
         }
         property(UIC.state, "Dynamic state for constructing the profile page.", required = true) {
             type = SCT.kObject
             property(AFLD.userInfo, "The current user's info.", required = true) { ref(UserProfile.infoTypeName) }
+            property(AFLD.loginId, "The id this user signs in with, for the password calls.", required = true)
         }
     }
 
@@ -48,8 +51,16 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "profile") {
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
         mapOf(
             UIC.fragments to fragmentRefs(AFRAG.profile),
-            UIC.features to mapOf(AFEAT.hasPassword to (row.encodedPassword != null), AFEAT.canSetPassword to true),
-            UIC.state to mapOf(AFLD.userInfo to row.toUserProfile().toUserInfo()),
+            UIC.features to mapOf(
+                AFEAT.hasPassword to (row.encodedPassword != null), AFEAT.canSetPassword to true,
+                // Carried here too (the auth config has it as well): the page enters a code, so it wants the
+                // same dev autofill, and a group's config should carry what that group needs.
+                AFEAT.simulatedEmail to (MailService.get(c)?.useSimulatedEmail == true),
+            ),
+            // The page needs a login id for the (code-verified) password calls. It is served explicitly rather
+            // than reused from the user info's publicName: that is a display name, and only resolves as a login
+            // id by coincidence of today's fallback (see AuthUserRow.publicName).
+            UIC.state to mapOf(AFLD.userInfo to row.toUserProfile().toUserInfo(), AFLD.loginId to row.primaryId),
         )
     }
 

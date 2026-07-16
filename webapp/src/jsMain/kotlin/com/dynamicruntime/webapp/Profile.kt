@@ -1,0 +1,230 @@
+package com.dynamicruntime.webapp
+
+import com.dynamicruntime.common.util.evalTemplate
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
+import react.FC
+import react.Props
+import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.h1
+import react.dom.html.ReactHTML.h2
+import react.dom.html.ReactHTML.p
+import react.useEffectOnce
+import react.useState
+import web.cssom.ClassName
+
+/** Coroutine scope for the profile page's suspend backend calls. */
+private val profileScope = MainScope()
+
+/**
+ * The profile widget-group (issue #70 Piece 3): the login-required account page, and the home of setting,
+ * changing and removing a password (issue #96).
+ *
+ * Like [AuthFlow] this is the config-driven mode, not the generic [SchemaForm]: hand-written React whose copy
+ * is the `profile` Markdown fragment file and whose affordances come from `GET /profile/ui/config`.
+ *
+ * Setting a password is **code-verified** even here, where the caller is already logged in -- it is a step-up,
+ * and it reuses the same `auth` calls the login flow uses. Because the emailed copy is framed up front (the
+ * `addPassword` flag), the code is requested by an explicit "email me a code" step rather than on page load.
+ * *Removing* a password needs no code: it is a de-escalation, and code login still works afterward.
+ */
+val Profile = FC<Props> {
+    var config by useState<ProfileConfig?>(null)
+    var copy by useState<Map<String, Map<String, String>>>(emptyMap())
+    var password by useState("")
+    var code by useState("")
+    // The form token, set once a verification code has been sent, also marks the "enter the code" step.
+    var token by useState<String?>(null)
+    var error by useState<String?>(null)
+    var note by useState<String?>(null)
+    var busy by useState(false)
+    var devFilled by useState(false)
+
+    /** Loads (or reloads) the config; the page re-reads it after a password change so the copy follows. */
+    fun loadConfig(onLoaded: (ProfileConfig) -> Unit = {}) {
+        profileScope.launch {
+            try {
+                val c = ProfileApi.fetchConfig()
+                config = c
+                onLoaded(c)
+            } catch (_: Throwable) {
+                // The config is login-required, so the overwhelmingly likely failure is "not logged in".
+                navigateHash(listOf("page" to "login"))
+            }
+        }
+    }
+
+    useEffectOnce {
+        loadConfig { c ->
+            profileScope.launch {
+                copy = runCatching { ProfileApi.fetchFragments(c.fragmentFileId, c.fragmentBuildId) }
+                    .getOrDefault(emptyMap())
+            }
+        }
+    }
+
+    fun t(ns: String, key: String, dflt: String): String = copy[ns]?.get(key) ?: dflt
+
+    /** Runs a suspend [block] with busy/error bookkeeping. */
+    fun run(block: suspend () -> Unit) {
+        busy = true
+        error = null
+        profileScope.launch {
+            try {
+                block()
+            } catch (e: Throwable) {
+                error = e.message ?: "Something went wrong."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    /** Step one of a password change: email a code, framed for setting a password. */
+    fun sendCode() {
+        val cfg = config ?: return
+        note = null
+        run {
+            val tk = AuthApi.createToken()
+            AuthApi.sendVerifyUser(cfg.loginId, tk, addPassword = true)
+            token = tk
+            if (cfg.features.simulatedEmail) {
+                AuthApi.fetchDevCode(cfg.loginId)?.let {
+                    code = it
+                    devFilled = true
+                }
+            }
+        }
+    }
+
+    /** Step two: save the new password against the emailed code. */
+    fun savePassword() {
+        val cfg = config ?: return
+        val tk = token ?: return
+        run {
+            AuthApi.setPassword(cfg.loginId, password, tk, code.trim())
+            password = ""
+            code = ""
+            token = null
+            devFilled = false
+            note = t("password", "saved", "Your password was saved.")
+            loadConfig()
+        }
+    }
+
+    fun removePassword() = run {
+        ProfileApi.clearPassword()
+        note = t("password", "removedNote", "Your password was removed. You can still sign in with a code.")
+        loadConfig()
+    }
+
+    fun logout() = run {
+        AuthApi.logout()
+        navigateHash(emptyList())
+    }
+
+    div {
+        className = ClassName("card")
+        h1 { +t("profile", "title", "Your profile") }
+
+        val user = config?.user
+        p {
+            className = ClassName("subtitle")
+            +t("profile", "signedInAs", $$"Signed in as ${user.publicName}")
+                .evalTemplate(mapOf("user" to mapOf("publicName" to (user?.publicName ?: "your account"))))
+        }
+
+        error?.let {
+            p {
+                className = ClassName("todo-error")
+                +it
+            }
+        }
+        note?.let {
+            p {
+                className = ClassName("form-ok")
+                +it
+            }
+        }
+
+        val features = config?.features
+        if (features?.canSetPassword == true) {
+            val has = features.hasPassword
+            h2 { +if (has) t("password", "changeTitle", "Change your password") else t("password", "setTitle", "Set a password") }
+            p {
+                className = ClassName("subtitle")
+                +if (has) {
+                    t("password", "hasPassword", "You have a password set. You can change it or remove it.")
+                } else {
+                    t("password", "noPassword", "You have not set a password. You currently sign in with a verification code.")
+                }
+            }
+
+            if (token == null) {
+                // The emailed copy is framed for a password up front, so the code is requested explicitly.
+                div {
+                    className = ClassName("row")
+                    Button {
+                        loading = busy
+                        onClick = { sendCode() }
+                        +t("password", "sendCode", "Email me a verification code")
+                    }
+                    if (has) {
+                        Button {
+                            danger = true
+                            disabled = busy
+                            onClick = { removePassword() }
+                            +t("password", "remove", "Remove password")
+                        }
+                    }
+                }
+            } else {
+                textField(t("password", "newPasswordLabel", "New password"), password, isPassword = true, disabled = busy) {
+                    password = it
+                }
+                p {
+                    className = ClassName("type-hint")
+                    +t("password", "passwordHelp", "At least eight characters.")
+                }
+                textField(t("password", "codeLabel", "Verification code"), code, disabled = busy) { code = it }
+                div {
+                    className = ClassName("row")
+                    Button {
+                        type = "primary"
+                        loading = busy
+                        disabled = password.isEmpty() || code.isBlank()
+                        onClick = { savePassword() }
+                        +t("password", "save", "Save password")
+                    }
+                    Button {
+                        type = "link"
+                        disabled = busy
+                        onClick = {
+                            token = null
+                            code = ""
+                            password = ""
+                            devFilled = false
+                        }
+                        +t("password", "cancel", "Cancel")
+                    }
+                }
+                if (devFilled) {
+                    p {
+                        className = ClassName("type-hint")
+                        +"Code auto-filled from the simulated email (local dev only)."
+                    }
+                }
+            }
+        }
+
+        div {
+            className = ClassName("row")
+            Button {
+                type = "link"
+                disabled = busy
+                onClick = { logout() }
+                +t("profile", "logout", "Log out")
+            }
+        }
+    }
+}

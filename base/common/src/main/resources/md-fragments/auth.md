@@ -16,6 +16,9 @@
 # +codeLabel Verification code
 # +submit Log in
 # +sendCode Email me a code to use for login
+# +sendCodeSetPassword Email me a code and set a password
+# +newPasswordLabel New password
+# +newPasswordHelp At least eight characters. You can use it to sign in from this browser next time.
 # +failed Password login failed either because of an incorrect password or because you need to log in by verification code to activate password logins.
 
 # @register
@@ -24,6 +27,8 @@
 # +sendCode Send verification code
 # +codeSent A code was sent to ${user.email}. Enter it below.
 # +codeLabel Verification code
+# +passwordLabel Password (optional)
+# +passwordHelp Optional -- you can sign in with an emailed code, and add a password later from your profile.
 # +finish Create account
 
 # @verify

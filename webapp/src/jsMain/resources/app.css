@@ -185,6 +185,16 @@ body {
     background: #1e293b;
     box-shadow: 0 20px 60px rgba(0, 0, 0, .45);
 }
+
+/* Vertical rhythm for the hand-written widget-groups (the auth flow, the profile page), whose rows would
+   otherwise stack flush against each other -- `.row` only spaces its contents horizontally. Applied through
+   `.card` rather than to `.row` itself, because `.row` is also the display engine's (SchemaForm, the endpoint
+   catalog) and density is right there: those list many fields at once, these ask for two or three. */
+.card > * + * { margin-top: 14px; }
+/* Headings keep the section spacing they have everywhere else: a clear break above the new section (which the
+   rhythm rule above would otherwise flatten), and tight to the block they introduce. */
+.card > h2 { margin-top: 28px; }
+.card > h1 + *, .card > h2 + * { margin-top: 8px; }
 /* The endpoint browser needs room for the table and wide responses. */
 .card.wide { width: min(1040px, 95vw); }
 
