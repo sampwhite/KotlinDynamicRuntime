@@ -20,7 +20,7 @@ import com.dynamicruntime.common.util.getReqStr
 /**
  * The user/auth endpoints (issues #67, #69, #70). Registered by the `common` component. Paths, field names,
  * feature flags, and type names come from the kernel auth constants ([AEP]/[AFLD]/[AFEAT]/[ATYPE]/[AFRAG]) so
- * the frontend references the same strings; see also [ProfileEndpoints].
+ * the frontend references the same strings; see also [profileSchema].
  */
 fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     type(ATYPE.formToken) {
