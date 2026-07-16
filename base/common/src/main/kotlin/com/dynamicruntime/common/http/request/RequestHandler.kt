@@ -254,10 +254,15 @@ class RequestHandler : WebRequest {
     )
 
     /** Sends a text response body, written as UTF-8. For bytes that are not text, use [sendBytesResponse]. */
-    fun sendStringResponse(body: String, code: Int, mimeType: String) {
-        setStatusCode(code)
-        setResponseContentType(mimeType)
-        sentResponse = true
+    fun sendStringResponse(body: String, code: Int, mimeType: String) =
+        sendStringResponse(body, code, ContentData(mimeType))
+
+    /**
+     * Sends a text response body, written as UTF-8, handled as [content] says — a download rather than a page,
+     * under a given name. For bytes that are not text, use [sendBytesResponse].
+     */
+    fun sendStringResponse(body: String, code: Int, content: ContentData) {
+        applyContentData(code, content)
         rptResponseData = body
         val resp = jettyResponse
         if (resp != null) {
@@ -275,12 +280,26 @@ class RequestHandler : WebRequest {
      *
      * In test mode the body is captured in [rptResponseBytes]; [rptResponseData] stays null.
      */
-    fun sendBytesResponse(body: ByteArray, code: Int, mimeType: String) {
-        setStatusCode(code)
-        setResponseContentType(mimeType)
-        sentResponse = true
+    fun sendBytesResponse(body: ByteArray, code: Int, mimeType: String) =
+        sendBytesResponse(body, code, ContentData(mimeType))
+
+    /** Sends a binary response body handled as [content] says; see the [sendBytesResponse] overload above. */
+    fun sendBytesResponse(body: ByteArray, code: Int, content: ContentData) {
+        applyContentData(code, content)
         rptResponseBytes = body
         jettyResponse?.write(true, ByteBuffer.wrap(body), jettyCallback)
+    }
+
+    /**
+     * Applies how [content] is to be handled -- status, type, and disposition -- and marks the response sent.
+     * Shared by both send paths, which differ only in how the body itself is written.
+     */
+    private fun applyContentData(code: Int, content: ContentData) {
+        setStatusCode(code)
+        setResponseContentType(content.mimeType)
+        // Null means the header adds nothing (plain inline content), so it is left off entirely.
+        content.contentDispositionHeader()?.let { setResponseHeader(ContentData.contentDispositionKey, it) }
+        sentResponse = true
     }
 
     fun setStatusCode(code: Int) {
