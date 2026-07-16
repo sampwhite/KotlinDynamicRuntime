@@ -253,54 +253,51 @@ class RequestHandler : WebRequest {
         "text/html; charset=utf-8",
     )
 
-    /** Sends a text response body, written as UTF-8. For bytes that are not text, use [sendBytesResponse]. */
-    fun sendStringResponse(body: String, code: Int, mimeType: String) =
-        sendStringResponse(body, code, ContentData(mimeType))
-
     /**
-     * Sends a text response body, written as UTF-8, handled as [content] says — a download rather than a page,
-     * under a given name. For bytes that are not text, use [sendBytesResponse].
-     */
-    fun sendStringResponse(body: String, code: Int, content: ContentData) {
-        applyContentData(code, content)
-        rptResponseData = body
-        val resp = jettyResponse
-        if (resp != null) {
-            Content.Sink.write(resp, true, body, jettyCallback)
-        }
-    }
-
-    /**
-     * Sends a **binary** response body -- an image, a font, an archive: any content whose bytes are not text.
-     * The counterpart of [sendStringResponse], and not a convenience over it: that path is UTF-8 only, and
-     * routing arbitrary bytes through a String silently corrupts them (every byte that is not valid UTF-8
-     * decodes to U+FFFD and re-encodes as three different bytes). Binary content has to bypass the String
-     * entirely, which is what this does -- straight to a [ByteBuffer], as [sendRedirect] already does for its
-     * empty body.
+     * Sends [content] -- the content itself and everything about how to handle it. The one response path for a
+     * body; the [sendStringResponse]/[sendBytesResponse] overloads below are shorthands onto it for callers
+     * who have nothing to say beyond a MIME type.
      *
-     * In test mode the body is captured in [rptResponseBytes]; [rptResponseData] stays null.
+     * Text and bytes are written differently, and that is not a detail: [ContentData.text] goes out as UTF-8,
+     * while [ContentData.bytes] goes straight to a [ByteBuffer] -- as [sendRedirect] already does for its
+     * empty body -- because routing arbitrary bytes through a String silently corrupts them (every byte that
+     * is not valid UTF-8 decodes to U+FFFD and re-encodes as three different bytes). Which of the two applies
+     * is [ContentData.isBinary]'s answer, settled by whoever built the content and knew.
+     *
+     * In test mode the body is captured in [rptResponseBytes] or [rptResponseData] -- whichever matches the
+     * content; the other stays null.
      */
-    fun sendBytesResponse(body: ByteArray, code: Int, mimeType: String) =
-        sendBytesResponse(body, code, ContentData(mimeType))
-
-    /** Sends a binary response body handled as [content] says; see the [sendBytesResponse] overload above. */
-    fun sendBytesResponse(body: ByteArray, code: Int, content: ContentData) {
-        applyContentData(code, content)
-        rptResponseBytes = body
-        jettyResponse?.write(true, ByteBuffer.wrap(body), jettyCallback)
-    }
-
-    /**
-     * Applies how [content] is to be handled -- status, type, and disposition -- and marks the response sent.
-     * Shared by both send paths, which differ only in how the body itself is written.
-     */
-    private fun applyContentData(code: Int, content: ContentData) {
+    fun sendContentResponse(content: ContentData, code: Int) {
         setStatusCode(code)
         setResponseContentType(content.mimeType)
         // Null means the header adds nothing (plain inline content), so it is left off entirely.
         content.contentDispositionHeader()?.let { setResponseHeader(ContentData.contentDispositionKey, it) }
         sentResponse = true
+        if (content.isBinary) {
+            val bytes = content.bytes ?: ByteArray(0)
+            rptResponseBytes = bytes
+            jettyResponse?.write(true, ByteBuffer.wrap(bytes), jettyCallback)
+        } else {
+            val body = content.text ?: ""
+            rptResponseData = body
+            val resp = jettyResponse
+            if (resp != null) {
+                Content.Sink.write(resp, true, body, jettyCallback)
+            }
+        }
     }
+
+    /** Sends a text response body, written as UTF-8. For bytes that are not text, use [sendBytesResponse]. */
+    fun sendStringResponse(body: String, code: Int, mimeType: String) =
+        sendContentResponse(ContentData(body, mimeType), code)
+
+    /**
+     * Sends a **binary** response body -- an image, a font, an archive: any content whose bytes are not text.
+     * The counterpart of [sendStringResponse], and not a convenience over it -- see [sendContentResponse] for
+     * why the two cannot share a path.
+     */
+    fun sendBytesResponse(body: ByteArray, code: Int, mimeType: String) =
+        sendContentResponse(ContentData(body, mimeType), code)
 
     fun setStatusCode(code: Int) {
         jettyResponse?.status = code

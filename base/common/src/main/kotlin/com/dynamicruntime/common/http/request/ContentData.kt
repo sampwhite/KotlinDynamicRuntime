@@ -1,34 +1,52 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.exception.KdrException
+
 /**
- * How a response body is to be *handled* — as distinct from what it contains. A body needs more said about it
- * than its bytes: what kind of thing it is ([mimeType]), whether the browser should render it or download it
- * ([inLine]), what to call it if saved ([saveAsFilename]), and what identifies this exact content ([hash]).
- * [RequestHandler.sendBytesResponse] and [RequestHandler.sendStringResponse] take one of these.
+ * A piece of content and everything needed to handle it: the content itself ([bytes] or [text]), what kind of
+ * thing it is ([mimeType]), whether it is meant to be rendered or downloaded ([inLine]), what to call it if
+ * saved ([saveAsFilename]), and what identifies these exact bytes ([hash]).
  *
- * It exists because those grew a bare `mimeType` parameter, which is the only one of the four a caller could
- * express. Serving a PDF or a CSV export means deciding *download, called this* — a decision with nowhere to
- * live. Adding parameters one at a time would push that choice onto every call site; a single value carries it
- * from the [ContentServer] that knows the answer to the handler that writes the header.
+ * It is one value so that content can be *passed around* — which is what the coming file interface needs, and
+ * why the content lives here rather than beside it. Uploading and downloading are the same content travelling
+ * in opposite directions: a download is a [ContentData] handed to [RequestHandler.sendContentResponse], and an
+ * upload is a [ContentData] built from the request. A type that described content but did not contain it would
+ * force every layer in between to carry a body alongside it and keep the two in step.
  *
- * A caller that only has a MIME type says nothing more: the [RequestHandler] overloads taking a bare
+ * **[isBinary] says which of [bytes] and [text] is the content**, and is stated rather than inferred. It is
+ * not the same question as "is [bytes] populated": a file read from disk arrives as bytes whether or not it is
+ * text, and the MIME type cannot settle it either — SVG is an image that *is* text, while `application/json`
+ * is text that is not an image. The two constructors below set the flag to match the content they are given,
+ * so the ordinary paths cannot disagree with themselves.
+ *
+ * A caller that only has a MIME type still says nothing more: the [RequestHandler] overloads taking a bare
  * `mimeType` build the plain-inline default, so the app's own assets stay one-liners.
  */
 class ContentData(
-    /** The `Content-Type` of the body, e.g. `image/png` or `text/css; charset=utf-8`. */
+    /** The `Content-Type` of the content, e.g. `image/png` or `text/css; charset=utf-8`. */
     val mimeType: String,
 
+    /** True when [bytes] carries the content, false when [text] does. See the class note: this is a statement,
+     *  not a guess at which field happens to be populated. */
+    val isBinary: Boolean,
+
+    /** The content when [isBinary]; null otherwise. */
+    val bytes: ByteArray? = null,
+
+    /** The content when not [isBinary]; null otherwise. */
+    val text: String? = null,
+
     /**
-     * The name to save the body under, or null for none. A *suggestion* to the browser, and only that: it is
-     * advisory when [inLine] (used if the reader chooses to save), and the offered name when not.
+     * The name to save the content under, or null for none. A *suggestion* to the browser, and only that: it
+     * is advisory when [inLine] (used if the reader chooses to save), and the offered name when not.
      *
-     * Sanitized before it reaches the header ([contentDispositionHeader]) — it is the one field here likely to
-     * be built from data rather than a constant, so it is treated as untrusted.
+     * Sanitized before it reaches the header ([contentDispositionHeader]) — it is the field here most likely
+     * to be built from data rather than a constant, so it is treated as untrusted.
      */
     val saveAsFilename: String? = null,
 
     /**
-     * True (the default) to let the browser render the body in place; false to make it a download. Maps to
+     * True (the default) to let the browser render the content in place; false to make it a download. Maps to
      * `Content-Disposition: inline` / `attachment`.
      *
      * The default is true because it is what the runtime serves today — pages, styles, scripts, icons — and
@@ -42,7 +60,7 @@ class ContentData(
      * A content hash identifying exactly these bytes, or null when none was computed. **Carried, not yet
      * acted on** — nothing reads it today.
      *
-     * It is here because the callers that will want it are the ones already computing it: [ContentResources]
+     * It is here because the callers that will want it are the ones already computing it: `ContentResources`
      * hashes content (CRC32) to build the cache-busting `buildId` in a content URL. The intended use is an
      * `ETag`, letting a conditional request (`If-None-Match`) be answered with a 304 rather than the body.
      * Deliberately not wired up: an ETag is a cache-correctness contract, and it should be added when
@@ -50,6 +68,47 @@ class ContentData(
      */
     val hash: String? = null,
 ) {
+    init {
+        // The flag and the content have to agree, or a caller reads the wrong field and finds nothing. Caught
+        // here rather than left to surface downstream as an empty response or a mystery NPE. Note "empty" is
+        // a legitimate value -- a zero-length upload is ByteArray(0), not null.
+        if (isBinary && bytes == null) {
+            throw KdrException("ContentData is binary ('$mimeType') but carries no bytes.")
+        }
+        if (!isBinary && text == null) {
+            throw KdrException("ContentData is text ('$mimeType') but carries no text.")
+        }
+    }
+
+    /** Binary content: an image, a PDF, an uploaded file. Sets [isBinary]. */
+    constructor(
+        bytes: ByteArray,
+        mimeType: String,
+        saveAsFilename: String? = null,
+        inLine: Boolean = true,
+        hash: String? = null,
+    ) : this(mimeType, isBinary = true, bytes = bytes, saveAsFilename = saveAsFilename, inLine = inLine, hash = hash)
+
+    /** Text content: a page, a stylesheet, JSON, a CSV export. Clears [isBinary]. */
+    constructor(
+        text: String,
+        mimeType: String,
+        saveAsFilename: String? = null,
+        inLine: Boolean = true,
+        hash: String? = null,
+    ) : this(mimeType, isBinary = false, text = text, saveAsFilename = saveAsFilename, inLine = inLine, hash = hash)
+
+    /**
+     * The content as bytes, whatever it is carried as — [text] is UTF-8 encoded, which is lossless in that
+     * direction. For writing content to a file or a stream, which does not care which of the two it was.
+     *
+     * There is deliberately no counterpart returning the content as a String: decoding arbitrary bytes as text
+     * is *not* lossless (every byte that is not valid UTF-8 becomes U+FFFD), and offering it would invite
+     * exactly the corruption [RequestHandler.sendBytesResponse] exists to avoid. Read [text] when not
+     * [isBinary].
+     */
+    fun contentBytes(): ByteArray = if (isBinary) bytes ?: ByteArray(0) else (text ?: "").encodeToByteArray()
+
     /**
      * The `Content-Disposition` value for this content, or **null when the header should be omitted** —
      * plain-inline content needs no header, since `inline` is HTTP's default and saying so adds nothing.
