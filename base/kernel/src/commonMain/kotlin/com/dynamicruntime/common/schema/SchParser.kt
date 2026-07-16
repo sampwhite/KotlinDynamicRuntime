@@ -116,6 +116,15 @@ fun isNumericType(jsonType: String?): Boolean = jsonType == SCT.integer || jsonT
 @KdrPrivate
 fun isDateFormat(format: String?): Boolean = format == SFMT.date || format == SFMT.dateTime
 
+/**
+ * Whether [format] marks file content ([SFMT.binary]) — OpenAPI's `type: string, format: binary`.
+ *
+ * The one question everything else asks: the validator asks it to leave the value alone (it is a `ContentData`,
+ * not text), the dispatcher asks it to decide a request is a multipart upload, and the frontend asks it to
+ * render a file picker instead of a text box.
+ */
+fun isBinaryFormat(format: String?): Boolean = format == SFMT.binary
+
 /** Parses the custom `options` construct: a list of `{label, value}` entries.
  *  A missing `label` defaults to the `value`. */
 @KdrPrivate

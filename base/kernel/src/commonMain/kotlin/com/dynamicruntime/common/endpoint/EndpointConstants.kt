@@ -28,9 +28,15 @@ enum class HttpMethod { GET, POST, PUT }
  * The shape of an endpoint's result, which determines how the executor wraps it in the protocol envelope: a
  * [general] result goes under `results`, an [item] under `item`, and a [list] under `items` (with count/paging
  * metadata).
+ *
+ * [file] is the odd one and deliberately so: it marks an endpoint that trades in **file content** rather than
+ * JSON. A download's response *is* the file — no envelope to put it in — and an upload's request arrives as
+ * `multipart/form-data` rather than a JSON body. Both directions are one kind because `kind` exists to tell a
+ * client how to deal with an endpoint, and both need the same answer: this one speaks files, not JSON. An
+ * upload that returns metadata still returns it under `results`, as a [general] endpoint would.
  */
 @Suppress("EnumEntryName")
-enum class EndpointKind { general, item, list }
+enum class EndpointKind { general, item, list, file }
 
 /**
  * Protocol field keys injected into endpoint input/output envelopes. The response/list keys keep the prior-art

@@ -63,6 +63,29 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
         return handler
     }
 
+    /**
+     * Sends a file upload: a `multipart/form-data` request whose [parts] are the input fields — a
+     * [ContentData] for the file, any other value for an ordinary field travelling with it.
+     *
+     * There is no wire here to encode a multipart body onto, so the parts are handed to the handler already
+     * decoded, in exactly the shape a real request's parts arrive in. That means this exercises the endpoint,
+     * validation and handler as a browser would, but *not* Jetty's multipart parsing — for which see the real
+     * HTTP checks rather than a test client.
+     */
+    fun sendUploadRequest(endpoint: String, parts: Map<String, Any?>, isPut: Boolean = false): RequestHandler {
+        val handler = RequestHandler(
+            instanceConfig.instanceName,
+            if (isPut) "PUT" else "POST",
+            routed(endpoint),
+            curHeaders + mapOf("content-type" to listOf(RequestHandler.multipartFormData)),
+            cookies,
+        )
+        handler.queryStr = ""
+        handler.testParts = parts
+        execute(handler)
+        return handler
+    }
+
     fun sendJsonPostRequest(endpoint: String, data: Map<String, Any?>): Map<String, Any?> =
         sendEditRequest(endpoint, null, data, isPut = false).rptResponseData?.jsonMap() ?: emptyMap()
 

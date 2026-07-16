@@ -10,9 +10,12 @@ import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.splitComma
 import com.dynamicruntime.common.util.toJsonStr
+import org.eclipse.jetty.http.MultiPartConfig
+import org.eclipse.jetty.http.MultiPartFormData
 import org.eclipse.jetty.io.Content
 import org.eclipse.jetty.server.Request
 import org.eclipse.jetty.server.Response
+import org.eclipse.jetty.util.BufferUtil
 import org.eclipse.jetty.util.Callback
 import java.nio.ByteBuffer
 import kotlin.time.Instant
@@ -76,6 +79,13 @@ class RequestHandler : WebRequest {
 
     // Test-mode input body + captured response.
     var testPostData: String? = null
+
+    /**
+     * Test-mode multipart parts, standing in for a `multipart/form-data` body: field name -> value, where a
+     * file part's value is a [ContentData] and a text part's is a String — exactly what [readMultipartParts]
+     * produces from a real request, so a test exercises the same handler code an upload does.
+     */
+    var testParts: Map<String, Any?>? = null
     private val testHeaders: Map<String, List<String>>
     private var cookies: MutableMap<String, String>?
 
@@ -185,6 +195,13 @@ class RequestHandler : WebRequest {
             }
         }
 
+        // A file upload arrives as multipart/form-data rather than JSON: the parts become input fields, and a
+        // file part's value is a ContentData. Endpoint input stays a flat set of top-level fields either way,
+        // so an upload endpoint's fields validate exactly like any other's.
+        if (contentType.startsWith(multipartFormData) && postData == null) {
+            postData = readMultipartParts()
+        }
+
         // Extract the off-contract `_debug` tag (query or body): <= 40 chars, comma-separated variable names.
         val debugRaw = (queryParams[EP.debug] ?: postData?.get(EP.debug)) as? String
         if (debugRaw != null) {
@@ -203,6 +220,58 @@ class RequestHandler : WebRequest {
     private fun readBody(): String {
         val req = jettyRequest
         return if (req != null) Content.Source.asString(req) else (testPostData ?: "")
+    }
+
+    /**
+     * Reads a `multipart/form-data` body into input fields: a part with a filename becomes a [ContentData]
+     * (the upload), any other part its text value. Jetty does the parsing -- it is transport infrastructure,
+     * which the code guide admits libraries for, and a multipart parser is precisely the sort of fiddly,
+     * security-sensitive wire format not worth reimplementing.
+     *
+     * Bounded by [maxUploadSize] / [maxUploadParts]: without a cap an upload endpoint is a way to exhaust the
+     * server's memory from outside. Parts are read fully into memory, which suits the sizes this is for; a
+     * streaming path would be a different interface, and should be added when something needs it rather than
+     * guessed at now.
+     *
+     * In test mode there is no wire to parse, so [testParts] stands in -- already in the shape this produces.
+     */
+    private fun readMultipartParts(): MutableMap<String, Any?> {
+        val req = jettyRequest ?: return LinkedHashMap(testParts ?: emptyMap())
+        val config = MultiPartConfig.Builder()
+            .maxParts(maxUploadParts)
+            .maxSize(maxUploadSize)
+            .maxPartSize(maxUploadSize)
+            // Keep every part in memory. Jetty spills a part bigger than this to a file, and would then need a
+            // `location` to spill to -- without one it fails the upload outright ("No files directory
+            // configured"). Its default is 1 KB, so *almost every real upload* would take that path.
+            //
+            // Spilling would buy nothing here: the part is read straight into a ByteArray below either way, so
+            // a temp file would only add a write, a read, and a lifecycle to get wrong. The memory this costs
+            // is already bounded -- maxSize caps the whole body.
+            .maxMemoryPartSize(maxUploadSize)
+            .build()
+        val out = LinkedHashMap<String, Any?>()
+        try {
+            MultiPartFormData.getParts(req, req, contentType, config).use { parts ->
+                for (part in parts) {
+                    val name = part.name ?: continue
+                    val fileName = part.fileName
+                    out[name] = if (fileName == null) {
+                        // No filename: an ordinary form field travelling alongside the file.
+                        Content.Source.asString(part.contentSource)
+                    } else {
+                        val bytes = BufferUtil.toArray(Content.Source.asByteBuffer(part.contentSource))
+                        // The part's own Content-Type, falling back to the catch-all rather than guessing from
+                        // the extension -- a client's claim about its own bytes is all we have either way.
+                        val partType = part.headers.get("Content-Type") ?: defaultUploadMimeType
+                        ContentData(bytes, partType, saveAsFilename = fileName, inLine = false)
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            throw KdrException.mkInput("Could not read the multipart upload: ${e.message}")
+        }
+        return out
     }
 
     fun logSuccess(cxt: KdrCxt, code: Int) {
@@ -380,7 +449,23 @@ class RequestHandler : WebRequest {
         sentResponse = sent
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
+        /** The content type a file upload arrives under; matched as a prefix (the boundary follows). */
+        const val multipartFormData = "multipart/form-data"
+
+        /** What an upload part claims to be when it says nothing: the catch-all binary type. */
+        const val defaultUploadMimeType = "application/octet-stream"
+
+        /**
+         * Largest upload accepted, in bytes (32 MB), applied to the whole body and to any one part. Parts are
+         * read into memory, so without this an upload endpoint is a way to exhaust the server from outside.
+         */
+        const val maxUploadSize = 32L * 1024 * 1024
+
+        /** Most parts accepted in one upload; bounds the per-part overhead the same way. */
+        const val maxUploadParts = 20
+
         /** Splits a target path into its context root (first segment) and sub-target (remainder). */
         fun parsePath(target: String): Pair<String, String> {
             if (target.length <= 1) {

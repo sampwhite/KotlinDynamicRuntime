@@ -122,4 +122,20 @@ object SFMT {
 
     /** A full timestamp, e.g. `2021-06-01T08:00:00.000Z`. */
     const val dateTime = "date-time"
+
+    /**
+     * File content: `{"type": "string", "format": "binary"}`. This is OpenAPI's own way of saying "this field
+     * is a file" — the same spelling an OpenAPI 3.0 document uses for an upload part or a downloaded body — so
+     * a schema declaring one reads as a standard document rather than a house invention.
+     *
+     * It is a *string* type carrying a format for the same reason OpenAPI does it: JSON Schema has no binary
+     * type, and a file is only ever a string in the sense that the wire is bytes. Nothing decodes it as text —
+     * the value at runtime is a `ContentData`, and [isBinaryFormat] is what tells the validator to leave it
+     * alone rather than coerce it (see the validator's note).
+     *
+     * OpenAPI 3.1 instead layers `contentMediaType`/`contentEncoding` onto JSON Schema proper. We use the 3.0
+     * spelling because it is the one still universally understood by tooling, and because a `format` is
+     * something this schema layer already models.
+     */
+    const val binary = "binary"
 }
