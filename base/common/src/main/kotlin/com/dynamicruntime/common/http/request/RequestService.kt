@@ -222,13 +222,21 @@ class RequestService : ServiceInitializer {
         val inner = endpoint.handler(cxt, requestData)
 
         if (!handler.hasResponseBeenSent()) {
-            val envelope = buildEnvelope(cxt, handler, endpoint, requestData, inner)
-            validateResponse(cxt, schema, endpoint, envelope)
-            // Write any auth cookies BEFORE sending: sendJsonResponse commits the (Jetty) response, and headers
-            // added after commit are silently dropped. (The in-memory test client captures headers regardless of
+            // Write any auth cookies BEFORE sending: sending commits the (Jetty) response, and headers added
+            // after commit are silently dropped. (The in-memory test client captures headers regardless of
             // order, so this ordering matters only for a real browser -- which is how the bug hid.)
-            checkAddAuthCookies(cxt, handler)
-            handler.sendJsonResponse(envelope, EXC.ok)
+            if (inner is ContentData) {
+                // A download: the response *is* the file, so there is no envelope to wrap it in and nothing
+                // for output-schema validation to check -- the endpoint's output schema declares binary
+                // content (OpenAPI's `type: string, format: binary`), not a JSON shape.
+                checkAddAuthCookies(cxt, handler)
+                handler.sendContentResponse(inner, EXC.ok)
+            } else {
+                val envelope = buildEnvelope(cxt, handler, endpoint, requestData, inner)
+                validateResponse(cxt, schema, endpoint, envelope)
+                checkAddAuthCookies(cxt, handler)
+                handler.sendJsonResponse(envelope, EXC.ok)
+            }
         }
     }
 
@@ -259,7 +267,10 @@ class RequestService : ServiceInitializer {
     ): Map<String, Any?> {
         val env = LinkedHashMap<String, Any?>()
         when (endpoint.kind) {
-            EndpointKind.general -> {
+            // A `file` endpoint reaches here only for an upload: a download's handler returns the ContentData
+            // that executeEndpoint already sent, so there is no envelope to build. What is left is the upload's
+            // metadata, which is a general result and travels as one.
+            EndpointKind.general, EndpointKind.file -> {
                 env[EP.requestUri] = handler.logRequestUri
                 env[EP.duration] = cxt.durationMs()
                 env[EP.results] = inner ?: emptyMap<String, Any?>()

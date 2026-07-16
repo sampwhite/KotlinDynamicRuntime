@@ -96,7 +96,7 @@ class KdrEndpoint(
                 type = SCT.kObject
                 property(EI.path, "The endpoint's request path.", required = true)
                 property(EI.method, "The HTTP method.", required = true)
-                property(EI.kind, "The endpoint kind (general/item/list).", required = true)
+                property(EI.kind, "The endpoint kind (general/item/list/file).", required = true)
                 property(EI.namespace, "The namespace the endpoint was declared in.", required = true)
                 property(EI.description, "Human description of the endpoint.", required = true)
                 property(EI.inputSchema, $$"The endpoint's input JSON schema (with `$ref`s intact).", required = true) {
@@ -203,6 +203,68 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output, handler),
+        )
+    }
+
+    /**
+     * An endpoint whose response **is a file** rather than a JSON envelope. Its handler returns a
+     * [com.dynamicruntime.common.http.request.ContentData], which the executor sends as the body; there is no
+     * `results`/`item`/`items` wrapper, because there is nowhere in a file to put one.
+     *
+     * The output schema is OpenAPI's declaration of a downloaded body — `{"type": "string", "format":
+     * "binary"}` (see [SFMT.binary]) — so the catalog says "this returns a file", and the display engine
+     * offers a download rather than trying to parse the bytes as JSON.
+     *
+     * Input is ordinary: [inputRef] or [inputFields] name the file to fetch, and travel in the query string
+     * for a GET like any other endpoint's input.
+     */
+    fun fileDownloadEndpoint(
+        path: String,
+        description: String,
+        method: HttpMethod = HttpMethod.GET, // fetching a file is a GET unless there is a reason otherwise
+        inputRef: String? = null,
+        inputFields: (InputFieldsBuilder.() -> Unit)? = null,
+        handler: KdrEndpointHandler,
+    ) {
+        val output = SchTypeBuilder(cxt, namespace).also {
+            it.binaryContent()
+            it.description = "The file's content, returned as the response body."
+        }.data
+        val (fields, typeRef) = captureInput(inputRef, inputFields)
+        endpoints.add(
+            KdrEndpoint(path, method, EndpointKind.file, namespace, description, fields, typeRef, false, output, handler),
+        )
+    }
+
+    /**
+     * An endpoint that **receives a file**: the request arrives as `multipart/form-data`, and the input field
+     * declared [SFMT.binary] carries a [com.dynamicruntime.common.http.request.ContentData] rather than a
+     * string. Its *response* is ordinary JSON under `results` — an upload's answer is metadata (an id, a size),
+     * not a file — so only the request half is special.
+     *
+     * It is still [EndpointKind.file], because `kind` tells a client how to deal with an endpoint and the
+     * answer here is the same as a download's: this one speaks files, so send multipart and offer a file
+     * picker.
+     *
+     * Declare the file field with `binaryContent()` in [inputFields] (or on the named [inputRef] type):
+     * ```
+     * fileUploadEndpoint("/file/upload", "Upload a file.", outputRef = "FileInfo",
+     *     inputFields = { field("file", "The file to upload", required = true) { binaryContent() } }) { ... }
+     * ```
+     */
+    fun fileUploadEndpoint(
+        path: String,
+        description: String,
+        outputRef: String,
+        method: HttpMethod = HttpMethod.POST, // a body-carrying request; POST unless the caller says otherwise
+        inputRef: String? = null,
+        inputFields: (InputFieldsBuilder.() -> Unit)? = null,
+        handler: KdrEndpointHandler,
+    ) {
+        val output = scalarOutput(EP.results, "Result data (a map object) describing the uploaded file.", outputRef)
+        val (fields, typeRef) = captureInput(inputRef, inputFields)
+        endpoints.add(
+            KdrEndpoint(path, method, EndpointKind.file, namespace, description, fields, typeRef, false, output, handler),
         )
     }
 

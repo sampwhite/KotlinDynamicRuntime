@@ -148,4 +148,16 @@ open class SchTypeBuilder(
         type = SCT.string
         format = SFMT.dateTime
     }
+
+    /**
+     * Marks this schema as **file content**: OpenAPI's `{"type": "string", "format": "binary"}`.
+     *
+     * On an endpoint's input field it declares an upload — the request arrives as `multipart/form-data` and
+     * the field's value is a `ContentData`. On an endpoint's output it declares that the response body *is*
+     * the file rather than a JSON envelope. See [SFMT.binary] for why a file is spelled as a string.
+     */
+    fun binaryContent() {
+        type = SCT.string
+        format = SFMT.binary
+    }
 }

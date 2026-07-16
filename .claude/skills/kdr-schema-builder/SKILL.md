@@ -5,9 +5,15 @@ description: Author, review, or apply JSON Schema in KotlinDynamicRuntime using 
 
 # Authoring schema definitions (Sch* builders)
 
-The schema layer lives in module `base/common`, package
+The schema layer lives in module **`base/kernel`** (`commonMain`), package
 `com.dynamicruntime.common.schema`. It builds JSON Schema (draft 2020-12) as
 insertion-ordered `Map<String, Any?>` values via a Kotlin DSL.
+
+It is in the kernel so the **frontend runs the same code**: the webapp's display engine parses an endpoint's
+schema with `parseSchemaTypes` and checks input with `coerceAndValidate` — the very functions the backend
+runs — so the two cannot disagree about what a schema means. Keep it plain Kotlin over
+`Map`/`List`/primitives: no `java.*`, no reflection. (Its tests are on the JVM, in
+`base/common/src/test/.../schema/`.)
 
 ## The DSL
 
@@ -57,12 +63,25 @@ Use constants, never string literals, from `SchemaConstants.kt`:
   a leading `$` → `d` prefix (`$ref` = `SCH.dRef`); a Kotlin hard-keyword
   collision → `k` prefix (`SCH.kIf`/`kThen`/`kElse`).
 - `SCT` — `type` values (`SCT.string`, `SCT.integer`, `SCT.kObject`, `SCT.kNull`, …).
+- `SFMT` — `format` values (`SFMT.date`, `SFMT.dateTime`, `SFMT.binary`).
 
-## Dates in a schema
+## Formats: dates and files
 
-A string field can declare a date `format` (values in `object SFMT`): `dayOnlyDate()`
-(`format = SFMT.date`, `yyyy-MM-dd`) or `dateTime()` (`format = SFMT.dateTime`). A date
-format makes the field validate by parsing and defaults `allowCoerce` to true.
+A string field's `format` is how this layer says "this is not merely text". Each case is declared with a
+builder helper rather than by setting `type`/`format` by hand, and asked about with a kernel predicate
+(`isDateFormat` / `isBinaryFormat`) that the parser, the validator **and the frontend** all consult. Adding a
+format means adding a helper and a predicate — not special-casing at each call site.
+
+- **Dates** — `dayOnlyDate()` (`format = SFMT.date`, `yyyy-MM-dd`) or `dateTime()`
+  (`format = SFMT.dateTime`). A date format makes the field validate **by parsing** and defaults
+  `allowCoerce` to true.
+
+- **Files** — `binaryContent()` → `{"type": "string", "format": "binary"}`. This is **OpenAPI's** spelling for
+  a file: a string with a format, because JSON Schema has no binary type. At runtime the value is a
+  `ContentData` carrying bytes, **not** text, so the validator passes it straight through — the string checks
+  would reject it, coercion would mean `toString()` on a file, and there is nothing to check anyway (the
+  content's shape is the MIME type's business, not JSON Schema's). See `kdr-endpoint-builder` for the file
+  endpoints built on it.
 
 ## Validation & coercion
 
@@ -84,6 +103,7 @@ output is requested:
 - date-format string → `Instant`; array/object ← JSON string (`[`→`jsonArray`, else comma-split;
   `jsonMap`), then re-validated element/property-wise.
 - Missing required properties with a `default` are injected (deep-cloned), not failed.
+- A `binary`-format field is exempt from all of it (see above), though `required` still applies.
 
 `SchFailCode`: `missingRequired`, `invalidOption`, **`wrongType`** (a plain type check
 rejected it), **`badValue`** (its content was inspected and failed to coerce). A
@@ -92,13 +112,15 @@ parse-driven `badValue` carries the parser exception in `SchFailure.cause`.
 ## Casts
 
 Don't write `as`/`@Suppress("UNCHECKED_CAST")`. Use `com.dynamicruntime.common.util`:
-`toT()` (coerce to a type param), `toJsonMap()` (coerce to `Map<String,Any?>`).
+`toT()` (coerce to a type param), `toJsonMap()` (coerce to `Map<String,Any?>`), and the null-tolerant
+`toJsonMapOrEmpty()` / `toJsonListOrEmpty()` for wire values that may be absent.
 
 ## Source files
 
-- `schema/SchemaConstants.kt` (SCH/SCT/SFMT), `schema/SchTypeBuilder.kt`,
-  `schema/SchTypesBuilder.kt`, `schema/SchParser.kt`, `schema/SchValidator.kt`
-- `util/CollectionUtil.kt` (`deepClone`), `util/ConvertUtil.kt` (`toT`/`toJsonMap`/`toOptStr`)
-- Tests: `schema/SchTypeBuilderTest.kt`, `schema/SchValidatorTest.kt`
+- `base/kernel/src/commonMain/.../schema/`: `SchemaConstants.kt` (SCH/SCT/SFMT), `SchTypeBuilder.kt`,
+  `SchTypesBuilder.kt`, `SchParser.kt`, `SchValidator.kt`, `SchType.kt`, `SchProperty.kt`, `SchOption.kt`
+- `base/kernel/src/commonMain/.../util/`: `CollectionUtil.kt` (`deepClone`), `ConvertUtil.kt`
+  (`toT`/`toJsonMap`/`toOptStr`)
+- Tests: `base/common/src/test/.../schema/SchTypeBuilderTest.kt`, `SchValidatorTest.kt`, `SchParserTest.kt`
 
 For building HTTP endpoints on top of this layer, see the `kdr-endpoint-builder` skill.
