@@ -26,7 +26,7 @@ external interface AuthFlowProps : Props {
  * The register/login widget-group (issue #81): a bespoke, config-driven flow (not the generic SchemaForm). It
  * fetches the auth UI-config for its copy (the `auth` Markdown fragment file) and feature flags, then walks the
  * user through email → verification code (both modes), plus an optional password path on login. A returning
- * user is identified by a login id (email or username), so the UI works purely in emails. On success it
+ * user is identified by a login id (email or username), so the UI works purely in emails. On success, it
  * navigates home; the [AppBar] re-reads the auth config on that navigation and updates the account menu.
  */
 val AuthFlow = FC<AuthFlowProps> { props ->
@@ -37,11 +37,11 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     var email by useState("")
     var password by useState("")
     var code by useState("")
-    // The form token, set once a verification code has been sent; also marks the "enter the code" step.
+    // The form token, set once a verification code has been sent, also marks the "enter the code" step.
     var token by useState<String?>(null)
     var error by useState<String?>(null)
     var busy by useState(false)
-    // True when the code was auto-filled from a simulated email (local dev only).
+    // True when the code was autofilled from a simulated email (local dev only).
     var devFilled by useState(false)
 
     useEffectOnce {
@@ -73,7 +73,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     // Copy lookup with a fallback, so the page renders even before the fragments arrive.
     fun t(ns: String, key: String, dflt: String): String = copy[ns]?.get(key) ?: dflt
 
-    /** Runs a suspend [block] with busy/error bookkeeping. */
+    /** Runs a "suspend" [block] with busy/error bookkeeping. */
     fun run(block: suspend () -> Unit) {
         busy = true
         error = null

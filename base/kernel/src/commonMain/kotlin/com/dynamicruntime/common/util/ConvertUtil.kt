@@ -21,7 +21,7 @@ fun Any.toJsonMap(): Map<String, Any?> = toT()
 /**
  * A null-tolerant view of a (loosely typed) parsed-JSON value as a `Map<String, Any?>`, or empty when it is
  * null or not a map. Unlike [toJsonMap] (which assumes a map), this guards first -- handy when reaching into a
- * decoded JSON tree, e.g. an endpoint response envelope or a UI-config payload.
+ * decoded JSON tree, e.g., an endpoint response envelope or a UI-config payload.
  */
 fun Any?.toJsonMapOrEmpty(): Map<String, Any?> = if (this is Map<*, *>) toJsonMap() else emptyMap()
 

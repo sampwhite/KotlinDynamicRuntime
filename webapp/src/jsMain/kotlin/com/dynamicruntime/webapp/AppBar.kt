@@ -97,7 +97,7 @@ val AppBar = FC<Props> {
                     if (user != null && user.isLoggedIn) {
                         span {
                             className = ClassName("app-menu-label")
-                            +t("signedInAs", "Signed in as \${user.publicName}")
+                            +t("signedInAs", $$"Signed in as ${user.publicName}")
                                 .evalTemplate(mapOf("user" to mapOf("publicName" to (user.publicName ?: "your account"))))
                         }
                         button {

@@ -34,11 +34,12 @@ class AuthConfig(
  * The auth widget-group's backend calls, keyed off the shared kernel constants ([AEP]/[AFLD]/[AFEAT]/[UIC]) so
  * the frontend never re-hardcodes a path or a JSON key the backend serves. A successful login writes the
  * session cookie server-side (the responses are the caller's [UserProfile]); a failure raises the runtime's
- * error message (e.g. the opaque password-login failure), which the flow shows the user.
+ * error message (e.g., the opaque password-login failure), which the flow shows the user.
  *
  * A returning user is identified by a **login id** -- a username *or* an email -- so the UI can work purely in
- * emails (the backend resolves either).
+ * emails (the backend resolves either way).
  */
+@Suppress("ConstPropertyName")
 object AuthApi {
     private const val emailContactType = "email"
 
