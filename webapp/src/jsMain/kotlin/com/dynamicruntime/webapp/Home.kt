@@ -120,7 +120,7 @@ val Home = FC<Props> {
                         className = ClassName("todo-error")
                         +error!!
                     }
-                    // A document page: it's rendered Markdown, plus a way back to the welcome copy.
+                    // A document page: its rendered Markdown, plus a way back to the welcome copy.
                     doc != null -> {
                         button {
                             className = ClassName("link-button")
@@ -132,7 +132,7 @@ val Home = FC<Props> {
                     }
                     // The welcome page: copy from the fragment file, and optionally the links inline.
                     current != null -> {
-                        // The hero: the brand mark beside the wordmark. The wordmark is copied like everything
+                        // The hero: the brand mark beside the wordmark. The wordmark is "copy" like everything
                         // else here, so a deployment that names no brand simply gets no hero.
                         copy.opt("home", "brand")?.let { brandName ->
                             div {
