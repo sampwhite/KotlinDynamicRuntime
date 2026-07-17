@@ -1,7 +1,10 @@
 package com.dynamicruntime.common.http.request
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.RID
 import com.dynamicruntime.common.exception.EXC
@@ -337,14 +340,25 @@ class RequestHandler : WebRequest {
      * throws its own error.
      */
     private fun clientMessage(cxt: KdrCxt?, t: Throwable, kdrE: KdrException?): RenderedText {
-        val msg = kdrE?.msg
-            ?: return RenderedText(kdrE?.fullMessage() ?: (t.message ?: "Internal error."), fromFragment = false)
         // Resolve through the fragment service in the request's context (null cxt/service -> the contained
         // key-path fallback in renderMsg). A future service resolves per-context; the seam lives there.
         val resolve = { f: String, n: String, k: String ->
             cxt?.let { c -> MarkdownFragmentService.get(c)?.resolveFragment(c, f, n, k) }
         }
-        return renderMsg(msg, kdrE.msgParams, resolve) { LogRequest.warn(cxt, it) }
+        val warn = { s: String -> LogRequest.warn(cxt, s) }
+
+        // A sensitive error, where the deployment obfuscates, shows the generic message instead of its own
+        // (issue #108). "Log the original, send the obfuscated": render what the user would otherwise see and
+        // log it, so the real detail (e.g. the email) stays recoverable, then send the generic.
+        if (kdrE?.sensitive == true && cxt != null && obfuscateSensitiveErrors(cxt.instanceConfig)) {
+            val original = kdrE.msg?.let { renderMsg(it, kdrE.msgParams, resolve, warn).text } ?: kdrE.fullMessage()
+            LogRequest.info(cxt) { "Sensitive error obfuscated for the client; original message: $original" }
+            return renderMsg(obfuscatedErrorMsg, emptyMap(), resolve, warn)
+        }
+
+        val msg = kdrE?.msg
+            ?: return RenderedText(kdrE?.fullMessage() ?: (t.message ?: "Internal error."), fromFragment = false)
+        return renderMsg(msg, kdrE.msgParams, resolve, warn)
     }
 
     /**
@@ -551,6 +565,22 @@ class RequestHandler : WebRequest {
          * the source behind a rendered sentence. Off by default.
          */
         const val explainError = "explainError"
+
+        /** The env var that defaults [ACFG.obfuscateSensitiveErrors] when the config option is unset (issue #108). */
+        const val obfuscateErrorsEnvVar = "KDR_OBFUSCATE_ERRORS"
+
+        /** The generic message shown for a `sensitive` error when a deployment obfuscates; copy in errors.md. */
+        val obfuscatedErrorMsg = KdrMsg("errors", "general", "obfuscated")
+
+        /**
+         * Whether [config] obfuscates sensitive error messages (issue #108): the [ACFG.obfuscateSensitiveErrors]
+         * config option wins (so tests set it directly), then the [obfuscateErrorsEnvVar] env var, then whether
+         * the environment is [ENV.prod] -- so a prod deployment obfuscates by default and others do not.
+         */
+        fun obfuscateSensitiveErrors(config: KdrInstanceConfig): Boolean =
+            (config.get(ACFG.obfuscateSensitiveErrors) as? Boolean)
+                ?: config.getEnvVar(obfuscateErrorsEnvVar)?.toBooleanStrictOrNull()
+                ?: (config.env == ENV.prod)
 
         /**
          * Renders a [KdrMsg] to client text (issue #108): [resolve] the fragment template, sanitize the string

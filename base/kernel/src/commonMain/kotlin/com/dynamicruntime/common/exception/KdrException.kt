@@ -46,6 +46,12 @@ class KdrException(
     val msg: KdrMsg? = null,
     /** Substitution data for [msg]'s template (`${key}` -> value), used when [msg] is set. */
     val msgParams: Map<String, Any?> = emptyMap(),
+    /**
+     * Whether this error may reveal something sensitive -- notably whether an account exists for an email a
+     * user supplied. A deployment configured to obfuscate replaces its client message with a generic one at
+     * the top-level handler, logging the real one (issue #108). The error is otherwise unchanged.
+     */
+    val sensitive: Boolean = false,
 ) : Exception(message, cause) {
 
     /**
@@ -128,8 +134,10 @@ class KdrException(
             msg: KdrMsg,
             params: Map<String, Any?> = emptyMap(),
             code: Int = EXC.badInput,
+            sensitive: Boolean = false,
             cause: Throwable? = null,
-        ): KdrException = KdrException(msg.path, cause, code, SRC.system, ACT.code, msg = msg, msgParams = params)
+        ): KdrException =
+            KdrException(msg.path, cause, code, SRC.system, ACT.code, msg = msg, msgParams = params, sensitive = sensitive)
 
         /**
          * A conversion/parsing error. These can often be turned into bad-input
