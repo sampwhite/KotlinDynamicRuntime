@@ -35,8 +35,11 @@
 # +expiresNote The code expires in fifteen minutes.
 # +resend Send a new code
 
-/- Error messages (issue #108). The backend renders these server-side from KdrException's KdrMsg -- they are
-   shown to the user as plain text (NOT markdown-rendered), so no backticks/emphasis here. Keys match AERR. -/
+/- Error messages (issue #108). The backend renders these server-side from KdrException's KdrMsg, and marks the
+   response errorFromFragment=true. Markdown is allowed here (unlike the earlier note): it is safe because the
+   substituted ${...} params are run through sanitizeForDisplay, so a param cannot inject a link. The frontend
+   still shows these as plain text today, so markdown would render literally until it renders them as markdown
+   (a later frontend change) -- author with that in mind. Keys match AERR. -/
 # @error
 # +codeIncorrect The verification code is incorrect.
 # +tokenExpired The sign-in form has expired. Please request a new code and try again.
