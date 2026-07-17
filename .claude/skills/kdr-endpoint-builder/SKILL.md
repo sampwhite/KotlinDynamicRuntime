@@ -118,9 +118,9 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
   `$defs`. The *input* is not realized here (a type ref cannot be flattened until its target is bound); it is
   resolved on demand by `resolveEndpointInputType` against the compiled types.
 - Protocol keys are constants in `object EP` (kernel): `EP.results`, `EP.item`, `EP.items`, `EP.limit`,
-  `EP.numItems`, `EP.hasMore`, `EP.numAvailable`, `EP.requestUri`, `EP.duration`, `EP.errorCode`,
-  `EP.errorMessage`, and the off-contract `EP.debug` (`_debug`) / `EP.meta` (`_meta`).
-  `defaultListLimit = 100`.
+  `EP.numItems`, `EP.hasMore`, `EP.numAvailable`, `EP.requestUri`, `EP.duration`; the error keys `EP.status`,
+  `EP.errorCode`, `EP.errorMessage`, `EP.extraData` (see *How one runs*); and the off-contract `EP.debug`
+  (`_debug`) / `EP.meta` (`_meta`). `defaultListLimit = 100`.
 
 ## How one runs
 
@@ -129,7 +129,19 @@ Built endpoints are collected by `SchemaCollector` (each component's `addSchema`
 input is coerced+validated against the resolved input type (a failure is a 400), the handler runs, and its
 return is wrapped in the envelope and sent — unless it already sent a response, or returned a `ContentData`.
 
-A handler faults with `KdrException`, whose HTTP `code` carries (`EXC.notFound` → 404, `mkInput` → 400).
+A handler faults with `KdrException`, whose HTTP `code` carries (`EXC.notFound` → 404, `mkInput` → 400). The
+non-2xx body is a standardized envelope (issue #103), built by `RequestHandler.errorEnvelope`:
+
+- **`status`** — the HTTP code (the exception's `code`); a number, *not* `errorCode`. This is the field that
+  named the HTTP code before #103.
+- **`errorCode`** — the *logical* code a client branches on (e.g. a parser's `MarkdownError`), promoted to the
+  top level from the exception's `extraData` under `KdrException.errorCodeKey`. **Absent** when there is none —
+  most errors have no logical code.
+- **`errorMessage`** — the message (`fullMessage()`, i.e. the cause chain). Still the raw message for every
+  code today; fragment-resolved copy and 5xx redaction are later phases of #97.
+- **`requestUri`** — as on a success response.
+- **`extraData`** — whatever remains of the exception's bag (e.g. `offset` / `line` / `lineCol`), **nested**
+  under its own key so it can never shadow a protocol field. Absent when empty.
 
 ## Request context
 
