@@ -69,6 +69,27 @@ class KdrCxtTest : StringSpec({
         sub.cxtPath() shouldBe "2026071712000012307:${root.loggingId}:${sub.loggingId}"
     }
 
+    "hasDebug matches a whole comma-separated word, not a substring (issue #107)" {
+        val cxt = KdrCxt.mkSimpleCxt("request")
+
+        cxt.hasDebug("explainInput") shouldBe false // no _debug tag at all
+
+        cxt.debug = "explainInput"
+        cxt.hasDebug("explainInput") shouldBe true
+
+        // A tag among several, and tolerant of the whitespace splitComma trims.
+        cxt.debug = "foo, explainInput ,bar"
+        cxt.hasDebug("explainInput") shouldBe true
+        cxt.hasDebug("foo") shouldBe true
+        cxt.hasDebug("bar") shouldBe true
+
+        // The bug this replaces: a substring must NOT match.
+        cxt.debug = "explainInputFully"
+        cxt.hasDebug("explainInput") shouldBe false
+        cxt.debug = "explainInput"
+        cxt.hasDebug("explain") shouldBe false
+    }
+
     "now is shifted by the time-travel offset" {
         val cxt = KdrCxt.mkSimpleCxt("root")
         val base = cxt.now().toEpochMilliseconds()

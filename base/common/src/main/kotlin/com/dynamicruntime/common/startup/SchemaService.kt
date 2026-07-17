@@ -114,19 +114,19 @@ class SchemaService : ServiceInitializer {
             KdrEndpoint.defineInfoType(this)
             type("EndpointCatalog") {
                 type = SCT.kObject
-                property(EI.endpoints, "The matching endpoints, each rendered with its `\$ref`s intact.", required = true) {
+                property(EI.endpoints, $$"The matching endpoints, each rendered with its `$ref`s intact.", required = true) {
                     type = SCT.array
                     items { ref(KdrEndpoint.infoTypeName) }
                 }
                 // The `$defs` bag: every type referenced by the endpoints, keyed by qualified name. A generic
-                // object (no declared properties) so any type body is accepted.
+                // object (no declared properties), so any type body is accepted.
                 property(SCH.dDefs, "Every type referenced by the endpoints, keyed by name, for the client to resolve.", required = true) {
                     type = SCT.kObject
                 }
             }
             generalEndpoint(
                 "/schema/endpoints",
-                "Lists the registered endpoints (with input/output schema and a shared \$defs), filtered by namespace, HTTP method, or a path regex.",
+                $$"Lists the registered endpoints (with input/output schema and a shared $defs), filtered by namespace, HTTP method, or a path regex.",
                 HttpMethod.GET,
                 outputRef = "EndpointCatalog",
                 inputRef = "EndpointQuery",
@@ -146,7 +146,7 @@ class SchemaService : ServiceInitializer {
             generalEndpoint(
                 "/schema/endpoint",
                 "Looks up a single registered endpoint by exact HTTP method and path, in the same shape as " +
-                    "/schema/endpoints (a one-element `endpoints` list plus the shared \$defs).",
+                        $$"/schema/endpoints (a one-element `endpoints` list plus the shared $defs).",
                 HttpMethod.GET,
                 outputRef = "EndpointCatalog",
                 inputRef = "EndpointLookup",
@@ -254,7 +254,7 @@ class SchemaService : ServiceInitializer {
             listEndpoint(
                 "/schema/complex",
                 "Processes a deeply nested, recursive object, expanding its tree's parent chain into result " +
-                    "items (capped by `limit`). Exercises deep \$ref validation and the recursive \$defs population.",
+                        $$"items (capped by `limit`). Exercises deep $ref validation and the recursive $defs population.",
                 outputRef = "ComplexResult",
                 method = HttpMethod.PUT,
                 inputRef = "ComplexQuery",
@@ -316,7 +316,7 @@ class SchemaService : ServiceInitializer {
             }
 
             // With _debug=explainInput, echo the evaluated request parameters back under _meta.
-            if (cxt.debug?.contains(SS.explainInput) == true) {
+            if (cxt.hasDebug(SS.explainInput)) {
                 cxt.request?.responseMeta?.put(SS.paramsEvaluated, query)
             }
 
