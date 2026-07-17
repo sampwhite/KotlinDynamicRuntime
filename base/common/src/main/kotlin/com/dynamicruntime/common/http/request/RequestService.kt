@@ -147,6 +147,11 @@ class RequestService : ServiceInitializer {
         handler.sectionRules = sectionRulesMap[handler.section]
         handler.decodeRequestData()
         cxt.debug = handler.debug // the request's _debug tag, if any, rides on the context (and into logs)
+        // Client-supplied identity (issue #105): the app id for content selection, and the trace id that the
+        // frontend minted -- stamped on so every log line for this request carries it. Both null when the
+        // client sent neither header nor _param; the request's own loggingId still identifies it.
+        cxt.appId = handler.appId()
+        cxt.traceId = handler.traceId()
 
         // Auth is stubbed until the auth subsystem is ported.
         extractAuth(cxt, handler)

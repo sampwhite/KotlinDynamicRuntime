@@ -80,5 +80,27 @@ object EP {
     const val meta = "_meta" // response: handler-injected extra structure (KdrRequest.responseMeta)
 }
 
+/**
+ * Client-supplied request identity (issue #105). The frontend attaches both to every call so the backend can
+ * act on them:
+ *  - **appId** selects content — the application, plus the locale suffix an anonymous visitor's backend cannot
+ *    know (see `Http.appId`). Consumed once the backend honours it (fragment resolution, a later phase).
+ *  - **traceId** correlates a call across tiers: the frontend mints it, the backend stamps it onto the
+ *    request context so every log line for that call carries it, and a troubleshooter greps one id from
+ *    browser to server.
+ *
+ * Each travels two ways: a **header** (what the frontend sends) or an off-contract **`_` param** (the
+ * alternate schema validation already lets through, handy for a link or a bare `curl`). Shared here, in the
+ * kernel, so the frontend sets exactly the names the backend reads. Header casing is canonical; HTTP header
+ * lookup is case-insensitive regardless.
+ */
+@Suppress("ConstPropertyName")
+object RID {
+    const val appIdHeader = "X-Kdr-App-Id"
+    const val traceIdHeader = "X-Kdr-Trace-Id"
+    const val appIdParam = "_appId"
+    const val traceIdParam = "_traceId"
+}
+
 /** Default cap on the number of items a list endpoint returns. */
 const val defaultListLimit = 100

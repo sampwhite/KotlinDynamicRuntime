@@ -2,6 +2,7 @@ package com.dynamicruntime.common.http.request
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.RID
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.startup.InstanceRegistry
@@ -215,6 +216,20 @@ class RequestHandler : WebRequest {
             }
             debug = debugRaw
         }
+    }
+
+    /**
+     * The client's app id / trace id for this request (issue #105): the header, or its `_` param alternate
+     * (both read after [decodeRequestData], so a body param is seen too). **`null` unless it is a short, safe
+     * token** -- these go straight into log lines and content lookups, so an over-long or control-laden value
+     * is dropped rather than trusted, and a bad id degrades correlation instead of failing the request.
+     */
+    fun appId(): String? = clientId(RID.appIdHeader, RID.appIdParam)
+    fun traceId(): String? = clientId(RID.traceIdHeader, RID.traceIdParam)
+
+    private fun clientId(header: String, param: String): String? {
+        val raw = getRequestHeader(header) ?: (queryParams[param] ?: postData?.get(param)) as? String ?: return null
+        return raw.takeIf { it.length in 1..64 && it.all { c -> c.isLetterOrDigit() || c in "._:-" } }
     }
 
     private fun readBody(): String {

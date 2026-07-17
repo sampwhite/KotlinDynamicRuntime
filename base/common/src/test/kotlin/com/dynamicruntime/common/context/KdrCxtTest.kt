@@ -3,6 +3,7 @@ package com.dynamicruntime.common.context
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 
 class KdrCxtTest : StringSpec({
 
@@ -46,6 +47,26 @@ class KdrCxtTest : StringSpec({
         (sub.loggingId == root.loggingId) shouldBe false
         sub.parentLoggingIds shouldContain root.loggingId
         sub.cxtPath() shouldBe "${root.loggingId}:${sub.loggingId}"
+    }
+
+    "a client trace id leads the context path and the log label (issue #105)" {
+        val cxt = KdrCxt.mkSimpleCxt("request")
+        cxt.traceId = "2026071712000012307"
+
+        cxt.cxtPath() shouldBe "2026071712000012307:${cxt.loggingId}"
+        // logInfo is what a log line actually renders, so the trace id has to reach it, not just cxtPath.
+        cxt.logInfo() shouldContain "2026071712000012307:"
+    }
+
+    "request identity (appId, traceId) travels to sub contexts, so their logs correlate too" {
+        val root = KdrCxt.mkSimpleCxt("request")
+        root.appId = "kdr.en"
+        root.traceId = "2026071712000012307"
+        val sub = root.mkSubContext("child")
+
+        sub.appId shouldBe "kdr.en"
+        sub.traceId shouldBe "2026071712000012307"
+        sub.cxtPath() shouldBe "2026071712000012307:${root.loggingId}:${sub.loggingId}"
     }
 
     "now is shifted by the time-travel offset" {
