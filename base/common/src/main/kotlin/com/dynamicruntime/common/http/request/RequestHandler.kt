@@ -246,7 +246,7 @@ class RequestHandler : WebRequest {
             // configured"). Its default is 1 KB, so *almost every real upload* would take that path.
             //
             // Spilling would buy nothing here: the part is read straight into a ByteArray below either way, so
-            // a temp file would only add a write, a read, and a lifecycle to get wrong. The memory this costs
+            // a temp file would only add a "write", a read, and a lifecycle to get wrong. The memory this costs
             // is already bounded -- maxSize caps the whole body.
             .maxMemoryPartSize(maxUploadSize)
             .build()
@@ -257,7 +257,7 @@ class RequestHandler : WebRequest {
                     val name = part.name ?: continue
                     val fileName = part.fileName
                     out[name] = if (fileName == null) {
-                        // No filename: an ordinary form field travelling alongside the file.
+                        // No filename: an ordinary form field traveling alongside the file.
                         Content.Source.asString(part.contentSource)
                     } else {
                         val bytes = BufferUtil.toArray(Content.Source.asByteBuffer(part.contentSource))
@@ -496,7 +496,7 @@ class RequestHandler : WebRequest {
          *    [extraData] (where areas write it under [KdrException.errorCodeKey]) to the top level. Absent when
          *    there is none -- most errors have no logical code.
          *  - [EP.errorMessage] / [EP.requestUri]: the human sentence, and the request it belongs to.
-         *  - [EP.extraData]: whatever remains of the exception's bag (e.g. a parser's offset/line/lineCol),
+         *  - [EP.extraData]: whatever remains of the exception's bag (e.g., a parser's offset/line/lineCol),
          *    **nested** under its own key so an area's entry can never shadow a protocol field. Absent when
          *    empty.
          *

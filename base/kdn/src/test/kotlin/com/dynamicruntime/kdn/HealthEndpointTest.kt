@@ -18,7 +18,7 @@ import io.kotest.matchers.shouldBe
 class HealthEndpointTest : StringSpec({
 
     // The default-boot, read-only tests share one instance (its init is cached by instance name, so it runs
-    // once) and vary only the cheap context name. The context-root override test at the end needs its own
+    // once) and vary only the inexpensive context name. The context-root override test at the end needs its own
     // instance -- it boots with a different apiContextRoot, and the instance cache is keyed on that name.
     fun client(cxtName: String): TestHttpClient =
         TestHttpClient(Startup.mkTestBootCxt(cxtName, "healthEndpointTest").instanceConfig)
@@ -94,7 +94,7 @@ class HealthEndpointTest : StringSpec({
         val client = TestHttpClient(cxt.instanceConfig) // auto-routes under the configured "api2"
 
         client.sendGetRequest("/health").rptStatusCode shouldBe 200
-        // The default kda root is no longer served on this instance.
+        // This instance no longer serves the default kda root.
         client.sendGetRequestRaw("/${ContextRoot.kda}/health").rptStatusCode shouldBe 404
     }
 })

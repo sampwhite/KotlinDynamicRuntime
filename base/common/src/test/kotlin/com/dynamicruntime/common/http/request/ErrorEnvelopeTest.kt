@@ -10,6 +10,7 @@ import io.kotest.matchers.string.shouldContain
 
 // A stand-in for a real logical code -- an enum, exactly as MarkdownError/ScriptError are. The wire value is
 // its name, so promoting one to the client depends on that serialization holding.
+@Suppress("EnumEntryName")
 private enum class SampleCode { badThing }
 
 /**

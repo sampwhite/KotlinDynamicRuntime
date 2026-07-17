@@ -65,7 +65,7 @@ object EP {
     //                error, how to follow up a failed purchase. Promoted here from the exception's extraData
     //                (see `KdrException.errorCodeKey`, the same key one layer down); absent when there is none.
     //  - `errorMessage` the human sentence to show.
-    //  - `extraData` an area-specific bag (e.g. a parser's offset/line/lineCol), nested so it can never shadow
+    //  - `extraData` an area-specific bag (e.g., a parser's offset/line/lineCol), nested so it can never shadow
     //                a protocol field; absent when empty.
     const val status = "status"
     const val errorCode = "errorCode"
