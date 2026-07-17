@@ -165,8 +165,8 @@ class RequestHandler : WebRequest {
         try {
             // The query string is parsed *before* the context, so the request's client identity (issue #105)
             // is on the KdrCxt from the moment it exists -- one atomic setup, not a value patched in later. The
-            // query is cheap and already in the URL; the request *body* stays gated behind the context-root
-            // check (a probe submits no body for parsing).
+            // query is inexpensive and already in the URL; the request *body* stays gated behind the context-root
+            // check (a probe submits no *body* for parsing).
             parseQueryParams()
             val config = InstanceRegistry.getOrCreateInstanceConfig(instanceName)
             cxt = InstanceRegistry.createCxt("request", config)
