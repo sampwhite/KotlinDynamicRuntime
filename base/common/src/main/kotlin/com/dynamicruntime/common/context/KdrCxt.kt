@@ -172,7 +172,7 @@ class KdrCxt(
      * ids, then this context's own. This is the rich form -- it grows with nesting, and deep executor-pool
      * work can make it long -- so it is meant for a structured sink (a future OpenSearch-style destination
      * that also carries the device id and more), **not** the console. The console log uses [logInfo], which is
-     * deliberately minimal (this context only). Currently no sink consumes the full path; keep it that way for
+     * deliberately minimal (this context only). Currently, no sink consumes the full path; keep it that way for
      * the console when one is added.
      */
     fun cxtPath(): String = (listOfNotNull(traceId) + parentLoggingIds + loggingId).joinToString(":")
@@ -206,7 +206,7 @@ class KdrCxt(
         /** Creates a simple top-level context with placeholder config and user. */
         fun mkSimpleCxt(cxtName: String): KdrCxt = KdrCxt(cxtName)
 
-        /** Creates a simple top-level context bound to the given [instanceConfig] (e.g. a pre-boot config). */
+        /** Creates a simple top-level context bound to the given [instanceConfig] (e.g., a pre-boot config). */
         fun mkSimpleCxt(cxtName: String, instanceConfig: KdrInstanceConfig): KdrCxt =
             KdrCxt(cxtName, instanceConfig)
     }
