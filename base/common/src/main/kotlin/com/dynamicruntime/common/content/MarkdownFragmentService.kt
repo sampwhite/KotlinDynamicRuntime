@@ -8,6 +8,7 @@ import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.parseMarkdownFragments
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Serves Markdown *fragment* files as a two-tier `namespace -> (key -> value)` JSON map (issue #59), under the
@@ -82,5 +83,21 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
          * `fileId:buildId` (the UI-config endpoints); the fragment request itself only strips it.
          */
         fun fragmentBuildId(fileId: String): String? = ContentResources.buildId(resourceDir, fileId)
+
+        /** Fragment files parsed once and memoized by fileId. The files are classpath resources, fixed at build. */
+        private val parsedByFileId = ConcurrentHashMap<String, Map<String, Map<String, String>>>()
+
+        /**
+         * The value at `<fileId>.md` → [namespace] → [key], or null when the file or entry is absent. Used
+         * server-side (issue #108: rendering error copy) rather than over HTTP, and memoized because it is hit
+         * per error -- it must not re-read and re-parse the classpath file each time. Absent files memoize as
+         * empty, which is correct: the resource set is fixed at build.
+         */
+        fun resolveFragment(fileId: String, namespace: String, key: String): String? {
+            val parsed = parsedByFileId.getOrPut(fileId) {
+                ContentResources.readText(resourceDir, fileId)?.parseMarkdownFragments() ?: emptyMap()
+            }
+            return parsed[namespace]?.get(key)
+        }
     }
 }

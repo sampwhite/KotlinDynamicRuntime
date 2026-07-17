@@ -86,3 +86,30 @@ object AFRAG {
     const val auth = "auth"
     const val profile = "profile"
 }
+
+/**
+ * Keys of the `error` namespace in the `auth` fragment file: the copy for auth error messages (issue #108).
+ * The backend renders these from `KdrException`'s `KdrMsg` at the top-level handler -- the sentence lives here
+ * (in `auth.md`), not duplicated in Kotlin. The `${...}`-bearing ones take the noted params.
+ */
+@Suppress("ConstPropertyName")
+object AERR {
+    const val ns = "error"
+
+    // Parameter-free.
+    const val codeIncorrect = "codeIncorrect"
+    const val tokenExpired = "tokenExpired"
+    const val emailNoAt = "emailNoAt"
+    const val loginFailed = "loginFailed"
+    const val tooManyVerifyAttempts = "tooManyVerifyAttempts"
+    const val tooManyVerifyRequests = "tooManyVerifyRequests"
+    const val tooManyLoginAttempts = "tooManyLoginAttempts"
+
+    // Account-existence (email leak); take a param. Marked sensitive for obfuscation in a later phase.
+    const val noAccount = "noAccount" // param: loginId
+    const val emailNotAvailable = "emailNotAvailable" // param: email
+
+    /** Param keys the `${...}` placeholders reference. */
+    const val loginIdParam = "loginId"
+    const val emailParam = "email"
+}

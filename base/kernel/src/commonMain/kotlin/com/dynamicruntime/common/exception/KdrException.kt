@@ -1,6 +1,18 @@
 package com.dynamicruntime.common.exception
 
 /**
+ * Points an error message at fragment copy (issue #108) instead of a hard-coded string: the file
+ * `<fileId>.md`, then `[namespace][key]` within its parsed `namespace -> key -> value` map. The value is a
+ * template rendered with [KdrException.msgParams] at the *top-level error handler*, so a throw site deep in
+ * the code names copy without knowing the caller's locale or touching a fragment file -- and the sentence
+ * lives once, in the fragment, not duplicated in Kotlin.
+ */
+class KdrMsg(val fileId: String, val namespace: String, val key: String) {
+    /** The `<fileId>/<namespace>/<key>` path -- the exception's fallback message, and what a failed resolve shows. */
+    val path: String get() = "$fileId/$namespace/$key"
+}
+
+/**
  * The single, universal exception for the runtime. Per the code guide, the code
  * base defines no other exception classes. Rather than many specialized
  * exceptions, one richly described exception handles the many cases that, in
@@ -14,6 +26,8 @@ package com.dynamicruntime.common.exception
  *  - [source]: a generic sign of where the issue showed up (see [SRC]).
  *  - [activity]: a generic sign of what was being done (see [ACT]).
  *  - [extraData]: a map of additional data that may be useful for logging or error handling.
+ *  - [msg]/[msgParams]: when set, the *wire* message is rendered from this fragment reference (issue #108) at
+ *    the top-level error handler; [message] stays the log/fallback text (see [mkMsg]).
  *
  * Error handling is groomed so that, looking at the full stack of causes, one can
  * tell where an error occurred and what its precise source was. In some cases
@@ -28,6 +42,10 @@ class KdrException(
     val source: String = SRC.system,
     val activity: String = ACT.general,
     val extraData: MutableMap<String, Any?> = LinkedHashMap(),
+    /** Fragment copy to render for the client message, or null to use [message] verbatim (issue #108). */
+    val msg: KdrMsg? = null,
+    /** Substitution data for [msg]'s template (`${key}` -> value), used when [msg] is set. */
+    val msgParams: Map<String, Any?> = emptyMap(),
 ) : Exception(message, cause) {
 
     /**
@@ -98,6 +116,20 @@ class KdrException(
             }
             return KdrException(message, cause, EXC.badInput, source, activity)
         }
+
+        /**
+         * An error whose client message comes from fragment copy (issue #108): [msg] names the template,
+         * [params] fill its `${...}`, and the top-level handler renders it. The exception's own [message] is
+         * [msg]'s key [path] -- diagnostic in a log or stack, and what a failed resolve falls back to, without
+         * the sentence living in Kotlin. [code] defaults to 400 (most such errors are bad input); pass 401/429
+         * for the auth/rate-limit cases.
+         */
+        fun mkMsg(
+            msg: KdrMsg,
+            params: Map<String, Any?> = emptyMap(),
+            code: Int = EXC.badInput,
+            cause: Throwable? = null,
+        ): KdrException = KdrException(msg.path, cause, code, SRC.system, ACT.code, msg = msg, msgParams = params)
 
         /**
          * A conversion/parsing error. These can often be turned into bad-input

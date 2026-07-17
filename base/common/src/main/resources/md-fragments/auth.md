@@ -20,7 +20,6 @@
 # +codeSent We emailed a verification code to `${user.email}`.
 # +newPasswordLabel New password
 # +newPasswordHelp You can use it to sign in from this browser next time.
-# +failed Password login failed either because of an incorrect password or because you need to log in by verification code to activate password logins.
 
 # @register
 # +title Create your account
@@ -35,3 +34,16 @@
 # @verify
 # +expiresNote The code expires in fifteen minutes.
 # +resend Send a new code
+
+/- Error messages (issue #108). The backend renders these server-side from KdrException's KdrMsg -- they are
+   shown to the user as plain text (NOT markdown-rendered), so no backticks/emphasis here. Keys match AERR. -/
+# @error
+# +codeIncorrect The verification code is incorrect.
+# +tokenExpired The sign-in form has expired. Please request a new code and try again.
+# +emailNoAt An email address must contain an '@'.
+# +loginFailed Password login failed, either because the password was incorrect or because you need to log in by verification code to activate password logins.
+# +tooManyVerifyAttempts Too many verification attempts. Please request a new code and try again.
+# +tooManyVerifyRequests Too many verification requests. Please wait a while before requesting another code.
+# +tooManyLoginAttempts Too many failed login attempts. Please wait and try again, or log in by verification code.
+# +noAccount No account was found for ${loginId}.
+# +emailNotAvailable The email ${email} is not available for creating a new account.

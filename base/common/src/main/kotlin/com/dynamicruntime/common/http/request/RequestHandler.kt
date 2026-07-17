@@ -1,11 +1,14 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.RID
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.startup.InstanceRegistry
+import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.formatCookieDate
 import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.jsonMap
@@ -308,17 +311,49 @@ class RequestHandler : WebRequest {
     private fun handleException(cxt: KdrCxt?, t: Throwable) {
         val kdrE = t as? KdrException
         val code = kdrE?.code ?: EXC.internalError
-        val message = kdrE?.fullMessage() ?: (t.message ?: "Internal error.")
+        // The log always gets the real exception (its message is the raw text, or a KdrMsg's key path) plus the
+        // stack; only the *wire* message is fragment-rendered.
         LogRequest.error(cxt, "Error for request $logRequestUri.", t)
+        val message = clientMessage(cxt, t, kdrE)
+        val extraData = errorExtraData(cxt, kdrE)
         try {
             if (!sentResponse) {
-                sendJsonResponse(errorEnvelope(code, message, logRequestUri, kdrE?.extraData), code)
+                sendJsonResponse(errorEnvelope(code, message, logRequestUri, extraData), code)
             } else {
                 jettyCallback?.succeeded()
             }
         } catch (inner: Throwable) {
             jettyCallback?.failed(inner)
         }
+    }
+
+    /**
+     * The message sent to the client. When the exception carries a [KdrMsg] (issue #108) it is rendered from
+     * the fragment template with its params; otherwise the exception's own message stands. A failure to
+     * resolve or render is contained -- the key path is sent and a warning logged -- so error handling never
+     * throws its own error.
+     */
+    private fun clientMessage(cxt: KdrCxt?, t: Throwable, kdrE: KdrException?): String {
+        val msg = kdrE?.msg ?: return kdrE?.fullMessage() ?: (t.message ?: "Internal error.")
+        return renderMsg(msg, kdrE.msgParams, MarkdownFragmentService::resolveFragment) { LogRequest.warn(cxt, it) }
+    }
+
+    /**
+     * The exception's [KdrException.extraData], plus -- only under the `_debug=explainError` tag -- a dump of
+     * how a [KdrMsg] message was built (issue #108), so a developer can see the fragment reference and params
+     * behind a rendered sentence. Off by default, so the wire stays clean.
+     */
+    private fun errorExtraData(cxt: KdrCxt?, kdrE: KdrException?): Map<String, Any?>? {
+        val base = kdrE?.extraData
+        val msg = kdrE?.msg
+        if (msg == null || cxt?.hasDebug(explainError) != true) {
+            return base
+        }
+        val merged = LinkedHashMap<String, Any?>(base ?: emptyMap())
+        merged[explainError] = linkedMapOf(
+            "fileId" to msg.fileId, "namespace" to msg.namespace, "key" to msg.key, "params" to kdrE.msgParams,
+        )
+        return merged
     }
 
     // --- response writing (Jetty or rpt* capture) ---------------------------
@@ -501,6 +536,37 @@ class RequestHandler : WebRequest {
 
     @Suppress("ConstPropertyName")
     companion object {
+        /**
+         * The `_debug` tag that dumps how a fragment-backed error message was built (issue #108) -- the
+         * [KdrMsg] file/namespace/key and its params -- into the response's `extraData`, so a developer can see
+         * the source behind a rendered sentence. Off by default.
+         */
+        const val explainError = "explainError"
+
+        /**
+         * Renders a [KdrMsg] to client text (issue #108): [resolve] the fragment template and substitute
+         * [params], or -- **contained** -- fall back to the key [path] when the template is missing or its
+         * substitution fails, reporting via [warn]. Pure (the resolver and logger are passed in), so the
+         * fallback and the substitution are unit-testable; [clientMessage] supplies the real fragment resolver.
+         */
+        fun renderMsg(
+            msg: KdrMsg,
+            params: Map<String, Any?>,
+            resolve: (String, String, String) -> String?,
+            warn: (String) -> Unit,
+        ): String = try {
+            val template = resolve(msg.fileId, msg.namespace, msg.key)
+            if (template == null) {
+                warn("No error fragment for ${msg.path}; sending the key path.")
+                msg.path
+            } else {
+                template.evalTemplate(params)
+            }
+        } catch (inner: Throwable) {
+            warn("Could not render error fragment ${msg.path}: ${inner.message}")
+            msg.path
+        }
+
         /** The content type a file upload arrives under; matched as a prefix (the boundary follows). */
         const val multipartFormData = "multipart/form-data"
 

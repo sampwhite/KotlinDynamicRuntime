@@ -214,4 +214,29 @@ class AuthFlowTest : StringSpec({
             ),
         )["userId"] shouldBe userId
     }
+
+    "auth error messages are rendered from the auth.md fragment (issue #108)" {
+        val client = TestHttpClient(Startup.mkTestBootCxt("authErr", "authErrTest").instanceConfig)
+        val token = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
+
+        // A verify to an unknown account: the noAccount template, with ${loginId} substituted.
+        val noAcct = client.sendJsonPostRequest(
+            "/auth/user/sendVerify", mapOf("loginId" to "ghost@example.com", "formAuthToken" to token),
+        )
+        noAcct[EP.errorMessage] shouldBe "No account was found for ghost@example.com."
+
+        // A wrong verification code on registration: the parameter-free codeIncorrect template.
+        client.sendJsonPostRequest(
+            "/auth/newContact/sendVerify",
+            mapOf("contactAddress" to email, "contactType" to "email", "formAuthToken" to token),
+        )
+        val badCode = client.sendJsonPutRequest(
+            "/auth/user/createInitial",
+            mapOf(
+                "contactAddress" to email, "contactType" to "email",
+                "formAuthToken" to token, "verifyCode" to "WRONGCODE",
+            ),
+        )
+        badCode[EP.errorMessage] shouldBe "The verification code is incorrect."
+    }
 })
