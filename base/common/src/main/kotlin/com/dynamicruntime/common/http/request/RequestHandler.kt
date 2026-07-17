@@ -349,7 +349,7 @@ class RequestHandler : WebRequest {
 
         // A sensitive error, where the deployment obfuscates, shows the generic message instead of its own
         // (issue #108). "Log the original, send the obfuscated": render what the user would otherwise see and
-        // log it, so the real detail (e.g. the email) stays recoverable, then send the generic.
+        // log it, so the real detail (e.g., the email) stays recoverable, then send the generic.
         if (kdrE?.sensitive == true && cxt != null && obfuscateSensitiveErrors(cxt.instanceConfig)) {
             val original = kdrE.msg?.let { renderMsg(it, kdrE.msgParams, resolve, warn).text } ?: kdrE.fullMessage()
             LogRequest.info(cxt) { "Sensitive error obfuscated for the client; original message: $original" }
@@ -586,7 +586,7 @@ class RequestHandler : WebRequest {
          * Renders a [KdrMsg] to client text (issue #108): [resolve] the fragment template, sanitize the string
          * [params] (so a value cannot inject a Markdown link if the frontend renders the message), and
          * substitute. On success [RenderedText.fromFragment] is true -- designed, safe copy. A missing template
-         * or a failed substitution is **contained**: it falls back to the key [path] with `fromFragment = false`
+         * or a failed substitution is **contained**: it falls back to the key `path` with `fromFragment = false`
          * and a [warn], never throwing from inside error handling. Pure (resolver and logger passed in), so
          * both paths are unit-testable; [clientMessage] supplies the real fragment resolver.
          */

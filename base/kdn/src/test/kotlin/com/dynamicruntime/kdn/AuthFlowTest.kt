@@ -259,7 +259,7 @@ class AuthFlowTest : StringSpec({
     }
 
     "a sensitive error is obfuscated to a generic message where the deployment obfuscates (issue #108)" {
-        // Boot with obfuscation on (a prod deploy has it on by default; here the config option forces it).
+        // Boot with obfuscation on (a prod deployment has it on by default; here the config option forces it).
         val cxt = Startup.mkTestBootCxt("authObf", "authObfTest", mapOf(ACFG.obfuscateSensitiveErrors to true))
         val client = TestHttpClient(cxt.instanceConfig)
         val token = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String

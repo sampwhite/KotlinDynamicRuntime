@@ -37,7 +37,7 @@ object ACFG {
     const val validateResponseSchema = "validateResponseSchema"
 
     /**
-     * When true, an error flagged `sensitive` (e.g. one that would reveal whether an account exists) has its
+     * When true, an error flagged `sensitive` (e.g., one that would reveal whether an account exists) has its
      * message replaced with a generic one before it goes to the client; the real message is still logged
      * (issue #108). Set directly by tests. When unset, defaults from the `KDR_OBFUSCATE_ERRORS` env var, which
      * in turn defaults to whether the environment is `prod` -- so prod deployments obfuscate by default.
