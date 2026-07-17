@@ -17,12 +17,18 @@ import kotlin.time.Clock
  * fixed start would have them both begin at 1 and mint the same id if they fire in the same millisecond; a
  * random start makes that coincidence unlikely without spending randomness per id. It wraps back to 1 after
  * 99 (two digits is ample — a browser cannot issue 100 requests within one millisecond).
+ *
+ * The id leads with **`f`** (frontend). The backend's own ids start with the timestamp's leading digit, so the
+ * letter both distinguishes the two and, more usefully, tells a person who meets the id *outside* a log line —
+ * pasted into a chat, say — that it came from the browser. (`b` is left free for a backend counterpart.)
  */
+private const val traceIdPrefix = "f"
+
 private var counter = Random.nextInt(1, 100)
 
-/** The next trace id, e.g. `20260717T...` compact timestamp + `07`. Set as the `X-Kdr-Trace-Id` header. */
+/** The next trace id, e.g. `f20260717...07`: prefix + compact timestamp + counter. Set as `X-Kdr-Trace-Id`. */
 fun nextTraceId(): String {
     val n = counter
     counter = if (counter >= 99) 1 else counter + 1
-    return Clock.System.now().formatCompactId() + n.toString().padStart(2, '0')
+    return traceIdPrefix + Clock.System.now().formatCompactId() + n.toString().padStart(2, '0')
 }

@@ -164,12 +164,21 @@ class KdrCxt(
     }
 
     /** The full context path: parent logging ids followed by this one, ":"-joined. */
+    /**
+     * The **full** context path: the client [traceId] (when present), then the whole chain of parent logging
+     * ids, then this context's own. This is the rich form -- it grows with nesting, and deep executor-pool
+     * work can make it long -- so it is meant for a structured sink (a future OpenSearch-style destination
+     * that also carries the device id and more), **not** the console. The console log uses [logInfo], which is
+     * deliberately minimal (this context only). Currently no sink consumes the full path; keep it that way for
+     * the console when one is added.
+     */
     fun cxtPath(): String = (listOfNotNull(traceId) + parentLoggingIds + loggingId).joinToString(":")
 
     /**
-     * Logging label combining the logging id with the acting user (or %sys), prefixed with the client
-     * [traceId] when there is one -- so every log line for a request carries the id the frontend also holds,
-     * and one grep spans both tiers.
+     * The **minimal** logging label for the console: this context's logging id with the acting user (or
+     * %sys), prefixed with the client [traceId] when there is one -- so every line carries the id the frontend
+     * also holds (one grep spans both tiers) without dragging the whole parent chain onto every line (see
+     * [cxtPath]).
      */
     fun logInfo(): String {
         val trace = traceId?.let { "$it:" } ?: ""

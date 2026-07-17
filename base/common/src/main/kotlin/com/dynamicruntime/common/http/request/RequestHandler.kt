@@ -163,9 +163,16 @@ class RequestHandler : WebRequest {
     fun handleRequest() {
         var cxt: KdrCxt? = null
         try {
+            // The query string is parsed *before* the context, so the request's client identity (issue #105)
+            // is on the KdrCxt from the moment it exists -- one atomic setup, not a value patched in later. The
+            // query is cheap and already in the URL; the request *body* stays gated behind the context-root
+            // check (a probe submits no body for parsing).
+            parseQueryParams()
             val config = InstanceRegistry.getOrCreateInstanceConfig(instanceName)
             cxt = InstanceRegistry.createCxt("request", config)
             cxt.forwardedFor = forwardedFor
+            cxt.appId = appId()
+            cxt.traceId = traceId()
             createdCxt = cxt
             val service = RequestService.get(cxt)
                 ?: throw KdrException("This node cannot handle endpoint requests.", code = EXC.notSupported)
@@ -175,16 +182,19 @@ class RequestHandler : WebRequest {
         }
     }
 
-    /** Parses query params and (for JSON) the request body into [queryParams]/[postData]. */
-    fun decodeRequestData() {
-        userAgent = getRequestHeader("User-Agent")
-        isFromLoadBalancer = userAgent?.contains("ELB-Health") == true
-
+    /** Parses the query string into [queryParams]; see [handleRequest] for why this runs before the context. */
+    private fun parseQueryParams() {
         val qs = queryStr
         if (qs != null && qs.length > 2048) {
             throw KdrException("Query string length ${qs.length} exceeds the maximum of 2048.")
         }
         queryParams = HttpUtil.parseQuery(qs).toMutableMap()
+    }
+
+    /** Decodes the request *body* (for JSON, into [postData]); the query is already parsed ([parseQueryParams]). */
+    fun decodeRequestData() {
+        userAgent = getRequestHeader("User-Agent")
+        isFromLoadBalancer = userAgent?.contains("ELB-Health") == true
 
         if (contentType.startsWith("application/json") && postData == null) {
             val body = readBody()
@@ -219,16 +229,18 @@ class RequestHandler : WebRequest {
     }
 
     /**
-     * The client's app id / trace id for this request (issue #105): the header, or its `_` param alternate
-     * (both read after [decodeRequestData], so a body param is seen too). **`null` unless it is a short, safe
-     * token** -- these go straight into log lines and content lookups, so an over-long or control-laden value
-     * is dropped rather than trusted, and a bad id degrades correlation instead of failing the request.
+     * The client's app id / trace id for this request (issue #105): the header, or its off-contract `_` **query
+     * param** alternate. Only the query is consulted, not the body -- these are request identity, known from
+     * the URL before the context is even created, and a body would arrive too late for that. **`null` unless it
+     * is a short, safe token** -- they go straight into log lines and content lookups, so an over-long or
+     * control-laden value is dropped rather than trusted, and a bad id degrades correlation instead of failing
+     * the request.
      */
     fun appId(): String? = clientId(RID.appIdHeader, RID.appIdParam)
     fun traceId(): String? = clientId(RID.traceIdHeader, RID.traceIdParam)
 
     private fun clientId(header: String, param: String): String? {
-        val raw = getRequestHeader(header) ?: (queryParams[param] ?: postData?.get(param)) as? String ?: return null
+        val raw = getRequestHeader(header) ?: queryParams[param] as? String ?: return null
         return raw.takeIf { it.length in 1..64 && it.all { c -> c.isLetterOrDigit() || c in "._:-" } }
     }
 
