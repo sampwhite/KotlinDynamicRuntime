@@ -339,7 +339,12 @@ class RequestHandler : WebRequest {
     private fun clientMessage(cxt: KdrCxt?, t: Throwable, kdrE: KdrException?): RenderedText {
         val msg = kdrE?.msg
             ?: return RenderedText(kdrE?.fullMessage() ?: (t.message ?: "Internal error."), fromFragment = false)
-        return renderMsg(msg, kdrE.msgParams, MarkdownFragmentService::resolveFragment) { LogRequest.warn(cxt, it) }
+        // Resolve through the fragment service in the request's context (null cxt/service -> the contained
+        // key-path fallback in renderMsg). A future service resolves per-context; the seam lives there.
+        val resolve = { f: String, n: String, k: String ->
+            cxt?.let { c -> MarkdownFragmentService.get(c)?.resolveFragment(c, f, n, k) }
+        }
+        return renderMsg(msg, kdrE.msgParams, resolve) { LogRequest.warn(cxt, it) }
     }
 
     /**

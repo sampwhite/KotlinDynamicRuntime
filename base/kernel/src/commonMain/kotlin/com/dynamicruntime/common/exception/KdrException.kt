@@ -96,7 +96,7 @@ class KdrException(
         /**
          * Standard [extraData] keys locating where in a parsed input an error originates: the 0-based
          * character [offsetKey], the 1-based [lineKey], and the 1-based column-within-line [lineColKey].
-         * Shared by every string parser (JSON, the script evaluator, ...) so one convention serves them all.
+         * Shared by every string parser (JSON, the script evaluator, ...), so one convention serves them all.
          */
         const val offsetKey = "offset"
         const val lineKey = "line"
@@ -120,7 +120,7 @@ class KdrException(
         /**
          * An error whose client message comes from fragment copy (issue #108): [msg] names the template,
          * [params] fill its `${...}`, and the top-level handler renders it. The exception's own [message] is
-         * [msg]'s key [path] -- diagnostic in a log or stack, and what a failed resolve falls back to, without
+         * [msg]'s key path -- diagnostic in a log or stack, and what a failed resolve falls back to, without
          * the sentence living in Kotlin. [code] defaults to 400 (most such errors are bad input); pass 401/429
          * for the auth/rate-limit cases.
          */

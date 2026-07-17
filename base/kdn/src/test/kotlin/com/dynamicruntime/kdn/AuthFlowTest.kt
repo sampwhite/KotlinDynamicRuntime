@@ -230,7 +230,7 @@ class AuthFlowTest : StringSpec({
         // someone can reword auth.md without breaking it. That evalTemplate/sanitize is correct is covered by
         // ErrorMessageRenderTest and StrUtilTest.
         val loginId = "ghost@example.com"
-        val noAccountExpected = MarkdownFragmentService.resolveFragment(AFRAG.auth, AERR.ns, AERR.noAccount)!!
+        val noAccountExpected = MarkdownFragmentService.get(cxt)!!.resolveFragment(cxt, AFRAG.auth, AERR.ns, AERR.noAccount)!!
             .evalTemplate(mapOf(AERR.loginIdParam to loginId.sanitizeForDisplay()))
         val noAcct = client.sendJsonPostRequest(
             "/auth/user/sendVerify", mapOf("loginId" to loginId, "formAuthToken" to token),
@@ -252,6 +252,7 @@ class AuthFlowTest : StringSpec({
                 "formAuthToken" to token, "verifyCode" to "WRONGCODE",
             ),
         )
-        badCode[EP.errorMessage] shouldBe MarkdownFragmentService.resolveFragment(AFRAG.auth, AERR.ns, AERR.codeIncorrect)
+        badCode[EP.errorMessage] shouldBe
+            MarkdownFragmentService.get(cxt)!!.resolveFragment(cxt, AFRAG.auth, AERR.ns, AERR.codeIncorrect)
     }
 })

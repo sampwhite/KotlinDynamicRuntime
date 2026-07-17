@@ -61,6 +61,26 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         return true
     }
 
+    /** Fragment files parsed once and memoized by fileId. Classpath resources today, fixed at build. */
+    private val parsedByFileId = ConcurrentHashMap<String, Map<String, Map<String, String>>>()
+
+    /**
+     * The value at `<fileId>.md` → [namespace] → [key], or null when the file or entry is absent. Used
+     * server-side (issue #108: rendering error copy) rather than over HTTP, and memoized because it is hit per
+     * error -- it must not re-read and re-parse the source each time.
+     *
+     * An **instance** method taking [cxt], deliberately not a static helper: the source is the classpath today,
+     * but this is where a future version resolves a fragment through [cxt] -- a database, or an HTTP call to
+     * another service, for a per-account or per-version copy. Callers reach it via [get]; the seam is in place
+     * so that change stays inside here.
+     */
+    fun resolveFragment(cxt: KdrCxt, fileId: String, namespace: String, key: String): String? {
+        val parsed = parsedByFileId.getOrPut(fileId) {
+            ContentResources.readText(resourceDir, fileId)?.parseMarkdownFragments() ?: emptyMap()
+        }
+        return parsed[namespace]?.get(key)
+    }
+
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "MarkdownFragmentService"
@@ -83,21 +103,5 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
          * `fileId:buildId` (the UI-config endpoints); the fragment request itself only strips it.
          */
         fun fragmentBuildId(fileId: String): String? = ContentResources.buildId(resourceDir, fileId)
-
-        /** Fragment files parsed once and memoized by fileId. The files are classpath resources, fixed at build. */
-        private val parsedByFileId = ConcurrentHashMap<String, Map<String, Map<String, String>>>()
-
-        /**
-         * The value at `<fileId>.md` → [namespace] → [key], or null when the file or entry is absent. Used
-         * server-side (issue #108: rendering error copy) rather than over HTTP, and memoized because it is hit
-         * per error -- it must not re-read and re-parse the classpath file each time. Absent files memoize as
-         * empty, which is correct: the resource set is fixed at build.
-         */
-        fun resolveFragment(fileId: String, namespace: String, key: String): String? {
-            val parsed = parsedByFileId.getOrPut(fileId) {
-                ContentResources.readText(resourceDir, fileId)?.parseMarkdownFragments() ?: emptyMap()
-            }
-            return parsed[namespace]?.get(key)
-        }
     }
 }

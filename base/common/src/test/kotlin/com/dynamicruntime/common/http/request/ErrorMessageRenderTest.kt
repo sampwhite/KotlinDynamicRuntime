@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.http.request
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrMsg
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -62,10 +63,12 @@ class ErrorMessageRenderTest : StringSpec({
     // --- the real resolver against the shipped auth.md --------------------------------------------------
 
     "resolveFragment reads a real key, and null for a missing one" {
-        // Present in base/common's md-fragments/auth.md (issue #108 error copy).
-        MarkdownFragmentService.resolveFragment("auth", "error", "codeIncorrect") shouldBe
-            "The verification code is incorrect."
-        MarkdownFragmentService.resolveFragment("auth", "error", "noSuchKey") shouldBe null
-        MarkdownFragmentService.resolveFragment("noSuchFile", "error", "codeIncorrect") shouldBe null
+        // The cxt is threaded but unused today (a future version resolves per-context); a bare service instance
+        // and simple cxt suffice to read the classpath fragment. auth.md ships in base/common's resources.
+        val service = MarkdownFragmentService()
+        val cxt = KdrCxt.mkSimpleCxt("resolveFragmentTest")
+        service.resolveFragment(cxt, "auth", "error", "codeIncorrect") shouldBe "The verification code is incorrect."
+        service.resolveFragment(cxt, "auth", "error", "noSuchKey") shouldBe null
+        service.resolveFragment(cxt, "noSuchFile", "error", "codeIncorrect") shouldBe null
     }
 })
