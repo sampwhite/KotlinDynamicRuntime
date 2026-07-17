@@ -316,7 +316,7 @@ class SchemaService : ServiceInitializer {
             }
 
             // With _debug=explainInput, echo the evaluated request parameters back under _meta.
-            if (cxt.debug?.contains(SS.explainInput) == true) {
+            if (cxt.hasDebug(SS.explainInput)) {
                 cxt.request?.responseMeta?.put(SS.paramsEvaluated, query)
             }
 

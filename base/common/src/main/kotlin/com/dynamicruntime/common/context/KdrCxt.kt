@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.context
 
+import com.dynamicruntime.common.util.splitComma
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -91,6 +92,9 @@ class KdrCxt(
      * Optional debug tag(s) for this request: a validated, comma-separated list of variable names supplied
      * via the off-contract `_debug` request key. When present it is prefixed onto every log message and can
      * gate diagnostic behavior (e.g., the sample endpoint's `explainInput`). Carried down to sub contexts.
+     *
+     * Test membership with [hasDebug], never `debug.contains(...)`: the latter is a substring match, so a check
+     * for `foo` would fire on `_debug=foobar`.
      */
     var debug: String? = null
 
@@ -163,7 +167,6 @@ class KdrCxt(
         return created
     }
 
-    /** The full context path: parent logging ids followed by this one, ":"-joined. */
     /**
      * The **full** context path: the client [traceId] (when present), then the whole chain of parent logging
      * ids, then this context's own. This is the rich form -- it grows with nesting, and deep executor-pool
@@ -185,6 +188,13 @@ class KdrCxt(
         val authId = userProfile.authId
         return if (authId != null) "$trace$loggingId($authId)" else "$trace$loggingId%sys"
     }
+
+    /**
+     * Whether the request's [debug] tag lists [name] as one of its comma-separated words -- an **exact** word,
+     * not a substring, so `_debug=explainInputFully` does not answer a check for `explainInput`. The way to
+     * gate diagnostic behavior on a `_debug` tag; use this rather than `debug?.contains(name)`.
+     */
+    fun hasDebug(name: String): Boolean = debug?.splitComma()?.contains(name) == true
 
     /** Duration since this context was created, in milliseconds. */
     fun durationMs(): Double = (System.nanoTime() - nanoTime) / 1_000_000.0
