@@ -20,16 +20,22 @@ private enum class SampleCode { badThing }
  */
 class ErrorEnvelopeTest : StringSpec({
 
-    "the plain case: status, message, requestUri, and nothing else" {
-        RequestHandler.errorEnvelope(500, "boom", "GET:/x", null) shouldContainExactly linkedMapOf(
+    "the plain case: status, message, the fragment flag, requestUri, and nothing else" {
+        RequestHandler.errorEnvelope(500, "boom", false, "GET:/x", null) shouldContainExactly linkedMapOf(
             EP.status to 500,
             EP.errorMessage to "boom",
+            EP.errorFromFragment to false,
             EP.requestUri to "GET:/x",
         )
     }
 
+    "the fragment flag is always present, carrying whether the message is designed copy (issue #108)" {
+        RequestHandler.errorEnvelope(400, "bad", true, "GET:/x", null)[EP.errorFromFragment] shouldBe true
+        RequestHandler.errorEnvelope(400, "bad", false, "GET:/x", null)[EP.errorFromFragment] shouldBe false
+    }
+
     "the HTTP code is `status`, not `errorCode` -- that name now means the logical code" {
-        val env = RequestHandler.errorEnvelope(400, "bad", "GET:/x", null)
+        val env = RequestHandler.errorEnvelope(400, "bad", false, "GET:/x", null)
         env[EP.status] shouldBe 400
         // errorCode is reserved for the logical code and is absent when there is none.
         env.containsKey(EP.errorCode) shouldBe false
@@ -37,7 +43,7 @@ class ErrorEnvelopeTest : StringSpec({
 
     "a logical code is lifted out of the bag to the top level" {
         val env = RequestHandler.errorEnvelope(
-            400, "bad", "GET:/x",
+            400, "bad", false, "GET:/x",
             mapOf(KdrException.errorCodeKey to SampleCode.badThing),
         )
         env[EP.errorCode] shouldBe SampleCode.badThing
@@ -47,7 +53,7 @@ class ErrorEnvelopeTest : StringSpec({
 
     "the rest of the bag is nested under extraData, with the logical code taken out of it" {
         val env = RequestHandler.errorEnvelope(
-            400, "bad", "GET:/x",
+            400, "bad", false, "GET:/x",
             mapOf(KdrException.errorCodeKey to SampleCode.badThing, "offset" to 17, "line" to 3),
         )
         env[EP.errorCode] shouldBe SampleCode.badThing
@@ -55,20 +61,20 @@ class ErrorEnvelopeTest : StringSpec({
     }
 
     "a bag with no logical code still nests, and adds no errorCode" {
-        val env = RequestHandler.errorEnvelope(400, "bad", "GET:/x", mapOf("offset" to 17))
+        val env = RequestHandler.errorEnvelope(400, "bad", false, "GET:/x", mapOf("offset" to 17))
         env.containsKey(EP.errorCode) shouldBe false
         env[EP.extraData] shouldBe mapOf("offset" to 17)
     }
 
     "the exception's own bag is not mutated" {
         val bag = mutableMapOf<String, Any?>(KdrException.errorCodeKey to SampleCode.badThing, "offset" to 17)
-        RequestHandler.errorEnvelope(400, "bad", "GET:/x", bag)
+        RequestHandler.errorEnvelope(400, "bad", false, "GET:/x", bag)
         bag shouldContainExactly mapOf(KdrException.errorCodeKey to SampleCode.badThing, "offset" to 17)
     }
 
     "a promoted enum code serializes to its name on the wire" {
         val env = RequestHandler.errorEnvelope(
-            400, "bad", "GET:/x",
+            400, "bad", false, "GET:/x",
             mapOf(KdrException.errorCodeKey to SampleCode.badThing),
         )
         // This is the thing that makes promotion useful: the client reads "badThing", not an object.

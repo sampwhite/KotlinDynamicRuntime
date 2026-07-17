@@ -51,4 +51,29 @@ class StrUtilTest : StringSpec({
         '\n'.toUpperHex() shouldBe "000A"
         '\u2567'.toUpperHex() shouldBe "2567"
     }
+
+    "sanitizeForDisplay leaves an ordinary value untouched" {
+        "first_last@example.com".sanitizeForDisplay() shouldBe "first_last@example.com"
+    }
+
+    "sanitizeForDisplay collapses whitespace and newlines to single spaces" {
+        "a\n\nb\tc   d".sanitizeForDisplay() shouldBe "a b c d"
+        "  trim me  ".sanitizeForDisplay() shouldBe "trim me"
+    }
+
+    "sanitizeForDisplay strips the characters that build Markdown links/images/code" {
+        "[click](http://evil.com)".sanitizeForDisplay() shouldBe "clickhttp://evil.com"
+        "![img](http://x)".sanitizeForDisplay() shouldBe "!imghttp://x"
+        "<http://auto>".sanitizeForDisplay() shouldBe "http://auto"
+        "`code`".sanitizeForDisplay() shouldBe "code"
+        // Emphasis is intentionally kept -- it does not link, and `_` is common in real values.
+        "a_b*c".sanitizeForDisplay() shouldBe "a_b*c"
+    }
+
+    "sanitizeForDisplay clips over-long input with an ellipsis" {
+        val long = "x".repeat(200)
+        val out = long.sanitizeForDisplay(maxLen = 10)
+        out.length shouldBe 10
+        out shouldBe "xxxxxxxxx\u2026"
+    }
 })

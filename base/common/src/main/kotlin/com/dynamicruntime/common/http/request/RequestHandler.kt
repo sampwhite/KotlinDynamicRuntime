@@ -12,6 +12,7 @@ import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.formatCookieDate
 import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.sanitizeForDisplay
 import com.dynamicruntime.common.util.splitComma
 import com.dynamicruntime.common.util.toJsonStr
 import org.eclipse.jetty.http.MultiPartConfig
@@ -314,11 +315,13 @@ class RequestHandler : WebRequest {
         // The log always gets the real exception (its message is the raw text, or a KdrMsg's key path) plus the
         // stack; only the *wire* message is fragment-rendered.
         LogRequest.error(cxt, "Error for request $logRequestUri.", t)
-        val message = clientMessage(cxt, t, kdrE)
+        val rendered = clientMessage(cxt, t, kdrE)
         val extraData = errorExtraData(cxt, kdrE)
         try {
             if (!sentResponse) {
-                sendJsonResponse(errorEnvelope(code, message, logRequestUri, extraData), code)
+                sendJsonResponse(
+                    errorEnvelope(code, rendered.text, rendered.fromFragment, logRequestUri, extraData), code,
+                )
             } else {
                 jettyCallback?.succeeded()
             }
@@ -333,8 +336,9 @@ class RequestHandler : WebRequest {
      * resolve or render is contained -- the key path is sent and a warning logged -- so error handling never
      * throws its own error.
      */
-    private fun clientMessage(cxt: KdrCxt?, t: Throwable, kdrE: KdrException?): String {
-        val msg = kdrE?.msg ?: return kdrE?.fullMessage() ?: (t.message ?: "Internal error.")
+    private fun clientMessage(cxt: KdrCxt?, t: Throwable, kdrE: KdrException?): RenderedText {
+        val msg = kdrE?.msg
+            ?: return RenderedText(kdrE?.fullMessage() ?: (t.message ?: "Internal error."), fromFragment = false)
         return renderMsg(msg, kdrE.msgParams, MarkdownFragmentService::resolveFragment) { LogRequest.warn(cxt, it) }
     }
 
@@ -544,27 +548,30 @@ class RequestHandler : WebRequest {
         const val explainError = "explainError"
 
         /**
-         * Renders a [KdrMsg] to client text (issue #108): [resolve] the fragment template and substitute
-         * [params], or -- **contained** -- fall back to the key [path] when the template is missing or its
-         * substitution fails, reporting via [warn]. Pure (the resolver and logger are passed in), so the
-         * fallback and the substitution are unit-testable; [clientMessage] supplies the real fragment resolver.
+         * Renders a [KdrMsg] to client text (issue #108): [resolve] the fragment template, sanitize the string
+         * [params] (so a value cannot inject a Markdown link if the frontend renders the message), and
+         * substitute. On success [RenderedText.fromFragment] is true -- designed, safe copy. A missing template
+         * or a failed substitution is **contained**: it falls back to the key [path] with `fromFragment = false`
+         * and a [warn], never throwing from inside error handling. Pure (resolver and logger passed in), so
+         * both paths are unit-testable; [clientMessage] supplies the real fragment resolver.
          */
         fun renderMsg(
             msg: KdrMsg,
             params: Map<String, Any?>,
             resolve: (String, String, String) -> String?,
             warn: (String) -> Unit,
-        ): String = try {
+        ): RenderedText = try {
             val template = resolve(msg.fileId, msg.namespace, msg.key)
             if (template == null) {
                 warn("No error fragment for ${msg.path}; sending the key path.")
-                msg.path
+                RenderedText(msg.path, fromFragment = false)
             } else {
-                template.evalTemplate(params)
+                val safe = params.mapValues { (_, v) -> if (v is String) v.sanitizeForDisplay() else v }
+                RenderedText(template.evalTemplate(safe), fromFragment = true)
             }
         } catch (inner: Throwable) {
             warn("Could not render error fragment ${msg.path}: ${inner.message}")
-            msg.path
+            RenderedText(msg.path, fromFragment = false)
         }
 
         /** The content type a file upload arrives under; matched as a prefix (the boundary follows). */
@@ -589,6 +596,8 @@ class RequestHandler : WebRequest {
          *    [extraData] (where areas write it under [KdrException.errorCodeKey]) to the top level. Absent when
          *    there is none -- most errors have no logical code.
          *  - [EP.errorMessage] / [EP.requestUri]: the human sentence, and the request it belongs to.
+         *  - [EP.errorFromFragment]: whether [message] is designed fragment copy ([fromFragment]) rather than a
+         *    raw message -- the frontend shows the two differently (issue #108). Always present.
          *  - [EP.extraData]: whatever remains of the exception's bag (e.g., a parser's offset/line/lineCol),
          *    **nested** under its own key so an area's entry can never shadow a protocol field. Absent when
          *    empty.
@@ -599,6 +608,7 @@ class RequestHandler : WebRequest {
         fun errorEnvelope(
             status: Int,
             message: String,
+            fromFragment: Boolean,
             requestUri: String,
             extraData: Map<String, Any?>?,
         ): Map<String, Any?> {
@@ -607,10 +617,14 @@ class RequestHandler : WebRequest {
             return linkedMapOf<String, Any?>(EP.status to status).apply {
                 if (logicalCode != null) put(EP.errorCode, logicalCode)
                 put(EP.errorMessage, message)
+                put(EP.errorFromFragment, fromFragment)
                 put(EP.requestUri, requestUri)
                 if (remaining.isNotEmpty()) put(EP.extraData, remaining)
             }
         }
+
+        /** A rendered error message plus whether it came from a fragment (issue #108); see [renderMsg]. */
+        class RenderedText(val text: String, val fromFragment: Boolean)
 
         /** Splits a target path into its context root (first segment) and sub-target (remainder). */
         fun parsePath(target: String): Pair<String, String> {

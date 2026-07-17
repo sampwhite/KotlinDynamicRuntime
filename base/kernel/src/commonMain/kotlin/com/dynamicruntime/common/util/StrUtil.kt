@@ -38,6 +38,28 @@ fun String.toLowerCaseIdentifier(): String {
 fun String.capitalizeFirst(): String =
     if (isEmpty()) this else this[0].uppercaseChar() + substring(1)
 
+/** Default cap for [sanitizeForDisplay]. */
+const val defaultDisplayLen = 120
+
+/**
+ * Makes an untrusted string safe to display in the frontend -- including when the frontend renders it as
+ * Markdown (issue #108). Used on user-supplied values substituted into error-message templates, so a value
+ * like `[click](http://evil)` cannot become a link a user might trust.
+ *
+ * Three passes: (1) every run of whitespace (newlines and tabs included) collapses to a single space, trimmed
+ * -- so a multi-line value becomes one tidy line rather than injecting breaks; (2) the characters that
+ * structure Markdown links, images, autolinks, and code spans (`[ ] ( ) < > \``) are removed -- this keeps the
+ * text but defuses the URL constructs; `*` and `_` are deliberately kept, since they only emphasize and are
+ * common in real emails/usernames; (3) longer than [maxLen] is clipped with a trailing `…`.
+ */
+fun String.sanitizeForDisplay(maxLen: Int = defaultDisplayLen): String {
+    val collapsed = trim().replace(whitespaceRun, " ").filterNot { it in markdownStructural }
+    return if (collapsed.length <= maxLen) collapsed else collapsed.take(maxLen - 1).trimEnd() + "…"
+}
+
+private val whitespaceRun = Regex("\\s+")
+private const val markdownStructural = "[]()<>`"
+
 // Creating a format that defines options for both byte arrays and numeric values.
 val customHexFormat = HexFormat {
     upperCase = true

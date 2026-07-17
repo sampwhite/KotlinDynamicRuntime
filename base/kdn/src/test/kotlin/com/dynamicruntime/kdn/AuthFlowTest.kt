@@ -224,6 +224,8 @@ class AuthFlowTest : StringSpec({
             "/auth/user/sendVerify", mapOf("loginId" to "ghost@example.com", "formAuthToken" to token),
         )
         noAcct[EP.errorMessage] shouldBe "No account was found for ghost@example.com."
+        // Marked as designed copy, so the frontend knows it is safe to show normally (issue #108).
+        noAcct[EP.errorFromFragment] shouldBe true
 
         // A wrong verification code on registration: the parameter-free codeIncorrect template.
         client.sendJsonPostRequest(

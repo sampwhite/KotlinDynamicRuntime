@@ -65,11 +65,16 @@ object EP {
     //                error, how to follow up a failed purchase. Promoted here from the exception's extraData
     //                (see `KdrException.errorCodeKey`, the same key one layer down); absent when there is none.
     //  - `errorMessage` the human sentence to show.
+    //  - `errorFromFragment` (Bool) whether `errorMessage` was rendered from a Markdown fragment (issue #108)
+    //                -- true means designed, user-facing copy with sanitized params, which the frontend may
+    //                show (or Markdown-render) freely; false means a raw/internal message, to show cautiously
+    //                (error-highlighted, plain, or a cryptic stand-in in prod). Always present on an error.
     //  - `extraData` an area-specific bag (e.g., a parser's offset/line/lineCol), nested so it can never shadow
     //                a protocol field; absent when empty.
     const val status = "status"
     const val errorCode = "errorCode"
     const val errorMessage = "errorMessage"
+    const val errorFromFragment = "errorFromFragment"
     const val extraData = "extraData"
 
     // Input, list endpoints.
