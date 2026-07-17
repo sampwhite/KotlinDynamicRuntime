@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.AC
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.mail.MailService
@@ -57,7 +58,7 @@ class AuthFormHandler(
         val createdMs = plain.substringBefore(tokenSep).toLongOrNull()
             ?: throw KdrException.mkInput("The form auth token is malformed.")
         if (cxt.now().toEpochMilliseconds() - createdMs > AUTHC.formTokenMillis) {
-            throw KdrException.mkInput("The form auth token has expired; request a new one.")
+            throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.tokenExpired))
         }
     }
 
@@ -68,13 +69,10 @@ class AuthFormHandler(
     private fun verifyCodeOrThrow(cxt: KdrCxt, contactAddress: String, formAuthToken: String, verifyCode: String) {
         val key = "vc:$contactAddress"
         if (!rateLimiter.allow(key, RL.verifyMax, RL.verifyWindowMs, cxt.now().toEpochMilliseconds())) {
-            throw KdrException(
-                "Too many verification attempts; please request a new code and try again.",
-                code = EXC.tooManyRequests,
-            )
+            throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyVerifyAttempts), code = EXC.tooManyRequests)
         }
         if (computeVerifyCode(formAuthToken, contactAddress) != verifyCode) {
-            throw KdrException.mkInput("The verification code is incorrect.")
+            throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.codeIncorrect))
         }
         rateLimiter.reset(key)
     }
@@ -84,7 +82,7 @@ class AuthFormHandler(
     /** Emails a verification code to a new email [contactAddress] (registration). */
     fun sendVerifyToContact(cxt: KdrCxt, contactAddress: String, formAuthToken: String) {
         requireValidToken(cxt, formAuthToken)
-        if (!contactAddress.contains("@")) throw KdrException.mkInput("An email address must contain an '@'.")
+        if (!contactAddress.contains("@")) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.emailNoAt))
         requireSendAllowed(cxt, contactAddress)
         sendVerifyEmail(cxt, contactAddress, computeVerifyCode(formAuthToken, contactAddress), addPassword = false)
     }
@@ -97,7 +95,9 @@ class AuthFormHandler(
     fun sendVerifyToUser(cxt: KdrCxt, loginId: String, formAuthToken: String, addPassword: Boolean = false) {
         requireValidToken(cxt, formAuthToken)
         val user = userService.queryByLoginId(cxt, loginId)
-            ?: throw KdrException("No account found for '$loginId'.", code = EXC.notFound)
+            ?: throw KdrException.mkMsg(
+                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId), code = EXC.notFound,
+            )
         requireSendAllowed(cxt, user.primaryId)
         sendVerifyEmail(cxt, user.primaryId, computeVerifyCode(formAuthToken, user.primaryId), addPassword)
     }
@@ -109,8 +109,8 @@ class AuthFormHandler(
         if (!rateLimiter.allow("svip:$ip", RL.sendPerIpMax, RL.sendPerIpWindowMs, nowMs) ||
             !rateLimiter.allow("svc:$contactAddress", RL.sendPerContactMax, RL.sendPerContactWindowMs, nowMs)
         ) {
-            throw KdrException(
-                "Too many verification requests; please wait a while before requesting another code.",
+            throw KdrException.mkMsg(
+                KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyVerifyRequests),
                 code = EXC.tooManyRequests,
             )
         }
@@ -139,8 +139,8 @@ class AuthFormHandler(
         verifyCodeOrThrow(cxt, contactAddress, formAuthToken, verifyCode)
         val existing = userService.queryByPrimaryId(cxt, contactAddress)
         if (existing != null && existing.enabled && (!existing.needsRealUsername || existing.encodedPassword != null)) {
-            throw KdrException(
-                "Email '$contactAddress' is not available for creating a new user.", code = EXC.badInput,
+            throw KdrException.mkMsg(
+                KdrMsg(AFRAG.auth, AERR.ns, AERR.emailNotAvailable), mapOf(AERR.emailParam to contactAddress),
             )
         }
         val data = AuthUserRow.mkInitialUser(contactAddress, AC.public, ROLE.user).toMutableMap()
@@ -190,7 +190,9 @@ class AuthFormHandler(
     fun loginByCode(cxt: KdrCxt, loginId: String, formAuthToken: String, verifyCode: String): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
         val row = userService.queryByLoginId(cxt, loginId)
-            ?: throw KdrException("No account found for '$loginId'.", code = EXC.notFound)
+            ?: throw KdrException.mkMsg(
+                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId), code = EXC.notFound,
+            )
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
         return completeLogin(cxt, row, byCode = true)
     }
@@ -208,8 +210,8 @@ class AuthFormHandler(
         if (!rateLimiter.allow("pw:$loginId", RL.pwPerUserMax, RL.pwWindowMs, nowMs) ||
             !rateLimiter.allow("pwip:$ip", RL.pwPerIpMax, RL.pwWindowMs, nowMs)
         ) {
-            throw KdrException(
-                "Too many failed login attempts; please wait and try again, or log in by verification code.",
+            throw KdrException.mkMsg(
+                KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyLoginAttempts),
                 code = EXC.tooManyRequests,
             )
         }
@@ -227,7 +229,7 @@ class AuthFormHandler(
         }
         if (failReason != null) {
             LogAuth.info(cxt) { "Password login failed for '$loginId': $failReason." }
-            throw KdrException(passwordLoginFailedMessage, code = EXC.authNeeded)
+            throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.loginFailed), code = EXC.authNeeded)
         }
         rateLimiter.reset("pw:$loginId")
         return completeLogin(cxt, row!!, byCode = false)
@@ -245,7 +247,9 @@ class AuthFormHandler(
     ): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
         val row = userService.queryByLoginId(cxt, loginId)
-            ?: throw KdrException("No account found for '$loginId'.", code = EXC.notFound)
+            ?: throw KdrException.mkMsg(
+                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId), code = EXC.notFound,
+            )
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
         setPassword(row, password)
         userService.updateUser(cxt, row)
@@ -286,10 +290,5 @@ class AuthFormHandler(
 
         /** Placeholder source IP for rate-limit keys when the request carries no forwarded-for address. */
         const val unknownIp = "unknown"
-
-        /** The single opaque message returned for every password-login failure (issue #69). */
-        const val passwordLoginFailedMessage =
-            "Password login failed either because of an incorrect password or because you need to log in by " +
-                "verification code to activate password logins."
     }
 }

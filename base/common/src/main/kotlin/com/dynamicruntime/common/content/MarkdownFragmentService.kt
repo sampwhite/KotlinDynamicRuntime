@@ -8,6 +8,7 @@ import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.parseMarkdownFragments
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Serves Markdown *fragment* files as a two-tier `namespace -> (key -> value)` JSON map (issue #59), under the
@@ -34,6 +35,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         requestService.addContentServer(this)
     }
 
+    @Suppress("DuplicatedCode")
     override fun serve(cxt: KdrCxt, handler: RequestHandler): Boolean {
         if (handler.focus != ContextFocus.static) {
             return false
@@ -58,6 +60,26 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         handler.setResponseHeader("Cache-Control", cacheControl)
         handler.sendJsonResponse(fragments, EXC.ok)
         return true
+    }
+
+    /** Fragment files parsed once and memoized by fileId. Classpath resources today, fixed at build. */
+    private val parsedByFileId = ConcurrentHashMap<String, Map<String, Map<String, String>>>()
+
+    /**
+     * The value at `<fileId>.md` → [namespace] → [key], or null when the file or entry is absent. Used
+     * server-side (issue #108: rendering error copy) rather than over HTTP, and memoized because it is hit per
+     * error -- it must not re-read and reparse the source each time.
+     *
+     * An **instance** method taking [cxt], deliberately not a static helper: the source is the classpath today,
+     * but this is where a future version resolves a fragment through [cxt] -- a database, or an HTTP call to
+     * another service, for a per-account or per-version copy. Callers reach it via [get]; the seam is in place
+     * so that change stays inside here.
+     */
+    fun resolveFragment(cxt: KdrCxt, fileId: String, namespace: String, key: String): String? {
+        val parsed = parsedByFileId.getOrPut(fileId) {
+            ContentResources.readText(resourceDir, fileId)?.parseMarkdownFragments() ?: emptyMap()
+        }
+        return parsed[namespace]?.get(key)
     }
 
     @Suppress("ConstPropertyName")
