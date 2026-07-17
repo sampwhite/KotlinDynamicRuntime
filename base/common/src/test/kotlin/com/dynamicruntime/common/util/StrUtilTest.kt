@@ -1,3 +1,5 @@
+@file:Suppress("HttpUrlsUsage")
+
 package com.dynamicruntime.common.util
 
 import io.kotest.core.spec.style.StringSpec

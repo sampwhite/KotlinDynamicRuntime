@@ -35,6 +35,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         requestService.addContentServer(this)
     }
 
+    @Suppress("DuplicatedCode")
     override fun serve(cxt: KdrCxt, handler: RequestHandler): Boolean {
         if (handler.focus != ContextFocus.static) {
             return false
@@ -67,7 +68,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     /**
      * The value at `<fileId>.md` → [namespace] → [key], or null when the file or entry is absent. Used
      * server-side (issue #108: rendering error copy) rather than over HTTP, and memoized because it is hit per
-     * error -- it must not re-read and re-parse the source each time.
+     * error -- it must not re-read and reparse the source each time.
      *
      * An **instance** method taking [cxt], deliberately not a static helper: the source is the classpath today,
      * but this is where a future version resolves a fragment through [cxt] -- a database, or an HTTP call to
