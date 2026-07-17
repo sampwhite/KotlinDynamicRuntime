@@ -5,6 +5,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.ND
+import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -17,7 +18,7 @@ import io.kotest.matchers.shouldBe
 class HealthEndpointTest : StringSpec({
 
     // The default-boot, read-only tests share one instance (its init is cached by instance name, so it runs
-    // once) and vary only the cheap context name. The context-root override test at the end needs its own
+    // once) and vary only the inexpensive context name. The context-root override test at the end needs its own
     // instance -- it boots with a different apiContextRoot, and the instance cache is keyed on that name.
     fun client(cxtName: String): TestHttpClient =
         TestHttpClient(Startup.mkTestBootCxt(cxtName, "healthEndpointTest").instanceConfig)
@@ -49,6 +50,22 @@ class HealthEndpointTest : StringSpec({
         client.sendGetRequest("/health", mapOf(EP.debug to "explainInput", $$"$note" to "hi")).rptStatusCode shouldBe 200
     }
 
+    "a real error response carries the standardized envelope (issue #103)" {
+        val client = client("healthErrorEnvelope")
+
+        val resp = client.sendGetRequest("/health", mapOf("bogus" to "1"))
+        resp.rptStatusCode shouldBe 400
+        val body = resp.rptResponseData!!.jsonMap()!!
+
+        // The HTTP code is `status` (a number), not the old `errorCode`.
+        body[EP.status] shouldBe 400L
+        body.containsKey(EP.errorMessage) shouldBe true
+        body.containsKey(EP.requestUri) shouldBe true
+        // A schema-validation error carries no logical code and no bag, so neither key is present.
+        body.containsKey(EP.errorCode) shouldBe false
+        body.containsKey(EP.extraData) shouldBe false
+    }
+
     "an unknown path yields a not-found error response" {
         val client = client("healthUnknownPath")
 
@@ -77,7 +94,7 @@ class HealthEndpointTest : StringSpec({
         val client = TestHttpClient(cxt.instanceConfig) // auto-routes under the configured "api2"
 
         client.sendGetRequest("/health").rptStatusCode shouldBe 200
-        // The default kda root is no longer served on this instance.
+        // This instance no longer serves the default kda root.
         client.sendGetRequestRaw("/${ContextRoot.kda}/health").rptStatusCode shouldBe 404
     }
 })
