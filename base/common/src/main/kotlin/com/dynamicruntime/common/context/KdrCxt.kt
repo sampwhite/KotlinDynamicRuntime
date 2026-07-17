@@ -95,6 +95,20 @@ class KdrCxt(
     var debug: String? = null
 
     /**
+     * The client-supplied application id for this request (issue #105): the app plus its locale suffix, used
+     * to select content. Null off a request or when the client sent none. Carried down to sub contexts.
+     */
+    var appId: String? = null
+
+    /**
+     * The client-supplied trace id for this request (issue #105): the frontend mints one per call, and it is
+     * stamped onto every log line for the request (see [cxtPath]/[logInfo]) so a call can be followed from the
+     * browser to the server. Null when the client sent none -- then [loggingId] alone identifies the request.
+     * Carried down to sub contexts.
+     */
+    var traceId: String? = null
+
+    /**
      * The request being processed, or null when this context is not handling one (startup, background
      * jobs, tests). Set when an endpoint invocation begins and inherited by sub contexts. The mutable
      * response accumulator will be a separate field added when endpoint execution is built.
@@ -120,6 +134,8 @@ class KdrCxt(
         sub.schemaStore = schemaStore
         sub.forwardedFor = forwardedFor
         sub.debug = debug // debug tags travel with the request
+        sub.appId = appId // request identity travels with the request...
+        sub.traceId = traceId // ...so a sub context's log lines carry the same trace id
         sub.request = request // a sub context is part of the same request
         return sub
     }
@@ -148,12 +164,26 @@ class KdrCxt(
     }
 
     /** The full context path: parent logging ids followed by this one, ":"-joined. */
-    fun cxtPath(): String = (parentLoggingIds + loggingId).joinToString(":")
+    /**
+     * The **full** context path: the client [traceId] (when present), then the whole chain of parent logging
+     * ids, then this context's own. This is the rich form -- it grows with nesting, and deep executor-pool
+     * work can make it long -- so it is meant for a structured sink (a future OpenSearch-style destination
+     * that also carries the device id and more), **not** the console. The console log uses [logInfo], which is
+     * deliberately minimal (this context only). Currently no sink consumes the full path; keep it that way for
+     * the console when one is added.
+     */
+    fun cxtPath(): String = (listOfNotNull(traceId) + parentLoggingIds + loggingId).joinToString(":")
 
-    /** Logging label combining the logging id with the acting user (or %sys). */
+    /**
+     * The **minimal** logging label for the console: this context's logging id with the acting user (or
+     * %sys), prefixed with the client [traceId] when there is one -- so every line carries the id the frontend
+     * also holds (one grep spans both tiers) without dragging the whole parent chain onto every line (see
+     * [cxtPath]).
+     */
     fun logInfo(): String {
+        val trace = traceId?.let { "$it:" } ?: ""
         val authId = userProfile.authId
-        return if (authId != null) "$loggingId($authId)" else "$loggingId%sys"
+        return if (authId != null) "$trace$loggingId($authId)" else "$trace$loggingId%sys"
     }
 
     /** Duration since this context was created, in milliseconds. */

@@ -9,6 +9,7 @@ import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * End-to-end proof that endpoint execution works: boot an instance, then call the `/health` endpoint
@@ -64,6 +65,18 @@ class HealthEndpointTest : StringSpec({
         // A schema-validation error carries no logical code and no bag, so neither key is present.
         body.containsKey(EP.errorCode) shouldBe false
         body.containsKey(EP.extraData) shouldBe false
+    }
+
+    "the appId and trace-id headers reach the request context and the log label (issue #105)" {
+        val client = client("healthIdentity")
+        client.setHeader("X-Kdr-App-Id", "kdr.en")
+        client.setHeader("X-Kdr-Trace-Id", "2026071712000012307")
+
+        val cxt = client.sendGetRequest("/health").createdCxt!!
+        cxt.appId shouldBe "kdr.en"
+        cxt.traceId shouldBe "2026071712000012307"
+        // The whole point: the frontend's id is on the log line, so one grep spans browser and server.
+        cxt.logInfo() shouldContain "2026071712000012307:"
     }
 
     "an unknown path yields a not-found error response" {

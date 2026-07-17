@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.RID
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.await
@@ -58,10 +59,15 @@ object Http {
         init.method = method
         // Same-origin credentials so the session cookie is sent and stored (the API and the app share an origin).
         init.credentials = "same-origin"
+        // Client identity on every call (issue #105): the app id (content selection) and a fresh trace id (so
+        // this call can be followed into the backend log). The backend also accepts these as `_appId`/`_traceId`
+        // params, but the frontend always sends headers.
+        val headers: dynamic = js("({})")
+        headers[RID.appIdHeader] = appId
+        headers[RID.traceIdHeader] = nextTraceId()
+        init.headers = headers
         if (body != null) {
-            val headers: dynamic = js("({})")
             headers["Content-Type"] = "application/json"
-            init.headers = headers
             init.body = body.toJsonStr(compact = true)
         }
         val response = browserFetch(url, init).await()
