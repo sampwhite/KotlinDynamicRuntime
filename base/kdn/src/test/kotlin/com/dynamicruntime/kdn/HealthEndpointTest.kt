@@ -5,6 +5,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.ND
+import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -47,6 +48,22 @@ class HealthEndpointTest : StringSpec({
 
         // Off-contract `_`/`$` keys are still allowed even though the endpoint declares no parameters.
         client.sendGetRequest("/health", mapOf(EP.debug to "explainInput", $$"$note" to "hi")).rptStatusCode shouldBe 200
+    }
+
+    "a real error response carries the standardized envelope (issue #103)" {
+        val client = client("healthErrorEnvelope")
+
+        val resp = client.sendGetRequest("/health", mapOf("bogus" to "1"))
+        resp.rptStatusCode shouldBe 400
+        val body = resp.rptResponseData!!.jsonMap()!!
+
+        // The HTTP code is `status` (a number), not the old `errorCode`.
+        body[EP.status] shouldBe 400L
+        body.containsKey(EP.errorMessage) shouldBe true
+        body.containsKey(EP.requestUri) shouldBe true
+        // A schema-validation error carries no logical code and no bag, so neither key is present.
+        body.containsKey(EP.errorCode) shouldBe false
+        body.containsKey(EP.extraData) shouldBe false
     }
 
     "an unknown path yields a not-found error response" {

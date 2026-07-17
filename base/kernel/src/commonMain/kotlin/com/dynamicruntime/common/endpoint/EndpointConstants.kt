@@ -59,9 +59,18 @@ object EP {
     const val results = "results" // general endpoints: always a map object
     const val item = "item" // single-resource endpoints
 
-    // Error envelope (a non-2xx response): the HTTP-style code and the human message.
+    // Error envelope (a non-2xx response). Four fields, each a different job:
+    //  - `status`    the HTTP-style code (an Int), for transport and retry. Was named `errorCode`.
+    //  - `errorCode` the *logical* code (a String), the thing a frontend branches on -- how to present a parse
+    //                error, how to follow up a failed purchase. Promoted here from the exception's extraData
+    //                (see `KdrException.errorCodeKey`, the same key one layer down); absent when there is none.
+    //  - `errorMessage` the human sentence to show.
+    //  - `extraData` an area-specific bag (e.g. a parser's offset/line/lineCol), nested so it can never shadow
+    //                a protocol field; absent when empty.
+    const val status = "status"
     const val errorCode = "errorCode"
     const val errorMessage = "errorMessage"
+    const val extraData = "extraData"
 
     // Input, list endpoints.
     const val limit = "limit"

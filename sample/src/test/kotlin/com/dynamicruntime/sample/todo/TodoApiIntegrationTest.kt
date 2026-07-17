@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.todo
 
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.startup.InstanceRegistry
@@ -53,7 +54,7 @@ class TodoApiIntegrationTest : StringSpec({
     "POST /todo/add with a blank title is rejected with 400" {
         val client = freshClient()
         val resp = client.sendJsonPostRequest("/todo/add", mapOf("title" to "   "))
-        resp.int("errorCode") shouldBe EXC.badInput
+        resp.int(EP.status) shouldBe EXC.badInput
     }
 
     "POST /todo/update edits title and completion" {
@@ -71,14 +72,14 @@ class TodoApiIntegrationTest : StringSpec({
     "POST /todo/update of a missing id returns 404" {
         val client = freshClient()
         val resp = client.sendJsonPostRequest("/todo/update", mapOf("id" to 9999, "completed" to true))
-        resp.int("errorCode") shouldBe EXC.notFound
+        resp.int(EP.status) shouldBe EXC.notFound
     }
 
     "POST /todo/delete removes a todo; a second delete is 404" {
         val client = freshClient()
 
         client.sendJsonPostRequest("/todo/delete", mapOf("id" to 1)).results()["deleted"] shouldBe true
-        client.sendJsonPostRequest("/todo/delete", mapOf("id" to 1)).int("errorCode") shouldBe EXC.notFound
+        client.sendJsonPostRequest("/todo/delete", mapOf("id" to 1)).int(EP.status) shouldBe EXC.notFound
 
         // Id 1 is gone; only the second seed remains.
         val ids = client.sendJsonGetRequest("/todo/list").items().map { it.int("id") }

@@ -285,10 +285,7 @@ class RequestHandler : WebRequest {
         LogRequest.error(cxt, "Error for request $logRequestUri.", t)
         try {
             if (!sentResponse) {
-                sendJsonResponse(
-                    linkedMapOf(EP.errorCode to code, EP.errorMessage to message, EP.requestUri to logRequestUri),
-                    code,
-                )
+                sendJsonResponse(errorEnvelope(code, message, logRequestUri, kdrE?.extraData), code)
             } else {
                 jettyCallback?.succeeded()
             }
@@ -491,6 +488,36 @@ class RequestHandler : WebRequest {
 
         /** Most parts accepted in one upload; bounds the per-part overhead the same way. */
         const val maxUploadParts = 20
+
+        /**
+         * Builds the error-response envelope (issue #103). Four fields, four distinct jobs:
+         *  - [EP.status]: the HTTP-style [status] code, for transport and retry.
+         *  - [EP.errorCode]: the *logical* code a frontend branches on, lifted out of the exception's
+         *    [extraData] (where areas write it under [KdrException.errorCodeKey]) to the top level. Absent when
+         *    there is none -- most errors have no logical code.
+         *  - [EP.errorMessage] / [EP.requestUri]: the human sentence, and the request it belongs to.
+         *  - [EP.extraData]: whatever remains of the exception's bag (e.g. a parser's offset/line/lineCol),
+         *    **nested** under its own key so an area's entry can never shadow a protocol field. Absent when
+         *    empty.
+         *
+         * The exception's own [extraData] is not mutated -- the promotion works on a copy, since the exception
+         * may still be logged or inspected after this.
+         */
+        fun errorEnvelope(
+            status: Int,
+            message: String,
+            requestUri: String,
+            extraData: Map<String, Any?>?,
+        ): Map<String, Any?> {
+            val remaining = extraData?.toMutableMap() ?: mutableMapOf()
+            val logicalCode = remaining.remove(KdrException.errorCodeKey)
+            return linkedMapOf<String, Any?>(EP.status to status).apply {
+                if (logicalCode != null) put(EP.errorCode, logicalCode)
+                put(EP.errorMessage, message)
+                put(EP.requestUri, requestUri)
+                if (remaining.isNotEmpty()) put(EP.extraData, remaining)
+            }
+        }
 
         /** Splits a target path into its context root (first segment) and sub-target (remainder). */
         fun parsePath(target: String): Pair<String, String> {
