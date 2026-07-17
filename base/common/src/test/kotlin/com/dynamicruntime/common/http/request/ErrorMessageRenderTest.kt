@@ -27,12 +27,13 @@ class ErrorMessageRenderTest : StringSpec({
     }
 
     "a string param is sanitized before substitution -- a Markdown link cannot be injected" {
-        val rendered = RequestHandler.renderMsg(
+        @Suppress("HttpUrlsUsage") val rendered = RequestHandler.renderMsg(
             msg, mapOf("loginId" to "[click](http://evil.com)"),
             resolve = { _, _, _ -> $$"No account was found for ${loginId}." },
             warn = { },
         )
         // The link structure is stripped; the text survives, no clickable URL.
+        @Suppress("HttpUrlsUsage")
         rendered.text shouldBe "No account was found for clickhttp://evil.com."
         rendered.fromFragment shouldBe true
     }
