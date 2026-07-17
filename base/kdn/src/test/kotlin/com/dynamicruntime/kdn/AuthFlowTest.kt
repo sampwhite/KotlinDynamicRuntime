@@ -1,12 +1,17 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MailService
+import com.dynamicruntime.common.user.AERR
+import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.RL
 import com.dynamicruntime.common.user.computeVerifyCode
+import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.sanitizeForDisplay
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -216,18 +221,26 @@ class AuthFlowTest : StringSpec({
     }
 
     "auth error messages are rendered from the auth.md fragment (issue #108)" {
-        val client = TestHttpClient(Startup.mkTestBootCxt("authErr", "authErrTest").instanceConfig)
+        val cxt = Startup.mkTestBootCxt("authErr", "authErrTest")
+        val client = TestHttpClient(cxt.instanceConfig)
         val token = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
 
-        // A verify to an unknown account: the noAccount template, with ${loginId} substituted.
+        // The expected message is computed from the fragment itself -- resolve the same key and substitute the
+        // same (sanitized) param the handler does -- so this checks the render *plumbing*, not the wording:
+        // someone can reword auth.md without breaking it. That evalTemplate/sanitize is correct is covered by
+        // ErrorMessageRenderTest and StrUtilTest.
+        val loginId = "ghost@example.com"
+        val noAccountExpected = MarkdownFragmentService.resolveFragment(AFRAG.auth, AERR.ns, AERR.noAccount)!!
+            .evalTemplate(mapOf(AERR.loginIdParam to loginId.sanitizeForDisplay()))
         val noAcct = client.sendJsonPostRequest(
-            "/auth/user/sendVerify", mapOf("loginId" to "ghost@example.com", "formAuthToken" to token),
+            "/auth/user/sendVerify", mapOf("loginId" to loginId, "formAuthToken" to token),
         )
-        noAcct[EP.errorMessage] shouldBe "No account was found for ghost@example.com."
+        noAcct[EP.errorMessage] shouldBe noAccountExpected
         // Marked as designed copy, so the frontend knows it is safe to show normally (issue #108).
         noAcct[EP.errorFromFragment] shouldBe true
 
-        // A wrong verification code on registration: the parameter-free codeIncorrect template.
+        // A wrong verification code on registration: the parameter-free codeIncorrect template, likewise
+        // compared against the fragment's own current text.
         client.sendJsonPostRequest(
             "/auth/newContact/sendVerify",
             mapOf("contactAddress" to email, "contactType" to "email", "formAuthToken" to token),
@@ -239,6 +252,6 @@ class AuthFlowTest : StringSpec({
                 "formAuthToken" to token, "verifyCode" to "WRONGCODE",
             ),
         )
-        badCode[EP.errorMessage] shouldBe "The verification code is incorrect."
+        badCode[EP.errorMessage] shouldBe MarkdownFragmentService.resolveFragment(AFRAG.auth, AERR.ns, AERR.codeIncorrect)
     }
 })
