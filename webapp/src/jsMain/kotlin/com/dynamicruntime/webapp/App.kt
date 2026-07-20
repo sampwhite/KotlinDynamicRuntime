@@ -21,27 +21,38 @@ import web.cssom.ClassName
  */
 val App = FC<Props> {
     var page by useState(currentPage())
+    // The app-wide refresh generation (issue #115): bumped on navigation and by state mutations, it re-triggers
+    // every mounted config consumer. The tuple form (not `by`) is used, so the bump is a functional update
+    // (`{ it + 1 }`), which the persistent hashchange listener below needs to avoid a stale count.
+    val (refresh, setRefresh) = useState(0)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
-        onHashChange { page = currentPage() }
+        onHashChange {
+            page = currentPage()
+            // Cross-page navigation is a refresh trigger: bump so every mounted config consumer re-reads.
+            setRefresh { it + 1 }
+        }
     }
 
     // antd derives its whole palette from tokens, so the dark algorithm is set once here for the whole tree.
     val darkTheme: dynamic = js("({})")
     darkTheme.algorithm = antdTheme.darkAlgorithm
 
-    ConfigProvider {
-        theme = darkTheme
+    RefreshContext.Provider {
+        value = RefreshBus(refresh) { setRefresh { it + 1 } }
+        ConfigProvider {
+            theme = darkTheme
 
-        AppBar {}
-        div {
-            className = ClassName("app-content")
-            when (page) {
-                pageCatalog -> EndpointCatalog {}
-                pageLogin -> AuthFlow { mode = pageLogin }
-                pageRegister -> AuthFlow { mode = pageRegister }
-                pageProfile -> Profile {}
-                else -> Home {}
+            AppBar {}
+            div {
+                className = ClassName("app-content")
+                when (page) {
+                    pageCatalog -> EndpointCatalog {}
+                    pageLogin -> AuthFlow { mode = pageLogin }
+                    pageRegister -> AuthFlow { mode = pageRegister }
+                    pageProfile -> Profile {}
+                    else -> Home {}
+                }
             }
         }
     }

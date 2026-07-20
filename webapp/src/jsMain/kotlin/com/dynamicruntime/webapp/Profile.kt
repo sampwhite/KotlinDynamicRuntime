@@ -10,7 +10,7 @@ import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
-import react.useEffectOnce
+import react.useEffect
 import react.useState
 import web.cssom.ClassName
 
@@ -40,6 +40,8 @@ val Profile = FC<Props> {
     var note by useState<String?>(null)
     var busy by useState(false)
     var devFilled by useState(false)
+    val generation = useRefreshGeneration()
+    val bump = useRefreshBump()
 
     /** Loads (or reloads) the config; the page re-reads it after a password change, so the copy follows. */
     fun loadConfig(onLoaded: (ProfileConfig) -> Unit = {}) {
@@ -55,7 +57,9 @@ val Profile = FC<Props> {
         }
     }
 
-    useEffectOnce {
+    // Re-read the config (and its copy) on every refresh generation (issue #115) -- on mount, and whenever a
+    // navigation or state mutation bumps it, so a password change here reloads the page's affordances.
+    useEffect(generation) {
         loadConfig { c ->
             profileScope.launch {
                 copy = runCatching { fetchCopy(c.fragment) }.getOrDefault(Copy.empty)
@@ -108,19 +112,22 @@ val Profile = FC<Props> {
             token = null
             devFilled = false
             note = t("password", "saved", "Your password was saved.")
-            loadConfig()
+            // Bump instead of reloading by hand: the generation effect above re-reads config + copy, and the
+            // account menu follows too (issue #115).
+            bump()
         }
     }
 
     fun removePassword() = run {
         ProfileApi.clearPassword()
         note = t("password", "removedNote", "Your password was removed. You can still sign in with a code.")
-        loadConfig()
+        bump()
     }
 
     fun logout() = run {
         AuthApi.logout()
         navigateHash(emptyList())
+        bump()
     }
 
     div {
