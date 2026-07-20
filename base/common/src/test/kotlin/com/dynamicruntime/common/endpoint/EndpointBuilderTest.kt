@@ -63,11 +63,12 @@ class EndpointBuilderTest : StringSpec({
         val m = sampleModule()
         val ep = m.endpoints.single { it.path == "/foo" }
         ep.outputSchema[SCH.type] shouldBe SCT.kObject
-        props(ep.outputSchema).keys shouldContainExactlyInAnyOrder listOf(EP.requestUri, EP.duration, EP.results)
+        props(ep.outputSchema).keys shouldContainExactlyInAnyOrder
+            listOf(EP.requestUri, EP.duration, EP.contentHash, EP.results)
         field(ep.outputSchema, EP.results)[SCH.dRef] shouldBe typeRefPath("FooOut", "api")
         field(ep.outputSchema, EP.duration)[SCH.type] shouldBe SCT.number
         (ep.outputSchema[SCH.required] as List<*>) shouldContainExactlyInAnyOrder
-            listOf(EP.requestUri, EP.duration, EP.results)
+            listOf(EP.requestUri, EP.duration, EP.contentHash, EP.results)
         // Reference declares input; it resolves to the referenced type's fields, closed to extras.
         ep.inputTypeRef shouldBe "api.FooIn"
         ep.inputFields shouldBe null
@@ -79,7 +80,8 @@ class EndpointBuilderTest : StringSpec({
     "an item endpoint wraps the output under item; no input ref yields an empty closed object" {
         val m = sampleModule()
         val ep = m.endpoints.single { it.path == "/foo/{id}" }
-        props(ep.outputSchema).keys shouldContainExactlyInAnyOrder listOf(EP.requestUri, EP.duration, EP.item)
+        props(ep.outputSchema).keys shouldContainExactlyInAnyOrder
+            listOf(EP.requestUri, EP.duration, EP.contentHash, EP.item)
         field(ep.outputSchema, EP.item)[SCH.dRef] shouldBe typeRefPath("FooOut", "api")
         // No input declared means "takes no parameters": resolves to a closed empty object, not a free-form map.
         ep.inputTypeRef shouldBe null
@@ -103,7 +105,7 @@ class EndpointBuilderTest : StringSpec({
         input.additionalProperties shouldBe false
         // Output: count, metadata, opted-in paging fields, then items last.
         props(ep.outputSchema).keys shouldContainExactlyInAnyOrder
-            listOf(EP.numItems, EP.requestUri, EP.duration, EP.hasMore, EP.numAvailable, EP.items)
+            listOf(EP.numItems, EP.requestUri, EP.duration, EP.contentHash, EP.hasMore, EP.numAvailable, EP.items)
         field(ep.outputSchema, EP.items)[SCH.type] shouldBe SCT.array
         field(ep.outputSchema, EP.items)[SCH.items]!!.toJsonMap()[SCH.dRef] shouldBe typeRefPath("FooOut", "api")
     }
@@ -120,7 +122,7 @@ class EndpointBuilderTest : StringSpec({
         input.properties.keys.shouldBeEmpty()
         input.additionalProperties shouldBe false
         props(ep.outputSchema).keys shouldContainExactlyInAnyOrder
-            listOf(EP.numItems, EP.requestUri, EP.duration, EP.items) // no hasMore / numAvailable
+            listOf(EP.numItems, EP.requestUri, EP.duration, EP.contentHash, EP.items) // no hasMore / numAvailable
     }
 
     "an endpoint can declare explicit input fields instead of a named type" {
@@ -171,8 +173,9 @@ class EndpointBuilderTest : StringSpec({
         defs["api.FooResponse"] = ep.outputSchema
         val respType = parseSchemaTypes(defs)["api.FooResponse"]!!
 
-        validate(respType, mapOf("requestUri" to "/foo", "duration" to 1.5, "results" to mapOf("name" to "x")))
-            .shouldBeEmpty()
+        validate(respType, mapOf(
+            "requestUri" to "/foo", "duration" to 1.5, "contentHash" to "abc123", "results" to mapOf("name" to "x"),
+        )).shouldBeEmpty()
         validate(respType, mapOf("results" to mapOf("name" to "x")))
             .map { it.code } shouldContain SchFailCode.missingRequired
     }

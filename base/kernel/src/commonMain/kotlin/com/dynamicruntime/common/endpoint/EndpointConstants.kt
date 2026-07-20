@@ -49,6 +49,12 @@ object EP {
     const val requestUri = "requestUri"
     const val duration = "duration"
 
+    // A content hash (CRC32, hex) of the result payload alone -- the value under `results`/`item`/`items`, never
+    // the volatile envelope siblings (`duration`, `requestUri`). It changes iff that content changes, so a
+    // client can re-fetch an inexpensive config freely and act only when the hash moves (issue #113/#114). The same
+    // mechanism as a content file's `buildId` (`ContentResources.buildId`), applied to a response payload.
+    const val contentHash = "contentHash"
+
     // Output, list endpoints.
     const val numItems = "numItems"
     const val hasMore = "hasMore"
@@ -66,7 +72,7 @@ object EP {
     //                (see `KdrException.errorCodeKey`, the same key one layer down); absent when there is none.
     //  - `errorMessage` the human sentence to show.
     //  - `errorFromFragment` (Bool) whether `errorMessage` was rendered from a Markdown fragment (issue #108)
-    //                -- true means designed, user-facing copy with sanitized params, which the frontend may
+    //                -- true means a designed, user-facing copy with sanitized params, which the frontend may
     //                show (or Markdown-render) freely; false means a raw/internal message, to show cautiously
     //                (error-highlighted, plain, or a cryptic stand-in in prod). Always present on an error.
     //  - `extraData` an area-specific bag (e.g., a parser's offset/line/lineCol), nested so it can never shadow
@@ -89,7 +95,7 @@ object EP {
  * Client-supplied request identity (issue #105). The frontend attaches both to every call so the backend can
  * act on them:
  *  - **appId** selects content — the application, plus the locale suffix an anonymous visitor's backend cannot
- *    know (see `Http.appId`). Consumed once the backend honours it (fragment resolution, a later phase).
+ *    know (see `Http.appId`). Consumed once the backend honors it (fragment resolution, a later phase).
  *  - **traceId** correlates a call across tiers: the frontend mints it, the backend stamps it onto the
  *    request context so every log line for that call carries it, and a troubleshooter greps one id from
  *    browser to server.
