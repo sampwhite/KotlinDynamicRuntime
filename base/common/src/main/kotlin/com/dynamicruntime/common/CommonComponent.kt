@@ -8,6 +8,7 @@ import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.app.appSchema
 import com.dynamicruntime.common.home.homeSchema
+import com.dynamicruntime.common.test.testSchema
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.portal.PortalService
 import com.dynamicruntime.common.user.UserService
@@ -54,6 +55,8 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(homeSchema(cxt))
         // App-level (issue #118): deployment-global config the whole frontend shares (the error-display policy).
         collector.addModule(appSchema(cxt))
+        // Test-only endpoints (issue #125): filtered out of the store unless the deployment allows them.
+        collector.addModule(testSchema(cxt))
     }
 
     /**

@@ -142,7 +142,7 @@ class AuthFormHandler(
         if (existing != null && existing.enabled && (!existing.needsRealUsername || existing.encodedPassword != null)) {
             // FUTURE (with the other security hardening -- single-use verify tokens, logout invalidating the
             // auth cookie): rather than an error, *pretend success* here and email the existing account that
-            // someone tried to register with their address. For now it is a sensitive error -- obfuscated to a
+            // someone tried to register with their address. For now, it is a sensitive error -- obfuscated to a
             // generic message in prod so it does not confirm the email is taken, and the attempt is logged.
             LogAuth.info(cxt) { "Registration attempted for an already-registered email '$contactAddress'." }
             throw KdrException.mkMsg(
@@ -278,6 +278,39 @@ class AuthFormHandler(
         clearPassword(row)
         userService.updateUser(cxt, row)
         return row.toUserProfile().toUserInfo()
+    }
+
+    /**
+     * Test-only (issue #125): logs [cxt] in as the user whose primary contact is [email], **creating** that
+     * user first if none exists. On a create, [grantAdmin] additionally grants the new user the `admin` role;
+     * on an existing user it is ignored (you become whoever is already there). When [failIfUserAlreadyExists]
+     * is set, an existing user is an error instead of a login.
+     *
+     * No verification code or password is involved -- it exists purely to seed an authenticated session for
+     * tests and local simulations, which is why it is reachable only through a `forTestingOnly` endpoint. Like
+     * a real login it flags the session cookie to be written (via [completeLogin]) and returns the user info.
+     */
+    fun becomeUserByEmail(
+        cxt: KdrCxt, email: String, grantAdmin: Boolean, failIfUserAlreadyExists: Boolean,
+    ): Map<String, Any?> {
+        val existing = userService.queryByLoginId(cxt, email)
+        if (existing != null) {
+            if (failIfUserAlreadyExists) {
+                throw KdrException("A user with email '$email' already exists.", code = EXC.badInput)
+            }
+            return completeLogin(cxt, existing, byCode = false)
+        }
+        val roles = if (grantAdmin) listOf(ROLE.user, ROLE.admin) else listOf(ROLE.user)
+        val data = AuthUserRow.mkInitialUser(email, AC.public, ROLE.user).toMutableMap()
+        @Suppress("UNCHECKED_CAST")
+        val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
+        authUserData[AD.roles] = roles
+        authUserData[AD.validatedContacts] = listOf(email)
+        authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
+        val userId = userService.insertUser(cxt, data)
+        val row = userService.queryByUserId(cxt, userId)
+            ?: throw KdrException("Could not load the just-created user '$email'.", code = EXC.internalError)
+        return completeLogin(cxt, row, byCode = false)
     }
 
     /**
