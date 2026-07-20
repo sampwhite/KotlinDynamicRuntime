@@ -305,6 +305,10 @@ class RequestService : ServiceInitializer {
         // payload yields an unchanged hash no matter how the volatile siblings around it move, and a client can
         // re-fetch an inexpensive config freely and act only when the hash changes.
         env[EP.contentHash] = payload.toJsonStr(compact = true).crc32Hex()
+        // The hash of the served web-app bundle (issue #134), deployment-global, published into the instance
+        // config by whatever serves the bundle (AppUiService); empty when this backend serves no bundle. The
+        // frontend compares it to the hash injected into its own bootstrap to notice a new deployment.
+        env[EP.webAppHash] = cxt.instanceConfig.get(EP.webAppHash) as? String ?: ""
         // Any handler-injected response structure travels under the off-contract `_meta` key.
         val meta = cxt.request?.responseMeta
         if (!meta.isNullOrEmpty()) {
