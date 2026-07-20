@@ -41,7 +41,7 @@ object AUIC {
  */
 @Suppress("ConstPropertyName")
 object AUI {
-    /** Classpath directory the build embeds the webapp's distribution at (see `appui/build.gradle.kts`). Also
+    /** Classpath directory the build embeds the webapp's distribution at (see `appui/build.gradle.kts`). Also,
      *  the fallback for a branding asset a deployment's [AUIC.appUiBrandingDir] does not supply. */
     const val defaultResourceDir = "webapp"
 
@@ -49,7 +49,7 @@ object AUI {
     // Notably the stylesheet: overriding it by file replacement would fork the whole sheet and re-create the
     // drift that having a single app.css exists to prevent. Theming belongs in CSS variables, not a copy.
 
-    /** Application path (context-root-stripped) of the webapp's JS bundle, e.g. reached at `/wa/webapp.js`. */
+    /** Application path (context-root-stripped) of the webapp's JS bundle, e.g., reached at `/wa/webapp.js`. */
     const val bundlePath = "/webapp.js"
 
     /** Application path of the bundle's sourcemap. */
@@ -61,7 +61,7 @@ object AUI {
     /** Classpath location of the embedded sourcemap. */
     const val bundleMapResource = "/webapp/webapp.js.map"
 
-    /** Application path of the webapp's stylesheet, e.g. reached at `/wa/app.css`; declared by [AppUiPage].
+    /** Application path of the webapp's stylesheet, e.g., reached at `/wa/app.css`; declared by [AppUiPage].
      *  It is the *same* sheet the dev server serves — the webapp authors exactly one. */
     const val stylesheetPath = "/app.css"
 
@@ -104,6 +104,17 @@ object AUI {
     const val icoMimeType = "image/x-icon"
 
     /**
+     * Cache forever, for an asset requested at a content-hashed URL (`webapp.js:<hash>`): the hash *is* the
+     * cache key, so a change is a new URL and busts the cache automatically (issue #137). Matches the content
+     * services' header. Bare (unhashed) URLs get no such header, so they revalidate.
+     */
+    const val immutableCacheControl = "public, max-age=31536000, immutable"
+
+    /** The HTML shell is never cached: it must always be re-fetched so the browser sees the current hashed
+     *  asset URLs after a deployment (issue #137). `no-cache` = revalidate before use. */
+    const val shellCacheControl = "no-cache"
+
+    /**
      * The brandable set: every asset a deployment may override, with how to serve it. A table rather than a
      * branch per file, because these are handled uniformly — resolve the override, then send — and a
      * deployment needs to be *told* which files it may supply, which this list is.
@@ -136,7 +147,7 @@ class BrandingAsset(val file: String, val mimeType: String, val binary: Boolean)
  *
  *  - The HTML shell at the app root (`appPath == "/"`), rendered by [AppUiPage];
  *  - The webapp's JS bundle (and sourcemap), read from the classpath resource the build embedded; and
- *  - The app's static assets — its stylesheet, icons and brand mark — embedded from the same `:webapp`
+ *  - The app's static assets — its stylesheet, icons, and brand mark — embedded from the same `:webapp`
  *    distribution the dev server serves them from, so both shells load byte-identical assets. Text assets go
  *    out through [RequestHandler.sendStringResponse] and the raster icons through
  *    [RequestHandler.sendBytesResponse]; the split is not cosmetic, as the text path is UTF-8 only and would
@@ -155,6 +166,9 @@ class AppUiService : ServiceInitializer, ContentServer {
      * deployment, so this asks the classloader at startup rather than on every request.
      */
     var brandingResources: Map<String, String> = emptyMap()
+
+    /** Memoized content hashes of the served shell resources (issue #137), keyed by classpath resource path. */
+    private val assetHashes = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /** Registers this content server with the dispatcher and resolves the branding set (idempotent). */
     override fun checkInit(cxt: KdrCxt) {
@@ -227,17 +241,50 @@ class AppUiService : ServiceInitializer, ContentServer {
         if (handler.focus != ContextFocus.app) {
             return false
         }
-        return when (handler.appPath) {
+        // An asset URL carries a `:<hash>` cache-busting suffix (issue #137, mirroring the content services);
+        // strip it to resolve the resource, and remember whether one was present -- a hashed request is served
+        // immutably (the hash is the cache key), a bare one revalidates.
+        val bareAppPath = handler.appPath.substringBefore(':')
+        val versioned = bareAppPath.length != handler.appPath.length
+        return when (bareAppPath) {
             "/" -> {
-                val html = AppUiPage.render(bootstrapJson(cxt), handler.contextRoot)
+                // The shell is never cached, so a reload always fetches the current hashed asset URLs.
+                handler.setResponseHeader("Cache-Control", AUI.shellCacheControl)
+                val html = AppUiPage.render(bootstrapJson(cxt), handler.contextRoot, ::versionedName)
                 handler.sendStringResponse(html, EXC.ok, AUI.htmlMimeType)
                 true
             }
-            AUI.bundlePath -> serveTextResource(cxt, handler, AUI.bundleResource, AUI.jsMimeType)
-            AUI.bundleMapPath -> serveTextResource(cxt, handler, AUI.bundleMapResource, AUI.jsonMimeType)
-            AUI.stylesheetPath -> serveTextResource(cxt, handler, AUI.stylesheetResource, AUI.cssMimeType)
-            else -> serveBranding(cxt, handler)
+            AUI.bundlePath -> serveTextResource(cxt, handler, AUI.bundleResource, AUI.jsMimeType, versioned)
+            AUI.bundleMapPath -> serveTextResource(cxt, handler, AUI.bundleMapResource, AUI.jsonMimeType, versioned)
+            AUI.stylesheetPath -> serveTextResource(cxt, handler, AUI.stylesheetResource, AUI.cssMimeType, versioned)
+            else -> serveBranding(cxt, handler, bareAppPath, versioned)
         }
+    }
+
+    /**
+     * The application filename with its content-hash suffix (`webapp.js:1a2b3c`), for the shell to link so the
+     * asset is cache-bustable (issue #137). Falls back to the bare name when the resource is absent or unhashed
+     * (nothing to bust), so the link is always valid.
+     */
+    private fun versionedName(file: String): String {
+        val hash = resourceForAsset(file)?.let { assetHash(it) }
+        return if (hash.isNullOrEmpty()) file else "$file:$hash"
+    }
+
+    /** The classpath resource behind a linked shell asset (by filename), or null when it is not one we serve. */
+    private fun resourceForAsset(file: String): String? = when (file) {
+        AUI.bundlePath.removePrefix("/") -> AUI.bundleResource
+        AUI.stylesheetPath.removePrefix("/") -> AUI.stylesheetResource
+        else -> brandingResources[file] // the icons / brand mark (their resolved override or built-in)
+    }
+
+    /** A memoized CRC32-hex hash of an embedded resource's bytes (issue #137), or null when it is absent.
+     *  Immutable within a deployment, so computed once per resource. */
+    private fun assetHash(resourcePath: String): String? {
+        val cached = assetHashes.getOrPut(resourcePath) {
+            this::class.java.getResourceAsStream(resourcePath)?.use { it.readBytes() }?.crc32Hex() ?: ""
+        }
+        return cached.ifEmpty { null }
     }
 
     /**
@@ -245,24 +292,27 @@ class AppUiService : ServiceInitializer, ContentServer {
      * that is was settled at init by [resolveBranding], so a deployment's override and the built-in are the
      * same code path here — only the bytes differ.
      */
-    private fun serveBranding(cxt: KdrCxt, handler: RequestHandler): Boolean {
-        val asset = AUI.brandingAssets.firstOrNull { it.appPath == handler.appPath } ?: return false
+    private fun serveBranding(cxt: KdrCxt, handler: RequestHandler, bareAppPath: String, versioned: Boolean): Boolean {
+        val asset = AUI.brandingAssets.firstOrNull { it.appPath == bareAppPath } ?: return false
         val resource = brandingResources[asset.file] ?: return false
         return if (asset.binary) {
-            serveBinaryResource(cxt, handler, resource, asset.mimeType)
+            serveBinaryResource(cxt, handler, resource, asset.mimeType, versioned)
         } else {
-            serveTextResource(cxt, handler, resource, asset.mimeType)
+            serveTextResource(cxt, handler, resource, asset.mimeType, versioned)
         }
     }
 
-    /** Serves an embedded **text** resource (the shell's stylesheet, the bundle, an SVG), decoded as UTF-8. */
+    /** Serves an embedded **text** resource (the shell's stylesheet, the bundle, an SVG), decoded as UTF-8. When
+     *  [versioned] (requested at a content-hashed URL), it is cached immutably (issue #137). */
     private fun serveTextResource(
         cxt: KdrCxt,
         handler: RequestHandler,
         resourcePath: String,
         mimeType: String,
+        versioned: Boolean,
     ): Boolean {
         val body = readResource(cxt, handler, resourcePath) ?: return false
+        if (versioned) handler.setResponseHeader("Cache-Control", AUI.immutableCacheControl)
         handler.sendStringResponse(body.toString(Charsets.UTF_8), EXC.ok, mimeType)
         return true
     }
@@ -277,8 +327,10 @@ class AppUiService : ServiceInitializer, ContentServer {
         handler: RequestHandler,
         resourcePath: String,
         mimeType: String,
+        versioned: Boolean,
     ): Boolean {
         val body = readResource(cxt, handler, resourcePath) ?: return false
+        if (versioned) handler.setResponseHeader("Cache-Control", AUI.immutableCacheControl)
         handler.sendBytesResponse(body, EXC.ok, mimeType)
         return true
     }

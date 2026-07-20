@@ -23,7 +23,7 @@ class AppUiHttpTest : StringSpec({
     InstanceRegistry.register(listOf(AppUiComponent()))
 
     // One shared instance (component/schema/service init is cached by instance name); each test varies only
-    // the cheap context name.
+    // the inexpensive context name.
     fun client(cxtName: String): TestHttpClient =
         TestHttpClient(Startup.mkTestBootCxt(cxtName, "appUiHttpTest").instanceConfig)
 
@@ -38,17 +38,36 @@ class AppUiHttpTest : StringSpec({
         resp.rptResponseMimeType shouldBe "text/html; charset=utf-8"
         val body = resp.rptResponseData!!
         body shouldContain "<div id=\"root\"></div>"
-        // The bundle is referenced by an absolute path built from the live app context root.
-        body shouldContain "src=\"/wa/webapp.js\""
+        // The bundle is referenced by an absolute path built from the live app context root, carrying a
+        // `:<hash>` cache-busting suffix (issue #137).
+        body shouldContain "src=\"/wa/webapp.js:"
         // The frontend bootstrap: context roots by focus, including this new `app` focus.
         body shouldContain "window.kdrCfg"
         body shouldContain "\"app\":\"wa\""
-        // The icons and stylesheet, like the bundle, are referenced by absolute paths built from the live app
-        // context root.
-        body shouldContain "href=\"/wa/favicon.svg\""
-        body shouldContain "href=\"/wa/favicon-32.png\""
-        body shouldContain "href=\"/wa/apple-touch-icon.png\""
-        body shouldContain "href=\"/wa/app.css\""
+        // The icons and stylesheet, like the bundle, are referenced by absolute, hash-suffixed paths.
+        body shouldContain "href=\"/wa/favicon.svg:"
+        body shouldContain "href=\"/wa/favicon-32.png:"
+        body shouldContain "href=\"/wa/apple-touch-icon.png:"
+        body shouldContain "href=\"/wa/app.css:"
+        // The shell itself is never cached, so a reload always fetches the current hashed asset URLs.
+        resp.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe "no-cache"
+    }
+
+    "a hash-suffixed asset URL serves the resource and is cached immutably; the bare URL is not (issue #137)" {
+        val c = client("appCache")
+        // The shell names the versioned bundle URL; pull the exact suffix out and fetch it.
+        val shell = c.sendGetRequestRaw("/wa").rptResponseData!!
+        val versioned = Regex("src=\"/wa/(webapp\\.js:[0-9a-f]+)\"").find(shell)!!.groupValues[1]
+
+        val hashed = c.sendGetRequestRaw("/wa/$versioned")
+        hashed.rptStatusCode shouldBe 200
+        hashed.rptResponseMimeType shouldBe "application/javascript; charset=utf-8"
+        hashed.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe "public, max-age=31536000, immutable"
+
+        // The bare URL still serves the same resource, but without the immutable header (it can go stale).
+        val bare = c.sendGetRequestRaw("/wa/webapp.js")
+        bare.rptStatusCode shouldBe 200
+        bare.rptResponseHeaders["cache-control"] shouldBe null
     }
 
     // The two shells (this one and the dev server's index.html) must not carry their own CSS -- that is how
@@ -102,7 +121,7 @@ class AppUiHttpTest : StringSpec({
     // --- the raster icons: binary, so they must survive as bytes ------------------------------------------
 
     // The point of the binary response path. A PNG's header is 0x89 'P' 'N' 'G' -- 0x89 is not valid UTF-8,
-    // so if these bytes ever went out through the text path they would come back as U+FFFD and the image
+    // so if these bytes ever went out through the text path, they would come back as "U+FFFD" and the image
     // would be silently corrupt. Comparing against the resource on the classpath proves the whole chain
     // (Gradle copy -> classpath -> read -> response) is byte-exact, which is the only thing that matters here.
     "GET /wa/favicon-32.png serves the PNG icon byte-for-byte" {
