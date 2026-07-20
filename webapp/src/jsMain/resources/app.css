@@ -225,7 +225,7 @@ body {
     border: 1px solid var(--border);
     border-radius: 5px;
     padding: 1px 5px;
-    font-size: .85em;
+    font-size: .92em;
 }
 /* An inset block well: a rendered Markdown code block, or one the display engine builds by hand (`.code`).
    The same box either way -- they differ only in the text inside it. */
@@ -304,6 +304,19 @@ input {
 .todo-title { flex: 1; min-width: 120px; }
 .todo-title.done { text-decoration: line-through; color: var(--text-muted); }
 .todo-error { color: var(--danger); margin-top: 12px; }
+
+/* A raw / internal error (issue #111): unlike an expected `.todo-error`, it is deliberately set apart -- boxed
+   and monospaced -- so it reads as an unexpected, developer-facing message rather than designed copy. */
+.internal-error {
+    color: var(--text-dim);
+    margin-top: 12px;
+    padding: 8px 12px;
+    border: 1px dashed var(--danger);
+    border-radius: 8px;
+    background: rgba(248, 113, 113, .08);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+}
 
 /* The schema display engine: one field per row, label + widget or read-only value. */
 .schema-form { width: 100%; }
