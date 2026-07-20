@@ -6,7 +6,9 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
 import react.Props
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.span
 import react.useEffect
 import react.useEffectOnce
 import react.useState
@@ -31,12 +33,19 @@ val App = FC<Props> {
     // every mounted config consumer. The tuple form (not `by`) is used, so the bump is a functional update
     // (`{ it + 1 }`), which the persistent hashchange listener below needs to avoid a stale count.
     val (refresh, setRefresh) = useState(0)
+    // A newer web-app version detected on a response (issue #136); drives the reload affordance below. The
+    // reaction is non-destructive: we never reload out from under the user, only offer it and reload on a
+    // navigation (a safe point) or an explicit click.
+    var updateAvailable by useState(false)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
+        onWebAppStale { updateAvailable = true }
         onHashChange {
             page = currentPage()
             // Cross-page navigation is a refresh trigger: bump so every mounted config consumer re-reads.
             setRefresh { it + 1 }
+            // A navigation is a safe point to pick up a newer app version if one has been detected (issue #136).
+            if (isWebAppStale()) reloadWebApp()
         }
     }
 
@@ -56,6 +65,17 @@ val App = FC<Props> {
         ConfigProvider {
             theme = darkTheme
 
+            if (updateAvailable) {
+                div {
+                    className = ClassName("update-banner")
+                    span { +"A new version of the app is available." }
+                    button {
+                        className = ClassName("update-banner-reload")
+                        onClick = { reloadWebApp() }
+                        +"Reload"
+                    }
+                }
+            }
             AppBar {}
             div {
                 className = ClassName("app-content")
