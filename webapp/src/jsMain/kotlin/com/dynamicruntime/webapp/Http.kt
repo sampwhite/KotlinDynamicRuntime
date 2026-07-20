@@ -51,8 +51,13 @@ object Http {
         requestText("GET", "$staticRoot/$appId/${CMK.doc}/$docId:$buildId", null)
 
     /** Runs a request and parses the JSON body; a non-2xx raises the runtime's [EP.errorMessage]. */
-    private suspend fun requestJson(method: String, url: String, body: Map<String, Any?>?): Map<String, Any?> =
-        requestText(method, url, body).jsonMap() ?: emptyMap()
+    private suspend fun requestJson(method: String, url: String, body: Map<String, Any?>?): Map<String, Any?> {
+        val map = requestText(method, url, body).jsonMap() ?: emptyMap()
+        // Notice when a newer web app has been deployed than the one running (issue #136): every endpoint
+        // envelope carries the deployed bundle hash. A no-op for non-envelope responses (fragment/doc) and dev.
+        observeWebAppHash(map[EP.webAppHash] as? String)
+        return map
+    }
 
     private suspend fun requestText(method: String, url: String, body: Map<String, Any?>?): String {
         val init: dynamic = js("({})")
