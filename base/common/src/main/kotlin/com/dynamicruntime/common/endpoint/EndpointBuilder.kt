@@ -63,6 +63,13 @@ class KdrEndpoint(
     /** Whether input resolution appends the `limit` field (list endpoints that did not opt out). */
     val includeLimit: Boolean,
     val outputSchema: Map<String, Any?>,
+    /**
+     * A **test-only** endpoint (issue #125): removed from the compiled endpoint store -- so neither dispatchable
+     * nor listed in the catalog -- unless the deployment allows test endpoints (see
+     * [com.dynamicruntime.common.startup.SchemaService]). Kept before [handler] so the handler stays last
+     * (trailing-lambda construction) and this defaults off.
+     */
+    val forTestingOnly: Boolean = false,
     val handler: KdrEndpointHandler,
 ) {
     init {
@@ -152,12 +159,14 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         outputRef: String,
         inputRef: String? = null,
         inputFields: (InputFieldsBuilder.() -> Unit)? = null,
+        forTestingOnly: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
-            KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output, handler),
+            KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output,
+                forTestingOnly, handler),
         )
     }
 
@@ -173,12 +182,14 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         outputRef: String,
         inputRef: String? = null,
         inputFields: (InputFieldsBuilder.() -> Unit)? = null,
+        forTestingOnly: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.item, "The single resource item returned by the endpoint.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
-            KdrEndpoint(path, method, EndpointKind.item, namespace, description, fields, typeRef, false, output, handler),
+            KdrEndpoint(path, method, EndpointKind.item, namespace, description, fields, typeRef, false, output,
+                forTestingOnly, handler),
         )
     }
 
@@ -197,12 +208,14 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         hasMore: Boolean = false,
         hasNumAvailable: Boolean = false,
         noLimit: Boolean = false,
+        forTestingOnly: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = listOutput(outputRef, hasMore, hasNumAvailable)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
-            KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output, handler),
+            KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output,
+                forTestingOnly, handler),
         )
     }
 
@@ -224,6 +237,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         method: HttpMethod = HttpMethod.GET, // fetching a file is a GET unless there is a reason otherwise
         inputRef: String? = null,
         inputFields: (InputFieldsBuilder.() -> Unit)? = null,
+        forTestingOnly: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = SchTypeBuilder(cxt, namespace).also {
@@ -232,7 +246,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         }.data
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
-            KdrEndpoint(path, method, EndpointKind.file, namespace, description, fields, typeRef, false, output, handler),
+            KdrEndpoint(path, method, EndpointKind.file, namespace, description, fields, typeRef, false, output,
+                forTestingOnly, handler),
         )
     }
 
@@ -260,12 +275,14 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         method: HttpMethod = HttpMethod.POST, // a body-carrying request; POST unless the caller says otherwise
         inputRef: String? = null,
         inputFields: (InputFieldsBuilder.() -> Unit)? = null,
+        forTestingOnly: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) describing the uploaded file.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
-            KdrEndpoint(path, method, EndpointKind.file, namespace, description, fields, typeRef, false, output, handler),
+            KdrEndpoint(path, method, EndpointKind.file, namespace, description, fields, typeRef, false, output,
+                forTestingOnly, handler),
         )
     }
 
