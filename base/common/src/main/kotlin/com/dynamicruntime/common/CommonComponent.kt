@@ -6,6 +6,7 @@ import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.app.appSchema
 import com.dynamicruntime.common.home.homeSchema
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.portal.PortalService
@@ -48,6 +49,8 @@ class CommonComponent : ComponentDefinition {
         // Home/shell: the UI-config endpoint that tells the frontend which layout to build and which
         // Markdown documents to link to.
         collector.addModule(homeSchema(cxt))
+        // App-level (issue #118): deployment-global config the whole frontend shares (the error-display policy).
+        collector.addModule(appSchema(cxt))
     }
 
     /**
