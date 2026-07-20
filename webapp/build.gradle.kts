@@ -51,7 +51,7 @@ kotlin {
                     // Same-origin dev: proxy the runtime's context roots to the backend on :7070. The browser
                     // then makes same-origin calls to the dev server, which forwards them — so no CORS
                     // handling is needed (the runtime's HTTP server has none). Start the backend with
-                    // `./gradlew :launch:run` (or `:sample:run`) first.
+                    // `./gradlew :launch:run` first.
                     //   "/kda" — the API context root (endpoints).
                     //   "/st"  — the static context root: Markdown fragments (a group's copy) and whole
                     //            Markdown documents. In production these are same-origin already; only the

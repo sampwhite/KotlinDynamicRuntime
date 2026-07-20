@@ -70,7 +70,7 @@ val EndpointCatalog = FC<Props> {
                     }
                 }
             } catch (e: Throwable) {
-                error = "Catalog fetch failed — is `./gradlew :sample:run` running? (${e.message})"
+                error = "Catalog fetch failed — is `./gradlew :launch:run` running? (${e.message})"
             } finally {
                 restored = true
             }
