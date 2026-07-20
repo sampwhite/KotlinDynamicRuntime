@@ -2,12 +2,18 @@ package com.dynamicruntime.webapp
 
 // The antd `theme` export, aliased: inside the ConfigProvider builder block, `theme` is its prop.
 import com.dynamicruntime.webapp.theme as antdTheme
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
+import react.useEffect
 import react.useEffectOnce
 import react.useState
 import web.cssom.ClassName
+
+/** Coroutine scope for the app root's suspend backend calls (the app-level config fetch). */
+private val appScope = MainScope()
 
 /**
  * The application root and top-level router. The persistent [AppBar] sits above every page; the page itself is
@@ -32,6 +38,13 @@ val App = FC<Props> {
             // Cross-page navigation is a refresh trigger: bump so every mounted config consumer re-reads.
             setRefresh { it + 1 }
         }
+    }
+
+    // The deployment-global app config (issue #120), fetched once at the root and re-fetched on every generation
+    // like any other config, so it stays fresh. Cached module-side (see AppApi) for consumers such as the
+    // error-display policy (issue #111); nothing here re-renders on it, so no state is kept.
+    useEffect(refresh) {
+        appScope.launch { AppApi.load() }
     }
 
     // antd derives its whole palette from tokens, so the dark algorithm is set once here for the whole tree.
