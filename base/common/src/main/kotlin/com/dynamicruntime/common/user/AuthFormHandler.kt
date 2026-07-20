@@ -301,10 +301,9 @@ class AuthFormHandler(
             return completeLogin(cxt, existing, byCode = false)
         }
         val roles = if (grantAdmin) listOf(ROLE.user, ROLE.admin) else listOf(ROLE.user)
-        val data = AuthUserRow.mkInitialUser(email, AC.public, ROLE.user).toMutableMap()
+        val data = AuthUserRow.mkInitialUser(email, AC.public, roles).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
-        authUserData[AD.roles] = roles
         authUserData[AD.validatedContacts] = listOf(email)
         authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
         val userId = userService.insertUser(cxt, data)
