@@ -202,10 +202,17 @@ val Profile = FC<Props> {
                             .evalTemplate(mapOf("user" to mapOf("email" to (config?.loginId ?: ""))))
                     }
                 }
-                textField(t("password", "newPasswordLabel", "New password"), password, isPassword = true, disabled = busy) {
-                    password = it
-                }
-                textField(t("password", "codeLabel", "Verification code"), code, disabled = busy) { code = it }
+                // Code first, then the new password -- the order the copy above just described ("we emailed a
+                // code"), and the same order the registration flow uses, so the one step that appears in both
+                // places does not swap its fields depending on where you reached it from.
+                textField(
+                    t("password", "codeLabel", "Verification code"), code, disabled = busy,
+                    autoComplete = AC.oneTimeCode,
+                ) { code = it }
+                textField(
+                    t("password", "newPasswordLabel", "New password"), password, isPassword = true,
+                    disabled = busy, autoComplete = AC.newPassword,
+                ) { password = it }
 
                 // The shared rule the backend enforces, surfaced as a correction below the action rather than
                 // an instruction under the field -- and only once there is something to correct. Further rules

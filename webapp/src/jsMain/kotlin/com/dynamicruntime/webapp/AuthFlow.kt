@@ -162,14 +162,18 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         val codeSent = token != null
 
         // The email (login id) is always shown; it locks once a code has been sent.
-        textField(t(ns, "emailLabel", "Email address"), email, disabled = busy || codeSent) { email = it }
+        textField(
+            t(ns, "emailLabel", "Email address"), email, disabled = busy || codeSent,
+            autoComplete = AC.username,
+        ) { email = it }
 
         if (!codeSent) {
             // Login-only password path, when the deployment enables it.
             if (!register && config?.features?.passwordLogin == true) {
-                textField(t("login", "passwordLabel", "Password"), password, isPassword = true, disabled = busy) {
-                    password = it
-                }
+                textField(
+                    t("login", "passwordLabel", "Password"), password, isPassword = true, disabled = busy,
+                    autoComplete = AC.currentPassword,
+                ) { password = it }
                 Button {
                     type = "primary"
                     loading = busy
@@ -208,7 +212,9 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                         .evalTemplate(mapOf("user" to mapOf("email" to email.trim())))
                 }
             }
-            textField(t(ns, "codeLabel", "Verification code"), code, disabled = busy) { code = it }
+            textField(
+                t(ns, "codeLabel", "Verification code"), code, disabled = busy, autoComplete = AC.oneTimeCode,
+            ) { code = it }
 
             // A password at this step is optional when registering (code login works without one) and required
             // when the round was started to set one.
@@ -219,7 +225,9 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 } else {
                     t("login", "newPasswordLabel", "New password")
                 }
-                textField(label, password, isPassword = true, disabled = busy) { password = it }
+                textField(
+                    label, password, isPassword = true, disabled = busy, autoComplete = AC.newPassword,
+                ) { password = it }
                 p {
                     className = ClassName("type-hint")
                     +if (register) {

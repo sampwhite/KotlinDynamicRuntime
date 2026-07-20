@@ -65,6 +65,12 @@ external interface InputProps : PropsWithChildren {
     var onChange: ((event: dynamic) -> Unit)?
     /** Fires when Enter is pressed inside the input. */
     var onPressEnter: ((event: dynamic) -> Unit)?
+    /**
+     * The HTML `autocomplete` token (`"one-time-code"`, `"new-password"`, `"current-password"`, `"username"`,
+     * `"off"`, …). antd forwards unknown props to the underlying `<input>`, so this reaches the browser. It is
+     * what stops a password manager from guessing wrong -- see [AC] and the note in [textField].
+     */
+    var autoComplete: String?
 }
 
 external val Input: ComponentType<InputProps>
