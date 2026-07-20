@@ -67,9 +67,10 @@ object Http {
         // Client identity on every call (issue #105): the app id (content selection) and a fresh trace id (so
         // this call can be followed into the backend log). The backend also accepts these as `_appId`/`_traceId`
         // params, but the frontend always sends headers.
+        val traceId = nextTraceId()
         val headers: dynamic = js("({})")
         headers[RID.appIdHeader] = appId
-        headers[RID.traceIdHeader] = nextTraceId()
+        headers[RID.traceIdHeader] = traceId
         init.headers = headers
         if (body != null) {
             headers["Content-Type"] = "application/json"
@@ -78,8 +79,17 @@ object Http {
         val response = browserFetch(url, init).await()
         val text = (response.text() as Promise<String>).await()
         if (!(response.ok as Boolean)) {
-            val message = text.jsonMap()?.get(EP.errorMessage) as? String
-            error(message ?: "$method $url failed with status ${response.status}")
+            // Carry the whole error envelope up as a structured error (issue #111), so a display site can decide
+            // how to present it -- designed fragment copy vs. a raw/internal message -- rather than seeing only a
+            // string. A non-JSON error body (e.g., the terse context-root 404) yields a null map and a fallback.
+            val env = text.jsonMap()
+            throw ApiError(
+                message = env?.get(EP.errorMessage) as? String ?: "$method $url failed with status ${response.status}",
+                fromFragment = env?.get(EP.errorFromFragment) == true,
+                status = (env?.get(EP.status) as? Number)?.toInt(),
+                errorCode = env?.get(EP.errorCode) as? String,
+                traceId = traceId,
+            )
         }
         return text
     }

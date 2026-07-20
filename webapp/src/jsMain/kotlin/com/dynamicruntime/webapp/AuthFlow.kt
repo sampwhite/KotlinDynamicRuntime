@@ -38,7 +38,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     var code by useState("")
     // The form token, set once a verification code has been sent, also marks the "enter the code" step.
     var token by useState<String?>(null)
-    var error by useState<String?>(null)
+    var error by useState<DisplayError?>(null)
     var busy by useState(false)
     // True when the code was autofilled from a simulated email (local dev only).
     var devFilled by useState(false)
@@ -56,7 +56,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 config = c
                 copy = fetchCopy(c.fragment)
             } catch (e: Throwable) {
-                error = "Could not load the sign-in page. (${e.message})"
+                error = DisplayError.expected("Could not load the sign-in page. (${e.message})")
             }
         }
     }
@@ -87,7 +87,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             try {
                 block()
             } catch (e: Throwable) {
-                error = e.message ?: "Something went wrong."
+                error = userFacingError(e)
             } finally {
                 busy = false
             }
@@ -105,7 +105,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     fun sendCode(withPassword: Boolean = false) {
         val id = email.trim()
         if (!id.contains("@")) {
-            error = "Enter your email address."
+            error = DisplayError.expected("Enter your email address.")
             return
         }
         // Any password typed against the password-login field belongs to that path, not to this round.
@@ -152,10 +152,12 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     div {
         className = ClassName("card")
         h1 { +t(ns, "title", if (register) "Create your account" else "Log in") }
-        error?.let {
+        error?.let { d ->
             p {
-                className = ClassName("todo-error")
-                +it
+                // An internal (non-fragment) error is shown as plain text, marked as raw (issue #111); designed
+                // copy is Markdown-rendered, since fragment messages may use it and are sanitized server-side.
+                className = ClassName(if (d.internal) "internal-error" else "todo-error")
+                if (d.internal) +d.text else MarkdownInline { source = d.text }
             }
         }
 

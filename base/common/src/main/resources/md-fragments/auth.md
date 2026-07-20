@@ -48,5 +48,5 @@
 # +tooManyVerifyAttempts Too many verification attempts. Please request a new code and try again.
 # +tooManyVerifyRequests Too many verification requests. Please wait a while before requesting another code.
 # +tooManyLoginAttempts Too many failed login attempts. Please wait and try again, or log in by verification code.
-# +noAccount No account was found for ${loginId}.
-# +emailNotAvailable The email ${email} is not available for creating a new account.
+# +noAccount No account was found for *${loginId}*.
+# +emailNotAvailable The email *${email}* is not available for creating a new account.

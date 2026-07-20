@@ -36,7 +36,7 @@ val Profile = FC<Props> {
     var code by useState("")
     // The form token, set once a verification code has been sent, also marks the "enter the code" step.
     var token by useState<String?>(null)
-    var error by useState<String?>(null)
+    var error by useState<DisplayError?>(null)
     var note by useState<String?>(null)
     var busy by useState(false)
     var devFilled by useState(false)
@@ -77,7 +77,7 @@ val Profile = FC<Props> {
             try {
                 block()
             } catch (e: Throwable) {
-                error = e.message ?: "Something went wrong."
+                error = userFacingError(e)
             } finally {
                 busy = false
             }
@@ -145,10 +145,12 @@ val Profile = FC<Props> {
             }
         }
 
-        error?.let {
+        error?.let { d ->
             p {
-                className = ClassName("todo-error")
-                +it
+                // Internal (non-fragment) errors are shown as plain text, marked as raw (issue #111); designed
+                // copy is Markdown-rendered (fragment messages may use it and are sanitized server-side).
+                className = ClassName(if (d.internal) "internal-error" else "todo-error")
+                if (d.internal) +d.text else MarkdownInline { source = d.text }
             }
         }
         note?.let {
