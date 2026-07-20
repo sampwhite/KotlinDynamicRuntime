@@ -29,9 +29,8 @@ checked-in instructions for recreating them.
 ## How the pieces fit
 
 - The **server** boots the runtime and serves HTTP on **:7070** under the `kda`
-  context root. Use either `:launch:run` (the main app; it registers the demo
-  Todo endpoints in developer environments) or `:sample:run` (the standalone
-  demo). Both expose `/kda/todo/*`.
+  context root. Run `:launch:run` (the main app; it registers the demo Todo
+  endpoints in developer environments, exposing `/kda/todo/*`).
 - The **webapp** dev server runs on **:8080** and proxies `/kda` → `:7070`, so
   the browser makes same-origin calls (no CORS). Start the server first, or the
   Todo list shows an "API call failed" error.
@@ -46,7 +45,6 @@ Gradle ones, set the **Gradle project** to the workspace directory and the
 | Name | Type | Task / setting |
 | --- | --- | --- |
 | `KDR server (:launch:run)` | Gradle | `:launch:run` |
-| `sample API (:sample:run)` | Gradle | `:sample:run` |
 | `webapp` | Gradle | `:webapp:jsBrowserDevelopmentRun` |
 | `webapp (no browser, for debugging)` | Gradle | `:webapp:jsBrowserDevelopmentRun`, arguments `-Pwebapp.open=false` |
 | `webapp debug (Chrome @8080)` | JavaScript Debug | URL `http://localhost:8080`, browser Chrome |
