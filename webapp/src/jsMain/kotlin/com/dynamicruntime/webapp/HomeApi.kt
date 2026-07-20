@@ -1,9 +1,11 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /** One navigable Markdown document offered by the home page, already carrying its cache-busting build id. */
 class HomeLink(val id: String, val label: String, val docId: String, val buildId: String)
@@ -11,11 +13,24 @@ class HomeLink(val id: String, val label: String, val docId: String, val buildId
 /** Which of the three link presentations this deployment enabled. Independent toggles: any combination. */
 class HomeLayout(val topBar: Boolean, val leftBar: Boolean, val inlineLinks: Boolean)
 
+/**
+ * One app-bar menu item, exactly as the backend composed it for this caller: an [id] to key behavior off, a
+ * [label] to show, and either a [page] to navigate to or an [action] to run. The frontend renders the list it
+ * is given -- an item the caller may not have simply is not in it.
+ */
+class MenuItem(val id: String, val label: String, val page: String?, val action: String?)
+
 /** The home page's construction manifest: where its copy lives, how to lay it out, and what to link to. */
 class HomeConfig(
     val fragment: FragmentRef,
     val layout: HomeLayout,
     val links: List<HomeLink>,
+    /** The app-bar menu for this caller, in display order. */
+    val menu: List<MenuItem>,
+    /** Who the caller is; the anonymous profile when signed out. */
+    val user: UserProfile,
+    /** Whether the caller may create and edit other users (drives the Users page, not just the menu). */
+    val canManageUsers: Boolean,
 )
 
 /**
@@ -40,6 +55,14 @@ object HomeApi {
                 buildId = link[HFLD.buildId] as? String ?: "",
             )
         }
+        val menu = config.state[HFLD.menu].toJsonListOfMaps().map { entry ->
+            MenuItem(
+                id = entry[HFLD.id] as? String ?: "",
+                label = entry[HFLD.label] as? String ?: "",
+                page = entry[HFLD.page] as? String,
+                action = entry[HFLD.action] as? String,
+            )
+        }
         return HomeConfig(
             fragment = config.fragment,
             layout = HomeLayout(
@@ -48,6 +71,9 @@ object HomeApi {
                 inlineLinks = config.features[HFEAT.inlineLinks] == true,
             ),
             links = links,
+            menu = menu,
+            user = UserProfile.fromUserInfo(config.state[HFLD.userInfo].toJsonMapOrEmpty()),
+            canManageUsers = config.features[HFEAT.canManageUsers] == true,
         )
     }
 

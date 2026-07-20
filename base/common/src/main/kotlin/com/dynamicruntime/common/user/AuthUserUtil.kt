@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.util.hashPassword
@@ -59,4 +61,43 @@ private fun requireUsableForLogin(row: AuthUserRow) {
     if (!row.enabled || !row.roles.contains(ROLE.user) || !row.authUserData.containsKey(AD.contacts)) {
         throw KdrException("User is not in a state where a login can be assigned to it.")
     }
+}
+
+/**
+ * Re-reads the acting user's roles from their `AuthUsers` row, replacing the ones their session cookie carried.
+ *
+ * The cookie is the fast path -- it holds roles precisely so an ordinary request needs no database read -- but
+ * those roles are a *snapshot* taken at login, and a session lasts 30 days ([AUTHC.sessionMillis]). Without
+ * this, revoking an administrator would leave them administering for up to a month.
+ *
+ * So the live read is paid only where the answer actually matters, and there are two such places:
+ *  - the dispatcher, before enforcing a section's `requiredRole` -- so a revoked admin is refused immediately;
+ *  - the shell's UI-config, before deciding which menu items to offer -- so the menu stops offering a page the
+ *    caller can no longer open. (Without it the menu is merely *stale*, not unsafe: following the item still
+ *    hits the gate above and 401s. But offering a door that will not open is its own bug.)
+ *
+ * Ordinary user traffic still never touches the database for auth. A disabled account loses every role here,
+ * which is what makes `admin/user/setEnabled` bite at once rather than at cookie expiry; a row that has
+ * vanished is treated the same way.
+ */
+fun refreshActingRoles(cxt: KdrCxt) {
+    val profile = cxt.userProfile
+    if (!profile.isLoggedIn) {
+        return // anonymous/system callers have no row to read
+    }
+    val row = UserService.get(cxt)?.queryByUserId(cxt, profile.userId) ?: return
+    val liveRoles = if (row.enabled) row.roles.toSet() else emptySet()
+    if (liveRoles != profile.roles) {
+        LogAuth.debug(cxt) { "Roles for user ${profile.userId} changed since login: $liveRoles." }
+    }
+    // Rebind unconditionally, not only when the roles moved: the row is already loaded, and the profile the
+    // cookie produced carries identity alone -- no display name, no password status, since those would be
+    // stale in a 30-day cookie. Anything that has paid for this read gets the whole live profile.
+    val live = row.toUserProfile()
+    cxt.bindToUserProfile(
+        UserProfile(
+            authId = live.authId, userId = live.userId, account = live.account, roles = liveRoles,
+            publicName = live.publicName, hasPassword = live.hasPassword,
+        ),
+    )
 }

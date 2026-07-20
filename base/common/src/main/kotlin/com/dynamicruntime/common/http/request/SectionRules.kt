@@ -19,9 +19,5 @@ class SectionRules(
     val requiredRole: String?,
 )
 
-/** Role names used by the (stubbed) security check. */
-@Suppress("ConstPropertyName")
-object ROLE {
-    const val user = "user"
-    const val admin = "admin"
-}
+// ROLE (the role-name constants) moved to the kernel (RoleConstants.kt) so the frontend shares them; it keeps
+// this package name, so every reference to `com.dynamicruntime.common.http.request.ROLE` is unaffected.

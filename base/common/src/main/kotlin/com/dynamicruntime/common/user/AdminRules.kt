@@ -75,6 +75,20 @@ object AdminRules {
         return addressDomain == d || addressDomain.endsWith(ADMR.domainSep + d)
     }
 
+    /**
+     * Whether the caller may administer other users -- create them, edit their roles, enable or disable them.
+     *
+     * Today this is exactly "holds [ROLE.admin]", the same thing the `admin` section gate enforces. It exists
+     * as a named capability anyway, because it is the seam where that answer gets *narrower*: a future
+     * deployment may let someone manage only the users inside their own account, at which point this grows a
+     * scope (and its callers, which already ask "may I manage users?", keep working). Everything that asks the
+     * question -- the home menu, a future admin console -- should ask it here rather than testing for a role.
+     *
+     * This is a convenience for shaping the UI, not the enforcement point: the endpoints stay gated by their
+     * section, so a frontend that ignores this answer still gets a 401.
+     */
+    fun canManageUsers(cxt: KdrCxt): Boolean = cxt.userProfile.roles.contains(ROLE.admin)
+
     /** The roles a newly provisioned user gets: [ROLE.user], plus [ROLE.admin] when [primaryId] auto-qualifies. */
     fun initialRoles(cxt: KdrCxt, primaryId: String): List<String> =
         if (isAutoAdminAddress(primaryId, adminEmailDomain(cxt.instanceConfig))) {

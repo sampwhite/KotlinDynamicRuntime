@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.sql.KdrTable
+import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
@@ -118,6 +119,10 @@ class UserService : ServiceInitializer {
         val stmt = SqlTopicUtil.mkTableUpdateStmt(sqlCxt, table)
         val data = row.toMap().toMutableMap()
         SqlTopicUtil.prepForStdExecute(cxt, table, data)
+        // prepForStdExecute stamps `enabled = true` unconditionally -- deliberate for a "create" that revives a
+        // disabled row (issue #48), but wrong for an update, where it would make disabling a user impossible:
+        // the write would silently succeed and the row stay enabled. The caller's intent wins here.
+        data[PF.enabled] = row.enabled
         sqlCxt.sqlDb.withSession(cxt) {
             sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
         }

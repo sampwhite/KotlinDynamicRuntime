@@ -68,6 +68,10 @@ class AuthUserRow(val userId: Long, val account: String, val primaryId: String) 
         val retData = data.toMutableMap()
         retData[AU.username] = username
         retData[AU.authUserData] = newAuthData
+        // Every typed field this class exposes has to travel back out, or a caller that sets one sees it
+        // silently dropped on write. `enabled` is the one that bites: see UserService.updateUser, which has to
+        // defend it a second time from the standard column stamping.
+        retData[PF.enabled] = enabled
         return retData
     }
 
