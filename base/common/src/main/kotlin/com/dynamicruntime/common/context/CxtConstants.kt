@@ -59,4 +59,12 @@ object ACFG {
 
     /** The context root under which immutable static content is served; defaults to `ContextRoot.st`. */
     const val staticContextRoot = "staticContextRoot"
+
+    /**
+     * The email domain whose plain (un-plus-addressed) addresses are automatically granted the admin role --
+     * how the *first* admin of a deployment comes to exist. Set directly by tests; when unset it defaults from
+     * the `KDR_ADMIN_EMAIL_DOMAIN` env var. Absent in both means no address is ever auto-granted. See
+     * [com.dynamicruntime.common.user.AdminRules].
+     */
+    const val adminEmailDomain = "adminEmailDomain"
 }

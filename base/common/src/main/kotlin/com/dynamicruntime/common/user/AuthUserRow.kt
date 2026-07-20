@@ -3,6 +3,8 @@ package com.dynamicruntime.common.user
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toOptLong
@@ -43,6 +45,21 @@ class AuthUserRow(val userId: Long, val account: String, val primaryId: String) 
         publicName = publicName(), hasPassword = encodedPassword != null,
     )
 
+    /**
+     * The admin console's view of this user ([ADTY.adminUser], defined by [defineAdminType]): identity, roles,
+     * and account state. Deliberately *not* [toUserProfile] -- that is the acting identity of the caller, while
+     * this describes some other user being administered, and the two must be free to diverge. The password
+     * itself is never exposed, only whether one is set.
+     */
+    fun toAdminInfo(): Map<String, Any?> = mapOf(
+        ADF.userId to userId,
+        ADF.primaryId to primaryId,
+        ADF.username to username,
+        ADF.roles to roles,
+        ADF.enabled to enabled,
+        ADF.hasPassword to (encodedPassword != null),
+    )
+
     /** Repackages the typed fields into a storage map (roles and password folded back into `authUserData`). */
     fun toMap(): Map<String, Any?> {
         val newAuthData = authUserData.toMutableMap()
@@ -58,6 +75,28 @@ class AuthUserRow(val userId: Long, val account: String, val primaryId: String) 
     companion object {
         /** Prefix marking a not-yet-chosen (placeholder) username. */
         const val usernameTmpPrefix = "@"
+
+        /**
+         * Defines the [ADTY.adminUser] schema type -- the shape of [toAdminInfo] -- on [builder]. Kept beside
+         * the serialization it describes (the co-location rule), so a field added to one is visibly missing
+         * from the other.
+         */
+        fun defineAdminType(builder: SchTypesBuilder) {
+            builder.type(ADTY.adminUser) {
+                type = SCT.kObject
+                property(ADF.userId, "The user's numeric id.", required = true) { type = SCT.integer }
+                property(ADF.primaryId, "Primary identifier (the primary email address).", required = true)
+                property(ADF.username, "The user's unique preferred name.", required = true)
+                property(ADF.roles, "The roles granted to the user.", required = true) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(ADF.enabled, "Whether the account is active.", required = true) { type = SCT.boolean }
+                property(ADF.hasPassword, "Whether the user has opted into a password.", required = true) {
+                    type = SCT.boolean
+                }
+            }
+        }
 
         /** Builds a typed row from a stored `AuthUsers` map. */
         fun extract(data: Map<String, Any?>): AuthUserRow {
@@ -78,11 +117,11 @@ class AuthUserRow(val userId: Long, val account: String, val primaryId: String) 
         }
 
         /** The initially provisioned row for a freshly verified [primaryId] contact (placeholder username). */
-        fun mkInitialUser(primaryId: String, account: String, role: String): Map<String, Any?> = mapOf(
+        fun mkInitialUser(primaryId: String, account: String, roles: List<String>): Map<String, Any?> = mapOf(
             AU.primaryId to primaryId,
             AU.username to (usernameTmpPrefix + primaryId),
             PF.account to account,
-            AU.authUserData to mutableMapOf<String, Any?>(AD.roles to listOf(role)),
+            AU.authUserData to mutableMapOf<String, Any?>(AD.roles to roles),
         )
     }
 }

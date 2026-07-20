@@ -11,6 +11,7 @@ import com.dynamicruntime.common.home.homeSchema
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.portal.PortalService
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.user.adminSchema
 import com.dynamicruntime.common.user.authSchema
 import com.dynamicruntime.common.user.authTables
 import com.dynamicruntime.common.user.profileSchema
@@ -46,6 +47,8 @@ class CommonComponent : ComponentDefinition {
         collector.addTables(authTables(cxt))
         // Profile (issue #70): the login-gated profile page endpoints (its own widget-group namespace).
         collector.addModule(profileSchema(cxt))
+        // Admin: the user-management endpoints, gated on ROLE.admin by their `admin` section.
+        collector.addModule(adminSchema(cxt))
         // Home/shell: the UI-config endpoint that tells the frontend which layout to build and which
         // Markdown documents to link to.
         collector.addModule(homeSchema(cxt))
