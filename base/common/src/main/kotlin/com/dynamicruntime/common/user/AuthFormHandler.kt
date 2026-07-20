@@ -96,7 +96,8 @@ class AuthFormHandler(
         requireValidToken(cxt, formAuthToken)
         val user = userService.queryByLoginId(cxt, loginId)
             ?: throw KdrException.mkMsg(
-                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId), code = EXC.notFound,
+                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId),
+                code = EXC.notFound, sensitive = true, // reveals whether an account exists -> obfuscated in prod
             )
         requireSendAllowed(cxt, user.primaryId)
         sendVerifyEmail(cxt, user.primaryId, computeVerifyCode(formAuthToken, user.primaryId), addPassword)
@@ -139,8 +140,14 @@ class AuthFormHandler(
         verifyCodeOrThrow(cxt, contactAddress, formAuthToken, verifyCode)
         val existing = userService.queryByPrimaryId(cxt, contactAddress)
         if (existing != null && existing.enabled && (!existing.needsRealUsername || existing.encodedPassword != null)) {
+            // FUTURE (with the other security hardening -- single-use verify tokens, logout invalidating the
+            // auth cookie): rather than an error, *pretend success* here and email the existing account that
+            // someone tried to register with their address. For now it is a sensitive error -- obfuscated to a
+            // generic message in prod so it does not confirm the email is taken, and the attempt is logged.
+            LogAuth.info(cxt) { "Registration attempted for an already-registered email '$contactAddress'." }
             throw KdrException.mkMsg(
                 KdrMsg(AFRAG.auth, AERR.ns, AERR.emailNotAvailable), mapOf(AERR.emailParam to contactAddress),
+                sensitive = true,
             )
         }
         val data = AuthUserRow.mkInitialUser(contactAddress, AC.public, ROLE.user).toMutableMap()
@@ -191,7 +198,8 @@ class AuthFormHandler(
         requireValidToken(cxt, formAuthToken)
         val row = userService.queryByLoginId(cxt, loginId)
             ?: throw KdrException.mkMsg(
-                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId), code = EXC.notFound,
+                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId),
+                code = EXC.notFound, sensitive = true, // reveals whether an account exists -> obfuscated in prod
             )
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
         return completeLogin(cxt, row, byCode = true)
@@ -248,7 +256,8 @@ class AuthFormHandler(
         requireValidToken(cxt, formAuthToken)
         val row = userService.queryByLoginId(cxt, loginId)
             ?: throw KdrException.mkMsg(
-                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId), code = EXC.notFound,
+                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId),
+                code = EXC.notFound, sensitive = true, // reveals whether an account exists -> obfuscated in prod
             )
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
         setPassword(row, password)

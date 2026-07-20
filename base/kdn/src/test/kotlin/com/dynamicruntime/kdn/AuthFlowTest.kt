@@ -1,9 +1,11 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.user.AERR
@@ -254,5 +256,23 @@ class AuthFlowTest : StringSpec({
         )
         badCode[EP.errorMessage] shouldBe
             MarkdownFragmentService.get(cxt)!!.resolveFragment(cxt, AFRAG.auth, AERR.ns, AERR.codeIncorrect)
+    }
+
+    "a sensitive error is obfuscated to a generic message where the deployment obfuscates (issue #108)" {
+        // Boot with obfuscation on (a prod deployment has it on by default; here the config option forces it).
+        val cxt = Startup.mkTestBootCxt("authObf", "authObfTest", mapOf(ACFG.obfuscateSensitiveErrors to true))
+        val client = TestHttpClient(cxt.instanceConfig)
+        val token = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
+
+        // The unknown-account error (sensitive) now shows the generic message, computed from errors.md, and no
+        // longer reveals the email or that the account does not exist.
+        val obf = RequestHandler.obfuscatedErrorMsg
+        val expected = MarkdownFragmentService.get(cxt)!!.resolveFragment(cxt, obf.fileId, obf.namespace, obf.key)
+        val resp = client.sendJsonPostRequest(
+            "/auth/user/sendVerify", mapOf("loginId" to "ghost@example.com", "formAuthToken" to token),
+        )
+        resp[EP.errorMessage] shouldBe expected
+        resp[EP.errorFromFragment] shouldBe true // still designed copy
+        (resp[EP.errorMessage] as String).contains("ghost@example.com") shouldBe false
     }
 })
