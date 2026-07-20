@@ -10,6 +10,7 @@ import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.user.AUTHC
 import com.dynamicruntime.common.user.UserAuthCookie
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.crc32Hex
 import com.dynamicruntime.common.util.mkUniqueId
 import kotlin.time.Instant
 import com.dynamicruntime.common.endpoint.EP
@@ -24,6 +25,7 @@ import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonStr
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -268,19 +270,21 @@ class RequestService : ServiceInitializer {
         inner: Any?,
     ): Map<String, Any?> {
         val env = LinkedHashMap<String, Any?>()
-        when (endpoint.kind) {
+        // The result payload -- the value under results/item/items -- captured per kind, so the content hash
+        // below covers exactly it, never the volatile envelope siblings (duration/requestUri) around it.
+        val payload: Any? = when (endpoint.kind) {
             // A `file` endpoint reaches here only for an upload: a download's handler returns the ContentData
             // that executeEndpoint already sent, so there is no envelope to build. What is left is the upload's
             // metadata, which is a general result and travels as one.
             EndpointKind.general, EndpointKind.file -> {
                 env[EP.requestUri] = handler.logRequestUri
                 env[EP.duration] = cxt.durationMs()
-                env[EP.results] = inner ?: emptyMap<String, Any?>()
+                (inner ?: emptyMap<String, Any?>()).also { env[EP.results] = it }
             }
             EndpointKind.item -> {
                 env[EP.requestUri] = handler.logRequestUri
                 env[EP.duration] = cxt.durationMs()
-                env[EP.item] = inner
+                inner.also { env[EP.item] = it }
             }
             EndpointKind.list -> {
                 val list = (inner as? List<*>) ?: emptyList<Any?>()
@@ -291,8 +295,13 @@ class RequestService : ServiceInitializer {
                 env[EP.duration] = cxt.durationMs()
                 env[EP.items] = limited
                 // TODO: hasMore / numAvailable paging metadata once list handlers can report them.
+                limited
             }
         }
+        // The content hash of the payload alone (issue #114): a CRC32 of its compact JSON, so an unchanged
+        // payload yields an unchanged hash no matter how the volatile siblings around it move, and a client can
+        // re-fetch an inexpensive config freely and act only when the hash changes.
+        env[EP.contentHash] = payload.toJsonStr(compact = true).crc32Hex()
         // Any handler-injected response structure travels under the off-contract `_meta` key.
         val meta = cxt.request?.responseMeta
         if (!meta.isNullOrEmpty()) {

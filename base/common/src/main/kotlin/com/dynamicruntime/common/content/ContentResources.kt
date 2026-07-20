@@ -1,7 +1,7 @@
 package com.dynamicruntime.common.content
 
+import com.dynamicruntime.common.util.crc32Hex
 import java.util.concurrent.ConcurrentHashMap
-import java.util.zip.CRC32
 
 /**
  * Classpath access for the Markdown content resources -- the fragment files ([MarkdownFragmentService], holding
@@ -9,6 +9,7 @@ import java.util.zip.CRC32
  * are `<dir>/<fileId>.md` resources addressed by a `fileId:buildId`, so the id check, the read, and the
  * memoized cache-busting build id live here once rather than in each server.
  */
+@Suppress("ConstPropertyName")
 object ContentResources {
     /**
      * Memoized build ids, keyed by `<dir>/<fileId>`. Classpath resources are immutable within a running
@@ -47,14 +48,7 @@ object ContentResources {
             return null
         }
         val computed = buildIdCache.getOrPut("$dir/$fileId") {
-            val bytes = readBytes(dir, fileId)
-            if (bytes == null) {
-                absentMarker
-            } else {
-                val crc = CRC32()
-                crc.update(bytes)
-                crc.value.toString(16)
-            }
+            readBytes(dir, fileId)?.crc32Hex() ?: absentMarker
         }
         return computed.ifEmpty { null }
     }

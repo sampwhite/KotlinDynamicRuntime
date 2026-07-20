@@ -7,6 +7,7 @@ import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.security.spec.AlgorithmParameterSpec
 import java.util.Base64
+import java.util.zip.CRC32
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
@@ -84,6 +85,22 @@ fun String.stdHashToBytes(): ByteArray =
 
 /** A fast, non-security digest of [this], as a compact search-friendly string ([base64EncodeStripped]). */
 fun String.stdHash(): String = this.stdHashToBytes().base64EncodeStripped()
+
+/**
+ * A CRC32 checksum of [this], as a short hex string. Not a security hash -- an inexpensive change-detection /
+ * cache-busting content hash: the same bytes give the same value, and a change gives a (near-certainly)
+ * different one. The runtime's one content-hash primitive: a content file's `buildId`
+ * ([com.dynamicruntime.common.content.ContentResources.buildId]) and a response's `contentHash` (the endpoint
+ * envelope) are both this.
+ */
+fun ByteArray.crc32Hex(): String {
+    val crc = CRC32()
+    crc.update(this)
+    return crc.value.toString(16)
+}
+
+/** The [crc32Hex] of [this] string's UTF-8 bytes. */
+fun String.crc32Hex(): String = this.toByteArray(Charsets.UTF_8).crc32Hex()
 
 /**
  * Shortens [this] to at most [maxLen] characters while keeping some of the original visible: a slice of the

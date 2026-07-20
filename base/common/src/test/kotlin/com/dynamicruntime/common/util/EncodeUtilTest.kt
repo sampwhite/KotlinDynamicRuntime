@@ -17,6 +17,18 @@ class EncodeUtilTest : StringSpec({
 
     val cxt = KdrCxt.mkSimpleCxt("test")
 
+    "crc32Hex is deterministic, differs on changed content, and is order-sensitive" {
+        // The one content-hash primitive (a content file's buildId, a response's contentHash). Same input ->
+        // same value, so it is safe to compare across calls; a change gives a different value.
+        "hello".crc32Hex() shouldBe "hello".crc32Hex()
+        "hello".crc32Hex() shouldNotBe "hellp".crc32Hex()
+        // It is over bytes in order, not a set: reordering content changes the hash (why a stable, ordered
+        // JSON serialization is what gets hashed for a response payload).
+        "ab".crc32Hex() shouldNotBe "ba".crc32Hex()
+        // Hex, no leading "0x", non-empty.
+        "hello".crc32Hex() shouldMatch Regex("[0-9a-f]+")
+    }
+
     "base64Encode round-trips arbitrary bytes and is URL-safe" {
         val bytes = ByteArray(256) { it.toByte() } // every byte value
         val encoded = bytes.base64Encode()

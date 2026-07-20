@@ -6,6 +6,7 @@ import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 
 /**
  * End-to-end coverage for the demo endpoints, driven through the in-process [TestHttpClient]: the
@@ -16,7 +17,7 @@ import io.kotest.matchers.shouldBe
 class DemoEndpointsTest : StringSpec({
 
     // The demo handlers are pure (no persistence), so these tests share one instance -- its component/schema
-    // init is cached by instance name and runs once -- and vary only the cheap context name.
+    // init is cached by instance name and runs once -- and vary only the inexpensive context name.
     fun client(cxtName: String): TestHttpClient =
         TestHttpClient(Startup.mkTestBootCxt(cxtName, "demoEndpointsTest").instanceConfig)
 
@@ -88,5 +89,39 @@ class DemoEndpointsTest : StringSpec({
         val items = resp.getValue(EP.items) as List<Map<String, Any?>>
         items.size shouldBe 1 // "Port the auth subsystem" matches, but limit caps it at 1
         resp[EP.numItems] shouldBe 1
+    }
+
+    // --- contentHash (issue #114): a hash of the result payload alone, present on every response, so a client
+    // can re-fetch an inexpensive call freely and act only when the content actually changed.
+
+    "the contentHash is present, stable for identical result content, and changes when it differs" {
+        fun calc(a: Int, b: Int, cxt: String): Map<String, Any?> = client(cxt).sendJsonPostRequest(
+            "/demo/calc", mapOf(DMO.a to a, DMO.b to b, DMO.op to DMO.multiply),
+        )
+        val first = calc(6, 7, "hashA")
+        val again = calc(6, 7, "hashB")
+        val other = calc(6, 8, "hashC")
+
+        // Present on every response...
+        (first[EP.contentHash] as? String).isNullOrEmpty() shouldBe false
+        // ...a pure function of the result content (so equal content -> equal hash, independent of the
+        // per-call `duration` timed alongside it)...
+        first[EP.contentHash] shouldBe again[EP.contentHash]
+        // ...and it moves when that content moves.
+        first[EP.contentHash] shouldNotBe other[EP.contentHash]
+    }
+
+    "the contentHash covers the items payload of a list endpoint" {
+        fun todos(args: Map<String, Any?>, cxt: String): Map<String, Any?> =
+            client(cxt).sendJsonPostRequest("/demo/todos", args)
+        val open = mapOf<String, Any?>(DMO.status to DMO.open)
+        val full = todos(open, "todoFull")
+        val fullAgain = todos(open, "todoFullB")
+        val capped = todos(open + (EP.limit to 1), "todoCapped")
+
+        full[EP.contentHash] shouldBe fullAgain[EP.contentHash]
+        // The hash is over the returned `items`, so capping the list to one item changes it -- even though the
+        // sibling `numItems` is not part of what is hashed.
+        full[EP.contentHash] shouldNotBe capped[EP.contentHash]
     }
 })

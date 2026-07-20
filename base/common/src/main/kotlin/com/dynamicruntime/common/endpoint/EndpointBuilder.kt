@@ -212,8 +212,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
      * `results`/`item`/`items` wrapper, because there is nowhere in a file to put one.
      *
      * The output schema is OpenAPI's declaration of a downloaded body — `{"type": "string", "format":
-     * "binary"}` (see [SFMT.binary]) — so the catalog says "this returns a file", and the display engine
-     * offers a download rather than trying to parse the bytes as JSON.
+     * "binary"}` (see [com.dynamicruntime.common.schema.SFMT.binary]) — so the catalog says "this returns a file",
+     * and the display engine offers a download rather than trying to parse the bytes as JSON.
      *
      * Input is ordinary: [inputRef] or [inputFields] name the file to fetch, and travel in the query string
      * for a GET like any other endpoint's input.
@@ -238,7 +238,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
 
     /**
      * An endpoint that **receives a file**: the request arrives as `multipart/form-data`, and the input field
-     * declared [SFMT.binary] carries a [com.dynamicruntime.common.http.request.ContentData] rather than a
+     * declared [com.dynamicruntime.common.schema.SFMT.binary] carries a
+     * [com.dynamicruntime.common.http.request.ContentData] rather than a
      * string. Its *response* is ordinary JSON under `results` — an upload's answer is metadata (an id, a size),
      * not a file — so only the request half is special.
      *
@@ -298,6 +299,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         property(EP.duration, "The time taken to perform the request, in milliseconds.", required = true) {
             type = SCT.number
         }
+        property(EP.contentHash, "A content hash of the result payload; changes only when that content changes.",
+            required = true)
     }
 
     /** Output for general/item endpoints: protocol metadata plus the result under [resultKey]. */
