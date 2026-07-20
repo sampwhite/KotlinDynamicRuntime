@@ -9,7 +9,7 @@ import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
-import react.useEffectOnce
+import react.useEffect
 import react.useState
 import web.cssom.ClassName
 
@@ -46,7 +46,10 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     // the choice is made before the code is sent and remembered until it is submitted.
     var settingPassword by useState(false)
 
-    useEffectOnce {
+    // Re-fetch this group's config on every refresh generation (issue #115) -- on mount, and whenever a
+    // navigation or state mutation bumps it -- so the flow follows any config change.
+    val generation = useRefreshGeneration()
+    useEffect(generation) {
         authScope.launch {
             try {
                 val c = AuthApi.fetchConfig()

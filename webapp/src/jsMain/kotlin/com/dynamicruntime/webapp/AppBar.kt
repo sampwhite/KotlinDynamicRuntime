@@ -12,7 +12,7 @@ import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.header
 import react.dom.html.ReactHTML.img
 import react.dom.html.ReactHTML.span
-import react.useEffectOnce
+import react.useEffect
 import react.useState
 import web.cssom.ClassName
 
@@ -29,22 +29,16 @@ val AppBar = FC<Props> {
     var open by useState(false)
     var config by useState<AuthConfig?>(null)
     var copy by useState(Copy.empty)
+    val generation = useRefreshGeneration()
+    val bump = useRefreshBump()
 
-    useEffectOnce {
+    // Re-read the account menu's auth config on every refresh generation -- mount, navigation, and any state
+    // mutation (notably sign-in / sign-out). The menu degrades to signed-out defaults if the config can't load.
+    useEffect(generation) {
         appBarScope.launch {
-            try {
-                val c = AuthApi.fetchConfig()
-                config = c
-                copy = fetchCopy(c.fragment)
-            } catch (_: Throwable) {
-                // The menu degrades to signed-out defaults if the config can't load; not worth surfacing here.
-            }
-        }
-        // Re-read auth state after any cross-page navigation (notably right after sign-in / sign-out).
-        onHashChange {
-            appBarScope.launch {
-                config = runCatching { AuthApi.fetchConfig() }.getOrNull() ?: config
-            }
+            val c = runCatching { AuthApi.fetchConfig() }.getOrNull() ?: return@launch
+            config = c
+            copy = runCatching { fetchCopy(c.fragment) }.getOrDefault(copy)
         }
     }
 
@@ -55,9 +49,10 @@ val AppBar = FC<Props> {
         open = false
         appBarScope.launch {
             runCatching { AuthApi.logout() }
-            // Refresh the menu directly: navigating home may be a no-op (already there), firing no hashchange.
-            config = runCatching { AuthApi.fetchConfig() }.getOrNull() ?: config
             navigateHash(emptyList())
+            // Bump so the menu (and every config consumer) re-reads even when we were already home -- setting
+            // the same hash fires no hashchange, which is why the direct re-read used to be needed here.
+            bump()
         }
     }
 

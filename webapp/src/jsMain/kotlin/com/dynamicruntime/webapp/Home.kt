@@ -43,7 +43,11 @@ val Home = FC<Props> {
     var docText by useState<String?>(null)
     var error by useState<String?>(null)
 
-    useEffectOnce {
+    val generation = useRefreshGeneration()
+
+    // Re-read the home config on every refresh generation (issue #115): on mount, and whenever a navigation or
+    // state mutation bumps it.
+    useEffect(generation) {
         homeScope.launch {
             try {
                 val loaded = HomeApi.fetchConfig()
@@ -54,6 +58,8 @@ val Home = FC<Props> {
                 error = "Could not load the home page — is the runtime running? (${e.message})"
             }
         }
+    }
+    useEffectOnce {
         // The app bar's brand (and back/forward) can clear the hash from outside this component; re-derive the
         // open document when that happens. Our own navigation uses replaceHash, which does not fire this.
         onHashChange { openDoc = hashParams()[docParam] }
