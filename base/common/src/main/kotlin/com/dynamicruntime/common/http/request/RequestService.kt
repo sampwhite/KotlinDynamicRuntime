@@ -158,6 +158,9 @@ class RequestService : ServiceInitializer {
         // Enforce the section's required role against the acting profile (restored by extractAuth). A missing
         // role -- including the unauthenticated system profile, which has none -- is a 401.
         val requiredRole = handler.sectionRules?.requiredRole
+        if (requiredRole != null) {
+            refreshRolesFromRow(cxt)
+        }
         if (requiredRole != null && requiredRole !in cxt.userProfile.roles) {
             throw KdrException(
                 "Request requires the '$requiredRole' role.",
@@ -328,6 +331,39 @@ class RequestService : ServiceInitializer {
                 account = decoded.account, roles = decoded.roles.toSet(),
             ),
         )
+    }
+
+    /**
+     * Re-reads the acting user's roles from their `AuthUsers` row, replacing the ones the session cookie
+     * carried.
+     *
+     * The cookie is the fast path -- it holds roles precisely so an ordinary request needs no database read --
+     * but roles inside it are a *snapshot* taken at login, and the session lasts 30 days
+     * ([AUTHC.sessionMillis]). Without this, revoking an administrator would leave them administering for up to
+     * a month. So the live read is paid only where the answer actually gates something: a request to a section
+     * with a [SectionRules.requiredRole]. Ordinary user traffic still never touches the database for auth, and
+     * a revocation takes effect on the revoked user's very next admin request.
+     *
+     * A disabled account loses every role here, which is what makes `admin/user/setEnabled` bite immediately
+     * rather than at cookie expiry. A row that has vanished is treated the same way.
+     */
+    fun refreshRolesFromRow(cxt: KdrCxt) {
+        val profile = cxt.userProfile
+        if (!profile.isLoggedIn) {
+            return // anonymous/system callers have no row to read; the role check below rejects them anyway
+        }
+        val row = UserService.get(cxt)?.queryByUserId(cxt, profile.userId) ?: return
+        val liveRoles = if (row.enabled) row.roles.toSet() else emptySet()
+        if (liveRoles != profile.roles) {
+            LogRequest.debug(cxt, "Roles for user ${profile.userId} changed since login: $liveRoles.")
+            val live = row.toUserProfile()
+            cxt.bindToUserProfile(
+                UserProfile(
+                    authId = live.authId, userId = live.userId, account = live.account, roles = liveRoles,
+                    publicName = live.publicName, hasPassword = live.hasPassword,
+                ),
+            )
+        }
     }
 
     @Suppress("UNUSED_PARAMETER")

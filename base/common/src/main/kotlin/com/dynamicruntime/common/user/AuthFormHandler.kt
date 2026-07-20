@@ -150,7 +150,10 @@ class AuthFormHandler(
                 sensitive = true,
             )
         }
-        val data = AuthUserRow.mkInitialUser(contactAddress, AC.public, ROLE.user).toMutableMap()
+        // The roles a new user starts with: normally just ROLE.user, but an address matching the deployment's
+        // configured admin domain is provisioned as an admin -- how the first admin comes to exist (AdminRules).
+        val initialRoles = AdminRules.initialRoles(cxt, contactAddress)
+        val data = AuthUserRow.mkInitialUser(contactAddress, AC.public, initialRoles).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(contactAddress)
@@ -158,7 +161,7 @@ class AuthFormHandler(
 
         return if (existing != null) {
             existing.username = AuthUserRow.usernameTmpPrefix + contactAddress
-            existing.roles = listOf(ROLE.user)
+            existing.roles = initialRoles
             existing.encodedPassword = null
             existing.authUserData = authUserData
             existing.enabled = true
@@ -283,6 +286,12 @@ class AuthFormHandler(
      */
     private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean): Map<String, Any?> {
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
+        // Re-apply the auto-admin rule here, not just at provisioning: the deployment's admin domain is usually
+        // configured *after* its operator already registered, and this is the point where that reaches them. It
+        // writes only on the login that actually changes the roles.
+        if (AdminRules.syncAdminRole(cxt, row)) {
+            userService.updateUser(cxt, row)
+        }
         val profile = row.toUserProfile()
         cxt.bindToUserProfile(profile)
         cxt.request?.let {

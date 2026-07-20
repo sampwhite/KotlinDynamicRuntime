@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.sql.KdrTable
+import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.ServiceInitializer
@@ -61,6 +62,39 @@ class UserService : ServiceInitializer {
             row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(field to value))
         }
         return row?.let { AuthUserRow.extract(it) }
+    }
+
+    /**
+     * Lists `AuthUsers` rows for the admin console, newest first, capped at [limit]. A non-blank [search] is a
+     * case-insensitive substring match against `primaryId` **or** `username`.
+     *
+     * The filter is applied in SQL (not by loading the table and filtering in Kotlin) so the cap is a real one:
+     * a deployment's user table is the one table guaranteed to outgrow any page size. `lower(...) like ?` will
+     * not use the plain unique indexes, which is acceptable for an admin-only, human-paced screen; a
+     * case-insensitive index is the fix if it ever matters.
+     */
+    fun listUsers(cxt: KdrCxt, search: String?, limit: Int): List<AuthUserRow> {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = authUsersTable(cxt)
+        val term = search?.trim()?.lowercase()?.ifEmpty { null }
+        val stmt = if (term == null) {
+            SqlStmtUtil.prepareSql(
+                sqlCxt, "qAuthUsersAll", table.columns,
+                "select * from t:${UT.authUsers} order by c:${AU.userId} desc",
+            )
+        } else {
+            SqlStmtUtil.prepareSql(
+                sqlCxt, "qAuthUsersSearch", table.columns,
+                "select * from t:${UT.authUsers} where lower(c:${AU.primaryId}) like :${SP.searchTerm} " +
+                    "or lower(c:${AU.username}) like :${SP.searchTerm} order by c:${AU.userId} desc",
+            )
+        }
+        val data = if (term == null) emptyMap() else mapOf(SP.searchTerm to "%$term%")
+        var rows: List<Map<String, Any?>> = emptyList()
+        sqlCxt.sqlDb.withSession(cxt) {
+            rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
+        }
+        return rows.take(limit).map { AuthUserRow.extract(it) }
     }
 
     /** Inserts a new `AuthUsers` row (protocol columns stamped), returning the generated `userId`. */
@@ -143,6 +177,12 @@ class UserService : ServiceInitializer {
         if (r[AUD.deviceVerified] != true) return false
         val expiration = r[AUD.verifyExpiration].toOptInstant() ?: return false
         return cxt.now() <= expiration
+    }
+
+    /** Bind-parameter names for this service's hand-written queries. */
+    @Suppress("ConstPropertyName")
+    object SP {
+        const val searchTerm = "searchTerm"
     }
 
     @Suppress("ConstPropertyName")
