@@ -318,6 +318,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         }
         property(EP.contentHash, "A content hash of the result payload; changes only when that content changes.",
             required = true)
+        property(EP.webAppHash, "Content hash of the served web-app bundle (empty when none); the frontend " +
+            "compares it against its own to detect a new deployment.", required = true)
     }
 
     /** Output for general/item endpoints: protocol metadata plus the result under [resultKey]. */

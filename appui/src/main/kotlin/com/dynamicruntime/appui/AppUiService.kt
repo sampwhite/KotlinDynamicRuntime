@@ -9,6 +9,8 @@ import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.util.crc32Hex
 import com.dynamicruntime.common.util.toJsonStr
 
 /**
@@ -18,7 +20,7 @@ import com.dynamicruntime.common.util.toJsonStr
 @Suppress("ConstPropertyName")
 object AUIC {
     /**
-     * The classpath directory the app's **branding** assets ([AUI.brandingFiles]) are read from, letting a
+     * The classpath directory the app's **branding** assets ([AUI.brandingAssets]) are read from, letting a
      * deployment ship its own artwork instead of forking `:webapp`. Absent (the default) means the built-in
      * set. A deployment sets this from its `:customConfig` project and puts the files on the runtime classpath
      * — the same project, being on that classpath already, is the natural place to carry them (see
@@ -29,7 +31,7 @@ object AUIC {
      * one, so a deployment can override just its logo and inherit the rest. This swaps the *bytes* only — the
      * URLs are fixed, so both shells' `<link>` tags stay identical and static.
      */
-    const val appUiBrandingDir = "appUiBrandingDir"
+    const val appUiBrandingDir: String = "appUiBrandingDir"
 }
 
 /**
@@ -163,6 +165,14 @@ class AppUiService : ServiceInitializer, ContentServer {
         if (brandingResources.isEmpty()) {
             brandingResources = resolveBranding(cxt)
         }
+        // Publish the served bundle's hash once (issue #134), so RequestService.buildEnvelope can stamp it on
+        // every response and the shell can inject it into the page's bootstrap. Immutable within a deployment,
+        // so computed at init. Absent when the ':webapp' distribution was not built into this module.
+        if (cxt.instanceConfig.get(EP.webAppHash) == null) {
+            this::class.java.getResourceAsStream(AUI.bundleResource)?.use { it.readBytes() }?.let {
+                cxt.instanceConfig.put(EP.webAppHash, it.crc32Hex())
+            }
+        }
     }
 
     /**
@@ -290,9 +300,17 @@ class AppUiService : ServiceInitializer, ContentServer {
         return bytes
     }
 
-    /** The frontend bootstrap config (context roots by focus) as JSON, for injection into the page. */
-    private fun bootstrapJson(cxt: KdrCxt): String =
-        (RequestService.get(cxt)?.frontendConfig() ?: emptyMap()).toJsonStr()
+    /**
+     * The frontend bootstrap config as JSON, for injection into the page: the context roots (by focus), plus
+     * the served web-app bundle's hash (issue #134) under [EP.webAppHash] when there is one, so the running tab
+     * knows its own hash and can compare it against the hash every response carries to notice a new deployment.
+     */
+    private fun bootstrapJson(cxt: KdrCxt): String {
+        val base = RequestService.get(cxt)?.frontendConfig() ?: emptyMap()
+        val hash = cxt.instanceConfig.get(EP.webAppHash) as? String
+        val cfg = if (hash.isNullOrEmpty()) base else base + (EP.webAppHash to hash)
+        return cfg.toJsonStr()
+    }
 
     @Suppress("ConstPropertyName")
     companion object {

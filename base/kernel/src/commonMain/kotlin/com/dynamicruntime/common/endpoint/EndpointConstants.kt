@@ -55,6 +55,12 @@ object EP {
     // mechanism as a content file's `buildId` (`ContentResources.buildId`), applied to a response payload.
     const val contentHash = "contentHash"
 
+    // A content hash (CRC32, hex) of the served web-app bundle, or empty when this backend serves no bundle
+    // (issue #134). Deployment-global, so it is the same on every response. The frontend compares it against the
+    // hash injected into its own bootstrap (`window.kdrCfg.webAppHash`, the same key): a divergence means a
+    // newer app has been deployed than the one this tab is running, and the tab offers a (non-forced) reload.
+    const val webAppHash = "webAppHash"
+
     // Output, list endpoints.
     const val numItems = "numItems"
     const val hasMore = "hasMore"
