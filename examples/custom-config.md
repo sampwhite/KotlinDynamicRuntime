@@ -168,8 +168,18 @@ your **own** object rather than editing the developer's `KdrConfig`. That isolat
 the developer sets for their own run can't break yours, your edits can't disturb theirs, and neither of you
 touches the other's file. (This is the same collision that once broke a live test and motivated the split.)
 
-Write your object beside `KdrConfig`, in the (non-versioned) `customConfig/apps/` directory, so it never lands
-in a PR:
+**First, the one-time setup — the `customConfig` project may not exist in your workspace yet.** It, and the two
+`settings.gradle.kts` lines that wire it, are non-versioned, so every workspace has its own; a fresh one
+(Eva's, say) has neither the project nor a `KdrConfig`. Two cases:
+
+- **No `customConfig` project yet** (no `customConfig/` beside your `settings.gradle.kts`, or no
+  `include("customConfig")` in it): create it first, exactly as **"What you create"** and **"What you add to
+  `settings.gradle.kts`"** above describe — but you only need your own `ClaudeConfig.kt` in `apps/`. Do **not**
+  add a `KdrConfig`; that object is the developer's to create, not yours.
+- **It already exists** (the developer uses `KdrConfig`): just add `ClaudeConfig.kt` beside theirs, and leave
+  `KdrConfig` alone.
+
+Either way the file is non-versioned, so it never lands in a PR:
 
 ```kotlin
 // customConfig/apps/ClaudeConfig.kt   (default package → the reflective name is just "ClaudeConfig")
