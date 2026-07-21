@@ -16,6 +16,7 @@ object AEP {
     const val setLoginData = "/auth/user/setLoginData"
     const val loginByCode = "/auth/login/byCode"
     const val loginByPassword = "/auth/login/byPassword"
+    const val loginByGoogle = "/auth/login/google"
     const val setPassword = "/auth/user/setPassword"
     const val authUiConfig = "/auth/ui/config"
     const val selfInfo = "/auth/self/info"
@@ -51,6 +52,16 @@ object AFLD {
     const val addPassword = "addPassword"
     const val userId = "userId"
 
+    /** The Google ID token (a JWT) the browser's Google sign-in hands back, POSTed to [AEP.loginByGoogle]. */
+    const val googleCredential = "googleCredential"
+
+    /**
+     * The Google OAuth **client id**. Public by design (it identifies the application to Google, and the
+     * browser must present it), so the auth UI config carries it to the frontend; the deployment sets it with
+     * `KDR_GOOGLE_CLIENT_ID`. Empty when Google sign-in is not configured.
+     */
+    const val googleClientId = "googleClientId"
+
     /** The `state.userInfo` key of a UI-config payload (the caller's user info). */
     const val userInfo = "userInfo"
 }
@@ -61,6 +72,9 @@ object AFEAT {
     const val registration = "registration"
     const val codeLogin = "codeLogin"
     const val passwordLogin = "passwordLogin"
+
+    /** Whether Google sign-in is offered (on only when the deployment configured a client id). */
+    const val googleLogin = "googleLogin"
     const val hasPassword = "hasPassword"
     const val canSetPassword = "canSetPassword"
 
@@ -104,6 +118,15 @@ object AERR {
     const val tooManyVerifyAttempts = "tooManyVerifyAttempts"
     const val tooManyVerifyRequests = "tooManyVerifyRequests"
     const val tooManyLoginAttempts = "tooManyLoginAttempts"
+
+    /** Google sign-in was attempted but the deployment has no client id configured. */
+    const val googleNotConfigured = "googleNotConfigured"
+
+    /** The Google ID token did not verify (bad signature, wrong audience/issuer, or expired). */
+    const val googleTokenInvalid = "googleTokenInvalid"
+
+    /** Google supplied the account's email but has not itself verified it, so it cannot identify a user. */
+    const val googleEmailUnverified = "googleEmailUnverified"
 
     // Account-existence (email leak); take a param. Marked sensitive for obfuscation in a later phase.
     const val noAccount = "noAccount" // param: loginId

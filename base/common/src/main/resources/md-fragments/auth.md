@@ -20,6 +20,7 @@
 # +codeSent We emailed a verification code to `${user.email}`.
 # +newPasswordLabel New password
 # +newPasswordHelp You can use it to sign in from this browser next time.
+# +orDivider or
 
 # @register
 # +title Create your account
@@ -30,6 +31,7 @@
 # +passwordLabel Password (optional)
 # +passwordHelp Optional -- you can sign in with an emailed code, and add a password later from your profile.
 # +finish Create account
+# +orDivider or
 
 # @verify
 # +expiresNote The code expires in fifteen minutes.
@@ -48,5 +50,8 @@
 # +tooManyVerifyAttempts Too many verification attempts. Please request a new code and try again.
 # +tooManyVerifyRequests Too many verification requests. Please wait a while before requesting another code.
 # +tooManyLoginAttempts Too many failed login attempts. Please wait and try again, or log in by verification code.
+# +googleNotConfigured Google sign-in is not available on this deployment.
+# +googleTokenInvalid Google sign-in could not be verified. Please try again.
+# +googleEmailUnverified Google has not verified the email address on that account, so it cannot be used to sign in here.
 # +noAccount No account was found for *${loginId}*.
 # +emailNotAvailable The email *${email}* is not available for creating a new account.
