@@ -44,6 +44,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             property(AFEAT.registration, "Whether new-user registration is offered.", required = true) { type = SCT.boolean }
             property(AFEAT.codeLogin, "Whether verification-code login is offered.", required = true) { type = SCT.boolean }
             property(AFEAT.passwordLogin, "Whether password login is offered.", required = true) { type = SCT.boolean }
+            property(AFEAT.googleLogin, "Whether Google sign-in is offered.", required = true) { type = SCT.boolean }
             property(AFEAT.simulatedEmail, "Whether email is simulated (dev: the code can be read back).", required = true) { type = SCT.boolean }
         }
         property(UIC.state, "Dynamic state for constructing the auth flow.", required = true) {
@@ -51,6 +52,9 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             property(AFLD.userInfo, "The caller's user info (anonymous when not logged in).", required = true) {
                 ref(UserProfile.infoTypeName)
             }
+            // Public by design -- it identifies the application to Google and the browser has to present it.
+            // Empty when Google sign-in is off, so the frontend never has to special-case a missing key.
+            property(AFLD.googleClientId, "The Google OAuth client id (empty when Google sign-in is off).", required = true)
         }
     }
 
@@ -135,6 +139,15 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
         authHandler(c).loginByPassword(c, req.getReqStr(AFLD.loginId), req.getReqStr(AFLD.password))
     }
 
+    // Log in with Google (issue #157). The browser's Google sign-in hands back an ID token, which is all this
+    // endpoint takes -- no form token, since the token is itself the (Google-signed) proof of identity.
+    generalEndpoint(AEP.loginByGoogle, "Logs a user in from a Google ID token (linking the account on first use).",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.googleCredential, "The Google ID token from the browser's sign-in.", required = true)
+        }) { c, req ->
+        authHandler(c).loginByGoogle(c, req.getReqStr(AFLD.googleCredential))
+    }
+
     // Set or change the user's password after verifying a code. This is a code login, so it also logs the user
     // in and makes the current device familiar (so the new password is usable from this browser next time).
     generalEndpoint(AEP.setPassword, "Sets or changes the user's password (verified by a code).",
@@ -158,9 +171,13 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             UIC.fragments to fragmentRefs(AFRAG.auth),
             UIC.features to mapOf(
                 AFEAT.registration to true, AFEAT.codeLogin to true, AFEAT.passwordLogin to true,
+                AFEAT.googleLogin to authHandler(c).googleLoginEnabled,
                 AFEAT.simulatedEmail to (MailService.get(c)?.useSimulatedEmail == true),
             ),
-            UIC.state to mapOf(AFLD.userInfo to currentUserInfo(c)),
+            UIC.state to mapOf(
+                AFLD.userInfo to currentUserInfo(c),
+                AFLD.googleClientId to (GoogleAuthConfig.clientId(c.instanceConfig) ?: ""),
+            ),
         )
     }
 

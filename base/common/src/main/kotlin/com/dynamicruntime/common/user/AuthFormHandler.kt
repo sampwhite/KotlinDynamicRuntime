@@ -38,7 +38,12 @@ class AuthFormHandler(
     private val userService: UserService,
     private val node: NodeService,
     private val mail: MailService,
+    /** Google sign-in (issue #157); null when the deployment configured no client id, disabling the feature. */
+    private val googleVerifier: GoogleIdTokenVerifier? = null,
 ) {
+    /** Whether Google sign-in is available on this deployment (drives the auth UI config's feature flag). */
+    val googleLoginEnabled: Boolean get() = googleVerifier != null
+
     /** Throttles for auth brute force / email flooding (issue #69). Per-node and non-durable by design. */
     val rateLimiter = AuthRateLimiter()
 
@@ -244,6 +249,84 @@ class AuthFormHandler(
         }
         rateLimiter.reset("pw:$loginId")
         return completeLogin(cxt, row!!, byCode = false)
+    }
+
+    // --- Google sign-in (issue #157) ----------------------------------------
+
+    /**
+     * Logs a user in from a Google ID token, linking the Google identity to a local user on first use.
+     *
+     * The identity is Google's `sub`, held in `LinkedUsers`. Once that link exists it is the *only* thing
+     * consulted, so a later change to the account's Google email -- or that email being reassigned to someone
+     * else, which a Workspace domain can do -- cannot re-point the link or hand the account to a stranger.
+     *
+     * On a **first** link there is nothing but the email to match on, and that is the one moment this path can
+     * reach an existing local account. Hence [GoogleIdToken.emailVerified] is a hard precondition here rather
+     * than a detail: an unverified Google address is one the signer never proved they control, so honoring it
+     * would let anyone who sets their Google email to a victim's address inherit that account. Unverified is
+     * refused outright -- it does not fall through to creating a new user, which would silently squat the
+     * address instead.
+     *
+     * The device is deliberately **not** marked familiar ([completeLogin] with `byCode = false`). Device trust
+     * is what later permits a password login, and the invariant in this class's own contract is that every
+     * trust decision traces back to proving control of the contact via a code we sent. A third party's
+     * assertion, however well verified, is not that.
+     */
+    fun loginByGoogle(cxt: KdrCxt, credential: String): Map<String, Any?> {
+        val verifier = googleVerifier
+            ?: throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.googleNotConfigured), code = EXC.notFound)
+        // Google throttles its own side, but this endpoint still accepts an attacker-supplied blob and does
+        // RSA work on it, so it gets the same per-IP ceiling the password path has.
+        val ip = cxt.forwardedFor ?: unknownIp
+        if (!rateLimiter.allow("goog:$ip", RL.pwPerIpMax, RL.pwWindowMs, cxt.now().toEpochMilliseconds())) {
+            throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyLoginAttempts), code = EXC.tooManyRequests)
+        }
+        val token = verifier.verify(cxt, credential)
+
+        // An identity we have seen before: the link is the answer, and the email is not consulted at all.
+        userService.queryLinkedUser(cxt, LSRC.google, token.subject)?.let { linked ->
+            return completeLogin(cxt, linked, byCode = false)
+        }
+
+        // First sight of this Google account -- the only path that may touch an existing local user.
+        if (!token.emailVerified) {
+            LogAuth.info(cxt) { "Google sign-in refused: Google has not verified the email on subject '${token.subject}'." }
+            throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.googleEmailUnverified))
+        }
+        val email = token.email
+        if (email == null) {
+            LogAuth.info(cxt) { "Google sign-in refused: the token for subject '${token.subject}' carries no email." }
+            throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.googleEmailUnverified))
+        }
+
+        val row = userService.queryByPrimaryId(cxt, email) ?: mkGoogleUser(cxt, email)
+        userService.insertLinkedUser(
+            cxt, LSRC.google, token.subject, row.userId,
+            // Captured for support and for showing the user what is linked -- never read back as an authority
+            // on identity, which is the `sub` in the key.
+            mapOf(GOOG.email to email, GOOG.name to token.displayName),
+        )
+        LogAuth.info(cxt) { "Linked Google subject '${token.subject}' to user ${row.userId} ('${row.primaryId}')." }
+        return completeLogin(cxt, row, byCode = false)
+    }
+
+    /**
+     * Provisions a local user for a Google identity whose (Google-verified) [email] matches no existing
+     * account. The initial-roles rule applies exactly as it does to a registration, so a deployment's
+     * auto-admin domain reaches a Google-provisioned operator too.
+     *
+     * The address is **not** added to `validatedContacts`: that list means "we sent a code here and they proved
+     * they read it", and Google's copy of the address can diverge from ours. The Google fact lives in the
+     * `LinkedUsers` row instead, where it cannot be mistaken for our own verification.
+     */
+    private fun mkGoogleUser(cxt: KdrCxt, email: String): AuthUserRow {
+        val data = AuthUserRow.mkInitialUser(email, AC.public, AdminRules.initialRoles(cxt, email)).toMutableMap()
+        @Suppress("UNCHECKED_CAST")
+        val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
+        authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
+        val userId = userService.insertUser(cxt, data)
+        return userService.queryByUserId(cxt, userId)
+            ?: throw KdrException("Could not load the just-created user '$email'.", code = EXC.internalError)
     }
 
     // --- password management ------------------------------------------------

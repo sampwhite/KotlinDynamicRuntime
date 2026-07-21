@@ -42,6 +42,17 @@ start to matter.
   no longer act as that user. Add an admin endpoint that lists all active sessions, including their creation and
   expiration dates.
 
+- **Google sign-in: bind the ID token with a `nonce`** *(#157 review).* The ID token is verified by
+  signature / audience / issuer / expiry, but is not bound to a single sign-in, so a captured token can be
+  replayed within its (~1h) validity to log in as that user. Generate a nonce in the frontend, pass it to
+  Google (which embeds it in the token), and check it in `GoogleIdTokenVerifier.verify` against what the browser
+  sent. Defense-in-depth on top of the audience binding, and Google's own recommendation for the ID-token flow.
+
+- **Google sign-in: throttle JWKS refetches** *(#157 review).* `GoogleJwksKeySource` refetches Google's signing
+  keys on every `kid` cache miss, under a global lock — so a burst of tokens carrying bogus key ids (bounded
+  per-IP by the login rate limit, but not across IPs) can keep it refetching and serialize real Google logins.
+  Add a minimum refetch interval so a miss shortly after a fetch fails fast instead of re-fetching.
+
 ## When the runtime supports accounts
 
 The point at which configuration can be scoped to a client account rather than only to the deployment.

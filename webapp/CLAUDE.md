@@ -55,8 +55,10 @@ dynamic-endpoint story need). Slice namespaces by "who authors the copy"; be pra
 disciplined in a hub (`nav`/`shell`) everything composes through.
 
 Current UI-config endpoints:
-- `GET /auth/ui/config` — anonymous; features `{registration, codeLogin, passwordLogin}`, state `{userInfo}`
-  (anonymous `userInfo` when logged out). Fragment file `auth`.
+- `GET /auth/ui/config` — anonymous; features `{registration, codeLogin, passwordLogin, googleLogin}`, state
+  `{userInfo, googleClientId}` (anonymous `userInfo` when logged out). Fragment file `auth`. `googleLogin` is
+  on only when the deployment set `KDR_GOOGLE_CLIENT_ID`, and `googleClientId` carries that (public) id —
+  Google's script has to present it, so it is served here rather than hardcoded in the frontend.
 - `GET /profile/ui/config` — **login-required** (`profile` section); features `{hasPassword, canSetPassword}`,
   state `{userInfo}`. Fragment file `profile`.
 
