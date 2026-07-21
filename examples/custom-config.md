@@ -200,9 +200,12 @@ object ClaudeConfig : AppConfigApplier {
 Select it when you boot your server (see the `kdr-testing` skill for the port/in-memory conventions):
 
 ```bash
-cd /Users/samuelwhite/dev/kd2 && \
+cd "$KDR_WORKSPACE_DIR" && \
   KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true KDR_CUSTOM_CONFIG=ClaudeConfig ./gradlew :launch:run > /tmp/srv.log 2>&1 &
 ```
+
+(`$KDR_WORKSPACE_DIR` is the workspace root — set it, or resolve it by walking up to the nearest
+`settings.gradle.kts`, as the `kdr-testing` skill shows. It is never a fixed path.)
 
 The values become instance config exactly as a deployment's would, so an endpoint reading
 `instanceConfig.get(ACFG.…)` — and a frontend that reads it back from a config endpoint — sees them. Rule of

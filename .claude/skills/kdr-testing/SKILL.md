@@ -17,15 +17,23 @@ confirm it works in a running instance (that combination has caught things each 
 
 ## Booting your own server (manual)
 
-Run Gradle from the **workspace root** (`/Users/samuelwhite/dev/kd2`), the parent of the versioned repo — that
-is where `gradlew` lives. Start your **own** instance on a free port; do **not** bind or kill port `7070`,
-which is the developer's IntelliJ instance.
+Run Gradle from the **workspace root** — the parent of the versioned repo, where the live
+`settings.gradle.kts` and `gradlew` sit. Never hardcode that path: it differs per checkout. Resolve it the
+way `bin/_common.sh` does — from `KDR_WORKSPACE_DIR` if set, else the nearest ancestor holding a
+`settings.gradle.kts`. Start your **own** instance on a free port; do **not** bind or kill port `7070`, which
+is the developer's IntelliJ instance.
 
 ```bash
-cd /Users/samuelwhite/dev/kd2 && KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run > /tmp/srv.log 2>&1 &
+# Resolve the workspace root (run from anywhere inside the checkout).
+WS="${KDR_WORKSPACE_DIR:-$(d=$PWD; while [ "$d" != / ] && [ ! -f "$d/settings.gradle.kts" ]; do d=$(dirname "$d"); done; echo "$d")}"
+
+cd "$WS" && KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run > /tmp/srv.log 2>&1 &
 # wait for it, then hit it:
 for i in $(seq 1 180); do curl -sf http://localhost:7071/kda/health >/dev/null && { echo up; break; }; sleep 1; done
 ```
+
+The `bin/` wrappers do this resolution for you, so `KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true kdr-backend` is the
+same boot from any directory if `bin/` is on your `PATH`.
 
 - `KDR_PORT` moves off 7070 (any free port). `KDR_IN_MEMORY_ONLY=true` uses in-memory H2, so there is no
   database contention — omit it only when the test needs a specific database or its content.
