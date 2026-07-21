@@ -188,4 +188,50 @@ class AdminUserTest : StringSpec({
         // Their ordinary (non-admin) access is untouched by all of this.
         roles(results(deputy.client.sendJsonGetRequest("/auth/self/info"))) shouldNotContain ROLE.admin
     }
+
+    // --- nobody edits their own administrator status -------------------------
+
+    "an admin may edit their own other roles, but not their own admin status" {
+        val cxt = Startup.mkTestBootCxt("admin", "adminSelfRoleTest")
+        val admin = TestUser.create(cxt, "self@other.com", admin = true)
+        val other = "auditor" // a role some deployment might add; not special to the runtime
+
+        // Adding an unrelated role to yourself is allowed: the guard is about the admin role alone.
+        roles(
+            admin.postData(
+                ADEP.userSetRoles,
+                mapOf(ADF.userId to admin.userId, ADF.roles to listOf(ROLE.user, ROLE.admin, other)),
+            ),
+        ) shouldContain other
+
+        // Dropping your own admin role is refused, even while keeping the rest.
+        val demote = admin.client.sendJsonPostRequest(
+            ADEP.userSetRoles, mapOf(ADF.userId to admin.userId, ADF.roles to listOf(ROLE.user, other)),
+        )
+        demote[EP.status] shouldBe EXC.badInput
+        (demote[EP.errorMessage] as String) shouldContain ROLE.admin
+
+        // The refusal did not partially apply: the caller is still an admin, and still holds the extra role.
+        val stored = items(admin.client.sendJsonGetRequest(ADEP.users, mapOf(ADF.search to "self@other.com")))
+        roles(stored.single()) shouldContain ROLE.admin
+        roles(stored.single()) shouldContain other
+    }
+
+    "a user cannot promote themselves to admin" {
+        val cxt = Startup.mkTestBootCxt("admin", "adminSelfPromoteTest")
+        val plain = TestUser.create(cxt, "climber@other.com")
+
+        // Today the section gate alone stops this -- a non-admin never reaches the endpoint. The assertion
+        // stands guard for when canManageUsers admits a weaker caller (an account-scoped manager), for whom
+        // self-promotion would be the obvious escalation path.
+        plain.client.sendJsonPostRequest(
+            ADEP.userSetRoles, mapOf(ADF.userId to plain.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)),
+        )[EP.status] shouldBe EXC.authNeeded
+
+        // And the attempt changed nothing.
+        val admin = TestUser.create(cxt, "chief3@other.com", admin = true)
+        val stored = items(admin.client.sendJsonGetRequest(ADEP.users, mapOf(ADF.search to "climber")))
+        roles(stored.single()) shouldNotContain ROLE.admin
+    }
+
 })

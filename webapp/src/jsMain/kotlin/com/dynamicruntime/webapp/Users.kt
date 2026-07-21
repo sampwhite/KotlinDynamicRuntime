@@ -208,19 +208,30 @@ val Users = FC<Props> {
                 readOnlyField("Id", editing?.userId?.toString() ?: "")
             }
 
+            // Editing yourself: the backend refuses to let anyone change their own administrator status or
+            // disable their own account, so those controls are locked here rather than offered and then
+            // rejected. The backend remains the enforcement point -- this only keeps the UI honest.
+            val self = editing != null && editing?.userId == config?.user?.userId
+
             div {
                 className = ClassName("row")
                 Checkbox {
                     checked = draftAdmin
-                    disabled = busy
+                    disabled = busy || self
                     onChange = { event -> draftAdmin = event.target.checked as Boolean }
                     +"Administrator"
                 }
                 Checkbox {
                     checked = draftEnabled
-                    disabled = busy
+                    disabled = busy || self
                     onChange = { event -> draftEnabled = event.target.checked as Boolean }
                     +"Enabled"
+                }
+            }
+            if (self) {
+                p {
+                    className = ClassName("type-hint")
+                    +"This is your own account: another administrator has to change your role or disable you."
                 }
             }
 
