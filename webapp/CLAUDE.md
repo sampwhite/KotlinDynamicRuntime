@@ -38,12 +38,14 @@ A React **widget-group** (the auth flow, the profile page, later the nav/home) f
 — its **UI-config** — to learn how to construct itself. Every such endpoint returns the same envelope:
 
 ```
-{ fragments: [ { fileId, buildId } ], features: { … }, state: { … } }
+{ fragments: [ { fileId, buildId } ], features: { … }, settings: { … }, state: { … } }
 ```
 
 - `fragments` — the Markdown fragment file(s) this group's copy comes from, **each already carrying its
   `buildId`**. This is how a component learns its `fileId:buildId` (the previously-open question): fetch each
-  at `/st/<appId>/md/<fileId:buildId>`. `features` and `state` are group-specific.
+  at `/st/<appId>/md/<fileId:buildId>`. `features`, `settings`, and `state` are group-specific.
+- `features` are boolean policy flags; `settings` are non-flag tuning **values** (numbers, strings), kept
+  apart so a config map isn't flags and magnitudes mixed (issue #146). Either may be empty/absent.
 - These calls are cheap and meant to be **re-fetched on navigation/invalidation** — err on calling too often.
   It's fine for each widget in a group to fetch independently.
 

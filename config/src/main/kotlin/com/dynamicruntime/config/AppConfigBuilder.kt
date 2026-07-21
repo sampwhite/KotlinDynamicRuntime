@@ -6,7 +6,7 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.sql.DbEnv
 
-@Suppress("MoveLambdaOutsideParentheses")
+@Suppress("MoveLambdaOutsideParentheses", "unused")
 class AppConfigBuilder(cxt: KdrCxt, data: MutableMap<String,Any?>) : KdrConfigData(cxt, data) {
     init {
         // Default the env: keep an existing value if present, otherwise take the
@@ -24,4 +24,12 @@ class AppConfigBuilder(cxt: KdrCxt, data: MutableMap<String,Any?>) : KdrConfigDa
 
     /** When true, endpoint responses are validated against their output schema. Defaults false (on in tests). */
     var validateResponseSchema: Boolean by data
+
+    /**
+     * How often (ms) the visible frontend refreshes itself (issue #146). Left unset here, so the app UI-config
+     * endpoint applies its own default; set it to exercise the behavior quickly (e.g., a few seconds) without
+     * waiting out the one-minute default. This is the intended, "code-side" way to tune a UI value -- as opposed
+     * to an env var, which is for ops/environment concerns.
+     */
+    var idleBumpIntervalMs: Int by data
 }
