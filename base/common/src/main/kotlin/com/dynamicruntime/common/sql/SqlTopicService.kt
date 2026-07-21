@@ -1,10 +1,13 @@
 package com.dynamicruntime.common.sql
 
+import com.dynamicruntime.common.context.AC
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
+// Referenced from checkReady's documentation: it is the gate that decides which components' tables exist.
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.ServiceInitializer
 import java.util.concurrent.ConcurrentHashMap
 
@@ -28,6 +31,42 @@ class SqlTopicService : ServiceInitializer {
 
     override fun checkInit(cxt: KdrCxt) {
         isInMemory = (cxt.instanceConfig.get(ACFG.inMemoryOnly) as? Boolean) ?: DbEnv.resolveInMemoryOnly(cxt)
+    }
+
+    /**
+     * Creates every topic the schema store declares, so all table creation happens **here**, at startup, as
+     * the system user -- not lazily inside whichever request happens to touch a topic first.
+     *
+     * Lazy creation is not safe for a topic whose tables are not all present yet. Creating a table is DDL, and
+     * [SqlDatabase.executeSchemaChangeSql] rightly refuses to run DDL on behalf of an end user, so a request
+     * from a logged-in user that is the first to touch such a topic fails outright with "Schema-change SQL may
+     * only be executed by the system user". That went unnoticed because an *anonymous* caller's userId is
+     * [AC.systemUserId] (both are 0), so it satisfies the guard by coincidence -- meaning the failure appears
+     * only when a signed-in user makes the first request after a deployment that added a table, on a database
+     * that already has the rest of the topic. Which is to say: exactly on upgrade, and never in a fresh
+     * in-memory test.
+     *
+     * Doing it in [checkReady] means a database that cannot be reached, or a table that cannot be created,
+     * fails the startup that introduced it rather than the first user unlucky enough to trigger it.
+     *
+     * **This creates tables for the components that are actually loaded, not for every component that
+     * exists.** It reads the schema store, and `InstanceRegistry` only calls
+     * [ComponentDefinition.addSchema] -- the method that contributes tables -- for a component whose
+     * [ComponentDefinition.isLoaded] is true. So an optional component that is switched off has no tables in
+     * the store and gets none created; `isLoaded` is the lever, exactly as its own doc anticipates.
+     *
+     * The distinction to keep in mind is that a component has **two** gates: schema is contributed when
+     * `isLoaded`, while services need `isLoaded && isActive`. A component that is loaded but *inactive*
+     * therefore contributes tables while running nothing, and this creates them -- where previously they
+     * would have been created only if something touched the topic, which with no services running likely
+     * never happened. Nothing overrides either method today (both default to true), so no such component
+     * exists yet. But when optional components arrive, "installed but switched off" wants `isLoaded = false`
+     * rather than `isActive = false`, or the switched-off component still gets its tables.
+     */
+    override fun checkReady(cxt: KdrCxt) {
+        for (topicName in cxt.getSchema().tables.values.map { it.topic }.toSet()) {
+            getOrCreateTopic(cxt, topicName)
+        }
     }
 
     /**
