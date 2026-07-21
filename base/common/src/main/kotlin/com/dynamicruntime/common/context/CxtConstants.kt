@@ -45,6 +45,14 @@ object ACFG {
     const val obfuscateSensitiveErrors = "obfuscateSensitiveErrors"
 
     /**
+     * How often, in milliseconds, the frontend bumps its refresh generation while a tab is visible (issue
+     * #146), served to it by the app UI-config endpoint. Unset by default (the endpoint applies its own
+     * default); a deployment overrides it in code through the custom-config object rather than an env var,
+     * since it is UI tuning, not an ops/environment concern.
+     */
+    const val idleBumpIntervalMs = "idleBumpIntervalMs"
+
+    /**
      * The context root (leading path segment) under which API endpoints are served; defaults to
      * `ContextRoot.kda` when absent. Each kind of traffic binds to its own context root under its own key,
      * and a request whose leading segment matches none of them is fast-failed with a short 404.

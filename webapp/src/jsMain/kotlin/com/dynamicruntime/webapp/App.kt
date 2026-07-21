@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 // The antd `theme` export, aliased: inside the ConfigProvider builder block, `theme` is its prop.
+import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.webapp.theme as antdTheme
 import kotlinx.coroutines.MainScope
@@ -38,6 +39,9 @@ val App = FC<Props> {
     // reaction is non-destructive: we never reload out from under the user, only offer it and reload on a
     // navigation (a safe point) or an explicit click.
     var updateAvailable by useState(false)
+    // How often the idle bump fires (issue #146), served by the app config and re-read on every generation. Held
+    // as *state* (not just the module cache), so a deployment that changes it re-arms the timer -- see useIdleBump.
+    var idleBumpIntervalMs by useState(APP.defaultIdleBumpIntervalMs)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
         onWebAppStale { updateAvailable = true }
@@ -54,8 +58,17 @@ val App = FC<Props> {
     // like any other config, so it stays fresh. Cached module-side (see AppApi) for consumers such as the
     // error-display policy (issue #111); nothing here re-renders on it, so no state is kept.
     useEffect(refresh) {
-        appScope.launch { AppApi.load() }
+        appScope.launch {
+            AppApi.load()
+            // Pick up a reconfigured interval; a change re-keys useIdleBump, which retires the old timer.
+            idleBumpIntervalMs = appConfig().idleBumpIntervalMs
+        }
     }
+
+    // A periodic tick (and a bump on returning to the app) so a tab left open notices things that change
+    // without any user action -- a timed-out session reverting to the anonymous menu, a newer version deployed
+    // (issue #146). It just drives the same generation bump; a hidden tab stays silent (see useIdleBump).
+    useIdleBump(idleBumpIntervalMs) { setRefresh { it + 1 } }
 
     // antd derives its whole palette from tokens, so the dark algorithm is set once here for the whole tree.
     val darkTheme: dynamic = js("({})")

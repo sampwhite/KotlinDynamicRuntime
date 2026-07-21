@@ -18,13 +18,16 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 class FragmentRef(val fileId: String, val buildId: String)
 
 /**
- * A UI-config response, unwrapped but not yet interpreted: the group reads [features] and [state] with its own
- * keys and builds its own typed config from them.
+ * A UI-config response, unwrapped but not yet interpreted: the group reads [features], [settings] and [state]
+ * with its own keys and builds its own typed config from them.
  */
 class UiConfig(
     /** The group's copy. Configs name one fragment file today; [UIC.fragments] is a list against more later. */
     val fragment: FragmentRef,
+    /** Boolean policy flags. */
     val features: Map<String, Any?>,
+    /** Non-flag tuning values (numbers, strings); empty for a group that has none. */
+    val settings: Map<String, Any?>,
     val state: Map<String, Any?>,
 )
 
@@ -58,6 +61,7 @@ suspend fun fetchUiConfig(path: String): UiConfig {
             buildId = fragment[UIC.buildId] as? String ?: "",
         ),
         features = results[UIC.features].toJsonMapOrEmpty(),
+        settings = results[UIC.settings].toJsonMapOrEmpty(),
         state = results[UIC.state].toJsonMapOrEmpty(),
     )
 }

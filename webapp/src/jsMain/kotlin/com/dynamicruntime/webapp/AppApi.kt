@@ -8,16 +8,23 @@ import com.dynamicruntime.common.app.APP
  * like any other config. Held in a module-level cache readable from anywhere, including a non-React error
  * handler, because it is a stable deployment value rather than per-render state.
  *
- * Today it carries the error-display policy [obfuscateSensitiveErrors]; the error-rendering frontend (issue
- * #111) reads it to decide whether to show the content of a raw (non-fragment) error or suppress it.
+ * It carries the error-display policy [obfuscateSensitiveErrors] -- the error-rendering frontend (issue #111)
+ * reads it to decide whether to show the content of a raw (non-fragment) error or suppress it -- and the
+ * idle-bump interval [idleBumpIntervalMs] the app root re-arms its refresh timer from (issue #146).
  */
 class AppConfig(
     /** When true, this deployment obfuscates sensitive errors, so the frontend suppresses raw error content. */
     val obfuscateSensitiveErrors: Boolean,
+    /** How often (ms) a visible tab refreshes itself; the deployment tunes it, the app root re-arms on change. */
+    val idleBumpIntervalMs: Int,
 ) {
     companion object {
-        /** The assumed policy before the first fetch (and if a fetch fails): do not suppress, matching dev. */
-        val default = AppConfig(obfuscateSensitiveErrors = false)
+        /** The assumed config before the first fetch (and if a fetch fails): do not suppress (matching dev),
+         *  and the shared default interval. */
+        val default = AppConfig(
+            obfuscateSensitiveErrors = false,
+            idleBumpIntervalMs = APP.defaultIdleBumpIntervalMs,
+        )
     }
 }
 
@@ -30,6 +37,11 @@ object AppApi {
     /** GETs `/app/ui/config` and refreshes the [appConfig] cache; a failure leaves the previous value in place. */
     suspend fun load() {
         val config = runCatching { fetchUiConfig(APP.uiConfig) }.getOrNull() ?: return
-        cached = AppConfig(obfuscateSensitiveErrors = config.features[APP.obfuscateSensitiveErrors] == true)
+        cached = AppConfig(
+            obfuscateSensitiveErrors = config.features[APP.obfuscateSensitiveErrors] == true,
+            // A JSON number arrives as a Number; fall back to the default if the field is missing or malformed.
+            idleBumpIntervalMs = (config.settings[APP.idleBumpIntervalMs] as? Number)?.toInt()
+                ?: APP.defaultIdleBumpIntervalMs,
+        )
     }
 }
