@@ -13,4 +13,22 @@ object TEP {
     const val email = "email"
     const val grantAdmin = "grantAdmin"
     const val failIfUserAlreadyExists = "failIfUserAlreadyExists"
+
+    /**
+     * Recent emails a test instance captured instead of sending (issue #158), so a test or the local frontend
+     * can read a verification code back. A `forTestingOnly` GET; the fields/type names are in [TSE].
+     */
+    const val simulatedEmails = "/test/simulatedEmails"
+}
+
+/** Fields and type names of the [TEP.simulatedEmails] endpoint. */
+@Suppress("ConstPropertyName")
+object TSE {
+    const val emails = "emails"
+    const val to = "to"
+    const val subject = "subject"
+    const val text = "text"
+
+    const val emailType = "SimulatedEmail"
+    const val emailsType = "SimulatedEmails"
 }

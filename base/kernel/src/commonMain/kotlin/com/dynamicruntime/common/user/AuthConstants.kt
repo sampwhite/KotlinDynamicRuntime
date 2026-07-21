@@ -22,18 +22,6 @@ object AEP {
     const val logout = "/logout"
     const val profileUiConfig = "/profile/ui/config"
     const val profileClearPassword = "/profile/self/clearPassword"
-
-    /** Dev-only: recent simulated emails (only served when email is simulated), so a dev UI can read a code. */
-    const val simulatedEmails = "/auth/simulatedEmails"
-}
-
-/** Fields of the simulated-emails (dev) endpoint. */
-@Suppress("ConstPropertyName")
-object ASE {
-    const val emails = "emails"
-    const val to = "to"
-    const val subject = "subject"
-    const val text = "text"
 }
 
 /** Auth request/response field (JSON key) names, shared so the frontend builds and reads payloads by constant. */
@@ -64,7 +52,7 @@ object AFEAT {
     const val hasPassword = "hasPassword"
     const val canSetPassword = "canSetPassword"
 
-    /** Whether email is simulated, so the frontend may read a verification code back from `/auth/simulatedEmails`. */
+    /** Whether email is simulated, so the frontend may read a verification code back from `/test/simulatedEmails`. */
     const val simulatedEmail = "simulatedEmail"
 }
 
@@ -76,8 +64,6 @@ object ATYPE {
     const val userIdResult = "UserIdResult"
     const val authUiConfig = "AuthUiConfig"
     const val profileUiConfig = "ProfileUiConfig"
-    const val simulatedEmail = "SimulatedEmail"
-    const val simulatedEmails = "SimulatedEmails"
 }
 
 /** Markdown fragment file ids for the auth-area widget-groups (each also the group's fragment namespace). */
