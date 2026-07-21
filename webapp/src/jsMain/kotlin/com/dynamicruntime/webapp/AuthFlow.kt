@@ -149,6 +149,16 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         goHomeSignedIn()
     }
 
+    /**
+     * Completes a Google sign-in with the ID token Google's button produced. The same call serves both modes:
+     * the backend creates the account on a first sign-in, so "register with Google" and "log in with Google"
+     * are one path and the button reads the same in either mode.
+     */
+    fun submitGoogle(credential: String) = run {
+        AuthApi.loginByGoogle(credential)
+        goHomeSignedIn()
+    }
+
     div {
         className = ClassName("card")
         h1 { +t(ns, "title", if (register) "Create your account" else "Log in") }
@@ -195,6 +205,20 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                         onClick = { sendCode(withPassword = true) }
                         +t("login", "sendCodeSetPassword", "Email me a code and set a password")
                     }
+                }
+            }
+
+            // Google sign-in, when the deployment configured it. Placed after the email paths and set off by a
+            // divider: it is an alternative to the whole email flow above, not another button within it.
+            val googleCfg = config
+            if (googleCfg != null && googleCfg.features.googleLogin && googleCfg.googleClientId.isNotEmpty()) {
+                p {
+                    className = ClassName("type-hint")
+                    +t(ns, "orDivider", "or")
+                }
+                GoogleSignInButton {
+                    clientId = googleCfg.googleClientId
+                    onCredential = { submitGoogle(it) }
                 }
             }
         } else {

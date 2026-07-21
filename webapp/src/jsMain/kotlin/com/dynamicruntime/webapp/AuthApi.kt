@@ -16,6 +16,8 @@ class AuthFeatures(
     val registration: Boolean,
     val codeLogin: Boolean,
     val passwordLogin: Boolean,
+    /** Whether Google sign-in is offered (the deployment configured a client id). */
+    val googleLogin: Boolean,
     /** Dev only: email is simulated, so the code can be read back from `/auth/simulatedEmails`. */
     val simulatedEmail: Boolean,
 )
@@ -26,6 +28,11 @@ class AuthConfig(
     val fragment: FragmentRef,
     val features: AuthFeatures,
     val user: UserProfile,
+    /**
+     * The Google OAuth client id, or empty when Google sign-in is off. Public by design -- Google's script has
+     * to present it -- so the backend serves it in the config rather than the frontend hardcoding it.
+     */
+    val googleClientId: String,
 )
 
 /**
@@ -49,9 +56,11 @@ object AuthApi {
                 registration = config.features[AFEAT.registration] == true,
                 codeLogin = config.features[AFEAT.codeLogin] == true,
                 passwordLogin = config.features[AFEAT.passwordLogin] == true,
+                googleLogin = config.features[AFEAT.googleLogin] == true,
                 simulatedEmail = config.features[AFEAT.simulatedEmail] == true,
             ),
             user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
+            googleClientId = config.state[AFLD.googleClientId] as? String ?: "",
         )
     }
 
@@ -116,6 +125,14 @@ object AuthApi {
                 mapOf(AFLD.loginId to loginId, AFLD.formAuthToken to token, AFLD.verifyCode to code),
             ),
         )
+
+    /**
+     * Logs in with the Google ID token Google's sign-in handed the browser. The backend verifies it and links
+     * the Google identity to a local account (creating one on a first sign-in), so this one call covers both
+     * registering and returning -- there is no separate "register with Google" path.
+     */
+    suspend fun loginByGoogle(credential: String): UserProfile =
+        userFrom(Http.sendApi("POST", AEP.loginByGoogle, mapOf(AFLD.googleCredential to credential)))
 
     /** Logs a returning user in by password (familiar devices only; failure raises the opaque message). */
     suspend fun loginByPassword(loginId: String, password: String): UserProfile =

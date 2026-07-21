@@ -11,6 +11,7 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toOptInstant
+import com.dynamicruntime.common.util.toOptLong
 import kotlin.time.Instant
 
 /**
@@ -27,7 +28,9 @@ class UserService : ServiceInitializer {
         if (::authFormHandler.isInitialized) return
         val node = NodeService.get(cxt) ?: throw KdrException("NodeService required for UserService.")
         val mail = MailService.get(cxt) ?: throw KdrException("MailService required for UserService.")
-        authFormHandler = AuthFormHandler(this, node, mail)
+        // Null when the deployment configured no Google client id, which is what disables Google sign-in.
+        val googleVerifier = GoogleAuthConfig.mkVerifier(cxt.instanceConfig)
+        authFormHandler = AuthFormHandler(this, node, mail, googleVerifier)
     }
 
     // --- AuthUsers queries --------------------------------------------------
@@ -125,6 +128,51 @@ class UserService : ServiceInitializer {
         data[PF.enabled] = row.enabled
         sqlCxt.sqlDb.withSession(cxt) {
             sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
+        }
+    }
+
+    // --- LinkedUsers: external identities -----------------------------------
+
+    private fun linkedUsersTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[UT.linkedUsers]
+        ?: throw KdrException("LinkedUsers table is not registered in the schema store.")
+
+    /**
+     * The user an external identity signs in as, or null when that identity has never been linked. Keyed by
+     * the source's own id ([LU.linkId]) rather than by email, so a provider changing or reassigning the email
+     * on an account can never re-point an existing link.
+     */
+    fun queryLinkedUser(cxt: KdrCxt, linkSource: String, linkId: String): AuthUserRow? {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = linkedUsersTable(cxt)
+        val stmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
+        var row: Map<String, Any?>? = null
+        sqlCxt.sqlDb.withSession(cxt) {
+            row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(LU.linkSource to linkSource, LU.linkId to linkId))
+        }
+        val userId = row?.get(AU.userId).toOptLong() ?: return null
+        return queryByUserId(cxt, userId)
+    }
+
+    /**
+     * Links an external identity to [userId]. [linkData] holds the claims the source supplied at link time
+     * (its email, display name) -- captured for support and for showing the user what is linked, never read
+     * back as an authority on identity.
+     */
+    fun insertLinkedUser(
+        cxt: KdrCxt, linkSource: String, linkId: String, userId: Long, linkData: Map<String, Any?>,
+    ) {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = linkedUsersTable(cxt)
+        val stmt = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
+        val row = mutableMapOf<String, Any?>(
+            LU.linkSource to linkSource,
+            LU.linkId to linkId,
+            LU.linkData to linkData,
+            AU.userId to userId,
+        )
+        SqlTopicUtil.prepForStdExecute(cxt, table, row)
+        sqlCxt.sqlDb.withSession(cxt) {
+            sqlCxt.sqlDb.executeStatement(cxt, stmt, row)
         }
     }
 
