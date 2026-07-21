@@ -6,6 +6,8 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
+// Referenced from checkReady's documentation: it is the gate that decides which components' tables exist.
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.ServiceInitializer
 import java.util.concurrent.ConcurrentHashMap
 
@@ -46,6 +48,20 @@ class SqlTopicService : ServiceInitializer {
      *
      * Doing it in [checkReady] means a database that cannot be reached, or a table that cannot be created,
      * fails the startup that introduced it rather than the first user unlucky enough to trigger it.
+     *
+     * **This creates tables for the components that are actually loaded, not for every component that
+     * exists.** It reads the schema store, and `InstanceRegistry` only calls
+     * [ComponentDefinition.addSchema] -- the method that contributes tables -- for a component whose
+     * [ComponentDefinition.isLoaded] is true. So an optional component that is switched off has no tables in
+     * the store and gets none created; `isLoaded` is the lever, exactly as its own doc anticipates.
+     *
+     * The distinction to keep in mind is that a component has **two** gates: schema is contributed when
+     * `isLoaded`, while services need `isLoaded && isActive`. A component that is loaded but *inactive*
+     * therefore contributes tables while running nothing, and this creates them -- where previously they
+     * would have been created only if something touched the topic, which with no services running likely
+     * never happened. Nothing overrides either method today (both default to true), so no such component
+     * exists yet. But when optional components arrive, "installed but switched off" wants `isLoaded = false`
+     * rather than `isActive = false`, or the switched-off component still gets its tables.
      */
     override fun checkReady(cxt: KdrCxt) {
         for (topicName in cxt.getSchema().tables.values.map { it.topic }.toSet()) {
