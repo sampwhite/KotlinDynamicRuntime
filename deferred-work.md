@@ -60,3 +60,17 @@ The point at which configuration can be scoped to a client account rather than o
 - **Per-account configuration** *(from #97 §6 and #155).* Let values currently resolved per-deployment vary per
   client account. Known candidates: the error-display / obfuscation policy (`obfuscateSensitiveErrors`), the
   frontend idle-bump interval (`idleBumpIntervalMs`), and the login-cookie timeout period.
+
+## When the logging integration is built out (structured / OpenSearch sinks)
+
+The point at which logs become searchable fields — the moment a per-browser tracing id starts to look worth
+logging.
+
+- **A `deviceId` in logs is tempting here, but gated on cookie consent** *(cedar lesson).* Logging a `deviceId`
+  that traces one browser across anonymous browsing and repeated login/logout was a high-value search key in
+  cedar. It requires minting the `deviceId` cookie on the first (anonymous) request — and cedar found the
+  cookie-privacy/consent question a big enough deal to reshape how cookies were set. Today `deviceId` is
+  deliberately **login-gated** (minted only at login, in `RequestService.checkAddAuthCookies`); keep it that way
+  until the cookie-consent story exists (see *When a deployment serves real clients*). If revived: split minting
+  (unconditional, early) from `recordDevice`/auth-cookie writing (login-gated), give the cookie its own
+  lifetime, and never `Set-Cookie` on the immutable-cached static assets (#137).
