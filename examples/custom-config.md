@@ -139,8 +139,12 @@ Notes:
 - **Every file is optional.** Resolution is per asset, so you can override just
   `brand-mark.svg` and inherit the rest. Anything you omit falls back to the
   built-in.
-- **The URLs do not change** (`/wa/favicon.svg` and friends) — config swaps the
-  bytes behind them, so the page's `<link>` tags are the same either way.
+- **You override a filename, not the shell markup.** The shell links each asset
+  by its stable name (`favicon.svg`), but since issue #137 the served URL carries
+  a content hash of the *served* bytes (`/wa/favicon.svg:<hash>`). So branding an
+  asset gives it its own hashed URL automatically — you never touch the `<link>`
+  tags, and immutable caching can never serve a stale built-in in a branded
+  asset's place.
 - **Watch the startup log.** A directory that overrides nothing logs a warning:
   the usual cause is a typo or resources not reaching the classpath, and without
   the warning it just looks like the branding "didn't take" (the app serves its
@@ -150,6 +154,61 @@ Notes:
 - **The stylesheet is not brandable.** Replacing `app.css` wholesale would fork
   it and re-create the drift a single sheet exists to prevent; theming wants CSS
   variables instead.
+
+## For Claude: controlling your own config while testing (issue #152)
+
+*This section is addressed to Claude (the coding agent), not to a human deployer.* The rest of this file is
+about a deployment shipping production config; here the same mechanism is a **test harness** — a way for you to
+set instance config on a server you boot to verify a change.
+
+The reason to use it: when a behavior is gated on a config value that has **no environment variable** — a UI
+tuning value like an idle-refresh interval, or any `AppConfigBuilder` property — you would otherwise have no
+way to set it for a live run. `KDR_CUSTOM_CONFIG` lets you select a config object *by name*, so you provide
+your **own** object rather than editing the developer's `KdrConfig`. That isolation is the whole point: a value
+the developer sets for their own run can't break yours, your edits can't disturb theirs, and neither of you
+touches the other's file. (This is the same collision that once broke a live test and motivated the split.)
+
+**First, the one-time setup — the `customConfig` project may not exist in your workspace yet.** It, and the two
+`settings.gradle.kts` lines that wire it, are non-versioned, so every workspace has its own; a fresh one
+(Eva's, say) has neither the project nor a `KdrConfig`. Two cases:
+
+- **No `customConfig` project yet** (no `customConfig/` beside your `settings.gradle.kts`, or no
+  `include("customConfig")` in it): create it first, exactly as **"What you create"** and **"What you add to
+  `settings.gradle.kts`"** above describe — but you only need your own `ClaudeConfig.kt` in `apps/`. Do **not**
+  add a `KdrConfig`; that object is the developer's to create, not yours.
+- **It already exists** (the developer uses `KdrConfig`): just add `ClaudeConfig.kt` beside theirs, and leave
+  `KdrConfig` alone.
+
+Either way the file is non-versioned, so it never lands in a PR:
+
+```kotlin
+// customConfig/apps/ClaudeConfig.kt   (default package → the reflective name is just "ClaudeConfig")
+import com.dynamicruntime.config.AppConfigApplier
+import com.dynamicruntime.config.AppConfigBuilder
+
+@Suppress("unused")
+object ClaudeConfig : AppConfigApplier {
+    override fun AppConfigBuilder.applyAppConfig() {
+        // Any AppConfigBuilder property (env, inMemoryOnly, validateResponseSchema, idleBumpIntervalMs, …).
+        idleBumpIntervalMs = 3000            // e.g. a 3s idle bump, to observe it without the one-minute wait
+        // A key without a typed property yet: set it straight into the config map.
+        data["someFutureKey"] = true
+    }
+}
+```
+
+Select it when you boot your server (see the `kdr-testing` skill for the port/in-memory conventions):
+
+```bash
+cd /Users/samuelwhite/dev/kd2 && \
+  KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true KDR_CUSTOM_CONFIG=ClaudeConfig ./gradlew :launch:run > /tmp/srv.log 2>&1 &
+```
+
+The values become instance config exactly as a deployment's would, so an endpoint reading
+`instanceConfig.get(ACFG.…)` — and a frontend that reads it back from a config endpoint — sees them. Rule of
+thumb: **env vars for the documented ops levers** (`KDR_PORT`, `KDR_IN_MEMORY_ONLY`, `KDR_OBFUSCATE_ERRORS`,
+`KDR_ALLOW_TEST_ENDPOINTS`); **your own config object for product/UI values** that have no env var, and for a
+stable personal setup that won't collide with the developer's.
 
 ## Notes
 

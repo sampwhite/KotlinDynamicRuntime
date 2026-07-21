@@ -35,6 +35,10 @@ for i in $(seq 1 180); do curl -sf http://localhost:7071/kda/health >/dev/null &
   touching code: `KDR_IN_MEMORY_ONLY`, `KDR_PORT`, `KDR_OBFUSCATE_ERRORS` (obfuscate sensitive errors),
   `KDR_ALLOW_TEST_ENDPOINTS` (expose `forTestingOnly` endpoints). See `environment-variables.md` for the full
   list.
+- **A config value with no env var** (a UI tuning value like a refresh interval, or any `AppConfigBuilder`
+  property) — set it in your *own* config object and select it with `KDR_CUSTOM_CONFIG=ClaudeConfig`, so you
+  never edit the developer's `KdrConfig` (their run's config can't break yours, and vice versa). Full recipe,
+  addressed to you, in the **"For Claude"** section of `examples/custom-config.md`.
 
 **Stop it and free the port when done** (targeted, so you never touch 7070):
 
