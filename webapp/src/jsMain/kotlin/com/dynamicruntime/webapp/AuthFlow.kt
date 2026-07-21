@@ -152,14 +152,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     div {
         className = ClassName("card")
         h1 { +t(ns, "title", if (register) "Create your account" else "Log in") }
-        error?.let { d ->
-            p {
-                // An internal (non-fragment) error is shown as plain text, marked as raw (issue #111); designed
-                // copy is Markdown-rendered, since fragment messages may use it and are sanitized server-side.
-                className = ClassName(if (d.internal) "internal-error" else "todo-error")
-                if (d.internal) +d.text else MarkdownInline { source = d.text }
-            }
-        }
+        error?.let { errorText(it) }
 
         val codeSent = token != null
 
