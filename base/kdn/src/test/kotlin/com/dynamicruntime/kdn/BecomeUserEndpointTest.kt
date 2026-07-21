@@ -25,7 +25,6 @@ import io.kotest.matchers.string.shouldContain
 class BecomeUserEndpointTest : StringSpec({
 
     @Suppress("UNCHECKED_CAST")
-    fun roles(userInfo: Map<String, Any?>): List<String> = (userInfo[UPF.roles] as? List<*>)?.map { it.toString() } ?: emptyList()
 
     "TestUser.create makes a new user and the client is authenticated as them" {
         val cxt = Startup.mkTestBootCxt("becomeNew", "becomeNewTest")
@@ -40,13 +39,13 @@ class BecomeUserEndpointTest : StringSpec({
         val first = TestUser.create(cxt, "bob@example.com", admin = false)
         val again = TestUser.create(cxt, "bob@example.com", admin = true) // exists already -> admin ignored
         again.userId shouldBe first.userId
-        roles(again.userInfo).contains(ROLE.admin) shouldBe false
+        TestUser.rolesOf(again.userInfo).contains(ROLE.admin) shouldBe false
     }
 
     "grantAdmin gives a freshly created user the admin role" {
         val cxt = Startup.mkTestBootCxt("becomeAdmin", "becomeAdminTest")
         val admin = TestUser.create(cxt, "carol@example.com", admin = true)
-        roles(admin.userInfo).contains(ROLE.admin) shouldBe true
+        TestUser.rolesOf(admin.userInfo).contains(ROLE.admin) shouldBe true
     }
 
     "failIfUserAlreadyExists rejects an existing user with a 400" {
