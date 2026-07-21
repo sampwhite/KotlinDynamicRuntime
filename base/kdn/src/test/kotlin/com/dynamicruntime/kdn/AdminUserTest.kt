@@ -151,10 +151,18 @@ class AdminUserTest : StringSpec({
             ADEP.userSetEnabled, mapOf(ADF.userId to admin.userId, ADF.enabled to false),
         )[EP.status] shouldBe EXC.badInput
 
-        // Disable the other user; the change is visible immediately.
-        admin.postData(
-            ADEP.userSetEnabled, mapOf(ADF.userId to newbieId, ADF.enabled to false),
-        )[ADF.enabled] shouldBe false
+        // Disable the other user. Asserted by RE-READING the list, not by trusting the response: the write
+        // path stamps protocol columns on its way to the database, and an earlier version of this endpoint
+        // returned a correctly-disabled row while leaving the stored one enabled.
+        admin.postData(ADEP.userSetEnabled, mapOf(ADF.userId to newbieId, ADF.enabled to false))[ADF.enabled] shouldBe
+            false
+        val reread = items(admin.client.sendJsonGetRequest(ADEP.users, mapOf(ADF.search to "newbie")))
+        reread.single()[ADF.enabled] shouldBe false
+
+        // And re-enabling round-trips just as durably.
+        admin.postData(ADEP.userSetEnabled, mapOf(ADF.userId to newbieId, ADF.enabled to true))
+        items(admin.client.sendJsonGetRequest(ADEP.users, mapOf(ADF.search to "newbie")))
+            .single()[ADF.enabled] shouldBe true
     }
 
     // --- revocation takes effect without waiting for the session to expire ----

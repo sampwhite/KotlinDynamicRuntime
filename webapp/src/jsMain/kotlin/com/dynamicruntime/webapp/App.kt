@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 // The antd `theme` export, aliased: inside the ConfigProvider builder block, `theme` is its prop.
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.webapp.theme as antdTheme
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -84,6 +85,7 @@ val App = FC<Props> {
                     pageLogin -> AuthFlow { mode = pageLogin }
                     pageRegister -> AuthFlow { mode = pageRegister }
                     pageProfile -> Profile {}
+                    pageUsers -> Users {}
                     else -> Home {}
                 }
             }
@@ -95,6 +97,9 @@ private const val pageCatalog = "catalog"
 private const val pageLogin = "login"
 private const val pageRegister = "register"
 private const val pageProfile = "profile"
+// The user-administration page. Reachable only when the shell's menu offers it (the backend decides), but the
+// route exists unconditionally: the page itself reports honestly when the caller lacks the capability.
+private const val pageUsers = HMENU.pageUsers
 
 /**
  * Resolves the page from the hash: `page=catalog` (or an endpoint deep-link carrying `m=`) shows the catalog,
@@ -107,6 +112,7 @@ private fun currentPage(): String {
         params["page"] == pageLogin -> pageLogin
         params["page"] == pageRegister -> pageRegister
         params["page"] == pageProfile -> pageProfile
+        params["page"] == pageUsers -> pageUsers
         else -> "home"
     }
 }

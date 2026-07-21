@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.util.evalTemplate
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -19,31 +20,33 @@ import web.cssom.ClassName
 private val appBarScope = MainScope()
 
 /**
- * The persistent top app bar: a brand on the left, and a hamburger menu on the right. The menu is *composed*
- * (issue #81): the bar owns the container and the fixed items (the endpoint catalog), while the **account**
- * items come from the `auth` widget-group's UI-config — Log in / Register when signed out, "Signed in as …" /
- * Log out when signed in. It re-reads the auth config on every hash navigation, so signing in or out updates
- * the menu. Copy comes from the `auth` Markdown fragment file.
+ * The persistent top app bar: a brand on the left, and a hamburger menu on the right.
+ *
+ * **The menu is data.** Its items come whole from the home/shell UI-config (`state.menu`), which the backend
+ * composes for the *current caller* -- so what a user may reach is decided once, on the side that knows. The
+ * bar renders the list it is handed, in order, and adds nothing of its own: an item this user may not have is
+ * simply absent from the response. That is what lets an entry like user administration appear for an
+ * administrator and for nobody else without the frontend knowing anything about roles.
+ *
+ * Each item either navigates to a page ([MenuItem.page]) or runs a client-side action ([MenuItem.action]) --
+ * today only logging out, which cannot be a link because it is a request plus a redirect.
+ *
+ * It re-reads the config on every refresh generation, so signing in or out (or being granted a capability)
+ * redraws the menu.
  */
 val AppBar = FC<Props> {
     var open by useState(false)
-    var config by useState<AuthConfig?>(null)
-    var copy by useState(Copy.empty)
+    var config by useState<HomeConfig?>(null)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
 
-    // Re-read the account menu's auth config on every refresh generation -- mount, navigation, and any state
-    // mutation (notably sign-in / sign-out). The menu degrades to signed-out defaults if the config can't load.
+    // Re-read the shell config on every refresh generation -- mount, navigation, and any state mutation
+    // (notably sign-in / sign-out). The menu stays as it was if the config cannot be loaded.
     useEffect(generation) {
         appBarScope.launch {
-            val c = runCatching { AuthApi.fetchConfig() }.getOrNull() ?: return@launch
-            config = c
-            copy = runCatching { fetchCopy(c.fragment) }.getOrDefault(copy)
+            runCatching { HomeApi.fetchConfig() }.getOrNull()?.let { config = it }
         }
     }
-
-    /** The bar's copy all sits in the auth fragment's `menu` namespace, so the namespace is implied here. */
-    fun t(key: String, dflt: String): String = copy.t("menu", key, dflt)
 
     fun logout() {
         open = false
@@ -85,10 +88,8 @@ val AppBar = FC<Props> {
                 div {
                     className = ClassName("app-menu")
 
-                    // Fixed chrome item.
-                    menuLink("#page=catalog", "Endpoint catalog") { open = false }
-
-                    // Account items, supplied by the auth config.
+                    // Who is signed in, above their items. Shown only when signed in: the anonymous profile
+                    // has no name worth announcing.
                     val user = config?.user
                     if (user != null && user.isLoggedIn) {
                         span {
@@ -96,20 +97,23 @@ val AppBar = FC<Props> {
                             // Markdown, so the copy can set the name apart; MarkdownInline renders a span,
                             // which (unlike a div) is valid inside this one.
                             MarkdownInline {
-                                source = t("signedInAs", $$"Signed in as **${user.publicName}**")
+                                source = $$"Signed in as **${user.publicName}**"
                                     .evalTemplate(mapOf("user" to mapOf("publicName" to (user.publicName ?: "your account"))))
                             }
                         }
-                        menuLink("#page=profile", t("profile", "Profile")) { open = false }
-                        button {
-                            className = ClassName("app-menu-item")
-                            onClick = { logout() }
-                            +t("logout", "Log out")
-                        }
-                    } else {
-                        menuLink("#page=login", t("login", "Log in")) { open = false }
-                        if (config?.features?.registration == true) {
-                            menuLink("#page=register", t("register", "Register")) { open = false }
+                    }
+
+                    // The items themselves, exactly as the backend composed them for this caller.
+                    for (menuItem in config?.menu.orEmpty()) {
+                        when {
+                            menuItem.action == HACT.logout -> button {
+                                className = ClassName("app-menu-item")
+                                onClick = { logout() }
+                                +menuItem.label
+                            }
+                            menuItem.page != null -> menuLink("#page=${menuItem.page}", menuItem.label) {
+                                open = false
+                            }
                         }
                     }
                 }

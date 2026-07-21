@@ -5,10 +5,13 @@ import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.user.AdminRules
+import com.dynamicruntime.common.user.refreshActingRoles
 
 /**
  * The home/shell widget-group's endpoints (issue #70's `nav`/`shell` hub). Follows the per-group UI-config
@@ -36,8 +39,21 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
         property(HFLD.buildId, "Cache-busting content hash for the document.", required = true)
     }
 
+    // One app-bar menu item: an id the frontend can recognize, a label to show, and either a page to navigate
+    // to or a client-side action to run.
+    type(HTYPE.menuItem) {
+        type = SCT.kObject
+        property(HFLD.id, "Stable id for this item (see HMENU); the frontend keys behavior off it.", required = true)
+        property(HFLD.label, "Display label.", required = true)
+        property(HFLD.page, "Frontend page id to navigate to; absent when the item carries an action.")
+        property(HFLD.action, "Client-side action to run instead of navigating (see HACT).")
+    }
+
+    // UserInfo (declared with UserProfile) describes who the caller is, for the menu's signed-in label.
+    UserProfile.defineInfoType(this)
+
     // The home widget-group's UI config: which fragment file holds its copy, which layout affordances are
-    // enabled, and the links to offer.
+    // enabled, the links to offer, and the menu this particular caller gets.
     type(HTYPE.homeUiConfig) {
         type = SCT.kObject
         uiFragmentsProperty()
@@ -50,6 +66,9 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
             property(HFEAT.inlineLinks, "Whether the links are also listed inline on the page body.", required = true) {
                 type = SCT.boolean
             }
+            property(HFEAT.canManageUsers, "Whether the caller may create and edit other users.", required = true) {
+                type = SCT.boolean
+            }
         }
         property(UIC.state, "Dynamic state for constructing the home page.", required = true) {
             type = SCT.kObject
@@ -57,11 +76,23 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
                 type = SCT.array
                 items { ref(HTYPE.homeLink) }
             }
+            property(HFLD.menu, "The app-bar menu items for this caller, in display order.", required = true) {
+                type = SCT.array
+                items { ref(HTYPE.menuItem) }
+            }
+            property(HFLD.userInfo, "Who the caller is (the anonymous profile when signed out).", required = true) {
+                ref(UserProfile.infoTypeName)
+            }
         }
     }
 
-    generalEndpoint(HEP.homeUiConfig, "Returns the config for constructing the home page (layout and links).",
+    generalEndpoint(HEP.homeUiConfig, "Returns the config for constructing the shell (layout, links, menu).",
         HttpMethod.GET, outputRef = HTYPE.homeUiConfig) { c, _ ->
+        // The menu says what this caller may reach, so it must be decided on live roles rather than the ones
+        // their session cookie captured at login -- otherwise a revoked administrator keeps being offered a
+        // page that now 401s, for as long as the cookie lives. The `admin` section is refreshed by the
+        // dispatcher for the same reason; this is the one config that needs it outside a gated section.
+        refreshActingRoles(c)
         mapOf(
             UIC.fragments to fragmentRefs(HFRAG.home),
             // Default to a left nav bar alone: the classic shape, and the one that stays usable as the
@@ -70,11 +101,51 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
                 HFEAT.topBar to c.layoutFlag(HCFG.homeTopBar, default = false),
                 HFEAT.leftBar to c.layoutFlag(HCFG.homeLeftBar, default = true),
                 HFEAT.inlineLinks to c.layoutFlag(HCFG.homeInlineLinks, default = false),
+                HFEAT.canManageUsers to AdminRules.canManageUsers(c),
             ),
-            UIC.state to mapOf(HFLD.links to homeLinks()),
+            UIC.state to mapOf(
+                HFLD.links to homeLinks(),
+                HFLD.menu to menuItems(c),
+                HFLD.userInfo to c.userProfile.toUserInfo(),
+            ),
         )
     }
 }
+
+/**
+ * The app-bar menu for *this* caller, in display order.
+ *
+ * The menu is built here rather than in the frontend so that what a user may reach is decided in one place, by
+ * the side that actually knows -- the shell then renders whatever list it is handed. That matters most for the
+ * user-administration entry: it appears only for a caller with the [AdminRules.canManageUsers] capability, and
+ * when that capability grows narrower (per-account administration, say) the menu narrows with it and no
+ * frontend changes. It also means a signed-out visitor is never sent the labels of pages they cannot open.
+ *
+ * Labels are literal here, as the [homeDocs] link labels already are. Their natural home is the `home`
+ * fragment file once this menu needs translating.
+ */
+private fun menuItems(cxt: KdrCxt): List<Map<String, Any?>> = buildList {
+    add(item(HMENU.catalog, "Endpoint catalog", page = HMENU.pageCatalog))
+    if (AdminRules.canManageUsers(cxt)) {
+        add(item(HMENU.users, "Users", page = HMENU.pageUsers))
+    }
+    if (cxt.userProfile.isLoggedIn) {
+        add(item(HMENU.profile, "Profile", page = HMENU.pageProfile))
+        add(item(HMENU.logout, "Log out", action = HACT.logout))
+    } else {
+        add(item(HMENU.login, "Log in", page = HMENU.pageLogin))
+        add(item(HMENU.register, "Register", page = HMENU.pageRegister))
+    }
+}
+
+/** One [HTYPE.menuItem]: a navigation ([page]) or an action, never both. */
+private fun item(id: String, label: String, page: String? = null, action: String? = null): Map<String, Any?> =
+    buildMap {
+        put(HFLD.id, id)
+        put(HFLD.label, label)
+        if (page != null) put(HFLD.page, page)
+        if (action != null) put(HFLD.action, action)
+    }
 
 /** A layout toggle from the deployment's instance config, or [default] when it is not configured. */
 private fun KdrCxt.layoutFlag(key: String, default: Boolean): Boolean =
