@@ -8,7 +8,6 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
-import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
@@ -177,37 +176,8 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
         c.request?.clearAuth = true
         emptyMap<String, Any?>()
     }
-
-    // Dev-only: the recently "sent" (simulated) emails, so a dev UI (or a test) can read a verification code
-    // without real mail. Served only when email is simulated (MailService.useSimulatedEmail); a real
-    // deployment -- where email is transmitted -- returns 404, so this never leaks mail in production.
-    type(ATYPE.simulatedEmail) {
-        type = SCT.kObject
-        property(ASE.to, "The recipient address.", required = true)
-        property(ASE.subject, "The subject line.", required = true)
-        property(ASE.text, "The full message text (it contains the verification code).", required = true)
-    }
-    type(ATYPE.simulatedEmails) {
-        type = SCT.kObject
-        property(ASE.emails, "The recent simulated emails, most recent first.", required = true) {
-            type = SCT.array
-            items { ref(ATYPE.simulatedEmail) }
-        }
-    }
-    generalEndpoint(AEP.simulatedEmails, "Dev-only: recent simulated emails (only when email is simulated).",
-        HttpMethod.GET, outputRef = ATYPE.simulatedEmails, inputFields = {
-            field(ASE.to, "Only include emails addressed to this recipient.")
-        }) { c, req ->
-        val mail = MailService.get(c) ?: throw KdrException("MailService is not available.")
-        if (!mail.useSimulatedEmail) {
-            throw KdrException("Recent emails are only available when email is simulated.", code = EXC.notFound)
-        }
-        val to = req.getOptStr(ASE.to)
-        val emails = mail.recentSentEmails()
-            .filter { to == null || it.to == to }
-            .map { mapOf(ASE.to to it.to, ASE.subject to it.subject, ASE.text to it.text) }
-        mapOf(ASE.emails to emails)
-    }
+    // The recent-simulated-emails endpoint moved to the `test` module as `/test/simulatedEmails` (issue #158),
+    // governed by the unified test-instance gate instead of a bespoke runtime check.
 }
 
 /** Resolves the [AuthFormHandler] (ensuring it is built). Shared with the profile endpoints (same package). */

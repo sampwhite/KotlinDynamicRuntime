@@ -5,9 +5,12 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.getOptStr
 
 /**
  * Test-only endpoints (issue #125): conveniences that make automated and manual testing easier. Every endpoint
@@ -48,5 +51,38 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             grantAdmin = request[TEP.grantAdmin] == true,
             failIfUserAlreadyExists = request[TEP.failIfUserAlreadyExists] == true,
         )
+    }
+
+    // The recent emails a test instance captured instead of sending (issue #158), so a test or the local
+    // frontend can read a verification code back without real mail. `forTestingOnly` like the rest of this
+    // module; the defensive `!useSimulatedEmail` check stays, though a test instance simulates by default.
+    type(TSE.emailType) {
+        type = SCT.kObject
+        property(TSE.to, "The recipient address.", required = true)
+        property(TSE.subject, "The subject line.", required = true)
+        property(TSE.text, "The full message text (it contains the verification code).", required = true)
+    }
+    type(TSE.emailsType) {
+        type = SCT.kObject
+        property(TSE.emails, "The recent simulated emails, most recent first.", required = true) {
+            type = SCT.array
+            items { ref(TSE.emailType) }
+        }
+    }
+    generalEndpoint(
+        TEP.simulatedEmails,
+        "Test-only: recent emails captured instead of sent (available when email is simulated).",
+        HttpMethod.GET, outputRef = TSE.emailsType, forTestingOnly = true,
+        inputFields = { field(TSE.to, "Only include emails addressed to this recipient.") },
+    ) { c, req ->
+        val mail = MailService.get(c) ?: throw KdrException("MailService is not available.")
+        if (!mail.useSimulatedEmail) {
+            throw KdrException("Recent emails are only available when email is simulated.", code = EXC.notFound)
+        }
+        val to = req.getOptStr(TSE.to)
+        val emails = mail.recentSentEmails()
+            .filter { to == null || it.to == to }
+            .map { mapOf(TSE.to to it.to, TSE.subject to it.subject, TSE.text to it.text) }
+        mapOf(TSE.emails to emails)
     }
 }

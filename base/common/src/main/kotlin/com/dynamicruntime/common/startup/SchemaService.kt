@@ -1,7 +1,6 @@
 package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.annotation.KdrPrivate
-import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -63,22 +62,21 @@ class SchemaService : ServiceInitializer {
         LogSchema.debug(cxt, "Creating read only schema store from the collected schema.")
 
         // Test-only endpoints (issue #125) are dropped from the store -- neither dispatchable nor in the
-        // catalog -- unless this deployment allows them. And a deployment that allows them outside a
-        // local/unit environment is a misconfiguration we refuse to run with, so nothing test-only can ever
-        // reach a real environment.
-        val allowTest = allowTestEndpoints(cxt.instanceConfig)
-        if (allowTest) {
+        // catalog -- unless this is a test instance. And a test instance outside a local/unit environment is a
+        // misconfiguration we refuse to run with, so nothing test-only can ever reach a real environment.
+        val isTestInstance = cxt.instanceConfig.isTestInstance
+        if (isTestInstance) {
             val env = cxt.instanceConfig.env
             if (env != ENV.local && env != ENV.unit) {
                 throw KdrException(
-                    "Refusing to start: test-only endpoints are enabled in the '$env' environment. They must " +
-                        "NEVER be exposed outside 'local' or 'unit' -- unset $allowTestEndpointsEnvVar and turn " +
-                        "off inMemoryOnly, or run in a local/unit environment.",
+                    "Refusing to start: this is a test instance in the '$env' environment. Test-only affordances " +
+                        "must NEVER be exposed outside 'local' or 'unit' -- unset ${KdrInstanceConfig.testInstanceEnvVar} " +
+                        "and turn off inMemoryOnly, or run in a local/unit environment.",
                 )
             }
         }
         val availableEndpoints =
-            if (allowTest) collected.endpoints else collected.endpoints.filterNot { it.forTestingOnly }
+            if (isTestInstance) collected.endpoints else collected.endpoints.filterNot { it.forTestingOnly }
 
         val types = parseSchemaTypes(collected.defs)
         val endpoints = availableEndpoints.associateBy { it.collationKey }
@@ -104,20 +102,6 @@ class SchemaService : ServiceInitializer {
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "SchemaService"
-
-        /** Env var that force-enables test-only endpoints (issue #125), independent of the environment. */
-        const val allowTestEndpointsEnvVar = "KDR_ALLOW_TEST_ENDPOINTS"
-
-        /**
-         * Whether this deployment exposes `forTestingOnly` endpoints (issue #125): true when the
-         * [allowTestEndpointsEnvVar] env var is set true, OR the environment is [ENV.unit], OR the node runs
-         * [ACFG.inMemoryOnly]. A deployment that allows them but is not in a `local`/`unit` environment fails
-         * startup (see [checkInit]), so test endpoints can never reach a real environment by any of these paths.
-         */
-        fun allowTestEndpoints(config: KdrInstanceConfig): Boolean =
-            config.getEnvVar(allowTestEndpointsEnvVar)?.toBooleanStrictOrNull() == true ||
-                config.env == ENV.unit ||
-                config.get(ACFG.inMemoryOnly) == true
 
         // Choice-value option sets, defined once and reused by both the schema and the sample data generator.
         private val categoryOptions = listOf("alpha", "beta", "gamma")

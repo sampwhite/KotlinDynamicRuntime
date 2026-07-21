@@ -14,7 +14,7 @@ class ProfileFeatures(
     val hasPassword: Boolean,
     /** Whether the user may set or change a password at all. */
     val canSetPassword: Boolean,
-    /** Dev only: email is simulated, so the code can be read back from `/auth/simulatedEmails`. */
+    /** Dev only: email is simulated, so the code can be read back from `/test/simulatedEmails`. */
     val simulatedEmail: Boolean,
 )
 

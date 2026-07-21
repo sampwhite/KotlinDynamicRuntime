@@ -65,10 +65,10 @@ class BecomeUserEndpointTest : StringSpec({
         testSchema(cxt).endpoints.single { it.path == TEP.becomeUser }.forTestingOnly shouldBe true
     }
 
-    "a non-local/unit server that allows test endpoints fails startup with an aggressive error" {
+    "a test instance outside local/unit fails startup with an aggressive error" {
         val ex = shouldThrow<KdrException> {
             Startup.mkBootCxt("guardCxt", "guardInstance", mapOf(ACFG.env to ENV.dev, ACFG.inMemoryOnly to true))
         }
-        ex.message.orEmpty() shouldContain "test-only endpoints"
+        ex.message.orEmpty() shouldContain "test instance"
     }
 })
