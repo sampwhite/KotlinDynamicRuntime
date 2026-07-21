@@ -145,14 +145,7 @@ val Profile = FC<Props> {
             }
         }
 
-        error?.let { d ->
-            p {
-                // Internal (non-fragment) errors are shown as plain text, marked as raw (issue #111); designed
-                // copy is Markdown-rendered (fragment messages may use it and are sanitized server-side).
-                className = ClassName(if (d.internal) "internal-error" else "todo-error")
-                if (d.internal) +d.text else MarkdownInline { source = d.text }
-            }
-        }
+        error?.let { errorText(it) }
         note?.let {
             p {
                 className = ClassName("form-ok")

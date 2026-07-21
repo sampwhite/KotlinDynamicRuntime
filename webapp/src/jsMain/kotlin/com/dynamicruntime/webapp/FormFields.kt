@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import react.ChildrenBuilder
 import react.ComponentType
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import web.cssom.ClassName
 
@@ -72,5 +73,20 @@ fun ChildrenBuilder.textField(
             this.autoComplete = autoComplete
             this.onChange = { event -> onChange(event.target.value as String) }
         }
+    }
+}
+
+/**
+ * Renders a [DisplayError] the way every widget-group shows one (issue #111): designed, fragment-sourced copy
+ * is Markdown-rendered (the backend sanitizes it), while a raw/internal message is shown as plain text under a
+ * distinct class so it never passes for designed copy.
+ *
+ * Shared rather than repeated per group: the whole point of the internal/expected split is that the two look
+ * different everywhere, which three hand-copied renderings would quietly stop guaranteeing.
+ */
+fun ChildrenBuilder.errorText(error: DisplayError) {
+    p {
+        className = ClassName(if (error.internal) "internal-error" else "todo-error")
+        if (error.internal) +error.text else MarkdownInline { source = error.text }
     }
 }

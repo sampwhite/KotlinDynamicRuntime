@@ -40,7 +40,7 @@ val Users = FC<Props> {
     var search by useState("")
     var loaded by useState(false)
     var busy by useState(false)
-    var error by useState<String?>(null)
+    var error by useState<DisplayError?>(null)
     var note by useState<String?>(null)
 
     // The user being edited, or null in the list view. `creating` opens the same editor with an empty draft.
@@ -67,7 +67,7 @@ val Users = FC<Props> {
             try {
                 block()
             } catch (e: Throwable) {
-                error = e.message ?: "Something went wrong."
+                error = userFacingError(e)
             } finally {
                 busy = false
             }
@@ -91,7 +91,7 @@ val Users = FC<Props> {
                     error = null
                 }
             } catch (e: Throwable) {
-                if (seq == searchSeq.current) error = e.message ?: "Search failed."
+                if (seq == searchSeq.current) error = userFacingError(e)
             }
         }
     }
@@ -189,12 +189,7 @@ val Users = FC<Props> {
             }
             h1 { +if (creating) "Create a user" else "Edit user" }
 
-            error?.let {
-                p {
-                    className = ClassName("todo-error")
-                    +it
-                }
-            }
+            error?.let { errorText(it) }
 
             if (creating) {
                 textField("Email address", draftEmail, disabled = busy, autoComplete = AC.username) {
@@ -253,12 +248,7 @@ val Users = FC<Props> {
                 +"Search for a user and select them to edit, or create a new one."
             }
 
-            error?.let {
-                p {
-                    className = ClassName("todo-error")
-                    +it
-                }
-            }
+            error?.let { errorText(it) }
             note?.let {
                 p {
                     className = ClassName("form-ok")
