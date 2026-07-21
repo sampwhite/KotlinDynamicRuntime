@@ -59,8 +59,13 @@ val AppBar = FC<Props> {
         }
     }
 
+    // The bar takes on the elevated-privilege look while the caller holds administrative rights. It reads the
+    // same `canManageUsers` capability the menu does, so the cue and the Users item can never disagree -- and
+    // when that capability narrows, the cue narrows with it.
+    val elevated = config?.canManageUsers == true
+
     header {
-        className = ClassName("app-bar")
+        className = ClassName(if (elevated) "app-bar admin" else "app-bar")
         a {
             className = ClassName("app-bar-brand")
             href = "#"
@@ -72,6 +77,14 @@ val AppBar = FC<Props> {
                 alt = ""
             }
             +"KDR"
+        }
+        if (elevated) {
+            // Spelled out, not just coloured: a hue on its own tells a colourblind user nothing, and this is
+            // the cue that says "the actions available to you right now are privileged".
+            span {
+                className = ClassName("admin-badge")
+                +"Admin"
+            }
         }
         div {
             className = ClassName("app-bar-right")

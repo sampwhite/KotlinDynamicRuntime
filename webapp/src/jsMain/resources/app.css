@@ -57,6 +57,12 @@
 
     --danger: #f87171;
     --success: #4ade80;
+
+    /* The elevated-privilege pair: the app bar's surface and hairline while an administrator is signed in.
+       Amber rather than red -- this is a standing state, not a fault, and red would read as something broken.
+       Deep enough that --text keeps its contrast against it, so no text colour changes with the bar. */
+    --surface-admin: #422006;
+    --border-admin: #d97706;
 }
 
 * { box-sizing: border-box; }
@@ -120,6 +126,26 @@ body {
     letter-spacing: 0.03em;
 }
 .app-bar-logo { display: block; width: 26px; height: 26px; }
+
+/* The app bar while the signed-in user holds administrative rights: a standing visual cue that actions taken
+   here carry more weight than usual. The colour is deliberately not the only signal -- see .admin-badge --
+   because a cue that exists solely as a hue is no cue at all to a colourblind user. */
+.app-bar.admin {
+    background: var(--surface-admin);
+    border-bottom-color: var(--border-admin);
+}
+
+.admin-badge {
+    margin-left: 10px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-admin);
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text);
+}
 .app-bar-right { position: relative; }
 
 .hamburger {

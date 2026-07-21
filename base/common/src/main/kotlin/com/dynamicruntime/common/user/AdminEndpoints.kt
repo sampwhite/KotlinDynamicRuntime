@@ -112,12 +112,23 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
         val userId = requireUserId(request)
         val roles = request[ADF.roles].toJsonListOfStrings()
         requireUsableRoles(roles)
-        if (userId == c.userProfile.userId && !roles.contains(ROLE.admin)) {
+        val row = loadUser(c, userId)
+        // Nobody may change their **own** administrator status, in either direction.
+        //
+        // Downward, it stops the last administrator locking the deployment out of its own admin surface.
+        // Upward matters more as the capability narrows: today only an administrator reaches this endpoint, so
+        // self-promotion is merely redundant -- but the whole point of AdminRules.canManageUsers is that it will
+        // one day admit someone weaker (an account manager, say), and self-promotion is exactly how such a
+        // caller would escalate to full administrator. Writing the rule symmetrically now means that widening
+        // cannot open the hole later.
+        //
+        // A self-update that leaves the admin role *unchanged* is fine -- editing your own other roles is not
+        // what this guards.
+        if (userId == c.userProfile.userId && roles.contains(ROLE.admin) != row.roles.contains(ROLE.admin)) {
             throw KdrException.mkInput(
-                "You cannot remove your own '${ROLE.admin}' role; have another administrator do it.",
+                "You cannot change your own '${ROLE.admin}' role; have another administrator do it.",
             )
         }
-        val row = loadUser(c, userId)
         val previous = row.roles
         row.roles = roles
         userService(c).updateUser(c, row)
