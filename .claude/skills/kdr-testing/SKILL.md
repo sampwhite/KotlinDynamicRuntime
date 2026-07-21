@@ -1,6 +1,6 @@
 ---
 name: kdr-testing
-description: Test and verify changes in KotlinDynamicRuntime — booting your own server to drive it by curl or browser, and writing in-process unit tests. Covers the KDR_PORT/in-memory server conventions (and the don't-touch-7070 rule), mkTestBootCxt/mkBootCxt with config overlays, TestHttpClient and its response-extraction idioms, injecting env-var options through the instance config, and the TestUser/become-user helper for authenticated tests. Use whenever writing or reviewing a test, verifying a change end-to-end, or booting and driving the app in this codebase — even when the request just says "check that this works" or "run the app".
+description: Test and verify changes in KotlinDynamicRuntime — booting your own server to drive it by curl or browser, and writing in-process unit tests. Covers the KDR_PORT/in-memory server conventions (and the don't-touch-7070 rule), mkTestBootCxt/mkBootCxt with config overlays, TestHttpClient and its response-extraction idioms, injecting env-var options through the instance config, selecting your own config object via KDR_CUSTOM_CONFIG to set config values that have no env var, and the TestUser/become-user helper for authenticated tests. Use whenever writing or reviewing a test, verifying a change end-to-end, or booting and driving the app in this codebase — even when the request just says "check that this works" or "run the app".
 ---
 
 # Testing and verifying changes
@@ -41,6 +41,47 @@ for i in $(seq 1 180); do curl -sf http://localhost:7071/kda/health >/dev/null &
 ```bash
 PID=$(lsof -i:7071 -sTCP:LISTEN -t); [ -n "$PID" ] && kill "$PID"
 ```
+
+### Setting config with your own config object (`KDR_CUSTOM_CONFIG`)
+
+When the value you need has **no dedicated env var** — a UI tuning value like a refresh interval, or any
+`AppConfigBuilder` property — set it in a **custom config object** rather than inventing an env var. At startup
+`:launch` locates a config object by name (reflectively) and applies it through the typed `AppConfigApplier`;
+`KDR_CUSTOM_CONFIG` chooses which one, defaulting to `KdrConfig`.
+
+These objects live in the workspace-level `customConfig/apps/` project (**outside** the versioned repo, so
+they are never committed). **Write your own** rather than editing the developer's `KdrConfig`: a value they set
+then can't break your live run and vice versa, and neither of you touches the other's file — this is the whole
+point of the env-var selector.
+
+```kotlin
+// customConfig/apps/ClaudeConfig.kt   (default package, so the reflective name is just "ClaudeConfig")
+import com.dynamicruntime.config.AppConfigApplier
+import com.dynamicruntime.config.AppConfigBuilder
+
+@Suppress("unused")
+object ClaudeConfig : AppConfigApplier {
+    override fun AppConfigBuilder.applyAppConfig() {
+        // Any AppConfigBuilder property (env, inMemoryOnly, validateResponseSchema, idleBumpIntervalMs, …).
+        idleBumpIntervalMs = 3000
+        // A key without a typed property yet: set it straight into the config map.
+        data["someFutureKey"] = true
+    }
+}
+```
+
+Boot with it selected:
+
+```bash
+cd /Users/samuelwhite/dev/kd2 && \
+  KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true KDR_CUSTOM_CONFIG=ClaudeConfig ./gradlew :launch:run > /tmp/srv.log 2>&1 &
+```
+
+The values become instance config exactly as a deployment's would, so an endpoint reading
+`instanceConfig.get(ACFG.…)` — and a frontend reading it back from a config endpoint — sees them. Rule of
+thumb: **env vars for the documented ops levers** (`KDR_PORT`, `KDR_IN_MEMORY_ONLY`, `KDR_OBFUSCATE_ERRORS`,
+`KDR_ALLOW_TEST_ENDPOINTS`); **a custom config object for product/UI values** that shouldn't be ops env vars,
+and for a stable personal setup that won't collide with the developer's.
 
 ## Driving it with curl
 
