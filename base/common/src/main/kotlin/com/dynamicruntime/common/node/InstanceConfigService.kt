@@ -33,11 +33,15 @@ object IC {
  * deliberately holds only the loaded encryption key, which is all it ever needed from instance config.
  *
  * The database work runs in [onCreate] (not [checkInit]) so the encryption key and config access are ready
- * for other services' `checkInit`: the whole `onCreate` pass completes before any `checkInit` runs. So this
- * is where the runtime first touches the database -- it connects to the `node` topic's database, creates the
- * `InstanceConfig` table, and loads or creates the persistent encryption key, handing it to [NodeService].
- * The table is the `node` topic's transactional lock table, so writes go through the idempotent topic
- * transaction.
+ * for other services' `checkInit`: the whole `onCreate` pass completes before any `checkInit` runs. It loads
+ * or creates the persistent encryption key and hands it to [NodeService]. The table is the `node` topic's
+ * transactional lock table, so writes go through the idempotent topic transaction.
+ *
+ * This service used to be where the runtime first touched the database, and where the `InstanceConfig` table
+ * got created as a side effect. Since issue #162 the startup-tier [SqlTopicService] creates every topic's
+ * tables in its `checkReady`, so by the time this runs the table already exists and the connection is already
+ * open -- table creation is system work done at startup, never a side effect of the first thing to need a
+ * table.
  */
 class InstanceConfigService : ServiceInitializer {
     override val serviceName: String = InstanceConfigService.serviceName
@@ -52,8 +56,8 @@ class InstanceConfigService : ServiceInitializer {
         // for other services' "checkInit". SqlTopicService is a *startup* service (see CommonComponent), so it is
         // fully initialized -- its database configuration resolved -- before this regular service's onCreate.
         val authKey = node.instanceAuthConfigKey
-        // Reading (and, on a fresh instance, creating) the encryption key is the runtime's first contact with
-        // the database: it connects to the node topic's database and creates the InstanceConfig table.
+        // Reads (and, on a fresh instance, creates) the encryption key. The InstanceConfig table it reads was
+        // already created by SqlTopicService's startup-tier checkReady (issue #162), so this is a plain query.
         val existing = getConfig(cxt, authKey)
         val encryptionKey = if (existing != null) {
             existing[IC.configData]?.toJsonMap()?.get(encryptionKeyField) as? String

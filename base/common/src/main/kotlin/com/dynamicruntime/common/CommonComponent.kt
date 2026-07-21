@@ -60,10 +60,11 @@ class CommonComponent : ComponentDefinition {
     }
 
     /**
-     * Startup services -- fully initialized before regular services. Schema compilation must be ready first;
-     * [NodeService] is here so the node's identity and basic facts are known early; [SqlTopicService] is here
-     * so its database configuration is resolved before any regular service's `onCreate` -- notably
-     * [InstanceConfigService], which touches the database during its own `onCreate`. Regular services (and
+     * Startup services -- fully initialized before regular services. Schema compilation must be ready first
+     * (the topic service reads the compiled table definitions); [NodeService] is here so the node's identity
+     * and basic facts are known early; [SqlTopicService] is here so that by the time any regular service's
+     * `onCreate` runs -- notably [InstanceConfigService], which queries the database in its own -- the
+     * database configuration is resolved *and* every topic's tables exist (issue #162). Regular services (and
      * future startup services) may need all three during their init.
      */
     override fun startupServices(cxt: KdrCxt): List<() -> ServiceInitializer> =
@@ -71,8 +72,9 @@ class CommonComponent : ComponentDefinition {
 
     /**
      * The request dispatcher, the portal (which registers itself with the dispatcher as a content server),
-     * and the instance-config service (whose `onCreate` connects to the database and loads/creates the node's
-     * encryption key, relying on the startup-tier [SqlTopicService] already being initialized).
+     * and the instance-config service (whose `onCreate` loads/creates the node's encryption key from the
+     * database, relying on the startup-tier [SqlTopicService] having already resolved the database and
+     * created the topic's tables).
      */
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
         listOf(
