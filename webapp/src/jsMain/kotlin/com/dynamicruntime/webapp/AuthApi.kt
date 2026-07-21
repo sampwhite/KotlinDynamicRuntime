@@ -3,10 +3,11 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.test.TEP
+import com.dynamicruntime.common.test.TSE
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
-import com.dynamicruntime.common.user.ASE
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
@@ -18,7 +19,7 @@ class AuthFeatures(
     val passwordLogin: Boolean,
     /** Whether Google sign-in is offered (the deployment configured a client id). */
     val googleLogin: Boolean,
-    /** Dev only: email is simulated, so the code can be read back from `/auth/simulatedEmails`. */
+    /** Dev only: email is simulated, so the code can be read back from `/test/simulatedEmails`. */
     val simulatedEmail: Boolean,
 )
 
@@ -165,8 +166,8 @@ object AuthApi {
      * mail. Returns null when the endpoint isn't served (a real deployment) or no code is found.
      */
     suspend fun fetchDevCode(email: String): String? = try {
-        val emails = Http.getApi(AEP.simulatedEmails)[EP.results].toJsonMapOrEmpty()[ASE.emails].toJsonListOfMaps()
-        val text = emails.firstOrNull { it[ASE.to] == email }?.get(ASE.text) as? String
+        val emails = Http.getApi(TEP.simulatedEmails)[EP.results].toJsonMapOrEmpty()[TSE.emails].toJsonListOfMaps()
+        val text = emails.firstOrNull { it[TSE.to] == email }?.get(TSE.text) as? String
         text?.let { codePattern.find(it)?.groupValues?.get(1) }
     } catch (_: Throwable) {
         null

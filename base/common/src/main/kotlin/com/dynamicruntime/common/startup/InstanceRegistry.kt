@@ -56,6 +56,9 @@ object InstanceRegistry {
             val env = (overlay[ACFG.env] as? String) ?: System.getenv("KDR_ENV") ?: ENV.local
             val config = KdrInstanceConfig(instanceName, env, ENV.liveSource)
             config.putAll(overlay)
+            // Materialize lazily derived config (isTestInstance) now that env/overlay are settled and boot is
+            // still single-threaded -- so it is computed before any request and visible when debugging.
+            config.warmDerived()
 
             val cxt = KdrCxt("startup", config)
             LogStartup.info(cxt, "Initializing instance '$instanceName'.")

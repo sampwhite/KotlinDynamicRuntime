@@ -1,7 +1,7 @@
 package com.dynamicruntime.common.mail
 
-import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -42,8 +42,10 @@ object MAIL {
 
     /**
      * When true, email is **simulated** -- recorded in-memory and not transmitted -- and no Mailgun API key is
-     * loaded; the recent-emails endpoint is available (so a dev UI or test can read back a code). Defaults to
-     * the instance's `inMemoryOnly`, so local/in-memory runs simulate while a real deployment sends for real.
+     * loaded; the captured mail is read back through the `forTestingOnly` `/test/simulatedEmails` endpoint (so a
+     * test or the local frontend can pick up a code). Defaults to the instance's `isTestInstance`, and is
+     * refused on a non-test instance (there would be no way to read the captured mail); a real deployment sends
+     * for real.
      */
     const val useSimulatedEmail = "useSimulatedEmail"
 }
@@ -95,9 +97,22 @@ class MailService : ServiceInitializer {
             ?: "https://api.mailgun.net/v3/mg.dynamicruntime.org/messages"
         fromAddressForApp = (cxt.instanceConfig.get(MAIL.appFromAddress) as? String)
             ?: "kdr-automail@mg.dynamicruntime.org"
-        // Simulate by default when the instance is in-memory (local/dev/tests); a real deployment overrides it.
-        useSimulatedEmail = (cxt.instanceConfig.get(MAIL.useSimulatedEmail) as? Boolean)
-            ?: ((cxt.instanceConfig.get(ACFG.inMemoryOnly) as? Boolean) ?: true)
+        // Two independent axes: `isTestInstance` says the test surface exists; `useSimulatedEmail` says capture
+        // instead of transmit. Default the latter to the former -- simulate exactly when the read-back endpoint
+        // is present -- but keep it independently settable, so a developer can send *real* mail on a test
+        // instance (useSimulatedEmail = false) to exercise actual delivery.
+        val testInstance = cxt.instanceConfig.isTestInstance
+        useSimulatedEmail = (cxt.instanceConfig.get(MAIL.useSimulatedEmail) as? Boolean) ?: testInstance
+        // Simulated mail is captured in memory and read back only through a test-only endpoint, so it requires a
+        // test instance. The default can't violate this; only an explicit useSimulatedEmail=true on a non-test
+        // instance can -- a misconfiguration we refuse to run with.
+        if (useSimulatedEmail && !testInstance) {
+            throw KdrException(
+                "Refusing to start: useSimulatedEmail is on but this is not a test instance. Simulated mail is " +
+                    "captured in memory and read back through a test-only endpoint -- unset useSimulatedEmail, or " +
+                    "make this a test instance (${KdrInstanceConfig.testInstanceEnvVar}, inMemoryOnly, or the unit environment).",
+            )
+        }
         // Only load the (secret) API key when we actually transmit; simulated mail never needs it.
         apiKey = if (useSimulatedEmail) {
             null
@@ -121,9 +136,13 @@ class MailService : ServiceInitializer {
             LogMail.debug(cxt) { "Simulated email to $to: '$subject'." }
             SentEmail(mailId.getAndIncrement().toString(), to, from, subject, text, simulated = true)
         }
-        synchronized(recent) {
-            recent.addFirst(sent)
-            while (recent.size > maxRetained) recent.removeLast()
+        // Retain only on a simulating (test) instance -- the kept copy exists solely to be read back through the
+        // test-only endpoint. A real transmission is never held in memory (issue #158).
+        if (useSimulatedEmail) {
+            synchronized(recent) {
+                recent.addFirst(sent)
+                while (recent.size > maxRetained) recent.removeLast()
+            }
         }
         return sent
     }

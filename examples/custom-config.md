@@ -210,7 +210,7 @@ cd "$KDR_WORKSPACE_DIR" && \
 The values become instance config exactly as a deployment's would, so an endpoint reading
 `instanceConfig.get(ACFG.…)` — and a frontend that reads it back from a config endpoint — sees them. Rule of
 thumb: **env vars for the documented ops levers** (`KDR_PORT`, `KDR_IN_MEMORY_ONLY`, `KDR_OBFUSCATE_ERRORS`,
-`KDR_ALLOW_TEST_ENDPOINTS`); **your own config object for product/UI values** that have no env var, and for a
+`KDR_TEST_INSTANCE`); **your own config object for product/UI values** that have no env var, and for a
 stable personal setup that won't collide with the developer's.
 
 ## Notes
