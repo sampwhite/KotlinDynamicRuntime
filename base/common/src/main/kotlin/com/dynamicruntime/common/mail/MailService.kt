@@ -42,8 +42,10 @@ object MAIL {
 
     /**
      * When true, email is **simulated** -- recorded in-memory and not transmitted -- and no Mailgun API key is
-     * loaded; the recent-emails endpoint is available (so a dev UI or test can read back a code). Defaults to
-     * the instance's `inMemoryOnly`, so local/in-memory runs simulate while a real deployment sends for real.
+     * loaded; the captured mail is read back through the `forTestingOnly` `/test/simulatedEmails` endpoint (so a
+     * test or the local frontend can pick up a code). Defaults to the instance's `isTestInstance`, and is
+     * refused on a non-test instance (there would be no way to read the captured mail); a real deployment sends
+     * for real.
      */
     const val useSimulatedEmail = "useSimulatedEmail"
 }
@@ -135,7 +137,7 @@ class MailService : ServiceInitializer {
             SentEmail(mailId.getAndIncrement().toString(), to, from, subject, text, simulated = true)
         }
         // Retain only on a simulating (test) instance -- the kept copy exists solely to be read back through the
-        // test-only endpoint. A real transmit is never held in memory (issue #158).
+        // test-only endpoint. A real transmission is never held in memory (issue #158).
         if (useSimulatedEmail) {
             synchronized(recent) {
                 recent.addFirst(sent)

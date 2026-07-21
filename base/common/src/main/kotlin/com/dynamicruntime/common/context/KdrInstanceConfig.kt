@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicLong
  * Configuration keeps its natural map nesting: a key containing `.` is a path into
  * nested maps, so `get("node.internalIpAddressFilter")` reads the "node" entry as a
  * map and then its "internalIpAddressFilter" entry (and [put] builds that nesting).
- * This lets a deployment configure a whole entity (e.g. a database connection) as a
+ * This lets a deployment configure a whole entity (e.g., a database connection) as a
  * sub-map and read either the map or an individual field, rather than forcing every
  * setting into a single flat namespace. A key with no `.` is a plain top-level entry
  * (service singletons and simple config are always stored flat -- their names have no
@@ -86,7 +86,7 @@ class KdrInstanceConfig(
 
     /**
      * The mutable child map under [name] in [parent], created when absent (or copied into a mutable map when
-     * an existing read-only map is found). A non-map value in the way is replaced by a new map.
+     * an existing read-only map is found). A new map replaces a non-map value in the way.
      */
     private fun childMap(parent: MutableMap<String, Any>, name: String): MutableMap<String, Any> {
         @Suppress("UNCHECKED_CAST")
@@ -142,7 +142,7 @@ class KdrInstanceConfig(
     }
 
     /**
-     * Force-materializes the derived, lazily-computed config values (today [isTestInstance]) at a
+     * Force-materializes the derived, lazily computed config values (today [isTestInstance]) at a
      * single-threaded boot point, so they are realized before any concurrent request and are already populated
      * when inspecting the config in a debugger. Idempotent; safe to call more than once.
      */
