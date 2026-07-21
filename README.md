@@ -128,6 +128,13 @@ Application behavior is varied at startup largely through environment variables 
 explained in [`code-guide.md`](code-guide.md)). The complete set — application, logging, database, and
 workspace variables — is documented in [`environment-variables.md`](environment-variables.md).
 
+## Deferred work
+
+Work we have deliberately put off — each with the condition that should make us revisit it — lives in
+[`deferred-work.md`](deferred-work.md), **not** in the issue tracker. The tracker stays a queue of things to
+act on soon; deferred items become issues only once their trigger fires. Consult and append to that file when
+you defer something rather than leaving a "someday" issue open.
+
 ## License
 
 [MIT](LICENSE)
