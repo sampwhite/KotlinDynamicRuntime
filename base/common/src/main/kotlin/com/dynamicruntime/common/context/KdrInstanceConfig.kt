@@ -123,9 +123,39 @@ class KdrInstanceConfig(
         return (get(key) as? String) ?: System.getenv(key)
     }
 
+    /**
+     * Whether this is a **test instance** -- a node where test-only affordances are on: `forTestingOnly`
+     * endpoints are exposed (issue #125), and email is simulated and captured by default (issue #158). True
+     * when the [testInstanceEnvVar] env var is set true, OR the environment is [ENV.unit], OR the instance runs
+     * [ACFG.inMemoryOnly]. A node that is a test instance but not in a `local`/`unit` environment refuses to
+     * start (see `SchemaService.checkInit`), so test affordances can never reach a real environment.
+     *
+     * Resolved once and cached: the inputs are fixed by the time the instance boots, and a materialized value
+     * is directly inspectable in a debugger while stepping (unlike a recomputed getter). The boot path
+     * force-touches it via [warmDerived] so it is realized at a single-threaded point before any concurrent
+     * request; off-boot paths (a hand-built config in a test) resolve it correctly on first access.
+     */
+    val isTestInstance: Boolean by lazy {
+        getEnvVar(testInstanceEnvVar)?.toBooleanStrictOrNull() == true ||
+            env == ENV.unit ||
+            get(ACFG.inMemoryOnly) == true
+    }
+
+    /**
+     * Force-materializes the derived, lazily-computed config values (today [isTestInstance]) at a
+     * single-threaded boot point, so they are realized before any concurrent request and are already populated
+     * when inspecting the config in a debugger. Idempotent; safe to call more than once.
+     */
+    fun warmDerived() {
+        isTestInstance
+    }
+
 
     @Suppress("ConstPropertyName")
     companion object {
+        /** Env var that forces this to be a test instance regardless of environment (see [isTestInstance]). */
+        const val testInstanceEnvVar = "KDR_TEST_INSTANCE"
+
         /**
          * Optional properties file, in the working directory, supplying default environment-variable values
          * for keys not already set in the real environment. Loaded by [preBootLoadConfig].

@@ -41,7 +41,7 @@ same boot from any directory if `bin/` is on your `PATH`.
 - API endpoints are under the **`/kda`** context root (`/kda/health`, `/kda/auth/self/info`, …).
 - **Env vars flip options at boot** — the most useful lever for testing a config-gated behavior without
   touching code: `KDR_IN_MEMORY_ONLY`, `KDR_PORT`, `KDR_OBFUSCATE_ERRORS` (obfuscate sensitive errors),
-  `KDR_ALLOW_TEST_ENDPOINTS` (expose `forTestingOnly` endpoints). See `environment-variables.md` for the full
+  `KDR_TEST_INSTANCE` (mark a test instance: expose `forTestingOnly` endpoints, simulate email). See `environment-variables.md` for the full
   list.
 - **A config value with no env var** (a UI tuning value like a refresh interval, or any `AppConfigBuilder`
   property) — set it in your *own* config object and select it with `KDR_CUSTOM_CONFIG=ClaudeConfig`, so you

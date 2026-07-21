@@ -26,6 +26,28 @@ class KdrInstanceConfigTest : StringSpec({
         KdrInstanceConfig.readDefaultEnvVars(File("no-such-file.properties")) { null } shouldBe emptyMap()
     }
 
+    // --- isTestInstance: the env var, the unit environment, or inMemoryOnly each makes it a test instance ----
+
+    fun config(env: String) = KdrInstanceConfig("isTestInstance", env, ENV.liveSource)
+
+    "the unit environment is always a test instance" {
+        config(ENV.unit).isTestInstance shouldBe true
+    }
+
+    "inMemoryOnly makes a test instance, in any environment" {
+        config(ENV.local).apply { put(ACFG.inMemoryOnly, true) }.isTestInstance shouldBe true
+        config(ENV.dev).apply { put(ACFG.inMemoryOnly, true) }.isTestInstance shouldBe true
+    }
+
+    "the env var makes a test instance when set true" {
+        config(ENV.local).apply { put(KdrInstanceConfig.testInstanceEnvVar, "true") }.isTestInstance shouldBe true
+    }
+
+    "not a test instance by default (no env var, not unit, not in-memory)" {
+        config(ENV.local).isTestInstance shouldBe false
+        config(ENV.dev).isTestInstance shouldBe false
+    }
+
     // --- dotted keys are nested-map paths -------------------------------------
 
     "a dotted key builds and reads nested maps" {

@@ -3,7 +3,7 @@ package com.dynamicruntime.common.test
 /**
  * Wire constants for the test-only endpoints (issue #125): shared in the KMP kernel so the endpoint that
  * defines them and the helpers/clients that call them (e.g. `TestUser` in base:common) use the same strings.
- * These endpoints exist only where a deployment allows test endpoints (see `SchemaService.allowTestEndpoints`).
+ * These endpoints exist only on a test instance (see `KdrInstanceConfig.isTestInstance`).
  */
 @Suppress("ConstPropertyName")
 object TEP {
