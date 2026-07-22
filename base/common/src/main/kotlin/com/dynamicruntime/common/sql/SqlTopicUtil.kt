@@ -98,7 +98,7 @@ object SqlTopicUtil {
     /** Sets [PF.createdAt] (if absent) and [PF.updatedAt] (always), forcing updatedAt to advance. */
     fun prepDates(cxt: KdrCxt, data: MutableMap<String, Any?>) {
         // Persisted protocol dates use the instance clock, not the per-context one (issue #160): updatedAt is a
-        // queuing date, and must be monotonic and consistent across concurrent requests.
+        // queuing date and must be monotonic and consistent across concurrent requests.
         var now = cxt.instanceNow()
         if (data[PF.createdAt].toOptInstant() == null) {
             data[PF.createdAt] = now

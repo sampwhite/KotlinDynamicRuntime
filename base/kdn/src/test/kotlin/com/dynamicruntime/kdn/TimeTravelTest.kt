@@ -2,7 +2,9 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.test.ClockOp
 import com.dynamicruntime.common.test.TCLK
 import com.dynamicruntime.common.user.AUTHC
 import com.dynamicruntime.common.user.TestUser
@@ -24,10 +26,16 @@ class TimeTravelTest : StringSpec({
         val client = TestHttpClient(cxt.instanceConfig)
         val before = cxt.instanceNow().toEpochMilliseconds()
         val results = client.sendJsonPostRequest(
-            TCLK.path, mapOf(TCLK.op to TCLK.advance, TCLK.deltaMs to 3_600_000L),
+            TCLK.path, mapOf(TCLK.op to ClockOp.advance.name, TCLK.deltaMs to 3_600_000L),
         )[EP.results].toJsonMapOrEmpty()
         val after = results[TCLK.instanceNowMs].toOptLong()!!
         (after - before >= 3_600_000L) shouldBe true
+    }
+
+    "an unknown clock op is rejected by the choice-list validation (the enum drives the schema)" {
+        val cxt = Startup.mkTestBootCxt("clockBad", "clockBadOpTest")
+        TestHttpClient(cxt.instanceConfig).sendJsonPostRequest(TCLK.path, mapOf(TCLK.op to "bogus"))[EP.status] shouldBe
+            EXC.badInput
     }
 
     "advancing past the session lifetime expires an existing session, with no real wait (issue #120)" {

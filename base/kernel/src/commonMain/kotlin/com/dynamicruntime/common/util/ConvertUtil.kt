@@ -51,6 +51,15 @@ fun Any?.toJsonListOfStrings(): List<String> = (this as? List<*>)?.mapNotNull { 
 fun Any?.toOptStr(): String? = if (this is CharSequence) this.toString() else null
 
 /**
+ * Coerces this value to a member of enum [T] by matching its [Enum.name], or null when it is null, not a
+ * string, or not a member name. `inline`/`reified` because a generic enum lookup needs the concrete type at the
+ * call site. Pairs with the schema's `options(...)` choice list (both keyed off the same enum), so an endpoint
+ * can branch on `req[key].toOptEnum<MyEnum>()` exhaustively while validation already rejected any other value.
+ */
+inline fun <reified T : Enum<T>> Any?.toOptEnum(): T? =
+    toOptStr()?.let { s -> enumValues<T>().firstOrNull { it.name == s } }
+
+/**
  * Loosely coerces this string to a boolean, tolerating the many spellings found in CSV and other loose
  * data sources (yes/no, y/n, t/f, true/false, 1/0). Examines the first non-whitespace character
  * (case-insensitively): 'y'/'t'/'1' -> true, 'n'/'f'/'0' -> false, anything else -> null. A string with

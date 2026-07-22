@@ -11,6 +11,7 @@ import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.getOptStr
+import com.dynamicruntime.common.util.toOptEnum
 import com.dynamicruntime.common.util.toOptLong
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
@@ -103,23 +104,24 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         "Test-only: travel the instance clock (advance / set / freeze / unfreeze / reset).",
         HttpMethod.POST, outputRef = TCLK.stateType, forTestingOnly = true,
         inputFields = {
-            field(TCLK.op, "One of: advance, set, freeze, unfreeze, reset.", required = true)
-            field(TCLK.deltaMs, "For 'advance': milliseconds to advance (negative rewinds).") { type = SCT.integer }
-            field(TCLK.atMs, "For 'set': the target time as epoch milliseconds.") { type = SCT.integer }
+            field(TCLK.op, "The clock operation to perform.", required = true) { options(ClockOp.entries) }
+            field(TCLK.deltaMs, "For '${ClockOp.advance}': milliseconds to advance (negative rewinds).") { type = SCT.integer }
+            field(TCLK.atMs, "For '${ClockOp.set}': the target time as epoch milliseconds.") { type = SCT.integer }
         },
     ) { c, req ->
         val clock = c.instanceConfig.clock
-        when (val op = req[TCLK.op] as? String) {
-            TCLK.advance -> clock.advanceBy(
-                (req[TCLK.deltaMs].toOptLong() ?: throw KdrException.mkInput("'${TCLK.deltaMs}' is required for '${TCLK.advance}'.")).milliseconds,
+        // The op is choice-constrained above, so validation already rejected anything but a ClockOp name.
+        val op = req[TCLK.op].toOptEnum<ClockOp>() ?: throw KdrException.mkInput("A valid '${TCLK.op}' is required.")
+        when (op) {
+            ClockOp.advance -> clock.advanceBy(
+                (req[TCLK.deltaMs].toOptLong() ?: throw KdrException.mkInput("'${TCLK.deltaMs}' is required for '${ClockOp.advance}'.")).milliseconds,
             )
-            TCLK.set -> clock.setAbsolute(
-                Instant.fromEpochMilliseconds(req[TCLK.atMs].toOptLong() ?: throw KdrException.mkInput("'${TCLK.atMs}' is required for '${TCLK.set}'.")),
+            ClockOp.set -> clock.setAbsolute(
+                Instant.fromEpochMilliseconds(req[TCLK.atMs].toOptLong() ?: throw KdrException.mkInput("'${TCLK.atMs}' is required for '${ClockOp.set}'.")),
             )
-            TCLK.freeze -> clock.freeze()
-            TCLK.unfreeze -> clock.unfreeze()
-            TCLK.reset -> clock.reset()
-            else -> throw KdrException.mkInput("Unknown clock op '$op'.")
+            ClockOp.freeze -> clock.freeze()
+            ClockOp.unfreeze -> clock.unfreeze()
+            ClockOp.reset -> clock.reset()
         }
         mapOf(TCLK.instanceNowMs to clock.instanceNow().toEpochMilliseconds())
     }

@@ -35,15 +35,8 @@ object TCLK {
     /** Request: for [advance], the milliseconds to advance (negative rewinds). */
     const val deltaMs = "deltaMs"
 
-    /** Request: for [set], the target time as epoch milliseconds. */
+    /** Request: for [ClockOp.set], the target time as epoch milliseconds. */
     const val atMs = "atMs"
-
-    // Op values.
-    const val advance = "advance"
-    const val set = "set"
-    const val freeze = "freeze"
-    const val unfreeze = "unfreeze"
-    const val reset = "reset"
 
     /** Response: the instance clock's value after the operation, as epoch milliseconds. */
     const val instanceNowMs = "instanceNowMs"
@@ -51,6 +44,10 @@ object TCLK {
     /** The response schema type name. */
     const val stateType = "ClockState"
 }
+
+/** The operations [TCLK.op] accepts (issue #160). The names are the wire values; the schema choice list and
+ *  the endpoint's `when` are both driven off this enum. */
+enum class ClockOp { advance, set, freeze, unfreeze, reset }
 
 /** Fields and type names of the [TEP.simulatedEmails] endpoint. */
 @Suppress("ConstPropertyName")

@@ -79,6 +79,15 @@ open class SchTypeBuilder(
         optionsList().add(linkedMapOf(SCH.label to label, SCH.value to value))
     }
 
+    /**
+     * Adds every value of an enum as a choice ([Enum.name] is the stored value), so the enum is the single
+     * source of truth for a field's valid values -- the schema constraint here, the edge validation the
+     * validator runs from it, and the code's `when` all follow the same enum. e.g. `options(ClockOp.entries)`.
+     */
+    fun options(values: Iterable<Enum<*>>) {
+        for (v in values) option(v.name)
+    }
+
     @KdrPrivate
     fun optionsList(): MutableList<Any?> =
         data.getOrPut(SCH.options) { ArrayList<Any?>() }!!.toT()
