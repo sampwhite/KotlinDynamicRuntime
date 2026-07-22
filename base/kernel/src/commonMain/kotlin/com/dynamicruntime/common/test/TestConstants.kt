@@ -32,7 +32,7 @@ object TCLK {
     /** Request: which operation to perform -- one of the op values below. */
     const val op = "op"
 
-    /** Request: for [advance], the milliseconds to advance (negative rewinds). */
+    /** Request: for [ClockOp.advance], the milliseconds to advance (negative rewinds). */
     const val deltaMs = "deltaMs"
 
     /** Request: for [ClockOp.set], the target time as epoch milliseconds. */

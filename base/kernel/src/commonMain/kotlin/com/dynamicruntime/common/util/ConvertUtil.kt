@@ -54,7 +54,7 @@ fun Any?.toOptStr(): String? = if (this is CharSequence) this.toString() else nu
  * Coerces this value to a member of enum [T] by matching its [Enum.name], or null when it is null, not a
  * string, or not a member name. `inline`/`reified` because a generic enum lookup needs the concrete type at the
  * call site. Pairs with the schema's `options(...)` choice list (both keyed off the same enum), so an endpoint
- * can branch on `req[key].toOptEnum<MyEnum>()` exhaustively while validation already rejected any other value.
+ * can branch on `req[*key*].toOptEnum<MyEnum>()` exhaustively while validation already rejected any other value.
  */
 inline fun <reified T : Enum<T>> Any?.toOptEnum(): T? =
     toOptStr()?.let { s -> enumValues<T>().firstOrNull { it.name == s } }
