@@ -11,6 +11,9 @@ import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.getOptStr
+import com.dynamicruntime.common.util.toOptLong
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Instant
 
 /**
  * Test-only endpoints (issue #125): conveniences that make automated and manual testing easier. Every endpoint
@@ -84,5 +87,40 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             .filter { to == null || it.to == to }
             .map { mapOf(TSE.to to it.to, TSE.subject to it.subject, TSE.text to it.text) }
         mapOf(TSE.emails to emails)
+    }
+
+    // Travel the instance clock (issue #160), so a test or a manual session can force an expiry or a rate-limit
+    // window without a real wait. Mutates the per-instance clock every context reads through `now()` /
+    // `instanceNow()`; returns the resulting instance time. `forTestingOnly`, so it is absent outside a test
+    // instance -- there is no way to move a real deployment's clock.
+    type(TCLK.stateType) {
+        type = SCT.kObject
+        property(TCLK.instanceNowMs, "The instance clock's value after the operation, epoch milliseconds.",
+            required = true) { type = SCT.integer }
+    }
+    generalEndpoint(
+        TCLK.path,
+        "Test-only: travel the instance clock (advance / set / freeze / unfreeze / reset).",
+        HttpMethod.POST, outputRef = TCLK.stateType, forTestingOnly = true,
+        inputFields = {
+            field(TCLK.op, "One of: advance, set, freeze, unfreeze, reset.", required = true)
+            field(TCLK.deltaMs, "For 'advance': milliseconds to advance (negative rewinds).") { type = SCT.integer }
+            field(TCLK.atMs, "For 'set': the target time as epoch milliseconds.") { type = SCT.integer }
+        },
+    ) { c, req ->
+        val clock = c.instanceConfig.clock
+        when (val op = req[TCLK.op] as? String) {
+            TCLK.advance -> clock.advanceBy(
+                (req[TCLK.deltaMs].toOptLong() ?: throw KdrException.mkInput("'${TCLK.deltaMs}' is required for '${TCLK.advance}'.")).milliseconds,
+            )
+            TCLK.set -> clock.setAbsolute(
+                Instant.fromEpochMilliseconds(req[TCLK.atMs].toOptLong() ?: throw KdrException.mkInput("'${TCLK.atMs}' is required for '${TCLK.set}'.")),
+            )
+            TCLK.freeze -> clock.freeze()
+            TCLK.unfreeze -> clock.unfreeze()
+            TCLK.reset -> clock.reset()
+            else -> throw KdrException.mkInput("Unknown clock op '$op'.")
+        }
+        mapOf(TCLK.instanceNowMs to clock.instanceNow().toEpochMilliseconds())
     }
 }
