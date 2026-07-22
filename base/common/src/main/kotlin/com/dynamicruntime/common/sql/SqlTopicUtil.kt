@@ -97,7 +97,9 @@ object SqlTopicUtil {
 
     /** Sets [PF.createdAt] (if absent) and [PF.updatedAt] (always), forcing updatedAt to advance. */
     fun prepDates(cxt: KdrCxt, data: MutableMap<String, Any?>) {
-        var now = cxt.now()
+        // Persisted protocol dates use the instance clock, not the per-context one (issue #160): updatedAt is a
+        // queuing date, and must be monotonic and consistent across concurrent requests.
+        var now = cxt.instanceNow()
         if (data[PF.createdAt].toOptInstant() == null) {
             data[PF.createdAt] = now
         }
@@ -116,7 +118,7 @@ object SqlTopicUtil {
 
     /** Sets the transaction-lock bookkeeping for the initial placeholder-row insert. */
     fun prepForTranInsert(cxt: KdrCxt, data: MutableMap<String, Any?>) {
-        data[PF.touchedAt] = cxt.now()
+        data[PF.touchedAt] = cxt.instanceNow() // a persisted queuing date (issue #160)
         data[PF.lastTranId] = initialInsertTranId
     }
 }

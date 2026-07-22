@@ -12,6 +12,20 @@ import kotlin.time.Instant
  * Code that needs backend-only capabilities takes this type and narrows with `if (cxt is KdrCxt)`.
  */
 interface KdrCxtBase {
-    /** The current instant (the backend may offset it for testing; a lite context uses the system clock). */
+    /**
+     * The current instant for **this context** (issue #160): the instance clock ([instanceNow]) plus any
+     * per-context delta. Use it for **transitory** dates -- form-token/session/device-trust lifetimes,
+     * rate-limit windows, and most generated timestamps.
+     *
+     * The backend may travel it for testing (advance or freeze); a lite context uses the system clock.
+     */
     fun now(): Instant
+
+    /**
+     * The current instant for the **instance** (issue #160): the shared clock every context sees, before any
+     * per-context delta. Use it for **persisted / protocol / queuing** dates -- `createdAt`, `updatedAt`,
+     * `touchedAt` -- because a change-driving queue keyed on them needs a monotonic, instance-consistent value
+     * that different in-flight requests cannot each shift out from under each other.
+     */
+    fun instanceNow(): Instant
 }

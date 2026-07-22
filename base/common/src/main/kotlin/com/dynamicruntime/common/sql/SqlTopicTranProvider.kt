@@ -51,7 +51,7 @@ class SqlTopicTranProvider(
 
     override fun lock(): Boolean {
         sqlCxt.tranAlreadyDone = false
-        sqlCxt.tranData[PF.touchedAt] = cxt.now()
+        sqlCxt.tranData[PF.touchedAt] = cxt.instanceNow() // a persisted queuing date (issue #160)
         return sqlDb.executeStatement(cxt, uTakeLockQuery, sqlCxt.tranData) > 0
     }
 
