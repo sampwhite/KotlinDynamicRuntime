@@ -21,6 +21,34 @@ object TEP {
     const val simulatedEmails = "/test/simulatedEmails"
 }
 
+/**
+ * The `forTestingOnly` clock-control endpoint (issue #160): travels the instance clock so a test (or a manual
+ * browser session) can force an expiry or rate-limit window without a real wait.
+ */
+@Suppress("ConstPropertyName")
+object TCLK {
+    const val path = "/test/clock"
+
+    /** Request: which operation to perform -- one of the op values below. */
+    const val op = "op"
+
+    /** Request: for [ClockOp.advance], the milliseconds to advance (negative rewinds). */
+    const val deltaMs = "deltaMs"
+
+    /** Request: for [ClockOp.set], the target time as epoch milliseconds. */
+    const val atMs = "atMs"
+
+    /** Response: the instance clock's value after the operation, as epoch milliseconds. */
+    const val instanceNowMs = "instanceNowMs"
+
+    /** The response schema type name. */
+    const val stateType = "ClockState"
+}
+
+/** The operations [TCLK.op] accepts (issue #160). The names are the wire values; the schema choice list and
+ *  the endpoint's `when` are both driven off this enum. */
+enum class ClockOp { advance, set, freeze, unfreeze, reset }
+
 /** Fields and type names of the [TEP.simulatedEmails] endpoint. */
 @Suppress("ConstPropertyName")
 object TSE {

@@ -73,7 +73,11 @@ class KdrCxt(
      */
     val locals: MutableMap<String, Any?> = mutableMapOf()
 
-    /** Used by tests to do time travel; offsets [now]. */
+    /**
+     * A per-context delta on top of the instance clock (issue #160): `now() = instanceNow() + this`. Retained
+     * from the original time-travel hook but idle in practice today (instance-scoped travel is what tests use);
+     * it is the seam a future account-scoped clock would layer on.
+     */
     var nowTimeOffsetInSeconds: Int = 0
 
     /** When this context was created. */
@@ -199,8 +203,13 @@ class KdrCxt(
     /** Duration since this context was created, in milliseconds. */
     fun durationMs(): Double = (System.nanoTime() - nanoTime) / 1_000_000.0
 
-    /** Current time, adjusted by [nowTimeOffsetInSeconds] for test time travel. */
-    override fun now(): Instant = Clock.System.now() + nowTimeOffsetInSeconds.seconds
+    /** The instance clock (issue #160): shared by every context, travelled as a whole for tests. Use it for
+     *  persisted/queuing dates (`createdAt`/`updatedAt`/`touchedAt`); see [instanceNow] on [KdrCxtBase]. */
+    override fun instanceNow(): Instant = instanceConfig.clock.instanceNow()
+
+    /** This context's time: the instance clock plus the per-context delta. Use it for transitory dates; see
+     *  [now] on [KdrCxtBase]. */
+    override fun now(): Instant = instanceNow() + nowTimeOffsetInSeconds.seconds
 
     companion object {
         /** Creates a simple top-level context with placeholder config and user. */

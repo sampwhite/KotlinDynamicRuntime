@@ -11,6 +11,10 @@ import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.getOptStr
+import com.dynamicruntime.common.util.toOptEnum
+import com.dynamicruntime.common.util.toOptLong
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Instant
 
 /**
  * Test-only endpoints (issue #125): conveniences that make automated and manual testing easier. Every endpoint
@@ -84,5 +88,41 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             .filter { to == null || it.to == to }
             .map { mapOf(TSE.to to it.to, TSE.subject to it.subject, TSE.text to it.text) }
         mapOf(TSE.emails to emails)
+    }
+
+    // Travel the instance clock (issue #160), so a test or a manual session can force an expiry or a rate-limit
+    // window without a real wait. Mutates the per-instance clock every context reads through `now()` /
+    // `instanceNow()`; returns the resulting instance time. `forTestingOnly`, so it is absent outside a test
+    // instance -- there is no way to move a real deployment's clock.
+    type(TCLK.stateType) {
+        type = SCT.kObject
+        property(TCLK.instanceNowMs, "The instance clock's value after the operation, epoch milliseconds.",
+            required = true) { type = SCT.integer }
+    }
+    generalEndpoint(
+        TCLK.path,
+        "Test-only: travel the instance clock (advance / set / freeze / unfreeze / reset).",
+        HttpMethod.POST, outputRef = TCLK.stateType, forTestingOnly = true,
+        inputFields = {
+            field(TCLK.op, "The clock operation to perform.", required = true) { options(ClockOp.entries) }
+            field(TCLK.deltaMs, "For '${ClockOp.advance}': milliseconds to advance (negative rewinds).") { type = SCT.integer }
+            field(TCLK.atMs, "For '${ClockOp.set}': the target time as epoch milliseconds.") { type = SCT.integer }
+        },
+    ) { c, req ->
+        val clock = c.instanceConfig.clock
+        // The op is choice-constrained above, so validation already rejected anything but a ClockOp name.
+        val op = req[TCLK.op].toOptEnum<ClockOp>() ?: throw KdrException.mkInput("A valid '${TCLK.op}' is required.")
+        when (op) {
+            ClockOp.advance -> clock.advanceBy(
+                (req[TCLK.deltaMs].toOptLong() ?: throw KdrException.mkInput("'${TCLK.deltaMs}' is required for '${ClockOp.advance}'.")).milliseconds,
+            )
+            ClockOp.set -> clock.setAbsolute(
+                Instant.fromEpochMilliseconds(req[TCLK.atMs].toOptLong() ?: throw KdrException.mkInput("'${TCLK.atMs}' is required for '${ClockOp.set}'.")),
+            )
+            ClockOp.freeze -> clock.freeze()
+            ClockOp.unfreeze -> clock.unfreeze()
+            ClockOp.reset -> clock.reset()
+        }
+        mapOf(TCLK.instanceNowMs to clock.instanceNow().toEpochMilliseconds())
     }
 }

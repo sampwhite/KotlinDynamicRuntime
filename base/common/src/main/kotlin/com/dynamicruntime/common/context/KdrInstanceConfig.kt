@@ -5,6 +5,56 @@ import java.io.File
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Instant
+
+/**
+ * The instance-scoped, runtime-mutable clock behind `KdrCxt.instanceNow()` (issue #160). Its default state is
+ * real time -- no frozen base, zero offset -- so `instanceNow()` equals `Clock.System.now()` and nothing
+ * behaves differently. A `forTestingOnly` endpoint (`/test/clock`) mutates it to advance or freeze time, which
+ * is what makes expiry / rate-limit behavior testable without real waits.
+ *
+ * Held as a plain field on [KdrInstanceConfig] rather than a registered service, deliberately: every `now()`
+ * reads it, it must exist on every instance, and a plain field is the easiest thing to find in the code and to
+ * read in a debugger. Every mutator and the read are `synchronized(this)` -- production never mutates it (the
+ * endpoint that does is absent outside a test instance), so the lock is uncontended there; a test mutates from
+ * a request thread while `now()` reads from others, which the lock makes coherent.
+ */
+class InstanceClock {
+    private var frozenBase: Instant? = null
+    private var offset: Duration = Duration.ZERO
+
+    /** The instance's current time: the frozen base (or the live wall clock) shifted by the accumulated offset. */
+    fun instanceNow(): Instant = synchronized(this) { (frozenBase ?: Clock.System.now()) + offset }
+
+    /** Advance the clock by [delta] (negative rewinds), keeping any freeze -- the way to step a frozen clock. */
+    fun advanceBy(delta: Duration): Unit = synchronized(this) { offset += delta }
+
+    /** Make `instanceNow()` read [target] now. **Not** a freeze: an unfrozen clock keeps ticking from there. */
+    fun setAbsolute(target: Instant): Unit = synchronized(this) {
+        offset = target - (frozenBase ?: Clock.System.now())
+    }
+
+    /** Pin the clock at its current value, so it no longer advances with the wall clock. */
+    fun freeze(): Unit = synchronized(this) {
+        frozenBase = (frozenBase ?: Clock.System.now()) + offset
+        offset = Duration.ZERO
+    }
+
+    /** Resume ticking from the current value -- seamless, no jump. A no-op when not frozen. */
+    fun unfreeze(): Unit = synchronized(this) {
+        val base = frozenBase ?: return@synchronized
+        offset = base + offset - Clock.System.now()
+        frozenBase = null
+    }
+
+    /** Back to real time: drop any freeze and offset. */
+    fun reset(): Unit = synchronized(this) {
+        frozenBase = null
+        offset = Duration.ZERO
+    }
+}
 
 /**
  * Configuration and service registry for a running instance/application. It holds
@@ -40,6 +90,9 @@ class KdrInstanceConfig(
     // The shared config/service store. Real `private` because it is mutated
     // concurrently and must only be reached through the accessors below.
     private val store: ConcurrentHashMap<String, Any> = ConcurrentHashMap()
+
+    /** This instance's time source (issue #160), read by `KdrCxt.instanceNow()`; real time until a test travels it. */
+    val clock: InstanceClock = InstanceClock()
 
     /**
      * Reads a value (config entry or service) by [key], or null if absent. A key containing `.` is a path
