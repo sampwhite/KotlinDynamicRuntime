@@ -1,6 +1,6 @@
 ---
 name: kdr-testing
-description: Test and verify changes in KotlinDynamicRuntime — booting your own server to drive it by curl or browser, and writing in-process unit tests. Covers the KDR_PORT/in-memory server conventions (and the don't-touch-7070 rule), mkTestBootCxt/mkBootCxt with config overlays, TestHttpClient and its response-extraction idioms, injecting env-var options through the instance config, and the TestUser/become-user helper for authenticated tests. Use whenever writing or reviewing a test, verifying a change end-to-end, or booting and driving the app in this codebase — even when the request just says "check that this works" or "run the app".
+description: Test and verify changes in KotlinDynamicRuntime — booting your own server to drive it by curl or browser, and writing in-process unit tests. Covers the KDR_PORT/in-memory server conventions (and the don't-touch-7070 rule), mkTestBootCxt/mkBootCxt with config overlays, TestHttpClient and its response-extraction idioms, injecting env-var options through the instance config, selecting your own config object via KDR_CUSTOM_CONFIG to set config values that have no env var, and the TestUser/become-user helper for authenticated tests. Use whenever writing or reviewing a test, verifying a change end-to-end, or booting and driving the app in this codebase — even when the request just says "check that this works" or "run the app".
 ---
 
 # Testing and verifying changes
