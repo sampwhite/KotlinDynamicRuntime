@@ -4,7 +4,7 @@
 // which re-exports the base modules (common/kdn) via `api`, so this single
 // dependency brings the whole configuration toolkit. This is the one allowed
 // direction: `config` itself does not depend on `launch`.
-import com.dynamicruntime.build.wireInjectedComponents
+import com.dynamicruntime.buildlogic.wireInjectedComponents
 
 plugins {
     id("kdr.kotlin-conventions")
