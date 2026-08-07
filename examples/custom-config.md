@@ -26,6 +26,11 @@ directory.
 
 ## Add a custom configuration — step by step
 
+> **Shortcut:** the `kdr-create-config` command scaffolds everything below for you — the project, the placeholder
+> `KdrConfig`, the `META-INF/services` file, and the `settings.gradle.kts` wiring — non-destructively (it never
+> overwrites an existing file, and a commented-out `injectComponent` counts as present). Run it after
+> `kdr-install`; then edit the generated `KdrConfig`. The manual steps below explain what it produces.
+
 In the directory that *contains* `KotlinDynamicRuntime/` (the same directory as your `settings.gradle.kts`):
 
 1. **Create the project**, with `apps` as the Kotlin source root and `resources` enabled (the service file lives
@@ -91,8 +96,8 @@ In the directory that *contains* `KotlinDynamicRuntime/` (the same directory as 
    ```
 
 4. **`customConfig/resources/META-INF/services/com.dynamicruntime.common.startup.KdrProvider`** — register the
-   class for discovery. The file name is the fully-qualified name of the `KdrProvider` base interface (the dots
-   are literal — it is one flat file, not nested directories); its contents are the fully-qualified names of
+   class for discovery. The file name is the fully qualified name of the `KdrProvider` base interface (the dots
+   are literal — it is one flat file, not nested directories); its contents are the fully qualified names of
    your provider classes, one per line:
 
    ```
@@ -150,10 +155,10 @@ Notes:
 - **Every file is optional.** Resolution is per asset, so you can override just `brand-mark.svg` and inherit the
   rest. Anything you omit falls back to the built-in.
 - **You override a filename, not the shell markup.** The shell links each asset by its stable name
-  (`favicon.svg`), but since issue #137 the served URL carries a content hash of the *served* bytes
+  (`favicon.svg`), but since issue #137 the served URL has carried a content hash of the *served* bytes
   (`/wa/favicon.svg:<hash>`). So branding an asset gives it its own hashed URL automatically — you never touch
   the `<link>` tags, and immutable caching can never serve a stale built-in in a branded asset's place.
-- **Watch the startup log.** A directory that overrides nothing logs a warning: the usual cause is a typo or
+- **Watch the startup log.** A directory that overrides nothing logs a warning: the usual cause is a typo, or
   resources not reaching the classpath, and without the warning it just looks like the branding "didn't take"
   (the app serves its built-in set and appears fine).
 - **Production only.** The webpack dev server serves `:webapp`'s own resources, so it always shows the built-in
@@ -195,7 +200,7 @@ com.dynamicruntime.deploy.ClaudeConfig
 ```
 
 ```kotlin
-// customConfig/apps/com/dynamicruntime/deploy/ClaudeConfig.kt  (providerName is the simple name "ClaudeConfig")
+// customConfig/apps/com/dynamicruntime/deploy/ClaudeConfig.kt (providerName is the simple name "ClaudeConfig")
 package com.dynamicruntime.deploy
 
 import com.dynamicruntime.config.AppConfigApplier
@@ -205,7 +210,7 @@ import com.dynamicruntime.config.AppConfigBuilder
 class ClaudeConfig : AppConfigApplier {
     override fun AppConfigBuilder.applyAppConfig() {
         // Any AppConfigBuilder property (env, inMemoryOnly, validateResponseSchema, idleBumpIntervalMs, …).
-        idleBumpIntervalMs = 3000            // e.g. a 3s idle bump, to observe it without the one-minute wait
+        idleBumpIntervalMs = 3000            // e.g., a 3s idle bump, to observe it without the one-minute wait
         // A key without a typed property yet: set it straight into the config map.
         data["someFutureKey"] = true
     }

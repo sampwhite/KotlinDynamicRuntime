@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# @desc: Scaffold the customConfig provider project and wire it into settings.gradle.kts.
+#
+# Scaffold a deployment's custom-config provider project (customConfig/): the Gradle project, a placeholder
+# KdrConfig in the com.dynamicruntime.deploy package, the META-INF/services registration ServiceLoader reads,
+# and the settings.gradle.kts wiring -- the multi-step setup in examples/custom-config.md, done for you and
+# non-destructively. Assumes kdr-install has already run (it does none of that bootstrap).
+#
+# A "dumb" wrapper: it hands off to the clever Kotlin kdr command (CreateCustomConfig) via kdr-run, passing this
+# checkout's path so the injection prologue can be lifted from examples/settings.gradle.kts.example.
+set -euo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_dir="$(cd "$script_dir/.." && pwd)"
+exec "$script_dir/kdr-run" com.dynamicruntime.script.CreateCustomConfigKt "$repo_dir"
