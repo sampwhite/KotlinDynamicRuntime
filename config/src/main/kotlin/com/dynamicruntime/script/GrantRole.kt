@@ -25,7 +25,7 @@ import kotlin.system.exitProcess
  * email domain, while this suits granting one specific account, or taking the role back.
  *
  * It is a **Kotlin** script, per the code guide: `bin/kdr-run` handles the irreducible shell part (finding the
- * fat jar, keeping it fresh) and every decision lives here. It boots the runtime the ordinary way
+ * pathing jar, keeping it fresh) and every decision lives here. It boots the runtime the ordinary way
  * ([Startup.mkBootCxt]) but starts no HTTP server, so it works against a deployment's real database with the
  * server stopped -- and, because it goes through [UserService] rather than raw SQL, it cannot write a row shape
  * the application would not recognize.
