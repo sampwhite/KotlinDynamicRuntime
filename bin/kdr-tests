@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @desc: Run all module tests (the test task across every subproject).
+#
 # Run all module tests (the `test` task across every subproject). Pass --rebuild (or -r) as the first
 # argument to `clean` first, forcing a full recompile before the tests. Any further arguments pass through
 # to Gradle (e.g. --tests "SomeTest*", --info). Runnable from any directory.

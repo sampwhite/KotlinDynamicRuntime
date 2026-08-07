@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# @desc: List the kdr commands (and shell functions) with one-line descriptions.
+#
+# Pure-shell lister: prints every executable kdr-* command in the *active* bin/ -- the one this kdr-help
+# resolved from, shown in the header so multiple checkouts are unambiguous -- with its `# @desc:` summary, plus
+# the kdr-use shell function. If your current directory is inside a *different* KotlinDynamicRuntime checkout
+# than the one your commands resolve to, it says so, and points at kdr-use to switch.
+set -euo pipefail
+
+bin_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The groomed one-line description of a script: the first `# @desc:` line with its tag stripped, else a
+# placeholder. awk (not `sed | head`) so there is no early-close SIGPIPE under `set -o pipefail`.
+desc_of() {
+    local d; d="$(awk 'sub(/^#[[:space:]]*@desc:[[:space:]]*/, ""){print; exit}' "$1")"
+    [ -n "$d" ] && printf '%s' "$d" || printf '%s' '(no @desc:)'
+}
+
+# Column width from the executable command names.
+width=0
+for f in "$bin_dir"/kdr-*; do
+    [ -x "$f" ] || continue                        # executables only -> excludes kdr-use.sh (sourced, non-exec)
+    n="$(basename "$f")"; [ "${#n}" -gt "$width" ] && width="${#n}"
+done
+
+echo "kdr commands (in $bin_dir):"
+for f in "$bin_dir"/kdr-*; do
+    [ -x "$f" ] || continue
+    printf '  %-*s  %s\n' "$width" "$(basename "$f")" "$(desc_of "$f")"
+done
+
+if [ -f "$bin_dir/kdr-use.sh" ]; then
+    echo
+    echo "Shell functions (sourced into your shell; kdr-install can add them to your rc):"
+    printf '  %-*s  %s\n' "$width" "kdr-use" "$(desc_of "$bin_dir/kdr-use.sh")"
+fi
+
+# Cross-repo note: if the current directory is inside a *different* KDR workspace than the active checkout's.
+# The workspace is the build root that holds settings.gradle.kts, one level above the checkout (bin/../..).
+active_ws="$(cd -P "$bin_dir/../.." && pwd)"
+cwd_ws="$PWD"
+while [ "$cwd_ws" != / ] && [ ! -f "$cwd_ws/settings.gradle.kts" ]; do cwd_ws="$(dirname "$cwd_ws")"; done
+if [ -f "$cwd_ws/settings.gradle.kts" ] && [ "$cwd_ws" != "$active_ws" ]; then
+    echo
+    echo "note: you are inside $cwd_ws, but these commands run from $active_ws."
+    echo "      run 'kdr-use $cwd_ws' to switch this shell to that checkout."
+fi

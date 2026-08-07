@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @desc: Idempotently set up or update this deployment to run the kdr commands.
+#
 # Idempotent installer: gets a deployment ready to run Kotlin from the command line, then keeps it healthy.
 # This is the pure-shell bootstrap -- a sniff and a minimal config, the least needed for Kotlin to run -- which
 # then hands off to the clever, growing Kotlin installer (com.dynamicruntime.script.Install) via kdr-run.

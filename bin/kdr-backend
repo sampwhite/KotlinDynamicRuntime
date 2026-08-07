@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @desc: Run the backend server (StartKt) via :launch:run.
+#
 # Launch the backend app -- the launcher's Start.kt (kdn.StartKt) via :launch:run -- on
 # http://localhost:7070. Extra arguments pass through to Gradle. Runnable from any directory.
 set -euo pipefail

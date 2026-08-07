@@ -19,8 +19,12 @@ __src="${BASH_SOURCE[0]}"
 if [ -L "$__src" ]; then __src="$(readlink "$__src")"; fi
 __bin_dir="$(cd -P "$(dirname "$__src")" && pwd)"
 
+# Remember the user's KDR_WORKSPACE_DIR before we resolve and export our own -- the cross-repo warning below
+# stays silent when they set it deliberately.
+__kdr_orig_ws="${KDR_WORKSPACE_DIR:-}"
+
 if [ -n "${KDR_WORKSPACE_DIR:-}" ]; then
-    GRADLE_ROOT="$(cd -P "$KDR_WORKSPACE_DIR" 2>/dev/null && pwd || true)"
+    GRADLE_ROOT="$( { cd -P "$KDR_WORKSPACE_DIR" 2>/dev/null && pwd; } || true )"
     if [ -z "$GRADLE_ROOT" ]; then
         echo "bin: KDR_WORKSPACE_DIR=$KDR_WORKSPACE_DIR does not exist" >&2
         exit 1
@@ -42,6 +46,10 @@ if { [ ! -f "$GRADLE_ROOT/settings.gradle.kts" ] && [ ! -f "$GRADLE_ROOT/setting
     exit 1
 fi
 export KDR_WORKSPACE_DIR="$GRADLE_ROOT"
+
+# Cross-repo safety note (issue #179): warn if the current directory is inside a different KDR workspace.
+source "$__bin_dir/_crossrepo.sh"
+kdr_crossrepo_warn "$GRADLE_ROOT" "$__kdr_orig_ws"
 
 # Run the wrapper from the build root, replacing this process so Ctrl-C reaches Gradle directly (important
 # for the long-running server tasks). All arguments are passed through.

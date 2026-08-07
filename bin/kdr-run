@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @desc: Launch any Kotlin main class from the project's runtime classpath.
+#
 # Launch any Kotlin/Java main class from the project's runtime classpath, passing arguments through -- the basis
 # for writing command-line tools in Kotlin instead of shell or python.
 #
@@ -29,6 +31,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_name="$(basename "$(cd "$script_dir/.." && pwd)")"    # the repo directory name (e.g. KotlinDynamicRuntime)
+orig_kdr_ws="${KDR_WORKSPACE_DIR:-}"   # the user's value before we resolve/export our own (for the cross-repo note)
 if [ -n "${KDR_WORKSPACE_DIR:-}" ]; then
     root_dir="$( { cd -P "$KDR_WORKSPACE_DIR" 2>/dev/null && pwd; } || true )"
     if [ -z "$root_dir" ] || [ ! -x "$root_dir/gradlew" ]; then
@@ -39,6 +42,9 @@ else
     root_dir="$(cd "$script_dir/../.." && pwd)"            # up two: the workspace / build root
 fi
 export KDR_WORKSPACE_DIR="$root_dir"
+# Cross-repo safety note (issue #179): warn if the current directory is inside a different KDR workspace.
+source "$script_dir/_crossrepo.sh"
+kdr_crossrepo_warn "$root_dir" "$orig_kdr_ws"
 path_jar="$root_dir/$repo_name/launch/build/libs/launch-path.jar"
 manifest="$root_dir/current-source-directories.txt"
 settings="$root_dir/settings.gradle.kts"
