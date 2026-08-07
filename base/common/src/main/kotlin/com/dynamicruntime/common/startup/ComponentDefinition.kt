@@ -9,14 +9,16 @@ import com.dynamicruntime.common.context.KdrCxt
  * actually does.
  *
  * Unlike the prior-art dn split into `core` and `common` components (a distinction
- * that never earned its keep), kd2 has one component per module: [CommonComponent]
+ * that never earned its keep), kd2 has one component per module: [com.dynamicruntime.common.CommonComponent]
  * in `base/common`, `KdnComponent` in `base/kdn`.
+ *
+ * Extends [KdrProvider] so a component can be discovered at startup by the same ServiceLoader mechanism as a
+ * config applier (issue #171). Its [KdrProvider.providerName] is the component's unique name, and
+ * [KdrProvider.loadPriority] its load order; the schema-vs-services split below ([isLoaded]/[isActive]) is
+ * component-specific and so stays here rather than on the shared base.
  */
-interface ComponentDefinition {
-    /** Unique name of this component. */
-    val componentName: String
-
-    /** Whether this component contributes its schema. May become config-driven later. */
+interface ComponentDefinition : KdrProvider {
+    /** Whether this component contributes its schema to the application. May become config-driven later. */
     fun isLoaded(): Boolean = true
 
     /** Whether this component's services are active. May become config-driven later. */
@@ -34,7 +36,4 @@ interface ComponentDefinition {
 
     /** Regular services, initialized after all [startupServices]. */
     fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = emptyList()
-
-    /** Load order; lower loads earlier. Relative expressions like [PRI.standard] - 1 are expected. */
-    fun loadPriority(): Int = PRI.standard
 }

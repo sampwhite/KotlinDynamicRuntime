@@ -1,15 +1,16 @@
 package com.dynamicruntime.script
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import java.io.File
 import java.nio.file.Files
 
 /**
- * Covers the pure parts of the PostgreSQL setup step (issue #37): the create SQL and the Linux sudo setup
+ * Covers the pure parts of the PostgreSQL setup step (issue #37): the creation SQL and the Linux sudo setup
  * script. The interactive/OS-executed parts (prompts, socket probe, Homebrew on macOS, running the script on
- * Linux, the live connection, the secrets write) are exercised by running the installer, not here.
+ * Linux, the live connection, the secrets update) are exercised by running the installer, not here.
  */
 class InstallTest : StringSpec({
 
@@ -66,5 +67,27 @@ class InstallTest : StringSpec({
         } finally {
             dir.deleteRecursively()
         }
+    }
+
+    // --- deployment-injection prologue (issue #171) ---------------------------------------------------------
+
+    "hasInjectionPrologue detects the injectComponent helper" {
+        hasInjectionPrologue("rootProject.name = \"x\"\nfun injectComponent(path: String, dir: String) {}") shouldBe true
+        hasInjectionPrologue("rootProject.name = \"x\"\ninclude(\"launch\")") shouldBe false
+    }
+
+    "extractMarkedBlock returns the marked span inclusive, or null when absent" {
+        val text = "a\n// >>> demo — hi\nline1\nline2\n// <<< demo\nb"
+        extractMarkedBlock(text, "demo") shouldBe "// >>> demo — hi\nline1\nline2\n// <<< demo"
+        extractMarkedBlock("no markers here", "demo") shouldBe null
+    }
+
+    "insertInjectionPrologue inserts after rootProject.name, or returns null without it" {
+        val settings = "pluginManagement {}\nrootProject.name = \"x\"\ninclude(\"launch\")\n"
+        val out = insertInjectionPrologue(settings, "PROLOGUE")!!
+        out shouldContain "rootProject.name = \"x\"\n\nPROLOGUE\ninclude(\"launch\")"
+        // The result is now self-detecting once it carries the real helper.
+        hasInjectionPrologue(insertInjectionPrologue(settings, "fun injectComponent(p: String, d: String) {}")!!) shouldBe true
+        insertInjectionPrologue("include(\"launch\")\n", "PROLOGUE") shouldBe null
     }
 })

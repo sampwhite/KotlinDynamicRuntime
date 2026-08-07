@@ -11,7 +11,7 @@ import com.dynamicruntime.common.startup.ServiceInitializer
  * wiring shell that the launcher registers before boot.
  */
 class AppUiComponent : ComponentDefinition {
-    override val componentName: String = "appui"
+    override val providerName: String = "appui"
 
     /** The webapp host, which registers itself with the dispatcher as a content server during init. */
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::AppUiService)

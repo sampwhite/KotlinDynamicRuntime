@@ -9,10 +9,12 @@ import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.appui.AppUiComponent
 import com.dynamicruntime.common.startup.InstanceRegistry
+import com.dynamicruntime.common.startup.KdrProvider
 import com.dynamicruntime.config.AppConfigApplier
 import com.dynamicruntime.config.AppConfigBuilder
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
+import java.util.ServiceLoader
 
 fun main() {
     // Pre-boot: build the instance config (from KDR_ENV and the default-environment-variables file) and a
@@ -37,14 +39,34 @@ fun main() {
     // demo; the shell serves even when the sample Todo endpoints it exercises are absent.
     InstanceRegistry.register(listOf(AppUiComponent()))
 
-    // Load the deployment's app config. Reflection only LOCATES the config object (its name is overridable via
-    // an environment variable); the call goes through AppConfigApplier.
-    val objectName = preBootCxt.getEnvVar("KDR_CUSTOM_CONFIG") ?: "KdrConfig"
+    // Discover deployment-injected providers via the JVM ServiceLoader (issue #171). A single pass over the
+    // KdrProvider base finds every provider kind the deployment put on the runtime classpath; each subset is
+    // routed to its own phase. What is discoverable is controlled entirely by the deployment's
+    // settings.gradle.kts (which projects reach launch's runtime classpath), so this is explicit, auditable
+    // injection -- logged below by name and code source -- not open-ended scanning.
+    val providers = ServiceLoader.load(KdrProvider::class.java, KdrProvider::class.java.classLoader).toList()
+    for (p in providers) {
+        LogStartup.info(preBootCxt) {
+            "Discovered provider '${p.providerName}' (${p::class.java.name}) from " +
+                "${p::class.java.protectionDomain?.codeSource?.location}"
+        }
+    }
+
+    // App config appliers run pre-boot so they can shape how the instance starts. They are SELECTED, not
+    // composed: competing full profiles (e.g., the developer's KdrConfig and Claude's ClaudeConfig) would
+    // conflict, so KDR_CUSTOM_CONFIG names the one to apply by its providerName, defaulting to "KdrConfig".
+    val selector = preBootCxt.getEnvVar("KDR_CUSTOM_CONFIG") ?: "KdrConfig"
     val appConfig = AppConfigBuilder(preBootCxt, LinkedHashMap())
-    val applier = runCatching { Class.forName(objectName).kotlin.objectInstance }
-        .getOrNull() as? AppConfigApplier
-    if (applier != null) {
+    val appliers = providers.filterIsInstance<AppConfigApplier>()
+        .filter { it.providerName == selector }
+        .sortedBy { it.loadPriority() }
+    for (applier in appliers) {
         with(applier) { appConfig.applyAppConfig() }
+    }
+    if (appliers.isEmpty() && providers.any { it is AppConfigApplier }) {
+        LogStartup.warn(preBootCxt, "KDR_CUSTOM_CONFIG='$selector' matched no discovered AppConfigApplier; none applied.")
+    } else {
+        LogStartup.info(preBootCxt, "Applied ${appliers.size} config applier(s): ${appliers.map { it.providerName }}")
     }
 
     // Fold the pre-boot config's entries into the loaded app config, adding keys it did not set (so the

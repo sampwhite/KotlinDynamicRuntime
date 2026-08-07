@@ -26,7 +26,7 @@ object InstanceRegistry {
     private var shutdownHookInstalled = false
 
     /**
-     * Registers component definitions (idempotent by [ComponentDefinition.componentName])
+     * Registers component definitions (idempotent by [ComponentDefinition.providerName])
      * and installs the JVM shutdown hook on first call. Call during VM startup.
      */
     fun register(components: List<ComponentDefinition>) {
@@ -36,7 +36,7 @@ object InstanceRegistry {
                 Runtime.getRuntime().addShutdownHook(ShutdownThread())
             }
             for (component in components) {
-                componentDefinitions.putIfAbsent(component.componentName, component)
+                componentDefinitions.putIfAbsent(component.providerName, component)
             }
         }
     }
