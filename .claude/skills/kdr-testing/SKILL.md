@@ -15,6 +15,26 @@ There are two ways to confirm a change in this repo, and they share the same boo
 Prefer doing both for a behavioral change: a focused unit test for the contract, and a quick live drive to
 confirm it works in a running instance (that combination has caught things each alone missed).
 
+## Running the suite
+
+**`./gradlew check`** from the workspace root is the whole suite. Use it before claiming a change is green.
+
+**`./gradlew test` is the tempting wrong answer**: the KMP modules (`:webapp`, `:base:kernel`) expose their
+JS tests as `jsTest`/`jsNodeTest`, not `test`, so that command runs the JVM modules and *silently skips every
+frontend test* — no failure, no mention, just absent. `check` picks up both. While iterating, narrow instead:
+`./gradlew :base:kdn:test --tests '*AuthFlowTest*'`.
+
+If the build dies at **`:kotlinStoreYarnLock`** ("Lock file was changed"), note the catch-22: the remedy task
+`kotlinUpgradeYarnLock` cannot run, because the store task fails the build before it is reached. Break the
+cycle by forcing a re-resolve first:
+
+```bash
+./gradlew clean kotlinUpgradeYarnLock --rerun-tasks
+```
+
+The lock lives at the workspace root (`kotlin-js-store/yarn.lock`), outside the versioned repo, so each
+workspace drifts on its own and every checkout hits this independently.
+
 ## Booting your own server (manual)
 
 Run Gradle from the **workspace root** — the parent of the versioned repo, where the live
