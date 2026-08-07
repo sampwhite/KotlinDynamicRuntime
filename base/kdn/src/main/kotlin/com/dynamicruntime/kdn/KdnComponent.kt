@@ -14,7 +14,7 @@ import com.dynamicruntime.kdn.demo.DemoEndpoints
  * the endpoint portal has forms to render. Its services are ported in later issues.
  */
 class KdnComponent : ComponentDefinition {
-    override val componentName: String = "kdn"
+    override val providerName: String = "kdn"
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         collector.addModule(

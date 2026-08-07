@@ -4,6 +4,7 @@
 // which re-exports the base modules (common/kdn) via `api`, so this single
 // dependency brings the whole configuration toolkit. This is the one allowed
 // direction: `config` itself does not depend on `launch`.
+import com.dynamicruntime.build.wireInjectedComponents
 import java.util.zip.ZipFile
 
 plugins {
@@ -30,13 +31,6 @@ sourceSets {
     }
 }
 
-// Deployment projects living outside the source tree may follow a known naming
-// convention; this versioned build opts into them when a deployment has actually
-// defined them in settings.gradle.kts. `:customConfig`, when present, supplies
-// configuration code that the launcher discovers by reflection, so it is added to
-// the RUNTIME classpath only (never compile) and its absence is not an error.
-val customConfig = findProject(":customConfig")
-
 dependencies {
     implementation(project(":config"))
     // The demo `sample` module, so the launcher can optionally register its Todo endpoints. Start.kt only
@@ -46,10 +40,13 @@ dependencies {
     // The webapp host: its AppUiComponent serves the self-contained front end (embedded `:webapp` bundle)
     // under the `wa` context root. Registered unconditionally in Start.kt.
     implementation(project(":appui"))
-    if (customConfig != null) {
-        runtimeOnly(project(customConfig.path))
-    }
 }
+
+// Deployment-injected providers (issue #171): custom config now, custom components later. The deployment
+// declares which projects to bring in via its non-versioned settings.gradle.kts; this call adds each to the
+// RUNTIME classpath (never compile) so the launcher's ServiceLoader can discover them. The versioned build
+// names none of them, and declaring nothing is not an error.
+wireInjectedComponents()
 
 application {
     // The full application entry point: boots the instance and starts the HTTP server.
@@ -96,6 +93,7 @@ tasks.register<Jar>("fatJar") {
  * that touches a real deployment's data would fail while the tests, on H2, stayed green.
  */
 val mergeServiceFiles = tasks.register("mergeServiceFiles") {
+    description = "Makes sure the fat JAR handles repeats of the same named service files correctly"
     val runtimeJars = configurations.runtimeClasspath
     val outputDir = layout.buildDirectory.dir("fatJarServices")
     inputs.files(runtimeJars)

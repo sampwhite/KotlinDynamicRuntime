@@ -26,6 +26,24 @@ pluginManagement {
 
 rootProject.name = "KotlinDynamicRuntime"
 
+// >>> kdr-injection-prologue — deployment-injection helper (issue #171); kept in sync by kdr-install.
+// Convenience helper for co-building deployment-injected provider projects (custom config now, custom
+// components later). Each injectComponent(...) call includes the project (re-pointed at its real directory) AND
+// records its path, so the versioned `launch` build can add it to its runtime classpath via
+// `wireInjectedComponents()` — without the versioned build ever naming it. This settings file is therefore the
+// single, auditable control point for what deployment code enters the build.
+val kdrInjectedComponents = mutableListOf<String>()
+fun injectComponent(path: String, dir: String) {
+    include(path)
+    project(path).projectDir = file(dir)
+    kdrInjectedComponents += path
+}
+// Publish the registry so `launch` (via wireInjectedComponents()) can read it. The lambda runs when the root
+// project is configured — after this settings script finishes — so it captures every injectComponent(...) call
+// regardless of where those calls appear below. Harmless when nothing was injected.
+gradle.rootProject { extra["kdrInjectedComponents"] = kdrInjectedComponents.toList() }
+// <<< kdr-injection-prologue
+
 // The Gradle subprojects. Their physical layout lives under the
 // `KotlinDynamicRuntime` directory, so the logical project paths below are
 // re-pointed at their real directories with `projectDir`. `sample` (a demo the
@@ -52,9 +70,13 @@ project(":sample").projectDir = file("KotlinDynamicRuntime/sample")
 project(":webapp").projectDir = file("KotlinDynamicRuntime/webapp")
 project(":appui").projectDir = file("KotlinDynamicRuntime/appui")
 
-// To inject deployment-specific configuration code (discovered by reflection at
-// startup), define a `:customConfig` project here. See examples/custom-config.md
-// for the full setup (two lines below are all settings.gradle.kts needs):
+// Deployment-specific configuration code, discovered at startup via the JVM ServiceLoader (issue #171).
+// `injectComponent` both includes the `:customConfig` project and records it so `launch` wires it onto its
+// runtime classpath — the whole setup a deployment needs. See examples/custom-config.md for the full walkthrough
+// (the provider class, its package, and the `META-INF/services` file). Uncomment to enable:
 //
-//   include("customConfig")
-//   project(":customConfig").projectDir = file("customConfig")
+//   injectComponent(":customConfig", "customConfig")
+//
+// A client component from a private sibling checkout would be another line, e.g.:
+//
+//   injectComponent(":acmeBilling", "../acme-private/billing")

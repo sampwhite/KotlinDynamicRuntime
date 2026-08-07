@@ -33,7 +33,7 @@ import com.dynamicruntime.common.startup.ServiceInitializer
  * the `kdn` module.
  */
 class CommonComponent : ComponentDefinition {
-    override val componentName: String = "common"
+    override val providerName: String = "common"
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         // Endpoints/types live with the services that own them; the component just wires them in.
