@@ -69,7 +69,7 @@ object InstanceRegistry {
 
             val components = componentDefinitions.values.sortedBy { it.loadPriority() }
             for (component in components) {
-                if (component.isLoaded()) {
+                if (component.isLoaded(cxt)) {
                     component.addSchema(cxt, collector)
                 }
             }
@@ -77,7 +77,7 @@ object InstanceRegistry {
             val startupFactories = mutableListOf<() -> ServiceInitializer>()
             val serviceFactories = mutableListOf<() -> ServiceInitializer>()
             for (component in components) {
-                if (component.isLoaded() && component.isActive()) {
+                if (component.isLoaded(cxt) && component.isActive(cxt)) {
                     startupFactories.addAll(component.startupServices(cxt))
                     serviceFactories.addAll(component.services(cxt))
                 }

@@ -33,10 +33,11 @@ sourceSets {
 
 dependencies {
     implementation(project(":config"))
-    // The demo `sample` module, so the launcher can optionally register its Todo endpoints. Start.kt only
-    // does so in developer environments (see shouldLoadSample there), so this dependency never puts the demo
-    // into a real deployment's running endpoint set.
-    implementation(project(":sample"))
+    // The demo `sample` module. Its SampleComponent is discovered at startup via ServiceLoader (issue #171)
+    // and self-gates to developer environments (SampleComponent.isLoaded), so it never enters a real
+    // deployment's endpoint set. `runtimeOnly` because the launcher no longer references it at compile time --
+    // it reaches it only through the versioned KdrProvider/ComponentDefinition interfaces.
+    runtimeOnly(project(":sample"))
     // The webapp host: its AppUiComponent serves the self-contained front end (embedded `:webapp` bundle)
     // under the `wa` context root. Registered unconditionally in Start.kt.
     implementation(project(":appui"))

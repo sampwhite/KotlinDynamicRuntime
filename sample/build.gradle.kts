@@ -1,8 +1,9 @@
 // `sample` — an example app whose SampleComponent contributes demo Todo endpoints, built on the runtime's
 // own endpoint framework (not an external web framework). It has no launcher of its own: it is folded into
-// the main `launch` app, which registers SampleComponent only in developer environments (see shouldLoadSample
-// in launch's Start.kt). The main build therefore depends on this module, but the demo never enters a real
-// deployment's endpoint set.
+// the main `launch` app, which discovers SampleComponent via ServiceLoader (issue #171). The component
+// self-gates to developer environments (SampleComponent.isLoaded), so the demo never enters a real
+// deployment's endpoint set. `launch` depends on this module `runtimeOnly` (it references it only through the
+// discovery mechanism, never at compile time).
 plugins {
     id("kdr.kotlin-conventions")
 }

@@ -18,11 +18,15 @@ import com.dynamicruntime.common.context.KdrCxt
  * component-specific and so stays here rather than on the shared base.
  */
 interface ComponentDefinition : KdrProvider {
-    /** Whether this component contributes its schema to the application. May become config-driven later. */
-    fun isLoaded(): Boolean = true
+    /**
+     * Whether this component contributes its schema to the application. Receives the startup [cxt] so the
+     * decision can read instance config and environment (e.g., a demo component that loads only in developer
+     * environments, as the `sample` module's `SampleComponent` does).
+     */
+    fun isLoaded(cxt: KdrCxt): Boolean = true
 
-    /** Whether this component's services are active. May become config-driven later. */
-    fun isActive(): Boolean = true
+    /** Whether this component's services are active. Receives the startup [cxt] for the same config-driven reason. */
+    fun isActive(cxt: KdrCxt): Boolean = true
 
     /** Contributes schema modules (types + endpoints) into the collector. */
     fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {}

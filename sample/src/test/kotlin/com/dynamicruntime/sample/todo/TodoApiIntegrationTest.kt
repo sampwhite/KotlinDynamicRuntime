@@ -27,7 +27,8 @@ class TodoApiIntegrationTest : StringSpec({
     // non-conforming endpoint response would fail these tests.
     fun freshClient(): TestHttpClient {
         InstanceRegistry.register(listOf(SampleComponent()))
-        val cxt = Startup.mkTestBootCxt("test", "sample-test-${counter.incrementAndGet()}")
+        // Force SampleComponent.isLoaded on: it otherwise gates to developer envs, and mkTestBootCxt uses unit.
+        val cxt = Startup.mkTestBootCxt("test", "sample-test-${counter.incrementAndGet()}", mapOf("KDR_LOAD_SAMPLE" to "true"))
         return TestHttpClient(cxt.instanceConfig)
     }
 

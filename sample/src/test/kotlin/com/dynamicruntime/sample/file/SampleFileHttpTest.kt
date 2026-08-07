@@ -28,7 +28,7 @@ import java.nio.file.Files
  * file, its default for which is **1 KB**, and with no `location` configured the upload dies with "No files
  * directory configured".
  *
- * So the sizes here matter. [largeUpload] is deliberately well over that 1 KB threshold: a small file takes a
+ * So the sizes here matter. The "largeUpload" is deliberately well over that 1 KB threshold: a small file takes a
  * different path through Jetty and proves nothing about a real one. (The bug survived a hand-check with an
  * 895-byte PNG — it passed by 129 bytes.)
  */
@@ -43,7 +43,8 @@ class SampleFileHttpTest : StringSpec({
         System.setProperty("kdr.workspaceDir", tempWorkspace.absolutePath)
         // Boot the instance so its endpoints are registered, then serve them on a real socket.
         val instanceName = "sampleFileHttpTest"
-        Startup.mkTestBootCxt("httpBoot", instanceName)
+        // Force SampleComponent.isLoaded on: it otherwise gates to developer envs, and mkTestBootCxt uses unit.
+        Startup.mkTestBootCxt("httpBoot", instanceName, mapOf("KDR_LOAD_SAMPLE" to "true"))
         server = TestHttpServer(instanceName)
     }
 
