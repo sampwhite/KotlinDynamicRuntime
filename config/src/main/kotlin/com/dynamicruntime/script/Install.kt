@@ -44,6 +44,7 @@ fun main(args: Array<String>) {
     syncGradleWrapper(workDir, repoDir)
     ensureYarnLock(workDir)
     ensureBinOnPath(repoDir)
+    ensureKdrUseFunction(repoDir)
     ensurePostgres(workDir)
     println("kdr-install: done.")
 }
@@ -250,8 +251,66 @@ private fun ensureBinOnPath(repoDir: File) {
         println("Left ${rc.name} unchanged.")
         return
     }
-    rc.appendText("\n# KotlinDynamicRuntime bin (kdr-* command-line scripts)\n$line\n")
+    val addition = "# KotlinDynamicRuntime bin (kdr-* command-line scripts)\n$line"
+    rc.writeText(spliceIntoRc(if (rc.isFile) rc.readText() else "", addition))
     println("Added. Refresh PATH in your current shell with:  source ${rc.path}")
+}
+
+/**
+ * Offers to add the `kdr-use` shell function to the user's rc, and to keep it current (issue #179). It is a
+ * *function*, not a `bin/` command, because only code running in the current shell can change that shell's PATH
+ * -- so it must be sourced. It is inlined as a marked block (from the versioned `bin/kdr-use.sh`) so the rc stays
+ * self-contained, with no runtime dependency on any one checkout persisting.
+ *
+ * Reconciles by content, not a version number (nothing to remember to bump): absent -> offer to add; identical
+ * -> silent; different (a newer `bin/kdr-use.sh`, or the user's own experiments) -> offer a targeted in-place
+ * restore of just that block, leaving the rest of the rc untouched.
+ */
+private fun ensureKdrUseFunction(repoDir: File) {
+    val src = File(repoDir, "bin/kdr-use.sh")
+    if (!src.isFile) {
+        return
+    }
+    val rc = shellRcFile()
+    if (rc == null) {
+        println("To switch checkouts with 'kdr-use', source ${src.path} from your shell startup file.")
+        return
+    }
+    val block = "# >>> kdr-use -- managed by kdr-install (rerun kdr-install to restore from bin/kdr-use.sh)\n" +
+        "${src.readText().trimEnd()}\n# <<< kdr-use"
+    val rcText = if (rc.isFile) rc.readText() else ""
+    val existing = extractMarkedBlock(rcText, "kdr-use")
+    val belowSentinel = existing != null && isBelowTailSentinel(rcText, "kdr-use")
+    when {
+        existing == null -> {
+            println("The 'kdr-use <dir>' shell function switches which checkout's kdr commands (and workspace) a console uses.")
+            print("Add it to ${rc.path}? [y/N] ")
+            if (!readYes()) {
+                println("Left ${rc.name} unchanged. You can 'source ${src.path}' yourself later.")
+                return
+            }
+            rc.writeText(spliceIntoRc(rcText, block))
+            println("Added kdr-use to ${rc.name}. Enable it in this shell now with:  source ${rc.path}")
+        }
+        existing.trim() == block.trim() && !belowSentinel -> return // already current and correctly placed
+        else -> {
+            val why = if (belowSentinel) {
+                "sits below a 'keep me last' marker (e.g. sdkman's)"
+            } else {
+                "differs from the current bin/kdr-use.sh (a newer version, or your own edits)"
+            }
+            println("Your kdr-use in ${rc.path} $why.")
+            print("Update it? [y/N] ")
+            if (!readYes()) {
+                println("Left ${rc.name} unchanged.")
+                return
+            }
+            // Remove the old copy and re-splice, so this both refreshes the content and moves it above any
+            // trailing "keep me last" section.
+            rc.writeText(spliceIntoRc(removeMarkedBlock(rcText, "kdr-use"), block))
+            println("Updated kdr-use in ${rc.name}. Reload it in this shell with:  source ${rc.path}")
+        }
+    }
 }
 
 /** The shell rc file to edit for PATH, per the current shell and OS, or null if it can't be determined. */

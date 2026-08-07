@@ -34,4 +34,23 @@ class SettingsSupportTest : StringSpec({
         hasInjectComponent("injectComponent(\":acmeBilling\", \"../x\")", ":customConfig") shouldBe false
         hasInjectComponent("rootProject.name = \"x\"", ":customConfig") shouldBe false
     }
+
+    "removeMarkedBlock deletes the span (and a blank line above), or leaves text unchanged when absent" {
+        removeMarkedBlock("a\n\n# >>> demo\nx\n# <<< demo\nb", "demo") shouldBe "a\nb"
+        removeMarkedBlock("just text", "demo") shouldBe "just text"
+    }
+
+    "spliceIntoRc inserts before a 'keep me last' sentinel, else appends" {
+        val withSentinel = "alias l='ls'\n\n# THIS MUST BE AT THE END for sdkman\nexport SDKMAN_DIR=x\n"
+        spliceIntoRc(withSentinel, "# added\nexport PATH=y") shouldBe
+            "alias l='ls'\n\n# added\nexport PATH=y\n\n# THIS MUST BE AT THE END for sdkman\nexport SDKMAN_DIR=x\n"
+        spliceIntoRc("alias l='ls'\n", "# added\nexport PATH=y") shouldBe "alias l='ls'\n\n# added\nexport PATH=y\n"
+        spliceIntoRc("", "X") shouldBe "X\n"
+    }
+
+    "isBelowTailSentinel is true only when the block sits under the sentinel" {
+        isBelowTailSentinel("# MUST BE AT THE END\n# >>> demo\nx\n# <<< demo", "demo") shouldBe true
+        isBelowTailSentinel("# >>> demo\nx\n# <<< demo\n# MUST BE AT THE END", "demo") shouldBe false
+        isBelowTailSentinel("# >>> demo\nx\n# <<< demo", "demo") shouldBe false
+    }
 })

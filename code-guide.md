@@ -249,6 +249,16 @@ We call one of these a **kdr command**: a thin `bin/kdr-*` shell entry point bac
 `config` module's `com.dynamicruntime.script` package), launched via `kdr-run`. "Command" avoids collision with
 Kotlin's own `.kts` scripting; `kdr-run` itself is the shell-only launcher the others run through.
 
+Two conventions go with this:
+- **`@desc:`** — every `bin/kdr-*` script carries a groomed one-line summary as a tagged comment (`# @desc: …`),
+  by convention on the second line, blank line, then the fuller header. `kdr-help` lists the commands by grepping
+  that tag (position-independent, but the convention keeps it up top so a human reads a crisp topic sentence
+  first); a script missing the tag is flagged in the listing.
+- **Switchers are sourced functions, not commands.** A tool that must change the *current* shell's environment —
+  `kdr-use`, which re-points `PATH` at a chosen checkout — cannot be a `bin/` executable, because a child
+  process cannot mutate its parent shell's `PATH`. It ships as a sourced shell function (`bin/kdr-use.sh`, which
+  `kdr-install` offers to add to your rc) and appears under a separate "shell functions" heading in `kdr-help`.
+
 `kdr-install` is the worked example. Its shell half (`bin/kdr-install`) does the irreducible bootstrap — check
 that a JDK is present, copy a minimal `settings.gradle.kts` so Gradle can run at all — then hands off to the
 clever half, `com.dynamicruntime.script.Install`, which idempotently brings the deployment's per-machine

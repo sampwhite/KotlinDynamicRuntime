@@ -94,6 +94,77 @@ fun extractMarkedBlock(text: String, marker: String): String? {
     return lines.subList(start, start + 1 + relEnd + 1).joinToString("\n")
 }
 
+/** Returns [text] with the `>>> [marker]` .. `<<< [marker]` span removed (plus one blank line directly above it,
+ * so no double gap is left), or [text] unchanged when the markers are absent. Non-private for tests. */
+fun removeMarkedBlock(text: String, marker: String): String {
+    val lines = text.split("\n")
+    val start = lines.indexOfFirst { it.contains(">>> $marker") }
+    if (start < 0) {
+        return text
+    }
+    val relEnd = lines.drop(start + 1).indexOfFirst { it.contains("<<< $marker") }
+    if (relEnd < 0) {
+        return text
+    }
+    var s = start
+    val e = start + 1 + relEnd
+    if (s > 0 && lines[s - 1].isBlank()) {
+        s--
+    }
+    return (lines.subList(0, s) + lines.subList(e + 1, lines.size)).joinToString("\n")
+}
+
+/**
+ * The line-index of a trailing "keep me last" sentinel in a shell rc -- a line declaring it must stay at the end
+ * of the file, as sdkman writes (`# THIS MUST BE AT THE END ...`) -- or -1 if there is none.
+ */
+private fun tailSentinelIndex(lines: List<String>): Int =
+    lines.indexOfFirst { it.contains("MUST BE AT THE END", ignoreCase = true) }
+
+/**
+ * Splices [addition] into [rcText] as a self-contained block, separated from its neighbors by a blank line:
+ * immediately *before* a trailing "keep me last" sentinel (see [tailSentinelIndex]) when one is present -- so a
+ * tool like sdkman that must have the final word keeps it -- otherwise at the end. The result ends with a newline.
+ * Non-private for tests.
+ */
+fun spliceIntoRc(rcText: String, addition: String): String {
+    val add = addition.trim('\n')
+    val lines = if (rcText.isEmpty()) emptyList() else rcText.split("\n")
+    val sentinel = tailSentinelIndex(lines)
+    val insertAt = if (sentinel < 0) {
+        lines.size
+    } else {
+        var t = sentinel
+        while (t > 0 && lines[t - 1].isBlank()) {
+            t--
+        }
+        t
+    }
+    val before = lines.subList(0, insertAt).joinToString("\n").trimEnd('\n')
+    val after = lines.subList(insertAt, lines.size).joinToString("\n").trim('\n')
+    val parts = mutableListOf<String>()
+    if (before.isNotEmpty()) {
+        parts += before
+        parts += ""
+    }
+    parts += add
+    if (after.isNotEmpty()) {
+        parts += ""
+        parts += after
+    }
+    return parts.joinToString("\n") + "\n"
+}
+
+/** Whether the `>>> [marker]` block sits *below* a trailing "keep me last" sentinel, so it should be moved up. */
+fun isBelowTailSentinel(text: String, marker: String): Boolean {
+    val lines = text.split("\n")
+    val sentinel = tailSentinelIndex(lines)
+    if (sentinel < 0) {
+        return false
+    }
+    return lines.indexOfFirst { it.contains(">>> $marker") } > sentinel
+}
+
 /**
  * Inserts [prologue] into [settingsText] just after the `rootProject.name` line (with a blank line before it),
  * or null when there is no such line to anchor on. The prologue's registry handoff runs deferred, so this
