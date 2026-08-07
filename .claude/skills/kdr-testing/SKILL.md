@@ -92,6 +92,35 @@ A **content differential** confirms a stable-vs-changing value: call twice uncha
 then change an input (different `contentHash`). The `/demo/*` endpoints (`/demo/calc`, `/demo/todos`) are ideal
 — pure, parameterized, no auth.
 
+## Traveling the clock (`/test/clock`)
+
+Anything gated on elapsed time — a session lapsing, a rate-limit window reopening, a device's trust running
+out — is otherwise unreachable: the shortest of those horizons is fifteen minutes and the longest is thirty
+days. `/test/clock` moves the **instance** clock instead, so the expiry fires now. It is `forTestingOnly`, so
+it does not exist outside a test instance; there is no way to move a real deployment's clock.
+
+Five ops, POSTed as `op`: `advance` (with `deltaMs`), `set` (with `atMs`, epoch millis), `freeze`, `unfreeze`,
+`reset`. Each returns `instanceNowMs`, the clock's value afterwards.
+
+```bash
+# Watch a live session go stale: log in, jump past the thirty-day session, then look again.
+JAR=/tmp/cookies.txt
+curl -s -c "$JAR" -X POST http://localhost:7071/kda/test/becomeUser -H 'Content-Type: application/json' \
+  -d '{"email":"alice@example.com"}' > /dev/null
+curl -s -X POST http://localhost:7071/kda/test/clock -H 'Content-Type: application/json' \
+  -d '{"op":"advance","deltaMs":2592100000}' | jq .results
+curl -s -b "$JAR" http://localhost:7071/kda/auth/self/info | jq .results   # now anonymous
+```
+
+This is the endpoint's real purpose: driving a **browser** session forward to watch the UI react to an expiry
+you would otherwise have to wait a month for. `freeze` is the one to reach for when an assertion is
+duration-sensitive — it holds the clock so repeated reads are identical instead of racing.
+
+In a **unit test**, skip the endpoint and move the clock directly — `cxt.instanceConfig.clock.advanceBy(…)`.
+Same clock, one less round trip. Whichever you use, in a flow test the clock only ever moves **forward** (see
+the conventions above): `now()` also stamps persisted `createdAt`/`touchedAt`, so a rewind future-dates rows
+already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
+
 ## Driving the frontend (browser)
 
 `:launch:run` serves the webapp at `http://localhost:7071/wa`. Use the in-app browser tools

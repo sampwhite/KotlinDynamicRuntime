@@ -20,6 +20,7 @@ import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.Signature
 import java.security.interfaces.RSAPublicKey
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * End-to-end coverage for Google sign-in (issue #157), driven through the real request pipeline: the endpoint,
@@ -47,19 +48,24 @@ class GoogleLoginTest : StringSpec({
         mapOf(GOOG.googleClientId to clientId, GOOG.googleKeySource to keySource),
     )
 
-    /** A signed ID token for [sub]/[email], as Google's sign-in would hand the browser. */
+    /**
+     * A signed ID token for [sub]/[email], as Google's sign-in would hand the browser. [expEpochSec] is stamped
+     * from the *real* clock by default, exactly as Google would stamp it -- the instance clock is ours to
+     * travel, not Google's.
+     */
     fun mkCredential(
         sub: String,
         email: String?,
         emailVerified: Boolean = true,
         aud: String = clientId,
+        expEpochSec: Long = (System.currentTimeMillis() / 1000) + 3600,
     ): String {
         val header = mapOf(GOOG.alg to GOOG.rs256, GOOG.kid to testKid)
         val claims = buildMap<String, Any?> {
             put(GOOG.sub, sub)
             put(GOOG.aud, aud)
             put(GOOG.iss, "https://accounts.google.com")
-            put(GOOG.exp, (System.currentTimeMillis() / 1000) + 3600)
+            put(GOOG.exp, expEpochSec)
             if (email != null) put(GOOG.email, email)
             put(GOOG.emailVerified, emailVerified)
             put(GOOG.name, "Test Person")
@@ -130,6 +136,35 @@ class GoogleLoginTest : StringSpec({
         login(client, mkCredential("sub-victim", "victim@example.com")).let { real ->
             real[UPF.userId].toOptLong()!! shouldNotBe 0L
         }
+    }
+
+    // The last cxt.now() gate in the auth surface, and the one a captured token replays against (see the
+    // deferred nonce item): worth holding still in both directions.
+    "an ID token is honored inside the expiry leeway and refused past it (issue #185)" {
+        val cxt = bootGoogle("googExpiry", "googExpiryTest")
+        val client = TestHttpClient(cxt.instanceConfig)
+        val clock = cxt.instanceConfig.clock
+        val expSec = (System.currentTimeMillis() / 1000) + 3600
+        val credential = mkCredential("sub-stale", "stale@example.com", expEpochSec = expSec)
+
+        // Both offsets are fixed, deliberately NOT derived from expiryLeewayMs: a bracket computed from the
+        // constant moves with it and would pass for any value, zero included. So the test states the allowance
+        // it expects, and this guard fails loudly if the constant is ever re-tuned past it -- at which point
+        // the bracket should be re-aimed on purpose rather than silently tracking the change.
+        val insideMs = 30_000L
+        val outsideMs = 120_000L
+        (GOOG.expiryLeewayMs in (insideMs + 1) until outsideMs) shouldBe true
+
+        // Past the token's own exp but inside the clock-skew allowance: still honored. Only travelling the
+        // clock reaches this half -- a backdated token proves the rejection while leaving the leeway unproven.
+        clock.advanceBy((expSec * 1000 + insideMs - cxt.instanceNow().toEpochMilliseconds()).milliseconds)
+        login(client, credential)[UPF.userId].toOptLong()!! shouldNotBe 0L
+
+        // Comfortably past the allowance, the same token is refused -- and refused during verification, before
+        // the linked-identity lookup, so the link the login above established does not quietly rescue it.
+        clock.advanceBy((outsideMs - insideMs).milliseconds)
+        client.sendEditRequest(AEP.loginByGoogle, null, mapOf(AFLD.googleCredential to credential), isPut = false)
+            .rptStatusCode shouldBe 400
     }
 
     "a token minted for another application is refused end to end" {
