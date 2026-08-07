@@ -243,8 +243,11 @@ lives in Kotlin.
 The mechanism: `launch`'s `pathingJar` task builds a tiny manifest-only "pathing" jar whose `Class-Path` points
 at every runtime jar at its build location (the jars stay separate — no resource collisions to reconcile), and
 `bin/kdr-run` launches any `main` against it with a fast, plain-`java` start (rebuilding only when sources
-actually changed — it consults a source-directory manifest to decide). Utility "scripts" are ordinary Kotlin
-`main` functions in the `config` module under the `com.dynamicruntime.script` package.
+actually changed — it consults a source-directory manifest to decide).
+
+We call one of these a **kdr command**: a thin `bin/kdr-*` shell entry point backed by a Kotlin `main` (in the
+`config` module's `com.dynamicruntime.script` package), launched via `kdr-run`. "Command" avoids collision with
+Kotlin's own `.kts` scripting; `kdr-run` itself is the shell-only launcher the others run through.
 
 `kdr-install` is the worked example. Its shell half (`bin/kdr-install`) does the irreducible bootstrap — check
 that a JDK is present, copy a minimal `settings.gradle.kts` so Gradle can run at all — then hands off to the
