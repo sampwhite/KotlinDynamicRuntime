@@ -43,39 +43,45 @@ class HomeConfig(
  * The group's copy comes from the shared [fetchCopy]. Everything goes through [Http], which carries the
  * runtime's conventions (the roots, the app id, the error envelope) for every group alike.
  */
-object HomeApi {
-    /** GET the home UI-config -- cheap and meant to be re-fetched on navigation. */
-    suspend fun fetchConfig(): HomeConfig {
-        val config = fetchUiConfig(HEP.homeUiConfig)
-        val links = config.state[HFLD.links].toJsonListOfMaps().map { link ->
-            HomeLink(
-                id = link[HFLD.id] as? String ?: "",
-                label = link[HFLD.label] as? String ?: "",
-                docId = link[HFLD.docId] as? String ?: "",
-                buildId = link[HFLD.buildId] as? String ?: "",
-            )
-        }
-        val menu = config.state[HFLD.menu].toJsonListOfMaps().map { entry ->
-            MenuItem(
-                id = entry[HFLD.id] as? String ?: "",
-                label = entry[HFLD.label] as? String ?: "",
-                page = entry[HFLD.page] as? String,
-                action = entry[HFLD.action] as? String,
-            )
-        }
-        return HomeConfig(
-            fragment = config.fragment,
-            layout = HomeLayout(
-                topBar = config.features[HFEAT.topBar] == true,
-                leftBar = config.features[HFEAT.leftBar] == true,
-                inlineLinks = config.features[HFEAT.inlineLinks] == true,
-            ),
-            links = links,
-            menu = menu,
-            user = UserProfile.fromUserInfo(config.state[HFLD.userInfo].toJsonMapOrEmpty()),
-            canManageUsers = config.features[HFEAT.canManageUsers] == true,
+/**
+ * The pure [UiConfig] -> [HomeConfig] mapping, separated from the fetch so it is unit-testable (issue #161):
+ * the links and menu lists, the layout toggles, the caller's profile, and the manage-users flag, all read off
+ * the group's own keys with per-field fallbacks.
+ */
+fun homeConfigFrom(config: UiConfig): HomeConfig {
+    val links = config.state[HFLD.links].toJsonListOfMaps().map { link ->
+        HomeLink(
+            id = link[HFLD.id] as? String ?: "",
+            label = link[HFLD.label] as? String ?: "",
+            docId = link[HFLD.docId] as? String ?: "",
+            buildId = link[HFLD.buildId] as? String ?: "",
         )
     }
+    val menu = config.state[HFLD.menu].toJsonListOfMaps().map { entry ->
+        MenuItem(
+            id = entry[HFLD.id] as? String ?: "",
+            label = entry[HFLD.label] as? String ?: "",
+            page = entry[HFLD.page] as? String,
+            action = entry[HFLD.action] as? String,
+        )
+    }
+    return HomeConfig(
+        fragment = config.fragment,
+        layout = HomeLayout(
+            topBar = config.features[HFEAT.topBar] == true,
+            leftBar = config.features[HFEAT.leftBar] == true,
+            inlineLinks = config.features[HFEAT.inlineLinks] == true,
+        ),
+        links = links,
+        menu = menu,
+        user = UserProfile.fromUserInfo(config.state[HFLD.userInfo].toJsonMapOrEmpty()),
+        canManageUsers = config.features[HFEAT.canManageUsers] == true,
+    )
+}
+
+object HomeApi {
+    /** GET the home UI-config -- cheap and meant to be re-fetched on navigation. */
+    suspend fun fetchConfig(): HomeConfig = homeConfigFrom(fetchUiConfig(HEP.homeUiConfig))
 
     /** GET a whole Markdown document, verbatim; the caller renders it. */
     suspend fun fetchDoc(docId: String, buildId: String): String = Http.getDoc(docId, buildId)

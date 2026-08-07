@@ -42,21 +42,24 @@ class ProfileConfig(
  * `addPassword`, then [AuthApi.setPassword]). Only *removing* a password is a plain session call -- it is a
  * de-escalation, and code login still works afterward.
  */
+/**
+ * The pure [UiConfig] -> [ProfileConfig] mapping, separated from the fetch so it is unit-testable (issue #161):
+ * the password affordance flags, the caller's profile, and the login id its password calls need.
+ */
+fun profileConfigFrom(config: UiConfig): ProfileConfig = ProfileConfig(
+    fragment = config.fragment,
+    features = ProfileFeatures(
+        hasPassword = config.features[AFEAT.hasPassword] == true,
+        canSetPassword = config.features[AFEAT.canSetPassword] == true,
+        simulatedEmail = config.features[AFEAT.simulatedEmail] == true,
+    ),
+    user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
+    loginId = config.state.getOptStr(AFLD.loginId) ?: "",
+)
+
 object ProfileApi {
     /** GET the profile UI-config. Login-required: a logged-out caller raises, and the page sends them to login. */
-    suspend fun fetchConfig(): ProfileConfig {
-        val config = fetchUiConfig(AEP.profileUiConfig)
-        return ProfileConfig(
-            fragment = config.fragment,
-            features = ProfileFeatures(
-                hasPassword = config.features[AFEAT.hasPassword] == true,
-                canSetPassword = config.features[AFEAT.canSetPassword] == true,
-                simulatedEmail = config.features[AFEAT.simulatedEmail] == true,
-            ),
-            user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
-            loginId = config.state.getOptStr(AFLD.loginId) ?: "",
-        )
-    }
+    suspend fun fetchConfig(): ProfileConfig = profileConfigFrom(fetchUiConfig(AEP.profileUiConfig))
 
     /** Removes the caller's password (opting back out of password login); returns the updated user info. */
     suspend fun clearPassword(): UserProfile =
