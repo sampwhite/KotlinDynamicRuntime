@@ -155,7 +155,7 @@ class GoogleLoginTest : StringSpec({
         val outsideMs = 120_000L
         (GOOG.expiryLeewayMs in (insideMs + 1) until outsideMs) shouldBe true
 
-        // Past the token's own exp but inside the clock-skew allowance: still honored. Only travelling the
+        // Past the token's own exp but inside the clock-skew allowance: still honored. Only traveling the
         // clock reaches this half -- a backdated token proves the rejection while leaving the leeway unproven.
         clock.advanceBy((expSec * 1000 + insideMs - cxt.instanceNow().toEpochMilliseconds()).milliseconds)
         login(client, credential)[UPF.userId].toOptLong()!! shouldNotBe 0L
