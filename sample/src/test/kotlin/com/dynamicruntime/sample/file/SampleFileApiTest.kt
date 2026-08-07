@@ -35,7 +35,8 @@ class SampleFileApiTest : StringSpec({
     }
 
     fun client(cxtName: String): TestHttpClient =
-        TestHttpClient(Startup.mkTestBootCxt(cxtName, "sampleFileTest").instanceConfig)
+        // Force SampleComponent.isLoaded on: it otherwise gates to developer envs, and mkTestBootCxt uses unit.
+        TestHttpClient(Startup.mkTestBootCxt(cxtName, "sampleFileTest", mapOf("KDR_LOAD_SAMPLE" to "true")).instanceConfig)
 
     // A PNG header: the bytes are deliberately not valid UTF-8, so a round trip that survives them proves the
     // content never went through the text path.

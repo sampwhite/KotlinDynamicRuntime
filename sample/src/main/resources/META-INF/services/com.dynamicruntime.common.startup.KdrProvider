@@ -1,0 +1,2 @@
+# The sample module's component, discovered at startup by ServiceLoader.load(KdrProvider) (issue #171).
+com.dynamicruntime.sample.SampleComponent
