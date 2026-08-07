@@ -38,10 +38,10 @@ import kotlin.time.Duration.Companion.milliseconds
  *
  * The price is order dependence: a block that breaks takes the ones after it with it, and state accumulates.
  * Two conventions keep that manageable:
- *  - **The clock only moves forward.** [travel] never rewinds, because `now()` also stamps persisted
+ *  - **The clock only moves forward.** "travel" never rewinds, because `now()` also stamps persisted
  *    `createdAt`/`touchedAt` (issue #160) -- a rewind would future-date rows already written and then surface
  *    as an unrelated failure somewhere far away.
- *  - **Each block owns its identifiers** -- its own contact, username and source IP -- so one block's
+ *  - **Each block owns its identifiers** -- its own contact, username, and source IP -- so one block's
  *    per-contact and per-IP rate-limit keys cannot silently throttle the next. Where a block deliberately
  *    reuses an earlier block's user, it says so.
  *
@@ -49,6 +49,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * bottom boots its own instance for exactly that reason. Verification codes are computed directly (they are a
  * deterministic hash of the token + contact), so no email parsing is needed.
  */
+@Suppress("UnnecessaryVariable")
 class AuthFlowTest : StringSpec({
 
     // The one instance the whole flow runs on.
@@ -58,7 +59,7 @@ class AuthFlowTest : StringSpec({
     val username = "jason"
 
     // A long flow needs its failures to name themselves: an unexpected error envelope here reports its own
-    // status and message, rather than the "key results is missing" that a bare unwrap would raise ten steps in.
+    // status and message, rather than the "key results is missing" that a bare unwrapping would raise ten steps in.
     fun results(resp: Map<String, Any?>): Map<String, Any?> = resp[EP.results]?.toJsonMap()
         ?: throw AssertionError("Expected a success but got ${resp[EP.status]}: ${resp[EP.errorMessage]}")
 
@@ -217,7 +218,7 @@ class AuthFlowTest : StringSpec({
         client.sendEditRequest("/auth/login/byCode", null, wrong, isPut = false)
             .rptStatusCode shouldBe EXC.tooManyRequests
 
-        // The counter is a fixed window, so travelling past it reopens attempts. The form token lives on the
+        // The counter is a fixed window, so traveling past it reopens attempts. The form token lives on the
         // same fifteen-minute scale (the previous block), so this necessarily needs a fresh one.
         travel((RL.verifyWindowMs + 1000).milliseconds)
         val afterWindow = mapOf("loginId" to "nina", "formAuthToken" to tokenOf(client), "verifyCode" to "WRONGCODE")
@@ -241,8 +242,8 @@ class AuthFlowTest : StringSpec({
         val good = mapOf("loginId" to "omar", "formAuthToken" to token, "verifyCode" to computeVerifyCode(token, contact))
         results(client.sendJsonPostRequest("/auth/login/byCode", good))["publicName"] shouldBe "omar"
 
-        // Proof the reset happened: a further full run of failures still never trips. Had the counter carried
-        // over it would already stand at verifyMax - 1, and these would start returning 429 partway through.
+        // Proof that the reset happened: a further full run of failures still never trips. Had the counter carried
+        // over, it would already stand at verifyMax - 1, and these would start returning 429 partway through.
         repeat(RL.verifyMax) {
             client.sendEditRequest("/auth/login/byCode", null, wrong, isPut = false).rptStatusCode shouldBe EXC.badInput
         }
@@ -260,7 +261,7 @@ class AuthFlowTest : StringSpec({
         repeat(RL.sendPerContactMax) { send(token)[EP.status] shouldBe null }
         send(token)[EP.status] shouldBe EXC.tooManyRequests
 
-        // An hour on, the contact can be mailed again (a fresh token, since the send window outlasts it).
+        // An hour on, the contact can be mailed again (a fresh token, since the "send window" outlasts it).
         travel((RL.sendPerContactWindowMs + 60_000).milliseconds)
         send(tokenOf(client))[EP.status] shouldBe null
     }
@@ -321,7 +322,7 @@ class AuthFlowTest : StringSpec({
         repeat(RL.pwPerUserMax) { pwLogin(client, "ghost", "whatever").rptStatusCode shouldBe EXC.authNeeded }
         pwLogin(client, "ghost", "whatever").rptStatusCode shouldBe EXC.tooManyRequests
 
-        // Travel past the window and the fixed window reopens -- back to a plain rejection, not a throttle.
+        // Travel past the window, and the fixed window reopens -- back to a plain rejection, not a throttle.
         travel((RL.pwWindowMs + 1000).milliseconds)
         pwLogin(client, "ghost", "whatever").rptStatusCode shouldBe EXC.authNeeded
     }
@@ -418,7 +419,7 @@ class AuthFlowTest : StringSpec({
         results(client.sendJsonGetRequest("/auth/self/info"))["publicName"] shouldBe "piper" // session still good
 
         // The password is now refused from the very browser that just used it. Had the day-10 password login
-        // extended device trust, trust would run to day 40 and this would still succeed -- so this is what
+        // extended device trust, trust would run to day 40, and this would still succeed -- so this is what
         // asserts the "rides trust but never grants it" invariant that AUTHC.deviceTrustMillis documents.
         client.sendGetRequest("/logout")
         pwLogin(client, "piper", "sekret-pw-123").rptStatusCode shouldBe EXC.authNeeded
