@@ -1,6 +1,6 @@
 ---
 name: kdr-testing
-description: Test and verify changes in KotlinDynamicRuntime — booting your own server to drive it by curl or browser, and writing in-process unit tests. Covers the KDR_PORT/in-memory server conventions (and the don't-touch-7070 rule), mkTestBootCxt/mkBootCxt with config overlays, TestHttpClient and its response-extraction idioms, injecting env-var options through the instance config, selecting your own config object via KDR_CUSTOM_CONFIG to set config values that have no env var, and the TestUser/become-user helper for authenticated tests. Use whenever writing or reviewing a test, verifying a change end-to-end, or booting and driving the app in this codebase — even when the request just says "check that this works" or "run the app".
+description: Test and verify changes in KotlinDynamicRuntime — booting your own server to drive it by curl or browser, and writing in-process unit tests. Covers the KDR_PORT/in-memory server conventions (and the don't-touch-7070 rule), mkTestBootCxt/mkBootCxt with config overlays, the focused-vs-flow test split and the conventions a shared-instance flow test needs, TestHttpClient and its response-extraction idioms, injecting env-var options through the instance config, selecting your own config object via KDR_CUSTOM_CONFIG to set config values that have no env var, and the TestUser/become-user helper for authenticated tests. Use whenever writing or reviewing a test, verifying a change end-to-end, or booting and driving the app in this codebase — even when the request just says "check that this works" or "run the app".
 ---
 
 # Testing and verifying changes
@@ -102,6 +102,31 @@ then change an input (different `contentHash`). The `/demo/*` endpoints (`/demo/
 
 - **Use a unique `instanceName` per test.** `InstanceRegistry` caches an instance by name, so a reused name
   returns the earlier config and silently ignores your overlay.
+
+## Two kinds of test: focused, and flow
+
+Most tests are **focused**: limited setup, one behavior, their own instance, as above. But a per-test instance
+throws away everything that accumulates — elapsed time, prior logins, prior failures, another user's rows —
+and that is exactly where feature-interaction bugs live. It also pays the setup cost again per assertion.
+
+So behavior that depends on *accumulated* state goes in a **flow test** instead (`AuthFlowTest` is the worked
+example): one instance declared at spec level, many named blocks running in declaration order as a single
+continuous session. Blocks stay separately named so a failure still says what broke; what you trade away is
+order-independence, since a block that fails takes the ones after it with it.
+
+Three conventions make a flow test survivable — all of them learned from `AuthFlowTest`:
+
+- **The clock only moves forward.** `cxt.instanceConfig.clock.advanceBy(...)` (issue #160) is a one-way
+  ratchet. `now()` also stamps persisted `createdAt`/`touchedAt`, so a rewind future-dates rows already
+  written and surfaces later as an unrelated failure.
+- **Each block owns its identifiers** — its own contact, username and source IP — so one block's per-contact
+  and per-IP rate-limit keys cannot silently throttle the next. Reuse an earlier block's user only on purpose,
+  and say so in a comment.
+- **Unwrap responses through a helper that reports the error envelope**, not a bare `getValue("results")`.
+  Ten steps in, "expected a success but got 400: …" is the difference between a two-minute fix and a hunt.
+
+The hard boundary: a test needing a **different instance-config overlay** can never join a flow — the unit of
+sharing is the instance config. Boot it separately, in the same spec if it reads better there.
 
 ## Unit tests: TestHttpClient
 
