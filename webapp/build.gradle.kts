@@ -66,6 +66,14 @@ kotlin {
             }
 
         }
+        // Also register the Node.js environment on this same JS target. The app itself is a browser bundle
+        // (the `browser {}` block above), but the frontend's *pure-logic* unit tests (issue #161) — the
+        // UiConfig→typed-config mappers, TraceId, Copy — touch no DOM and run far cheaper under Node than in
+        // a headless-browser Karma run. Declaring `nodejs()` gives us the `jsNodeTest` task; the browser test
+        // task is disabled below so `check` never pulls in a headless Chrome. This leaves every browser
+        // artifact (the dev server, `jsBrowserDistribution`, appui's embedded bundle) untouched.
+        nodejs()
+
         // Produce an executable JS bundle (entry point = `main()`), not just a
         // library — this is what wires up the webpack tasks that download the
         // npm modules (react, react-dom, …) and bundle the app.
@@ -109,5 +117,18 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
             }
         }
+        // The frontend's pure-logic test suite (issue #161). Multiplatform `kotlin.test`, the same framework
+        // `base:kernel`'s commonTest uses, so the assertions read identically across the two modules. These
+        // tests call pure functions directly (no React, no fetch, no DOM) and run under Node via `jsNodeTest`.
+        getByName("jsTest") {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
     }
 }
+
+// The app is a browser bundle, but its unit tests are pure logic and run under Node (`jsNodeTest`). Disable
+// the browser test task so `check`/`build` never require a headless Chrome (issue #161). Re-enable this if a
+// real in-browser (DOM/React) test suite is ever added.
+tasks.named("jsBrowserTest") { enabled = false }

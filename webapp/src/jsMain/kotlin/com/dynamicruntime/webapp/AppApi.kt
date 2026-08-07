@@ -33,15 +33,21 @@ private var cached = AppConfig.default
 /** The last-fetched app config (see [AppApi]). Deployment-global and stable, so a plain read is fine anywhere. */
 fun appConfig(): AppConfig = cached
 
+/**
+ * The pure [UiConfig] -> [AppConfig] mapping, separated from the fetch so it is unit-testable (issue #161).
+ * A JSON number arrives as a [Number]; [AppConfig.idleBumpIntervalMs] falls back to the shared default when the
+ * field is missing or malformed.
+ */
+fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
+    obfuscateSensitiveErrors = config.features[APP.obfuscateSensitiveErrors] == true,
+    idleBumpIntervalMs = (config.settings[APP.idleBumpIntervalMs] as? Number)?.toInt()
+        ?: APP.defaultIdleBumpIntervalMs,
+)
+
 object AppApi {
     /** GETs `/app/ui/config` and refreshes the [appConfig] cache; a failure leaves the previous value in place. */
     suspend fun load() {
         val config = runCatching { fetchUiConfig(APP.uiConfig) }.getOrNull() ?: return
-        cached = AppConfig(
-            obfuscateSensitiveErrors = config.features[APP.obfuscateSensitiveErrors] == true,
-            // A JSON number arrives as a Number; fall back to the default if the field is missing or malformed.
-            idleBumpIntervalMs = (config.settings[APP.idleBumpIntervalMs] as? Number)?.toInt()
-                ?: APP.defaultIdleBumpIntervalMs,
-        )
+        cached = appConfigFrom(config)
     }
 }

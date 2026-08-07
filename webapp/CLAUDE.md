@@ -64,3 +64,23 @@ Current UI-config endpoints:
 
 The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
 the envelope consistent across groups.
+
+## Frontend tests (issue #161)
+
+`webapp` has a `jsTest` source set (multiplatform `kotlin.test`, the same framework `base/kernel` uses) for
+**pure-logic** tests — plain `Map`/`String` in, typed value out, no React, no `fetch`, no DOM. Run them with:
+
+```bash
+./gradlew :webapp:jsNodeTest    # runs under Node; no browser needed
+```
+
+The JS target declares `nodejs()` alongside `browser {}` purely so this task exists; `jsBrowserTest` is
+disabled in `build.gradle.kts` so `check`/`build` never pull in a headless Chrome. There is **no** DOM/React
+test harness yet — component rendering, HTTP, and full-app behavior are still browser-driven (a larger,
+deferred effort).
+
+**Keep the mapping testable.** A UI-config fetcher's `UiConfig` → typed-config transform lives as a pure
+top-level function next to its `*Api` object (`appConfigFrom`, `homeConfigFrom`, `authConfigFrom`,
+`profileConfigFrom`); the `suspend` fetcher is just fetch + delegate. Add new config mapping the same way — as
+a pure function — so it can be covered without a server. `TraceId` and `Copy` (in `WidgetGroup.kt`) are
+likewise pure and covered.

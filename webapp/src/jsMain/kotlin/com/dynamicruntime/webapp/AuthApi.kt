@@ -45,25 +45,28 @@ class AuthConfig(
  * A returning user is identified by a **login id** -- a username *or* an email -- so the UI can work purely in
  * emails (the backend resolves either way).
  */
+/**
+ * The pure [UiConfig] -> [AuthConfig] mapping, separated from the fetch so it is unit-testable (issue #161):
+ * the auth feature flags, the caller's profile (anonymous when signed out), and the public Google client id.
+ */
+fun authConfigFrom(config: UiConfig): AuthConfig = AuthConfig(
+    fragment = config.fragment,
+    features = AuthFeatures(
+        registration = config.features[AFEAT.registration] == true,
+        codeLogin = config.features[AFEAT.codeLogin] == true,
+        passwordLogin = config.features[AFEAT.passwordLogin] == true,
+        googleLogin = config.features[AFEAT.googleLogin] == true,
+        simulatedEmail = config.features[AFEAT.simulatedEmail] == true,
+    ),
+    user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
+    googleClientId = config.state[AFLD.googleClientId] as? String ?: "",
+)
+
 @Suppress("ConstPropertyName")
 object AuthApi {
     private const val emailContactType = "email"
 
-    suspend fun fetchConfig(): AuthConfig {
-        val config = fetchUiConfig(AEP.authUiConfig)
-        return AuthConfig(
-            fragment = config.fragment,
-            features = AuthFeatures(
-                registration = config.features[AFEAT.registration] == true,
-                codeLogin = config.features[AFEAT.codeLogin] == true,
-                passwordLogin = config.features[AFEAT.passwordLogin] == true,
-                googleLogin = config.features[AFEAT.googleLogin] == true,
-                simulatedEmail = config.features[AFEAT.simulatedEmail] == true,
-            ),
-            user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
-            googleClientId = config.state[AFLD.googleClientId] as? String ?: "",
-        )
-    }
+    suspend fun fetchConfig(): AuthConfig = authConfigFrom(fetchUiConfig(AEP.authUiConfig))
 
     /** Issues a fresh form token; the same token is used for the send-verify and the following code call. */
     suspend fun createToken(): String =
