@@ -7,7 +7,7 @@ import kotlin.system.exitProcess
  * A utility "script" -- launched from `bin/` via `kdr-run` (see `bin/kdr-source-dirs`) -- that regenerates
  * `current-source-directories.txt` in the working directory: the JVM source directories that make up the app,
  * one relative path per line, for a *dumb* shell to consume. A launcher can then cheaply decide whether the
- * fat jar is stale (any source newer than it) before paying for a Gradle rebuild.
+ * pathing jar is stale (any source newer than it) before paying for a Gradle rebuild.
  *
  * This is the "clever Kotlin, dumb shell" split: the analysis -- which Gradle projects exist and where their
  * sources live -- is the clever part, cached to a file the shell only has to read and timestamp-compare.
@@ -57,12 +57,12 @@ fun main() {
     }
 
     val lines = gradleReportedLines(workDir, gradlew)
-    // Source roots: real, existing dirs only -- drop nonexistent convention dirs (e.g. empty src/main/java)
+    // Source roots: uses real, existing dirs only -- drop nonexistent convention dirs (e.g., empty src/main/java)
     // and anything under a `build/` directory (generated sources are outputs, not tracked source).
     val sourceDirs = lines.taggedPaths(srcMarker)
         .filter { it.isDirectory && "${File.separator}build${File.separator}" !in "${it.path}${File.separator}" }
         .relativeSorted(workDir)
-    // Build scripts: a change to one means a recompile, so a launcher rebuilds the jar when one is newer.
+    // Build scripts: a change to one means a recompilation, so a launcher rebuilds the jar when one is newer.
     val buildFiles = lines.taggedPaths(buildMarker)
         .filter { it.isFile }
         .relativeSorted(workDir)
@@ -70,7 +70,7 @@ fun main() {
     val output = File(workDir, outputFileName)
     output.printWriter().use { w ->
         w.println("# Assists optimized launching of Kotlin from the command line: the source directories and")
-        w.println("# build scripts a launcher timestamp-compares against the fat jar to decide on a rebuild.")
+        w.println("# build scripts a launcher timestamp-compares against the pathing jar to decide on a rebuild.")
         w.println("# Regenerate with bin/kdr-source-dirs. Lines starting with '#' are comments, ignored on parse.")
         sourceDirs.forEach { w.println(it) }
         buildFiles.forEach { w.println(it) }

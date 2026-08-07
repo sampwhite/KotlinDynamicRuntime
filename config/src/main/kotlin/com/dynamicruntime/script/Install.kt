@@ -730,7 +730,9 @@ private fun isListening(host: String, port: Int): Boolean =
  */
 private fun canConnect(host: String, port: Int, dbName: String?, user: String, password: String): Boolean =
     try {
-        // Force driver registration explicitly, since the fat jar's merged service files may not include it.
+        // Register the driver explicitly as a safety net. DriverManager normally autoloads it via ServiceLoader
+        // from the postgresql jar's own META-INF/services file, which the pathing jar keeps intact (the jars
+        // stay separate) -- but forcing it costs nothing and guards any classpath that lacks that file.
         runCatching { Class.forName("org.postgresql.Driver") }
         val db = dbName ?: "postgres"
         DriverManager.getConnection("jdbc:postgresql://$host:$port/$db", user, password).use { true }

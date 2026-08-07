@@ -5,7 +5,6 @@
 // dependency brings the whole configuration toolkit. This is the one allowed
 // direction: `config` itself does not depend on `launch`.
 import com.dynamicruntime.build.wireInjectedComponents
-import java.util.zip.ZipFile
 
 plugins {
     id("kdr.kotlin-conventions")
@@ -55,70 +54,37 @@ application {
     mainClass.set("kdn.StartKt")
 }
 
-// A "fat" jar bundling this module's classes plus every runtime dependency into a single archive, so any
-// main class in the project can be launched with `java -cp <jar> <ClassName>`. This is the compiled bundle
-// behind running Kotlin from the command line like a shell/python script (see bin/kdr-run). It is distinct
-// from the `run` task: its purpose is to launch *arbitrary* mains, not just `application.mainClass`.
-tasks.register<Jar>("fatJar") {
+// A "pathing" jar (issue #175): a manifest-only jar whose `Class-Path` lists this module's own jar plus every
+// runtime dependency jar, each at its build/cache location as a `file:` URI. It is the classpath behind
+// `bin/kdr-run`, which launches an arbitrary main with `java -cp <jar> <ClassName>` -- so unlike the `run`
+// task, it is not tied to `application.mainClass`.
+//
+// Chosen over a fat jar because the dependency jars stay *separate*: there is no `META-INF/services` collision
+// to reconcile -- `ServiceLoader` reads each jar's own provider file directly (H2/PostgreSQL `java.sql.Driver`,
+// and our own `KdrProvider` files, all just work) -- and rebuilding after a small change only recompiles the
+// affected project's jar, never a repacked archive whose manifest is otherwise identical. Because it references
+// jars by absolute path, it is a local developer artifact, not a portable one; a formal, relocatable
+// distribution comes from the `application` plugin's `distZip`/`installDist` (a `bin/` script plus a `lib/` of
+// these same separate jars).
+tasks.register<Jar>("pathingJar") {
     group = "build"
-    description = "Builds a fat jar with all runtime dependencies, for launching any main class (see bin/kdr-run)."
-    archiveClassifier.set("all")
+    description = "Builds a manifest-only 'pathing' jar referencing every runtime jar by path (see bin/kdr-run)."
+    archiveClassifier.set("path")
+    // The referenced jars must exist and be current: this module's own jar, plus (via the runtime classpath as
+    // an input) every project and external dependency jar.
+    dependsOn(tasks.jar)
+    val runtimeClasspath = configurations.runtimeClasspath
+    val ownJar = tasks.jar.flatMap { it.archiveFile }
+    inputs.files(runtimeClasspath)
     manifest {
         // A default Main-Class for `java -jar`; kdr-run overrides it by naming a class via `-cp <jar> <Class>`.
         attributes["Main-Class"] = application.mainClass.get()
     }
-    from(sourceSets.main.get().output)
-    dependsOn(configurations.runtimeClasspath)
-    from({
-        configurations.runtimeClasspath.get().filter { it.name.endsWith(".jar") }.map { zipTree(it) }
-    }) {
-        // Service declarations are merged separately (below) instead of being resolved first-wins.
-        exclude("META-INF/services/**")
-    }
-    from(mergeServiceFiles)
-    // Bundled dependencies collide on shared metadata: keep the first, drop the rest. Also strip jar
-    // signatures (they would invalidate the repackaged archive) and duplicate module descriptors.
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
-    exclude("module-info.class", "META-INF/versions/*/module-info.class")
-}
-
-/**
- * Merges every `META-INF/services/...` file across the runtime classpath into one directory the fat jar takes
- * wholesale, concatenating the *lines* of same-named files rather than letting one jar's copy win.
- *
- * `DuplicatesStrategy.EXCLUDE` is right for the metadata that merely collides, but a service file is not a
- * collision: it is a list every provider appends itself to. Resolving it first-wins silently loses providers.
- * That is not hypothetical -- H2 and PostgreSQL both declare `java.sql.Driver`, and taking only H2's line left
- * the fat jar unable to reach a PostgreSQL database at all ("No suitable driver"), so every `kdr-run` script
- * that touches a real deployment's data would fail while the tests, on H2, stayed green.
- */
-val mergeServiceFiles = tasks.register("mergeServiceFiles") {
-    description = "Makes sure the fat JAR handles repeats of the same named service files correctly"
-    val runtimeJars = configurations.runtimeClasspath
-    val outputDir = layout.buildDirectory.dir("fatJarServices")
-    inputs.files(runtimeJars)
-    outputs.dir(outputDir)
-    doLast {
-        val servicePrefix = "META-INF/services/"
-        val merged = linkedMapOf<String, LinkedHashSet<String>>()
-        runtimeJars.get().filter { it.name.endsWith(".jar") }.forEach { jar ->
-            ZipFile(jar).use { zip ->
-                zip.entries().asSequence()
-                    .filter { !it.isDirectory && it.name.startsWith(servicePrefix) }
-                    .forEach { entry ->
-                        val lines = zip.getInputStream(entry).bufferedReader().readLines()
-                        merged.getOrPut(entry.name) { LinkedHashSet() }
-                            .addAll(lines.map { it.trim() }.filter { it.isNotEmpty() })
-                    }
-            }
-        }
-        val dir = outputDir.get().asFile
-        dir.deleteRecursively()
-        merged.forEach { (name, providers) ->
-            val file = File(dir, name)
-            file.parentFile.mkdirs()
-            file.writeText(providers.joinToString("\n", postfix = "\n"))
-        }
+    doFirst {
+        // Resolve in the task action (not at configuration time) so an unrelated build does not pay for
+        // dependency resolution. Class-Path entries are space-separated `file:` URIs, so paths with spaces are
+        // encoded, and the JDK handles the manifest line-wrapping of the long value.
+        val jars = listOf(ownJar.get().asFile) + runtimeClasspath.get().files
+        manifest.attributes["Class-Path"] = jars.joinToString(" ") { it.toURI().toString() }
     }
 }

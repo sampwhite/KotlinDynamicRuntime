@@ -11,7 +11,7 @@ repo_name="$(basename "$(cd "$script_dir/.." && pwd)")"   # the checkout directo
 # targets), else it is the directory that contains this checkout. It is exported so the Kotlin installer and
 # the kdr-run below key off the identical directory; the checkout is resolved as its same-named child.
 if [ -n "${KDR_WORKSPACE_DIR:-}" ]; then
-    root_dir="$(cd -P "$KDR_WORKSPACE_DIR" 2>/dev/null && pwd || true)"
+    root_dir="$( { cd -P "$KDR_WORKSPACE_DIR" 2>/dev/null && pwd; } || true )"
     if [ -z "$root_dir" ]; then
         echo "kdr-install: KDR_WORKSPACE_DIR=$KDR_WORKSPACE_DIR does not exist" >&2
         exit 1
@@ -67,6 +67,6 @@ if [ ! -f "$settings" ]; then
     echo "kdr-install: created settings.gradle.kts in $root_dir (from the example)."
 fi
 
-# --- 3. Hand off to the Kotlin installer (kdr-run builds the fat jar on first run) ---------------------------
+# --- 3. Hand off to the Kotlin installer (kdr-run builds the pathing jar on first run) -----------------------
 echo "kdr-install: running the Kotlin installer ..."
 exec "$script_dir/kdr-run" com.dynamicruntime.script.InstallKt "$repo_dir"

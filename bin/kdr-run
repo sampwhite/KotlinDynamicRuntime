@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# Launch any Kotlin/Java main class from the project's fat jar, passing arguments through -- the basis for
-# writing command-line tools in Kotlin instead of shell or python.
+# Launch any Kotlin/Java main class from the project's runtime classpath, passing arguments through -- the basis
+# for writing command-line tools in Kotlin instead of shell or python.
 #
 # Usage:
 #   kdr-run [--build|-b] <fully.qualified.MainClass> [args...]
 #
-# It keeps the fat jar fresh cheaply, without paying Gradle's startup on every call. Using the manifest
+# The classpath is a "pathing" jar (issue #175): a tiny manifest-only jar (:launch:pathingJar) whose Class-Path
+# points at every runtime jar at its build location. The dependency jars stay separate, so there is nothing to
+# reconcile (ServiceLoader reads each jar's own service file) and a small source change only recompiles the
+# affected project's jar -- no fat-jar reassembly.
+#
+# It keeps the pathing jar (and the project jars it references) fresh cheaply, without paying Gradle's startup
+# on every call. Using the manifest
 # bin/kdr-source-dirs writes (current-source-directories.txt), it rebuilds the jar -- and regenerates the
 # manifest alongside it, so the two never drift -- only when:
 #   - the jar or the manifest is missing, or --build is given
@@ -16,7 +22,7 @@
 #
 # The launched code's working directory is the KDR workspace directory. That is KDR_WORKSPACE_DIR if set
 # (so a shell can point every script at a chosen checkout), otherwise two directories above this script
-# (bin -> repo -> workspace); we assume these scripts stay in bin/. The fat jar and other artifacts are
+# (bin -> repo -> workspace); we assume these scripts stay in bin/. The pathing jar and other artifacts are
 # resolved under the workspace against the same-named repo, so a redirect targets that checkout's code, and
 # the workspace is exported so the launched JVM (AppPaths) keys off the identical directory.
 set -euo pipefail
@@ -24,7 +30,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_name="$(basename "$(cd "$script_dir/.." && pwd)")"    # the repo directory name (e.g. KotlinDynamicRuntime)
 if [ -n "${KDR_WORKSPACE_DIR:-}" ]; then
-    root_dir="$(cd -P "$KDR_WORKSPACE_DIR" 2>/dev/null && pwd || true)"
+    root_dir="$( { cd -P "$KDR_WORKSPACE_DIR" 2>/dev/null && pwd; } || true )"
     if [ -z "$root_dir" ] || [ ! -x "$root_dir/gradlew" ]; then
         echo "kdr-run: KDR_WORKSPACE_DIR=$KDR_WORKSPACE_DIR is not a usable workspace (needs gradlew)" >&2
         exit 1
@@ -33,7 +39,7 @@ else
     root_dir="$(cd "$script_dir/../.." && pwd)"            # up two: the workspace / build root
 fi
 export KDR_WORKSPACE_DIR="$root_dir"
-fat_jar="$root_dir/$repo_name/launch/build/libs/launch-all.jar"
+path_jar="$root_dir/$repo_name/launch/build/libs/launch-path.jar"
 manifest="$root_dir/current-source-directories.txt"
 settings="$root_dir/settings.gradle.kts"
 manifest_class="com.dynamicruntime.script.CurrentSourceDirectoriesKt"
@@ -48,7 +54,7 @@ target="$1"
 
 rebuild=false
 if [ "$force" = true ]; then rebuild=true; fi
-[ -f "$fat_jar" ] || rebuild=true
+[ -f "$path_jar" ] || rebuild=true
 [ -f "$manifest" ] || rebuild=true
 if [ "$rebuild" = false ] && [ "$settings" -nt "$manifest" ]; then rebuild=true; fi
 
@@ -61,26 +67,26 @@ if [ "$rebuild" = false ]; then
         if [ -e "$root_dir/$line" ]; then paths+=("$root_dir/$line"); fi
     done < "$manifest"
     if [ "${#paths[@]}" -gt 0 ]; then
-        newer="$(find "${paths[@]}" -type f -newer "$fat_jar" 2>/dev/null || true)"
+        newer="$(find "${paths[@]}" -type f -newer "$path_jar" 2>/dev/null || true)"
         [ -n "$newer" ] && rebuild=true
     fi
 fi
 
 cd "$root_dir"
 if [ "$rebuild" = true ]; then
-    echo "kdr-run: rebuilding the fat jar ..." >&2
-    ./gradlew :launch:fatJar
+    echo "kdr-run: rebuilding the pathing jar ..." >&2
+    ./gradlew :launch:pathingJar
     # Bump the jar's mtime so it is the newest artifact even when Gradle found nothing to recompile (a
-    # touched-but-unchanged source leaves :launch:fatJar UP-TO-DATE, so Gradle would not advance the jar and
+    # touched-but-unchanged source leaves :launch:pathingJar UP-TO-DATE, so Gradle would not advance the jar and
     # the staleness check would trip on every run). The `make`-style fix: touch the target after building.
-    touch "$fat_jar"
+    touch "$path_jar"
     # Regenerate the manifest with (and by) the fresh jar, so it never drifts from the code that produced the
     # jar -- unless we're launching the generator itself, in which case the exec below does it (and we avoid
     # recursing through this smart path).
     if [ "$target" != "$manifest_class" ]; then
         echo "kdr-run: regenerating the source-dir manifest ..." >&2
-        java -cp "$fat_jar" "$manifest_class"
+        java -cp "$path_jar" "$manifest_class"
     fi
 fi
 
-exec java -cp "$fat_jar" "$@"
+exec java -cp "$path_jar" "$@"
