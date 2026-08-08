@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.exception.KdrException
@@ -17,10 +19,20 @@ import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 
-// Date parsing, formatting, and simple date arithmetic, reshaped as extension methods on String and
-// Instant. The one-date type across the code base is the stdlib `kotlin.time.Instant`; calendar/zone
-// operations use `kotlinx-datetime`. This is all KMP-friendly (no java.* APIs), so it can transpile to
-// frontend code. All timestamps are millisecond precision in the wire format.
+// Date parsing, formatting, and simple date arithmetic, reshaped as extension methods on String, Instant and
+// LocalDate. Calendar/zone operations use `kotlinx-datetime`. This is all KMP-friendly (no java.* APIs), so it
+// can transpile to frontend code. All timestamps are millisecond precision in the wire format.
+//
+// **Two date types, deliberately** (issue #189). A moment in time is a `kotlin.time.Instant` — the type for
+// anything stamped, compared or ordered, and the one the code base reaches for by default. A *day* — a
+// birthday, a "since" filter, an invoice date — is a `kotlinx.datetime.LocalDate`, because it genuinely has
+// no instant: pinning one to midnight somewhere immediately makes the day itself wrong for readers in another
+// zone. Keeping them apart is what lets a day-only value round-trip byte-for-byte, which is the property this
+// code guarded by leaving such values as raw strings before `LocalDate` was available.
+//
+// Crossing between them is an explicit act, never a silent one: [Instant.toDay] picks a day out of a moment,
+// and [LocalDate.toStartOfDay] gives a day a moment. Both need the [serverTimeZone], and requiring the caller
+// to ask makes that dependence visible at the point where it matters.
 
 /** Day-only formatter (`yyyy-MM-dd`). */
 private val dayOnlyFormat = LocalDate.Format {
@@ -108,14 +120,55 @@ fun String.parseDate(): Instant {
     }
 }
 
+/**
+ * Parses a day-only string (`yyyy-MM-dd`) into a [LocalDate], with **no timezone involved** — which is what
+ * keeps the value identical on the way back out. Strict: a full timestamp is rejected, not silently truncated.
+ * Throws [KdrException] on anything that is not exactly a day.
+ *
+ * Strict is the plain-named default here, deliberately, because this direction *discards* information. Going
+ * the other way ([parseDate] accepting a day and widening it to midnight) only adds a convention; going this
+ * way throws away a time of day, and doing that unasked is how a value quietly stops meaning what it said.
+ * The forgiving variant is [parseDayLenient], and callers reach for it on purpose.
+ */
+fun String.parseDay(): LocalDate {
+    val str = this.trim()
+    try {
+        return LocalDate.parse(str)
+    } catch (e: IllegalArgumentException) {
+        throw KdrException.mkConv("Date string '$this' failed to parse as a day (expected yyyy-MM-dd).", e)
+    }
+}
+
+/**
+ * Parses a day-only string like [parseDay], but additionally accepts a full timestamp and narrows it to its
+ * day in the [serverTimeZone] — so a client that sends more precision than a day-only field asked for is
+ * normalized rather than refused.
+ *
+ * That forgiveness is a coercion, which is why the schema layer only uses this when the field's `allowCoerce`
+ * is on; a strict day-only field takes only a day.
+ */
+fun String.parseDayLenient(): LocalDate {
+    val str = this.trim()
+    return if (str.length == 10) str.parseDay() else str.parseDate().toDay()
+}
+
 /** Formats this instant as a full system timestamp (ISO-8601, UTC, milliseconds). */
 fun Instant.formatDate(): String = this.toLocalDateTime(TimeZone.UTC).format(systemFormat) + "Z"
+
+/** Formats this day as `yyyy-MM-dd`. The exact inverse of [String.parseDay] for a day-only string. */
+fun LocalDate.formatDay(): String = this.format(dayOnlyFormat)
+
+/** The day this instant falls on, in the [serverTimeZone] — narrowing a moment to a calendar day. */
+fun Instant.toDay(): LocalDate = this.toLocalDateTime(serverTimeZone).date
+
+/** The moment this day begins, in the [serverTimeZone] — giving a calendar day an instant. */
+fun LocalDate.toStartOfDay(): Instant = this.atStartOfDayIn(serverTimeZone)
 
 /** Formats this instant as a compact, separator-free UTC timestamp (`yyyyMMddHHmmssSSS`); see [compactIdFormat]. */
 fun Instant.formatCompactId(): String = this.toLocalDateTime(TimeZone.UTC).format(compactIdFormat)
 
 /** Formats only this instant's day part (`yyyy-MM-dd`) in the [serverTimeZone]. */
-fun Instant.formatDayPart(): String = this.toLocalDateTime(serverTimeZone).date.format(dayOnlyFormat)
+fun Instant.formatDayPart(): String = this.toDay().formatDay()
 
 /** Formats this instant as an RFC 1123 / HTTP date string, suitable for cookies. */
 fun Instant.formatCookieDate(): String = this.format(cookieDateFormat, UtcOffset.ZERO)
