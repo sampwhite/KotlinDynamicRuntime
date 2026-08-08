@@ -105,7 +105,7 @@ fun validateValue(type: SchType, value: Any?, path: String, coerce: Boolean, fai
     // file (see SFMT.binary), but the value is not text -- it is a ContentData carrying bytes -- so the string
     // checks below would reject it as the wrong type, and coercing it would mean toString() on a file. There is
     // nothing here to validate either: the content's *shape* is the MIME type's business, not JSON Schema's.
-    // Presence is still enforced, by the required check in the caller.
+    // Presence is still enforced by the required check in the caller.
     if (jsonType == SCT.string && isBinaryFormat(type.format)) {
         return value
     }

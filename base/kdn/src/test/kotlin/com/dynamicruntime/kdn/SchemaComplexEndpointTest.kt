@@ -36,7 +36,7 @@ class SchemaComplexEndpointTest : StringSpec({
     fun sub(map: Map<String, Any?>, key: String): LinkedHashMap<String, Any?> =
         map[key] as LinkedHashMap<String, Any?>
 
-    // The same, for one element of a list-of-objects field -- so a test can corrupt a single element.
+    // The same for one element of a list-of-objects field -- so a test can corrupt a single element.
     @Suppress("UNCHECKED_CAST")
     fun elem(map: Map<String, Any?>, key: String, index: Int): LinkedHashMap<String, Any?> =
         (map[key] as List<*>)[index] as LinkedHashMap<String, Any?>

@@ -28,7 +28,7 @@ fun parseSchemaTypes(
         }
     }
     // Resolve $refs against the existing types plus the just-parsed ones.
-    val registry = HashMap<String, SchType>(existingTypes)
+    val registry = HashMap(existingTypes)
     registry.putAll(parsed)
     for (prop in pendingRefs) {
         val refName = prop.refName ?: continue
@@ -72,7 +72,7 @@ fun parseNode(
         }
     }
     // The element schema of an array. A `$ref` here is deferred (bound in the resolution pass, like a property
-    // ref) so a not-yet-parsed target -- or a self-reference via items -- resolves instead of expanding.
+    // ref), so a not-yet-parsed target -- or a self-reference via items -- resolves instead of expanding.
     val rawItems = map[SCH.items]
     var itemType: SchType? = null
     var itemRefName: String? = null

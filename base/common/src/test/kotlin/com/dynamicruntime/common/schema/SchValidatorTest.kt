@@ -413,7 +413,7 @@ class SchValidatorTest : StringSpec({
         "inner" to mapOf("v" to "x"), "keepEmpty" to "set", "dropEmptyList" to listOf("a"),
     )
 
-    /** The property names reported missing for [data] -- the whole point of the rule is what it does to required. */
+    /** The property names reported missing for [data] -- the whole point of the rule is what it does to "required". */
     fun missing(data: Map<String, Any?>): List<String> {
         val rec = emptyTypes()["e.Rec"].shouldNotBeNull()
         return validate(rec, data).filter { it.code == SchFailCode.missingRequired }.map { it.path }

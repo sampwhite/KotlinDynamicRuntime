@@ -57,7 +57,7 @@ open class SchTypeBuilder(
 
     /**
      * Custom `emptyIsAbsent` keyword: whether an empty value for this field means the field was not supplied.
-     * When unset, the parser defaults it (true for scalars, false for arrays, objects and untyped fields).
+     * When unset, the parser defaults it (true for scalars, false for arrays, objects, and untyped fields).
      *
      * Set it to **false** on a string field whose empty value is meaningful -- notably an update endpoint
      * where `""` means "clear this", as opposed to omitting the field to mean "leave it alone". Set it to
