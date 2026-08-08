@@ -120,22 +120,34 @@ fun String.parseDate(): Instant {
 
 /**
  * Parses a day-only string (`yyyy-MM-dd`) into a [LocalDate], with **no timezone involved** — which is what
- * keeps the value identical on the way back out.
+ * keeps the value identical on the way back out. Strict: a full timestamp is rejected, not silently truncated.
+ * Throws [KdrException] on anything that is not exactly a day.
  *
- * A full timestamp is accepted too and narrowed to its day in the [serverTimeZone], so a client that sends
- * more precision than a day-only field asked for is normalized rather than rejected. Throws [KdrException]
- * when the string is not a recognizable date at all.
+ * Strict is the plain-named default here, deliberately, because this direction *discards* information. Going
+ * the other way ([parseDate] accepting a day and widening it to midnight) only adds a convention; going this
+ * way throws away a time of day, and doing that unasked is how a value quietly stops meaning what it said.
+ * The forgiving variant is [parseDayLenient], and callers reach for it on purpose.
  */
 fun String.parseDay(): LocalDate {
     val str = this.trim()
-    if (str.length == 10) {
-        try {
-            return LocalDate.parse(str)
-        } catch (e: IllegalArgumentException) {
-            throw KdrException.mkConv("Date string '$this' failed to parse as a day.", e)
-        }
+    try {
+        return LocalDate.parse(str)
+    } catch (e: IllegalArgumentException) {
+        throw KdrException.mkConv("Date string '$this' failed to parse as a day (expected yyyy-MM-dd).", e)
     }
-    return str.parseDate().toDay()
+}
+
+/**
+ * Parses a day-only string like [parseDay], but additionally accepts a full timestamp and narrows it to its
+ * day in the [serverTimeZone] — so a client that sends more precision than a day-only field asked for is
+ * normalized rather than refused.
+ *
+ * That forgiveness is a coercion, which is why the schema layer only uses this when the field's `allowCoerce`
+ * is on; a strict day-only field takes only a day.
+ */
+fun String.parseDayLenient(): LocalDate {
+    val str = this.trim()
+    return if (str.length == 10) str.parseDay() else str.parseDate().toDay()
 }
 
 /** Formats this instant as a full system timestamp (ISO-8601, UTC, milliseconds). */

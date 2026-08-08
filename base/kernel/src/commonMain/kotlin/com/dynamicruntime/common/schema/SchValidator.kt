@@ -7,6 +7,7 @@ import com.dynamicruntime.common.util.jsonArray
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.parseDate
 import com.dynamicruntime.common.util.parseDay
+import com.dynamicruntime.common.util.parseDayLenient
 import com.dynamicruntime.common.util.splitComma
 import com.dynamicruntime.common.util.toDay
 import com.dynamicruntime.common.util.toOptBool
@@ -380,19 +381,38 @@ fun coerceStringToObject(type: SchType, value: Any?, path: String, coerce: Boole
  * and on a server *east* of UTC the rendered day was the previous one. A [LocalDate] never acquires a zone,
  * so it round-trips as the day it is.
  *
- * A value already of the *other* date shape is converted rather than rejected -- both are dates, and `format`
- * is exactly the declaration of which one this field wants. A parse failure is a [SchFailCode.badValue]; a
- * value that is no kind of date is a plain [SchFailCode.wrongType]. As before, the parsed result replaces the
- * input only when [coerce] and `allowCoerce` are both set.
+ * A value that arrived as the *other* kind of date is **reshaped only when `allowCoerce` is on**, because
+ * reshaping is itself a coercion and is governed by the same switch as every other one. So a lenient day-only
+ * field narrows a timestamp to its day, while a strict one refuses it -- taking only the shape it declares.
+ *
+ * A parse failure is a [SchFailCode.badValue]; a value that is no kind of date is a plain
+ * [SchFailCode.wrongType]. As before, the parsed result replaces the input only when [coerce] and
+ * `allowCoerce` are both set.
  */
 @KdrPrivate
 fun validateDate(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
     val dayOnly = type.format == SFMT.date
+    val lenient = type.allowCoerce
+
+    // Already the shape this field declares: nothing to parse or reshape.
+    if (if (dayOnly) value is LocalDate else value is Instant) {
+        return value
+    }
+
     val parsed = try {
         when (value) {
-            is LocalDate -> if (dayOnly) value else value.toStartOfDay()
-            is Instant -> if (dayOnly) value.toDay() else value
-            is String -> if (dayOnly) value.parseDay() else value.parseDate()
+            is String ->
+                if (!dayOnly) value.parseDate()
+                else if (lenient) value.parseDayLenient()
+                else value.parseDay()
+            is LocalDate -> if (lenient) value.toStartOfDay() else {
+                failures.add(SchFailure(path, SchFailCode.wrongType, "expected a timestamp, not a day"))
+                return value
+            }
+            is Instant -> if (lenient) value.toDay() else {
+                failures.add(SchFailure(path, SchFailCode.wrongType, "expected a day, not a timestamp"))
+                return value
+            }
             else -> {
                 failures.add(SchFailure(path, SchFailCode.wrongType, "expected a date string"))
                 return value

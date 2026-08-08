@@ -248,9 +248,10 @@ class SchValidatorTest : StringSpec({
         result.value.toJsonStr(compact = true) shouldBe $$"""{"birth":"2021-06-01"}"""
     }
 
-    "a value of the other date shape is converted to the one the field declares" {
+    "a value of the other date shape is reshaped only where allowCoerce permits it" {
         val rec = dateRec()
-        // A full timestamp handed to a day-only field is narrowed rather than rejected...
+        // Lenient (allowCoerce defaults on for date formats): a full timestamp handed to a day-only field is
+        // narrowed to its day rather than rejected...
         val narrowed = coerceAndValidate(rec, mapOf("birth" to "2021-06-01T08:00:00.000Z"))
         narrowed.failures.shouldBeEmpty()
         (narrowed.value as Map<*, *>)["birth"].fmt() shouldBe "2021-06-01"
@@ -258,6 +259,21 @@ class SchValidatorTest : StringSpec({
         val widened = coerceAndValidate(rec, mapOf("created" to LocalDate.parse("2021-06-01")))
         widened.failures.shouldBeEmpty()
         (widened.value as Map<*, *>)["created"] shouldBe LocalDate.parse("2021-06-01").toStartOfDay()
+    }
+
+    // Reshaping discards information -- a timestamp becoming a day loses the time of day -- so it is a
+    // coercion, and `raw` (allowCoerce off) is entitled to refuse it and take only what it declared.
+    "a strict day-only field refuses a timestamp instead of silently truncating it" {
+        val rec = dateRec()
+        validate(rec, mapOf("raw" to "2021-06-01T08:00:00.000Z"))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("raw" to SchFailCode.badValue)
+        // An already-parsed Instant is refused the same way, and as a plain type mismatch.
+        validate(rec, mapOf("raw" to "2021-06-01T08:00:00.000Z".parseDate()))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("raw" to SchFailCode.wrongType)
+        // The day itself is still perfectly acceptable, and still kept as its original string.
+        val ok = coerceAndValidate(rec, mapOf("raw" to "2021-06-01"))
+        ok.failures.shouldBeEmpty()
+        (ok.value as Map<*, *>)["raw"] shouldBe "2021-06-01"
     }
 
     "a non-string, non-date value for a date field is a plain wrongType" {
