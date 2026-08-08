@@ -4,6 +4,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.util.jsonMap
@@ -168,7 +169,11 @@ val EndpointCatalog = FC<Props> {
         // so applying an edit and validating it can happen in one pass -- a `values = x` set earlier in the
         // same handler is not visible until the next render.
         fun validateOn(vals: Map<String, Any?>): Map<String, Any?>? {
-            val result = coerceAndValidate(inputType, vals)
+            // keepAdditionalProperties: an undeclared key is a failure either way, but the editor has to keep
+            // showing it. Dropped, the panel would be rewritten without the key while the error still named it
+            // -- a complaint about something no longer on screen, and nothing to act on. It never reaches the
+            // wire, because a failure stops the send.
+            val result = coerceAndValidate(inputType, vals, SchOpts(keepAdditionalProperties = true))
             failures = result.failures
             // The preview is JSON, and a picked file has no JSON form -- show what was chosen instead of
             // trying to serialize it. The payload itself keeps the real file; only this display substitutes.

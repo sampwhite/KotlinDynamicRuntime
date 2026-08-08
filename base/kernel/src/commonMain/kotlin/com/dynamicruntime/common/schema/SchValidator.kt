@@ -64,6 +64,26 @@ data class SchFailure(
     val cause: KdrException? = null,
 )
 
+/**
+ * Knobs that adjust what a validation run *produces*, for a caller whose needs differ from the wire
+ * protocol's -- today the interactive endpoint form (issue #191).
+ *
+ * An option may change the coerced output or how something is reported; it may never change what a schema
+ * considers **valid**, so no setting here can turn a failure into a success. This is an object rather than a
+ * parameter because the list is expected to grow as the frontend asks for more.
+ */
+class SchOpts(
+    /**
+     * Keep an undeclared property in the coerced output instead of dropping it. It is reported as an
+     * [SchFailCode.additionalProperty] failure either way.
+     *
+     * The wire wants it gone: an endpoint should not be handed keys its schema never declared. An editor wants
+     * it kept, because dropping it rewrites the text under the person who typed it -- leaving an error about a
+     * key that is no longer on screen, and nothing they can act on.
+     */
+    val keepAdditionalProperties: Boolean = false,
+)
+
 /** Result of a coercing validation: the (possibly transformed) [value] and the [failures]. */
 data class SchResult(val value: Any?, val failures: List<SchFailure>)
 
@@ -76,9 +96,9 @@ data class SchResult(val value: Any?, val failures: List<SchFailure>)
  * its coercion rules (e.g., a boolean field with `allowCoerce` accepts "yes"), the transformed value is
  * simply not returned.
  */
-fun validate(type: SchType, data: Any?): List<SchFailure> {
+fun validate(type: SchType, data: Any?, opts: SchOpts = SchOpts()): List<SchFailure> {
     val failures = mutableListOf<SchFailure>()
-    validateValue(type, data, "", coerce = false, failures)
+    validateValue(type, data, "", coerce = false, failures, opts)
     return failures
 }
 
@@ -90,15 +110,17 @@ fun validate(type: SchType, data: Any?): List<SchFailure> {
  * Validation and coercion share one pass: a value is parsed at most once, its failures recorded, and the
  * parsed result reused for the output (kept only when [coerceAndValidate] asked for it).
  */
-fun coerceAndValidate(type: SchType, data: Any?): SchResult {
+fun coerceAndValidate(type: SchType, data: Any?, opts: SchOpts = SchOpts()): SchResult {
     val failures = mutableListOf<SchFailure>()
-    val value = validateValue(type, data, "", coerce = true, failures)
+    val value = validateValue(type, data, "", coerce = true, failures, opts)
     return SchResult(value, failures)
 }
 
 /** Validates [value] against [type], returning the (possibly coerced) value. */
 @KdrPrivate
-fun validateValue(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
+fun validateValue(
+    type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>, opts: SchOpts,
+): Any? {
     val jsonType = type.jsonType
 
     // A string field carrying a date format is validated by parsing (and optionally becomes a Date).
@@ -116,7 +138,7 @@ fun validateValue(type: SchType, value: Any?, path: String, coerce: Boolean, fai
     }
 
     if (!matchesType(jsonType, value)) {
-        return coerceMismatch(type, value, path, coerce, failures)
+        return coerceMismatch(type, value, path, coerce, failures, opts)
     }
 
     val options = type.options
@@ -128,8 +150,8 @@ fun validateValue(type: SchType, value: Any?, path: String, coerce: Boolean, fai
         return value
     }
     return when (jsonType) {
-        SCT.kObject -> validateObject(type, value as Map<*, *>, path, coerce, failures)
-        SCT.array -> validateArray(type, value as List<*>, path, coerce, failures)
+        SCT.kObject -> validateObject(type, value as Map<*, *>, path, coerce, failures, opts)
+        SCT.array -> validateArray(type, value as List<*>, path, coerce, failures, opts)
         else -> value // scalar matched, unchanged
     }
 }
@@ -141,6 +163,7 @@ fun validateObject(
     path: String,
     coerce: Boolean,
     failures: MutableList<SchFailure>,
+    opts: SchOpts,
 ): Any {
     // Only build a new map when coercing; otherwise the input is returned untouched.
     val out: MutableMap<String, Any?>? = if (coerce) LinkedHashMap(map.size) else null
@@ -160,7 +183,7 @@ fun validateObject(
             }
             // Call validateValue unconditionally (it collects failures); only store when coercing. Kept on its
             // own line: folding it into `out?.put(...)` would short-circuit (and skip validation) when out is null.
-            val coerced = validateValue(prop.valueType, v, childPath(path, key), coerce, failures)
+            val coerced = validateValue(prop.valueType, v, childPath(path, key), coerce, failures, opts)
             out?.put(key, coerced)
             continue
         }
@@ -171,9 +194,13 @@ fun validateObject(
                 // Off-contract annotation (e.g., $note): allowed on validating, dropped on coercing (not written to out).
             }
             type.additionalProperties -> out?.put(key, v) // allowed (incl. reserved $ keys, treated as normal)
-            else -> failures.add(
-                SchFailure(childPath(path, key), SchFailCode.additionalProperty, "additional property '$key' not allowed"),
-            )
+            else -> {
+                failures.add(
+                    SchFailure(childPath(path, key), SchFailCode.additionalProperty, "additional property '$key' not allowed"),
+                )
+                // Reported either way; kept only when the caller asked. See SchOpts.keepAdditionalProperties.
+                if (opts.keepAdditionalProperties) out?.put(key, v)
+            }
         }
     }
     for (req in type.required) {
@@ -224,12 +251,13 @@ fun validateArray(
     path: String,
     coerce: Boolean,
     failures: MutableList<SchFailure>,
+    opts: SchOpts,
 ): Any {
     val itemType = type.itemType
     val out: MutableList<Any?>? = if (coerce) ArrayList(list.size) else null
     list.forEachIndexed { i, elem ->
         val coerced = if (itemType != null) {
-            validateValue(itemType, elem, indexPath(path, i), coerce, failures)
+            validateValue(itemType, elem, indexPath(path, i), coerce, failures, opts)
         } else {
             elem
         }
@@ -249,7 +277,9 @@ fun validateArray(
  * element / property schema is applied.
  */
 @KdrPrivate
-fun coerceMismatch(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
+fun coerceMismatch(
+    type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>, opts: SchOpts,
+): Any? {
     if (!type.allowCoerce) {
         // A plain type check decided the value is wrong; its content was never inspected.
         failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
@@ -268,8 +298,8 @@ fun coerceMismatch(type: SchType, value: Any?, path: String, coerce: Boolean, fa
                 value.toString()
             }
         }
-        SCT.array -> coerceStringToArray(type, value, path, coerce, failures)
-        SCT.kObject -> coerceStringToObject(type, value, path, coerce, failures)
+        SCT.array -> coerceStringToArray(type, value, path, coerce, failures, opts)
+        SCT.kObject -> coerceStringToObject(type, value, path, coerce, failures, opts)
         else -> {
             failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
             value
@@ -330,7 +360,9 @@ fun coerceStringToBool(type: SchType, value: Any?, path: String, coerce: Boolean
  * so the element schema (and any element-level coercion) is applied.
  */
 @KdrPrivate
-fun coerceStringToArray(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
+fun coerceStringToArray(
+    type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>, opts: SchOpts,
+): Any? {
     val s = value as? String
     if (s == null) {
         failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
@@ -346,13 +378,15 @@ fun coerceStringToArray(type: SchType, value: Any?, path: String, coerce: Boolea
     } else {
         s.splitComma()
     }
-    return validateValue(type, list, path, coerce, failures)
+    return validateValue(type, list, path, coerce, failures, opts)
 }
 
 /** Coerces a string to a map by parsing it as JSON, then re-validates it against [type] so the object
  *  schema is applied. A parse failure (or a blank string) is a [SchFailCode.badValue]. */
 @KdrPrivate
-fun coerceStringToObject(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
+fun coerceStringToObject(
+    type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>, opts: SchOpts,
+): Any? {
     val s = value as? String
     if (s == null) {
         failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
@@ -368,7 +402,7 @@ fun coerceStringToObject(type: SchType, value: Any?, path: String, coerce: Boole
         failures.add(SchFailure(path, SchFailCode.badValue, "value is not a valid JSON object"))
         return value
     }
-    return validateValue(type, map, path, coerce, failures)
+    return validateValue(type, map, path, coerce, failures, opts)
 }
 
 /**
