@@ -6,8 +6,12 @@ import com.dynamicruntime.common.util.deepClone
 import com.dynamicruntime.common.util.jsonArray
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.parseDate
+import com.dynamicruntime.common.util.parseDay
 import com.dynamicruntime.common.util.splitComma
+import com.dynamicruntime.common.util.toDay
 import com.dynamicruntime.common.util.toOptBool
+import com.dynamicruntime.common.util.toStartOfDay
+import kotlinx.datetime.LocalDate
 import kotlin.time.Instant
 
 /**
@@ -367,27 +371,38 @@ fun coerceStringToObject(type: SchType, value: Any?, path: String, coerce: Boole
 }
 
 /**
- * Validates a date-format string field. An already-parsed Date passes untouched; a string is validated
- * by [parseDate] (a parse failure is a [SchFailCode.badValue]) and, when [coerce] and `allowCoerce` are
- * set, replaced by the resulting [Instant]. A non-string, non-Instant value is a plain [SchFailCode.wrongType].
+ * Validates a date-format string field, honoring **which** date format it declares (issue #189).
+ *
+ * `format: "date"` coerces to a [LocalDate] and `format: "date-time"` to an [Instant], because the two are
+ * genuinely different things and the schema already says which one the field means. Coercing a day to an
+ * instant was the old behavior and it did not survive serialization: the instant landed at midnight in the
+ * server time zone and was written back out in UTC, so `2021-06-01` returned as `2021-06-01T08:00:00.000Z` --
+ * and on a server *east* of UTC the rendered day was the previous one. A [LocalDate] never acquires a zone,
+ * so it round-trips as the day it is.
+ *
+ * A value already of the *other* date shape is converted rather than rejected -- both are dates, and `format`
+ * is exactly the declaration of which one this field wants. A parse failure is a [SchFailCode.badValue]; a
+ * value that is no kind of date is a plain [SchFailCode.wrongType]. As before, the parsed result replaces the
+ * input only when [coerce] and `allowCoerce` are both set.
  */
 @KdrPrivate
 fun validateDate(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
-    if (value is Instant) {
-        return value
-    }
-    val s = value as? String
-    if (s == null) {
-        failures.add(SchFailure(path, SchFailCode.wrongType, "expected a date string"))
-        return value
-    }
-    val date = try {
-        s.parseDate()
+    val dayOnly = type.format == SFMT.date
+    val parsed = try {
+        when (value) {
+            is LocalDate -> if (dayOnly) value else value.toStartOfDay()
+            is Instant -> if (dayOnly) value.toDay() else value
+            is String -> if (dayOnly) value.parseDay() else value.parseDate()
+            else -> {
+                failures.add(SchFailure(path, SchFailCode.wrongType, "expected a date string"))
+                return value
+            }
+        }
     } catch (e: KdrException) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "'$s' is not a valid date", cause = e))
+        failures.add(SchFailure(path, SchFailCode.badValue, "'$value' is not a valid date", cause = e))
         return value
     }
-    return if (coerce && type.allowCoerce) date else value
+    return if (coerce && type.allowCoerce) parsed else value
 }
 
 /** Deep-clones a default before injecting it, so the schema's value is never shared. */

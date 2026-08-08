@@ -2,6 +2,7 @@ package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
+import kotlinx.datetime.LocalDate
 import kotlin.math.round
 import kotlin.time.Instant
 
@@ -128,12 +129,33 @@ fun Any?.toOptDouble(): Double? = when (this) {
 fun Any?.toOptInstant(): Instant? = when (this) {
     null -> null
     is Instant -> this
+    // A day has no instant of its own; this is the caller explicitly asking for one (issue #189).
+    is LocalDate -> this.toStartOfDay()
     is Number -> Instant.fromEpochMilliseconds(this.toLong())
     is CharSequence -> {
         val s = this.trim()
         if (s.isEmpty()) null else s.toString().parseDate()
     }
     else -> throw KdrException.mkConv("Cannot convert value of type ${this::class.simpleName} to a date.")
+}
+
+/**
+ * Loosely coerces this value to a [LocalDate] — the day-only counterpart of [toOptInstant]: null (and a blank
+ * string) yield null; a [LocalDate] passes through; an [Instant] is narrowed to its day in the server zone; a
+ * string is parsed via [parseDay]. Anything else throws [KdrException.mkConv].
+ *
+ * This is the accessor for a `format: "date"` field, whose coerced value is a [LocalDate] rather than an
+ * instant precisely so the day cannot drift.
+ */
+fun Any?.toOptLocalDate(): LocalDate? = when (this) {
+    null -> null
+    is LocalDate -> this
+    is Instant -> this.toDay()
+    is CharSequence -> {
+        val s = this.trim()
+        if (s.isEmpty()) null else s.toString().parseDay()
+    }
+    else -> throw KdrException.mkConv("Cannot convert value of type ${this::class.simpleName} to a day.")
 }
 
 // --- map-field accessors (a required/optional value at a key) ---------------------------------------------
@@ -170,6 +192,7 @@ fun Any?.fmt(): String {
     if (this is Double) return fmtD()
     if (this is Float) return fmtF()
     if (this is Instant) return formatDate() // ISO system timestamp, so coerced dates serialize as JSON strings
+    if (this is LocalDate) return formatDay() // `yyyy-MM-dd`: a day serializes as the day it is (issue #189)
     return toString()
 }
 
