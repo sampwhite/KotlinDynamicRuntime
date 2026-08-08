@@ -19,6 +19,7 @@ import web.cssom.ClassName
 import web.html.InputType
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 
 /**
  * Renders a kernel [SchType] as a form — the generic display engine. It dispatches each field to a widget by
@@ -65,14 +66,20 @@ private fun ChildrenBuilder.renderObject(
         return
     }
     type.properties.forEach { (name, prop) ->
-        renderField(name, prop, name in type.required, values[name], seen, editable) { newValue ->
-            onChange(values + (name to newValue))
-        }
+        renderField(
+            name, prop, name in type.required, values[name], seen, editable,
+            // A removal has to drop the key, not null it: a null against an object/array type fails the plain
+            // type check (they do not coerce), so "removed" would read as "present but wrong".
+            emit = { newValue -> onChange(values + (name to newValue)) },
+            omit = { onChange(values - name) },
+        )
     }
 }
 
-/** Renders one field: a nested sub-form for object fields, else a labeled widget row. [emit] reports this
- *  field's new value up to its parent object. */
+/**
+ * Renders one field, dispatching on its shape: a list of objects, a nested object, or a labeled widget row.
+ * [emit] reports this field's new value up to its parent object; [omit] drops the field entirely.
+ */
 private fun ChildrenBuilder.renderField(
     name: String,
     prop: SchProperty,
@@ -81,27 +88,16 @@ private fun ChildrenBuilder.renderField(
     seen: Set<String>,
     editable: Boolean,
     emit: (Any?) -> Unit,
+    omit: () -> Unit,
 ) {
     val vt = prop.valueType
-    if (vt.jsonType == SCT.kObject && vt.properties.isNotEmpty()) {
-        div {
-            className = ClassName("row")
-            labelSpan(name, required)
-        }
-        prop.description?.let { desc(it) }
-        val typeName = vt.name
-        if (typeName != null && typeName in seen) {
-            p {
-                className = ClassName("type-hint")
-                +"↻ $typeName (recursive)"
-            }
-        } else {
-            div {
-                className = ClassName("nested")
-                val childSeen = if (typeName != null) seen + typeName else seen
-                renderObject(vt, value.toJsonMapOrEmpty(), childSeen, editable) { newSub -> emit(newSub) }
-            }
-        }
+    val elementType = objectElementType(vt)
+    if (elementType != null) {
+        renderObjectList(name, prop, required, value, elementType, seen, editable, emit, omit)
+        return
+    }
+    if (isStructuredObject(vt)) {
+        renderNestedObject(name, prop, required, value, vt, seen, editable, emit, omit)
         return
     }
 
@@ -111,6 +107,152 @@ private fun ChildrenBuilder.renderField(
         widget(vt, value, editable, emit)
     }
     prop.description?.let { desc(it) }
+}
+
+/** An object type with declared fields, as opposed to a free-form object. */
+private fun isStructuredObject(vt: SchType): Boolean = vt.jsonType == SCT.kObject && vt.properties.isNotEmpty()
+
+/** The element type when [vt] is a list *of objects*, else null (a list of scalars stays a text widget). */
+private fun objectElementType(vt: SchType): SchType? =
+    if (vt.jsonType == SCT.array) vt.itemType?.takeIf { isStructuredObject(it) } else null
+
+/**
+ * A nested object field. Expansion follows the **data**, not the schema, once the field is optional or its type
+ * has already been seen on this path — which is what lets a self-referential type (`TreeNode.parent`) be built
+ * up one level at a time instead of showing a dead recursion marker, and what terminates it: a branch exists
+ * only because someone added it.
+ *
+ * A *required* object still expands unmodified — it has to be filled in either way, so hiding it behind a
+ * click would be friction with no gain.
+ */
+private fun ChildrenBuilder.renderNestedObject(
+    name: String,
+    prop: SchProperty,
+    required: Boolean,
+    value: Any?,
+    vt: SchType,
+    seen: Set<String>,
+    editable: Boolean,
+    emit: (Any?) -> Unit,
+    omit: () -> Unit,
+) {
+    val typeName = vt.name
+    val recursive = typeName != null && typeName in seen
+    val present = value is Map<*, *>
+    val dataDriven = recursive || !required
+
+    div {
+        className = ClassName("row")
+        labelSpan(name, required)
+        if (dataDriven && editable) {
+            if (present) removeControl(name, omit) else addControl(name) { emit(emptyMap<String, Any?>()) }
+        }
+    }
+    prop.description?.let { desc(it) }
+    if (dataDriven && !present) {
+        // Nothing there: awaiting an Add, or simply absent. Expanding it anyway would show a structure the
+        // data does not have -- empty lat/lon for a contact with no location -- which reads as present-but-blank.
+        if (!editable) {
+            p {
+                className = ClassName("type-hint")
+                +"(none)"
+            }
+        }
+        return
+    }
+
+    div {
+        className = ClassName("nested")
+        val childSeen = if (typeName != null) seen + typeName else seen
+        renderObject(vt, value.toJsonMapOrEmpty(), childSeen, editable) { newSub -> emit(newSub) }
+    }
+}
+
+/**
+ * A list-of-objects field: each element is its own indented sub-form under an `[i]` header (the index
+ * convention the response renderer already uses), with the add control after the last one, where an append
+ * belongs. Removing the final element drops the whole field unless it is required, so an optional list does
+ * not linger as an empty array in the payload.
+ */
+private fun ChildrenBuilder.renderObjectList(
+    name: String,
+    prop: SchProperty,
+    required: Boolean,
+    value: Any?,
+    elementType: SchType,
+    seen: Set<String>,
+    editable: Boolean,
+    emit: (Any?) -> Unit,
+    omit: () -> Unit,
+) {
+    val elements = value.toJsonListOrEmpty()
+    div {
+        className = ClassName("row")
+        labelSpan(name, required)
+    }
+    prop.description?.let { desc(it) }
+
+    val typeName = elementType.name
+    val childSeen = if (typeName != null) seen + typeName else seen
+    elements.forEachIndexed { i, element ->
+        div {
+            className = ClassName("nested")
+            div {
+                className = ClassName("row")
+                span {
+                    className = ClassName("type-hint")
+                    +"[$i]"
+                }
+                if (editable) {
+                    removeControl("$name $i") {
+                        val rest = elements.filterIndexed { j, _ -> j != i }
+                        if (rest.isEmpty() && !required) omit() else emit(rest)
+                    }
+                }
+            }
+            renderObject(elementType, element.toJsonMapOrEmpty(), childSeen, editable) { newElement ->
+                emit(elements.mapIndexed { j, old -> if (j == i) newElement else old })
+            }
+        }
+    }
+    if (editable) {
+        div {
+            className = ClassName("row")
+            addControl(name) { emit(elements + listOf<Any?>(mapOf<String, Any?>())) }
+        }
+    } else if (elements.isEmpty()) {
+        p {
+            className = ClassName("type-hint")
+            +"(none)"
+        }
+    }
+}
+
+/**
+ * The add affordance. It carries only the verb: it sits inside the block of the field it adds to, so position
+ * supplies the noun — which also keeps the engine generic, since deriving a singular noun from a field name
+ * ("contacts" -> "contact") is a guess that eventually produces nonsense. [what] names the field for assistive
+ * technology, where that surrounding context is not available.
+ */
+private fun ChildrenBuilder.addControl(what: String, onAdd: () -> Unit) {
+    Button {
+        type = "link"
+        size = "small"
+        onClick = onAdd
+        asDynamic()["aria-label"] = "Add $what"
+        +"+ Add"
+    }
+}
+
+private fun ChildrenBuilder.removeControl(what: String, onRemove: () -> Unit) {
+    Button {
+        type = "link"
+        size = "small"
+        danger = true
+        onClick = onRemove
+        asDynamic()["aria-label"] = "Remove $what"
+        +"✕"
+    }
 }
 
 /**
