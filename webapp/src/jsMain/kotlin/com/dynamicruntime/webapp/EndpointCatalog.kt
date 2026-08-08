@@ -359,10 +359,6 @@ private fun ChildrenBuilder.renderPayload(type: SchType?, data: Map<String, Any?
     }
 }
 
-/** Null-tolerant view of a value as a `Map`. */
-@Suppress("UNCHECKED_CAST")
-
-
 // --- URL-hash routing -------------------------------------------------------------------------------------
 // Within the catalog page, the selected endpoint (method + path) and the entered input values (as JSON) live
 // in the URL hash (under `page=catalog`), so a refresh or a shared link restores the same endpoint page and
