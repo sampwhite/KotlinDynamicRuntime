@@ -356,3 +356,22 @@ input {
 .form-ok { color: var(--success); margin-top: 12px; }
 /* The box is shared with `.markdown pre` above; only its text differs. */
 .code { font-size: .85rem; color: var(--text-dim); }
+
+/* The editable request JSON: the same inset well as `.code`, but a textarea -- so it carries a caret, a focus
+   ring and a resize grip, and reads as something you can type in rather than a rendering you cannot. Full
+   text colour (not `.code`'s dim) for the same reason: this is input, not output. */
+textarea.json-edit {
+    display: block;
+    width: 100%;
+    min-height: 8rem;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--text);
+    line-height: 1.45;
+}
+textarea.json-edit:focus {
+    outline: none;
+    border-color: var(--accent-bright);
+}
+/* Unapplied edits: the well is visibly pending until the change is loaded into the form. */
+textarea.json-edit.edited { border-color: var(--accent-bright); }
