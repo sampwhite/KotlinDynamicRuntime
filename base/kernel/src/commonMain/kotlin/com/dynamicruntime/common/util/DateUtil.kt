@@ -1,3 +1,5 @@
+@file:Suppress("DuplicatedCode")
+
 package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.exception.KdrException

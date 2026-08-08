@@ -245,7 +245,7 @@ class SchValidatorTest : StringSpec({
         result.failures.shouldBeEmpty()
         (result.value as Map<*, *>)["birth"].fmt() shouldBe "2021-06-01"
         // And the whole coerced map serializes with the day intact.
-        result.value.toJsonStr(compact = true) shouldBe $$"""{"birth":"2021-06-01"}"""
+        result.value.toJsonStr(compact = true) shouldBe """{"birth":"2021-06-01"}"""
     }
 
     "a value of the other date shape is reshaped only where allowCoerce permits it" {
@@ -267,10 +267,10 @@ class SchValidatorTest : StringSpec({
         val rec = dateRec()
         validate(rec, mapOf("raw" to "2021-06-01T08:00:00.000Z"))
             .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("raw" to SchFailCode.badValue)
-        // An already-parsed Instant is refused the same way, and as a plain type mismatch.
+        // An already-parsed Instant is refused the same way and as a plain type mismatch.
         validate(rec, mapOf("raw" to "2021-06-01T08:00:00.000Z".parseDate()))
             .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("raw" to SchFailCode.wrongType)
-        // The day itself is still perfectly acceptable, and still kept as its original string.
+        // The day itself is still perfectly acceptable and still kept as its original string.
         val ok = coerceAndValidate(rec, mapOf("raw" to "2021-06-01"))
         ok.failures.shouldBeEmpty()
         (ok.value as Map<*, *>)["raw"] shouldBe "2021-06-01"

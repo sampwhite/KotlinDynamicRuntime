@@ -376,7 +376,7 @@ fun coerceStringToObject(type: SchType, value: Any?, path: String, coerce: Boole
  *
  * `format: "date"` coerces to a [LocalDate] and `format: "date-time"` to an [Instant], because the two are
  * genuinely different things and the schema already says which one the field means. Coercing a day to an
- * instant was the old behavior and it did not survive serialization: the instant landed at midnight in the
+ * instant was the old behavior, and it did not survive serialization: the instant landed at midnight in the
  * server time zone and was written back out in UTC, so `2021-06-01` returned as `2021-06-01T08:00:00.000Z` --
  * and on a server *east* of UTC the rendered day was the previous one. A [LocalDate] never acquires a zone,
  * so it round-trips as the day it is.
