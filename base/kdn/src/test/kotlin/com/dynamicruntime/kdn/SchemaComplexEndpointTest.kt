@@ -4,6 +4,7 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.typeRefPath
 import com.dynamicruntime.common.startup.CX
 import com.dynamicruntime.common.util.toJsonMap
@@ -35,6 +36,11 @@ class SchemaComplexEndpointTest : StringSpec({
     fun sub(map: Map<String, Any?>, key: String): LinkedHashMap<String, Any?> =
         map[key] as LinkedHashMap<String, Any?>
 
+    // The same for one element of a list-of-objects field -- so a test can corrupt a single element.
+    @Suppress("UNCHECKED_CAST")
+    fun elem(map: Map<String, Any?>, key: String, index: Int): LinkedHashMap<String, Any?> =
+        (map[key] as List<*>)[index] as LinkedHashMap<String, Any?>
+
     // A fully valid, deeply nested, recursive input. Each call rebuilds it fresh so mutations don't leak.
     fun geo(): LinkedHashMap<String, Any?> = linkedMapOf(CX.lat to 40.7, CX.lon to -74.0)
     fun address(): LinkedHashMap<String, Any?> =
@@ -46,6 +52,12 @@ class SchemaComplexEndpointTest : StringSpec({
             CX.parent to linkedMapOf<String, Any?>(CX.label to "leaf"),
         ),
     )
+    // The list-of-objects field: an array whose element type is the referenced `Contact`. The second element
+    // carries a further $ref (GeoPoint), so an element is itself a small object graph.
+    fun contacts(): MutableList<Any?> = mutableListOf(
+        linkedMapOf<String, Any?>(CX.kind to CX.email, CX.handle to "w@example.com"),
+        linkedMapOf<String, Any?>(CX.kind to CX.phone, CX.handle to "555-1234", CX.location to geo()),
+    )
     fun complexInput(): LinkedHashMap<String, Any?> = linkedMapOf(
         CX.name to "widget",
         CX.priority to CX.high,
@@ -53,6 +65,7 @@ class SchemaComplexEndpointTest : StringSpec({
         CX.score to 3.5,
         CX.active to true,
         CX.aliases to listOf("w1", "w2"),
+        CX.contacts to contacts(),
         CX.address to address(),
         CX.tree to tree(),
     )
@@ -87,6 +100,39 @@ class SchemaComplexEndpointTest : StringSpec({
         items(client("complexCoerce").sendJsonPutRequest("/schema/complex", q)).size shouldBe 3
     }
 
+    "a list of objects is validated element-wise and arrives intact" {
+        val list = items(client("complexContacts").sendJsonPutRequest("/schema/complex", validQuery()))
+        // Both elements survived, and a field from *inside* the first element came back -- so the array was
+        // validated and carried through, not merely tolerated.
+        list.first()[CX.contactCount] shouldBe 2
+        list.first()[CX.primaryContact] shouldBe "w@example.com"
+    }
+
+    "a missing required field inside a list element fails validation" {
+        val q = validQuery()
+        elem(sub(q, CX.input), CX.contacts, 1).remove(CX.handle) // Contact.handle is required
+        putStatus("complexElemMissing", q) shouldBe 400
+    }
+
+    "an invalid option inside a list element fails validation" {
+        val q = validQuery()
+        elem(sub(q, CX.input), CX.contacts, 0)[CX.kind] = "carrier-pigeon" // not email/phone
+        putStatus("complexElemOption", q) shouldBe 400
+    }
+
+    $$"coercion reaches through a list element into its own $ref" {
+        val q = validQuery()
+        // contacts[1].location is a GeoPoint; a string latitude two levels inside an array element still coerces.
+        sub(elem(sub(q, CX.input), CX.contacts, 1), CX.location)[CX.lat] = "40.7"
+        items(client("complexElemCoerce").sendJsonPutRequest("/schema/complex", q)).size shouldBe 3
+    }
+
+    $$"a missing required field inside a list element's own $ref fails validation" {
+        val q = validQuery()
+        sub(elem(sub(q, CX.input), CX.contacts, 1), CX.location).remove(CX.lat) // GeoPoint.lat is required
+        putStatus("complexElemDeep", q) shouldBe 400
+    }
+
     "PUT /schema/complex truncates the expanded items by limit" {
         val q = validQuery()
         q[EP.limit] = 2
@@ -99,6 +145,34 @@ class SchemaComplexEndpointTest : StringSpec({
         val q = validQuery()
         sub(q, CX.input).remove(CX.name)
         putStatus("complexNoName", q) shouldBe 400
+    }
+
+    "an empty or null value for a required field is treated as missing, not as a value (issue #187)" {
+        // Before emptyIsAbsent, "" was simply a valid string and satisfied `required` -- a field the user had
+        // cleared was indistinguishable from one they had filled.
+        val blank = validQuery()
+        sub(blank, CX.input)[CX.name] = ""
+        putStatus("complexBlankName", blank) shouldBe 400
+
+        // And an explicit null, which used to fail as the wrong type, now reads the same way.
+        val nulled = validQuery()
+        sub(nulled, CX.input)[CX.name] = null
+        putStatus("complexNullName", nulled) shouldBe 400
+    }
+
+    "an empty optional field is dropped rather than failing its type check (issue #187)" {
+        val q = validQuery()
+        // A blank number and a blank date would each have been a badValue failure; now they are simply absent.
+        sub(q, CX.input)[CX.score] = ""
+        sub(q, CX.input)[CX.createdOn] = ""
+        // Both are required, so they now report as missing -- one failure kind, not a coercion error.
+        putStatus("complexBlankScalars", q) shouldBe 400
+
+        // The optional ones just disappear, leaving a valid request.
+        val ok = validQuery()
+        sub(ok, CX.input)[CX.active] = ""
+        sub(sub(ok, CX.input), CX.address)[CX.zip] = ""
+        items(client("complexBlankOptional").sendJsonPutRequest("/schema/complex", ok)).size shouldBe 3
     }
 
     "an invalid option value fails validation" {
@@ -149,8 +223,16 @@ class SchemaComplexEndpointTest : StringSpec({
         inputProps[CX.input]!!.toJsonMap()[SCH.dRef] shouldBe typeRefPath("ComplexInput", "schema")
 
         // The shared $defs closes over the whole reference graph -- including the self-referential TreeNode,
-        // returned once (the cyclic walk terminated).
+        // returned once (the cyclic walk terminated), and Contact, which is only ever reached *through an
+        // array's items*.
         val defs = results[SCH.dDefs]!!.toJsonMap()
-        defs.keys shouldContainAll listOf("schema.ComplexInput", "schema.Address", "schema.GeoPoint", "schema.TreeNode")
+        defs.keys shouldContainAll
+            listOf("schema.ComplexInput", "schema.Address", "schema.GeoPoint", "schema.TreeNode", "schema.Contact")
+
+        // And the array field keeps its element `$ref` intact, which is what tells a client (the frontend form
+        // engine included) that this is a list of objects rather than a list of scalars.
+        val contactsProp = defs["schema.ComplexInput"]!!.toJsonMap()[SCH.properties]!!.toJsonMap()[CX.contacts]!!.toJsonMap()
+        contactsProp[SCH.type] shouldBe SCT.array
+        contactsProp[SCH.items]!!.toJsonMap()[SCH.dRef] shouldBe typeRefPath("Contact", "schema")
     }
 })

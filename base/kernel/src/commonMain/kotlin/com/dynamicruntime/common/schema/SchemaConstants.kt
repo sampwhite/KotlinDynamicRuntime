@@ -92,6 +92,9 @@ object SCH {
     /** Whether a value may be coerced to the property's type during validation. */
     const val allowCoerce = "allowCoerce"
 
+    /** Whether an empty (or null) value for a property means the property was not supplied at all. */
+    const val emptyIsAbsent = "emptyIsAbsent"
+
     /** A labeled choice list on a property (array of `{label, value}` entries). */
     const val options = "options"
     /** Display label of an `options` entry. */

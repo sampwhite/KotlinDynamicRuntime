@@ -8,11 +8,11 @@ import react.dom.html.ReactHTML.span
 import web.cssom.ClassName
 
 /**
- * Small form-row helpers shared by the hand-written widget-groups ([AuthFlow], [Profile]).
+ * Small form-row helpers shared by the handwritten widget-groups ([AuthFlow], [Profile]).
  *
  * These are *not* part of the generic display engine: [SchemaForm] renders a whole kernel `SchType` and
  * validates it with the shared `coerceAndValidate`, which is the right tool for admin/CRUD surfaces. The auth
- * and profile groups are the other mode -- hand-written React whose copy and features come from the backend --
+ * and profile groups are the other mode -- handwritten React whose copy and features come from the backend --
  * so they lay out a handful of known fields themselves and just want them to look alike while doing it.
  */
 
@@ -21,11 +21,11 @@ import web.cssom.ClassName
  * they cannot see can check it before submitting -- which matters most on the *new* password fields, where a
  * typo is not caught by a failed login but silently becomes the password.
  *
- * It is reached through [Input] rather than declared in [AntdComponents] because it is a static property of
+ * It is reached through [Input] rather than declared in "AntdComponents" because it is a static property of
  * antd's `Input`, not a named export of the package -- and every top-level declaration in that file maps to
  * one. The props are `Input`'s (antd's `visibilityToggle` defaults to on), so [InputProps] describes it.
  */
-@Suppress("UNCHECKED_CAST")
+@Suppress("UNCHECKED_CAST_TO_EXTERNAL_INTERFACE")
 private val PasswordInput: ComponentType<InputProps> =
     Input.asDynamic().Password as ComponentType<InputProps>
 

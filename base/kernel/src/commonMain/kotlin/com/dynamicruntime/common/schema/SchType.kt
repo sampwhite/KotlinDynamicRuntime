@@ -20,6 +20,18 @@ class SchType(
      */
     val allowCoerce: Boolean,
     /**
+     * Custom `emptyIsAbsent` keyword (resolved): whether an empty value for a property means the property was
+     * not supplied at all — so it is dropped from the coerced output and counts as missing for `required`.
+     * Empty means **zero-length** (a blank string, an empty list, an empty map) and, wherever this is on, also
+     * `null`; it never means zero-*valued*, so `0` and `false` are values like any other.
+     *
+     * Defaults to true for scalars (string / integer / number / boolean, including date-format strings) and
+     * false for arrays, objects, and untyped fields. Arrays and objects are opt-in because an empty one is
+     * often meaningful — on an update endpoint `[]` says "clear the list" where an absent field says "leave it
+     * alone" — and an untyped field constrains nothing, so there is no basis for reading its emptiness.
+     */
+    val emptyIsAbsent: Boolean,
+    /**
      * The JSON Schema `format` value (e.g. [SFMT.date] / [SFMT.dateTime]) for a string type, or null.
      * A recognized date format makes a string field validate as a date and default [allowCoerce] to true.
      */

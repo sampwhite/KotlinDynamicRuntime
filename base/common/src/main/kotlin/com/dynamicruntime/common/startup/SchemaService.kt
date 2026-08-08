@@ -233,6 +233,16 @@ class SchemaService : ServiceInitializer {
                 // Self-reference: exercises recursive validation AND the cyclic $defs walk (a $ref back to TreeNode).
                 property(CX.parent, "Parent node; recursive and optional.") { ref("TreeNode") }
             }
+            type("Contact") {
+                type = SCT.kObject
+                property(CX.kind, "How to reach this contact.", required = true) {
+                    option(CX.email); option(CX.phone)
+                }
+                property(CX.handle, "The address or number itself.", required = true)
+                // A ref inside an array's element type: the parser has to resolve an item ref, and the
+                // catalog's defs walk has to reach through an array to find GeoPoint.
+                property(CX.location, "Where this contact is based.") { ref("GeoPoint") }
+            }
             type("ComplexInput") {
                 type = SCT.kObject
                 property(CX.name, "Item name.", required = true)
@@ -249,6 +259,11 @@ class SchemaService : ServiceInitializer {
                     allowCoerce = true
                 }
                 property(CX.aliases, "Alternate names.") { type = SCT.array; items { type = SCT.string } }
+                // The list-of-objects case: an array whose items are a referenced object type, so each element
+                // is validated property-wise (and the frontend has to offer a way to add one).
+                property(CX.contacts, "Contact methods; a list of objects.") {
+                    type = SCT.array; items { ref("Contact") }
+                }
                 property(CX.address, "Primary address.", required = true) { ref("Address") } // -> GeoPoint
                 property(CX.tree, "A node hierarchy; its parent chain expands into the result items.") { ref("TreeNode") }
             }
@@ -269,6 +284,11 @@ class SchemaService : ServiceInitializer {
                 }
                 property(CX.priority, "Echoed priority.", required = true)
                 property(CX.mode, "Echoed processing mode.", required = true)
+                property(CX.contactCount, "How many contacts the input carried.", required = true) {
+                    type = SCT.integer
+                }
+                property(CX.primaryContact, "The first contact's handle, or empty when there were none.",
+                    required = true)
             }
             listEndpoint(
                 "/schema/complex",
@@ -371,6 +391,11 @@ class SchemaService : ServiceInitializer {
             val mode = request[CX.mode] as? String ?: CX.strict
             val hasLocation = (input[CX.address] as? Map<*, *>)?.get(CX.location) != null
 
+            // Echo the list-of-objects back through the result, so a test can see that the array arrived AND
+            // that an individual element's fields survived validation.
+            val contacts = (input[CX.contacts] as? List<*>).orEmpty()
+            val primary = (contacts.firstOrNull() as? Map<*, *>)?.get(CX.handle) as? String ?: ""
+
             // Follow the recursive `parent` chain. Finite data already terminates it; the bound is belt-and-braces.
             val chain = ArrayList<Map<*, *>>()
             var node = input[CX.tree] as? Map<*, *>
@@ -379,15 +404,22 @@ class SchemaService : ServiceInitializer {
                 node = node[CX.parent] as? Map<*, *>
             }
             if (chain.isEmpty()) {
-                return listOf(complexResult(itemName, 0, hasLocation, priority, mode))
+                return listOf(complexResult(itemName, 0, hasLocation, priority, mode, contacts.size, primary))
             }
             return chain.mapIndexed { depth, n ->
-                complexResult(n[CX.label] as? String ?: itemName, depth, hasLocation, priority, mode)
+                complexResult(
+                    n[CX.label] as? String ?: itemName, depth, hasLocation, priority, mode, contacts.size, primary,
+                )
             }
         }
 
-        private fun complexResult(name: String, depth: Int, hasLocation: Boolean, priority: String, mode: String): Map<String, Any?> =
-            linkedMapOf(CX.name to name, CX.depth to depth, CX.hasLocation to hasLocation, CX.priority to priority, CX.mode to mode)
+        private fun complexResult(
+            name: String, depth: Int, hasLocation: Boolean, priority: String, mode: String,
+            contactCount: Int, primaryContact: String,
+        ): Map<String, Any?> = linkedMapOf(
+            CX.name to name, CX.depth to depth, CX.hasLocation to hasLocation, CX.priority to priority,
+            CX.mode to mode, CX.contactCount to contactCount, CX.primaryContact to primaryContact,
+        )
     }
 }
 
@@ -455,9 +487,16 @@ object CX {
     const val weight = "weight"
     const val parent = "parent"
 
+    // Contact fields: ComplexInput.contacts is an array whose element type is the Contact object.
+    const val contacts = "contacts"
+    const val kind = "kind"
+    const val handle = "handle"
+
     // Result fields.
     const val depth = "depth"
     const val hasLocation = "hasLocation"
+    const val contactCount = "contactCount"
+    const val primaryContact = "primaryContact"
 
     // Choice values: priority levels and processing modes.
     const val low = "low"
@@ -465,4 +504,8 @@ object CX {
     const val high = "high"
     const val strict = "strict"
     const val lenient = "lenient"
+
+    // Choice values: contact kinds.
+    const val email = "email"
+    const val phone = "phone"
 }

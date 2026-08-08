@@ -28,7 +28,7 @@ fun parseSchemaTypes(
         }
     }
     // Resolve $refs against the existing types plus the just-parsed ones.
-    val registry = HashMap<String, SchType>(existingTypes)
+    val registry = HashMap(existingTypes)
     registry.putAll(parsed)
     for (prop in pendingRefs) {
         val refName = prop.refName ?: continue
@@ -72,7 +72,7 @@ fun parseNode(
         }
     }
     // The element schema of an array. A `$ref` here is deferred (bound in the resolution pass, like a property
-    // ref) so a not-yet-parsed target -- or a self-reference via items -- resolves instead of expanding.
+    // ref), so a not-yet-parsed target -- or a self-reference via items -- resolves instead of expanding.
     val rawItems = map[SCH.items]
     var itemType: SchType? = null
     var itemRefName: String? = null
@@ -92,6 +92,9 @@ fun parseNode(
         jsonType = jsonType,
         // Numeric types and recognized date formats are coercible by default; everything else is strict.
         allowCoerce = (map[SCH.allowCoerce] as? Boolean) ?: (isNumericType(jsonType) || isDateFormat(format)),
+        // Scalars read an empty value as "not supplied"; arrays/objects opt in, and an untyped field -- which
+        // constrains nothing -- is left alone.
+        emptyIsAbsent = (map[SCH.emptyIsAbsent] as? Boolean) ?: isScalarType(jsonType),
         format = format,
         description = map[SCH.description].toOptStr(),
         properties = properties,
@@ -111,6 +114,14 @@ fun parseNode(
 /** Whether a JSON Schema type is one of the numeric types (the [SCH.allowCoerce] default). */
 @KdrPrivate
 fun isNumericType(jsonType: String?): Boolean = jsonType == SCT.integer || jsonType == SCT.number
+
+/**
+ * Whether a JSON Schema type is a single value rather than a container (the [SCH.emptyIsAbsent] default).
+ * An unconstrained (null) type is deliberately not scalar: there is no basis for reading its emptiness.
+ */
+@KdrPrivate
+fun isScalarType(jsonType: String?): Boolean =
+    jsonType == SCT.string || jsonType == SCT.boolean || isNumericType(jsonType)
 
 /** Whether a `format` value is one of the date formats we validate/coerce ([SFMT.date] / [SFMT.dateTime]). */
 @KdrPrivate

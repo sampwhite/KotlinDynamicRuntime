@@ -383,4 +383,115 @@ class SchValidatorTest : StringSpec({
         validate(person, mapOf("name" to "Bob", $$"$ref" to "#/x"))
             .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf($$"$ref" to SchFailCode.additionalProperty)
     }
+
+    // --- emptyIsAbsent (issue #187) -------------------------------------------------------------------------
+
+    // Every shape the rule has to distinguish, in one type: scalars (on by default), containers (off by
+    // default), the two opt-outs, and a scalar carrying a default.
+    fun emptyTypes(): Map<String, SchType> = parseSchemaTypes(
+        schemaDefs(cxt, "e") {
+            type("Inner") { type = SCT.kObject; property("v", "A value") }
+            type("Rec") {
+                type = SCT.kObject
+                property("name", "A name", required = true)
+                property("count", "A count", required = true) { type = SCT.integer }
+                property("flag", "A flag", required = true) { type = SCT.boolean }
+                property("tags", "Tags", required = true) { type = SCT.array; items { type = SCT.string } }
+                property("inner", "An object", required = true) { ref("Inner") }
+                property("keepEmpty", "A string whose empty value is meaningful", required = true) {
+                    emptyIsAbsent = false
+                }
+                property("dropEmptyList", "A list that opts IN to the rule", required = true) {
+                    type = SCT.array; items { type = SCT.string }; emptyIsAbsent = true
+                }
+            }
+        },
+    )
+
+    fun fullRec(): Map<String, Any?> = mapOf(
+        "name" to "Bob", "count" to 1, "flag" to true, "tags" to listOf("a"),
+        "inner" to mapOf("v" to "x"), "keepEmpty" to "set", "dropEmptyList" to listOf("a"),
+    )
+
+    /** The property names reported missing for [data] -- the whole point of the rule is what it does to "required". */
+    fun missing(data: Map<String, Any?>): List<String> {
+        val rec = emptyTypes()["e.Rec"].shouldNotBeNull()
+        return validate(rec, data).filter { it.code == SchFailCode.missingRequired }.map { it.path }
+    }
+
+    "a blank or null scalar reads as absent, so it fails its required check" {
+        missing(fullRec() + mapOf("name" to "")) shouldBe listOf("name")
+        missing(fullRec() + mapOf("name" to "   ")) shouldBe listOf("name") // whitespace-only counts as blank
+        missing(fullRec() + mapOf("name" to null)) shouldBe listOf("name")
+        missing(fullRec() + mapOf("count" to null)) shouldBe listOf("count")
+    }
+
+    "a null no longer fails as the wrong type -- it reads as no value at all" {
+        val rec = emptyTypes()["e.Rec"].shouldNotBeNull()
+        // Before the rule, null matched no type and coerced to nothing, so this was a wrongType failure.
+        validate(rec, fullRec() + mapOf("name" to null)).map { it.code } shouldBe listOf(SchFailCode.missingRequired)
+    }
+
+    "empty means zero-length, never zero-valued" {
+        // 0 and false are ordinary values; a JS-flavored "falsy" reading would silently eat them.
+        missing(fullRec() + mapOf("count" to 0)).shouldBeEmpty()
+        missing(fullRec() + mapOf("flag" to false)).shouldBeEmpty()
+        validate(emptyTypes()["e.Rec"].shouldNotBeNull(), fullRec() + mapOf("count" to 0, "flag" to false))
+            .shouldBeEmpty()
+    }
+
+    "containers keep their empty value by default, so [] and {} still satisfy required" {
+        // An empty list/map is often meaningful (on an update, "clear this" versus "leave it alone"), so
+        // arrays and objects are opt-in rather than default.
+        missing(fullRec() + mapOf("tags" to emptyList<String>(), "inner" to emptyMap<String, Any?>())).shouldBeEmpty()
+    }
+
+    "a container that opts in, and a string that opts out, both honor their declaration" {
+        missing(fullRec() + mapOf("dropEmptyList" to emptyList<String>())) shouldBe listOf("dropEmptyList")
+        missing(fullRec() + mapOf("keepEmpty" to "")).shouldBeEmpty() // "" is this field's value
+    }
+
+    "an absent value is dropped from the coerced output rather than nulled" {
+        val rec = emptyTypes()["e.Rec"].shouldNotBeNull()
+        val coerced = coerceAndValidate(rec, fullRec() + mapOf("name" to "")).value as Map<*, *>
+        // Not present at all: a null would fail the plain type check on any re-validation.
+        coerced.containsKey("name") shouldBe false
+        coerced["keepEmpty"] shouldBe "set"
+    }
+
+    // The mode-consistency guarantee: knowing whether `required` is satisfied now depends on what happened to
+    // each value during the property loop, and validate-only mode builds no output map to read that back from.
+    // If the two modes ever disagree, a request would validate on one path and fail on the other.
+    "validate and coerceAndValidate report the same failures for every empty shape" {
+        val rec = emptyTypes()["e.Rec"].shouldNotBeNull()
+        val cases = listOf(
+            fullRec() + mapOf("name" to ""),
+            fullRec() + mapOf("name" to null),
+            fullRec() + mapOf("count" to null),
+            fullRec() + mapOf("tags" to emptyList<String>()),
+            fullRec() + mapOf("dropEmptyList" to emptyList<String>()),
+            fullRec() + mapOf("keepEmpty" to ""),
+            fullRec() + mapOf("count" to 0, "flag" to false),
+        )
+        for (data in cases) {
+            validate(rec, data).map { it.path to it.code } shouldBe
+                coerceAndValidate(rec, data).failures.map { it.path to it.code }
+        }
+    }
+
+    "a default still fills a required property whose supplied value was empty" {
+        val types = parseSchemaTypes(
+            schemaDefs(cxt, "d") {
+                type("WithDefault") {
+                    type = SCT.kObject
+                    property("size", "A size", required = true) { type = SCT.integer; default = 10 }
+                }
+            },
+        )
+        val t = types["d.WithDefault"].shouldNotBeNull()
+        // "" reads as absent, and an absent required property with a default is supplied, not failed.
+        val result = coerceAndValidate(t, mapOf("size" to ""))
+        result.failures.shouldBeEmpty()
+        (result.value as Map<*, *>)["size"] shouldBe 10
+    }
 })
