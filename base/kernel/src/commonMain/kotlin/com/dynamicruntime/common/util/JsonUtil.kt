@@ -7,7 +7,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
 import kotlin.math.min
 
-// A from-scratch JSON parser and formatter, written rather than pulled in so the kernel carries no third-party
+// A from-scratch JSON parser and formatter, written rather than pulled in, so the kernel carries no third-party
 // dependency and the same code runs on the backend and in the browser.
 //
 // **The reader is deliberately tolerant, and that is a contract, not an accident.** It exists to consume real
@@ -17,8 +17,8 @@ import kotlin.math.min
 //
 // - **Comma placement is not enforced at all.** Commas are read as whitespace, so a trailing comma, a missing
 //   one, or a run of them all parse: `{"a":1,}` and `{"a":1 "b":2}` are both accepted.
-// - **`NaN` becomes null**, unless [PState.strictValues] is set. It has no JSON spelling but real exports emit
-//   it anyway. Matched exactly -- an unrecognized bare token is still an error, so a typo'd literal is caught
+// - **`NaN` becomes null**, unless [PState.strictValues] is set. It has no JSON spelling, but real exports emit
+//   it anyway. Matched exactly -- an unrecognized bare token is still an error, so a typoed literal is caught
 //   rather than quietly becoming null.
 //   (Note an asymmetry inherited from how numbers are read: `-Infinity` parses as a Double, because the
 //   leading `-` sends it down the numeric path where Kotlin's own `toDouble` accepts it, while a bare
@@ -546,7 +546,7 @@ fun parseNonStringValue(state: PState, isNumeric: Boolean): Any? {
                         // `NaN` has no JSON spelling but turns up in real exports, so it is forgiven to null
                         // unless strictValues is set. Matched exactly: the test used to be the leading `N`
                         // alone, which swallowed every capitalized token -- `Nonsense` parsed to null instead
-                        // of failing, so a typo'd literal vanished rather than being caught.
+                        // of failing, so a typoed literal vanished rather than being caught.
                         if (s != "null" && (s != "NaN" || state.strictValues)) {
                             throw mkJsonParseException(
                                 state,

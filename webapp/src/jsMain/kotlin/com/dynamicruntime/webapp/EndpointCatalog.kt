@@ -12,6 +12,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
+import react.Key
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
@@ -25,6 +26,7 @@ import react.useEffectOnce
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import web.html.HTMLTextAreaElement
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 
@@ -56,6 +58,9 @@ val EndpointCatalog = FC<Props> {
     // True, once the initial URL-hash restore has run; until then the URL is not written back (so the
     // mount-time sync effect can't clobber a hash we are about to read).
     var restored by useState(false)
+
+    // The request-JSON textarea, so a parse failure can put the caret on the offending character.
+    val rawRef = useRef<HTMLTextAreaElement>(null)
 
     // The latest catalog, readable from the once-registered hashchange listener below (which would otherwise
     // close over the null catalog of the first render).
@@ -186,6 +191,16 @@ val EndpointCatalog = FC<Props> {
             val parsed = parse.values
             if (parsed == null) {
                 rawError = parse.error
+                // Put the caret on the offending character. A textarea has no way to style one line -- it is a
+                // single flat text node -- but selecting the spot gets the browser's own highlight, scrolls it
+                // into view, and leaves the cursor where the fix goes. The text is unchanged on a failure, so
+                // the element on screen is still the one these offsets refer to.
+                parse.offset?.let { at ->
+                    rawRef.current?.let { box ->
+                        box.focus()
+                        box.setSelectionRange(at, minOf(at + 1, box.value.length))
+                    }
+                }
                 return null
             }
             // A picked file has no JSON form, so the panel shows a label for it. Carry the real File across
@@ -316,44 +331,53 @@ val EndpointCatalog = FC<Props> {
                 }
             }
 
-            coerced?.let { text ->
-                h2 { +"Request JSON" }
-                p {
-                    className = ClassName("subtitle")
-                    +("The coerced payload that will be sent. It is editable — paste or splice one in, then " +
-                        "choose Apply to form to load it into the fields above and check it.")
-                }
-                // A textarea rather than a rendered block: the caret, focus ring and resize grip say "type
-                // here" without a label having to. Edits accumulate freely -- nothing is parsed until asked,
-                // since splicing JSON by hand is rarely a single keystroke's worth of change.
-                textarea {
-                    className = ClassName(if (rawEdited) "code json-edit edited" else "code json-edit")
-                    value = text
-                    spellCheck = false
-                    onChange = { e ->
-                        coerced = e.target.value
-                        rawEdited = true
-                        rawError = null
+            // Wrapped and keyed so the textarea keeps its DOM identity. The blocks above emit a *varying*
+            // number of unkeyed siblings -- the failure list is one element when valid and many when not -- and
+            // React matches unkeyed children by position, so a change in that count shifted this element's slot
+            // and remounted it. A remounted textarea is a new node, which loses the inline height the browser
+            // wrote when someone dragged the resize grip. A key pins the identity regardless of position.
+            div {
+                key = "request-json".unsafeCast<Key>()
+                coerced?.let { text ->
+                    h2 { +"Request JSON" }
+                    p {
+                        className = ClassName("subtitle")
+                        +("The coerced payload that will be sent. It is editable — paste or splice one in, " +
+                            "then choose Apply to form to load it into the fields above and check it.")
                     }
-                }
-                div {
-                    className = ClassName("row")
-                    Button {
-                        onClick = { applyRaw()?.let { validateOn(it) } }
-                        disabled = !rawEdited
-                        +"Apply to form"
-                    }
-                    if (rawEdited) {
-                        span {
-                            className = ClassName("type-hint")
-                            +"Edited — not yet loaded into the form."
+                    // A textarea rather than a rendered block: the caret, focus ring and resize grip say "type
+                    // here" without a label having to. Edits accumulate freely -- nothing is parsed until
+                    // asked, since splicing JSON by hand is rarely one keystroke's worth of change.
+                    textarea {
+                        ref = rawRef
+                        className = ClassName(if (rawEdited) "code json-edit edited" else "code json-edit")
+                        value = text
+                        spellCheck = false
+                        onChange = { e ->
+                            coerced = e.target.value
+                            rawEdited = true
+                            rawError = null
                         }
                     }
-                }
-                rawError?.let { message ->
-                    p {
-                        className = ClassName("todo-error")
-                        +message
+                    div {
+                        className = ClassName("row")
+                        Button {
+                            onClick = { applyRaw()?.let { validateOn(it) } }
+                            disabled = !rawEdited
+                            +"Apply to form"
+                        }
+                        if (rawEdited) {
+                            span {
+                                className = ClassName("type-hint")
+                                +"Edited — not yet loaded into the form."
+                            }
+                        }
+                    }
+                    rawError?.let { message ->
+                        p {
+                            className = ClassName("todo-error")
+                            +message
+                        }
                     }
                 }
             }
@@ -441,7 +465,7 @@ private fun ChildrenBuilder.renderPayload(type: SchType?, data: Map<String, Any?
  * The outcome of parsing edited request JSON: either the parsed [values], or an [error] saying what is wrong
  * and where. Exactly one is non-null.
  */
-class RawParse(val values: Map<String, Any?>?, val error: String?)
+class RawParse(val values: Map<String, Any?>?, val error: String?, val offset: Int? = null)
 
 /**
  * Parses edited request JSON back into a form's values (issue #191).
@@ -472,9 +496,11 @@ fun parseRawPayload(text: String): RawParse {
         val where = if (line != null) " (line $line, column ${col ?: "?"})" else ""
         // The parser's message ends by restating the position as a raw offset, which is the wrong unit for
         // someone looking at a text box -- line and column are already stated above. Dropping the sentence is
-        // cosmetic: if that wording ever changes the tail simply stays, it does not break.
+        // cosmetic: if that wording ever changes, the tail simply stays, it does not break.
         val detail = (e.message ?: "could not be parsed").substringBefore(" Error originates at offset")
-        return RawParse(null, "Invalid JSON$where: $detail")
+        // The character offset comes back too: a message can say where the parse broke, but putting the caret
+        // there is what actually saves someone hunting for it in a long payload.
+        return RawParse(null, "Invalid JSON$where: $detail", e.extraData[KdrException.offsetKey] as? Int)
     }
         ?: return RawParse(null, "The request has to be a JSON object — one starting with '{'.")
     return RawParse(parsed, null)

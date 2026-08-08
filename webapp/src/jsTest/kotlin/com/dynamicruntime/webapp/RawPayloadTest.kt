@@ -68,6 +68,16 @@ class RawPayloadTest {
         assertEquals(2, assertNotNull(missing.values).size)
     }
 
+    // The offset is what lets the editor put the caret on the mistake rather than only describing it, so it
+    // has to point at the offending character itself.
+    @Test
+    fun carriesTheOffsetOfTheOffendingCharacter() {
+        val text = "{\n  \"name\": \"ok\",\n  score: 3.5\n}"
+        val parse = parseRawPayload(text)
+        val offset = assertNotNull(parse.offset)
+        assertEquals('s', text[offset], "offset should land on the unquoted key")
+    }
+
     @Test
     fun reportsAnUnfinishedPaste() {
         val parse = parseRawPayload("""{"name":"widget",""")
