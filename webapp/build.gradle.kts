@@ -111,6 +111,13 @@ kotlin {
                 // is needed in index.html.
                 implementation(npm("antd", "6.5.0"))
 
+                // dayjs — antd's date type. Its DatePicker takes and returns a Dayjs, not a string, so
+                // binding a date field to the form's (string) value means converting at that boundary. antd
+                // already depends on it, but it is declared here because we import it directly: relying on a
+                // transitive package happening to be hoisted is the kind of thing that breaks on an unrelated
+                // dependency bump. The range matches what antd resolves, so no second copy is installed.
+                implementation(npm("dayjs", "^1.11.11"))
+
                 // Coroutines back the suspend-based Todo calls, which use the browser Fetch API directly
                 // (see TodoApi.kt) to hit the `:sample` runtime's endpoints — no HTTP-client library. Its
                 // version is governed by the kotlin-wrappers BOM above.

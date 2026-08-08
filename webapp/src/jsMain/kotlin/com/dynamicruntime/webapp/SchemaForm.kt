@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
@@ -344,9 +345,25 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
             checked = value == true
             onChange = { e -> emit(e.target.checked as Boolean) }
         }
-        // Date string field: a DatePicker (antd hands back the formatted string).
-        vt.jsonType == SCT.string && isDateFormat(vt.format) -> DatePicker {
-            onChange = { _, dateString -> emit(dateString) }
+        // Date field. Bound like every other widget, which it previously was not: with no `value`, antd's
+        // picker is uncontrolled, so a date the form already held -- from a restored link, or a payload loaded
+        // through the request-JSON panel -- never appeared in the field. (It also left the browser free to
+        // repopulate the input on reload from its own form memory, showing a date the form did not have.)
+        //
+        // The conversions are antd's terms, not ours: it speaks Dayjs where the schema says string.
+        vt.jsonType == SCT.string && isDateFormat(vt.format) -> {
+            val dayOnly = vt.format == SFMT.date
+            DatePicker {
+                this.value = value?.toString()?.takeIf { it.isNotBlank() }?.let { dayjs(it) }?.takeIf { it.isValid() }
+                // A `date-time` field needs the time picked too. Without this the widget can only return a
+                // day, so binding a full timestamp and then touching the field would quietly drop its time.
+                showTime = !dayOnly
+                onChange = { date, dateString ->
+                    // A day emits the day text; a moment emits ISO-8601 in UTC, which is exactly the shape the
+                    // kernel parses and writes back. Cleared emits null, which reads as absent (issue #187).
+                    emit(if (date == null) null else if (dayOnly) dateString else date.toISOString())
+                }
+            }
         }
         // File content (OpenAPI's `type: string, format: binary`): a file picker. What it emits is the
         // browser's own File object, not text -- which is exactly why the kernel validator leaves a binary

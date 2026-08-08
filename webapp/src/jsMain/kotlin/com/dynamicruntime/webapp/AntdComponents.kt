@@ -103,8 +103,17 @@ external interface SelectProps : PropsWithChildren {
 external val Select: ComponentType<SelectProps>
 
 external interface DatePickerProps : PropsWithChildren {
-    /** antd calls this with (date, dateString); we only need the string form. */
-    var onChange: ((date: dynamic, dateString: String) -> Unit)?
+    /**
+     * The selected date, as a `Dayjs` (or null for empty) — antd's own date type, not a string. Without this
+     * the picker is uncontrolled, and a value the form already holds never reaches the field.
+     */
+    var value: Dayjs?
+
+    /** Whether to pick a time as well as a day; set for a `date-time` field so the time is not lost. */
+    var showTime: Boolean?
+
+    /** antd calls this with (date, dateString): the Dayjs object and its formatted text. */
+    var onChange: ((date: Dayjs?, dateString: String) -> Unit)?
 }
 
 external val DatePicker: ComponentType<DatePickerProps>
