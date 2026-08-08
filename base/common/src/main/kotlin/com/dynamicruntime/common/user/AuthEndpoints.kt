@@ -54,7 +54,12 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             }
             // Public by design -- it identifies the application to Google and the browser has to present it.
             // Empty when Google sign-in is off, so the frontend never has to special-case a missing key.
-            property(AFLD.googleClientId, "The Google OAuth client id (empty when Google sign-in is off).", required = true)
+            property(AFLD.googleClientId, "The Google OAuth client id (empty when Google sign-in is off).",
+                required = true) {
+                // Empty is a real answer here -- "this deployment configured no client id" -- so it must not
+                // read as absent and fail the required check it is paired with.
+                emptyIsAbsent = false
+            }
         }
     }
 

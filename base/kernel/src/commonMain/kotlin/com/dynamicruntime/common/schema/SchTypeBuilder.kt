@@ -55,6 +55,16 @@ open class SchTypeBuilder(
      *  numeric types, false otherwise). */
     var allowCoerce: Boolean? by SchAttr(data, SCH.allowCoerce)
 
+    /**
+     * Custom `emptyIsAbsent` keyword: whether an empty value for this field means the field was not supplied.
+     * When unset, the parser defaults it (true for scalars, false for arrays, objects and untyped fields).
+     *
+     * Set it to **false** on a string field whose empty value is meaningful -- notably an update endpoint
+     * where `""` means "clear this", as opposed to omitting the field to mean "leave it alone". Set it to
+     * **true** on a list or object field to have an empty one read as no value at all.
+     */
+    var emptyIsAbsent: Boolean? by SchAttr(data, SCH.emptyIsAbsent)
+
     /** Whether undeclared properties are allowed. When unset, the parser defaults it (false when the type
      *  has declared properties, true when it has none). Set explicitly to allow extras on a defined type. */
     var additionalProperties: Boolean? by SchAttr(data, SCH.additionalProperties)

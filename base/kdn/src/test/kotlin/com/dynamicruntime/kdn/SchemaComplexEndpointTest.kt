@@ -147,6 +147,34 @@ class SchemaComplexEndpointTest : StringSpec({
         putStatus("complexNoName", q) shouldBe 400
     }
 
+    "an empty or null value for a required field is treated as missing, not as a value (issue #187)" {
+        // Before emptyIsAbsent, "" was simply a valid string and satisfied `required` -- a field the user had
+        // cleared was indistinguishable from one they had filled.
+        val blank = validQuery()
+        sub(blank, CX.input)[CX.name] = ""
+        putStatus("complexBlankName", blank) shouldBe 400
+
+        // And an explicit null, which used to fail as the wrong type, now reads the same way.
+        val nulled = validQuery()
+        sub(nulled, CX.input)[CX.name] = null
+        putStatus("complexNullName", nulled) shouldBe 400
+    }
+
+    "an empty optional field is dropped rather than failing its type check (issue #187)" {
+        val q = validQuery()
+        // A blank number and a blank date would each have been a badValue failure; now they are simply absent.
+        sub(q, CX.input)[CX.score] = ""
+        sub(q, CX.input)[CX.createdOn] = ""
+        // Both are required, so they now report as missing -- one failure kind, not a coercion error.
+        putStatus("complexBlankScalars", q) shouldBe 400
+
+        // The optional ones just disappear, leaving a valid request.
+        val ok = validQuery()
+        sub(ok, CX.input)[CX.active] = ""
+        sub(sub(ok, CX.input), CX.address)[CX.zip] = ""
+        items(client("complexBlankOptional").sendJsonPutRequest("/schema/complex", ok)).size shouldBe 3
+    }
+
     "an invalid option value fails validation" {
         val q = validQuery()
         sub(q, CX.input)[CX.priority] = "urgent" // not one of low/medium/high

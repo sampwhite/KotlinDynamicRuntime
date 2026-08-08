@@ -319,7 +319,12 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         property(EP.contentHash, "A content hash of the result payload; changes only when that content changes.",
             required = true)
         property(EP.webAppHash, "Content hash of the served web-app bundle (empty when none); the frontend " +
-            "compares it against its own to detect a new deployment.", required = true)
+            "compares it against its own to detect a new deployment.", required = true) {
+            // One of the fields whose empty value IS the value: "" means "no bundle is being served", which a
+            // deployment without a frontend (and every unit test) reports on every response. Left on the
+            // default, an empty hash would read as absent and then fail its own required check.
+            emptyIsAbsent = false
+        }
     }
 
     /** Output for general/item endpoints: protocol metadata plus the result under [resultKey]. */
@@ -411,6 +416,7 @@ fun inputObjectType(name: String, properties: Map<String, SchProperty>, required
         name = name,
         jsonType = SCT.kObject,
         allowCoerce = false,
+        emptyIsAbsent = false, // the object default: an endpoint's input envelope is never "absent"
         format = null,
         description = null,
         properties = properties,
@@ -433,6 +439,9 @@ val limitInputProperty: SchProperty =
             name = null,
             jsonType = SCT.integer,
             allowCoerce = true,
+            // The scalar default, and it matters on the wire: `?limit=` is an empty string, which used to be a
+            // 400 and now reads as no limit given.
+            emptyIsAbsent = true,
             format = null,
             description = "The maximum number of items to return.",
             properties = emptyMap(),

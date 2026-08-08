@@ -139,10 +139,20 @@ fun validateObject(
 ): Any {
     // Only build a new map when coercing; otherwise the input is returned untouched.
     val out: MutableMap<String, Any?>? = if (coerce) LinkedHashMap(map.size) else null
+    // Keys present in the input but dropped by the emptyIsAbsent rule. Tracked separately rather than read
+    // back off `out`, because validate-only mode builds no output map and the two modes have to agree about
+    // which required properties were satisfied.
+    val dropped = mutableSetOf<String>()
     for ((k, v) in map) {
         val key = k as? String ?: continue
         val prop = type.properties[key]
         if (prop != null) {
+            // Supplied but empty: the field reads as never supplied, so it is neither validated nor written
+            // out. Its `required` check is then answered below by `dropped`, not by the input's own key.
+            if (isAbsentValue(prop.valueType, v)) {
+                dropped.add(key)
+                continue
+            }
             // Call validateValue unconditionally (it collects failures); only store when coercing. Kept on its
             // own line: folding it into `out?.put(...)` would short-circuit (and skip validation) when out is null.
             val coerced = validateValue(prop.valueType, v, childPath(path, key), coerce, failures)
@@ -162,7 +172,7 @@ fun validateObject(
         }
     }
     for (req in type.required) {
-        if (map.containsKey(req)) {
+        if (map.containsKey(req) && req !in dropped) {
             continue
         }
         val default = type.properties[req]?.valueType?.default
@@ -175,6 +185,31 @@ fun validateObject(
         }
     }
     return out ?: map
+}
+
+/**
+ * Whether [value] counts as "not supplied" for a field of [type] — the custom `emptyIsAbsent` rule.
+ *
+ * Empty is **zero-length**: a blank (or whitespace-only) string, an empty list, an empty map. It is never
+ * zero-*valued*, so `0`, `0.0` and `false` are ordinary values. A `null` counts wherever the rule is on, which
+ * also retires an old wart: null matches no `type` and coerces to nothing, so an explicit `null` in a payload
+ * used to fail as [SchFailCode.wrongType] rather than reading as "no value".
+ *
+ * This is asked by the *container* ([validateObject]), because absence is a statement about a key. An empty
+ * element inside a list is a value at its position, not a gap, so lists are never silently shortened.
+ */
+@KdrPrivate
+fun isAbsentValue(type: SchType, value: Any?): Boolean {
+    if (!type.emptyIsAbsent) {
+        return false
+    }
+    return when (value) {
+        null -> true
+        is CharSequence -> value.isBlank()
+        is List<*> -> value.isEmpty()
+        is Map<*, *> -> value.isEmpty()
+        else -> false
+    }
 }
 
 @KdrPrivate
