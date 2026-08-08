@@ -229,4 +229,23 @@ class JsonUtilTest : StringSpec({
         checkNoTrailingContent(state) // must not throw
         result shouldBe mapOf("a" to 1L)
     }
+
+    // NaN has no JSON spelling, but real exports emit it, so it is read as null rather than rejected.
+    "NaN is forgiven to null" {
+        """{"a":NaN}""".jsonMap() shouldBe mapOf("a" to null)
+    }
+
+    // The forgiveness used to be "any token starting with N", which meant a mistyped literal disappeared
+    // instead of being reported. Only the real spelling is accepted now.
+    "another capitalized token is an error rather than a silent null" {
+        for (bad in listOf("""{"a":Nonsense}""", """{"a":Null}""", """{"a":None}""")) {
+            shouldThrow<KdrException> { bad.jsonMap() }
+        }
+    }
+
+    "strictValues turns off even the NaN forgiveness" {
+        val state = PState("""{"a":NaN}""", ExpectedVal.map)
+        state.strictValues = true
+        shouldThrow<KdrException> { parseJson(state, 0) }
+    }
 })

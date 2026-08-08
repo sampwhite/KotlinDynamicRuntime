@@ -17,9 +17,12 @@ import kotlin.math.min
 //
 // - **Comma placement is not enforced at all.** Commas are read as whitespace, so a trailing comma, a missing
 //   one, or a run of them all parse: `{"a":1,}` and `{"a":1 "b":2}` are both accepted.
-// - **An unrecognized token starting with `N` becomes null**, unless [PState.strictValues] is set. The case
-//   this exists for is `NaN` -- which turns up in real data and has no JSON spelling -- but the test is on the
-//   first letter alone, so `{"a": Nonsense}` also yields `{"a": null}` rather than an error.
+// - **`NaN` becomes null**, unless [PState.strictValues] is set. It has no JSON spelling but real exports emit
+//   it anyway. Matched exactly -- an unrecognized bare token is still an error, so a typo'd literal is caught
+//   rather than quietly becoming null.
+//   (Note an asymmetry inherited from how numbers are read: `-Infinity` parses as a Double, because the
+//   leading `-` sends it down the numeric path where Kotlin's own `toDouble` accepts it, while a bare
+//   `Infinity` is rejected. Not deliberate, and not worth changing without a case that needs it.)
 // - **Blank or null input yields an empty result** rather than failing, while [PState.allowNonNullEmpty] is on.
 //
 // It is not lax everywhere. An unquoted key, an unquoted value that is not a recognized literal, trailing
@@ -540,7 +543,11 @@ fun parseNonStringValue(state: PState, isNumeric: Boolean): Any? {
                         return false
                     }
                     else -> {
-                        if (s != "null" && (!s.startsWith("N") || state.strictValues)) {
+                        // `NaN` has no JSON spelling but turns up in real exports, so it is forgiven to null
+                        // unless strictValues is set. Matched exactly: the test used to be the leading `N`
+                        // alone, which swallowed every capitalized token -- `Nonsense` parsed to null instead
+                        // of failing, so a typo'd literal vanished rather than being caught.
+                        if (s != "null" && (s != "NaN" || state.strictValues)) {
                             throw mkJsonParseException(
                                 state,
                                 "JSON value '$s' is not a valid boolean or numeric value."
