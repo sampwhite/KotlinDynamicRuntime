@@ -171,21 +171,34 @@ fun validateObject(
     // back off `out`, because validate-only mode builds no output map and the two modes have to agree about
     // which required properties were satisfied.
     val dropped = mutableSetOf<String>()
+
+    // Declared properties first, in the order the *schema* declares them rather than the order the data
+    // happened to arrive in. That makes the coerced output stable: a field cleared and later refilled reads
+    // where it always did instead of moving to the end, and the payload matches the order a form renders in.
+    // JSON objects have no meaningful order, so nothing downstream depends on it -- but a person reading the
+    // payload does.
+    for ((key, prop) in type.properties) {
+        if (!map.containsKey(key)) {
+            continue
+        }
+        val v = map[key]
+        // Supplied but empty: the field reads as never supplied, so it is neither validated nor written
+        // out. Its `required` check is then answered below by `dropped`, not by the input's own key.
+        if (isAbsentValue(prop.valueType, v)) {
+            dropped.add(key)
+            continue
+        }
+        // Call validateValue unconditionally (it collects failures); only store when coercing. Kept on its
+        // own line: folding it into `out?.put(...)` would short-circuit (and skip validation) when out is null.
+        val coerced = validateValue(prop.valueType, v, childPath(path, key), coerce, failures, opts)
+        out?.put(key, coerced)
+    }
+
+    // Then whatever the data carried that the schema does not declare, in the order it arrived.
     for ((k, v) in map) {
         val key = k as? String ?: continue
-        val prop = type.properties[key]
-        if (prop != null) {
-            // Supplied but empty: the field reads as never supplied, so it is neither validated nor written
-            // out. Its `required` check is then answered below by `dropped`, not by the input's own key.
-            if (isAbsentValue(prop.valueType, v)) {
-                dropped.add(key)
-                continue
-            }
-            // Call validateValue unconditionally (it collects failures); only store when coercing. Kept on its
-            // own line: folding it into `out?.put(...)` would short-circuit (and skip validation) when out is null.
-            val coerced = validateValue(prop.valueType, v, childPath(path, key), coerce, failures, opts)
-            out?.put(key, coerced)
-            continue
+        if (type.properties.containsKey(key)) {
+            continue // handled above
         }
         // Undeclared ("additional") property -- apply the additionalProperties rule with prefix exemptions.
         when {

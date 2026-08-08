@@ -277,7 +277,10 @@ val EndpointCatalog = FC<Props> {
                 className = ClassName("row")
                 if (editable) {
                     Button {
-                        onClick = { pendingValues()?.let { validateOn(it) } }
+                        // Deliberately reads the FORM, not the panel: this is the form -> JSON direction, and
+                        // "Apply to form" is the inverse. That also gives unapplied edits a way out -- there
+                        // is otherwise no discard -- which is why the hint below spells both outcomes out.
+                        onClick = { validateOn(values) }
                         +"Validate"
                     }
                 }
@@ -374,7 +377,8 @@ val EndpointCatalog = FC<Props> {
                         if (rawEdited) {
                             span {
                                 className = ClassName("type-hint")
-                                +"Edited — not yet loaded into the form."
+                                +("Edited — Apply to form to use it, or Validate to discard it and re-read " +
+                                    "the form.")
                             }
                         }
                     }
