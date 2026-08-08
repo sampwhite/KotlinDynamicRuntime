@@ -96,6 +96,13 @@ private fun ChildrenBuilder.renderField(
         renderObjectList(name, prop, required, value, elementType, seen, editable, emit, omit)
         return
     }
+    // A list of scalars, edited: one widget per element. Not the multi-select case (an item type with options
+    // is a fixed set of choices, which the Select already emits as a real list), and not the read-only view,
+    // where a comma-joined line reads better than a column of single values.
+    if (editable && vt.jsonType == SCT.array && vt.itemType?.options == null) {
+        renderScalarList(name, prop, required, value, vt.itemType, emit, omit)
+        return
+    }
     if (isStructuredObject(vt)) {
         renderNestedObject(name, prop, required, value, vt, seen, editable, emit, omit)
         return
@@ -229,6 +236,53 @@ private fun ChildrenBuilder.renderObjectList(
 }
 
 /**
+ * A list of scalars — a growing column of single-value widgets, each with its own remove, and an add at the
+ * end. It emits a real list, which is what an array field's type actually requires.
+ *
+ * The single comma-separated text box this replaces emitted a *String*, and an array type does not coerce from
+ * one (`allowCoerce` defaults on only for numeric and date formats), so every entry failed validation as a
+ * plain type mismatch — the field could be described but never filled in.
+ */
+private fun ChildrenBuilder.renderScalarList(
+    name: String,
+    prop: SchProperty,
+    required: Boolean,
+    value: Any?,
+    elementType: SchType?,
+    emit: (Any?) -> Unit,
+    omit: () -> Unit,
+) {
+    val elements = value.toJsonListOrEmpty()
+    div {
+        className = ClassName("row")
+        labelSpan(name, required)
+    }
+    prop.description?.let { desc(it) }
+
+    elements.forEachIndexed { i, element ->
+        fun replace(newValue: Any?) = emit(elements.mapIndexed { j, old -> if (j == i) newValue else old })
+        div {
+            className = ClassName("row nested")
+            // An untyped array declares nothing about its elements, so there is no widget to dispatch on:
+            // a plain text box, whose value the validator leaves alone for want of an item type.
+            if (elementType != null) widget(elementType, element, true) { replace(it) } else Input {
+                this.value = displayValue(element)
+                placeholder = "value"
+                onChange = { e -> replace(e.target.value as String) }
+            }
+            removeControl("$name $i") {
+                val rest = elements.filterIndexed { j, _ -> j != i }
+                if (rest.isEmpty() && !required) omit() else emit(rest)
+            }
+        }
+    }
+    div {
+        className = ClassName("row")
+        addControl(name) { emit(elements + listOf<Any?>("")) }
+    }
+}
+
+/**
  * The add affordance. It carries only the verb: it sits inside the block of the field it adds to, so position
  * supplies the noun — which also keeps the engine generic, since deriving a singular noun from a field name
  * ("contacts" -> "contact") is a guess that eventually produces nonsense. [what] names the field for assistive
@@ -309,8 +363,9 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
                 emit(if (files != null && (files.length as Int) > 0) files[0] else null)
             }
         }
-        // string / integer / number / non-choice array / unknown: a text box. The kernel validator coerces
-        // the entered string to the declared type (and splits a comma list into an array) on validation.
+        // string / integer / number / unknown: a text box. The kernel validator coerces the entered string to
+        // the declared type on validation. Lists do not arrive here in edit mode -- a list of choices is the
+        // multi-select above, and any other list is a growing column of these widgets (renderScalarList).
         else -> Input {
             this.value = displayValue(value)
             placeholder = typeHint(vt)
@@ -385,7 +440,6 @@ private fun ChildrenBuilder.desc(text: String) {
 private fun typeHint(vt: SchType): String = when (vt.jsonType) {
     SCT.string if isBinaryFormat(vt.format) -> "file"
     SCT.string if isDateFormat(vt.format) -> vt.format ?: SCT.string
-    SCT.array -> "list (comma-separated)"
     else -> vt.jsonType ?: "value"
 }
 
