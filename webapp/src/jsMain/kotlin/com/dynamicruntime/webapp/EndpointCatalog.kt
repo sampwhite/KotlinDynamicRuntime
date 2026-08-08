@@ -80,6 +80,16 @@ val EndpointCatalog = FC<Props> {
                     fetched.endpoints.firstOrNull { it.method == hs.method && it.path == hs.path }?.let { ep ->
                         selected = ep
                         values = hs.values
+                        // Validate what was restored, so the panel and any failures are on screen immediately.
+                        // Otherwise a payload carried in the URL -- including a bad key someone is mid-way
+                        // through fixing -- is invisible until a button is pressed.
+                        if (hs.values.isNotEmpty()) {
+                            val restoredResult = coerceAndValidate(
+                                fetched.inputType(ep), hs.values, SchOpts(keepAdditionalProperties = true),
+                            )
+                            failures = restoredResult.failures
+                            coerced = payloadText(restoredResult.value)
+                        }
                     }
                 }
             } catch (e: Throwable) {
@@ -175,11 +185,7 @@ val EndpointCatalog = FC<Props> {
             // wire, because a failure stops the send.
             val result = coerceAndValidate(inputType, vals, SchOpts(keepAdditionalProperties = true))
             failures = result.failures
-            // The preview is JSON, and a picked file has no JSON form -- show what was chosen instead of
-            // trying to serialize it. The payload itself keeps the real file; only this display substitutes.
-            coerced = result.value.toJsonMapOrEmpty()
-                .mapValues { (_, v) -> if (isBrowserFile(v)) browserFileLabel(v) else v }
-                .toJsonStr()
+            coerced = payloadText(result.value)
             rawEdited = false
             rawError = null
             return if (result.failures.isEmpty()) result.value.toJsonMapOrEmpty() else null
@@ -222,6 +228,23 @@ val EndpointCatalog = FC<Props> {
 
         /** The values to act on: pending JSON edits are loaded first, so a button never ignores what is on screen. */
         fun pendingValues(): Map<String, Any?>? = if (rawEdited) applyRaw() else values
+
+        /**
+         * Re-reads the form: canonicalizes the values through the schema and validates the result.
+         *
+         * The pruning is the point. `values` can hold keys no form field represents -- an undeclared property
+         * arrives that way when a pasted payload carries one -- and those are invisible in the form yet
+         * persist, into the URL hash and across a reload. Coercing with the default options drops them at every
+         * level, which is what makes this direction honestly "the data filled out in the form fields".
+         *
+         * [validateOn]'s display pass deliberately does the opposite and keeps them, so the failure it reports
+         * stays visible on the thing it is complaining about. Apply shows you the problem; Validate clears it.
+         */
+        fun validateFromForm() {
+            val pruned = coerceAndValidate(inputType, values).value.toJsonMapOrEmpty()
+            values = pruned
+            validateOn(pruned)
+        }
 
         div {
             className = ClassName("card wide")
@@ -280,7 +303,7 @@ val EndpointCatalog = FC<Props> {
                         // Deliberately reads the FORM, not the panel: this is the form -> JSON direction, and
                         // "Apply to form" is the inverse. That also gives unapplied edits a way out -- there
                         // is otherwise no discard -- which is why the hint below spells both outcomes out.
-                        onClick = { validateOn(values) }
+                        onClick = { validateFromForm() }
                         +"Validate"
                     }
                 }
@@ -469,6 +492,14 @@ private fun ChildrenBuilder.renderPayload(type: SchType?, data: Map<String, Any?
         }
     }
 }
+
+/**
+ * The coerced payload rendered for the request-JSON panel. A picked file has no JSON form, so it shows as the
+ * label of what was chosen; the payload itself keeps the real file, only this display substitutes.
+ */
+fun payloadText(value: Any?): String = value.toJsonMapOrEmpty()
+    .mapValues { (_, v) -> if (isBrowserFile(v)) browserFileLabel(v) else v }
+    .toJsonStr()
 
 /**
  * The outcome of parsing edited request JSON: either the parsed [values], or an [error] saying what is wrong
