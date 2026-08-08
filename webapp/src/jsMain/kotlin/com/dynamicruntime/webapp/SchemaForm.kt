@@ -177,8 +177,8 @@ private fun ChildrenBuilder.renderNestedObject(
 }
 
 /**
- * A list-of-objects field: each element is its own indented sub-form under an `[i]` header (the index
- * convention the response renderer already uses), with the add control after the last one, where an append
+ * A list-of-objects field: each element is its own indented sub-form under an "i" header (the index
+ * convention the response renderer already uses), with the "add" control after the last one, where an "append"
  * belongs. Removing the final element drops the whole field unless it is required, so an optional list does
  * not linger as an empty array in the payload.
  */
@@ -237,7 +237,7 @@ private fun ChildrenBuilder.renderObjectList(
 }
 
 /**
- * A list of scalars — a growing column of single-value widgets, each with its own remove, and an add at the
+ * A list of scalars — a growing column of single-value widgets, each with its own remove and an "add" at the
  * end. It emits a real list, which is what an array field's type actually requires.
  *
  * The single comma-separated text box this replaces emitted a *String*, and an array type does not coerce from
@@ -284,7 +284,7 @@ private fun ChildrenBuilder.renderScalarList(
 }
 
 /**
- * The add affordance. It carries only the verb: it sits inside the block of the field it adds to, so position
+ * The "add" affordance. It carries only the verb: it sits inside the block of the field it adds to, so position
  * supplies the noun — which also keeps the engine generic, since deriving a singular noun from a field name
  * ("contacts" -> "contact") is a guess that eventually produces nonsense. [what] names the field for assistive
  * technology, where that surrounding context is not available.
@@ -372,7 +372,7 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
         // component wants to own the upload itself, which is the runtime's job here.
         vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> input {
             // `type` is web.html.InputType, an external value over the HTML attribute string; "file" is that
-            // attribute's value, cast rather than spelled through the wrapper's own constant so this does not
+            // attribute's value, cast rather than spelled through the wrapper's own constant, so this does not
             // ride on which of them the current kotlin-wrappers exposes.
             type = "file".unsafeCast<InputType>()
             onChange = { e ->

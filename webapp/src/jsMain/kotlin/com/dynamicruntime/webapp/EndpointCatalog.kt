@@ -81,7 +81,7 @@ val EndpointCatalog = FC<Props> {
                         selected = ep
                         values = hs.values
                         // Validate what was restored, so the panel and any failures are on screen immediately.
-                        // Otherwise a payload carried in the URL -- including a bad key someone is mid-way
+                        // Otherwise, a payload carried in the URL -- including a bad key someone is midway
                         // through fixing -- is invisible until a button is pressed.
                         if (hs.values.isNotEmpty()) {
                             val restoredResult = coerceAndValidate(
@@ -181,8 +181,8 @@ val EndpointCatalog = FC<Props> {
         fun validateOn(vals: Map<String, Any?>): Map<String, Any?>? {
             // keepAdditionalProperties: an undeclared key is a failure either way, but the editor has to keep
             // showing it. Dropped, the panel would be rewritten without the key while the error still named it
-            // -- a complaint about something no longer on screen, and nothing to act on. It never reaches the
-            // wire, because a failure stops the send.
+            // -- a complaint about something no longer on screen and nothing to act on. It never reaches the
+            // wire because a failure stops the "send".
             val result = coerceAndValidate(inputType, vals, SchOpts(keepAdditionalProperties = true))
             failures = result.failures
             coerced = payloadText(result.value)

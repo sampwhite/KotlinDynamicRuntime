@@ -34,7 +34,7 @@ external interface ConfigProviderProps : PropsWithChildren {
 
 /**
  * antd's app-wide configuration context. Wrapping the tree in one carrying [theme]'s `darkAlgorithm` is what
- * makes antd's controls dark. Without it antd renders its **light** default inside our permanently-dark
+ * makes antd's controls dark. Without it antd renders its **light** default inside our permanently dark
  * shell, which is legible only by luck: disabled text lands at `rgba(0,0,0,.25)` on a dark card -- 1.44:1,
  * well under WCAG's 4.5:1 -- and inputs come out as white slabs (issue #96).
  */

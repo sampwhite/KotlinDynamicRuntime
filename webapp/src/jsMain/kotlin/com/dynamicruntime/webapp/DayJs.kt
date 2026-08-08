@@ -9,7 +9,7 @@ package com.dynamicruntime.webapp
  * every declaration in it to a named export of antd; dayjs is its own module, and the function *is* that
  * module's export.
  *
- * Only the two operations the date widget needs are declared. Dayjs has a large surface and none of the rest
+ * Only the two operations the date widget needs are declared. Dayjs has a large surface, and none of the rest
  * is wanted here: the runtime's date type is the schema's string, and this exists purely to hand antd the
  * shape it insists on.
  */
