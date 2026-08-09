@@ -2,6 +2,10 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.endpoint.EP
+import io.kotest.matchers.collections.shouldHaveSize
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.getOptMap
+import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.ND
@@ -60,11 +64,20 @@ class HealthEndpointTest : StringSpec({
 
         // The HTTP code is `status` (a number), not the old `errorCode`.
         body[EP.status] shouldBe 400L
-        body.containsKey(EP.errorMessage) shouldBe true
         body.containsKey(EP.requestUri) shouldBe true
-        // A schema-validation error carries no logical code and no bag, so neither key is present.
+        // A schema-validation error carries no *logical* code -- that is for errors a client branches on.
         body.containsKey(EP.errorCode) shouldBe false
-        body.containsKey(EP.extraData) shouldBe false
+
+        // The failures travel structured, under extraData, rather than flattened into the sentence
+        // (issue #198). The message is a readable summary naming the field; the detail is machine-readable.
+        body[EP.errorMessage] shouldBe "Validation failed for 1 field: bogus."
+        val failures = body.getOptMap(EP.extraData)!![EP.failures].toJsonListOfMaps()
+        failures shouldHaveSize 1
+        failures[0][EP.failurePath] shouldBe "bogus"
+        failures[0][EP.failureCode] shouldBe SchFailCode.additionalProperty.name
+        failures[0][EP.failureMessage] shouldBe "Additional property 'bogus' is not allowed."
+        // Absent rather than null when the schema declares no wording of its own, and no `cause` is carried.
+        failures[0].containsKey(EP.failureUserMessage) shouldBe false
     }
 
     "the appId and trace-id headers reach the request context and the log label (issue #105)" {

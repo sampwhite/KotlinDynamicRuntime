@@ -89,6 +89,24 @@ object EP {
     const val errorFromFragment = "errorFromFragment"
     const val extraData = "extraData"
 
+    // Schema validation failures, under `extraData` when a request fails validation (issue #198). A list of
+    // objects rather than a sentence, so a client can say which field was wrong instead of parsing English:
+    //
+    //  - `path`        where in the request data, in the validator's own spelling (`input.contacts[1].handle`)
+    //  - `code`        which kind of failure -- a `SchFailCode` name
+    //  - `message`     the framework's wording, which describes the wire problem
+    //  - `userMessage` the schema's own wording from its `g-errors` block; absent when it declares none
+    //  - `options`     for an invalid choice, the values that would have been valid; absent otherwise
+    //
+    // The exception's `cause` is deliberately not carried: it is the one part most likely to hold internal
+    // detail, and redacting it belongs with issue #97 rather than here.
+    const val failures = "failures"
+    const val failurePath = "path"
+    const val failureCode = "code"
+    const val failureMessage = "message"
+    const val failureUserMessage = "userMessage"
+    const val failureOptions = "options"
+
     // Input, list endpoints.
     const val limit = "limit"
 
