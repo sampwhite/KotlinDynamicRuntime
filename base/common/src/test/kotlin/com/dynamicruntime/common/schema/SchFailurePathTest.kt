@@ -47,6 +47,23 @@ class SchFailurePathTest : StringSpec({
         isPathAtOrBelow("", "") shouldBe true
     }
 
+    "childKeyOf names the next key down" {
+        childKeyOf("input.address.street", "input") shouldBe "address"
+        childKeyOf("input.address", "input") shouldBe "address"
+        childKeyOf("input.contacts[0].kind", "input") shouldBe "contacts"
+        childKeyOf("name", "") shouldBe "name"
+        childKeyOf("address.street", "") shouldBe "address"
+    }
+
+    // An index is not a key, and a path that is not below the prefix (or is the prefix) has no next key at
+    // all -- both would otherwise be reported as an undeclared property of the object being rendered.
+    "childKeyOf declines what is not a keyed child" {
+        childKeyOf("contacts[0]", "contacts") shouldBe null
+        childKeyOf("input", "input") shouldBe null
+        childKeyOf("other.thing", "input") shouldBe null
+        childKeyOf("inputs.name", "input") shouldBe null
+    }
+
     "byPath groups every failure under its own path" {
         val fs = listOf(failure("a"), failure("b"), failure("a"))
         val grouped = fs.byPath()

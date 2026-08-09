@@ -7,11 +7,15 @@ import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.byPath
+import com.dynamicruntime.common.schema.childKeyOf
 import com.dynamicruntime.common.schema.childPath
 import com.dynamicruntime.common.schema.indexPath
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.toJsonStr
+import kotlinx.browser.document
+import web.dom.ElementId
+import org.w3c.dom.HTMLElement
 import react.ChildrenBuilder
 import react.FC
 import react.Props
@@ -67,11 +71,48 @@ external interface SchemaFormProps : Props {
  * render function, and so the grouping is done once for the pass instead of rescanning the failure list per
  * field.
  */
-class FieldErrors(failures: List<SchFailure>, val noteEdit: (String) -> Unit) {
-    private val byPath = failures.byPath()
+class FieldErrors(private val all: List<SchFailure>, val noteEdit: (String) -> Unit) {
+    private val byPath = all.byPath()
 
     /** The failures reported at exactly [path]; empty when the field is fine (or when nothing was validated). */
     fun messagesAt(path: String): List<SchFailure> = byPath[path] ?: emptyList()
+
+    /**
+     * Failures below [path] whose next key down is not one of [declared] — reported against a property this
+     * object does not have, so no field of its own will ever be drawn for it. Grouped by their own path, so
+     * each gets one addressable place to appear.
+     */
+    fun undeclaredBelow(path: String, declared: Set<String>): Map<String, List<SchFailure>> =
+        all.filter { f -> childKeyOf(f.path, path)?.let { it !in declared } == true }.byPath()
+}
+
+/**
+ * The DOM id of a field's row, and of the block holding its messages. Derived from the path so anything
+ * holding a failure can find its field: the listing at the foot of the page, and Validate focusing the first
+ * problem.
+ *
+ * Looked up with `getElementById`, never a CSS selector — a path contains `.` and `[`, which are selector
+ * syntax and would need escaping, while `getElementById` takes the string literally. Paths carry no spaces,
+ * so they are also valid as the `aria-describedby` IDREF that ties a control to its message.
+ */
+fun fieldRowId(path: String): String = "fld-$path"
+
+fun fieldErrorsId(path: String): String = "err-$path"
+
+/**
+ * Brings the field at [path] into view and puts focus on it, or does nothing when no field is rendered there.
+ *
+ * Focus lands on the first control inside the row when there is one, and on the row itself otherwise — a
+ * list header or an object header has no control of its own, and giving every row `tabIndex = -1` makes it
+ * focusable programmatically without adding a tab stop for someone moving through the form by keyboard.
+ */
+fun focusField(path: String) {
+    // The plain DOM `document` here, whose getElementById takes the id as a String; the `id` prop on the
+    // React side is the wrappers' ElementId. Same string either way.
+    val row = document.getElementById(fieldRowId(path)) ?: return
+    row.asDynamic().scrollIntoView(js("({ block: 'center', behavior: 'smooth' })"))
+    val control = row.querySelector("input, select, textarea, button") as? HTMLElement
+    (control ?: row as? HTMLElement)?.focus()
 }
 
 val SchemaForm = FC<SchemaFormProps> { props ->
@@ -110,6 +151,34 @@ private fun ChildrenBuilder.renderObject(
             omit = { onChange(values - name) },
         )
     }
+    // Then anything reported against a key this object does not declare. Nothing above draws these -- there is
+    // no property to render -- so without this they exist only in the listing at the foot of the page, which
+    // is precisely the "named somewhere you cannot go" problem this issue is about.
+    errors.undeclaredBelow(path, type.properties.keys).forEach { (at, messages) ->
+        undeclaredField(childKeyOf(at, path) ?: at, at, messages)
+    }
+}
+
+/**
+ * A failure against a key the schema does not declare. It borrows the shape of a field row so it reads in
+ * place and carries the same id, so the listing can jump to it like any other — but it shows the **key**
+ * rather than a label, since there is no declared property behind it to have a description or a type.
+ */
+private fun ChildrenBuilder.undeclaredField(key: String, path: String, messages: List<SchFailure>) {
+    div {
+        id = ElementId(fieldRowId(path))
+        tabIndex = -1
+        className = ClassName("row field-invalid")
+        span {
+            className = ClassName("field-label")
+            +key
+        }
+        span {
+            className = ClassName("field-type")
+            +"(not in the schema)"
+        }
+    }
+    fieldErrors(path, messages)
 }
 
 /**
@@ -147,8 +216,8 @@ private fun ChildrenBuilder.renderField(
     }
 
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, messages) {
-        widget(vt, value, editable) { newValue ->
+    fieldFrame(name, prop, required, path, messages) {
+        widget(vt, value, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) }) { newValue ->
             errors.noteEdit(path)
             emit(newValue)
         }
@@ -168,16 +237,41 @@ private fun ChildrenBuilder.fieldFrame(
     name: String,
     prop: SchProperty,
     required: Boolean,
+    path: String,
     messages: List<SchFailure>,
     rowContent: ChildrenBuilder.() -> Unit = {},
 ) {
     div {
+        id = ElementId(fieldRowId(path))
+        // Focusable on purpose but not in the tab order: something jumping here from the failure listing has
+        // to be able to land on a row that carries no control of its own.
+        tabIndex = -1
         className = ClassName(rowClass(messages))
         labelSpan(name, required)
         rowContent()
     }
     prop.description?.let { desc(it) }
-    fieldErrors(messages)
+    fieldErrors(path, messages)
+}
+
+/**
+ * Marks a control as invalid and points it at the block holding its messages, so the state is announced, and
+ * the reason read out rather than only being visible as a color. A no-op when [describedBy] is null, which
+ * is how a field with nothing wrong says so.
+ *
+ * Set through `asDynamic` because these are plain HTML attributes that antd's components forward to the
+ * control they wrap, and their Kotlin external interfaces do not declare them — the same route the "add" and
+ * "remove" buttons already take for `aria-label`.
+ *
+ * That forwarding was checked rather than assumed, against a running instance: `Input`, `Select`,
+ * `DatePicker` and `Checkbox` each land both attributes on their inner `<input>`, and the plain file input
+ * takes them directly. A widget added later should be checked the same way — a silently dropped
+ * `aria-describedby` looks identical to a working one.
+ */
+private fun markInvalid(props: dynamic, describedBy: String?) {
+    if (describedBy == null) return
+    props["aria-invalid"] = true
+    props["aria-describedby"] = describedBy
 }
 
 /** The row's class, marked invalid when the field carries a failure, so the label and control can be styled. */
@@ -188,11 +282,17 @@ private fun rowClass(messages: List<SchFailure>): String = if (messages.isEmpty(
  * is already sitting on the field it is about, and the path's job (saying which field) is done by position.
  * The listing at the bottom of the page keeps the path, since that surface has no field to sit next to.
  */
-private fun ChildrenBuilder.fieldErrors(messages: List<SchFailure>) {
-    messages.forEach { f ->
-        p {
-            className = ClassName("field-error")
-            +"${f.message}${choicesSuffix(f)}"
+private fun ChildrenBuilder.fieldErrors(path: String, messages: List<SchFailure>) {
+    if (messages.isEmpty()) return
+    // One block per field rather than loose paragraphs, so the control can point `aria-describedby` at all of
+    // its messages with a single id.
+    div {
+        id = ElementId(fieldErrorsId(path))
+        messages.forEach { f ->
+            p {
+                className = ClassName("field-error")
+                +"${f.message}${choicesSuffix(f)}"
+            }
         }
     }
 }
@@ -247,7 +347,7 @@ private fun ChildrenBuilder.renderNestedObject(
     val dataDriven = recursive || !required
     val messages = errors.messagesAt(path)
 
-    fieldFrame(name, prop, required, messages) {
+    fieldFrame(name, prop, required, path, messages) {
         if (dataDriven && editable) {
             // Adding or removing the whole branch invalidates anything reported inside it, which is why the
             // edit is noted against this field rather than against whatever it contained.
@@ -298,16 +398,22 @@ private fun ChildrenBuilder.renderObjectList(
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, messages)
+    fieldFrame(name, prop, required, path, messages)
 
     val typeName = elementType.name
     val childSeen = if (typeName != null) seen + typeName else seen
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
+        // A failure against the element *itself* rather than one of its fields -- an element that is not an
+        // object at all, say. Its fields each have a row; until now the element did not, so this was the one
+        // failure inside a list with nowhere of its own to appear.
+        val elementMessages = errors.messagesAt(elementPath)
         div {
             className = ClassName("nested")
             div {
-                className = ClassName("row")
+                id = ElementId(fieldRowId(elementPath))
+                tabIndex = -1
+                className = ClassName(rowClass(elementMessages))
                 span {
                     className = ClassName("type-hint")
                     +"[$i]"
@@ -322,6 +428,7 @@ private fun ChildrenBuilder.renderObjectList(
                     }
                 }
             }
+            fieldErrors(elementPath, elementMessages)
             renderObject(elementType, element.toJsonMapOrEmpty(), childSeen, editable, elementPath, errors) { newElement ->
                 emit(elements.mapIndexed { j, old -> if (j == i) newElement else old })
             }
@@ -364,7 +471,7 @@ private fun ChildrenBuilder.renderScalarList(
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, messages)
+    fieldFrame(name, prop, required, path, messages)
 
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
@@ -374,6 +481,8 @@ private fun ChildrenBuilder.renderScalarList(
             emit(elements.mapIndexed { j, old -> if (j == i) newValue else old })
         }
         div {
+            id = ElementId(fieldRowId(elementPath))
+            tabIndex = -1
             className = ClassName("${rowClass(elementMessages)} nested")
             // An untyped array declares nothing about its elements, so there is no widget to dispatch on:
             // a plain text box, whose value the validator leaves alone for want of an item type.
@@ -389,7 +498,7 @@ private fun ChildrenBuilder.renderScalarList(
                 if (rest.isEmpty() && !required) omit() else emit(rest)
             }
         }
-        fieldErrors(elementMessages)
+        fieldErrors(elementPath, elementMessages)
     }
     div {
         className = ClassName("row")
@@ -432,7 +541,9 @@ private fun ChildrenBuilder.removeControl(what: String, onRemove: () -> Unit) {
  * it is plain text: the value, annotated with the field's type in words, with no form control. In edit mode it
  * is the control appropriate to the field's kind, reporting changes through [emit].
  */
-private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, emit: (Any?) -> Unit) {
+private fun ChildrenBuilder.widget(
+    vt: SchType, value: Any?, editable: Boolean, describedBy: String? = null, emit: (Any?) -> Unit,
+) {
     if (!editable) {
         readOnlyValue(vt, value)
         return
@@ -448,6 +559,7 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
             placeholder = "(choose)"
             style = js("({ minWidth: 200 })")
             onChange = { v -> emit(jsToList(v)) }
+            markInvalid(asDynamic(), describedBy)
         }
         // Single choice.
         singleOptions != null -> Select {
@@ -457,10 +569,12 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
             allowClear = true
             style = js("({ minWidth: 200 })")
             onChange = { v -> emit(v as? String) }
+            markInvalid(asDynamic(), describedBy)
         }
         vt.jsonType == SCT.boolean -> Checkbox {
             checked = value == true
             onChange = { e -> emit(e.target.checked as Boolean) }
+            markInvalid(asDynamic(), describedBy)
         }
         // Date field. Bound like every other widget, which it previously was not: with no `value`, antd's
         // picker is uncontrolled, so a date the form already held -- from a restored link, or a payload loaded
@@ -480,6 +594,7 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
                     // kernel parses and writes back. Cleared emits null, which reads as absent (issue #187).
                     emit(if (date == null) null else if (dayOnly) dateString else date.toISOString())
                 }
+                markInvalid(asDynamic(), describedBy)
             }
         }
         // File content (OpenAPI's `type: string, format: binary`): a file picker. What it emits is the
@@ -496,6 +611,7 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
                 val files = e.target.asDynamic().files
                 emit(if (files != null && (files.length as Int) > 0) files[0] else null)
             }
+            markInvalid(asDynamic(), describedBy)
         }
         // string / integer / number / unknown: a text box. The kernel validator coerces the entered string to
         // the declared type on validation. Lists do not arrive here in edit mode -- a list of choices is the
@@ -504,6 +620,7 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
             this.value = displayValue(value)
             placeholder = typeHint(vt)
             onChange = { e -> emit(e.target.value as String) }
+            markInvalid(asDynamic(), describedBy)
         }
     }
 }

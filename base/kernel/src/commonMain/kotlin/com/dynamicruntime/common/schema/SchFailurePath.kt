@@ -28,6 +28,25 @@ fun isPathAtOrBelow(path: String, prefix: String): Boolean {
 }
 
 /**
+ * The property key immediately below [prefix] on the way to [path], or null when [path] is not a *keyed*
+ * child of [prefix] — it is [prefix] itself, lies elsewhere, or is an array element (`contacts[0]`, whose
+ * next step is an index rather than a key).
+ *
+ * Lets an object ask which of its children a failure belongs to without walking the tree: given
+ * `input.address.street` and `input`, the answer is `address`. An object that knows its own declared
+ * properties can then spot a failure reported against a key it does not declare — which is the one failure
+ * with no field of its own to sit beside, since nothing renders a property the schema never had.
+ */
+fun childKeyOf(path: String, prefix: String): String? {
+    if (!isPathAtOrBelow(path, prefix) || path.length <= prefix.length) return null
+    if (prefix.isNotEmpty() && path[prefix.length] != '.') return null
+    val start = if (prefix.isEmpty()) 0 else prefix.length + 1
+    var end = start
+    while (end < path.length && path[end] != '.' && path[end] != '[') end++
+    return path.substring(start, end).takeIf { it.isNotEmpty() }
+}
+
+/**
  * The failures grouped by their exact path, so a render pass can look a field up rather than rescanning the
  * whole list once per field.
  */
