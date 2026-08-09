@@ -22,7 +22,9 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
+import com.dynamicruntime.common.schema.failureSummary
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.schema.toWireMap
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toJsonMap
@@ -217,7 +219,13 @@ class RequestService : ServiceInitializer {
         // properties, though off-contract `_`/`$` keys remain exempt (see the validator).
         val result = coerceAndValidate(inputType, data)
         if (result.failures.isNotEmpty()) {
-            throw KdrException.mkInput("Validation failure in request data: ${result.failures}.")
+            // The failures travel STRUCTURED, under extraData, rather than interpolated into the sentence
+            // (issue #198). They are already structured -- path, code, message, the schema's own wording, the
+            // valid options -- and flattening that into English made a caller parse prose to find out which
+            // field was wrong. The message keeps a readable summary for a log line; the detail is in the bag.
+            throw KdrException.mkInput(failureSummary(result.failures)).also {
+                it.extraData[EP.failures] = result.failures.map { f -> f.toWireMap() }
+            }
         }
 
         val requestData = result.value?.toJsonMap() ?: emptyMap()

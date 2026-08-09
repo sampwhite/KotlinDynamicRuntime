@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.deepClone
@@ -17,9 +18,12 @@ import kotlinx.datetime.LocalDate
 import kotlin.time.Instant
 
 /**
- * Why a value failed schema validation. Internal and not serialized (so the lower
- * camelCase entry names are fine); grows as more JSON Schema constructs are
- * supported.
+ * Why a value failed schema validation; grows as more JSON Schema constructs are supported.
+ *
+ * These names **are** serialized, as the `code` of a reported failure (issue #198), so they are a wire
+ * contract and renaming one is a breaking change. They were internal when this enum was written, and the
+ * lower camelCase spelling is a leftover of that — kept because changing it now would be the very break the
+ * previous sentence warns about.
  */
 @Suppress("EnumEntryName")
 enum class SchFailCode {
@@ -99,6 +103,42 @@ data class SchFailure(
      */
     val userMessage: String? = null,
 )
+
+/**
+ * This failure as a plain JSON-ready map, for reporting one to a caller (issue #198).
+ *
+ * Lives here beside [SchFailure] rather than in the HTTP layer so the wire shape is defined **once**: the same
+ * kernel both sides already share for validating also says what a reported failure looks like, which is what
+ * keeps a client's reading of it from drifting from a server's writing of it.
+ *
+ * [SchFailure.cause] is not included — see `EP.failures`.
+ */
+fun SchFailure.toWireMap(): Map<String, Any?> {
+    // linkedMapOf, not buildMap: the order the reader wants is path first, and buildMap's builder does not
+    // promise to keep insertion order. Nothing depends on it -- JSON objects are unordered -- but a caller
+    // reading a list of these by eye finds the field faster when they all start the same way.
+    val out = linkedMapOf<String, Any?>(
+        EP.failurePath to path,
+        EP.failureCode to code.name,
+        EP.failureMessage to message,
+    )
+    userMessage?.let { out[EP.failureUserMessage] = it }
+    options?.let { opts ->
+        out[EP.failureOptions] = opts.map { linkedMapOf(SCH.value to it.value, SCH.label to it.label) }
+    }
+    return out
+}
+
+/**
+ * A one-line summary of [failures] for the envelope's `errorMessage`, naming the fields rather than dumping
+ * them. The detail travels structured under `extraData`; this is what a person reads in a log line, and a
+ * list of paths is the part that makes such a line worth having.
+ */
+fun failureSummary(failures: List<SchFailure>): String {
+    val paths = failures.map { it.path.ifEmpty { "(root)" } }.distinct()
+    val subject = if (paths.size == 1) "field" else "fields"
+    return "Validation failed for ${paths.size} $subject: ${paths.joinToString(", ")}."
+}
 
 /**
  * The schema's wording for [code] on this field: the specific message, else the field's `default`, else null
@@ -575,7 +615,7 @@ fun wrongTypeMsg(type: SchType): String = "This must be of type '${type.jsonType
  * the base schema's own message for the other one intact (issue #203).
  *
  * A value the field cannot measure is left alone — nothing was coerced, so there is no length or size to
- * compare, and a failure has already been reported for whatever went wrong instead.
+ * compare, and a failure has been reported for whatever went wrong instead.
  */
 @KdrPrivate
 fun checkBounds(type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>) {
@@ -622,7 +662,7 @@ fun codePointLength(s: String): Int {
 }
 
 /**
- * The built-in wording for a bound. The code is shared across the four pairs but the message is not: what the
+ * The built-in wording for a bound. The code is shared across the four pairs, but the message is not: what the
  * bound means differs by type, and "This must be at least 3." would be a poor way to say a name needs three
  * characters.
  */
@@ -631,10 +671,10 @@ fun boundMsg(jsonType: String?, bound: Double, atLeast: Boolean): String {
     val n = bound.fmtD()
     val side = if (atLeast) "at least" else "at most"
     val one = bound == 1.0
-    return when {
-        jsonType == SCT.string -> "This must be $side $n character${if (one) "" else "s"}."
-        jsonType == SCT.array -> "This must have $side $n item${if (one) "" else "s"}."
-        jsonType == SCT.kObject -> "This must have $side $n propert${if (one) "y" else "ies"}."
+    return when (jsonType) {
+        SCT.string -> "This must be $side $n character${if (one) "" else "s"}."
+        SCT.array -> "This must have $side $n item${if (one) "" else "s"}."
+        SCT.kObject -> "This must have $side $n propert${if (one) "y" else "ies"}."
         else -> "This must be $side $n."
     }
 }
