@@ -153,10 +153,8 @@ exactly the names a domain type may one day want for itself. They stay because t
 them would be churn against a hypothetical — but they are the cautionary set, not the model.
 
 **The admission test.** There is a small working set of calls so ingrained that a programmer never has to think
-about them; those earn short names, and their convenience beats clarity. If you had to look it up, it does
-not belong on `Any?`. Two escapes are nearly always available: call it as a plain function (`f(x)` rather than
-`x.f()`), or narrow the receiver — `Any?` is justified only when *not knowing the type* is the actual point, as it
-is for `toOptLong`, whose whole job is tolerating a String, a Number, or nothing at all.
+about them; those earn short names, and for those, convenience beats clarity. If you had to look it up, it does
+not belong on `Any?`.
 
 ### Naming and Disambiguation
 
