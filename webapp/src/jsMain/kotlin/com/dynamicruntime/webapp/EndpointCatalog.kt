@@ -16,6 +16,7 @@ import react.ChildrenBuilder
 import react.FC
 import react.Key
 import react.Props
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
@@ -52,6 +53,10 @@ val EndpointCatalog = FC<Props> {
     // on screen predates the edit. Distinguishes "checked, then changed" from "never checked" -- a fresh form
     // has nothing to be stale about and should stay quiet.
     var revalidate by useState(false)
+    // Bumped by a validation that found something, to send focus to the first failing field. A counter rather
+    // than an effect on `failures`, because that also changes when an edit clears a failure -- and stealing
+    // focus out of the field someone is typing in is exactly the wrong response to them fixing it.
+    var focusRequest by useState(0)
     var coerced by useState<String?>(null)
     // The request-JSON panel doubles as an editor: `rawEdited` marks text changed but not yet loaded into the
     // form, and `rawError` holds why the last load attempt failed.
@@ -102,6 +107,15 @@ val EndpointCatalog = FC<Props> {
             } finally {
                 restored = true
             }
+        }
+    }
+
+    // Send focus to the first failure once the render carrying it has been committed. It has to be an effect:
+    // the row is addressed by a DOM id, and that element does not exist until React has drawn the failures the
+    // validation just produced.
+    useEffect(focusRequest) {
+        if (focusRequest > 0) {
+            failures?.firstOrNull()?.let { focusField(it.path) }
         }
     }
 
@@ -193,6 +207,9 @@ val EndpointCatalog = FC<Props> {
             val result = coerceAndValidate(inputType, vals, SchOpts(keepAdditionalProperties = true))
             failures = result.failures
             revalidate = false
+            // Asking to be validated and being told "somewhere below, something is wrong" is the case this
+            // whole issue is about, so the answer goes to the first problem rather than making it be hunted.
+            if (result.failures.isNotEmpty()) focusRequest += 1
             coerced = payloadText(result.value)
             rawEdited = false
             rawError = null
@@ -397,10 +414,27 @@ val EndpointCatalog = FC<Props> {
                     }
                     // The path stays here even though the field above repeats the message: this listing is the
                     // one place that says *where*, and it is the same path an error from the server names.
+                    //
+                    // Each entry is a real button rather than a styled line, so it is reachable and operable
+                    // by keyboard for free. A root failure has no field to go to, so it stays plain text.
                     fs.forEach { f ->
                         p {
                             className = ClassName("todo-error")
-                            +"${f.path.ifEmpty { "(root)" }}: ${f.message}${choicesSuffix(f)}"
+                            val text = "${f.path.ifEmpty { "(root)" }}: ${f.message}${choicesSuffix(f)}"
+                            if (f.path.isEmpty()) {
+                                +text
+                            } else {
+                                button {
+                                    className = ClassName("failure-jump")
+                                    // Explicit, so wrapping this panel in a form later cannot turn a
+                                    // jump-to-field into a submit. Set as a plain attribute rather than
+                                    // through the wrappers' ButtonType, whose entry spelling this need not
+                                    // ride on.
+                                    asDynamic()["type"] = "button"
+                                    onClick = { focusField(f.path) }
+                                    +text
+                                }
+                            }
                         }
                     }
                 }

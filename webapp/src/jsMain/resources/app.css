@@ -363,6 +363,26 @@ input {
    marked so the label and the control can pick the state up. The message carries the meaning on its own --
    colour is the fast signal, not the only one, so the state survives being read by someone who cannot use it. */
 .field-error { color: var(--danger); margin: 2px 0 6px 0; font-size: .85rem; }
+/* An entry in the failure listing, which jumps to its field. A real <button> for the keyboard and screen
+   reader, stripped back to read as the line of text it replaced -- the affordance is the underline on hover,
+   not a button chrome that would make the list look like a toolbar. */
+.failure-jump {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.failure-jump:hover { text-decoration: underline; }
+/* A row is focusable only so a jump can land on one that has no control of its own; without a visible ring
+   the focus would move somewhere the eye cannot follow. */
+.row:focus-visible, .failure-jump:focus-visible {
+    outline: 2px solid var(--accent-bright);
+    outline-offset: 2px;
+}
 .field-invalid .field-label { color: var(--danger); }
 /* Reaching into antd's rendered controls by class is the only handle they offer from outside; `:where` keeps
    these at zero specificity so antd's own focus/hover states still win while the control is being used. */
