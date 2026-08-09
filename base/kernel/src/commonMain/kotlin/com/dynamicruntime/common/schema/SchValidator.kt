@@ -615,7 +615,7 @@ fun wrongTypeMsg(type: SchType): String = "This must be of type '${type.jsonType
  * the base schema's own message for the other one intact (issue #203).
  *
  * A value the field cannot measure is left alone — nothing was coerced, so there is no length or size to
- * compare, and a failure has already been reported for whatever went wrong instead.
+ * compare, and a failure has been reported for whatever went wrong instead.
  */
 @KdrPrivate
 fun checkBounds(type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>) {
@@ -662,7 +662,7 @@ fun codePointLength(s: String): Int {
 }
 
 /**
- * The built-in wording for a bound. The code is shared across the four pairs but the message is not: what the
+ * The built-in wording for a bound. The code is shared across the four pairs, but the message is not: what the
  * bound means differs by type, and "This must be at least 3." would be a poor way to say a name needs three
  * characters.
  */
@@ -671,10 +671,10 @@ fun boundMsg(jsonType: String?, bound: Double, atLeast: Boolean): String {
     val n = bound.fmtD()
     val side = if (atLeast) "at least" else "at most"
     val one = bound == 1.0
-    return when {
-        jsonType == SCT.string -> "This must be $side $n character${if (one) "" else "s"}."
-        jsonType == SCT.array -> "This must have $side $n item${if (one) "" else "s"}."
-        jsonType == SCT.kObject -> "This must have $side $n propert${if (one) "y" else "ies"}."
+    return when (jsonType) {
+        SCT.string -> "This must be $side $n character${if (one) "" else "s"}."
+        SCT.array -> "This must have $side $n item${if (one) "" else "s"}."
+        SCT.kObject -> "This must have $side $n propert${if (one) "y" else "ies"}."
         else -> "This must be $side $n."
     }
 }
