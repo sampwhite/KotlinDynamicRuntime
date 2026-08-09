@@ -149,11 +149,11 @@ adding an extension rises with the breadth of its receiver, and `Any?` deserves 
 **Name an `Any?` extension for the coercion, never for something an object does about itself.** `toOptStr`,
 `toOptLong`, `toJsonMapOrEmpty` and `toJsonListOfMaps` only mean anything when the receiver is untyped, so no class
 will ever want them as members. `toJsonMap`, `toJsonStr`, `fmt` and `toT` read like things an object does, and are
-exactly the names a domain type may one day want for itself. They stay, because they are used heavily and renaming
+exactly the names a domain type may one day want for itself. They stay because they are used heavily, and renaming
 them would be churn against a hypothetical — but they are the cautionary set, not the model.
 
 **The admission test.** There is a small working set of calls so ingrained that a programmer never has to think
-about them; those earn short names, and there convenience beats clarity. If you would have to look it up, it does
+about them; those earn short names, and their convenience beats clarity. If you had to look it up, it does
 not belong on `Any?`. Two escapes are nearly always available: call it as a plain function (`f(x)` rather than
 `x.f()`), or narrow the receiver — `Any?` is justified only when *not knowing the type* is the actual point, as it
 is for `toOptLong`, whose whole job is tolerating a String, a Number, or nothing at all.
