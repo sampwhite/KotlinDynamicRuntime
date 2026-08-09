@@ -434,7 +434,7 @@ class SchValidatorTest : StringSpec({
         dropped.failures.map { it.code } shouldBe listOf(SchFailCode.additionalProperty)
         (dropped.value as Map<*, *>).containsKey("bogus") shouldBe false
 
-        // With the option, the same failure is raised but the key survives into the output.
+        // With the option, the same failure is raised, but the key survives into the output.
         val kept = coerceAndValidate(person, data, SchOpts(keepAdditionalProperties = true))
         kept.failures.map { it.code } shouldBe listOf(SchFailCode.additionalProperty)
         (kept.value as Map<*, *>)["bogus"] shouldBe 1L

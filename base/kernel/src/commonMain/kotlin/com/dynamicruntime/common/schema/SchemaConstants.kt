@@ -141,7 +141,7 @@ object SCH {
     const val options = "g-options"
 
     /**
-     * Per-field error copy: a map from error key to the message to show when that failure is reported against
+     * Per-field error copy: a map from an error key to the message to show when that failure is reported against
      * this field. The keys are [SchFailCode] names plus [errorDefault]; anything else fails at boot.
      *
      * The first keyword here that cannot change what is *accepted* -- it only changes what a rejection says.

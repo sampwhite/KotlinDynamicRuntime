@@ -157,7 +157,7 @@ fun parseOptions(raw: Any?): List<SchOption>? {
  *
  * **Every key is checked here, and an unrecognized one fails the parse** rather than being ignored. A message
  * filed under a misspelled code is silent in the worst way — the schema looks like it says something, and the
- * only symptom is the framework's own wording turning up where custom copy was expected. The valid keys are a
+ * only symptom is the framework's own wording turning up where "custom copy" was expected. The valid keys are a
  * small closed set, so saying which one is wrong costs nothing. This is the same reasoning that puts named
  * functions on the builder: from code the mistake is unwriteable, and this catches the documents that did not
  * come through it.
