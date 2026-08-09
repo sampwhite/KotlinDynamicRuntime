@@ -125,6 +125,37 @@ suppression because they are already upper case.
 Use them any place they might make sense, and if they are likely to be commonly used, then try to keep the method
 names relatively short.
 
+The counterweight — and it does not exist in Java, so it is easy to miss — is that an extension is **resolved
+statically by the compiler from whatever is in scope**. It is not a method on the type and is not dispatched like
+one. Three consequences follow, and none of them announce themselves:
+
+* **A real member always wins, silently.** Add a `toJsonStr()` method to a class and every existing
+`x.toJsonStr()` on that type quietly starts calling the member instead of the extension. No error, no ambiguity,
+just different behavior. Usually that *is* what you would want; the problem is that it happens without telling you.
+
+* **Scope level is checked before specificity.** An explicitly imported extension outranks one declared in the same
+package, so a broad `Any.foo()` in scope beats a specific `MyType.foo()` — and because the broad one is applicable,
+the specific one is never considered at all. Where the broad one does an unchecked cast, this compiles cleanly and
+fails at run time.
+
+* **They pollute IDE type-ahead everywhere.** An extension shows up in completion after every expression of a type
+it applies to, whether or not it has been imported. Shadowing only bites on a collision; completion noise is paid
+always, by everyone.
+
+That last cost scales with how broad the receiver is, which inverts the usual instinct: `Any?` *feels* like the
+cheapest receiver — it always applies, so it always works — and is the most expensive one to own. **The bar for
+adding an extension rises with the breadth of its receiver, and `Any?` deserves the highest bar of all.**
+
+**Name an `Any?` extension for the coercion, never for something an object does about itself.** `toOptStr`,
+`toOptLong`, `toJsonMapOrEmpty` and `toJsonListOfMaps` only mean anything when the receiver is untyped, so no class
+will ever want them as members. `toJsonMap`, `toJsonStr`, `fmt` and `toT` read like things an object does, and are
+exactly the names a domain type may one day want for itself. They stay because they are used heavily, and renaming
+them would be churn against a hypothetical — but they are the cautionary set, not the model.
+
+**The admission test.** There is a small working set of calls so ingrained that a programmer never has to think
+about them; those earn short names, and for those, convenience beats clarity. If you had to look it up, it does
+not belong on `Any?`.
+
 ### Naming and Disambiguation
 
 * We namespace with Kotlin packages, not with a prefix on every type. This is a deliberate break from the
