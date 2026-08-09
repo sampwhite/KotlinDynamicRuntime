@@ -63,4 +63,15 @@ class SchType(
      * coercing. (An explicit `default: null` is treated as no default.)
      */
     val default: Any?,
+    /**
+     * Custom `g-errors` keyword (resolved): what a failure against this field should say, keyed by
+     * [SchFailCode] name with [SCH.errorDefault] as the fallback. Empty when the schema declares none, which
+     * leaves the validator's own wording in place.
+     *
+     * Copy, in a model that is otherwise about validity — but it is the *validator's* output, not a
+     * renderer's decoration, which is the line that keeps this type honest: it carries nothing that varies by
+     * surface. Two surfaces showing the same failure differently choose between this and
+     * [SchFailure.message]; they do not each need their own version of this map.
+     */
+    val errorMessages: Map<String, String>,
 )

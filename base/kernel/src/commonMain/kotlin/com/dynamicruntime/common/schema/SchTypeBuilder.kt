@@ -20,6 +20,40 @@ class SchAttr<T>(private val data: MutableMap<String, Any?>, private val key: St
     }
 }
 
+/**
+ * The `g-errors` block of a field: one function per [SchFailCode], plus [default] for anything not named.
+ *
+ * Named functions rather than a `code to message` map on purpose. A map would accept a misspelled key and
+ * fail at boot; here the mistake cannot be written at all, and adding a failure code to the enum makes every
+ * schema that should say something about it fail to compile until it does — which is the point at which
+ * somebody is actually thinking about that code.
+ */
+class SchErrors(private val data: MutableMap<String, Any?>) {
+    /** Shown when the field is required and was not supplied. */
+    fun missingRequired(message: String) = set(SchFailCode.missingRequired, message)
+
+    /** Shown when the value was the wrong shape before its content was even looked at. */
+    fun wrongType(message: String) = set(SchFailCode.wrongType, message)
+
+    /** Shown when the content was inspected and would not parse or coerce — a malformed date or number. */
+    fun badValue(message: String) = set(SchFailCode.badValue, message)
+
+    /** Shown when the value is not one of the field's declared options. */
+    fun invalidOption(message: String) = set(SchFailCode.invalidOption, message)
+
+    /**
+     * Shown for any failure this block does not name. Not itself a failure code — the fallback *after* the
+     * specific ones and *before* the validator's built-in wording.
+     */
+    fun default(message: String) {
+        data[SCH.errorDefault] = message
+    }
+
+    private fun set(code: SchFailCode, message: String) {
+        data[code.name] = message
+    }
+}
+
 /** Qualifies a bare type [name] with [namespace]. A name that already contains a
  *  '.' is treated as fully qualified and returned unchanged. */
 fun qualifyTypeName(name: String, namespace: String): String =
@@ -101,6 +135,27 @@ open class SchTypeBuilder(
     @KdrPrivate
     fun optionsList(): MutableList<Any?> =
         data.getOrPut(SCH.options) { ArrayList<Any?>() }!!.toT()
+
+    /**
+     * Declares what a failure against this field should say, in place of the validator's own wording
+     * (issue #202):
+     *
+     * ```
+     * property("score", "Numeric score.", required = true) {
+     *     type = SCT.integer
+     *     errors {
+     *         missingRequired("Please enter a score.")
+     *         default("That score does not look right.")
+     *     }
+     * }
+     * ```
+     *
+     * The block offers one function per failure code, so a code that does not exist cannot be written — which
+     * is why the parser's check on the same keys only has to catch documents that were not built here.
+     */
+    fun errors(build: SchErrors.() -> Unit) {
+        SchErrors(data.getOrPut(SCH.errors) { LinkedHashMap<String, Any?>() }!!.toT()).apply(build)
+    }
 
     /**
      * Adds a property (field) subschema. A [description] is MANDATORY for fields

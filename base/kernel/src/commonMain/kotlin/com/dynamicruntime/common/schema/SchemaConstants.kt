@@ -141,6 +141,21 @@ object SCH {
     const val options = "g-options"
 
     /**
+     * Per-field error copy: a map from error key to the message to show when that failure is reported against
+     * this field. The keys are [SchFailCode] names plus [errorDefault]; anything else fails at boot.
+     *
+     * The first keyword here that cannot change what is *accepted* -- it only changes what a rejection says.
+     * That makes it the simple case for the export rule on [gPrefix]: stripped, with no transformer-table row
+     * needed, because dropping something that has no bearing on validity can make an exported schema neither
+     * stricter nor looser.
+     */
+    const val errors = "g-errors"
+
+    /** The [errors] key used when no message is declared for the specific failure code. Not a failure code,
+     *  and cannot collide with one -- no [SchFailCode] entry is named "default". */
+    const val errorDefault = "default"
+
+    /**
      * Display label of an [options] entry. Bare rather than `g-`-prefixed: it is a field *inside* the value of
      * one of our keywords, not a keyword in the schema keyword namespace, so it has nothing to collide with.
      */

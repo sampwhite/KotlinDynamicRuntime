@@ -104,6 +104,7 @@ fun parseNode(
         itemType = itemType,
         options = parseOptions(map[SCH.options]),
         default = map[SCH.default],
+        errorMessages = parseErrorMessages(map[SCH.errors], name),
     )
     if (itemRefName != null) {
         pendingItemRefs.add(PendingItemRef(schType, itemRefName))
@@ -149,6 +150,38 @@ fun parseOptions(raw: Any?): List<SchOption>? {
             null
         }
     }
+}
+
+/**
+ * Parses the custom `g-errors` construct: a map from error key to the message that failure should show.
+ *
+ * **Every key is checked here, and an unrecognized one fails the parse** rather than being ignored. A message
+ * filed under a misspelled code is silent in the worst way — the schema looks like it says something, and the
+ * only symptom is the framework's own wording turning up where custom copy was expected. The valid keys are a
+ * small closed set, so saying which one is wrong costs nothing. This is the same reasoning that puts named
+ * functions on the builder: from code the mistake is unwriteable, and this catches the documents that did not
+ * come through it.
+ *
+ * A value that is not a string is skipped rather than rejected: the object form is reserved for a future
+ * markdown-fragment reference (`{"fragment": "score.required"}`), so a document using it early degrades to
+ * the built-in wording instead of failing to load.
+ */
+@KdrPrivate
+fun parseErrorMessages(raw: Any?, typeName: String?): Map<String, String> {
+    if (raw !is Map<*, *>) return emptyMap()
+    val out = LinkedHashMap<String, String>(raw.size)
+    for ((k, v) in raw) {
+        val key = k.toOptStr() ?: continue
+        if (key != SCH.errorDefault && SchFailCode.entries.none { it.name == key }) {
+            val valid = (SchFailCode.entries.map { it.name } + SCH.errorDefault).joinToString(", ")
+            throw KdrException(
+                "'${SCH.errors}'${typeName?.let { " on '$it'" } ?: ""} names '$key', which is not a failure " +
+                    "code. Valid keys: $valid."
+            )
+        }
+        v.toOptStr()?.let { out[key] = it }
+    }
+    return out
 }
 
 @KdrPrivate

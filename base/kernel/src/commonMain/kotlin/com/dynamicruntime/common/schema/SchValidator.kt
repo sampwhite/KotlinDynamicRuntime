@@ -72,7 +72,37 @@ data class SchFailure(
     val message: String,
     val options: List<SchOption>? = null,
     val cause: KdrException? = null,
+    /**
+     * The schema's own wording for this failure, from the field's `g-errors` block, or null when it declares
+     * none (issue #202). Sits *beside* [message] rather than replacing it, because the two serve different
+     * readers: a surface documenting the wire wants to say the value is not an integer, while a form asking
+     * someone for a score wants whatever the schema author wrote instead.
+     */
+    val userMessage: String? = null,
 )
+
+/**
+ * The schema's wording for [code] on this field: the specific message, else the field's `default`, else null
+ * to leave the validator's own words in place. Three levels deep and deliberately no deeper — the built-in
+ * message *is* the global default, so a type-level layer would buy nothing that is not already covered.
+ */
+@KdrPrivate
+fun SchType.userMessage(code: SchFailCode): String? =
+    errorMessages[code.name] ?: errorMessages[SCH.errorDefault]
+
+/**
+ * A failure against this field, carrying whatever the field's `g-errors` says about [code]. Used in place of
+ * constructing [SchFailure] directly so that resolution cannot be forgotten at one site out of nineteen — the
+ * kind of omission whose only symptom is one message quietly not being customizable.
+ */
+@KdrPrivate
+fun SchType.failure(
+    path: String,
+    code: SchFailCode,
+    message: String,
+    options: List<SchOption>? = null,
+    cause: KdrException? = null,
+): SchFailure = SchFailure(path, code, message, options, cause, userMessage(code))
 
 /**
  * Knobs that adjust what a validation run *produces*, for a caller whose needs differ from the wire
@@ -155,7 +185,7 @@ fun validateValue(
     if (options != null) {
         val choice = value as? String
         if (choice == null || options.none { it.value == choice }) {
-            failures.add(SchFailure(path, SchFailCode.invalidOption, "'$value' is not a valid option.", options))
+            failures.add(type.failure(path, SchFailCode.invalidOption, "'$value' is not a valid option.", options))
         }
         return value
     }
@@ -230,12 +260,16 @@ fun validateObject(
         if (map.containsKey(req) && req !in dropped) {
             continue
         }
-        val default = type.properties[req]?.valueType?.default
+        val reqType = type.properties[req]?.valueType
+        val default = reqType?.default
         if (default != null) {
             out?.put(req, cloneForInjection(default)) // a default supplies the value, so no failure
         } else {
+            // Resolved against the missing property's OWN type, not this object's: the failure is reported by
+            // the parent's required loop, but the copy belongs to the field it is about.
             failures.add(
-                SchFailure(childPath(path, req), SchFailCode.missingRequired, "Required property '$req' is missing."),
+                reqType?.failure(childPath(path, req), SchFailCode.missingRequired, "Required property '$req' is missing.")
+                    ?: SchFailure(childPath(path, req), SchFailCode.missingRequired, "Required property '$req' is missing."),
             )
         }
     }
@@ -305,7 +339,7 @@ fun coerceMismatch(
 ): Any? {
     if (!type.allowCoerce) {
         // A plain type check decided the value is wrong; its content was never inspected.
-        failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
         return value
     }
     return when (type.jsonType) {
@@ -315,7 +349,7 @@ fun coerceMismatch(
         SCT.string -> {
             if (value == null) {
                 // Nothing to render; a plain null-vs-string type check.
-                failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+                failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
                 value
             } else {
                 value.toString()
@@ -324,7 +358,7 @@ fun coerceMismatch(
         SCT.array -> coerceStringToArray(type, value, path, coerce, failures, opts)
         SCT.kObject -> coerceStringToObject(type, value, path, coerce, failures, opts)
         else -> {
-            failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+            failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
             value
         }
     }
@@ -342,12 +376,12 @@ fun coerceNumericString(
 ): Any? {
     val s = value as? String
     if (s == null) {
-        failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
         return value
     }
     val parsed = parse(s)
     if (parsed == null) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "'$s' is not a valid ${type.jsonType}."))
+        failures.add(type.failure(path, SchFailCode.badValue, "'$s' is not a valid ${type.jsonType}."))
         return value
     }
     return parsed
@@ -362,7 +396,7 @@ fun coerceNumericString(
 fun coerceStringToBool(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
     val s = value as? String
     if (s == null) {
-        failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
         return value
     }
     val b = s.toOptBool()
@@ -370,7 +404,7 @@ fun coerceStringToBool(type: SchType, value: Any?, path: String, coerce: Boolean
         return b
     }
     if (s.any { it > ' ' }) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "'$s' is not a recognizable boolean."))
+        failures.add(type.failure(path, SchFailCode.badValue, "'$s' is not a recognizable boolean."))
         return value
     }
     // Pure whitespace: a blank cell is treated as an absent value.
@@ -388,14 +422,14 @@ fun coerceStringToArray(
 ): Any? {
     val s = value as? String
     if (s == null) {
-        failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
         return value
     }
     val list: List<Any?> = if (s.firstOrNull { it > ' ' } == '[') {
         try {
             s.jsonArray() ?: emptyList()
         } catch (e: KdrException) {
-            failures.add(SchFailure(path, SchFailCode.badValue, "The value is not a valid JSON array.", cause = e))
+            failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON array.", cause = e))
             return value
         }
     } else {
@@ -412,17 +446,17 @@ fun coerceStringToObject(
 ): Any? {
     val s = value as? String
     if (s == null) {
-        failures.add(SchFailure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
         return value
     }
     val map = try {
         s.jsonMap()
     } catch (e: KdrException) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "The value is not a valid JSON object.", cause = e))
+        failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON object.", cause = e))
         return value
     }
     if (map == null) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "The value is not a valid JSON object."))
+        failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON object."))
         return value
     }
     return validateValue(type, map, path, coerce, failures, opts)
@@ -463,20 +497,20 @@ fun validateDate(type: SchType, value: Any?, path: String, coerce: Boolean, fail
                 else if (lenient) value.parseDayLenient()
                 else value.parseDay()
             is LocalDate -> if (lenient) value.toStartOfDay() else {
-                failures.add(SchFailure(path, SchFailCode.wrongType, "This must be a timestamp, not a day."))
+                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a timestamp, not a day."))
                 return value
             }
             is Instant -> if (lenient) value.toDay() else {
-                failures.add(SchFailure(path, SchFailCode.wrongType, "This must be a day, not a timestamp."))
+                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a day, not a timestamp."))
                 return value
             }
             else -> {
-                failures.add(SchFailure(path, SchFailCode.wrongType, "This must be a date string."))
+                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a date string."))
                 return value
             }
         }
     } catch (e: KdrException) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "'$value' is not a valid date.", cause = e))
+        failures.add(type.failure(path, SchFailCode.badValue, "'$value' is not a valid date.", cause = e))
         return value
     }
     return if (coerce && type.allowCoerce) parsed else value

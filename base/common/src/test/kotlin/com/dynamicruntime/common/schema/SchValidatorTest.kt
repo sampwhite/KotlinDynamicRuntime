@@ -10,6 +10,8 @@ import kotlinx.datetime.LocalDate
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.maps.shouldBeEmpty
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -561,5 +563,104 @@ class SchValidatorTest : StringSpec({
         val result = coerceAndValidate(t, mapOf("size" to ""))
         result.failures.shouldBeEmpty()
         (result.value as Map<*, *>)["size"] shouldBe 10
+    }
+
+    // --- g-errors: the schema's own wording for a failure (issue #202) ------------------------------------
+
+    fun errorCopyTypes(): Map<String, SchType> = parseSchemaTypes(
+        schemaDefs(cxt, "e") {
+            type("Form") {
+                type = SCT.kObject
+                // Both a specific message and a default: the specific one wins for its code.
+                property("score", "A score", required = true) {
+                    type = SCT.integer
+                    errors {
+                        missingRequired("A score is needed.")
+                        default("Scores are whole numbers.")
+                    }
+                }
+                // Only a default: every code falls through to it.
+                property("nickname", "A name") {
+                    type = SCT.integer
+                    errors { default("That does not look right.") }
+                }
+                // No block at all: the validator's own wording stands.
+                property("plain", "Plain") { type = SCT.integer }
+            }
+        },
+    )
+
+    "the code-specific message wins over the field default" {
+        val t = errorCopyTypes()["e.Form"].shouldNotBeNull()
+        val f = validate(t, mapOf("nickname" to 1, "plain" to 1)).single()
+        f.code shouldBe SchFailCode.missingRequired
+        f.userMessage shouldBe "A score is needed."
+        // Beside, not instead of: the wire wording is still there for a surface that documents the wire.
+        f.message shouldBe "Required property 'score' is missing."
+    }
+
+    "a field default covers a code the block does not name" {
+        val t = errorCopyTypes()["e.Form"].shouldNotBeNull()
+        val f = validate(t, mapOf("score" to "x", "plain" to 1)).single { it.path == "score" }
+        f.code shouldBe SchFailCode.badValue
+        f.userMessage shouldBe "Scores are whole numbers."
+    }
+
+    "every code falls through to a lone default" {
+        val t = errorCopyTypes()["e.Form"].shouldNotBeNull()
+        val f = validate(t, mapOf("score" to 1, "nickname" to "x")).single { it.path == "nickname" }
+        f.userMessage shouldBe "That does not look right."
+    }
+
+    // The third level of the chain: no schema copy at all leaves the built-in message, and userMessage null
+    // rather than a copy of it -- a surface has to be able to tell "the schema said this" from "it did not".
+    "a field with no block carries no user message" {
+        val t = errorCopyTypes()["e.Form"].shouldNotBeNull()
+        val f = validate(t, mapOf("score" to 1, "plain" to "x")).single { it.path == "plain" }
+        f.userMessage shouldBe null
+        f.message shouldBe "'x' is not a valid integer."
+    }
+
+    // A misspelled code is the failure mode worth catching: the schema looks like it says something, and the
+    // only symptom would be the built-in wording turning up where custom copy was expected.
+    "an unknown error key fails the parse, naming the offender" {
+        val e = shouldThrow<KdrException> {
+            parseSchemaTypes(
+                mapOf(
+                    "e.Bad" to mapOf(
+                        SCH.type to SCT.kObject,
+                        SCH.properties to mapOf(
+                            "score" to mapOf(
+                                SCH.type to SCT.integer,
+                                SCH.errors to mapOf("typeWrong" to "nope"),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        }
+        e.fullMessage() shouldContain "typeWrong"
+        e.fullMessage() shouldContain SchFailCode.wrongType.name
+    }
+
+    // Reserved for a future markdown-fragment reference, so a document using it early has to degrade rather
+    // than fail to load.
+    "a non-string error value is ignored rather than rejected" {
+        val types = parseSchemaTypes(
+            mapOf(
+                "e.Obj" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf(
+                        "score" to mapOf(
+                            SCH.type to SCT.integer,
+                            SCH.errors to mapOf("badValue" to mapOf("fragment" to "score.bad")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val t = types["e.Obj"].shouldNotBeNull()
+        t.properties["score"]!!.valueType.errorMessages.shouldBeEmpty()
+        validate(t, mapOf("score" to "x")).single().userMessage shouldBe null
     }
 })
