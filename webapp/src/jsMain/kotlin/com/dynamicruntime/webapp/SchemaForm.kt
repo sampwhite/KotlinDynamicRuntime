@@ -147,13 +147,34 @@ private fun ChildrenBuilder.renderField(
     }
 
     val messages = errors.messagesAt(path)
-    div {
-        className = ClassName(rowClass(messages))
-        labelSpan(name, required)
+    fieldFrame(name, prop, required, messages) {
         widget(vt, value, editable) { newValue ->
             errors.noteEdit(path)
             emit(newValue)
         }
+    }
+}
+
+/**
+ * How every field presents *itself*, whatever it then goes on to contain: a row carrying the label and
+ * whatever [rowContent] puts beside it, the field's description, and any failures reported against it.
+ *
+ * The four render paths differ in what they draw *after* this — a widget inline, an expanded sub-form, a
+ * column of elements — but they must not differ in this, or a field's error appears in a different place
+ * depending on the shape of its type. Having one frame is also what keeps the next addition to it (an
+ * ancestor marker, an `aria-describedby` tying control to message) a single edit rather than four.
+ */
+private fun ChildrenBuilder.fieldFrame(
+    name: String,
+    prop: SchProperty,
+    required: Boolean,
+    messages: List<SchFailure>,
+    rowContent: ChildrenBuilder.() -> Unit = {},
+) {
+    div {
+        className = ClassName(rowClass(messages))
+        labelSpan(name, required)
+        rowContent()
     }
     prop.description?.let { desc(it) }
     fieldErrors(messages)
@@ -177,7 +198,9 @@ private fun ChildrenBuilder.fieldErrors(messages: List<SchFailure>) {
 }
 
 /**
- * The " (valid: …)" suffix listing an invalid-option failure's choices; empty for every other failure.
+ * The "Valid options: …" sentence listing an invalid-option failure's choices; empty for every other failure.
+ * Its own sentence rather than a trailing parenthetical, because the message it follows now ends in a period
+ * and a lowercase "(valid: …)" stranded after one reads as an afterthought.
  *
  * Each choice shows its **value**, which is what actually goes in the payload — this surface documents the
  * wire, the same reason the endpoint form labels fields with their key rather than a `title`. The label is
@@ -186,7 +209,7 @@ private fun ChildrenBuilder.fieldErrors(messages: List<SchFailure>) {
  */
 fun choicesSuffix(f: SchFailure): String {
     val opts = f.options ?: return ""
-    return " (valid: ${opts.joinToString(", ") { if (it.label == it.value) it.value else "${it.value} — ${it.label}" }})"
+    return " Valid options: ${opts.joinToString(", ") { if (it.label == it.value) it.value else "${it.value} — ${it.label}" }}."
 }
 
 /** An object type with declared fields, as opposed to a free-form object. */
@@ -224,9 +247,7 @@ private fun ChildrenBuilder.renderNestedObject(
     val dataDriven = recursive || !required
     val messages = errors.messagesAt(path)
 
-    div {
-        className = ClassName(rowClass(messages))
-        labelSpan(name, required)
+    fieldFrame(name, prop, required, messages) {
         if (dataDriven && editable) {
             // Adding or removing the whole branch invalidates anything reported inside it, which is why the
             // edit is noted against this field rather than against whatever it contained.
@@ -237,8 +258,6 @@ private fun ChildrenBuilder.renderNestedObject(
             }
         }
     }
-    prop.description?.let { desc(it) }
-    fieldErrors(messages)
     if (dataDriven && !present) {
         // Nothing there: awaiting an Add, or simply absent. Expanding it anyway would show a structure the
         // data does not have -- empty lat/lon for a contact with no location -- which reads as present-but-blank.
@@ -279,12 +298,7 @@ private fun ChildrenBuilder.renderObjectList(
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    div {
-        className = ClassName(rowClass(messages))
-        labelSpan(name, required)
-    }
-    prop.description?.let { desc(it) }
-    fieldErrors(messages)
+    fieldFrame(name, prop, required, messages)
 
     val typeName = elementType.name
     val childSeen = if (typeName != null) seen + typeName else seen
@@ -350,12 +364,7 @@ private fun ChildrenBuilder.renderScalarList(
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    div {
-        className = ClassName(rowClass(messages))
-        labelSpan(name, required)
-    }
-    prop.description?.let { desc(it) }
-    fieldErrors(messages)
+    fieldFrame(name, prop, required, messages)
 
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
