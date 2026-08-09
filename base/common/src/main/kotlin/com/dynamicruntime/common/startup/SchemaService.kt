@@ -259,8 +259,14 @@ class SchemaService : ServiceInitializer {
                 // API caller needs to read.
                 property(CX.score, "Numeric score (numeric types coerce from a string by default).", required = true) {
                     type = SCT.number
+                    // A bound on the numeric pair (issue #203); `aliases` below carries the array pair, so the
+                    // sample exercises two of the four with the same two failure codes.
+                    minimum = 0
+                    maximum = 100
                     errors {
                         missingRequired("A score is needed before this can be processed.")
+                        belowMinimum("A score cannot be negative.")
+                        aboveMaximum("A score cannot be more than 100.")
                         default("A score has to be a number, such as 42 or 3.5.")
                     }
                 }
@@ -269,7 +275,10 @@ class SchemaService : ServiceInitializer {
                     type = SCT.boolean
                     allowCoerce = true
                 }
-                property(CX.aliases, "Alternate names.") { type = SCT.array; items { type = SCT.string } }
+                property(CX.aliases, "Alternate names (at most three).") {
+                    type = SCT.array; items { type = SCT.string }
+                    maxItems = 3
+                }
                 // The list-of-objects case: an array whose items are a referenced object type, so each element
                 // is validated property-wise (and the frontend has to offer a way to add one).
                 property(CX.contacts, "Contact methods; a list of objects.") {

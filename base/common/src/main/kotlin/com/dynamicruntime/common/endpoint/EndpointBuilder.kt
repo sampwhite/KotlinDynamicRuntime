@@ -426,8 +426,10 @@ fun inputObjectType(name: String, properties: Map<String, SchProperty>, required
         options = null,
         default = null,
         // An endpoint's input envelope is machinery, not a field anyone fills in, so there is nothing here
-        // for custom error copy to be about.
+        // for custom error copy to be about, and no bound on how many fields it may carry.
         errorMessages = emptyMap(),
+        minBound = null,
+        maxBound = null,
     )
 
 /** The empty (no-parameters) input base: a closed object with no properties. */
@@ -454,6 +456,10 @@ val limitInputProperty: SchProperty =
             options = null,
             default = defaultListLimit,
             errorMessages = emptyMap(),
+            // Deliberately unbounded rather than `minimum = 1`: a bound here would start rejecting `?limit=0`,
+            // which is a behavior change no caller has asked for. Worth revisiting on its own.
+            minBound = null,
+            maxBound = null,
         )
     }
 

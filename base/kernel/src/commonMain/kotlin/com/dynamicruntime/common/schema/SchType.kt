@@ -74,4 +74,17 @@ class SchType(
      * [SchFailure.message]; they do not each need their own version of this map.
      */
     val errorMessages: Map<String, String>,
+    /**
+     * The declared lower bound, or null. **One field for all four of JSON Schema's min/max pairs**, because a
+     * type declares at most one of them: `minimum` for a number, `minLength` for a string, `minItems` for an
+     * array, `minProperties` for an object. Which keyword it was read from follows from [jsonType], and what
+     * it is compared against follows with it — the value itself, its length, its size.
+     *
+     * Held as a Double so one field serves a fractional `minimum` and an integral `minLength` alike; there is
+     * no BigDecimal in a KMP common source set, so a bound beyond 2^53 loses precision. Not a real constraint
+     * on a length or a count, and a `minimum` out there is not a bound anyone is enforcing meaningfully.
+     */
+    val minBound: Double?,
+    /** The declared upper bound, or null; the counterpart of [minBound] and read the same way. */
+    val maxBound: Double?,
 )

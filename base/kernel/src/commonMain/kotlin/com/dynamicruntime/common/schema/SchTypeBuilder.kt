@@ -42,6 +42,16 @@ class SchErrors(private val data: MutableMap<String, Any?>) {
     fun invalidOption(message: String) = set(SchFailCode.invalidOption, message)
 
     /**
+     * Shown when the value falls short of the field's lower bound — whichever of `minimum`, `minLength`,
+     * `minItems` or `minProperties` its type declares. One function, because a field has one type and so one
+     * of those can apply.
+     */
+    fun belowMinimum(message: String) = set(SchFailCode.belowMinimum, message)
+
+    /** Shown when the value exceeds the field's upper bound; the counterpart of [belowMinimum]. */
+    fun aboveMaximum(message: String) = set(SchFailCode.aboveMaximum, message)
+
+    /**
      * Shown for any failure this block does not name. Not itself a failure code — the fallback *after* the
      * specific ones and *before* the validator's built-in wording.
      */
@@ -102,6 +112,37 @@ open class SchTypeBuilder(
     /** Whether undeclared properties are allowed. When unset, the parser defaults it (false when the type
      *  has declared properties, true when it has none). Set explicitly to allow extras on a defined type. */
     var additionalProperties: Boolean? by SchAttr(data, SCH.additionalProperties)
+
+    // JSON Schema's four min/max pairs (issue #203). Each is spelled with the standard keyword for its type,
+    // because that is what the document has to say; the parser folds whichever one applies into a single
+    // bound on SchType, since a type declares at most one pair. A pair belonging to another type is ignored
+    // rather than rejected -- that is what a standard validator does with an inapplicable keyword.
+    // `exclusiveMinimum`/`exclusiveMaximum` are deliberately not supported: rare in practice, and they would
+    // complicate both the bound and its wording for no case anything here has.
+
+    /** Smallest accepted value, for a number or integer field. */
+    var minimum: Number? by SchAttr(data, SCH.minimum)
+
+    /** Largest accepted value, for a number or integer field. */
+    var maximum: Number? by SchAttr(data, SCH.maximum)
+
+    /** Fewest accepted characters, for a string field. Counted in code points, so an emoji counts once. */
+    var minLength: Number? by SchAttr(data, SCH.minLength)
+
+    /** Most accepted characters, for a string field; see [minLength] on how they are counted. */
+    var maxLength: Number? by SchAttr(data, SCH.maxLength)
+
+    /** Fewest accepted elements, for an array field. */
+    var minItems: Number? by SchAttr(data, SCH.minItems)
+
+    /** Most accepted elements, for an array field. */
+    var maxItems: Number? by SchAttr(data, SCH.maxItems)
+
+    /** Fewest accepted properties, for an object field. */
+    var minProperties: Number? by SchAttr(data, SCH.minProperties)
+
+    /** Most accepted properties, for an object field. */
+    var maxProperties: Number? by SchAttr(data, SCH.maxProperties)
 
     /** JSON Schema `default` value. A required property with a default does not
      *  fail validation when missing, and coercion injects the default. */

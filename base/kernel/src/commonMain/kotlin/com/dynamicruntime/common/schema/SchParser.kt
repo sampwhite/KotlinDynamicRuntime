@@ -4,6 +4,7 @@ import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.toOptDouble
 
 /**
  * Parses a `$defs`-style map of JSON Schema types (e.g., the output of
@@ -105,11 +106,42 @@ fun parseNode(
         options = parseOptions(map[SCH.options]),
         default = map[SCH.default],
         errorMessages = parseErrorMessages(map[SCH.errors], name),
+        minBound = map[minBoundKeyword(jsonType)].toOptDouble(),
+        maxBound = map[maxBoundKeyword(jsonType)].toOptDouble(),
     )
     if (itemRefName != null) {
         pendingItemRefs.add(PendingItemRef(schType, itemRefName))
     }
     return schType
+}
+
+/**
+ * Which of JSON Schema's four lower-bound keywords applies to [jsonType] — `minimum` for a number,
+ * `minLength` for a string, `minItems` for an array, `minProperties` for an object — or null when the type
+ * measures nothing (a boolean, or an unconstrained field).
+ *
+ * A keyword belonging to a *different* type is simply not read, which is what JSON Schema itself does: a
+ * validation keyword that does not apply to the instance type is ignored, not an error. Deliberately unlike
+ * the check on `g-errors` keys, which is ours to define and so can afford to be strict — being strict here
+ * would mean rejecting documents a standard validator accepts.
+ */
+@KdrPrivate
+fun minBoundKeyword(jsonType: String?): String = when {
+    isNumericType(jsonType) -> SCH.minimum
+    jsonType == SCT.string -> SCH.minLength
+    jsonType == SCT.array -> SCH.minItems
+    jsonType == SCT.kObject -> SCH.minProperties
+    else -> ""
+}
+
+/** The upper-bound counterpart of [minBoundKeyword]. */
+@KdrPrivate
+fun maxBoundKeyword(jsonType: String?): String = when {
+    isNumericType(jsonType) -> SCH.maximum
+    jsonType == SCT.string -> SCH.maxLength
+    jsonType == SCT.array -> SCH.maxItems
+    jsonType == SCT.kObject -> SCH.maxProperties
+    else -> ""
 }
 
 /** Whether a JSON Schema type is one of the numeric types (the [SCH.allowCoerce] default). */
