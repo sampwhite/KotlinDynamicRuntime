@@ -2,7 +2,7 @@
 // via `kdr.kotlin-conventions`), this one is a Kotlin Multiplatform module with
 // a single JS/browser target. It compiles Kotlin to JavaScript, renders a React
 // UI through the JetBrains kotlin-wrappers, and — because TypeScript definition
-// generation is switched on below — also emits a `.d.ts` file so any exported
+// generation is switched on below — also emits a `.d.ts` file, so any exported
 // Kotlin API is consumable from TypeScript.
 //
 // The toolchain pin and the multiplatform Kotlin Gradle plugin come from the
@@ -66,7 +66,7 @@ kotlin {
             }
 
         }
-        // Also register the Node.js environment on this same JS target. The app itself is a browser bundle
+        // Also, register the Node.js environment on this same JS target. The app itself is a browser bundle
         // (the `browser {}` block above), but the frontend's *pure-logic* unit tests (issue #161) — the
         // UiConfig→typed-config mappers, TraceId, Copy — touch no DOM and run far cheaper under Node than in
         // a headless-browser Karma run. Declaring `nodejs()` gives us the `jsNodeTest` task; the browser test
@@ -106,10 +106,17 @@ kotlin {
 
                 // Ant Design — a plain npm React component library. It has no
                 // official Kotlin wrappers, so it's pulled in as an npm module
-                // and consumed through the hand-written `external` declarations
+                // and consumed through the handwritten `external` declarations
                 // in AntdComponents.kt. antd is CSS-in-JS, so no CSS import
                 // is needed in index.html.
                 implementation(npm("antd", "6.5.0"))
+
+                // dayjs — antd's date type. Its DatePicker takes and returns a Dayjs, not a string, so
+                // binding a date field to the form's (string) value means converting at that boundary. antd
+                // already depends on it, but it is declared here because we import it directly: relying on a
+                // transitive package happening to be hoisted is the kind of thing that breaks on an unrelated
+                // dependency bump. The range matches what antd resolves, so no second copy is installed.
+                implementation(npm("dayjs", "^1.11.11"))
 
                 // Coroutines back the suspend-based Todo calls, which use the browser Fetch API directly
                 // (see TodoApi.kt) to hit the `:sample` runtime's endpoints — no HTTP-client library. Its
@@ -129,6 +136,6 @@ kotlin {
 }
 
 // The app is a browser bundle, but its unit tests are pure logic and run under Node (`jsNodeTest`). Disable
-// the browser test task so `check`/`build` never require a headless Chrome (issue #161). Re-enable this if a
+// the browser test task so `check`/`build` never requires a headless Chrome (issue #161). Re-enable this if a
 // real in-browser (DOM/React) test suite is ever added.
 tasks.named("jsBrowserTest") { enabled = false }

@@ -34,7 +34,7 @@ external interface ConfigProviderProps : PropsWithChildren {
 
 /**
  * antd's app-wide configuration context. Wrapping the tree in one carrying [theme]'s `darkAlgorithm` is what
- * makes antd's controls dark. Without it antd renders its **light** default inside our permanently-dark
+ * makes antd's controls dark. Without it antd renders its **light** default inside our permanently dark
  * shell, which is legible only by luck: disabled text lands at `rgba(0,0,0,.25)` on a dark card -- 1.44:1,
  * well under WCAG's 4.5:1 -- and inputs come out as white slabs (issue #96).
  */
@@ -103,8 +103,17 @@ external interface SelectProps : PropsWithChildren {
 external val Select: ComponentType<SelectProps>
 
 external interface DatePickerProps : PropsWithChildren {
-    /** antd calls this with (date, dateString); we only need the string form. */
-    var onChange: ((date: dynamic, dateString: String) -> Unit)?
+    /**
+     * The selected date, as a `Dayjs` (or null for empty) — antd's own date type, not a string. Without this
+     * the picker is uncontrolled, and a value the form already holds never reaches the field.
+     */
+    var value: Dayjs?
+
+    /** Whether to pick a time as well as a day; set for a `date-time` field so the time is not lost. */
+    var showTime: Boolean?
+
+    /** antd calls this with (date, dateString): the Dayjs object and its formatted text. */
+    var onChange: ((date: Dayjs?, dateString: String) -> Unit)?
 }
 
 external val DatePicker: ComponentType<DatePickerProps>

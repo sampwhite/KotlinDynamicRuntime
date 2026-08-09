@@ -2,7 +2,9 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.util.jsonMap
@@ -11,17 +13,21 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
+import react.Key
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
+import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.textarea
 import react.useEffect
 import react.useEffectOnce
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import web.html.HTMLTextAreaElement
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 
@@ -42,6 +48,10 @@ val EndpointCatalog = FC<Props> {
     var showOutput by useState(false)
     var failures by useState<List<SchFailure>?>(null)
     var coerced by useState<String?>(null)
+    // The request-JSON panel doubles as an editor: `rawEdited` marks text changed but not yet loaded into the
+    // form, and `rawError` holds why the last load attempt failed.
+    var rawEdited by useState(false)
+    var rawError by useState<String?>(null)
     var response by useState<Map<String, Any?>?>(null)
     var runError by useState<String?>(null)
     var running by useState(false)
@@ -49,6 +59,9 @@ val EndpointCatalog = FC<Props> {
     // True, once the initial URL-hash restore has run; until then the URL is not written back (so the
     // mount-time sync effect can't clobber a hash we are about to read).
     var restored by useState(false)
+
+    // The request-JSON textarea, so a parse failure can put the caret on the offending character.
+    val rawRef = useRef<HTMLTextAreaElement>(null)
 
     // The latest catalog, readable from the once-registered hashchange listener below (which would otherwise
     // close over the null catalog of the first render).
@@ -67,6 +80,16 @@ val EndpointCatalog = FC<Props> {
                     fetched.endpoints.firstOrNull { it.method == hs.method && it.path == hs.path }?.let { ep ->
                         selected = ep
                         values = hs.values
+                        // Validate what was restored, so the panel and any failures are on screen immediately.
+                        // Otherwise, a payload carried in the URL -- including a bad key someone is midway
+                        // through fixing -- is invisible until a button is pressed.
+                        if (hs.values.isNotEmpty()) {
+                            val restoredResult = coerceAndValidate(
+                                fetched.inputType(ep), hs.values, SchOpts(keepAdditionalProperties = true),
+                            )
+                            failures = restoredResult.failures
+                            coerced = payloadText(restoredResult.value)
+                        }
                     }
                 }
             } catch (e: Throwable) {
@@ -101,6 +124,8 @@ val EndpointCatalog = FC<Props> {
                 values = target?.values ?: emptyMap()
                 failures = null
                 coerced = null
+                rawEdited = false
+                rawError = null
                 response = null
                 runError = null
             }
@@ -137,6 +162,8 @@ val EndpointCatalog = FC<Props> {
                         showOutput = false
                         failures = null
                         coerced = null
+                        rawEdited = false
+                        rawError = null
                         response = null
                         runError = null
                     }
@@ -147,16 +174,76 @@ val EndpointCatalog = FC<Props> {
         // ---- Endpoint page ----
         val inputType = cat.inputType(current)
 
-        // Validates the entered values with the kernel; returns the coerced payload when there are no failures.
-        fun validate(): Map<String, Any?>? {
-            val result = coerceAndValidate(inputType, values)
+        // Validates [vals] with the kernel and refreshes the request-JSON panel from the result; returns the
+        // coerced payload when there are no failures. Takes the values explicitly rather than reading state,
+        // so applying an edit and validating it can happen in one pass -- a `values = x` set earlier in the
+        // same handler is not visible until the next render.
+        fun validateOn(vals: Map<String, Any?>): Map<String, Any?>? {
+            // keepAdditionalProperties: an undeclared key is a failure either way, but the editor has to keep
+            // showing it. Dropped, the panel would be rewritten without the key while the error still named it
+            // -- a complaint about something no longer on screen and nothing to act on. It never reaches the
+            // wire because a failure stops the "send".
+            val result = coerceAndValidate(inputType, vals, SchOpts(keepAdditionalProperties = true))
             failures = result.failures
-            // The preview is JSON, and a picked file has no JSON form -- show what was chosen instead of
-            // trying to serialize it. The payload itself keeps the real file; only this display substitutes.
-            coerced = result.value.toJsonMapOrEmpty()
-                .mapValues { (_, v) -> if (isBrowserFile(v)) browserFileLabel(v) else v }
-                .toJsonStr()
+            coerced = payloadText(result.value)
+            rawEdited = false
+            rawError = null
             return if (result.failures.isEmpty()) result.value.toJsonMapOrEmpty() else null
+        }
+
+        fun validate(): Map<String, Any?>? = validateOn(values)
+
+        /**
+         * Loads the edited JSON back into the form, returning the new values (or null when the text will not
+         * parse, in which case the error is shown and nothing changes -- an edit is never silently discarded).
+         */
+        fun applyRaw(): Map<String, Any?>? {
+            val parse = parseRawPayload(coerced ?: "")
+            val parsed = parse.values
+            if (parsed == null) {
+                rawError = parse.error
+                // Put the caret on the offending character. A textarea has no way to style one line -- it is a
+                // single flat text node -- but selecting the spot gets the browser's own highlight, scrolls it
+                // into view, and leaves the cursor where the fix goes. The text is unchanged on a failure, so
+                // the element on screen is still the one these offsets refer to.
+                parse.offset?.let { at ->
+                    rawRef.current?.let { box ->
+                        box.focus()
+                        box.setSelectionRange(at, minOf(at + 1, box.value.length))
+                    }
+                }
+                return null
+            }
+            // A picked file has no JSON form, so the panel shows a label for it. Carry the real File across
+            // rather than letting its own label overwrite it and quietly empty the field.
+            val merged = parsed.mapValues { (key, v) ->
+                val existing = values[key]
+                if (isBrowserFile(existing) && v == browserFileLabel(existing)) existing else v
+            }
+            values = merged
+            rawEdited = false
+            rawError = null
+            return merged
+        }
+
+        /** The values to act on: pending JSON edits are loaded first, so a button never ignores what is on screen. */
+        fun pendingValues(): Map<String, Any?>? = if (rawEdited) applyRaw() else values
+
+        /**
+         * Re-reads the form: canonicalizes the values through the schema and validates the result.
+         *
+         * The pruning is the point. `values` can hold keys no form field represents -- an undeclared property
+         * arrives that way when a pasted payload carries one -- and those are invisible in the form yet
+         * persist, into the URL hash and across a reload. Coercing with the default options drops them at every
+         * level, which is what makes this direction honestly "the data filled out in the form fields".
+         *
+         * [validateOn]'s display pass deliberately does the opposite and keeps them, so the failure it reports
+         * stays visible on the thing it is complaining about. Apply shows you the problem; Validate clears it.
+         */
+        fun validateFromForm() {
+            val pruned = coerceAndValidate(inputType, values).value.toJsonMapOrEmpty()
+            values = pruned
+            validateOn(pruned)
         }
 
         div {
@@ -213,7 +300,10 @@ val EndpointCatalog = FC<Props> {
                 className = ClassName("row")
                 if (editable) {
                     Button {
-                        onClick = { validate() }
+                        // Deliberately reads the FORM, not the panel: this is the form -> JSON direction, and
+                        // "Apply to form" is the inverse. That also gives unapplied edits a way out -- there
+                        // is otherwise no discard -- which is why the hint below spells both outcomes out.
+                        onClick = { validateFromForm() }
                         +"Validate"
                     }
                 }
@@ -222,7 +312,7 @@ val EndpointCatalog = FC<Props> {
                     loading = running
                     onClick = {
                         // Validate first; only send it when the coerced payload has no failures (they're shown).
-                        val payload = validate()
+                        val payload = pendingValues()?.let { validateOn(it) }
                         if (payload != null) {
                             if (cat.isFileDownload(current)) {
                                 // The response is the file itself, so hand the URL to the browser and let it
@@ -272,11 +362,55 @@ val EndpointCatalog = FC<Props> {
                 }
             }
 
-            coerced?.let {
-                h2 { +"Coerced request" }
-                pre {
-                    className = ClassName("code")
-                    +it
+            // Wrapped and keyed so the textarea keeps its DOM identity. The blocks above emit a *varying*
+            // number of unkeyed siblings -- the failure list is one element when valid and many when not -- and
+            // React matches unkeyed children by position, so a change in that count shifted this element's slot
+            // and remounted it. A remounted textarea is a new node, which loses the inline height the browser
+            // wrote when someone dragged the resize grip. A key pins the identity regardless of position.
+            div {
+                key = "request-json".unsafeCast<Key>()
+                coerced?.let { text ->
+                    h2 { +"Request JSON" }
+                    p {
+                        className = ClassName("subtitle")
+                        +("The coerced payload that will be sent. It is editable — paste or splice one in, " +
+                            "then choose Apply to form to load it into the fields above and check it.")
+                    }
+                    // A textarea rather than a rendered block: the caret, focus ring and resize grip say "type
+                    // here" without a label having to. Edits accumulate freely -- nothing is parsed until
+                    // asked, since splicing JSON by hand is rarely one keystroke's worth of change.
+                    textarea {
+                        ref = rawRef
+                        className = ClassName(if (rawEdited) "code json-edit edited" else "code json-edit")
+                        value = text
+                        spellCheck = false
+                        onChange = { e ->
+                            coerced = e.target.value
+                            rawEdited = true
+                            rawError = null
+                        }
+                    }
+                    div {
+                        className = ClassName("row")
+                        Button {
+                            onClick = { applyRaw()?.let { validateOn(it) } }
+                            disabled = !rawEdited
+                            +"Apply to form"
+                        }
+                        if (rawEdited) {
+                            span {
+                                className = ClassName("type-hint")
+                                +("Edited — Apply to form to use it, or Validate to discard it and re-read " +
+                                    "the form.")
+                            }
+                        }
+                    }
+                    rawError?.let { message ->
+                        p {
+                            className = ClassName("todo-error")
+                            +message
+                        }
+                    }
                 }
             }
 
@@ -357,6 +491,59 @@ private fun ChildrenBuilder.renderPayload(type: SchType?, data: Map<String, Any?
             +data.toJsonStr()
         }
     }
+}
+
+/**
+ * The coerced payload rendered for the request-JSON panel. A picked file has no JSON form, so it shows as the
+ * label of what was chosen; the payload itself keeps the real file, only this display substitutes.
+ */
+fun payloadText(value: Any?): String = value.toJsonMapOrEmpty()
+    .mapValues { (_, v) -> if (isBrowserFile(v)) browserFileLabel(v) else v }
+    .toJsonStr()
+
+/**
+ * The outcome of parsing edited request JSON: either the parsed [values], or an [error] saying what is wrong
+ * and where. Exactly one is non-null.
+ */
+class RawParse(val values: Map<String, Any?>?, val error: String?, val offset: Int? = null)
+
+/**
+ * Parses edited request JSON back into a form's values (issue #191).
+ *
+ * Kept as a pure top-level function — plain string in, values or message out — so the parsing and the error
+ * wording are covered without a browser, which is where the interesting cases are: a trailing comma, a
+ * half-finished paste, a JSON array where an object belongs.
+ *
+ * Blank text is an empty payload rather than an error: clearing the box to start over should not be scolded.
+ */
+fun parseRawPayload(text: String): RawParse {
+    if (text.isBlank()) {
+        return RawParse(emptyMap(), null)
+    }
+    // A form's values are named fields, so an array or a scalar has nowhere to land. Caught up front because
+    // the parser's own complaint for this ("Character '[' indicates a JSON array was present when a map was
+    // expected") is accurate but reads as an internal diagnostic rather than an answer.
+    if (!text.trim().startsWith("{")) {
+        return RawParse(null, "The request has to be a JSON object — one starting with '{'.")
+    }
+    val parsed = try {
+        text.jsonMap()
+    } catch (e: KdrException) {
+        // The parser records where it gave up; passing that through turns "invalid JSON" into something a
+        // person can act on when the payload is fifty lines long.
+        val line = e.extraData[KdrException.lineKey]
+        val col = e.extraData[KdrException.lineColKey]
+        val where = if (line != null) " (line $line, column ${col ?: "?"})" else ""
+        // The parser's message ends by restating the position as a raw offset, which is the wrong unit for
+        // someone looking at a text box -- line and column are already stated above. Dropping the sentence is
+        // cosmetic: if that wording ever changes, the tail simply stays, it does not break.
+        val detail = (e.message ?: "could not be parsed").substringBefore(" Error originates at offset")
+        // The character offset comes back too: a message can say where the parse broke, but putting the caret
+        // there is what actually saves someone hunting for it in a long payload.
+        return RawParse(null, "Invalid JSON$where: $detail", e.extraData[KdrException.offsetKey] as? Int)
+    }
+        ?: return RawParse(null, "The request has to be a JSON object — one starting with '{'.")
+    return RawParse(parsed, null)
 }
 
 // --- URL-hash routing -------------------------------------------------------------------------------------

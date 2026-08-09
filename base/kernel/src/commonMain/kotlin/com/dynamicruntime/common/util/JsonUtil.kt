@@ -7,6 +7,31 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
 import kotlin.math.min
 
+// A from-scratch JSON parser and formatter, written rather than pulled in, so the kernel carries no third-party
+// dependency and the same code runs on the backend and in the browser.
+//
+// **The reader is deliberately tolerant, and that is a contract, not an accident.** It exists to consume real
+// data -- hand-edited payloads, exports from systems with their own ideas -- rather than to certify that a
+// document is strict JSON. Stated up here because the leniencies live in three different functions, and
+// because someone choosing to rely on this parser needs them before reading any of it. What it forgives:
+//
+// - **Comma placement is not enforced at all.** Commas are read as whitespace, so a trailing comma, a missing
+//   one, or a run of them all parse: `{"a":1,}` and `{"a":1 "b":2}` are both accepted.
+// - **`NaN` becomes null**, unless [PState.strictValues] is set. It has no JSON spelling, but real exports emit
+//   it anyway. Matched exactly -- an unrecognized bare token is still an error, so a typoed literal is caught
+//   rather than quietly becoming null.
+//   (Note an asymmetry inherited from how numbers are read: `-Infinity` parses as a Double, because the
+//   leading `-` sends it down the numeric path where Kotlin's own `toDouble` accepts it, while a bare
+//   `Infinity` is rejected. Not deliberate, and not worth changing without a case that needs it.)
+// - **Blank or null input yields an empty result** rather than failing, while [PState.allowNonNullEmpty] is on.
+//
+// It is not lax everywhere. An unquoted key, an unquoted value that is not a recognized literal, trailing
+// content after the top-level value, nesting past 50 levels, and absurdly long tokens are all rejected -- so
+// pasting a JavaScript object literal fails, as it should.
+//
+// The practical consequence: **parsing successfully does not mean the data is right.** A payload can sail
+// through here and still be nonsense; it is schema validation, not parse success, that says otherwise.
+
 fun Any?.toJsonStr(compact: Boolean = false, preserveNulls: Boolean = false): String {
     val sb = StringBuilder()
     appendJson(sb, this, 0, compact, preserveNulls, false)
@@ -227,6 +252,7 @@ fun String.json(): Any? {
     return result
 }
 
+/** Parses this string as a JSON object. Note the reader's tolerances, described at the top of this file. */
 fun String.jsonMap(): MutableMap<String, Any?>? {
     val state = PState(this, ExpectedVal.map)
     val result = parseJson(state, 0)
@@ -234,6 +260,7 @@ fun String.jsonMap(): MutableMap<String, Any?>? {
     return result?.toT()
 }
 
+/** Parses this string as a JSON array. Note the reader's tolerances, described at the top of this file. */
 fun String.jsonArray(): MutableList<Any?>? {
     val state = PState(this, ExpectedVal.array)
     val result = parseJson(state, 0)
@@ -385,7 +412,7 @@ fun parseInteriorJsonObject(nestLevel: Int, state: PState): MutableMap<String, A
         val ch = str[state.offset]
         var isEnding = false
         var parseKeyVal = false
-        // We treat commas like spaces. We do not enforce any proper comma placement.
+        // Commas are read as whitespace; placement is not enforced anywhere (see the file header).
         if (ch > ' ' && ch != ',') {
             if (ch == '}') {
                 isEnding = true
@@ -516,7 +543,11 @@ fun parseNonStringValue(state: PState, isNumeric: Boolean): Any? {
                         return false
                     }
                     else -> {
-                        if (s != "null" && (!s.startsWith("N") || state.strictValues)) {
+                        // `NaN` has no JSON spelling but turns up in real exports, so it is forgiven to null
+                        // unless strictValues is set. Matched exactly: the test used to be the leading `N`
+                        // alone, which swallowed every capitalized token -- `Nonsense` parsed to null instead
+                        // of failing, so a typoed literal vanished rather than being caught.
+                        if (s != "null" && (s != "NaN" || state.strictValues)) {
                             throw mkJsonParseException(
                                 state,
                                 "JSON value '$s' is not a valid boolean or numeric value."

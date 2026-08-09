@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
@@ -176,8 +177,8 @@ private fun ChildrenBuilder.renderNestedObject(
 }
 
 /**
- * A list-of-objects field: each element is its own indented sub-form under an `[i]` header (the index
- * convention the response renderer already uses), with the add control after the last one, where an append
+ * A list-of-objects field: each element is its own indented sub-form under an "i" header (the index
+ * convention the response renderer already uses), with the "add" control after the last one, where an "append"
  * belongs. Removing the final element drops the whole field unless it is required, so an optional list does
  * not linger as an empty array in the payload.
  */
@@ -236,7 +237,7 @@ private fun ChildrenBuilder.renderObjectList(
 }
 
 /**
- * A list of scalars — a growing column of single-value widgets, each with its own remove, and an add at the
+ * A list of scalars — a growing column of single-value widgets, each with its own remove and an "add" at the
  * end. It emits a real list, which is what an array field's type actually requires.
  *
  * The single comma-separated text box this replaces emitted a *String*, and an array type does not coerce from
@@ -283,7 +284,7 @@ private fun ChildrenBuilder.renderScalarList(
 }
 
 /**
- * The add affordance. It carries only the verb: it sits inside the block of the field it adds to, so position
+ * The "add" affordance. It carries only the verb: it sits inside the block of the field it adds to, so position
  * supplies the noun — which also keeps the engine generic, since deriving a singular noun from a field name
  * ("contacts" -> "contact") is a guess that eventually produces nonsense. [what] names the field for assistive
  * technology, where that surrounding context is not available.
@@ -344,9 +345,25 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
             checked = value == true
             onChange = { e -> emit(e.target.checked as Boolean) }
         }
-        // Date string field: a DatePicker (antd hands back the formatted string).
-        vt.jsonType == SCT.string && isDateFormat(vt.format) -> DatePicker {
-            onChange = { _, dateString -> emit(dateString) }
+        // Date field. Bound like every other widget, which it previously was not: with no `value`, antd's
+        // picker is uncontrolled, so a date the form already held -- from a restored link, or a payload loaded
+        // through the request-JSON panel -- never appeared in the field. (It also left the browser free to
+        // repopulate the input on reload from its own form memory, showing a date the form did not have.)
+        //
+        // The conversions are antd's terms, not ours: it speaks Dayjs where the schema says string.
+        vt.jsonType == SCT.string && isDateFormat(vt.format) -> {
+            val dayOnly = vt.format == SFMT.date
+            DatePicker {
+                this.value = value?.toString()?.takeIf { it.isNotBlank() }?.let { dayjs(it) }?.takeIf { it.isValid() }
+                // A `date-time` field needs the time picked too. Without this the widget can only return a
+                // day, so binding a full timestamp and then touching the field would quietly drop its time.
+                showTime = !dayOnly
+                onChange = { date, dateString ->
+                    // A day emits the day text; a moment emits ISO-8601 in UTC, which is exactly the shape the
+                    // kernel parses and writes back. Cleared emits null, which reads as absent (issue #187).
+                    emit(if (date == null) null else if (dayOnly) dateString else date.toISOString())
+                }
+            }
         }
         // File content (OpenAPI's `type: string, format: binary`): a file picker. What it emits is the
         // browser's own File object, not text -- which is exactly why the kernel validator leaves a binary
@@ -355,7 +372,7 @@ private fun ChildrenBuilder.widget(vt: SchType, value: Any?, editable: Boolean, 
         // component wants to own the upload itself, which is the runtime's job here.
         vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> input {
             // `type` is web.html.InputType, an external value over the HTML attribute string; "file" is that
-            // attribute's value, cast rather than spelled through the wrapper's own constant so this does not
+            // attribute's value, cast rather than spelled through the wrapper's own constant, so this does not
             // ride on which of them the current kotlin-wrappers exposes.
             type = "file".unsafeCast<InputType>()
             onChange = { e ->

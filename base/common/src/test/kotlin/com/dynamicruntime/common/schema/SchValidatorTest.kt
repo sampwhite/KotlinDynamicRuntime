@@ -421,6 +421,30 @@ class SchValidatorTest : StringSpec({
             mapOf("name" to "Bob")
     }
 
+    // An editor has to keep showing the offending key: dropping it rewrites the text under the person who
+    // typed it, leaving a failure about something no longer on screen (issue #191).
+    "keepAdditionalProperties retains an undeclared key while still reporting it" {
+        val person = personTypes()["core.Person"].shouldNotBeNull()
+        val data = mapOf("name" to "Bob", "bogus" to 1L)
+
+        // The default drops it -- the wire should not carry keys the schema never declared.
+        val dropped = coerceAndValidate(person, data)
+        dropped.failures.map { it.code } shouldBe listOf(SchFailCode.additionalProperty)
+        (dropped.value as Map<*, *>).containsKey("bogus") shouldBe false
+
+        // With the option, the same failure is raised but the key survives into the output.
+        val kept = coerceAndValidate(person, data, SchOpts(keepAdditionalProperties = true))
+        kept.failures.map { it.code } shouldBe listOf(SchFailCode.additionalProperty)
+        (kept.value as Map<*, *>)["bogus"] shouldBe 1L
+    }
+
+    "an option cannot turn a failure into a success" {
+        val person = personTypes()["core.Person"].shouldNotBeNull()
+        // Keeping the key is about the output, never about validity: it is still not allowed here.
+        validate(person, mapOf("name" to "Bob", "bogus" to 1L), SchOpts(keepAdditionalProperties = true))
+            .map { it.code } shouldBe listOf(SchFailCode.additionalProperty)
+    }
+
     $$"a reserved $-keyword ($ref) is treated as a normal key, so additionalProperties applies" {
         val person = personTypes()["core.Person"].shouldNotBeNull()
         // $ref is reserved, so it is not exempt: on a type with "additionalProperties=false" it is rejected.
