@@ -314,7 +314,7 @@ val EndpointCatalog = FC<Props> {
                 onFieldEdit = { path ->
                     failures?.let { current ->
                         val remaining = current.clearedAt(path)
-                        failures = if (remaining.isEmpty()) null else remaining
+                        failures = remaining.ifEmpty { null }
                         // Something had been checked and has now moved on: say so. Silence here would read as
                         // "nothing wrong", which is exactly the reading dropping the ✓ exists to prevent.
                         revalidate = true

@@ -63,7 +63,7 @@ external interface SchemaFormProps : Props {
  * The per-field validation state a render pass carries: which messages to show under a field, and how to
  * report that a field was edited.
  *
- * It exists so the two travel together through the traversal rather than as two more parameters on every
+ * It exists, so the two travel together through the traversal rather than as two more parameters on every
  * render function, and so the grouping is done once for the pass instead of rescanning the failure list per
  * field.
  */
@@ -159,7 +159,7 @@ private fun ChildrenBuilder.renderField(
     fieldErrors(messages)
 }
 
-/** The row's class, marked invalid when the field carries a failure so the label and control can be styled. */
+/** The row's class, marked invalid when the field carries a failure, so the label and control can be styled. */
 private fun rowClass(messages: List<SchFailure>): String = if (messages.isEmpty()) "row" else "row field-invalid"
 
 /**
@@ -182,7 +182,7 @@ private fun ChildrenBuilder.fieldErrors(messages: List<SchFailure>) {
  * Each choice shows its **value**, which is what actually goes in the payload — this surface documents the
  * wire, the same reason the endpoint form labels fields with their key rather than a `title`. The label is
  * appended only when it says something the value does not, so a labeled choice list is not reduced to bare
- * codes and an unlabeled one is not padded with a repeat of itself.
+ * codes, and an unlabeled one is not padded with a repeat of itself.
  */
 fun choicesSuffix(f: SchFailure): String {
     val opts = f.options ?: return ""

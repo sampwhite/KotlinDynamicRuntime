@@ -84,7 +84,7 @@ class SchFailurePathTest : StringSpec({
     }
 
     // The behavior the form depends on: editing a container drops the failures held against what is inside it,
-    // because a removal re-indexes the rest and the old failure would then point at whatever moved into place.
+    // because a removal re-indexes the rest, and the old failure would then point at whatever moved into place.
     "editing a container clears its descendants" {
         val fs = listOf(failure("contacts[0].handle"), failure("contacts[1].handle"), failure("name"))
         fs.clearedAt("contacts").map { it.path } shouldBe listOf("name")

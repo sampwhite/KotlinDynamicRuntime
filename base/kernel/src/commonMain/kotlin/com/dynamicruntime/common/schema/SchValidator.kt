@@ -59,7 +59,7 @@ val reservedSchemaKeys: Set<String> = setOf(
  * **A [message] is a complete sentence, sentence-cased and ending in a period**, as every other message in
  * this codebase is. These were once lowercase unpunctuated fragments in the style errors take when they are
  * only ever wrapped and concatenated — which was right while a failure was read solely as the tail of
- * `path: message`. Since issue #197 a failure also stands on its own beneath the field that caused it, beside
+ * `path: message`. Since issue #197 a failure has also stood on its own beneath the field that caused it, beside
  * field descriptions written as sentences, and there a fragment reads as truncated. The composed forms lose
  * nothing: `input.score: This must be of type 'integer'.` reads correctly.
  *
