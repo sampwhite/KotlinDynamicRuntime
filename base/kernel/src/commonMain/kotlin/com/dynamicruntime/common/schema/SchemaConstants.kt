@@ -4,11 +4,15 @@ package com.dynamicruntime.common.schema
 // `type` keyword's values. Per the code guide: lowerCamelCase const vals in
 // upper-cased acronym objects, referenced qualified, with the const-naming
 // inspection suppressed at the object level. Each plain keyword's NAME matches
-// its VALUE. Two variant rules (issue #2):
+// its VALUE. Three variant rules:
 //   * a leading `$` becomes a `d` prefix with the next letter capitalized
-//     (`$ref` -> dRef);
+//     (`$ref` -> dRef) (issue #2);
 //   * a name colliding with a Kotlin hard keyword takes a `k` prefix with the
-//     next letter capitalized (`if` -> kIf; `then` included for consistency).
+//     next letter capitalized (`if` -> kIf; `then` included for consistency)
+//     (issue #2);
+//   * a kd2-specific keyword's VALUE carries a `g-` prefix that its NAME does
+//     not (allowCoerce -> "g-allowCoerce"), so call sites read unchanged. See
+//     SCH.gPrefix for why the prefix exists (issue #194).
 
 /** JSON Schema keywords (the object keys). */
 @Suppress("ConstPropertyName", "unused")
@@ -98,18 +102,51 @@ object SCH {
     const val contentMediaType = "contentMediaType"
     const val contentSchema = "contentSchema"
 
-    // Custom (kd2) keywords — not part of standard JSON Schema.
+    // Custom (kd2) keywords — not part of standard JSON Schema. Their VALUES carry the `g-` prefix; their
+    // Kotlin names do not (see the file header).
+    /**
+     * The prefix marking a keyword as **kd2's own**, for Gedra/Gyassa. Our keywords sit in the same namespace
+     * JSON Schema uses for its own, so the prefix is what stops a later draft that adopts a name we already took
+     * from colliding with us -- `options` is not implausible for a future draft.
+     *
+     * Chosen over OpenAPI's `x-`, which is normative only for OpenAPI's *own* objects (`info`, `operation`)
+     * and has no standing in JSON Schema, where unknown keywords are ignored and `$vocabulary` is the formal
+     * extension mechanism. RFC 6648 deprecated `x-` for application protocols, and the `x-` families that are
+     * genuinely load-bearing (`x-amazon-*`, `x-ms-*`, `x-google-*`) are all vendor-segmented anyway -- so the
+     * vendor segment is the part doing the work. Revisit only if we emit OpenAPI **3.0** rather than 3.1,
+     * whose Schema Object follows JSON Schema 2020-12 and so already ignores what it does not know.
+     *
+     * **The export rule this encodes, for whoever writes the exporter.** When schema is emitted for
+     * third-party tooling, `g-`-prefixed keys are stripped by default, with a small transformer table for the
+     * few carrying a standard equivalent: [options] becomes `enum`; [emptyIsAbsent] becomes `minLength: 1`
+     * but *only* on a required property (we read `""` as absent, while `required` is about key presence, and
+     * an optional property accepts `""` -- so an unconditional `minLength` would reject what we allow);
+     * [allowCoerce] is dropped, since JSON Schema cannot say "a string is also accepted here". Stripping by
+     * default is exhaustive by construction: a keyword nobody remembered to consider never escapes. And where
+     * a conversion cannot be exact, the export must be **stricter than us, never looser** -- a stricter export
+     * means clients send a subset of what we accept, while a looser one manufactures rejections at the
+     * boundary, with the client's own tooling calling a payload valid and us returning a 400.
+     *
+     * Nothing consumes an export today, so none of that is built (issue #194).
+     */
+    const val gPrefix = "g-"
+
     /** Whether a value may be coerced to the property's type during validation. */
-    const val allowCoerce = "allowCoerce"
+    const val allowCoerce = "g-allowCoerce"
 
     /** Whether an empty (or null) value for a property means the property was not supplied at all. */
-    const val emptyIsAbsent = "emptyIsAbsent"
+    const val emptyIsAbsent = "g-emptyIsAbsent"
 
     /** A labeled choice list on a property (array of `{label, value}` entries). */
-    const val options = "options"
-    /** Display label of an `options` entry. */
+    const val options = "g-options"
+
+    /**
+     * Display label of an [options] entry. Bare rather than `g-`-prefixed: it is a field *inside* the value of
+     * one of our keywords, not a keyword in the schema keyword namespace, so it has nothing to collide with.
+     */
     const val label = "label"
-    /** Stored value of an `options` entry. */
+
+    /** Stored value of an [options] entry; bare for the same reason as [label]. */
     const val value = "value"
 }
 

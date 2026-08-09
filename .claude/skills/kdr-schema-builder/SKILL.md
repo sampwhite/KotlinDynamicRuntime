@@ -61,7 +61,10 @@ val defs = schemaDefs(cxt, "core") {                 // namespace named ONCE
 Use constants, never string literals, from `SchemaConstants.kt`:
 - `SCH` — JSON Schema keywords. Naming: a plain keyword's name matches its value;
   a leading `$` → `d` prefix (`$ref` = `SCH.dRef`); a Kotlin hard-keyword
-  collision → `k` prefix (`SCH.kIf`/`kThen`/`kElse`).
+  collision → `k` prefix (`SCH.kIf`/`kThen`/`kElse`); and a **kd2-specific**
+  keyword's *value* carries a `g-` prefix its name does not — `SCH.allowCoerce`
+  is `"g-allowCoerce"` — so a document says which keywords are ours while call
+  sites read unchanged (see `SCH.gPrefix`). Standard keywords stay bare.
 - `SCT` — `type` values (`SCT.string`, `SCT.integer`, `SCT.kObject`, `SCT.kNull`, …).
 - `SFMT` — `format` values (`SFMT.date`, `SFMT.dateTime`, `SFMT.binary`).
 
@@ -94,9 +97,9 @@ val failures: List<SchFailure> = validate(type, data)          // collects ALL f
 val result: SchResult          = coerceAndValidate(type, data) // .value (coerced) + .failures; input never mutated
 ```
 
-`allowCoerce` (custom keyword; default **true** for numeric + date-format types, **false**
-otherwise) governs coercion of a mismatched value — and changes validation even when no
-output is requested:
+`allowCoerce` (a kd2 keyword, so `g-allowCoerce` on the wire; default **true** for numeric +
+date-format types, **false** otherwise) governs coercion of a mismatched value — and changes
+validation even when no output is requested:
 
 - number/integer strings → `Long`/`Double`; string ← any non-null (`toString`).
 - boolean ← string via `toOptBool` (blank → null, unrecognized → failure).
