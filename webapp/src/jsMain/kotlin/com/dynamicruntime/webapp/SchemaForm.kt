@@ -12,6 +12,7 @@ import com.dynamicruntime.common.schema.childPath
 import com.dynamicruntime.common.schema.indexPath
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
+import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.browser.document
 import web.dom.ElementId
@@ -251,6 +252,9 @@ private fun ChildrenBuilder.fieldFrame(
         rowContent()
     }
     prop.description?.let { desc(it) }
+    // Stated before the field is filled in, not discovered by being rejected. The outline shows the same
+    // thing for an output type; this is the input side, which is the one someone is about to type into.
+    boundHint(prop.valueType)
     fieldErrors(path, messages)
 }
 
@@ -764,6 +768,7 @@ private fun ChildrenBuilder.outlineField(name: String, prop: SchProperty, requir
         }
     }
     prop.description?.let { desc(it) }
+    boundHint(vt)
 
     // Expand structure: an object's fields, an array-of-object's element fields, or a choice field's options.
     val element = if (vt.jsonType == SCT.array) vt.itemType else null
@@ -788,6 +793,32 @@ private fun ChildrenBuilder.outlineNested(type: SchType, seen: Set<String>) {
     div {
         className = ClassName("nested")
         outlineObject(type, if (typeName != null) seen + typeName else seen)
+    }
+}
+
+/**
+ * A field's declared bounds, stated the way the outline already states a choice field's options — the range
+ * is part of what the shape *is*, and reading it here beats discovering it by being rejected (issue #203).
+ * Silent when the field declares neither end.
+ */
+private fun ChildrenBuilder.boundHint(vt: SchType) {
+    val min = vt.minBound
+    val max = vt.maxBound
+    if (min == null && max == null) return
+    val what = when (vt.jsonType) {
+        SCT.string -> "characters"
+        SCT.array -> "items"
+        SCT.kObject -> "properties"
+        else -> null
+    }
+    val range = when {
+        min != null && max != null -> "${min.fmtD()} to ${max.fmtD()}"
+        min != null -> "${min.fmtD()} or more"
+        else -> "${max!!.fmtD()} or less"
+    }
+    p {
+        className = ClassName("type-hint")
+        +if (what == null) "range: $range" else "$what: $range"
     }
 }
 

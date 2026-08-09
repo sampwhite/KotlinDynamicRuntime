@@ -565,6 +565,121 @@ class SchValidatorTest : StringSpec({
         (result.value as Map<*, *>)["size"] shouldBe 10
     }
 
+    // --- bounds: the four min/max pairs, sharing two failure codes (issue #203) ---------------------------
+
+    fun boundTypes(): Map<String, SchType> = parseSchemaTypes(
+        schemaDefs(cxt, "b") {
+            type("Bounded") {
+                type = SCT.kObject
+                property("score", "A score") { type = SCT.integer; minimum = 1; maximum = 10 }
+                property("nick", "A nickname") { type = SCT.string; minLength = 2; maxLength = 5 }
+                property("tags", "Tags") { type = SCT.array; items { type = SCT.string }; minItems = 1; maxItems = 2 }
+                property("bag", "A bag") { type = SCT.kObject; minProperties = 1; maxProperties = 2 }
+            }
+        },
+    )
+
+    "each of the four pairs reports below its minimum" {
+        val t = boundTypes()["b.Bounded"].shouldNotBeNull()
+        val failures = validate(
+            t,
+            mapOf("score" to 0, "nick" to "a", "tags" to listOf<Any?>(), "bag" to mapOf<String, Any?>()),
+        )
+        failures.map { it.path to it.code } shouldContainExactlyInAnyOrder listOf(
+            "score" to SchFailCode.belowMinimum,
+            "nick" to SchFailCode.belowMinimum,
+            "tags" to SchFailCode.belowMinimum,
+            "bag" to SchFailCode.belowMinimum,
+        )
+        // One code, but wording that suits what each type measures.
+        failures.single { it.path == "score" }.message shouldBe "This must be at least 1."
+        failures.single { it.path == "nick" }.message shouldBe "This must be at least 2 characters."
+        failures.single { it.path == "tags" }.message shouldBe "This must have at least 1 item."
+        failures.single { it.path == "bag" }.message shouldBe "This must have at least 1 property."
+    }
+
+    "each of the four pairs reports above its maximum" {
+        val t = boundTypes()["b.Bounded"].shouldNotBeNull()
+        val failures = validate(
+            t,
+            mapOf(
+                "score" to 11, "nick" to "abcdef", "tags" to listOf("a", "b", "c"),
+                "bag" to mapOf("a" to 1, "b" to 2, "c" to 3),
+            ),
+        )
+        failures.map { it.code }.toSet() shouldBe setOf(SchFailCode.aboveMaximum)
+        failures.single { it.path == "nick" }.message shouldBe "This must be at most 5 characters."
+        failures.single { it.path == "bag" }.message shouldBe "This must have at most 2 properties."
+    }
+
+    "the bounds are inclusive at both ends" {
+        val t = boundTypes()["b.Bounded"].shouldNotBeNull()
+        validate(
+            t,
+            mapOf("score" to 1, "nick" to "ab", "tags" to listOf("a"), "bag" to mapOf("a" to 1)),
+        ).shouldBeEmpty()
+        validate(
+            t,
+            mapOf("score" to 10, "nick" to "abcde", "tags" to listOf("a", "b"), "bag" to mapOf("a" to 1, "b" to 2)),
+        ).shouldBeEmpty()
+    }
+
+    // The bound applies to what the value BECAME. Coercion runs in both modes, so both must agree -- the same
+    // discipline the emptyIsAbsent suite holds to.
+    "a coerced string is bounds-checked, identically in both modes" {
+        val t = boundTypes()["b.Bounded"].shouldNotBeNull()
+        val data = mapOf("score" to "99", "nick" to "ab", "tags" to listOf("a"), "bag" to mapOf("a" to 1))
+        validate(t, data).map { it.path to it.code } shouldBe listOf("score" to SchFailCode.aboveMaximum)
+        coerceAndValidate(t, data).failures.map { it.path to it.code } shouldBe
+            listOf("score" to SchFailCode.aboveMaximum)
+    }
+
+    // JSON Schema counts characters, not UTF-16 units: three astral characters are three, not six.
+    "string length counts code points, not code units" {
+        val t = boundTypes()["b.Bounded"].shouldNotBeNull()
+        val threeEmoji = "😀😁😂"
+        threeEmoji.length shouldBe 6 // what a naive check would have measured
+        validate(t, mapOf("nick" to threeEmoji, "score" to 1, "tags" to listOf("a"), "bag" to mapOf("a" to 1)))
+            .shouldBeEmpty()
+    }
+
+    // A standard validator ignores a keyword that does not apply to the instance type, so we do too rather
+    // than rejecting a document it would accept.
+    "a bound keyword belonging to another type is ignored" {
+        val types = parseSchemaTypes(
+            schemaDefs(cxt, "b") {
+                type("Odd") {
+                    type = SCT.kObject
+                    // minimum means nothing on a string; minLength is what a string measures.
+                    property("label", "A label") { type = SCT.string; minimum = 50 }
+                }
+            },
+        )
+        val t = types["b.Odd"].shouldNotBeNull()
+        t.properties["label"]!!.valueType.minBound shouldBe null
+        validate(t, mapOf("label" to "x")).shouldBeEmpty()
+    }
+
+    "a bound failure takes its message from g-errors like any other" {
+        val types = parseSchemaTypes(
+            schemaDefs(cxt, "b") {
+                type("Custom") {
+                    type = SCT.kObject
+                    property("age", "An age") {
+                        type = SCT.integer
+                        minimum = 18
+                        errors { belowMinimum("You have to be 18 or over.") }
+                    }
+                }
+            },
+        )
+        val t = types["b.Custom"].shouldNotBeNull()
+        val f = validate(t, mapOf("age" to 17)).single()
+        f.code shouldBe SchFailCode.belowMinimum
+        f.userMessage shouldBe "You have to be 18 or over."
+        f.message shouldBe "This must be at least 18."
+    }
+
     // --- g-errors: the schema's own wording for a failure (issue #202) ------------------------------------
 
     fun errorCopyTypes(): Map<String, SchType> = parseSchemaTypes(

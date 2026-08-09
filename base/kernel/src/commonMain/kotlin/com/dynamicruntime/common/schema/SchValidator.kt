@@ -2,6 +2,7 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.deepClone
 import com.dynamicruntime.common.util.jsonArray
 import com.dynamicruntime.common.util.jsonMap
@@ -35,6 +36,24 @@ enum class SchFailCode {
 
     /** An undeclared property was present on an object whose schema does not allow additional properties. */
     additionalProperty,
+
+    /**
+     * The value fell short of its declared lower bound — whichever bound its type measures: `minimum` for a
+     * number, `minLength` for a string, `minItems` for an array, `minProperties` for an object.
+     *
+     * **One code across all four pairs, rather than one per keyword.** A field has a single type, so on a
+     * string this can only mean length and on an array only element count — the same reason [badValue] is not
+     * too coarse despite covering dates, booleans and JSON. Eight codes would buy a distinction the field's
+     * own type already makes, at the cost of every `g-errors` author having to know which of eight applies.
+     * The built-in *messages* still differ per type; only the code is shared.
+     *
+     * The cost, deliberately accepted: a client branching on the code alone cannot tell "too short" from "too
+     * small" without also consulting the field's type. It has the schema, so it can.
+     */
+    belowMinimum,
+
+    /** The value exceeded its declared upper bound; see [belowMinimum] for why the four pairs share two codes. */
+    aboveMaximum,
 }
 
 /**
@@ -178,7 +197,12 @@ fun validateValue(
     }
 
     if (!matchesType(jsonType, value)) {
-        return coerceMismatch(type, value, path, coerce, failures, opts)
+        // Bounds apply to what the value BECAME, not to the string it arrived as: "5" against a minimum of 10
+        // has to fail. Coercion runs in both modes (only its result is discarded when validating), so this
+        // reports identically whether the caller asked for the coerced value or not.
+        val coerced = coerceMismatch(type, value, path, coerce, failures, opts)
+        checkBounds(type, coerced, path, failures)
+        return coerced
     }
 
     val options = type.options
@@ -189,6 +213,9 @@ fun validateValue(
         }
         return value
     }
+    // Measured against the instance as it arrived, which is what the bound is about -- an object's property
+    // count before `emptyIsAbsent` drops anything or a default is injected.
+    checkBounds(type, value, path, failures)
     return when (jsonType) {
         SCT.kObject -> validateObject(type, value as Map<*, *>, path, coerce, failures, opts)
         SCT.array -> validateArray(type, value as List<*>, path, coerce, failures, opts)
@@ -538,6 +565,79 @@ fun matchesType(jsonType: String?, value: Any?): Boolean = when (jsonType) {
 
 @KdrPrivate
 fun wrongTypeMsg(type: SchType): String = "This must be of type '${type.jsonType ?: "any"}'."
+
+/**
+ * Checks [value] against the field's declared bounds, reporting [SchFailCode.belowMinimum] and
+ * [SchFailCode.aboveMaximum] **independently**.
+ *
+ * Independently rather than as one "out of range": the two ends can come from different places. An overlay
+ * that narrows a type may add a maximum a base schema never had, and reporting against the specific end keeps
+ * the base schema's own message for the other one intact (issue #203).
+ *
+ * A value the field cannot measure is left alone — nothing was coerced, so there is no length or size to
+ * compare, and a failure has already been reported for whatever went wrong instead.
+ */
+@KdrPrivate
+fun checkBounds(type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>) {
+    val min = type.minBound
+    val max = type.maxBound
+    if (min == null && max == null) return
+    val measured = measureFor(type.jsonType, value) ?: return
+    if (min != null && measured < min) {
+        failures.add(type.failure(path, SchFailCode.belowMinimum, boundMsg(type.jsonType, min, atLeast = true)))
+    }
+    if (max != null && measured > max) {
+        failures.add(type.failure(path, SchFailCode.aboveMaximum, boundMsg(type.jsonType, max, atLeast = false)))
+    }
+}
+
+/**
+ * What the bound is compared against, per type: a number is itself, a string is its length, an array its
+ * element count, an object its property count. Null when the value is not of the measurable shape.
+ */
+@KdrPrivate
+fun measureFor(jsonType: String?, value: Any?): Double? = when {
+    isNumericType(jsonType) -> (value as? Number)?.toDouble()
+    jsonType == SCT.string -> (value as? String)?.let { codePointLength(it).toDouble() }
+    jsonType == SCT.array -> (value as? List<*>)?.size?.toDouble()
+    jsonType == SCT.kObject -> (value as? Map<*, *>)?.size?.toDouble()
+    else -> null
+}
+
+/**
+ * The number of Unicode code points in [s], which is what JSON Schema's `minLength`/`maxLength` count —
+ * *characters*, not UTF-16 code units.
+ *
+ * `String.length` would be wrong for anything outside the basic plane: an emoji is one character and two code
+ * units, so a three-emoji name would read as six against a `maxLength` of five and be rejected. A low
+ * surrogate is always the second half of a pair, so skipping those counts pairs once.
+ */
+@KdrPrivate
+fun codePointLength(s: String): Int {
+    var n = 0
+    for (ch in s) {
+        if (!ch.isLowSurrogate()) n++
+    }
+    return n
+}
+
+/**
+ * The built-in wording for a bound. The code is shared across the four pairs but the message is not: what the
+ * bound means differs by type, and "This must be at least 3." would be a poor way to say a name needs three
+ * characters.
+ */
+@KdrPrivate
+fun boundMsg(jsonType: String?, bound: Double, atLeast: Boolean): String {
+    val n = bound.fmtD()
+    val side = if (atLeast) "at least" else "at most"
+    val one = bound == 1.0
+    return when {
+        jsonType == SCT.string -> "This must be $side $n character${if (one) "" else "s"}."
+        jsonType == SCT.array -> "This must have $side $n item${if (one) "" else "s"}."
+        jsonType == SCT.kObject -> "This must have $side $n propert${if (one) "y" else "ies"}."
+        else -> "This must be $side $n."
+    }
+}
 
 // These two are deliberately NOT @KdrPrivate. The spelling of a failure's path is a contract, not a detail of
 // the validator: a display that wants to show a message beside the field that caused it has to build the same
