@@ -48,6 +48,10 @@ val EndpointCatalog = FC<Props> {
     var editable by useState(true)
     var showOutput by useState(false)
     var failures by useState<List<SchFailure>?>(null)
+    // Set when a field is edited after a validation pass, so the form can say that what is (or is no longer)
+    // on screen predates the edit. Distinguishes "checked, then changed" from "never checked" -- a fresh form
+    // has nothing to be stale about and should stay quiet.
+    var revalidate by useState(false)
     var coerced by useState<String?>(null)
     // The request-JSON panel doubles as an editor: `rawEdited` marks text changed but not yet loaded into the
     // form, and `rawError` holds why the last load attempt failed.
@@ -124,6 +128,7 @@ val EndpointCatalog = FC<Props> {
                 }
                 values = target?.values ?: emptyMap()
                 failures = null
+                revalidate = false
                 coerced = null
                 rawEdited = false
                 rawError = null
@@ -162,6 +167,7 @@ val EndpointCatalog = FC<Props> {
                         editable = true
                         showOutput = false
                         failures = null
+                        revalidate = false
                         coerced = null
                         rawEdited = false
                         rawError = null
@@ -186,6 +192,7 @@ val EndpointCatalog = FC<Props> {
             // wire because a failure stops the "send".
             val result = coerceAndValidate(inputType, vals, SchOpts(keepAdditionalProperties = true))
             failures = result.failures
+            revalidate = false
             coerced = payloadText(result.value)
             rawEdited = false
             rawError = null
@@ -308,6 +315,9 @@ val EndpointCatalog = FC<Props> {
                     failures?.let { current ->
                         val remaining = current.clearedAt(path)
                         failures = if (remaining.isEmpty()) null else remaining
+                        // Something had been checked and has now moved on: say so. Silence here would read as
+                        // "nothing wrong", which is exactly the reading dropping the ✓ exists to prevent.
+                        revalidate = true
                     }
                 }
             }
@@ -357,6 +367,17 @@ val EndpointCatalog = FC<Props> {
                     }
                     // A download is not a "run" -- nothing comes back to this page to show.
                     +if (cat.isFileDownload(current)) "Download" else "Run"
+                }
+            }
+
+            // The third state made visible. Editing drops the failures that the edit invalidated, and with them
+            // the ✓ -- but an empty screen says "nothing wrong" just as loudly as the banner did, so the one
+            // state the form cannot vouch for is the one that has to announce itself. Shown alongside any
+            // failures that survived, since those were computed before the edit as well.
+            if (revalidate) {
+                p {
+                    className = ClassName("form-stale")
+                    +("Edited since the last check — choose Validate (or Run) to check it again.")
                 }
             }
 

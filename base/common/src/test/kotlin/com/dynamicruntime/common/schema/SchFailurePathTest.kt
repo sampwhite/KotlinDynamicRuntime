@@ -55,15 +55,32 @@ class SchFailurePathTest : StringSpec({
         grouped["b"]!!.size shouldBe 1
     }
 
-    "atOrBelow and clearedAt are complements" {
+    "atOrBelow selects a subtree" {
         val fs = listOf(
             failure("input.name"), failure("input.contacts"), failure("input.contacts[0].handle"),
             failure("other"),
         )
         fs.atOrBelow("input.contacts").map { it.path } shouldContainExactlyInAnyOrder
             listOf("input.contacts", "input.contacts[0].handle")
-        fs.clearedAt("input.contacts").map { it.path } shouldContainExactlyInAnyOrder
-            listOf("input.name", "other")
+    }
+
+    // The other half of "same line of the tree": a container's failure was computed from contents the edit
+    // just changed. Supplying `input.name` is what brings `input` into existence, so the missing-`input`
+    // complaint is stale the moment the child is filled in.
+    "editing a child clears its ancestors" {
+        val fs = listOf(failure("input"), failure("input.name"), failure("input.score"), failure("other"))
+        fs.clearedAt("input.name").map { it.path } shouldContainExactlyInAnyOrder listOf("input.score", "other")
+    }
+
+    "clearing reaches ancestors through an array index" {
+        val fs = listOf(failure("input.contacts"), failure("input"), failure("input.name"))
+        fs.clearedAt("input.contacts[0].handle").map { it.path } shouldBe listOf("input.name")
+    }
+
+    "siblings survive in both directions" {
+        val fs = listOf(failure("input.name"), failure("input.score"))
+        fs.clearedAt("input.name").map { it.path } shouldBe listOf("input.score")
+        fs.clearedAt("input.score").map { it.path } shouldBe listOf("input.name")
     }
 
     // The behavior the form depends on: editing a container drops the failures held against what is inside it,

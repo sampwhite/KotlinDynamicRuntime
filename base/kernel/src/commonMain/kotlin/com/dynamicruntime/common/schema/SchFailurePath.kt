@@ -38,11 +38,23 @@ fun List<SchFailure>.atOrBelow(prefix: String): List<SchFailure> =
     filter { isPathAtOrBelow(it.path, prefix) }
 
 /**
- * The failures that survive an edit at [prefix] — everything except what [atOrBelow] it.
+ * The failures that survive an edit at [prefix] — everything not on the same line of the tree.
  *
- * Descendants go with it because a structural edit invalidates them: removing an element from `contacts`
- * re-indexes the rest, so a failure held against `contacts[1].handle` no longer refers to the value it was
- * reported for, and keeping it would leave a message pointing at whatever moved into that slot.
+ * An edit invalidates a failure when one of the two paths contains the other, in **either** direction:
+ *
+ * - **Descendants**, because a structural edit reshapes what is under it. Removing an element from `contacts`
+ *   re-indexes the rest, so a failure held against `contacts[1].handle` no longer refers to the value it was
+ *   reported for, and keeping it would point a message at whatever moved into that slot.
+ * - **Ancestors**, because a container's failure was computed from contents that just changed. Supplying
+ *   `input.name` is precisely what brings `input` into existence, so *"Required property 'input' is missing"*
+ *   is provably stale the moment the child is filled in — and leaving it up tells the person the opposite of
+ *   what they just did.
+ *
+ * Siblings are untouched: `input.name` says nothing about `input.score`.
+ *
+ * This clears rather than re-checks, which is why it can afford to be generous. Dropping a failure that a
+ * fresh validation would have raised again only means the person is told to validate; keeping one the edit
+ * already fixed means telling them something false.
  */
 fun List<SchFailure>.clearedAt(prefix: String): List<SchFailure> =
-    filterNot { isPathAtOrBelow(it.path, prefix) }
+    filterNot { isPathAtOrBelow(it.path, prefix) || isPathAtOrBelow(prefix, it.path) }

@@ -354,6 +354,10 @@ input {
 .nested { margin: 4px 0 8px 16px; padding-left: 12px; border-left: 2px solid var(--border); }
 .type-hint { color: var(--text-faint); font-style: italic; margin: 2px 0; }
 .form-ok { color: var(--success); margin-top: 12px; }
+/* "Edited since the last check": neither pass nor fail but unknown, so neither the success green nor the
+   danger red -- a dim tone that reads as a prompt rather than a verdict, in the same slot as the other two so
+   the three states swap in place. */
+.form-stale { color: var(--text-muted); font-style: italic; margin-top: 12px; }
 
 /* A field that failed validation (issue #197): the message sits under the field, and the row it belongs to is
    marked so the label and the control can pick the state up. The message carries the meaning on its own --
