@@ -495,8 +495,15 @@ fun matchesType(jsonType: String?, value: Any?): Boolean = when (jsonType) {
 @KdrPrivate
 fun wrongTypeMsg(type: SchType): String = "expected type '${type.jsonType ?: "any"}'"
 
-@KdrPrivate
+// These two are deliberately NOT @KdrPrivate. The spelling of a failure's path is a contract, not a detail of
+// the validator: a display that wants to show a message beside the field that caused it has to build the same
+// path the validator reported, and two implementations of one spelling would eventually disagree — silently,
+// since the symptom is a message that quietly matches no field. So the renderer calls these rather than
+// growing its own, for the same reason the frontend runs `coerceAndValidate` instead of its own validator.
+// See SchFailurePath.kt for reading the paths back.
+
+/** The path to [key] within the object at [parent]; at the root, just the key. */
 fun childPath(parent: String, key: String): String = if (parent.isEmpty()) key else "$parent.$key"
 
-@KdrPrivate
+/** The path to element [index] of the array at [parent]. */
 fun indexPath(parent: String, index: Int): String = "$parent[$index]"

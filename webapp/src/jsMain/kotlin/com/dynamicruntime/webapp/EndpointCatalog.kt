@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.clearedAt
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
@@ -293,7 +294,22 @@ val EndpointCatalog = FC<Props> {
                 type = inputType
                 this.values = values
                 this.editable = editable
+                this.failures = failures ?: emptyList()
                 onChange = { values = it }
+                // Clearing on edit, rather than re-validating: validation stays something the user asks for
+                // (Validate, or Run/Download implicitly), so a field being corrected must not keep showing the
+                // complaint about what it used to hold. Descendants go with it -- `clearedAt` -- because a
+                // structural edit re-indexes what is inside.
+                //
+                // Dropping the last failure returns to null, NOT to an empty list. Empty means "validated and
+                // clean" and draws the ✓, which editing has not earned: the payload has changed since anything
+                // was checked. Three states, and this is the one that keeps them honest.
+                onFieldEdit = { path ->
+                    failures?.let { current ->
+                        val remaining = current.clearedAt(path)
+                        failures = if (remaining.isEmpty()) null else remaining
+                    }
+                }
             }
 
             div {
@@ -352,11 +368,18 @@ val EndpointCatalog = FC<Props> {
                     }
                 } else {
                     h2 { +"Validation failures" }
+                    p {
+                        className = ClassName("subtitle")
+                        +("Each is also shown against its field above, where one renders it. This list is the " +
+                            "complete record — an undeclared property has no field to sit next to, and neither " +
+                            "does a failure against the payload as a whole.")
+                    }
+                    // The path stays here even though the field above repeats the message: this listing is the
+                    // one place that says *where*, and it is the same path an error from the server names.
                     fs.forEach { f ->
                         p {
                             className = ClassName("todo-error")
-                            val choices = f.options?.joinToString(", ") { it.value }?.let { " (valid: $it)" } ?: ""
-                            +"${f.path.ifEmpty { "(root)" }}: ${f.message}$choices"
+                            +"${f.path.ifEmpty { "(root)" }}: ${f.message}${choicesSuffix(f)}"
                         }
                     }
                 }
