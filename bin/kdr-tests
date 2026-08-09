@@ -1,18 +1,42 @@
 #!/usr/bin/env bash
-# @desc: Run all module tests (the test task across every subproject).
+# @desc: Run every module's tests (the `check` task across every subproject).
 #
-# Run all module tests (the `test` task across every subproject). Pass --rebuild (or -r) as the first
-# argument to `clean` first, forcing a full recompile before the tests. Any further arguments pass through
-# to Gradle (e.g. --tests "SomeTest*", --info). Runnable from any directory.
+# Run every module's tests. Pass --rebuild (or -r) as the first argument to `clean` first, forcing a full
+# recompile before the tests. Any further arguments pass through to Gradle (e.g. --info). Runnable from any
+# directory.
+#
+# This runs `check`, not `test`, and the difference is not cosmetic. `test` comes from the JVM plugin, so it
+# does not exist at all in the multiplatform modules: `:base:kernel` and `:webapp` expose their tests as
+# `jvmTest` / `jsNodeTest` / `allTests`. Gradle runs a named task wherever it exists and says nothing about
+# the projects lacking it, so `test` left both modules' results simply absent -- no failure, no mention, and
+# that includes `:base:kernel`'s JVM tests, not only frontend ones. Every test task is wired into `check` by
+# convention, so `check` cannot silently miss one the way naming tasks explicitly can. It pulls in no
+# non-test verification in this build today.
+#
+# The cost is that `--tests` cannot be used here: it is an option on Gradle's Test task and will not attach
+# to a lifecycle task. Narrow with the module's own task instead, e.g.
+#     ./gradlew :base:kdn:test --tests '*AuthFlowTest*'
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
-tasks=(test)
+tasks=(check)
 case "${1:-}" in
     --rebuild | -r | rebuild)
-        tasks=(clean test)
+        tasks=(clean check)
         shift
         ;;
 esac
+
+# Say why rather than letting Gradle report a bare "Unknown command-line option '--tests'".
+for arg in "$@"; do
+    case "$arg" in
+        --tests | --tests=*)
+            echo "bin: --tests cannot be used with kdr-tests, which runs the 'check' lifecycle task so that no" >&2
+            echo "     module's tests are skipped; --tests only attaches to a Test task. Narrow with the module" >&2
+            echo "     task directly, e.g. ./gradlew :base:kdn:test --tests '*AuthFlowTest*'" >&2
+            exit 1
+            ;;
+    esac
+done
 
 run_gradle "${tasks[@]}" "$@"

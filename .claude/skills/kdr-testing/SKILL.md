@@ -18,11 +18,14 @@ confirm it works in a running instance (that combination has caught things each 
 ## Running the suite
 
 **`./gradlew check`** from the workspace root is the whole suite. Use it before claiming a change is green.
+`bin/kdr-tests` runs exactly that.
 
-**`./gradlew test` is the tempting wrong answer**: the KMP modules (`:webapp`, `:base:kernel`) expose their
-JS tests as `jsTest`/`jsNodeTest`, not `test`, so that command runs the JVM modules and *silently skips every
-frontend test* — no failure, no mention, just absent. `check` picks up both. While iterating, narrow instead:
-`./gradlew :base:kdn:test --tests '*AuthFlowTest*'`.
+**`./gradlew test` is the tempting wrong answer**: `test` comes from the JVM plugin, so it does not exist at
+all in the multiplatform modules — `:base:kernel` and `:webapp` expose their tests as
+`jvmTest`/`jsNodeTest`/`allTests`. Gradle runs a named task wherever it exists and says nothing about the
+projects lacking it, so `test` leaves both modules' results *simply absent* — no failure, no mention. Note
+that costs `:base:kernel`'s **JVM** tests too, not only frontend ones. While iterating, narrow with a module
+task instead: `./gradlew :base:kdn:test --tests '*AuthFlowTest*'`.
 
 If the build dies at **`:kotlinStoreYarnLock`** ("Lock file was changed"), note the catch-22: the remedy task
 `kotlinUpgradeYarnLock` cannot run, because the store task fails the build before it is reached. Break the
