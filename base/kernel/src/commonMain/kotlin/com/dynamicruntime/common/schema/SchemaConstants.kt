@@ -25,6 +25,16 @@ object SCH {
     const val dComment = $$"$comment"
 
     // Annotations / metadata.
+    /**
+     * Standard JSON Schema `title`: a human label for a field, as against [description]'s longer explanation.
+     *
+     * Not parsed into `SchType` yet. When it is, the substitution has to be **per surface, not global**. A form
+     * asking a person to fill something in wants the title. A surface that documents the wire wants the *key*:
+     * the endpoint catalog, where the key is the payload's real field name and what you need to write a call
+     * or read an error path like `input.contacts[1].handle`; and an editor for a stored definition, where the
+     * field names are themselves the contract being authored. Substituting titles there would make those
+     * surfaces worse at their job, so whoever adds label support should scope it deliberately.
+     */
     const val title = "title"
     const val description = "description"
     const val default = "default"
