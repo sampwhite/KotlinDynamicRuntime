@@ -161,7 +161,7 @@ private fun ChildrenBuilder.renderObject(
 
 /**
  * A failure against a key the schema does not declare. It borrows the shape of a field row so it reads in
- * place, and carries the same id, so the listing can jump to it like any other — but it shows the **key**
+ * place and carries the same id, so the listing can jump to it like any other — but it shows the **key**
  * rather than a label, since there is no declared property behind it to have a description or a type.
  */
 private fun ChildrenBuilder.undeclaredField(key: String, path: String, messages: List<SchFailure>) {
@@ -255,13 +255,13 @@ private fun ChildrenBuilder.fieldFrame(
 }
 
 /**
- * Marks a control as invalid and points it at the block holding its messages, so the state is announced and
- * the reason read out rather than only being visible as a colour. A no-op when [describedBy] is null, which
+ * Marks a control as invalid and points it at the block holding its messages, so the state is announced, and
+ * the reason read out rather than only being visible as a color. A no-op when [describedBy] is null, which
  * is how a field with nothing wrong says so.
  *
  * Set through `asDynamic` because these are plain HTML attributes that antd's components forward to the
- * control they wrap, and their Kotlin external interfaces do not declare them — the same route the add and
- * remove buttons already take for `aria-label`.
+ * control they wrap, and their Kotlin external interfaces do not declare them — the same route the "add" and
+ * "remove" buttons already take for `aria-label`.
  *
  * That forwarding was checked rather than assumed, against a running instance: `Input`, `Select`,
  * `DatePicker` and `Checkbox` each land both attributes on their inner `<input>`, and the plain file input
