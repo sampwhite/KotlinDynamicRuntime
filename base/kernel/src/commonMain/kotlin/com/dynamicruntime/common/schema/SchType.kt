@@ -80,7 +80,7 @@ class SchType(
      * array, `minProperties` for an object. Which keyword it was read from follows from [jsonType], and what
      * it is compared against follows with it — the value itself, its length, its size.
      *
-     * Held as a Double so one field serves a fractional `minimum` and an integral `minLength` alike; there is
+     * Held as a Double, so one field serves a fractional `minimum` and an integral `minLength` alike; there is
      * no BigDecimal in a KMP common source set, so a bound beyond 2^53 loses precision. Not a real constraint
      * on a length or a count, and a `minimum` out there is not a bound anyone is enforcing meaningfully.
      */
