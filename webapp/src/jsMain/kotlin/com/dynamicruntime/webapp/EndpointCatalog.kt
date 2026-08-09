@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.clearedAt
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
@@ -47,6 +48,10 @@ val EndpointCatalog = FC<Props> {
     var editable by useState(true)
     var showOutput by useState(false)
     var failures by useState<List<SchFailure>?>(null)
+    // Set when a field is edited after a validation pass, so the form can say that what is (or is no longer)
+    // on screen predates the edit. Distinguishes "checked, then changed" from "never checked" -- a fresh form
+    // has nothing to be stale about and should stay quiet.
+    var revalidate by useState(false)
     var coerced by useState<String?>(null)
     // The request-JSON panel doubles as an editor: `rawEdited` marks text changed but not yet loaded into the
     // form, and `rawError` holds why the last load attempt failed.
@@ -123,6 +128,7 @@ val EndpointCatalog = FC<Props> {
                 }
                 values = target?.values ?: emptyMap()
                 failures = null
+                revalidate = false
                 coerced = null
                 rawEdited = false
                 rawError = null
@@ -161,6 +167,7 @@ val EndpointCatalog = FC<Props> {
                         editable = true
                         showOutput = false
                         failures = null
+                        revalidate = false
                         coerced = null
                         rawEdited = false
                         rawError = null
@@ -185,6 +192,7 @@ val EndpointCatalog = FC<Props> {
             // wire because a failure stops the "send".
             val result = coerceAndValidate(inputType, vals, SchOpts(keepAdditionalProperties = true))
             failures = result.failures
+            revalidate = false
             coerced = payloadText(result.value)
             rawEdited = false
             rawError = null
@@ -293,7 +301,25 @@ val EndpointCatalog = FC<Props> {
                 type = inputType
                 this.values = values
                 this.editable = editable
+                this.failures = failures ?: emptyList()
                 onChange = { values = it }
+                // Clearing on edit, rather than re-validating: validation stays something the user asks for
+                // (Validate, or Run/Download implicitly), so a field being corrected must not keep showing the
+                // complaint about what it used to hold. Descendants go with it -- `clearedAt` -- because a
+                // structural edit re-indexes what is inside.
+                //
+                // Dropping the last failure returns to null, NOT to an empty list. Empty means "validated and
+                // clean" and draws the ✓, which editing has not earned: the payload has changed since anything
+                // was checked. Three states, and this is the one that keeps them honest.
+                onFieldEdit = { path ->
+                    failures?.let { current ->
+                        val remaining = current.clearedAt(path)
+                        failures = remaining.ifEmpty { null }
+                        // Something had been checked and has now moved on: say so. Silence here would read as
+                        // "nothing wrong", which is exactly the reading dropping the ✓ exists to prevent.
+                        revalidate = true
+                    }
+                }
             }
 
             div {
@@ -344,6 +370,17 @@ val EndpointCatalog = FC<Props> {
                 }
             }
 
+            // The third state made visible. Editing drops the failures that the edit invalidated, and with them
+            // the ✓ -- but an empty screen says "nothing wrong" just as loudly as the banner did, so the one
+            // state the form cannot vouch for is the one that has to announce itself. Shown alongside any
+            // failures that survived, since those were computed before the edit as well.
+            if (revalidate) {
+                p {
+                    className = ClassName("form-stale")
+                    +("Edited since the last check — choose Validate (or Run) to check it again.")
+                }
+            }
+
             failures?.let { fs ->
                 if (fs.isEmpty()) {
                     p {
@@ -352,11 +389,18 @@ val EndpointCatalog = FC<Props> {
                     }
                 } else {
                     h2 { +"Validation failures" }
+                    p {
+                        className = ClassName("subtitle")
+                        +("Each is also shown against its field above, where one renders it. This list is the " +
+                            "complete record — an undeclared property has no field to sit next to, and neither " +
+                            "does a failure against the payload as a whole.")
+                    }
+                    // The path stays here even though the field above repeats the message: this listing is the
+                    // one place that says *where*, and it is the same path an error from the server names.
                     fs.forEach { f ->
                         p {
                             className = ClassName("todo-error")
-                            val choices = f.options?.joinToString(", ") { it.value }?.let { " (valid: $it)" } ?: ""
-                            +"${f.path.ifEmpty { "(root)" }}: ${f.message}$choices"
+                            +"${f.path.ifEmpty { "(root)" }}: ${f.message}${choicesSuffix(f)}"
                         }
                     }
                 }

@@ -55,6 +55,16 @@ val reservedSchemaKeys: Set<String> = setOf(
  * currently valid choices, given first-class visibility to the caller. When a
  * [SchFailCode.badValue] came from a failed parse, [cause] carries that exception
  * (which itself holds the offset/line of the parse error).
+ *
+ * **A [message] is a complete sentence, sentence-cased and ending in a period**, as every other message in
+ * this codebase is. These were once lowercase unpunctuated fragments in the style errors take when they are
+ * only ever wrapped and concatenated — which was right while a failure was read solely as the tail of
+ * `path: message`. Since issue #197 a failure has also stood on its own beneath the field that caused it, beside
+ * field descriptions written as sentences, and there a fragment reads as truncated. The composed forms lose
+ * nothing: `input.score: This must be of type 'integer'.` reads correctly.
+ *
+ * A message that opens by quoting a supplied value begins with the quote rather than a capital
+ * (`'abc' is not a valid number.`). That is deliberate — the value is the caller's, not ours to re-case.
  */
 data class SchFailure(
     val path: String,
@@ -145,7 +155,7 @@ fun validateValue(
     if (options != null) {
         val choice = value as? String
         if (choice == null || options.none { it.value == choice }) {
-            failures.add(SchFailure(path, SchFailCode.invalidOption, "'$value' is not a valid option", options))
+            failures.add(SchFailure(path, SchFailCode.invalidOption, "'$value' is not a valid option.", options))
         }
         return value
     }
@@ -209,7 +219,7 @@ fun validateObject(
             type.additionalProperties -> out?.put(key, v) // allowed (incl. reserved $ keys, treated as normal)
             else -> {
                 failures.add(
-                    SchFailure(childPath(path, key), SchFailCode.additionalProperty, "additional property '$key' not allowed"),
+                    SchFailure(childPath(path, key), SchFailCode.additionalProperty, "Additional property '$key' is not allowed."),
                 )
                 // Reported either way; kept only when the caller asked. See SchOpts.keepAdditionalProperties.
                 if (opts.keepAdditionalProperties) out?.put(key, v)
@@ -225,7 +235,7 @@ fun validateObject(
             out?.put(req, cloneForInjection(default)) // a default supplies the value, so no failure
         } else {
             failures.add(
-                SchFailure(childPath(path, req), SchFailCode.missingRequired, "required property '$req' is missing"),
+                SchFailure(childPath(path, req), SchFailCode.missingRequired, "Required property '$req' is missing."),
             )
         }
     }
@@ -337,7 +347,7 @@ fun coerceNumericString(
     }
     val parsed = parse(s)
     if (parsed == null) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "'$s' is not a valid ${type.jsonType}"))
+        failures.add(SchFailure(path, SchFailCode.badValue, "'$s' is not a valid ${type.jsonType}."))
         return value
     }
     return parsed
@@ -360,7 +370,7 @@ fun coerceStringToBool(type: SchType, value: Any?, path: String, coerce: Boolean
         return b
     }
     if (s.any { it > ' ' }) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "'$s' is not a recognizable boolean"))
+        failures.add(SchFailure(path, SchFailCode.badValue, "'$s' is not a recognizable boolean."))
         return value
     }
     // Pure whitespace: a blank cell is treated as an absent value.
@@ -385,7 +395,7 @@ fun coerceStringToArray(
         try {
             s.jsonArray() ?: emptyList()
         } catch (e: KdrException) {
-            failures.add(SchFailure(path, SchFailCode.badValue, "value is not a valid JSON array", cause = e))
+            failures.add(SchFailure(path, SchFailCode.badValue, "The value is not a valid JSON array.", cause = e))
             return value
         }
     } else {
@@ -408,11 +418,11 @@ fun coerceStringToObject(
     val map = try {
         s.jsonMap()
     } catch (e: KdrException) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "value is not a valid JSON object", cause = e))
+        failures.add(SchFailure(path, SchFailCode.badValue, "The value is not a valid JSON object.", cause = e))
         return value
     }
     if (map == null) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "value is not a valid JSON object"))
+        failures.add(SchFailure(path, SchFailCode.badValue, "The value is not a valid JSON object."))
         return value
     }
     return validateValue(type, map, path, coerce, failures, opts)
@@ -453,20 +463,20 @@ fun validateDate(type: SchType, value: Any?, path: String, coerce: Boolean, fail
                 else if (lenient) value.parseDayLenient()
                 else value.parseDay()
             is LocalDate -> if (lenient) value.toStartOfDay() else {
-                failures.add(SchFailure(path, SchFailCode.wrongType, "expected a timestamp, not a day"))
+                failures.add(SchFailure(path, SchFailCode.wrongType, "This must be a timestamp, not a day."))
                 return value
             }
             is Instant -> if (lenient) value.toDay() else {
-                failures.add(SchFailure(path, SchFailCode.wrongType, "expected a day, not a timestamp"))
+                failures.add(SchFailure(path, SchFailCode.wrongType, "This must be a day, not a timestamp."))
                 return value
             }
             else -> {
-                failures.add(SchFailure(path, SchFailCode.wrongType, "expected a date string"))
+                failures.add(SchFailure(path, SchFailCode.wrongType, "This must be a date string."))
                 return value
             }
         }
     } catch (e: KdrException) {
-        failures.add(SchFailure(path, SchFailCode.badValue, "'$value' is not a valid date", cause = e))
+        failures.add(SchFailure(path, SchFailCode.badValue, "'$value' is not a valid date.", cause = e))
         return value
     }
     return if (coerce && type.allowCoerce) parsed else value
@@ -493,10 +503,17 @@ fun matchesType(jsonType: String?, value: Any?): Boolean = when (jsonType) {
 }
 
 @KdrPrivate
-fun wrongTypeMsg(type: SchType): String = "expected type '${type.jsonType ?: "any"}'"
+fun wrongTypeMsg(type: SchType): String = "This must be of type '${type.jsonType ?: "any"}'."
 
-@KdrPrivate
+// These two are deliberately NOT @KdrPrivate. The spelling of a failure's path is a contract, not a detail of
+// the validator: a display that wants to show a message beside the field that caused it has to build the same
+// path the validator reported, and two implementations of one spelling would eventually disagree — silently,
+// since the symptom is a message that quietly matches no field. So the renderer calls these rather than
+// growing its own, for the same reason the frontend runs `coerceAndValidate` instead of its own validator.
+// See SchFailurePath.kt for reading the paths back.
+
+/** The path to [key] within the object at [parent]; at the root, just the key. */
 fun childPath(parent: String, key: String): String = if (parent.isEmpty()) key else "$parent.$key"
 
-@KdrPrivate
+/** The path to element [index] of the array at [parent]. */
 fun indexPath(parent: String, index: Int): String = "$parent[$index]"

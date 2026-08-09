@@ -2,9 +2,13 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
+import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.byPath
+import com.dynamicruntime.common.schema.childPath
+import com.dynamicruntime.common.schema.indexPath
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.toJsonStr
@@ -40,14 +44,43 @@ external interface SchemaFormProps : Props {
     var values: Map<String, Any?>
     /** When true, widgets are editable and call [onChange]; when false, they render disabled. */
     var editable: Boolean
+    /**
+     * Validation failures to show against the fields that caused them. Their paths are the ones the kernel
+     * validator reported, and the form rebuilds the same paths as it walks — see [FieldErrors].
+     */
+    var failures: List<SchFailure>
     /** Called with the full new values map for this object whenever a field changes. */
     var onChange: (Map<String, Any?>) -> Unit
+    /**
+     * Called with the path of the field the user just edited, so its now-stale failures can be dropped. Fired
+     * from the innermost thing touched, never from the parent updates that bubble up behind it — editing one
+     * field must not clear a sibling's error.
+     */
+    var onFieldEdit: (String) -> Unit
+}
+
+/**
+ * The per-field validation state a render pass carries: which messages to show under a field, and how to
+ * report that a field was edited.
+ *
+ * It exists, so the two travel together through the traversal rather than as two more parameters on every
+ * render function, and so the grouping is done once for the pass instead of rescanning the failure list per
+ * field.
+ */
+class FieldErrors(failures: List<SchFailure>, val noteEdit: (String) -> Unit) {
+    private val byPath = failures.byPath()
+
+    /** The failures reported at exactly [path]; empty when the field is fine (or when nothing was validated). */
+    fun messagesAt(path: String): List<SchFailure> = byPath[path] ?: emptyList()
 }
 
 val SchemaForm = FC<SchemaFormProps> { props ->
+    val errors = FieldErrors(props.failures, props.onFieldEdit)
     div {
         className = ClassName("schema-form")
-        renderObject(props.type, props.values, emptySet(), props.editable, props.onChange)
+        // The root path is empty, which is what the validator starts from too, so `childPath` composes the
+        // identical strings on both sides (see SchValidator's note on why these are shared).
+        renderObject(props.type, props.values, emptySet(), props.editable, "", errors, props.onChange)
     }
 }
 
@@ -57,6 +90,8 @@ private fun ChildrenBuilder.renderObject(
     values: Map<String, Any?>,
     seen: Set<String>,
     editable: Boolean,
+    path: String,
+    errors: FieldErrors,
     onChange: (Map<String, Any?>) -> Unit,
 ) {
     if (type.properties.isEmpty()) {
@@ -68,7 +103,7 @@ private fun ChildrenBuilder.renderObject(
     }
     type.properties.forEach { (name, prop) ->
         renderField(
-            name, prop, name in type.required, values[name], seen, editable,
+            name, prop, name in type.required, values[name], seen, editable, childPath(path, name), errors,
             // A removal has to drop the key, not null it: a null against an object/array type fails the plain
             // type check (they do not coerce), so "removed" would read as "present but wrong".
             emit = { newValue -> onChange(values + (name to newValue)) },
@@ -88,33 +123,93 @@ private fun ChildrenBuilder.renderField(
     value: Any?,
     seen: Set<String>,
     editable: Boolean,
+    path: String,
+    errors: FieldErrors,
     emit: (Any?) -> Unit,
     omit: () -> Unit,
 ) {
     val vt = prop.valueType
     val elementType = objectElementType(vt)
     if (elementType != null) {
-        renderObjectList(name, prop, required, value, elementType, seen, editable, emit, omit)
+        renderObjectList(name, prop, required, value, elementType, seen, editable, path, errors, emit, omit)
         return
     }
     // A list of scalars, edited: one widget per element. Not the multi-select case (an item type with options
     // is a fixed set of choices, which the Select already emits as a real list), and not the read-only view,
     // where a comma-joined line reads better than a column of single values.
     if (editable && vt.jsonType == SCT.array && vt.itemType?.options == null) {
-        renderScalarList(name, prop, required, value, vt.itemType, emit, omit)
+        renderScalarList(name, prop, required, value, vt.itemType, path, errors, emit, omit)
         return
     }
     if (isStructuredObject(vt)) {
-        renderNestedObject(name, prop, required, value, vt, seen, editable, emit, omit)
+        renderNestedObject(name, prop, required, value, vt, seen, editable, path, errors, emit, omit)
         return
     }
 
+    val messages = errors.messagesAt(path)
+    fieldFrame(name, prop, required, messages) {
+        widget(vt, value, editable) { newValue ->
+            errors.noteEdit(path)
+            emit(newValue)
+        }
+    }
+}
+
+/**
+ * How every field presents *itself*, whatever it then goes on to contain: a row carrying the label and
+ * whatever [rowContent] puts beside it, the field's description, and any failures reported against it.
+ *
+ * The four render paths differ in what they draw *after* this — a widget inline, an expanded sub-form, a
+ * column of elements — but they must not differ in this, or a field's error appears in a different place
+ * depending on the shape of its type. Having one frame is also what keeps the next addition to it (an
+ * ancestor marker, an `aria-describedby` tying control to message) a single edit rather than four.
+ */
+private fun ChildrenBuilder.fieldFrame(
+    name: String,
+    prop: SchProperty,
+    required: Boolean,
+    messages: List<SchFailure>,
+    rowContent: ChildrenBuilder.() -> Unit = {},
+) {
     div {
-        className = ClassName("row")
+        className = ClassName(rowClass(messages))
         labelSpan(name, required)
-        widget(vt, value, editable, emit)
+        rowContent()
     }
     prop.description?.let { desc(it) }
+    fieldErrors(messages)
+}
+
+/** The row's class, marked invalid when the field carries a failure, so the label and control can be styled. */
+private fun rowClass(messages: List<SchFailure>): String = if (messages.isEmpty()) "row" else "row field-invalid"
+
+/**
+ * The failures for one field, printed beneath it. The path is deliberately *not* repeated here — the message
+ * is already sitting on the field it is about, and the path's job (saying which field) is done by position.
+ * The listing at the bottom of the page keeps the path, since that surface has no field to sit next to.
+ */
+private fun ChildrenBuilder.fieldErrors(messages: List<SchFailure>) {
+    messages.forEach { f ->
+        p {
+            className = ClassName("field-error")
+            +"${f.message}${choicesSuffix(f)}"
+        }
+    }
+}
+
+/**
+ * The "Valid options: …" sentence listing an invalid-option failure's choices; empty for every other failure.
+ * Its own sentence rather than a trailing parenthetical, because the message it follows now ends in a period
+ * and a lowercase "(valid: …)" stranded after one reads as an afterthought.
+ *
+ * Each choice shows its **value**, which is what actually goes in the payload — this surface documents the
+ * wire, the same reason the endpoint form labels fields with their key rather than a `title`. The label is
+ * appended only when it says something the value does not, so a labeled choice list is not reduced to bare
+ * codes, and an unlabeled one is not padded with a repeat of itself.
+ */
+fun choicesSuffix(f: SchFailure): String {
+    val opts = f.options ?: return ""
+    return " Valid options: ${opts.joinToString(", ") { if (it.label == it.value) it.value else "${it.value} — ${it.label}" }}."
 }
 
 /** An object type with declared fields, as opposed to a free-form object. */
@@ -141,6 +236,8 @@ private fun ChildrenBuilder.renderNestedObject(
     vt: SchType,
     seen: Set<String>,
     editable: Boolean,
+    path: String,
+    errors: FieldErrors,
     emit: (Any?) -> Unit,
     omit: () -> Unit,
 ) {
@@ -148,15 +245,19 @@ private fun ChildrenBuilder.renderNestedObject(
     val recursive = typeName != null && typeName in seen
     val present = value is Map<*, *>
     val dataDriven = recursive || !required
+    val messages = errors.messagesAt(path)
 
-    div {
-        className = ClassName("row")
-        labelSpan(name, required)
+    fieldFrame(name, prop, required, messages) {
         if (dataDriven && editable) {
-            if (present) removeControl(name, omit) else addControl(name) { emit(emptyMap<String, Any?>()) }
+            // Adding or removing the whole branch invalidates anything reported inside it, which is why the
+            // edit is noted against this field rather than against whatever it contained.
+            if (present) {
+                removeControl(name) { errors.noteEdit(path); omit() }
+            } else {
+                addControl(name) { errors.noteEdit(path); emit(emptyMap<String, Any?>()) }
+            }
         }
     }
-    prop.description?.let { desc(it) }
     if (dataDriven && !present) {
         // Nothing there: awaiting an Add, or simply absent. Expanding it anyway would show a structure the
         // data does not have -- empty lat/lon for a contact with no location -- which reads as present-but-blank.
@@ -172,7 +273,7 @@ private fun ChildrenBuilder.renderNestedObject(
     div {
         className = ClassName("nested")
         val childSeen = if (typeName != null) seen + typeName else seen
-        renderObject(vt, value.toJsonMapOrEmpty(), childSeen, editable) { newSub -> emit(newSub) }
+        renderObject(vt, value.toJsonMapOrEmpty(), childSeen, editable, path, errors) { newSub -> emit(newSub) }
     }
 }
 
@@ -190,19 +291,19 @@ private fun ChildrenBuilder.renderObjectList(
     elementType: SchType,
     seen: Set<String>,
     editable: Boolean,
+    path: String,
+    errors: FieldErrors,
     emit: (Any?) -> Unit,
     omit: () -> Unit,
 ) {
     val elements = value.toJsonListOrEmpty()
-    div {
-        className = ClassName("row")
-        labelSpan(name, required)
-    }
-    prop.description?.let { desc(it) }
+    val messages = errors.messagesAt(path)
+    fieldFrame(name, prop, required, messages)
 
     val typeName = elementType.name
     val childSeen = if (typeName != null) seen + typeName else seen
     elements.forEachIndexed { i, element ->
+        val elementPath = indexPath(path, i)
         div {
             className = ClassName("nested")
             div {
@@ -213,12 +314,15 @@ private fun ChildrenBuilder.renderObjectList(
                 }
                 if (editable) {
                     removeControl("$name $i") {
+                        // Noted against the list, not the element: removing re-indexes everything after it, so
+                        // a failure held against element 2 would end up pointing at what used to be element 3.
+                        errors.noteEdit(path)
                         val rest = elements.filterIndexed { j, _ -> j != i }
                         if (rest.isEmpty() && !required) omit() else emit(rest)
                     }
                 }
             }
-            renderObject(elementType, element.toJsonMapOrEmpty(), childSeen, editable) { newElement ->
+            renderObject(elementType, element.toJsonMapOrEmpty(), childSeen, editable, elementPath, errors) { newElement ->
                 emit(elements.mapIndexed { j, old -> if (j == i) newElement else old })
             }
         }
@@ -226,7 +330,10 @@ private fun ChildrenBuilder.renderObjectList(
     if (editable) {
         div {
             className = ClassName("row")
-            addControl(name) { emit(elements + listOf<Any?>(mapOf<String, Any?>())) }
+            addControl(name) {
+                errors.noteEdit(path)
+                emit(elements + listOf<Any?>(mapOf<String, Any?>()))
+            }
         }
     } else if (elements.isEmpty()) {
         p {
@@ -250,20 +357,24 @@ private fun ChildrenBuilder.renderScalarList(
     required: Boolean,
     value: Any?,
     elementType: SchType?,
+    path: String,
+    errors: FieldErrors,
     emit: (Any?) -> Unit,
     omit: () -> Unit,
 ) {
     val elements = value.toJsonListOrEmpty()
-    div {
-        className = ClassName("row")
-        labelSpan(name, required)
-    }
-    prop.description?.let { desc(it) }
+    val messages = errors.messagesAt(path)
+    fieldFrame(name, prop, required, messages)
 
     elements.forEachIndexed { i, element ->
-        fun replace(newValue: Any?) = emit(elements.mapIndexed { j, old -> if (j == i) newValue else old })
+        val elementPath = indexPath(path, i)
+        val elementMessages = errors.messagesAt(elementPath)
+        fun replace(newValue: Any?) {
+            errors.noteEdit(elementPath)
+            emit(elements.mapIndexed { j, old -> if (j == i) newValue else old })
+        }
         div {
-            className = ClassName("row nested")
+            className = ClassName("${rowClass(elementMessages)} nested")
             // An untyped array declares nothing about its elements, so there is no widget to dispatch on:
             // a plain text box, whose value the validator leaves alone for want of an item type.
             if (elementType != null) widget(elementType, element, true) { replace(it) } else Input {
@@ -272,14 +383,20 @@ private fun ChildrenBuilder.renderScalarList(
                 onChange = { e -> replace(e.target.value as String) }
             }
             removeControl("$name $i") {
+                // Against the list, since removing re-indexes what follows (see renderObjectList).
+                errors.noteEdit(path)
                 val rest = elements.filterIndexed { j, _ -> j != i }
                 if (rest.isEmpty() && !required) omit() else emit(rest)
             }
         }
+        fieldErrors(elementMessages)
     }
     div {
         className = ClassName("row")
-        addControl(name) { emit(elements + listOf<Any?>("")) }
+        addControl(name) {
+            errors.noteEdit(path)
+            emit(elements + listOf<Any?>(""))
+        }
     }
 }
 
