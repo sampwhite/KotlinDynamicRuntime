@@ -248,10 +248,21 @@ class SchemaService : ServiceInitializer {
                 property(CX.name, "Item name.", required = true)
                 property(CX.priority, "Priority level.", required = true) {
                     option(CX.low); option(CX.medium); option(CX.high)
+                    // Only the one code, so an invalidOption here still falls through to the built-in
+                    // wording -- which is the fallback chain being exercised rather than an oversight.
+                    errors { missingRequired("Choose how urgent this is.") }
                 }
                 property(CX.createdOn, "Creation timestamp.", required = true) { dateTime() }
+                // Carries `g-errors` (issue #202), so the endpoint form has something real to show: the
+                // messages below replace the validator's own wording under the field, while the failure
+                // listing keeps both -- that surface documents the wire, and "not a valid number" is what an
+                // API caller needs to read.
                 property(CX.score, "Numeric score (numeric types coerce from a string by default).", required = true) {
                     type = SCT.number
+                    errors {
+                        missingRequired("A score is needed before this can be processed.")
+                        default("A score has to be a number, such as 42 or 3.5.")
+                    }
                 }
                 // Booleans do not coerce by default; opt in with allowCoerce so "true"/"yes" strings are accepted.
                 property(CX.active, "Active flag (string-coercible: allowCoerce is on).") {

@@ -291,7 +291,10 @@ private fun ChildrenBuilder.fieldErrors(path: String, messages: List<SchFailure>
         messages.forEach { f ->
             p {
                 className = ClassName("field-error")
-                +"${f.message}${choicesSuffix(f)}"
+                // The schema's own wording when it has any, and *only* that: someone filling in a form does
+                // not need to be told the JSON type of what they got wrong. The listing at the foot of the
+                // page keeps both, because that surface is documenting the wire (issue #202).
+                +"${f.userMessage ?: f.message}${choicesSuffix(f)}"
             }
         }
     }

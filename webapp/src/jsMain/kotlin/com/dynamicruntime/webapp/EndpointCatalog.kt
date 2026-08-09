@@ -420,7 +420,11 @@ val EndpointCatalog = FC<Props> {
                     fs.forEach { f ->
                         p {
                             className = ClassName("todo-error")
-                            val text = "${f.path.ifEmpty { "(root)" }}: ${f.message}${choicesSuffix(f)}"
+                            // Both wordings when the schema supplies one: the framework's, which names the
+                            // wire problem an API caller has to act on, then the schema's in quotes, which is
+                            // what the person at the form was shown. Neither substitutes for the other here.
+                            val schemaCopy = f.userMessage?.let { " (shown as: “$it”)" } ?: ""
+                            val text = "${f.path.ifEmpty { "(root)" }}: ${f.message}${choicesSuffix(f)}$schemaCopy"
                             if (f.path.isEmpty()) {
                                 +text
                             } else {

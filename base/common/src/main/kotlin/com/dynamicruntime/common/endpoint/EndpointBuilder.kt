@@ -425,6 +425,9 @@ fun inputObjectType(name: String, properties: Map<String, SchProperty>, required
         itemType = null,
         options = null,
         default = null,
+        // An endpoint's input envelope is machinery, not a field anyone fills in, so there is nothing here
+        // for custom error copy to be about.
+        errorMessages = emptyMap(),
     )
 
 /** The empty (no-parameters) input base: a closed object with no properties. */
@@ -450,6 +453,7 @@ val limitInputProperty: SchProperty =
             itemType = null,
             options = null,
             default = defaultListLimit,
+            errorMessages = emptyMap(),
         )
     }
 
