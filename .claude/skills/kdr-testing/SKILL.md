@@ -1,6 +1,6 @@
 ---
 name: kdr-testing
-description: Test and verify changes in KotlinDynamicRuntime — booting your own server to drive it by curl or browser, and writing in-process unit tests. Covers the KDR_PORT/in-memory server conventions (and the don't-touch-7070 rule), mkTestBootCxt/mkBootCxt with config overlays, the focused-vs-flow test split and the conventions a shared-instance flow test needs, TestHttpClient and its response-extraction idioms, injecting env-var options through the instance config, selecting your own config object via KDR_CUSTOM_CONFIG to set config values that have no env var, and the TestUser/become-user helper for authenticated tests. Use whenever writing or reviewing a test, verifying a change end-to-end, or booting and driving the app in this codebase — even when the request just says "check that this works" or "run the app".
+description: Test and verify changes in KotlinDynamicRuntime — booting your own server to drive it by curl, kdr-probe or browser, and writing in-process unit tests. Covers the KDR_PORT/in-memory server conventions (and the don't-touch-7070 rule), the kdr-probe scenario host for driving a running instance as a chosen caller (and extending it, which needs no permission), the _debug=explainAccess tag for why a caller cannot see an endpoint, mkTestBootCxt/mkBootCxt with config overlays including ACFG.isTestInstance to test how a real node behaves, the focused-vs-flow test split and the conventions a shared-instance flow test needs, TestHttpClient and its response-extraction idioms, injecting env-var options through the instance config, selecting your own config object via KDR_CUSTOM_CONFIG to set config values that have no env var, and the TestUser/become-user helper for authenticated tests. Use whenever writing or reviewing a test, verifying a change end-to-end, or booting and driving the app in this codebase — even when the request just says "check that this works" or "run the app".
 ---
 
 # Testing and verifying changes
@@ -95,6 +95,59 @@ A **content differential** confirms a stable-vs-changing value: call twice uncha
 then change an input (different `contentHash`). The `/demo/*` endpoints (`/demo/calc`, `/demo/todos`) are ideal
 — pure, parameterized, no auth.
 
+**Reach for `kdr-probe` (below) as soon as more than one caller is involved.** The cookie-jar form above is
+fine for a single ad-hoc call and treacherous past that: a jar passed through an unquoted shell variable never
+reaches `curl`, every request silently runs anonymous, and the output is a plausible table rather than an
+error. That has happened, and the wrong answer cost far more than a crash would have.
+
+**Why can this caller not see that endpoint?** `_debug=explainAccess` answers it directly, on
+`/schema/endpoints` and `/schema/endpoint` (issue #215). Under `_meta.accessExplained` it reports the roles the
+catalog filter actually compared — *after* the live-role refresh, which is the value worth seeing — and every
+withheld endpoint grouped by section with the role that section demands:
+
+```bash
+curl -s -b "$JAR" 'http://localhost:7071/kda/schema/endpoints?_debug=explainAccess' | jq '._meta.accessExplained'
+```
+
+It is **test-instance only**, silently: on a real node the key is simply absent, because naming the privileged
+surface to any caller who asks would undo the hiding it exists to explain. Without it, a filtering bug shows up
+only as a count one lower than expected.
+
+## Probing a running instance (`kdr-probe`)
+
+`bin/kdr-probe` drives a **running** server as a chosen caller (issue #215). Start one first, then:
+
+```bash
+kdr-probe                                             # lists the scenarios
+kdr-probe catalog-diff                                # what each rung is shown by /schema/endpoints
+kdr-probe access-matrix /health /admin/users          # callers x paths -> status codes
+kdr-probe grant-then-call                             # grant a rung to a live session, re-probe it
+kdr-probe call --as operator GET /operator/system/info # one request, no session to keep
+kdr-probe --url http://localhost:7099 catalog-diff    # somewhere other than the default 7071
+```
+
+**The rule that keeps it honest: one call may be flags; more than one call is a scenario in Kotlin, never
+shell.** A multi-call check needs session state across those calls, and composing one-shot invocations
+externally puts that state back into cookie files threaded through shell — relocating the mistake the tool
+exists to retire, with argument quoting added on top.
+
+**It is yours to extend, at will and without asking.** Adding a scenario is a function in `ProbeScenarios.kt`
+and a line in `Probe.scenarios` — deliberately routine, not a design event. A check you are about to do for the
+**second** time is already a scenario; the hand-rolled version is the one that silently lies. And the cost is
+lower than it looks: wall clock here is dominated by the server boot, so the scenario can be written *during*
+the boot you would be waiting through anyway. Reuse decides, not effort — genuinely single-use exploration
+should use `call` rather than growing the registry.
+
+**Scenarios report; they do not assert.** Anything worth asserting belongs in kotest, where it runs on every
+`check`. `ProbeSession`'s method names echo `TestHttpClient`'s precisely so a scenario that earns its keep can
+be promoted into a test with mechanical edits rather than a rewrite.
+
+**Read the last line.** Every run ends with `kdr-probe: completed <name>` or `kdr-probe: FAILED <name> — …`,
+and a `FAILED` line distinguishes an instance that could not be reached from a defect in the probe itself.
+Scenarios print as they go, so a run that dies partway leaves output that reads as a short but finished report
+— and piping through `grep` or `tail` loses the exit code. **Absence of the completion line means the report is
+incomplete however complete it looks.**
+
 ## Traveling the clock (`/test/clock`)
 
 Anything gated on elapsed time — a session lapsing, a rate-limit window reopening, a device's trust running
@@ -154,6 +207,21 @@ already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
 
 - **Use a unique `instanceName` per test.** `InstanceRegistry` caches an instance by name, so a reused name
   returns the earlier config and silently ignores your overlay.
+
+- **`ACFG.isTestInstance` in the overlay decides that flag outright** (issue #215), and is the only way to
+  test how a **real** node behaves — `forTestingOnly` endpoints absent from the store, test-only debug output
+  withheld. Everything else about the flag is inferred through a chain of ORs that can only ever say *yes*: a
+  test runs in `ENV.unit` **and** in memory, and either alone re-asserts it, so setting the env var false
+  changes nothing.
+
+  ```kotlin
+  val cxt = Startup.mkTestBootCxt("prod", "prodShapedTest", mapOf(ACFG.isTestInstance to false))
+  cxt.instanceConfig.isTestInstance shouldBe false   // assert the premise, or the test proves nothing
+  ```
+
+  That premise assertion is the point, not ceremony: a fence test that silently ran on a test instance would
+  pass for the wrong reason, and a fence test that cannot fail is worse than none. Note the consequence —
+  `becomeUser` is gone in such an instance, so the caller is anonymous.
 
 ## Two kinds of test: focused, and flow
 
