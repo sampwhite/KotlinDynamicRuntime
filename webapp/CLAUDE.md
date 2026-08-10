@@ -109,6 +109,37 @@ backend sets from `isTestInstance` — the same fence `_debug=explainAccess` use
 of "a dev build". Note the limit: a crash in the *shell* happens before the config fetch returns, so the
 detail is withheld there even on a test instance and the console is where you read it.
 
+## Debug pages (issue #227)
+
+A small area that exists only where the deployment permits it (`allowDebugPages`, from the backend's
+`isTestInstance`), for diagnosing the app rather than using it. Reached by URL, which is what lets a browser
+test drive it with nothing but a link:
+
+```
+#page=debug                  index of what is available
+#page=debug&tool=state       resolved app config + refresh generation
+#page=debug&tool=fault       throws while rendering -> the page boundary catches
+#<any page>&fault=shell      throws in the app bar   -> the backstop catches
+```
+
+Where the flag is off the route resolves to Home — the page does not exist rather than being refused, so
+nothing acknowledges that a way to break the app is there. `allowDebugPages` is deliberately a **separate**
+flag from `showErrorDetail`: seeing internals and manufacturing a failure are different powers.
+
+**Adding a tool** is a branch in `DebugPage` plus an entry in `DebugIndex`. Keep faults as dedicated
+components rather than conditionals inside real pages — the one exception is the shell fault, which must live
+in `AppBar` because proving the *backstop* catches requires the chrome itself to throw.
+
+Two behaviors worth knowing before you touch it, both learned the hard way:
+
+- **A fault must stay true while its parameter is present.** An earlier version consumed the request during
+  render so a reload would not re-fault; React retries a failed render, the retry no longer faulted, and it
+  recovered instead of showing the boundary. A fault that stops being true mid-render is not testable.
+- **Escaping the shell fault is explicit.** The backstop is not keyed, so nothing resets it, and its reload
+  would re-read the URL that caused the failure. `reloadWithoutFault` strips the parameter first, using
+  `history.replaceState` and *then* reloading — `location.replace()` does not navigate for a hash-only change,
+  so the reload after it re-reads the original address.
+
 ## Frontend tests (issue #161)
 
 `webapp` has a `jsTest` source set (multiplatform `kotlin.test`, the same framework `base/kernel` uses) for

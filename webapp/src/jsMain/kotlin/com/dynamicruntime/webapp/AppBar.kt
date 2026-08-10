@@ -35,6 +35,12 @@ private val appBarScope = MainScope()
  * redraws the menu.
  */
 val AppBar = FC<Props> {
+    // The one conditional fault that cannot live in a dedicated component (issue #227): proving the *backstop*
+    // boundary catches means breaking the chrome, and the chrome is what renders outside the page boundary.
+    // Gated on the deployment's allowDebugPages, so on a real deployment this line can never fire.
+    if (shouldFailShell()) {
+        error("Deliberate shell fault from the debug page (issue #227).")
+    }
     var open by useState(false)
     var config by useState<HomeConfig?>(null)
     val generation = useRefreshGeneration()

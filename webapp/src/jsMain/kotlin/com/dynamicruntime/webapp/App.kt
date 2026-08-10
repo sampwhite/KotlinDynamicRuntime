@@ -43,6 +43,12 @@ val App = FC<Props> {
     // How often the idle bump fires (issue #146), served by the app config and re-read on every generation. Held
     // as *state* (not just the module cache), so a deployment that changes it re-arms the timer -- see useIdleBump.
     var idleBumpIntervalMs by useState(APP.defaultIdleBumpIntervalMs)
+    // Whether the debug routes resolve (issue #227). Held as *state* for the same reason the interval above is:
+    // the app config arrives asynchronously, and the module cache changing does not re-render anything. Reading
+    // `appConfig()` straight from the router would answer "no" once, before the first fetch, and never be asked
+    // again -- the debug page would simply never appear. Assigning here re-renders exactly once, when the answer
+    // actually changes.
+    var debugAllowed by useState(false)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
         onWebAppStale { updateAvailable = true }
@@ -63,6 +69,7 @@ val App = FC<Props> {
             AppApi.load()
             // Pick up a reconfigured interval; a change re-keys useIdleBump, which retires the old timer.
             idleBumpIntervalMs = appConfig().idleBumpIntervalMs
+            debugAllowed = appConfig().allowDebugPages
         }
     }
 
@@ -124,6 +131,12 @@ val App = FC<Props> {
                             pageRegister -> AuthFlow { mode = pageRegister }
                             pageProfile -> Profile {}
                             pageUsers -> Users {}
+                            // Resolved here rather than in `currentPage()` because the answer depends on the
+                            // app config, which arrives asynchronously -- see `debugAllowed` above. Where the
+                            // flag is off this falls through to Home, so the route does not exist rather than
+                            // being refused: nothing should acknowledge that a way to break the app is there
+                            // (issue #227).
+                            pageDebug -> if (debugAllowed) DebugPage {} else Home {}
                             else -> Home {}
                         }
                     }
@@ -141,6 +154,10 @@ private const val pageProfile = "profile"
 // route exists unconditionally: the page itself reports honestly when the caller lacks the capability.
 private const val pageUsers = HMENU.pageUsers
 
+// The debug area (issue #227). Present in the router unconditionally; whether it *renders* is gated on the
+// deployment's `allowDebugPages`, checked at render time where the config is known.
+private const val pageDebug = "debug"
+
 /**
  * Resolves the page from the hash: `page=catalog` (or an endpoint deep-link carrying `m=`) shows the catalog,
  * `page=login`/`page=register` the auth flow, `page=profile` the profile page, anything else home.
@@ -153,6 +170,7 @@ private fun currentPage(): String {
         params["page"] == pageRegister -> pageRegister
         params["page"] == pageProfile -> pageProfile
         params["page"] == pageUsers -> pageUsers
+        params["page"] == pageDebug -> pageDebug
         else -> "home"
     }
 }
