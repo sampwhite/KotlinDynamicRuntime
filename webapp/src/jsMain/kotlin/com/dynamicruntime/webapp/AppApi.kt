@@ -17,6 +17,13 @@ class AppConfig(
     val obfuscateSensitiveErrors: Boolean,
     /** How often (ms) a visible tab refreshes itself; the deployment tunes it, the app root re-arms on change. */
     val idleBumpIntervalMs: Int,
+    /**
+     * When true, a caught render failure may show its message and component stack on screen rather than a
+     * generic panel (issue #223). The backend sets it from `isTestInstance`, so it is on where the app is
+     * being developed or tested and off on a real deployment -- the same fence `explainAccess` uses, and for
+     * the same reason: the detailed form must not be reachable by an ordinary user.
+     */
+    val showErrorDetail: Boolean,
 ) {
     companion object {
         /** The assumed config before the first fetch (and if a fetch fails): do not suppress (matching dev),
@@ -24,6 +31,9 @@ class AppConfig(
         val default = AppConfig(
             obfuscateSensitiveErrors = false,
             idleBumpIntervalMs = APP.defaultIdleBumpIntervalMs,
+            // Withhold detail until the backend says otherwise. A fetch that has not happened (or failed) must
+            // not be the reason internals appear on a real deployment's screen.
+            showErrorDetail = false,
         )
     }
 }
@@ -42,6 +52,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
     obfuscateSensitiveErrors = config.features[APP.obfuscateSensitiveErrors] == true,
     idleBumpIntervalMs = (config.settings[APP.idleBumpIntervalMs] as? Number)?.toInt()
         ?: APP.defaultIdleBumpIntervalMs,
+    showErrorDetail = config.features[APP.showErrorDetail] == true,
 )
 
 object AppApi {

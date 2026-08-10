@@ -36,6 +36,11 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 "Whether sensitive error messages are obfuscated; when true the frontend suppresses raw error content.",
                 required = true,
             ) { type = SCT.boolean }
+            property(
+                APP.showErrorDetail,
+                "Whether the frontend may show a caught render failure's message and component stack on screen.",
+                required = true,
+            ) { type = SCT.boolean }
         }
         property(UIC.settings, "Deployment-wide tuning values (non-flag) visible to the whole frontend.", required = true) {
             type = SCT.kObject
@@ -52,6 +57,10 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
         mapOf(
             UIC.features to mapOf(
                 APP.obfuscateSensitiveErrors to RequestHandler.obfuscateSensitiveErrors(c.instanceConfig),
+                // Reuses the test-instance fence rather than inventing a second notion of "a development
+                // build" (issue #223): the flag is already audited, and a node claiming to be a test instance
+                // outside local/unit refuses to start, so a real deployment cannot turn this on by accident.
+                APP.showErrorDetail to c.instanceConfig.isTestInstance,
             ),
             UIC.settings to mapOf(
                 // Always served, defaulting when the deployment did not tune it (a custom-config override, not

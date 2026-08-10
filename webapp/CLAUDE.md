@@ -70,6 +70,45 @@ Current UI-config endpoints:
 The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
 the envelope consistent across groups.
 
+## Errors: never a blank page (issue #223)
+
+A throw during render used to unmount the whole React tree and leave an empty body — the least informative
+failure the app can produce. Two nested error boundaries in `App.kt` now prevent that, and **for ordinary work
+there is nothing to do**: anything rendered beneath a page is covered automatically, including a new page
+added to the `when (page)` switch, and including portals (a boundary follows the *React* tree, not the DOM).
+
+The two exist because they answer different questions:
+
+- The **page** boundary wraps `div.app-content` and swaps in `ErrorFallback`, a panel *inside* the shell — so
+  a crash costs the page, not the navigation, and you can click away. It is **keyed on the page**, because
+  React never resets a boundary itself: without the key the fallback would outlive the very navigation it
+  invites you to make.
+- The **backstop** wraps the whole shell and swaps in `ShellErrorFallback`, which only offers a reload —
+  there is no navigation left to offer. React runs the innermost matching boundary, so this changes nothing
+  about how a page failure behaves.
+
+**Three things to know when adding UI:**
+
+- **New persistent chrome goes inside the backstop.** The app bar and the update banner are *inside* it — put
+  anything similar there too, not as a sibling above it. This is the one placement decision the boundaries
+  cannot make for you.
+- **Boundaries catch render and lifecycle errors only.** A throw from an event handler, an effect, or a
+  rejected promise never reaches one. `installGlobalErrorHandlers` reports those to the console but draws
+  nothing, so a component doing async work should surface its own failures in its own UI — `EndpointCatalog`'s
+  `runError` is the pattern.
+- **Never swallow.** A component that catches its own exception and renders nothing hides it from the
+  boundary *and* the console, and a silent catch is now the only remaining way to get a blank region.
+
+Every report carries a `[kdr]` prefix (`errorLogPrefix`), so one search finds every frontend failure however
+it arose — and a browser test can assert the console is free of them. Reporting happens *alongside* rendering
+the fallback, never instead of it: a boundary that displayed prettily and stayed quiet would let such a test
+pass on a broken page.
+
+On-screen detail (message + component stack) is gated on the `showErrorDetail` app-config feature, which the
+backend sets from `isTestInstance` — the same fence `_debug=explainAccess` uses, rather than a second notion
+of "a dev build". Note the limit: a crash in the *shell* happens before the config fetch returns, so the
+detail is withheld there even on a test instance and the console is where you read it.
+
 ## Frontend tests (issue #161)
 
 `webapp` has a `jsTest` source set (multiplatform `kotlin.test`, the same framework `base/kernel` uses) for

@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  * Pure-logic coverage (issue #161) for the four `UiConfig` -> typed-config mappers extracted out of their
  * suspend fetchers ([appConfigFrom], [homeConfigFrom], [authConfigFrom], [profileConfigFrom]). Each is a plain
  * map-in / typed-value-out transform, so it is testable with no server, browser, or DOM. The cases assert both
- * that populated fields read through and that per-field defaults apply when a key is missing or malformed.
+ * that populated "fields" read through and that per-field defaults apply when a key is missing or malformed.
  */
 class ConfigParsersTest {
 
@@ -42,11 +42,12 @@ class ConfigParsersTest {
     fun appConfigReadsFeaturesAndSettings() {
         val cfg = appConfigFrom(
             uiConfig(
-                features = mapOf(APP.obfuscateSensitiveErrors to true),
+                features = mapOf(APP.obfuscateSensitiveErrors to true, APP.showErrorDetail to true),
                 settings = mapOf(APP.idleBumpIntervalMs to 30_000),
             ),
         )
         assertTrue(cfg.obfuscateSensitiveErrors)
+        assertTrue(cfg.showErrorDetail)
         assertEquals(30_000, cfg.idleBumpIntervalMs)
     }
 
@@ -54,6 +55,9 @@ class ConfigParsersTest {
     fun appConfigDefaultsWhenKeysMissing() {
         val cfg = appConfigFrom(uiConfig())
         assertFalse(cfg.obfuscateSensitiveErrors)
+        // Withheld unless the deployment says otherwise (issue #223): a missing flag must not be the reason
+        // internals reach a real user's screen, and this is also the pre-first-fetch state.
+        assertFalse(cfg.showErrorDetail)
         assertEquals(APP.defaultIdleBumpIntervalMs, cfg.idleBumpIntervalMs)
     }
 

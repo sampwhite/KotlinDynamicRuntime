@@ -32,6 +32,20 @@ class AppUiConfigEndpointTest : StringSpec({
         features(client.sendJsonGetRequest(APP.uiConfig))[APP.obfuscateSensitiveErrors] shouldBe true
     }
 
+    // The error-detail flag (issue #223) tracks isTestInstance rather than a separate dev/prod notion, so both
+    // halves are asserted: on where the app is developed or tested, and off on a node shaped like a real one.
+    // The second is the half that matters -- it is what keeps a stack trace off a user's screen.
+    "the error-detail flag is on for a test instance and off for a real one" {
+        val testCxt = Startup.mkTestBootCxt("appCfgDetail", "appCfgDetailTest")
+        features(TestHttpClient(testCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.showErrorDetail] shouldBe true
+
+        val realCxt = Startup.mkTestBootCxt(
+            "appCfgNoDetail", "appCfgNoDetailTest", mapOf(ACFG.isTestInstance to false),
+        )
+        realCxt.instanceConfig.isTestInstance shouldBe false // guard the premise, or the next line proves nothing
+        features(TestHttpClient(realCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.showErrorDetail] shouldBe false
+    }
+
     "the idle-bump interval defaults when the deployment does not tune it" {
         val cxt = Startup.mkTestBootCxt("appCfgIdle", "appCfgIdleTest")
         val client = TestHttpClient(cxt.instanceConfig)
