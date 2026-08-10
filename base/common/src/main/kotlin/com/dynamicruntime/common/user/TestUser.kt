@@ -8,6 +8,7 @@ import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.http.request.ROLE
 
 /**
  * An authenticated in-process test client (issue #125): a [TestHttpClient] already logged in as a specific
@@ -65,14 +66,16 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
 
         /**
          * Creates (or finds) the user with primary contact [email] and returns a [TestUser] authenticated as
-         * them, built on [cxt]'s instance. [admin] grants the `admin` role to a *freshly created* user (ignored
-         * when the user already exists). Requires the deployment to allow test endpoints (unit tests do).
+         * them, built on [cxt]'s instance. [level] places a *freshly created* user on the privilege ladder --
+         * `ROLE.user` (the default), `ROLE.operator` or `ROLE.admin`, each including the levels below it --
+         * and is ignored when the user already exists, since you become whoever is already there. Requires the
+         * deployment to allow test endpoints (unit tests do).
          */
-        fun create(cxt: KdrCxt, email: String, admin: Boolean = false): TestUser {
+        fun create(cxt: KdrCxt, email: String, level: String = ROLE.user): TestUser {
             val client = TestHttpClient(cxt.instanceConfig)
             val userInfo = client.sendJsonPostRequest(
                 TEP.becomeUser,
-                mapOf(TEP.email to email, TEP.grantAdmin to admin),
+                mapOf(TEP.email to email, TEP.level to level),
             )[EP.results].toJsonMapOrEmpty()
             return TestUser(client, cxt, userInfo)
         }

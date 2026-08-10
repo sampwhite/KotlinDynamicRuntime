@@ -12,6 +12,7 @@ import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.util.checkPassword
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.mkRndString
+import com.dynamicruntime.common.http.request.RoleLadder
 
 /** Topic logger for the auth subsystem (placed beside the code that owns the `"auth"` topic). */
 object LogAuth : KdrLogger("auth")
@@ -365,16 +366,17 @@ class AuthFormHandler(
 
     /**
      * Test-only (issue #125): logs [cxt] in as the user whose primary contact is [email], **creating** that
-     * user first if none exists. On a create, [grantAdmin] additionally grants the new user the `admin` role;
-     * on an existing user it is ignored (you become whoever is already there). When [failIfUserAlreadyExists]
-     * is set, an existing user is an error instead of a login.
+     * user first if none exists. On a create, [level] places the new user on the privilege ladder (see
+     * [RoleLadder.rolesAtLevel], which is also what the admin console composes with); on an existing user it
+     * is ignored -- you become whoever is already there, roles and all. When [failIfUserAlreadyExists] is set,
+     * an existing user is an error instead of a login.
      *
      * No verification code or password is involved -- it exists purely to seed an authenticated session for
      * tests and local simulations, which is why it is reachable only through a `forTestingOnly` endpoint. Like
      * a real login it flags the session cookie to be written (via [completeLogin]) and returns the user info.
      */
     fun becomeUserByEmail(
-        cxt: KdrCxt, email: String, grantAdmin: Boolean, failIfUserAlreadyExists: Boolean,
+        cxt: KdrCxt, email: String, level: String, failIfUserAlreadyExists: Boolean,
     ): Map<String, Any?> {
         val existing = userService.queryByLoginId(cxt, email)
         if (existing != null) {
@@ -383,7 +385,7 @@ class AuthFormHandler(
             }
             return completeLogin(cxt, existing, byCode = false)
         }
-        val roles = if (grantAdmin) listOf(ROLE.user, ROLE.admin) else listOf(ROLE.user)
+        val roles = RoleLadder.rolesAtLevel(emptyList(), level)
         val data = AuthUserRow.mkInitialUser(email, CL.public, roles).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>

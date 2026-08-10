@@ -58,6 +58,29 @@ object RoleLadder {
     fun highestHeld(heldRoles: Collection<String>): String? = ordered.lastOrNull { it in heldRoles }
 
     /**
+     * The role list that puts someone at [level], given the roles they hold now ([current], empty when
+     * provisioning). The inverse of [highestHeld], and the only place the "set someone's level" rule is
+     * written down -- the admin console composes a role list with it, and so does test provisioning.
+     *
+     * Three things have to hold at once, each with a silent failure mode:
+     *
+     *  - **The rungs are exclusive.** They are an ordering, not independent flags, so moving to a level
+     *    *replaces* whatever rung was held. Leaving `admin` in place while granting `operator` would be a
+     *    demotion that demotes nothing.
+     *  - **[ROLE.user] is always kept.** A user without it cannot log in (the backend's `requireUsableRoles`
+     *    refuses the write), so it is the floor of every level rather than one of the choices.
+     *  - **Roles off the ladder survive untouched.** They are capabilities, not levels; a change of level must
+     *    not silently strip someone's `billing`.
+     *
+     * A [level] that is not a ladder role leaves the user at the floor, so a bad value can only under-grant.
+     */
+    fun rolesAtLevel(current: List<String>, level: String): List<String> {
+        val capabilities = current.filter { rankOf(it) == null }
+        val rung = level.takeIf { rankOf(it) != null && it != ROLE.user }
+        return listOfNotNull(ROLE.user, rung) + capabilities
+    }
+
+    /**
      * Whether [heldRoles] is enough to act where [requiredRole] is demanded.
      *
      * On the ladder, any held role that ranks at or above the requirement passes -- so an admin satisfies an

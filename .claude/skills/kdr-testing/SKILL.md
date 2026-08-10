@@ -87,7 +87,7 @@ curl -s http://localhost:7071/kda/app/ui/config | jq .
 # are on here because of KDR_IN_MEMORY_ONLY):
 JAR=/tmp/cookies.txt
 curl -s -c "$JAR" -X POST http://localhost:7071/kda/test/becomeUser -H 'Content-Type: application/json' \
-  -d '{"email":"alice@example.com","grantAdmin":true}' | jq .results
+  -d '{"email":"alice@example.com","level":"admin"}' | jq .results
 curl -s -b "$JAR" http://localhost:7071/kda/auth/self/info | jq .results   # now acts as alice
 ```
 
@@ -216,14 +216,20 @@ See `ErrorObfuscationConfigTest` and `AllowTestEndpointsTest` (both in `base/com
 ## Unit tests: authenticated tests with TestUser
 
 `TestUser` (in `base/common`, `user` package) is an authenticated `TestHttpClient` plus the `cxt` it was built
-from. `TestUser.create(cxt, email, admin)` calls the `forTestingOnly` `/test/becomeUser` endpoint through a
+from. `TestUser.create(cxt, email, level)` calls the `forTestingOnly` `/test/becomeUser` endpoint through a
 fresh client — creating the user if needed and capturing the session cookie — so every call it makes is *as
-that user*:
+that user*. `level` is a rung of the privilege ladder (`ROLE.user`, the default, `ROLE.operator` or
+`ROLE.admin`, each including the ones below it) and applies only to a user being **created**: becoming an
+existing user gets you whoever is already there, roles and all.
 
 ```kotlin
-val alice = TestUser.create(cxt, "alice@example.com", admin = true)
+val alice = TestUser.create(cxt, "alice@example.com", level = ROLE.admin)
 alice.userId shouldBeGreaterThan 0L
 alice.getData("/profile/ui/config")   // made as alice; getData/postData unwrap `results`
+
+val opal = TestUser.create(cxt, "opal@example.com", level = ROLE.operator)
+opal.getData("/operator/system/info")            // an operator section
+opal.expectError(EXC.notAuthorized, ADEP.users)  // ...but not an admin one
 ```
 
 This works in unit tests because `env == unit` allows test endpoints. Test-only endpoints (marked

@@ -55,7 +55,7 @@ class OperatorRoleTest : StringSpec({
     }
 
     "an operator reaches the operator section once the role is granted" {
-        val admin = TestUser.create(cxt, "grantor-op@example.com", admin = true)
+        val admin = TestUser.create(cxt, "grantor-op@example.com", level = ROLE.admin)
         val operator = TestUser.create(cxt, "operator-op@example.com")
         operator.expectError(EXC.notAuthorized, systemInfo) // an ordinary user until the grant lands
 
@@ -69,7 +69,7 @@ class OperatorRoleTest : StringSpec({
 
     /** The point of ranking: nobody grants the admin `operator`, and the admin gets in regardless. */
     "an admin reaches the operator section without holding the operator role" {
-        val admin = TestUser.create(cxt, "boss-op@example.com", admin = true)
+        val admin = TestUser.create(cxt, "boss-op@example.com", level = ROLE.admin)
 
         admin.selfRoles().contains(ROLE.operator) shouldBe false
         admin.getData(systemInfo).isEmpty() shouldBe false
@@ -77,7 +77,7 @@ class OperatorRoleTest : StringSpec({
 
     /** The other direction, which is the whole request: operator must not be a way into admin surfaces. */
     "an operator is still refused an admin section" {
-        val admin = TestUser.create(cxt, "boss2-op@example.com", admin = true)
+        val admin = TestUser.create(cxt, "boss2-op@example.com", level = ROLE.admin)
         val operator = TestUser.create(cxt, "operator2-op@example.com")
         grantOperator(admin, operator)
 
@@ -86,7 +86,7 @@ class OperatorRoleTest : StringSpec({
     }
 
     "the system report carries node identity, uptime and VM statistics" {
-        val admin = TestUser.create(cxt, "report-op@example.com", admin = true)
+        val admin = TestUser.create(cxt, "report-op@example.com", level = ROLE.admin)
         val info = admin.getData(systemInfo)
 
         val node = info[OSI.node].toJsonMapOrEmpty()
@@ -116,7 +116,7 @@ class OperatorRoleTest : StringSpec({
      * on the collector counts, which a concurrent collector can move on its own at any moment.
      */
     "no collection happens unless one is asked for" {
-        val admin = TestUser.create(cxt, "nogc-op@example.com", admin = true)
+        val admin = TestUser.create(cxt, "nogc-op@example.com", level = ROLE.admin)
 
         val gc = admin.getData(systemInfo)[OSI.gc].toJsonMapOrEmpty()
         gc[OSI.requested] shouldBe false
@@ -126,7 +126,7 @@ class OperatorRoleTest : StringSpec({
     }
 
     "collect=true requests a collection and reports what it reclaimed" {
-        val admin = TestUser.create(cxt, "gc-op@example.com", admin = true)
+        val admin = TestUser.create(cxt, "gc-op@example.com", level = ROLE.admin)
 
         val gc = admin.getData(systemInfo, mapOf(OSI.collect to true))[OSI.gc].toJsonMapOrEmpty()
         gc[OSI.requested] shouldBe true
@@ -140,7 +140,7 @@ class OperatorRoleTest : StringSpec({
 
     /** The field is declared, so the input type is closed around it: a misspelling is a 400, not a silent no-op. */
     "an undeclared query parameter is rejected" {
-        val admin = TestUser.create(cxt, "badparam-op@example.com", admin = true)
+        val admin = TestUser.create(cxt, "badparam-op@example.com", level = ROLE.admin)
 
         admin.client.sendGetRequest(systemInfo, mapOf("collectt" to "true")).rptStatusCode shouldBe EXC.badInput
     }

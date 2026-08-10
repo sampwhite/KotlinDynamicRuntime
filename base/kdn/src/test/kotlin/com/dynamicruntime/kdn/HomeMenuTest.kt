@@ -58,7 +58,7 @@ class HomeMenuTest : StringSpec({
 
     "an administrator additionally gets the users item" {
         val cxt = Startup.mkTestBootCxt("home", "homeMenuAdminTest")
-        val admin = TestUser.create(cxt, "chief@example.com", admin = true)
+        val admin = TestUser.create(cxt, "chief@example.com", level = ROLE.admin)
         val resp = admin.client.sendJsonGetRequest(HEP.homeUiConfig)
 
         menuIds(resp) shouldContain HMENU.users
@@ -71,8 +71,8 @@ class HomeMenuTest : StringSpec({
 
     "the menu follows the caller: the same session loses the users item when the role is revoked" {
         val cxt = Startup.mkTestBootCxt("home", "homeMenuRevokeTest")
-        val admin = TestUser.create(cxt, "chief2@example.com", admin = true)
-        val deputy = TestUser.create(cxt, "deputy2@example.com", admin = true)
+        val admin = TestUser.create(cxt, "chief2@example.com", level = ROLE.admin)
+        val deputy = TestUser.create(cxt, "deputy2@example.com", level = ROLE.admin)
 
         menuIds(deputy.client.sendJsonGetRequest(HEP.homeUiConfig)) shouldContain HMENU.users
 

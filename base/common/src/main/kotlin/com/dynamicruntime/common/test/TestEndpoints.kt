@@ -15,6 +15,8 @@ import com.dynamicruntime.common.util.toOptEnum
 import com.dynamicruntime.common.util.toOptLong
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
+import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 
 /**
  * Test-only endpoints (issue #125): conveniences that make automated and manual testing easier. Every endpoint
@@ -37,9 +39,10 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         HttpMethod.POST, outputRef = UserProfile.infoTypeName, forTestingOnly = true,
         inputFields = {
             field(TEP.email, "The email address (primary contact) of the user to become.", required = true)
-            field(TEP.grantAdmin,
-                "On a freshly created user, also grant the `admin` role (ignored when the user already exists).") {
-                type = SCT.boolean
+            field(TEP.level,
+                "Access level for a freshly created user (ignored when the user already exists). One of the " +
+                    "privilege ladder's rungs; each includes the ones below it. Defaults to `${ROLE.user}`.") {
+                for (rung in RoleLadder.ordered) option(rung)
             }
             field(TEP.failIfUserAlreadyExists,
                 "Fail instead of logging in when a user with this email already exists.") {
@@ -52,7 +55,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         service.authFormHandler.becomeUserByEmail(
             c,
             email = request[TEP.email] as String,
-            grantAdmin = request[TEP.grantAdmin] == true,
+            level = request.getOptStr(TEP.level) ?: ROLE.user,
             failIfUserAlreadyExists = request[TEP.failIfUserAlreadyExists] == true,
         )
     }
