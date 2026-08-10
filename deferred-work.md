@@ -88,3 +88,25 @@ logging.
   until the cookie-consent story exists (see *When a deployment serves real clients*). If revived: split minting
   (unconditional, early) from `recordDevice`/auth-cookie writing (login-gated), give the cookie its own
   lifetime, and never `Set-Cookie` on the immutable-cached static assets (#137).
+
+## When user-scoped content is stored
+
+The point at which a user owns something with structure — a document, workflow state, a part-written form — so
+that "this user's data is broken" becomes a thing that can be true.
+
+- **Trigger keywords in email addresses, to make a user fail on demand** *(cedar practice; discussed under
+  #227).* On a backend that permits it (`isTestInstance` to begin with), encode keywords into a user's email
+  address so that logging in as them injects a chosen failure. The point is **contrast**: run the same flow as
+  a good user and as a bad one and diff the behavior, rather than reasoning about an error path in isolation.
+  It earns its keep specifically on failures *partway through stored content*, which is why it waits for that
+  content to exist — today the interesting per-user variation is the privilege rung, and `becomeUser`'s
+  `level` already covers that.
+
+  Two properties are why this form was preferred over a flag or a header, and both should survive into
+  whatever gets built: an address is the **first thing you look at** when inspecting a login, and it is a
+  **full-text search target** in logs (test instances log addresses where a real one would not). A persona
+  that travels with the identity beats a per-request switch when the question spans a whole session.
+
+  Note what it is *not* for. The frontend fault route in #227 needs none of it, because making the browser
+  throw requires no identity — keep the two separate. This one is about the backend misbehaving for a
+  particular user, and its natural injection points are the handlers that read and write that user's content.
