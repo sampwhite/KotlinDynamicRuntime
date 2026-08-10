@@ -133,7 +133,7 @@ class SchemaEndpointsTest : StringSpec({
         fun pathsFor(client: TestHttpClient): List<Any?> =
             catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints")).map { it[EI.path] }
 
-        // Anonymous, and a logged-in user without the role, both see an admin-free catalog -- the second case
+        // Anonymous and a logged-in user without the role, both see an admin-free catalog -- the second case
         // being the one a login does not fix. Neither loses the ordinary endpoints.
         val anonPaths = pathsFor(TestHttpClient(cxt.instanceConfig))
         anonPaths shouldNotContain ADEP.users

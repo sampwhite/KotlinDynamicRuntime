@@ -33,5 +33,5 @@ class SectionRules(
     val requiredRole: String?,
 )
 
-// ROLE (the role-name constants) moved to the kernel (RoleConstants.kt) so the frontend shares them; it keeps
+// ROLE (the role-name constants) moved to the kernel (RoleConstants.kt), so the frontend shares them; it keeps
 // this package name, so every reference to `com.dynamicruntime.common.http.request.ROLE` is unaffected.

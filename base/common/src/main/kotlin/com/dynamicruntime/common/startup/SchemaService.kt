@@ -342,17 +342,19 @@ class SchemaService : ServiceInitializer {
             val schema = cxt.getSchema()
             refreshCallerRoles(cxt)
             val renderings = schema.endpoints.values
+                .asSequence()
                 .filter { ep -> isVisibleTo(cxt, ep.path) }
                 .filter { ep ->
                     (namespace == null || ep.namespace == namespace) &&
-                        (method == null || ep.method.name == method) &&
-                        (pathRegex == null || pathRegex.containsMatchIn(ep.path))
+                            (method == null || ep.method.name == method) &&
+                            (pathRegex == null || pathRegex.containsMatchIn(ep.path))
                 }
                 // collationKey is "path:method", so this sorts by path then method (the same path may be
                 // registered under two HTTP methods).
                 .sortedBy { it.collationKey }
                 .take(limit)
                 .map { renderEndpoint(it, schema.defs) }
+                .toList()
             return linkedMapOf(EI.endpoints to renderings, SCH.dDefs to collectDefs(renderings, schema.defs))
         }
 
@@ -375,7 +377,7 @@ class SchemaService : ServiceInitializer {
         }
 
         /**
-         * Brings the acting caller's roles up to date before the catalog decides what to show them, once per
+         * Brings the acting caller's "roles" up to date before the catalog decides what to show them, once per
          * request rather than once per endpoint.
          *
          * The dispatcher only refreshes roles for a section that requires one, and the catalog's own section

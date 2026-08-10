@@ -170,14 +170,14 @@ class RequestService : ServiceInitializer {
         )
 
         // Every endpoint's section must have rules declared above (issue #211). An unruled section is served
-        // permissively, so without this check a new section ships open to the world and nothing says so --
+        // permissively, so without this check a new section ships open to the world, and nothing says so --
         // the failure is invisible precisely because it is a failure to deny. Refusing to boot is the only
         // report that cannot be scrolled past, and the fix is one entry in the appropriate list.
         //
         // It lives here rather than beside the store it reads, because `SchemaService` is a *startup* service
         // and this is a regular one: during its init the dispatcher does not exist yet, so a check written
         // there could only find a null request service and skip -- failing open, silently, in the exact shape
-        // it exists to prevent. This tier runs after all startup services, so the store is built and the rules
+        // it exists to prevent. This tier runs after all startup services, so the store is built, and the rules
         // are populated (immediately above), which is the one point where both halves are in hand.
         val unruled = cxt.getSchema().endpoints.values
             .map { sectionOf(it.path) }.distinct().sorted()
