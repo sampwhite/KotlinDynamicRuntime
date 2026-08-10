@@ -155,12 +155,12 @@ val Users = FC<Props> {
     fun save() = run {
         val target = editing
         if (target == null) {
-            val created = AdminApi.createUser(draftEmail, draftUsername, rolesAtLevel(emptyList(), draftLevel))
+            val created = AdminApi.createUser(draftEmail, draftUsername, RoleLadder.rolesAtLevel(emptyList(), draftLevel))
             note = "Created ${created.primaryId}."
         } else {
             var changed = false
             if (draftLevel != target.level) {
-                AdminApi.setRoles(target.userId, rolesAtLevel(target.roles, draftLevel))
+                AdminApi.setRoles(target.userId, RoleLadder.rolesAtLevel(target.roles, draftLevel))
                 changed = true
             }
             if (draftEnabled != target.enabled) {
@@ -229,7 +229,7 @@ val Users = FC<Props> {
                     +"Access level"
                 }
                 // A single choice, not a checkbox each: the levels are rungs of an ordering, so holding two is
-                // not a thing one can be. Picking a rung replaces the one below it (see [rolesAtLevel]).
+                // not a thing one can be. Picking a rung replaces the one below it (see [RoleLadder.rolesAtLevel]).
                 Select {
                     value = draftLevel
                     options = accessLevelOptions

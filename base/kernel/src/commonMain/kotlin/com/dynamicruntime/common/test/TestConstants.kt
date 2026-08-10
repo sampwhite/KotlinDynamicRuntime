@@ -11,7 +11,7 @@ object TEP {
     const val becomeUser = "/test/becomeUser"
 
     const val email = "email"
-    const val grantAdmin = "grantAdmin"
+    const val level = "level"
     const val failIfUserAlreadyExists = "failIfUserAlreadyExists"
 
     /**

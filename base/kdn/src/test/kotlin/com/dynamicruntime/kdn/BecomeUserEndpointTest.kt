@@ -3,11 +3,13 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.test.testSchema
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toOptLong
@@ -34,18 +36,49 @@ class BecomeUserEndpointTest : StringSpec({
         alice.getData(AEP.selfInfo)[UPF.userId].toOptLong() shouldBe alice.userId
     }
 
-    "becoming an existing user returns the same user, and grantAdmin is ignored" {
+    "becoming an existing user returns the same user, and the requested level is ignored" {
         val cxt = Startup.mkTestBootCxt("becomeExisting", "becomeExistingTest")
-        val first = TestUser.create(cxt, "bob@example.com", admin = false)
-        val again = TestUser.create(cxt, "bob@example.com", admin = true) // exists already -> admin ignored
+        val first = TestUser.create(cxt, "bob@example.com", level = ROLE.user)
+        val again = TestUser.create(cxt, "bob@example.com", level = ROLE.admin) // exists already -> level ignored
         again.userId shouldBe first.userId
         TestUser.rolesOf(again.userInfo).contains(ROLE.admin) shouldBe false
     }
 
-    "grantAdmin gives a freshly created user the admin role" {
+    "a level places a freshly created user on the ladder" {
         val cxt = Startup.mkTestBootCxt("becomeAdmin", "becomeAdminTest")
-        val admin = TestUser.create(cxt, "carol@example.com", admin = true)
+        val admin = TestUser.create(cxt, "carol@example.com", level = ROLE.admin)
         TestUser.rolesOf(admin.userInfo).contains(ROLE.admin) shouldBe true
+    }
+
+    /**
+     * The reason the flag became a level: an operator is a rung the old boolean could not express, and the
+     * base role has to come with it or the user could not log in at all.
+     */
+    "a level of operator creates an operator, and carries the base role with it" {
+        val cxt = Startup.mkTestBootCxt("becomeOperator", "becomeOperatorTest")
+        val operator = TestUser.create(cxt, "become-operator@example.com", level = ROLE.operator)
+
+        val roles = TestUser.rolesOf(operator.userInfo)
+        roles.contains(ROLE.operator) shouldBe true
+        roles.contains(ROLE.user) shouldBe true
+        roles.contains(ROLE.admin) shouldBe false
+
+        // The ladder is what makes this useful: the operator reaches an operator section for real.
+        operator.getData("/operator/system/info").isEmpty() shouldBe false
+        operator.expectError(EXC.notAuthorized, ADEP.users) // ...and still not an admin section
+    }
+
+    /** An unrecognized level can only under-grant, so a typo cannot hand out privileges. */
+    "an unknown level is rejected by the endpoint's declared options" {
+        val cxt = Startup.mkTestBootCxt("becomeBadLevel", "becomeBadLevelTest")
+        val client = TestHttpClient(cxt.instanceConfig)
+        val handler = client.sendEditRequest(
+            TEP.becomeUser,
+            null,
+            mapOf(TEP.email to "become-badlevel@example.com", TEP.level to "wizard"),
+            isPut = false,
+        )
+        handler.rptStatusCode shouldBe EXC.badInput
     }
 
     "failIfUserAlreadyExists rejects an existing user with a 400" {

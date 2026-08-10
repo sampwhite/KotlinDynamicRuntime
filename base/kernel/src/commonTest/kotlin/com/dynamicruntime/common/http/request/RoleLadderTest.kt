@@ -73,6 +73,67 @@ class RoleLadderTest {
         assertFalse(RoleLadder.satisfies(emptySet(), ROLE.admin))
     }
 
+    // --- rolesAtLevel: composing the list that puts someone at a level ---------
+
+    @Test
+    fun promotingAddsTheRungAndKeepsTheFloor() {
+        assertEquals(listOf(ROLE.user, ROLE.operator), RoleLadder.rolesAtLevel(listOf(ROLE.user), ROLE.operator))
+        assertEquals(listOf(ROLE.user, ROLE.admin), RoleLadder.rolesAtLevel(listOf(ROLE.user), ROLE.admin))
+    }
+
+    /** The rungs are exclusive: demoting must remove the old one, or the "demotion" demotes nothing. */
+    @Test
+    fun demotingReplacesTheRungRatherThanAddingToIt() {
+        val demoted = RoleLadder.rolesAtLevel(listOf(ROLE.user, ROLE.admin), ROLE.operator)
+        assertEquals(listOf(ROLE.user, ROLE.operator), demoted)
+        assertFalse(ROLE.admin in demoted)
+
+        assertEquals(listOf(ROLE.user), RoleLadder.rolesAtLevel(listOf(ROLE.user, ROLE.admin), ROLE.user))
+    }
+
+    /** A level change must never cost someone a deployment's own role -- those are capabilities, not levels. */
+    @Test
+    fun rolesOffTheLadderSurviveALevelChange() {
+        assertEquals(
+            listOf(ROLE.user, ROLE.operator, "billing", "support"),
+            RoleLadder.rolesAtLevel(listOf(ROLE.user, ROLE.admin, "billing", "support"), ROLE.operator),
+        )
+        assertEquals(
+            listOf(ROLE.user, "billing"),
+            RoleLadder.rolesAtLevel(listOf(ROLE.user, ROLE.admin, "billing"), ROLE.user),
+        )
+    }
+
+    /** The base role is the floor of every level, because the backend refuses a role set without it. */
+    @Test
+    fun theBaseRoleIsAlwaysPresent() {
+        for (level in RoleLadder.ordered) {
+            assertTrue(ROLE.user in RoleLadder.rolesAtLevel(emptyList(), level), "level $level dropped ${ROLE.user}")
+        }
+    }
+
+    /** Provisioning a fresh user is the empty-current case -- what test provisioning and create both use. */
+    @Test
+    fun provisioningFromNothingYieldsJustTheLevel() {
+        assertEquals(listOf(ROLE.user), RoleLadder.rolesAtLevel(emptyList(), ROLE.user))
+        assertEquals(listOf(ROLE.user, ROLE.operator), RoleLadder.rolesAtLevel(emptyList(), ROLE.operator))
+        assertEquals(listOf(ROLE.user, ROLE.admin), RoleLadder.rolesAtLevel(emptyList(), ROLE.admin))
+    }
+
+    /** A value that is not a rung can only ever under-grant, never invent a role. */
+    @Test
+    fun anUnknownLevelLeavesTheUserAtTheFloor() {
+        assertEquals(listOf(ROLE.user), RoleLadder.rolesAtLevel(listOf(ROLE.user, ROLE.admin), "wizard"))
+        assertEquals(listOf(ROLE.user, "billing"), RoleLadder.rolesAtLevel(listOf(ROLE.user, "billing"), ""))
+    }
+
+    /** Setting the level someone already has is a no-op, which is what lets an editor skip the write. */
+    @Test
+    fun reassigningTheSameLevelIsStable() {
+        val current = listOf(ROLE.user, ROLE.operator, "billing")
+        assertEquals(current, RoleLadder.rolesAtLevel(current, ROLE.operator))
+    }
+
     /**
      * A deployment's own role is a capability, not a level: it confers nothing on the ladder, and holding a
      * ladder role confers nothing on it. Both directions matter -- the first is what stops a new deployment

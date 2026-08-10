@@ -149,7 +149,7 @@ class SchemaEndpointsTest : StringSpec({
 
         // The admin sees them, which is what makes the two assertions above about privilege rather than about
         // the admin endpoints having quietly stopped being registered.
-        val chief = TestUser.create(cxt, "chief@other.com", admin = true)
+        val chief = TestUser.create(cxt, "chief@other.com", level = ROLE.admin)
         val chiefPaths = pathsFor(chief.client)
         chiefPaths shouldContainAll listOf(ADEP.users, ADEP.userSetRoles, "/health")
 
