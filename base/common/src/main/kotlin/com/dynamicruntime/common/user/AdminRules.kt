@@ -3,7 +3,25 @@ package com.dynamicruntime.common.user
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.http.request.ROLE
+
+/**
+ * How far a caller's user administration reaches (issue #225) -- the *scope* half of an administrator's
+ * authority, the level being the other half. An enum rather than string constants because this is a closed
+ * operational set the code exhausts in a `when`, not a model value a deployment extends.
+ */
+@Suppress("EnumEntryName")
+enum class AdminScope {
+    /** Not an administrator: the admin surface is not theirs at all. */
+    none,
+
+    /** Administers only users in their own client -- the default for [ROLE.admin]. */
+    ownClient,
+
+    /** Administers every client, via the [ROLE.allClients] capability. */
+    allClients,
+}
 
 /** Constants for the automatic-admin rule. */
 @Suppress("ConstPropertyName")
@@ -76,18 +94,51 @@ object AdminRules {
     }
 
     /**
-     * Whether the caller may administer other users -- create them, edit their roles, enable or disable them.
+     * How far the caller's user administration reaches (issue #225) -- the scope this seam's KDoc always said
+     * it would grow.
      *
-     * Today this is exactly "holds [ROLE.admin]", the same thing the `admin` section gate enforces. It exists
-     * as a named capability anyway, because it is the seam where that answer gets *narrower*: a future
-     * deployment may let someone manage only the users inside their own client, at which point this grows a
-     * scope (and its callers, which already ask "may I manage users?", keep working). Everything that asks the
-     * question -- the home menu, a future admin console -- should ask it here rather than testing for a role.
+     * The level and the scope are separate axes: [ROLE.admin] says *what* may be done, and this says *over
+     * whose rows*. An administrator reaches their own client by default, and every client only with the
+     * [ROLE.allClients] capability.
+     *
+     * **Narrow by default is deliberate.** The alternative -- global unless restricted -- fails in the
+     * widening direction, and silently: a deployment that grows a second client would have every existing
+     * administrator quietly able to see it. This way a mistake shows up as "I cannot see that user", which
+     * someone reports.
+     */
+    fun adminScope(cxt: KdrCxt): AdminScope {
+        val roles = cxt.userProfile.roles
+        return when {
+            !roles.contains(ROLE.admin) -> AdminScope.none
+            roles.contains(ROLE.allClients) -> AdminScope.allClients
+            else -> AdminScope.ownClient
+        }
+    }
+
+    /**
+     * Whether the caller may administer other users at all -- create them, edit their roles, enable or
+     * disable them. Kept as the question most callers actually have (the home menu, the admin console), now
+     * answered from [adminScope] so there is one definition of who administers.
      *
      * This is a convenience for shaping the UI, not the enforcement point: the endpoints stay gated by their
-     * section, so a frontend that ignores this answer still gets a 401.
+     * section, so a frontend that ignores this answer still gets a 403.
      */
-    fun canManageUsers(cxt: KdrCxt): Boolean = cxt.userProfile.roles.contains(ROLE.admin)
+    fun canManageUsers(cxt: KdrCxt): Boolean = adminScope(cxt) != AdminScope.none
+
+    /**
+     * What an administrator's reads are confined to. Passed to the user queries, so "which rows may I see" is
+     * decided once here rather than per endpoint -- a new admin endpoint gets the scope by construction
+     * instead of by remembering.
+     *
+     * A caller who is not an administrator gets [ReadScope.unrestricted] rather than "nothing": the admin
+     * surface is closed to them by its section gate, so there is no read for this to constrain. The day
+     * ordinary endpoints scope their own reads, *their* scope is `ofUser`, resolved somewhere that knows it
+     * is an ordinary read -- not here.
+     */
+    fun adminReadScope(cxt: KdrCxt): ReadScope = when (adminScope(cxt)) {
+        AdminScope.ownClient -> ReadScope.ofClient(cxt.userProfile.client)
+        AdminScope.allClients, AdminScope.none -> ReadScope.unrestricted
+    }
 
     /** The roles a newly provisioned user gets: [ROLE.user], plus [ROLE.admin] when [primaryId] auto-qualifies. */
     fun initialRoles(cxt: KdrCxt, primaryId: String): List<String> =

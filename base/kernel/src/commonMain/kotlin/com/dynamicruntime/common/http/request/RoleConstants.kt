@@ -18,6 +18,17 @@ object ROLE {
     const val user = "user"
     const val operator = "operator"
     const val admin = "admin"
+
+    /**
+     * Reach across *every* client rather than only one's own (issue #225). A **capability**, deliberately not
+     * a rung of [RoleLadder]: it does not say what may be done, only over whose rows, and the two are
+     * different axes -- folding them together would need a rung per (level x scope) as soon as a scoped
+     * operator exists.
+     *
+     * Being off the ladder also means it survives a change of level (`RoleLadder.rolesAtLevel` preserves
+     * roles that are not rungs) and confers no level of its own.
+     */
+    const val allClients = "allClients"
 }
 
 /**
