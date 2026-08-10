@@ -55,7 +55,7 @@ class OperatorRoleTest : StringSpec({
     }
 
     "an operator reaches the operator section once the role is granted" {
-        val admin = TestUser.create(cxt, "grantor-op@example.com", level = ROLE.admin)
+        val admin = TestUser.createFullAdmin(cxt, "grantor-op@example.com")
         val operator = TestUser.create(cxt, "operator-op@example.com")
         operator.expectError(EXC.notAuthorized, systemInfo) // an ordinary user until the grant lands
 
@@ -77,7 +77,7 @@ class OperatorRoleTest : StringSpec({
 
     /** The other direction, which is the whole request: operator must not be a way into admin surfaces. */
     "an operator is still refused an admin section" {
-        val admin = TestUser.create(cxt, "boss2-op@example.com", level = ROLE.admin)
+        val admin = TestUser.createFullAdmin(cxt, "boss2-op@example.com")
         val operator = TestUser.create(cxt, "operator2-op@example.com")
         grantOperator(admin, operator)
 

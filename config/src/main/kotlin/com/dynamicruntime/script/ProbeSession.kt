@@ -73,8 +73,15 @@ class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) {
      * Throws when the call is refused. An unauthenticated session that reports success would make every later
      * result anonymous while looking deliberate, which is the failure this whole class is shaped against.
      */
-    fun becomeUser(email: String, level: String = ROLE.user): Map<String, Any?> {
-        val resp = sendPostRequest(TEP.becomeUser, mapOf(TEP.email to email, TEP.level to level))
+    fun becomeUser(
+        email: String,
+        level: String = ROLE.user,
+        capabilities: List<String> = emptyList(),
+    ): Map<String, Any?> {
+        val resp = sendPostRequest(
+            TEP.becomeUser,
+            mapOf(TEP.email to email, TEP.level to level, TEP.capabilities to capabilities),
+        )
         if (!resp.isSuccess) {
             throw KdrException(
                 "Could not become '$email' at level '$level' (HTTP ${resp.statusCode}): " +

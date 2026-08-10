@@ -32,13 +32,40 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * Registered by the `common` component.
  */
-fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
+/** The four paths one user-administration surface is served under. */
+class UserAdminPaths(
+    val users: String,
+    val userCreate: String,
+    val userSetRoles: String,
+    val userSetEnabled: String,
+)
+
+/** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
+fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
+    cxt, "admin", UserAdminPaths(ADEP.users, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled),
+)
+
+/**
+ * The **scoped** surface: the `userAdmin` section, which requires only [ROLE.admin] and confines every read to
+ * `AdminRules.adminReadScope` (issue #225).
+ *
+ * The same module built twice rather than a second set of handlers, because the difference between the two
+ * surfaces is *who may enter*, not what they do once inside: the scope is derived from the caller's roles, so
+ * one handler serves a client-scoped administrator and a full-scope one correctly. Copying the handlers would
+ * mean two implementations of the same rules, and the copy is the one that would miss a fix.
+ */
+fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
+    cxt, "userAdmin", UserAdminPaths(UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled),
+)
+
+private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPaths): SchModule =
+    schemaModule(cxt, namespace) {
     AuthUserRow.defineAdminType(this)
 
     // --- read ---------------------------------------------------------------
 
     listEndpoint(
-        ADEP.users,
+        paths.users,
         "Lists users, newest first, optionally filtered by a search term over email and username.",
         outputRef = ADTY.adminUser,
         inputFields = {
@@ -53,7 +80,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
     // --- create -------------------------------------------------------------
 
     generalEndpoint(
-        ADEP.userCreate,
+        paths.userCreate,
         "Creates a user directly, bypassing self-service email verification.",
         HttpMethod.POST,
         outputRef = ADTY.adminUser,
@@ -78,7 +105,10 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
             throw KdrException.mkInput("Username '$username' has already been taken.")
         }
 
-        val data = AuthUserRow.mkInitialUser(primaryId, CL.public, roles).toMutableMap()
+        // The new user belongs to the administrator's own client. It was hardcoded to `public`, which a
+        // client-scoped administrator would have found absurd: they would create a user they could not then
+        // see. For a full-scope administrator this is the same value it always was.
+        val data = AuthUserRow.mkInitialUser(primaryId, c.userProfile.client, roles).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         // The administrator is asserting the address, which stands in for the verification the self-service
@@ -98,7 +128,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
     // --- edit ---------------------------------------------------------------
 
     generalEndpoint(
-        ADEP.userSetRoles,
+        paths.userSetRoles,
         "Replaces a user's roles -- the call that grants or revokes administrator privileges.",
         HttpMethod.POST,
         outputRef = ADTY.adminUser,
@@ -112,9 +142,11 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
     ) { c, request ->
         val userId = requireUserId(request)
         val roles = request[ADF.roles].toJsonListOfStrings()
-        requireUsableRoles(c, roles)
+        // Loaded before the role checks so a user outside the caller's scope is a 404 rather than a complaint
+        // about roles -- the complaint would confirm the id belongs to somebody.
         val row = loadUser(c, userId)
-        // Nobody may change their **own** administrator status, in either direction.
+        requireUsableRoles(c, roles, row.roles)
+        // Nobody may change their **own** standing on the admin surface, in either direction.
         //
         // Downward, it stops the last administrator locking the deployment out of its own admin surface.
         // Upward matters more as the capability narrows: today only an administrator reaches this endpoint, so
@@ -123,11 +155,20 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
         // caller would escalate to full administrator. Writing the rule symmetrically now means that widening
         // cannot open the hole later.
         //
-        // A self-update that leaves the admin role *unchanged* is fine -- editing your own other roles is not
-        // what this guards.
-        if (userId == c.userProfile.userId && roles.contains(ROLE.admin) != row.roles.contains(ROLE.admin)) {
+        // It covers `allClients` as well as `admin` (issue #225), because the surface now requires the
+        // capability: dropping your own is the lock-out this guard already existed to prevent, and it would
+        // otherwise slip through as an ordinary "editing my other roles" edit -- a role list is a replacement,
+        // so omitting the capability revokes it without ever naming it.
+        //
+        // A self-update that leaves both *unchanged* is fine -- editing your own other roles is not what this
+        // guards.
+        val selfProtected = listOf(ROLE.admin, ROLE.allClients).filter {
+            roles.contains(it) != row.roles.contains(it)
+        }
+        if (userId == c.userProfile.userId && selfProtected.isNotEmpty()) {
             throw KdrException.mkInput(
-                "You cannot change your own '${ROLE.admin}' role; have another administrator do it.",
+                "You cannot change your own '${selfProtected.joinToString("', '")}' role; " +
+                    "have another administrator do it.",
             )
         }
         val previous = row.roles
@@ -138,7 +179,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
     }
 
     generalEndpoint(
-        ADEP.userSetEnabled,
+        paths.userSetEnabled,
         "Enables or disables a user's account (a disabled account cannot log in).",
         HttpMethod.POST,
         outputRef = ADTY.adminUser,
@@ -196,12 +237,18 @@ private fun requireUserId(request: Map<String, Any?>): Long =
  * deployment will add its own. But a user without [ROLE.user] cannot log in at all (`requireUsableForLogin`),
  * so silently creating one is never what an administrator meant.
  */
-private fun requireUsableRoles(cxt: KdrCxt, roles: List<String>) {
+private fun requireUsableRoles(cxt: KdrCxt, roles: List<String>, current: List<String> = emptyList()) {
     // Anti-escalation: a role set may not hand out reach the granter does not have, or a client-scoped
     // administrator could promote someone in their own client to see every client -- and then act through
-    // them. The general rule is "you cannot grant a capability you do not hold"; `allClients` is the only
-    // one that exists so far, so it is the only one enumerated.
-    if (ROLE.allClients in roles && ROLE.allClients !in cxt.userProfile.roles) {
+    // them. The general rule is "you cannot grant a capability you do not hold"; `allClients` is the only one
+    // that exists so far, so it is the only one enumerated.
+    //
+    // It is a check on *adding*, not on the resulting set. A role list replaces rather than merges, so an
+    // administrator editing somebody who already holds the capability sends it back unchanged -- and judging
+    // the result alone would refuse that, meaning a scoped administrator could never touch such a user at
+    // all, for a reason ("you cannot grant") that has nothing to do with what they were changing.
+    // [current] is empty on a create, where every role in the list is by definition being added.
+    if (ROLE.allClients in roles && ROLE.allClients !in current && ROLE.allClients !in cxt.userProfile.roles) {
         throw KdrException.mkInput("You cannot grant the '${ROLE.allClients}' capability; you do not hold it.")
     }
     if (roles.any { it.isBlank() }) {

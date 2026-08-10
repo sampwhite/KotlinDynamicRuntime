@@ -95,7 +95,24 @@ class RequestService : ServiceInitializer {
      */
     val operatorSections: List<String> = listOf("operator")
 
+    /**
+     * Sections requiring [ROLE.allClients] -- the **full-scope** administration surface (issue #225). Holding
+     * [ROLE.admin] is not enough: an administrator confined to one client does not get a narrowed view of
+     * these endpoints, they get a different surface.
+     *
+     * The required role is the capability rather than a rung, and that works unchanged because
+     * [RoleLadder.satisfies] falls back to exact membership for a role that is not on the ladder. Since #211
+     * the same comparison drives the endpoint catalog, so these are also *invisible* to a caller who cannot
+     * call them -- "see" and "use" are one answer.
+     */
     val adminSections: List<String> = listOf("node", "admin")
+
+    /**
+     * Sections requiring [ROLE.admin] but **confined by the caller's scope** (issue #225) -- what a
+     * client-scoped administrator has instead of a narrowed view of [adminSections]. A caller holding
+     * [ROLE.allClients] satisfies this too and is simply unconfined, so one surface serves both.
+     */
+    val scopedAdminSections: List<String> = listOf("userAdmin")
 
     @KdrPrivate
     var isInit: Boolean = false
@@ -155,7 +172,8 @@ class RequestService : ServiceInitializer {
         for (s in anonSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = null)
         for (s in userSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.user)
         for (s in operatorSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.operator)
-        for (s in adminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = ROLE.admin)
+        for (s in scopedAdminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.admin)
+        for (s in adminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = ROLE.allClients)
 
         apiContextRoot = (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
         contentContextRoot = (cxt.instanceConfig.get(ACFG.contentContextRoot) as? String) ?: ContextRoot.cp

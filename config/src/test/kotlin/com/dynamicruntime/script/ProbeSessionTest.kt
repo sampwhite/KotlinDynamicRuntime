@@ -33,7 +33,7 @@ class ProbeSessionTest : StringSpec({
 
     "a session logs in and carries the cookie to the next call" {
         val session = ProbeSession(ROLE.admin, baseUrl)
-        session.becomeUser("probe-admin@example.com", ROLE.admin)
+        session.becomeUser("probe-admin@example.com", ROLE.admin, listOf(ROLE.allClients))
 
         // The second call proves the session stuck: an anonymous caller would be refused this outright.
         val response = session.sendGetRequest(ADEP.users)

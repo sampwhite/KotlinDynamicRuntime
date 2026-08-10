@@ -66,19 +66,38 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
 
         /**
          * Creates (or finds) the user with primary contact [email] and returns a [TestUser] authenticated as
-         * them, built on [cxt]'s instance. [level] places a *freshly created* user on the privilege ladder --
+         * them, built on [cxt]'s instance. [capabilities] adds non-rung roles (see [createFullAdmin]), and
+         * [level] places a *freshly created* user on the privilege ladder --
          * `ROLE.user` (the default), `ROLE.operator` or `ROLE.admin`, each including the levels below it --
          * and is ignored when the user already exists, since you become whoever is already there. Requires the
          * deployment to allow test endpoints (unit tests do).
          */
-        fun create(cxt: KdrCxt, email: String, level: String = ROLE.user): TestUser {
+        fun create(
+            cxt: KdrCxt,
+            email: String,
+            level: String = ROLE.user,
+            capabilities: List<String> = emptyList(),
+        ): TestUser {
             val client = TestHttpClient(cxt.instanceConfig)
             val userInfo = client.sendJsonPostRequest(
                 TEP.becomeUser,
-                mapOf(TEP.email to email, TEP.level to level),
+                mapOf(TEP.email to email, TEP.level to level, TEP.capabilities to capabilities),
             )[EP.results].toJsonMapOrEmpty()
             return TestUser(client, cxt, userInfo)
         }
+
+        /**
+         * A **full-scope** administrator: [ROLE.admin] plus [ROLE.allClients] (issue #225). The `admin`
+         * section requires the capability, not merely the level, so this is what a test wanting to exercise it
+         * needs -- and it exists as a named helper because no endpoint can grant `allClients` (anti-escalation
+         * refuses reach the granter lacks, and nobody holds it to begin with), which makes provisioning the
+         * only way in.
+         *
+         * Use [create] with `level = ROLE.admin` and no capabilities for the *scoped* administrator instead --
+         * the two must stay separable, since the difference between them is the thing under test.
+         */
+        fun createFullAdmin(cxt: KdrCxt, email: String): TestUser =
+            create(cxt, email, level = ROLE.admin, capabilities = listOf(ROLE.allClients))
 
         /**
          * Registers a brand-new user through the real self-service verification-code flow (createToken →
