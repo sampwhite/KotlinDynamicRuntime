@@ -68,10 +68,21 @@ class RequestService : ServiceInitializer {
         ContextRoot.st to ContextFocus.static,
     )
 
-    /** Section → access rules. Sections not present are treated permissively for now. */
+    /**
+     * Section → access rules. A section with no entry is served permissively, which is why every section an
+     * *endpoint* declares must appear in one of the lists below: [checkInit] refuses to start when one does
+     * not (issue #211). That check covers endpoints only -- a content focus takes its section from a document
+     * path, so its sections are open-ended and stay permissive by design.
+     */
     val sectionRulesMap: MutableMap<String, SectionRules> = HashMap()
 
-    val anonSections: List<String> = listOf("health", "schema", "content", "portal", "site", "auth", "db", "app", "test")
+    // The `demo`/`file`/`home`/`logout`/`todo` sections are listed here to record what they already were:
+    // each had no entry and was therefore served anonymously, so naming them changes no behavior and only
+    // makes the decision visible. `file` (upload as well as download) is the one worth revisiting on its own.
+    val anonSections: List<String> = listOf(
+        "health", "schema", "content", "portal", "site", "auth", "db", "app", "test",
+        "demo", "file", "home", "logout", "todo",
+    )
     val userSections: List<String> = listOf("user", "profile")
 
     /**
@@ -107,6 +118,27 @@ class RequestService : ServiceInitializer {
         }
     }
 
+    /** The role an application path's section requires, or null when the section is anonymous (or unruled). */
+    fun requiredRoleFor(appPath: String): String? = sectionRulesMap[sectionOf(appPath)]?.requiredRole
+
+    /**
+     * Whether [profile] may call [appPath] -- the single answer the dispatcher enforces and the endpoint
+     * catalog filters on (issue #211), so what is advertised and what is served cannot drift apart.
+     *
+     * The comparison goes through [RoleLadder], exactly as the gate's does -- an admin is shown an operator
+     * section without holding `operator`, because that is who the dispatcher would let in. Testing plain set
+     * membership here would reinstate the very drift this function exists to prevent, one rung further down.
+     *
+     * It reads the roles already on the profile rather than re-reading them from the database. The dispatcher
+     * refreshes those ([refreshActingRoles]) before it enforces anything, so the gate always decides on
+     * current roles; a catalog listing is a display, and paying a query per endpoint to render it would be a
+     * poor trade against a stale row being briefly listed -- and then refused for real on the call.
+     */
+    fun canAccess(profile: UserProfile, appPath: String): Boolean {
+        val role = requiredRoleFor(appPath) ?: return true
+        return RoleLadder.satisfies(profile.roles, role)
+    }
+
     /**
      * The browser bootstrap config: the live context roots keyed by focus (`{"contextRoots":{"api":"kda",
      * "content":"cp"}}`). A content server injects this into a served page (as `window.kdrCfg`) so its
@@ -135,6 +167,27 @@ class RequestService : ServiceInitializer {
             appContextRoot to ContextFocus.app,
             staticContextRoot to ContextFocus.static,
         )
+
+        // Every endpoint's section must have rules declared above (issue #211). An unruled section is served
+        // permissively, so without this check a new section ships open to the world and nothing says so --
+        // the failure is invisible precisely because it is a failure to deny. Refusing to boot is the only
+        // report that cannot be scrolled past, and the fix is one entry in the appropriate list.
+        //
+        // It lives here rather than beside the store it reads, because `SchemaService` is a *startup* service
+        // and this is a regular one: during its init the dispatcher does not exist yet, so a check written
+        // there could only find a null request service and skip -- failing open, silently, in the exact shape
+        // it exists to prevent. This tier runs after all startup services, so the store is built and the rules
+        // are populated (immediately above), which is the one point where both halves are in hand.
+        val unruled = cxt.getSchema().endpoints.values
+            .map { sectionOf(it.path) }.distinct().sorted()
+            .filter { it !in sectionRulesMap }
+        if (unruled.isNotEmpty()) {
+            throw KdrException(
+                "Refusing to start: the endpoint section(s) ${unruled.joinToString(", ") { "'$it'" }} have no " +
+                    "access rules, so they would be served to anyone. Add each to anonSections, userSections, " +
+                    "operatorSections or adminSections in RequestService.",
+            )
+        }
         isInit = true
     }
 
@@ -170,18 +223,28 @@ class RequestService : ServiceInitializer {
         // Auth is stubbed until the auth subsystem is ported.
         extractAuth(cxt, handler)
 
-        // Enforce the section's required role against the acting profile (restored by extractAuth). A missing
-        // role -- including the unauthenticated system profile, which has none -- is a 401. The test goes
-        // through RoleLadder rather than plain set membership, so a higher privilege satisfies a lower
+        // Enforce the section's required role against the acting profile (restored by extractAuth). The test
+        // goes through RoleLadder rather than plain set membership, so a higher privilege satisfies a lower
         // requirement (an admin passes an operator section) while a deployment's own roles stay exact-match.
+        //
+        // Which failure it is turns on whether anyone is logged in, because the two say different things to a
+        // caller: 401 means "authenticate and try again", which is actionable, while 403 means "you are known
+        // and this is not yours", where retrying with the same identity never helps. Answering 401 to a
+        // logged-in user invites exactly the retry that cannot work -- and tells a frontend to send them back
+        // to a login screen they are already past.
         val requiredRole = handler.sectionRules?.requiredRole
         if (requiredRole != null) {
             refreshActingRoles(cxt)
         }
         if (requiredRole != null && !RoleLadder.satisfies(cxt.userProfile.roles, requiredRole)) {
+            val loggedIn = cxt.userProfile.isLoggedIn
             throw KdrException(
-                "Request requires the '$requiredRole' role.",
-                code = EXC.authNeeded,
+                if (loggedIn) {
+                    "Request requires the '$requiredRole' role."
+                } else {
+                    "Request requires the '$requiredRole' role and no user is logged in."
+                },
+                code = if (loggedIn) EXC.notAuthorized else EXC.authNeeded,
             )
         }
 

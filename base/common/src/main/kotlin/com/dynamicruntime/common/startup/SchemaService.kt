@@ -16,6 +16,7 @@ import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.schema.LogSchema
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -93,6 +94,9 @@ class SchemaService : ServiceInitializer {
                     "Endpoint '${endpoint.collationKey}' references an unknown input type '${endpoint.inputTypeRef}'.",
                 )
         }
+
+        // (The endpoints' access rules are checked in RequestService.checkInit, which owns them and runs in
+        // the later service tier -- see the note there on why it cannot live here.)
 
         schemaStore = store
         cxt.instanceConfig.put(KdrSchemaStore.key, store)
@@ -336,6 +340,7 @@ class SchemaService : ServiceInitializer {
             val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
             val schema = cxt.getSchema()
             val renderings = schema.endpoints.values
+                .filter { ep -> isVisibleTo(cxt, ep.path) }
                 .filter { ep ->
                     (namespace == null || ep.namespace == namespace) &&
                         (method == null || ep.method.name == method) &&
@@ -359,10 +364,24 @@ class SchemaService : ServiceInitializer {
             val method = (request[EI.method] as? String)?.uppercase()
             val path = request[EI.path] as? String
             val schema = cxt.getSchema()
-            val endpoint = schema.endpoints["$path:$method"]
+            // Filtered exactly as the listing is: a lookup that answered for an endpoint the listing hides
+            // would be a one-call way around the hiding, and this endpoint exists to return the same shape.
+            val endpoint = schema.endpoints["$path:$method"]?.takeIf { isVisibleTo(cxt, it.path) }
             val renderings = listOfNotNull(endpoint).map { renderEndpoint(it, schema.defs) }
             return linkedMapOf(EI.endpoints to renderings, SCH.dDefs to collectDefs(renderings, schema.defs))
         }
+
+        /**
+         * Whether the acting caller may be *shown* the endpoint at [appPath] -- the catalog's filter (issue
+         * #211), answered by the same [RequestService.canAccess] the dispatcher enforces with, so the catalog
+         * cannot advertise a door that will not open.
+         *
+         * Visible when the request service is absent, which happens only outside a running dispatcher (a unit
+         * test building a store by hand). Nothing is being served there, so there is nothing to protect.
+         */
+        @KdrPrivate
+        fun isVisibleTo(cxt: KdrCxt, appPath: String): Boolean =
+            RequestService.get(cxt)?.canAccess(cxt.userProfile, appPath) ?: true
 
         /** Handler for `/schema/sample`: generate an interesting, schema-conforming set of items. */
         @KdrPrivate
