@@ -46,7 +46,8 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
         },
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
-        userService(c).listUsers(c, request[ADF.search].toOptStr(), limit).map { it.toAdminInfo() }
+        userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, AdminRules.adminReadScope(c))
+            .map { it.toAdminInfo() }
     }
 
     // --- create -------------------------------------------------------------
@@ -68,7 +69,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
         val primaryId = requireField(request, ADF.primaryId)
         val username = request[ADF.username].toOptStr()
         val roles = request[ADF.roles].toJsonListOfStrings().ifEmpty { listOf(ROLE.user) }
-        requireUsableRoles(roles)
+        requireUsableRoles(c, roles)
         val service = userService(c)
         if (service.queryByPrimaryId(c, primaryId) != null) {
             throw KdrException.mkInput("A user with the email '$primaryId' already exists.")
@@ -111,7 +112,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
     ) { c, request ->
         val userId = requireUserId(request)
         val roles = request[ADF.roles].toJsonListOfStrings()
-        requireUsableRoles(roles)
+        requireUsableRoles(c, roles)
         val row = loadUser(c, userId)
         // Nobody may change their **own** administrator status, in either direction.
         //
@@ -171,9 +172,13 @@ object AC2 {
 private fun userService(cxt: KdrCxt): UserService =
     UserService.get(cxt) ?: throw KdrException("UserService is required by the admin endpoints.")
 
-/** Loads a user by id, or a 404. */
+/**
+ * Loads a user by id, or a 404 -- **within the caller's administration scope** (issue #225). A user in
+ * another client is reported as absent rather than forbidden, so a scoped administrator cannot use this
+ * endpoint to discover that an id belongs to somebody in a client they cannot see.
+ */
 private fun loadUser(cxt: KdrCxt, userId: Long): AuthUserRow =
-    userService(cxt).queryByUserId(cxt, userId)
+    userService(cxt).queryAdministrableUser(cxt, userId, AdminRules.adminReadScope(cxt))
         ?: throw KdrException("No user with id $userId.", code = EXC.notFound)
 
 /** Reads a required string field, rejecting a blank one (which validation alone would let through). */
@@ -191,7 +196,14 @@ private fun requireUserId(request: Map<String, Any?>): Long =
  * deployment will add its own. But a user without [ROLE.user] cannot log in at all (`requireUsableForLogin`),
  * so silently creating one is never what an administrator meant.
  */
-private fun requireUsableRoles(roles: List<String>) {
+private fun requireUsableRoles(cxt: KdrCxt, roles: List<String>) {
+    // Anti-escalation: a role set may not hand out reach the granter does not have, or a client-scoped
+    // administrator could promote someone in their own client to see every client -- and then act through
+    // them. The general rule is "you cannot grant a capability you do not hold"; `allClients` is the only
+    // one that exists so far, so it is the only one enumerated.
+    if (ROLE.allClients in roles && ROLE.allClients !in cxt.userProfile.roles) {
+        throw KdrException.mkInput("You cannot grant the '${ROLE.allClients}' capability; you do not hold it.")
+    }
     if (roles.any { it.isBlank() }) {
         throw KdrException.mkInput("Role names cannot be blank.")
     }

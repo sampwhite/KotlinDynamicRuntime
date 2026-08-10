@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
@@ -52,9 +53,31 @@ class UserService : ServiceInitializer {
      * username first, then by primaryId. The two spaces are disjoint -- a valid username cannot contain '@'
      * and an email must -- so the fallback is unambiguous. This lets a username-less frontend log a returning
      * user in by email while the backend keeps full username support (issue #70).
+     *
+     * Like the other [queryByPrimaryId]/[queryByUsername]/[queryByUserId] lookups, this is **identity
+     * resolution and is deliberately not client-scoped** (issue #225). It runs before anyone is
+     * authenticated -- discovering *which* client the user belongs to is the point of it -- so the acting
+     * context is the anonymous one, and filtering by its client would make every user outside that client
+     * unable to log in. Scoping belongs on the *administration* reads ([listUsers], [queryAdministrableUser]),
+     * where the caller is authenticated and is acting on somebody else's row.
      */
     fun queryByLoginId(cxt: KdrCxt, loginId: String): AuthUserRow? =
         queryByUsername(cxt, loginId) ?: queryByPrimaryId(cxt, loginId)
+
+    /**
+     * Loads a user an administrator is allowed to act on: [queryByUserId], but **null when the row falls
+     * outside [scope]** (issue #225).
+     *
+     * Out of scope reads as *absent* rather than *forbidden*, and that is the point: a 403 would confirm that
+     * the id belongs to a real user in some other client, which is exactly what a scoped administrator must
+     * not be able to probe for. The caller turns null into its own 404.
+     */
+    fun queryAdministrableUser(cxt: KdrCxt, userId: Long, scope: ReadScope): AuthUserRow? {
+        val row = queryByUserId(cxt, userId) ?: return null
+        if (scope.client != null && row.client != scope.client) return null
+        if (scope.userId != null && row.userId != scope.userId) return null
+        return row
+    }
 
     /** Selects a single `AuthUsers` row by an indexed [field], or null. Returns the row even if disabled. */
     private fun queryOne(cxt: KdrCxt, field: String, value: Any?): AuthUserRow? {
@@ -77,23 +100,43 @@ class UserService : ServiceInitializer {
      * not use the plain unique indexes, which is acceptable for an admin-only, human-paced screen; a
      * case-insensitive index is the fix if it ever matters.
      */
-    fun listUsers(cxt: KdrCxt, search: String?, limit: Int): List<AuthUserRow> {
+    fun listUsers(
+        cxt: KdrCxt,
+        search: String?,
+        limit: Int,
+        scope: ReadScope = ReadScope.unrestricted,
+    ): List<AuthUserRow> {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUsersTable(cxt)
         val term = search?.trim()?.lowercase()?.ifEmpty { null }
-        val stmt = if (term == null) {
-            SqlStmtUtil.prepareSql(
-                sqlCxt, "qAuthUsersAll", table.columns,
-                "select * from t:${UT.authUsers} order by c:${AU.userId} desc",
-            )
-        } else {
-            SqlStmtUtil.prepareSql(
-                sqlCxt, "qAuthUsersSearch", table.columns,
-                "select * from t:${UT.authUsers} where lower(c:${AU.primaryId}) like :${SP.searchTerm} " +
-                    "or lower(c:${AU.username}) like :${SP.searchTerm} order by c:${AU.userId} desc",
-            )
+
+        // Every condition goes into the SQL, scope included, so `limit` stays a real cap: filtering after the
+        // query would page through rows the caller cannot see in order to fill a page of ones they can.
+        val conditions = mutableListOf<String>()
+        val data = mutableMapOf<String, Any?>()
+        if (scope.client != null) {
+            conditions.add("c:${PF.client} = :${SP.scopeClient}")
+            data[SP.scopeClient] = scope.client
         }
-        val data = if (term == null) emptyMap() else mapOf(SP.searchTerm to "%$term%")
+        if (scope.userId != null) {
+            conditions.add("c:${AU.userId} = :${SP.scopeUserId}")
+            data[SP.scopeUserId] = scope.userId
+        }
+        if (term != null) {
+            conditions.add(
+                "(lower(c:${AU.primaryId}) like :${SP.searchTerm} or lower(c:${AU.username}) like :${SP.searchTerm})",
+            )
+            data[SP.searchTerm] = "%$term%"
+        }
+        val where = if (conditions.isEmpty()) "" else " where " + conditions.joinToString(" and ")
+
+        // Statements are cached by name, so the name carries the query's *shape*: two shapes must not collide,
+        // and two callers of the same shape with different values must share rather than cache one each.
+        val stmtName = "qAuthUsers${scope.shapeKey}${if (term == null) "" else "Search"}"
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, stmtName, table.columns,
+            "select * from t:${UT.authUsers}$where order by c:${AU.userId} desc",
+        )
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
@@ -236,6 +279,8 @@ class UserService : ServiceInitializer {
     @Suppress("ConstPropertyName")
     object SP {
         const val searchTerm = "searchTerm"
+        const val scopeClient = "scopeClient"
+        const val scopeUserId = "scopeUserId"
     }
 
     @Suppress("ConstPropertyName")
