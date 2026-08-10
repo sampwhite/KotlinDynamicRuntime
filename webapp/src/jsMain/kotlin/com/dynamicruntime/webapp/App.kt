@@ -80,39 +80,52 @@ val App = FC<Props> {
         ConfigProvider {
             theme = darkTheme
 
-            if (updateAvailable) {
-                div {
-                    className = ClassName("update-banner")
-                    span { +"A new version of the app is available." }
-                    button {
-                        className = ClassName("update-banner-reload")
-                        onClick = { reloadWebApp() }
-                        +"Reload"
+            // The backstop (issue #223). The page boundary further down is the one that normally catches, and
+            // it is better: it keeps the navigation alive. This one exists for what that cannot see -- the
+            // shell itself, the app bar, the banner below -- so that NOTHING renders a blank page, and so no
+            // future chrome added up here has to remember to be guarded. React runs the innermost boundary
+            // that matches, so adding this changes nothing about how a page failure behaves.
+            //
+            // It is deliberately NOT keyed: there is no navigation left to reset it on, which is exactly why
+            // its fallback offers a reload instead of telling you to go elsewhere.
+            ErrorBoundary {
+                fallback = ShellErrorFallback
+                onError = ::reportRenderFailure
+
+                if (updateAvailable) {
+                    div {
+                        className = ClassName("update-banner")
+                        span { +"A new version of the app is available." }
+                        button {
+                            className = ClassName("update-banner-reload")
+                            onClick = { reloadWebApp() }
+                            +"Reload"
+                        }
                     }
                 }
-            }
-            AppBar {}
-            div {
-                className = ClassName("app-content")
-                // The boundary wraps the page, NOT the root, so a render failure costs the page and not the
-                // navigation above it -- someone (or a test) can click away from a broken screen instead of
-                // being stranded on it (issue #223).
-                //
-                // Keyed on the page for a reason that is easy to miss: React never resets a boundary on its
-                // own, so without this the fallback would survive the navigation it invites you to make, and
-                // every later page would show the earlier page's failure. The key remounts it on a page
-                // change, which is exactly when the failure stops being relevant.
-                ErrorBoundary {
-                    key = page.unsafeCast<Key>()
-                    fallback = ErrorFallback
-                    onError = ::reportRenderFailure
-                    when (page) {
-                        pageCatalog -> EndpointCatalog {}
-                        pageLogin -> AuthFlow { mode = pageLogin }
-                        pageRegister -> AuthFlow { mode = pageRegister }
-                        pageProfile -> Profile {}
-                        pageUsers -> Users {}
-                        else -> Home {}
+                AppBar {}
+                div {
+                    className = ClassName("app-content")
+                    // The boundary wraps the page, NOT the root, so a render failure costs the page and not the
+                    // navigation above it -- someone (or a test) can click away from a broken screen instead of
+                    // being stranded on it (issue #223).
+                    //
+                    // Keyed on the page for a reason that is easy to miss: React never resets a boundary on its
+                    // own, so without this the fallback would survive the navigation it invites you to make, and
+                    // every later page would show the earlier page's failure. The key remounts it on a page
+                    // change, which is exactly when the failure stops being relevant.
+                    ErrorBoundary {
+                        key = page.unsafeCast<Key>()
+                        fallback = ErrorFallback
+                        onError = ::reportRenderFailure
+                        when (page) {
+                            pageCatalog -> EndpointCatalog {}
+                            pageLogin -> AuthFlow { mode = pageLogin }
+                            pageRegister -> AuthFlow { mode = pageRegister }
+                            pageProfile -> Profile {}
+                            pageUsers -> Users {}
+                            else -> Home {}
+                        }
                     }
                 }
             }

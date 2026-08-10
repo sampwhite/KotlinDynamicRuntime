@@ -4,6 +4,7 @@ import react.ComponentType
 import react.FC
 import react.Props
 import react.PropsWithChildren
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
@@ -13,9 +14,9 @@ import web.cssom.ClassName
 /**
  * What a fallback is told about the failure it is standing in for.
  *
- * [detail] is the diagnostic half -- the message and React's component stack, which names the component that
- * threw. It is present only where the deployment allows it (see [ErrorDisplay.showDetail]); elsewhere the
- * fallback shows [message] alone, which is deliberately generic.
+ * [detail] is the diagnostic half -- React's component stack, which names the component that threw. A fallback
+ * shows it (and [message]) only where the deployment allows it, via [AppConfig.showErrorDetail]; elsewhere it
+ * shows its own generic copy and nothing from the failure itself.
  */
 external interface ErrorFallbackProps : Props {
     var message: String
@@ -108,6 +109,42 @@ val ErrorFallback = FC<ErrorFallbackProps> { props ->
         // Shown only where the deployment allows it (`showErrorDetail`, from the backend's isTestInstance).
         // On a real deployment there is nothing here, and the detail lives in the console rather than on a
         // user's screen. Read at render time rather than captured, so the first config fetch is reflected.
+        if (appConfig().showErrorDetail) {
+            p {
+                className = ClassName("subtitle")
+                +props.message
+            }
+            props.detail?.let { detail ->
+                pre {
+                    className = ClassName("code")
+                    +detail
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The last-resort fallback: what stands in when the **shell itself** failed, so there is no navigation left to
+ * offer and no page to preserve.
+ *
+ * Deliberately barer than [ErrorFallback] -- no card, no assumption that anything above it drew -- because the
+ * thing that broke may be the app bar. A reload is the only honest action here: the page-level fallback can
+ * say "go elsewhere" because elsewhere still works, and this one cannot.
+ */
+val ShellErrorFallback = FC<ErrorFallbackProps> { props ->
+    div {
+        className = ClassName("card wide error-panel")
+        h2 { +"The application could not start" }
+        p {
+            className = ClassName("subtitle")
+            +"Something went wrong before the page could be drawn. Reloading may clear it."
+        }
+        button {
+            className = ClassName("update-banner-reload")
+            onClick = { reloadWebApp() }
+            +"Reload"
+        }
         if (appConfig().showErrorDetail) {
             p {
                 className = ClassName("subtitle")
