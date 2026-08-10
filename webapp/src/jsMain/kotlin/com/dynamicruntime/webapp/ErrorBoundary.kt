@@ -40,6 +40,7 @@ external interface ErrorBoundaryProps : PropsWithChildren {
  * fallback (it runs during the failed render), while `componentDidCatch` is where the component stack arrives
  * and is therefore where reporting happens.
  */
+@Suppress("unused")
 private fun mkErrorBoundary(base: dynamic, create: dynamic): dynamic = js(
     """
     function describe(err) {
@@ -97,6 +98,7 @@ val ErrorBoundary: ComponentType<ErrorBoundaryProps> =
  * the shell rather than the root. A crash should cost the page, not the navigation -- someone (or a test)
  * needs to be able to click away from a broken screen instead of being stranded on it.
  */
+@Suppress("DuplicatedCode")
 val ErrorFallback = FC<ErrorFallbackProps> { props ->
     div {
         className = ClassName("card wide error-panel")
@@ -132,6 +134,7 @@ val ErrorFallback = FC<ErrorFallbackProps> { props ->
  * thing that broke may be the app bar. A reload is the only honest action here: the page-level fallback can
  * say "go elsewhere" because elsewhere still works, and this one cannot.
  */
+@Suppress("DuplicatedCode")
 val ShellErrorFallback = FC<ErrorFallbackProps> { props ->
     div {
         className = ClassName("card wide error-panel")
@@ -185,7 +188,7 @@ fun reportRenderFailure(message: String, errorStack: String, componentStack: Str
  * throw from an event handler, an effect callback, or a rejected promise never reaches one. Issue #210 was a
  * render error and would have been caught; a failure inside an `onClick` would still pass silently.
  *
- * These only *report* -- with the same prefix, so one search finds every frontend failure however it arose.
+ * These only *report* -- with the same prefix, so one search finds every frontend failure, however, it arose.
  * They deliberately do not draw anything: a global error has no place in the tree to render into, and
  * inventing a whole-page takeover for one would cost more than it gives.
  */

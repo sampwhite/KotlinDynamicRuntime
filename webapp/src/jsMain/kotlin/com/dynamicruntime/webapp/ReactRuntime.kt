@@ -4,7 +4,7 @@
 package com.dynamicruntime.webapp
 
 /**
- * The two React primitives the kotlin-wrappers do not surface, declared the way [AntdComponents.kt] declares
+ * The two React primitives the kotlin-wrappers do not surface, declared the way "AntdComponents.kt" declares
  * antd's: `@file:JsModule("react")` maps each `external` below to a named export of the `react` package.
  *
  * They exist for exactly one reason. An **error boundary must be a class component** -- React decides whether

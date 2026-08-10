@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  * Pure-logic coverage (issue #161) for the four `UiConfig` -> typed-config mappers extracted out of their
  * suspend fetchers ([appConfigFrom], [homeConfigFrom], [authConfigFrom], [profileConfigFrom]). Each is a plain
  * map-in / typed-value-out transform, so it is testable with no server, browser, or DOM. The cases assert both
- * that populated fields read through and that per-field defaults apply when a key is missing or malformed.
+ * that populated "fields" read through and that per-field defaults apply when a key is missing or malformed.
  */
 class ConfigParsersTest {
 
