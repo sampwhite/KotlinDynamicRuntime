@@ -54,6 +54,7 @@ object Probe {
     val scenarios: Map<String, (ProbeContext) -> Unit> = linkedMapOf(
         catalogDiffName to ::catalogDiff,
         accessMatrixName to ::accessMatrix,
+        grantThenCallName to ::grantThenCall,
     )
 }
 

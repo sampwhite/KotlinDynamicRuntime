@@ -1,12 +1,17 @@
 package com.dynamicruntime.script
 
+import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
 // The scenarios kdr-probe ships with. Both are checks that were assembled by hand while verifying issues #211
@@ -18,6 +23,9 @@ const val catalogDiffName = "catalog-diff"
 
 /** Name of the [accessMatrix] scenario. */
 const val accessMatrixName = "access-matrix"
+
+/** Name of the [grantThenCall] scenario. */
+const val grantThenCallName = "grant-then-call"
 
 /** How many endpoints to ask the catalog for -- above any plausible registered count, so nothing is truncated. */
 private const val catalogLimit = 500
@@ -100,4 +108,55 @@ fun accessMatrix(cxt: ProbeContext) {
     println()
     println("401 = not logged in, 403 = logged in without the rung, 200 = admitted.")
     println("A path where a higher rung is refused while a lower one is admitted contradicts the role ladder.")
+}
+
+/**
+ * Grants a rung to a session that is already logged in, and re-probes it without a new cookie.
+ *
+ * Two claims meet here, and one of them has already been broken. The dispatcher re-reads live roles before
+ * enforcing, so a grant takes effect on the next request (issue #212) -- and the catalog must agree, which it
+ * did not: it filtered on the roles the session cookie carried at login, so the endpoint stayed hidden from
+ * exactly the person just given the role, for the cookie's whole life (issue #211). Refusal and listing are
+ * different code paths reaching for the same answer, which is why watching them together is worth a standing
+ * scenario rather than a reconstruction each time.
+ */
+fun grantThenCall(cxt: ProbeContext) {
+    val operatorPath = "/operator/system/info"
+    println("Granting ${ROLE.operator} to a live session at ${cxt.baseUrl}")
+    println()
+
+    val admin = cxt.sessionAt(ROLE.admin)
+    // A brand-new address every run, deliberately. `becomeUser` applies a level only when it *creates* the
+    // user, so a fixed address against a long-lived instance would return the already-promoted user from the
+    // previous run -- and the "before" half of this scenario would quietly stop meaning anything.
+    val subject = cxt.session("subject")
+    val email = "probe-grantee-${System.currentTimeMillis()}@example.com"
+    val info = subject.becomeUser(email)
+    val userId = info[UPF.userId].toOptLong()
+        ?: throw KdrException("becomeUser did not return a ${UPF.userId} for '$email'.")
+    println("  subject $email (userId $userId), roles ${info[UPF.roles].toJsonListOfStrings()}")
+
+    println("  before: $operatorPath -> ${subject.sendGetRequest(operatorPath).statusCode}" +
+        ", catalog lists it: ${listsOperator(subject, operatorPath)}")
+
+    val granted = admin.sendPostRequest(
+        ADEP.userSetRoles,
+        mapOf(ADF.userId to userId, ADF.roles to listOf(ROLE.user, ROLE.operator)),
+    )
+    if (!granted.isSuccess) {
+        throw KdrException("Could not grant ${ROLE.operator} (HTTP ${granted.statusCode}): ${granted.errorMessage}")
+    }
+    println("  granted ${ROLE.operator} as ${admin.label}, no new cookie issued to the subject")
+
+    println("  after:  $operatorPath -> ${subject.sendGetRequest(operatorPath).statusCode}" +
+        ", catalog lists it: ${listsOperator(subject, operatorPath)}")
+    println()
+    println("Expected: before 403 / false, after 200 / true. A 200 with a false is the gate and the catalog")
+    println("disagreeing -- the endpoint is callable but not advertised to the caller who may call it.")
+}
+
+/** Whether [path] appears in the catalog as [session] sees it right now. */
+private fun listsOperator(session: ProbeSession, path: String): Boolean {
+    val response = session.sendGetRequest("/schema/endpoints", mapOf(EP.limit to catalogLimit))
+    return response.results[EI.endpoints].toJsonListOfMaps().any { it[EI.path].toOptStr() == path }
 }
