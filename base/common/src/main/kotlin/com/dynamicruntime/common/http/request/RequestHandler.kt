@@ -59,8 +59,9 @@ class RequestHandler : WebRequest {
     val appPath: String get() = if (subTarget.isEmpty()) "/" else "/$subTarget"
 
     /** The section: the first path segment after the context root (e.g. `user`), used to select the
-     *  [SectionRules] access rules. */
-    val section: String get() = subTarget.substringBefore('/')
+     *  [SectionRules] access rules. Derived by the shared [sectionOf], so a request and the endpoint catalog
+     *  cannot disagree about which section a path belongs to. */
+    val section: String get() = sectionOf(appPath)
     val method: String
     val uri: String
     var queryStr: String?
