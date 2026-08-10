@@ -73,6 +73,17 @@ class RequestService : ServiceInitializer {
 
     val anonSections: List<String> = listOf("health", "schema", "content", "portal", "site", "auth", "db", "app", "test")
     val userSections: List<String> = listOf("user", "profile")
+
+    /**
+     * Sections requiring [ROLE.operator] -- the middle rung of [RoleLadder], between an ordinary user and an
+     * administrator. `operator` holds endpoints for running the deployment rather than using it (see
+     * `OperatorEndpoints`); nothing that predates the role was moved onto this list, so adding the level
+     * widened nobody's access.
+     *
+     * An admin reaches these without holding `operator`, because [RoleLadder] ranks admin above it.
+     */
+    val operatorSections: List<String> = listOf("operator")
+
     val adminSections: List<String> = listOf("node", "admin")
 
     @KdrPrivate
@@ -110,6 +121,7 @@ class RequestService : ServiceInitializer {
         }
         for (s in anonSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = null)
         for (s in userSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.user)
+        for (s in operatorSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.operator)
         for (s in adminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = ROLE.admin)
 
         apiContextRoot = (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
@@ -159,12 +171,14 @@ class RequestService : ServiceInitializer {
         extractAuth(cxt, handler)
 
         // Enforce the section's required role against the acting profile (restored by extractAuth). A missing
-        // role -- including the unauthenticated system profile, which has none -- is a 401.
+        // role -- including the unauthenticated system profile, which has none -- is a 401. The test goes
+        // through RoleLadder rather than plain set membership, so a higher privilege satisfies a lower
+        // requirement (an admin passes an operator section) while a deployment's own roles stay exact-match.
         val requiredRole = handler.sectionRules?.requiredRole
         if (requiredRole != null) {
             refreshActingRoles(cxt)
         }
-        if (requiredRole != null && requiredRole !in cxt.userProfile.roles) {
+        if (requiredRole != null && !RoleLadder.satisfies(cxt.userProfile.roles, requiredRole)) {
             throw KdrException(
                 "Request requires the '$requiredRole' role.",
                 code = EXC.authNeeded,

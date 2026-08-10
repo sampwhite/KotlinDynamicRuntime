@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.operator.operatorSchema
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.app.appSchema
@@ -50,6 +51,8 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(profileSchema(cxt))
         // Admin: the user-management endpoints, gated on ROLE.admin by their `admin` section.
         collector.addModule(adminSchema(cxt))
+        // Operator: running-the-deployment diagnostics, gated on ROLE.operator by their `operator` section.
+        collector.addModule(operatorSchema(cxt))
         // Home/shell: the UI-config endpoint that tells the frontend which layout to build and which
         // Markdown documents to link to.
         collector.addModule(homeSchema(cxt))
