@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# @desc: Drive a running instance as a chosen caller: scenarios, or a single call.
+#
+# Probe a *running* server (issue #215) -- start one first, e.g.
+#   KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true kdr-backend
+#
+# Usage:
+#   kdr-probe [--url http://localhost:7071] <scenario> [args...]
+#   kdr-probe call [--as user|operator|admin] <METHOD> <path> [k=v ...]
+#
+# Run it with no arguments to list the scenarios.
+#
+# A "dumb" wrapper: everything it decides lives in Kotlin (Probe.kt), per the code guide's "command-line tasks
+# in Kotlin, not shell or python". That split is the point here rather than a style preference -- the tool
+# exists because probes assembled out of shell state (cookie jars threaded through variables) fail by
+# answering plausibly instead of erroring.
+set -euo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$script_dir/kdr-run" com.dynamicruntime.script.ProbeKt "$@"
