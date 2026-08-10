@@ -149,7 +149,7 @@ class SchemaEndpointsTest : StringSpec({
 
         // The admin sees them, which is what makes the two assertions above about privilege rather than about
         // the admin endpoints having quietly stopped being registered.
-        val chief = TestUser.create(cxt, "chief@other.com", level = ROLE.admin)
+        val chief = TestUser.createFullAdmin(cxt, "chief@other.com")
         val chiefPaths = pathsFor(chief.client)
         chiefPaths shouldContainAll listOf(ADEP.users, ADEP.userSetRoles, "/health")
 
@@ -197,7 +197,7 @@ class SchemaEndpointsTest : StringSpec({
         val withheld = explained[SS.withheld].toJsonListOfMaps()
         val bySection = withheld.associateBy { it[SS.section] }
         bySection.keys shouldContainAll listOf("admin", "operator")
-        bySection["admin"]!![SS.requiredRole] shouldBe ROLE.admin
+        bySection["admin"]!![SS.requiredRole] shouldBe ROLE.allClients
         bySection["operator"]!![SS.requiredRole] shouldBe ROLE.operator
         bySection["admin"]!![EI.endpoints].toJsonListOfStrings() shouldContain ADEP.users
 

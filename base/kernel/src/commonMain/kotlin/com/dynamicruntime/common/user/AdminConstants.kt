@@ -6,9 +6,13 @@ package com.dynamicruntime.common.user
 // are lowerCamelCase `const val`s in short upper-case acronym objects, always referenced qualified.
 
 /**
- * Admin endpoint paths (before the API context root is prepended). Every one sits under the `admin` *section*,
- * which `RequestService.adminSections` gates on [com.dynamicruntime.common.http.request.ROLE.admin] -- the path
- * prefix is the access control, so an endpoint added here is admin-only by construction.
+ * **Full-scope** admin endpoint paths (before the API context root is prepended). Every one sits under the
+ * `admin` *section*, which `RequestService.adminSections` gates on
+ * [com.dynamicruntime.common.http.request.ROLE.allClients] -- the path prefix is the access control, so an
+ * endpoint added here reaches every client by construction (issue #225).
+ *
+ * The same endpoints exist under [UADEP] for an administrator confined to their own client. A caller who holds
+ * the capability satisfies both, and gets identical answers either way, since their scope is unrestricted.
  */
 @Suppress("ConstPropertyName")
 object ADEP {
@@ -16,6 +20,27 @@ object ADEP {
     const val userCreate = "/admin/user/create"
     const val userSetRoles = "/admin/user/setRoles"
     const val userSetEnabled = "/admin/user/setEnabled"
+}
+
+/**
+ * **Scoped** user-administration paths: the same operations as [ADEP], reachable by any
+ * [com.dynamicruntime.common.http.request.ROLE.admin] and confined to what their `ReadScope` allows (issue
+ * #225). Its `userAdmin` section is what a client-scoped administrator has instead of a narrowed view of the
+ * full-scope surface.
+ *
+ * Named for the job rather than for the client level on purpose: an administrator limited to a primary
+ * *organization* within a client will use this same surface, so a name like `clientAdmin` would be wrong on
+ * arrival.
+ *
+ * **This is the surface a frontend should call.** It serves both kinds of administrator correctly -- a caller
+ * with `allClients` is simply unconfined -- so a console built on it needs no branch on who is asking.
+ */
+@Suppress("ConstPropertyName")
+object UADEP {
+    const val users = "/userAdmin/users"
+    const val userCreate = "/userAdmin/user/create"
+    const val userSetRoles = "/userAdmin/user/setRoles"
+    const val userSetEnabled = "/userAdmin/user/setEnabled"
 }
 
 /** Admin request/response field (JSON key) names. */

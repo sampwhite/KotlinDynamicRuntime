@@ -12,6 +12,7 @@ object TEP {
 
     const val email = "email"
     const val level = "level"
+    const val capabilities = "capabilities"
     const val failIfUserAlreadyExists = "failIfUserAlreadyExists"
 
     /**

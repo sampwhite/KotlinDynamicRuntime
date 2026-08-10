@@ -116,12 +116,16 @@ object AdminRules {
     }
 
     /**
-     * Whether the caller may administer other users at all -- create them, edit their roles, enable or
-     * disable them. Kept as the question most callers actually have (the home menu, the admin console), now
-     * answered from [adminScope] so there is one definition of who administers.
+     * Whether the caller may administer other users -- create them, edit their roles, enable or disable them.
+     * The question the home menu asks before offering the Users page.
      *
-     * This is a convenience for shaping the UI, not the enforcement point: the endpoints stay gated by their
-     * section, so a frontend that ignores this answer still gets a 403.
+     * Any administrator qualifies, scoped or not: the `userAdmin` section (issue #225) gives a client-scoped
+     * administrator a surface of their own, so answering `true` for them no longer offers a menu item leading
+     * to a 403 -- the drift issue #211 set out to remove. What differs between the two is *how much they see*
+     * once there, which is [adminReadScope]'s job, not this one's.
+     *
+     * This shapes the UI; it is not the enforcement point. The endpoints stay gated by their section, so a
+     * frontend that ignores this answer still gets a 403.
      */
     fun canManageUsers(cxt: KdrCxt): Boolean = adminScope(cxt) != AdminScope.none
 
@@ -140,29 +144,50 @@ object AdminRules {
         AdminScope.allClients, AdminScope.none -> ReadScope.unrestricted
     }
 
-    /** The roles a newly provisioned user gets: [ROLE.user], plus [ROLE.admin] when [primaryId] auto-qualifies. */
+    /**
+     * What the auto-admin rule grants: [ROLE.admin] **and** [ROLE.allClients] (issue #225).
+     *
+     * The capability has to be part of it, because the rule's whole job is to solve a chicken-and-egg problem
+     * and reserving the `admin` section for full-scope administrators created a second one. Nobody holds `allClients`
+     * to begin with, and anti-escalation stops an administrator granting reach they do not have -- so without
+     * this a fresh deployment would have no way to reach its own admin surface except the `GrantRole` script.
+     *
+     * The tension to revisit: a **multi-client** deployment almost certainly does not want every address at a
+     * domain to become a *global* administrator. Once a client-scoped administration surface exists, this
+     * should probably grant the level only, and full scope should become a deliberate act. Recorded on #225.
+     */
+    val autoAdminRoles: List<String> = listOf(ROLE.admin, ROLE.allClients)
+
+    /** The roles a newly provisioned user gets: [ROLE.user], plus [autoAdminRoles] when [primaryId] qualifies. */
     fun initialRoles(cxt: KdrCxt, primaryId: String): List<String> =
         if (isAutoAdminAddress(primaryId, adminEmailDomain(cxt.instanceConfig))) {
-            listOf(ROLE.user, ROLE.admin)
+            listOf(ROLE.user) + autoAdminRoles
         } else {
             listOf(ROLE.user)
         }
 
     /**
-     * Grants [ROLE.admin] to an existing [row] that auto-qualifies but does not yet hold it, returning whether
-     * the row was changed (the caller persists it). Called on every login, so configuring the domain reaches
-     * accounts that already existed -- the ordinary case, since the operator usually registers before deciding
-     * to become an admin. Never revokes: see the class comment.
+     * Grants [autoAdminRoles] to an existing [row] that auto-qualifies but does not yet hold them, returning
+     * whether the row was changed (the caller persists it). Called on every login, so configuring the domain
+     * reaches accounts that already existed -- the ordinary case, since the operator usually registers before
+     * deciding to become an admin. Never revokes: see the class comment.
+     *
+     * It tops up **each** missing role rather than checking only for [ROLE.admin], which is what carries an
+     * administrator from before #225 over the change: they already hold `admin`, and the next login is where
+     * they gain the `allClients` they now need to reach the surface they had yesterday.
      */
     fun syncAdminRole(cxt: KdrCxt, row: AuthUserRow): Boolean {
-        if (row.roles.contains(ROLE.admin)) {
+        val missing = autoAdminRoles.filter { it !in row.roles }
+        if (missing.isEmpty()) {
             return false
         }
         if (!isAutoAdminAddress(row.primaryId, adminEmailDomain(cxt.instanceConfig))) {
             return false
         }
-        row.roles = row.roles + ROLE.admin
-        LogAuth.info(cxt) { "Granting the admin role to '${row.primaryId}' (matches the configured admin domain)." }
+        row.roles = row.roles + missing
+        LogAuth.info(cxt) {
+            "Granting ${missing.joinToString(", ")} to '${row.primaryId}' (matches the configured admin domain)."
+        }
         return true
     }
 }

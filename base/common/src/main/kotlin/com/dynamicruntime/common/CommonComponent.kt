@@ -14,6 +14,7 @@ import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.portal.PortalService
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.adminSchema
+import com.dynamicruntime.common.user.scopedUserAdminSchema
 import com.dynamicruntime.common.user.authSchema
 import com.dynamicruntime.common.user.authTables
 import com.dynamicruntime.common.user.profileSchema
@@ -51,6 +52,8 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(profileSchema(cxt))
         // Admin: the user-management endpoints, gated on ROLE.admin by their `admin` section.
         collector.addModule(adminSchema(cxt))
+        // The same user-administration operations, scoped to the caller's client (issue #225).
+        collector.addModule(scopedUserAdminSchema(cxt))
         // Operator: running-the-deployment diagnostics, gated on ROLE.operator by their `operator` section.
         collector.addModule(operatorSchema(cxt))
         // Home/shell: the UI-config endpoint that tells the frontend which layout to build and which

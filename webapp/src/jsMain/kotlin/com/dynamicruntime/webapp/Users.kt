@@ -52,6 +52,7 @@ val Users = FC<Props> {
     var draftEmail by useState("")
     var draftUsername by useState("")
     var draftLevel by useState(ROLE.user)
+    var draftAllClients by useState(false)
     var draftEnabled by useState(true)
 
     val generation = useRefreshGeneration()
@@ -120,6 +121,7 @@ val Users = FC<Props> {
         draftEmail = user.primaryId
         draftUsername = user.username
         draftLevel = user.level
+        draftAllClients = user.roles.contains(ROLE.allClients)
         draftEnabled = user.enabled
         note = null
         error = null
@@ -132,6 +134,7 @@ val Users = FC<Props> {
         draftEmail = ""
         draftUsername = ""
         draftLevel = ROLE.user
+        draftAllClients = false
         draftEnabled = true
         note = null
         error = null
@@ -142,6 +145,14 @@ val Users = FC<Props> {
         creating = false
         error = null
     }
+
+    /**
+     * The role list this draft describes, given what [current] holds now: the level sets the rung (preserving
+     * anything off the ladder) and the capability toggle is applied on top. Composing in that order is what
+     * lets a level change keep a capability and a capability change keep a level.
+     */
+    fun draftRoles(current: List<String>): List<String> =
+        rolesWithCapability(RoleLadder.rolesAtLevel(current, draftLevel), ROLE.allClients, draftAllClients)
 
     /**
      * Applies the draft. Only what actually changed is sent -- the backend has one call per concern (roles,
@@ -155,12 +166,15 @@ val Users = FC<Props> {
     fun save() = run {
         val target = editing
         if (target == null) {
-            val created = AdminApi.createUser(draftEmail, draftUsername, RoleLadder.rolesAtLevel(emptyList(), draftLevel))
+            val created = AdminApi.createUser(draftEmail, draftUsername, draftRoles(emptyList()))
             note = "Created ${created.primaryId}."
         } else {
             var changed = false
-            if (draftLevel != target.level) {
-                AdminApi.setRoles(target.userId, RoleLadder.rolesAtLevel(target.roles, draftLevel))
+            // Compared as sets rather than by level, because the draft now carries two independent things: a
+            // rung and a capability. Testing the level alone would silently drop a capability-only edit.
+            val desired = draftRoles(target.roles)
+            if (desired.toSet() != target.roles.toSet()) {
+                AdminApi.setRoles(target.userId, desired)
                 changed = true
             }
             if (draftEnabled != target.enabled) {
@@ -241,6 +255,25 @@ val Users = FC<Props> {
             p {
                 className = ClassName("type-hint")
                 +accessLevelHint
+            }
+
+            // Offered only to a caller who holds the capability, because the backend refuses to let anyone
+            // grant reach they do not have themselves -- a control that could only ever produce a 400 is the
+            // advertise-versus-serve drift this codebase keeps removing, just relocated into a form.
+            if (config?.user?.roles?.contains(ROLE.allClients) == true) {
+                div {
+                    className = ClassName("row")
+                    Checkbox {
+                        checked = draftAllClients
+                        disabled = busy || self
+                        onChange = { event -> draftAllClients = event.target.checked as Boolean }
+                        +"All clients"
+                    }
+                }
+                p {
+                    className = ClassName("type-hint")
+                    +allClientsHint
+                }
             }
 
             div {
@@ -367,6 +400,14 @@ private val accessLevelOptions: Array<dynamic> = RoleLadder.ordered.map { role -
     obj.value = role
     obj
 }.toTypedArray()
+
+/**
+ * Says what the capability does, and that it is a different axis from the level -- the distinction the whole
+ * scope design rests on, and the one a checkbox beside a dropdown will not convey on its own.
+ */
+private const val allClientsHint =
+    "Access level says what someone may do; this says whose data they may do it to. Without it an " +
+        "administrator manages only their own client. It is also what the full-scope admin endpoints require."
 
 /** Says what the middle rung is for, since "operator" does not explain itself the way the other two do. */
 private const val accessLevelHint =

@@ -81,7 +81,7 @@ class AdminUserTest : StringSpec({
 
     "an admin lists, creates, promotes, and disables users" {
         val cxt = Startup.mkTestBootCxt("admin", "adminFlowTest")
-        val admin = TestUser.create(cxt, "chief@other.com", level = ROLE.admin)
+        val admin = TestUser.createFullAdmin(cxt, "chief@other.com")
 
         // Create a user directly, bypassing email verification.
         val created = admin.postData(
@@ -135,13 +135,14 @@ class AdminUserTest : StringSpec({
 
     "granting and revoking admin take effect on an existing session's next request" {
         val cxt = Startup.mkTestBootCxt("admin", "adminRevokeTest")
-        val chief = TestUser.create(cxt, "chief2@other.com", level = ROLE.admin)
+        val chief = TestUser.createFullAdmin(cxt, "chief2@other.com")
 
         // A plain user with a live session of their own, promoted *after* their cookie was issued.
         val deputy = TestUser.create(cxt, "deputy@other.com")
         deputy.expectError(EXC.notAuthorized, ADEP.users)
         chief.postData(
-            ADEP.userSetRoles, mapOf(ADF.userId to deputy.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)),
+            ADEP.userSetRoles,
+            mapOf(ADF.userId to deputy.userId, ADF.roles to listOf(ROLE.user, ROLE.admin, ROLE.allClients)),
         )
         // Their cookie still says "plain user", yet the live role read lets them in -- no re-login needed.
         deputy.getItems(ADEP.users).isEmpty() shouldBe false
@@ -160,20 +161,22 @@ class AdminUserTest : StringSpec({
 
     "an admin may edit their own other roles, but not their own admin status" {
         val cxt = Startup.mkTestBootCxt("admin", "adminSelfRoleTest")
-        val admin = TestUser.create(cxt, "self@other.com", level = ROLE.admin)
+        val admin = TestUser.createFullAdmin(cxt, "self@other.com")
         val other = "auditor" // a role some deployment might add; not special to the runtime
 
         // Adding an unrelated role to yourself is allowed: the guard is about the admin role alone.
         TestUser.rolesOf(
             admin.postData(
                 ADEP.userSetRoles,
-                mapOf(ADF.userId to admin.userId, ADF.roles to listOf(ROLE.user, ROLE.admin, other)),
+                mapOf(ADF.userId to admin.userId, ADF.roles to listOf(ROLE.user, ROLE.admin, ROLE.allClients, other)),
             ),
         ) shouldContain other
 
         // Dropping your own admin role is refused, even while keeping the rest.
         val demote = admin.expectError(
-            EXC.badInput, ADEP.userSetRoles, mapOf(ADF.userId to admin.userId, ADF.roles to listOf(ROLE.user, other)),
+            EXC.badInput,
+            ADEP.userSetRoles,
+            mapOf(ADF.userId to admin.userId, ADF.roles to listOf(ROLE.user, ROLE.allClients, other)),
         )
         (demote[EP.errorMessage] as String) shouldContain ROLE.admin
 
@@ -195,7 +198,7 @@ class AdminUserTest : StringSpec({
         )
 
         // And the attempt changed nothing.
-        val admin = TestUser.create(cxt, "chief3@other.com", level = ROLE.admin)
+        val admin = TestUser.createFullAdmin(cxt, "chief3@other.com")
         val stored = admin.getItems(ADEP.users, mapOf(ADF.search to "climber")).single()
         TestUser.rolesOf(stored) shouldNotContain ROLE.admin
     }

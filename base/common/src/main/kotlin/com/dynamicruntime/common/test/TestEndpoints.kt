@@ -11,6 +11,7 @@ import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.getOptStr
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptEnum
 import com.dynamicruntime.common.util.toOptLong
 import kotlin.time.Duration.Companion.milliseconds
@@ -44,6 +45,14 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
                     "privilege ladder's rungs; each includes the ones below it. Defaults to `${ROLE.user}`.") {
                 for (rung in RoleLadder.ordered) option(rung)
             }
+            field(
+                TEP.capabilities,
+                "Extra roles for a freshly created user, beyond the level -- capabilities such as " +
+                    "`${ROLE.allClients}`, which are orthogonal to the ladder and cannot be expressed by a level.",
+            ) {
+                type = SCT.array
+                items { type = SCT.string }
+            }
             field(TEP.failIfUserAlreadyExists,
                 "Fail instead of logging in when a user with this email already exists.") {
                 type = SCT.boolean
@@ -56,6 +65,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             c,
             email = request[TEP.email] as String,
             level = request.getOptStr(TEP.level) ?: ROLE.user,
+            capabilities = request[TEP.capabilities].toJsonListOfStrings(),
             failIfUserAlreadyExists = request[TEP.failIfUserAlreadyExists] == true,
         )
     }
