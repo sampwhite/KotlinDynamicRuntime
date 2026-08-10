@@ -18,6 +18,17 @@ object APP {
     const val obfuscateSensitiveErrors = "obfuscateSensitiveErrors"
 
     /**
+     * Feature flag: whether the frontend may show the detail of a caught render failure -- its message and
+     * React's component stack -- rather than a generic panel (issue #223).
+     *
+     * Set from the backend's `isTestInstance`, deliberately reusing the fence that already governs the other
+     * detailed-diagnostic surface (`explainAccess`, issue #215) instead of inventing a second notion of "a
+     * development build". One rule, already audited, and one that a real deployment cannot turn on by
+     * accident: an instance claiming to be a test instance outside `local`/`unit` refuses to start.
+     */
+    const val showErrorDetail = "showErrorDetail"
+
+    /**
      * Setting (under the envelope's `settings`, not a flag): how often, in milliseconds, the frontend "bumps" its refresh
      * generation while a tab is visible, so a long-open tab notices a timed-out session or a newer deploy
      * (issue #146). Deployment-tunable through the custom-config object; the frontend re-arms its timer when the

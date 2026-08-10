@@ -344,6 +344,14 @@ input {
     font-size: 0.85rem;
 }
 
+/* A page that failed to render (issue #223). Marked out with the danger border so it is plainly a fault
+   rather than content, but still a card inside the shell -- the navigation above it is deliberately intact,
+   so the page is what was lost, not the app. */
+.error-panel {
+    border: 1px solid var(--danger);
+    background: rgba(248, 113, 113, .06);
+}
+
 /* The schema display engine: one field per row, label + widget or read-only value. */
 .schema-form { width: 100%; }
 .field-label { font-weight: 600; min-width: 140px; color: var(--text-dim); }

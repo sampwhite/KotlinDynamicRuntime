@@ -7,6 +7,7 @@ import com.dynamicruntime.webapp.theme as antdTheme
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
+import react.Key
 import react.Props
 import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
@@ -93,13 +94,26 @@ val App = FC<Props> {
             AppBar {}
             div {
                 className = ClassName("app-content")
-                when (page) {
-                    pageCatalog -> EndpointCatalog {}
-                    pageLogin -> AuthFlow { mode = pageLogin }
-                    pageRegister -> AuthFlow { mode = pageRegister }
-                    pageProfile -> Profile {}
-                    pageUsers -> Users {}
-                    else -> Home {}
+                // The boundary wraps the page, NOT the root, so a render failure costs the page and not the
+                // navigation above it -- someone (or a test) can click away from a broken screen instead of
+                // being stranded on it (issue #223).
+                //
+                // Keyed on the page for a reason that is easy to miss: React never resets a boundary on its
+                // own, so without this the fallback would survive the navigation it invites you to make, and
+                // every later page would show the earlier page's failure. The key remounts it on a page
+                // change, which is exactly when the failure stops being relevant.
+                ErrorBoundary {
+                    key = page.unsafeCast<Key>()
+                    fallback = ErrorFallback
+                    onError = ::reportRenderFailure
+                    when (page) {
+                        pageCatalog -> EndpointCatalog {}
+                        pageLogin -> AuthFlow { mode = pageLogin }
+                        pageRegister -> AuthFlow { mode = pageRegister }
+                        pageProfile -> Profile {}
+                        pageUsers -> Users {}
+                        else -> Home {}
+                    }
                 }
             }
         }

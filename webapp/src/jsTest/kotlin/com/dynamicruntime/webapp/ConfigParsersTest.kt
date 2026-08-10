@@ -42,11 +42,12 @@ class ConfigParsersTest {
     fun appConfigReadsFeaturesAndSettings() {
         val cfg = appConfigFrom(
             uiConfig(
-                features = mapOf(APP.obfuscateSensitiveErrors to true),
+                features = mapOf(APP.obfuscateSensitiveErrors to true, APP.showErrorDetail to true),
                 settings = mapOf(APP.idleBumpIntervalMs to 30_000),
             ),
         )
         assertTrue(cfg.obfuscateSensitiveErrors)
+        assertTrue(cfg.showErrorDetail)
         assertEquals(30_000, cfg.idleBumpIntervalMs)
     }
 
@@ -54,6 +55,9 @@ class ConfigParsersTest {
     fun appConfigDefaultsWhenKeysMissing() {
         val cfg = appConfigFrom(uiConfig())
         assertFalse(cfg.obfuscateSensitiveErrors)
+        // Withheld unless the deployment says otherwise (issue #223): a missing flag must not be the reason
+        // internals reach a real user's screen, and this is also the pre-first-fetch state.
+        assertFalse(cfg.showErrorDetail)
         assertEquals(APP.defaultIdleBumpIntervalMs, cfg.idleBumpIntervalMs)
     }
 

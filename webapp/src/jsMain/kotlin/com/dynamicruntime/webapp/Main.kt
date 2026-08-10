@@ -12,6 +12,9 @@ import web.dom.document
  */
 fun main() {
     initLogging() // frontend logging via the shared KdrLogger -> browser console (issue #79)
+    // Before the tree is mounted, so a failure during that first render is reported rather than lost. Covers
+    // what an error boundary structurally cannot -- handlers, effects, rejected promises (issue #223).
+    installGlobalErrorHandlers()
     val container = document.getElementById(ElementId("root"))
         ?: error("Couldn't find the #root container in index.html")
     createRoot(container).render(App.create())
