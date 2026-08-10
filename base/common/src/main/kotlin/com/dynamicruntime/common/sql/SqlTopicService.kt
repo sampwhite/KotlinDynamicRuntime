@@ -1,6 +1,6 @@
 package com.dynamicruntime.common.sql
 
-import com.dynamicruntime.common.context.AC
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.SchModule
@@ -41,7 +41,7 @@ class SqlTopicService : ServiceInitializer {
      * [SqlDatabase.executeSchemaChangeSql] rightly refuses to run DDL on behalf of an end user, so a request
      * from a logged-in user that is the first to touch such a topic fails outright with "Schema-change SQL may
      * only be executed by the system user". That went unnoticed because an *anonymous* caller's userId is
-     * [AC.systemUserId] (both are 0), so it satisfies the guard by coincidence -- meaning the failure appears
+     * [CL.systemUserId] (both are 0), so it satisfies the guard by coincidence -- meaning the failure appears
      * only when a signed-in user makes the first request after a deployment that added a table, on a database
      * that already has the rest of the topic. Which is to say: exactly on upgrade, and never in a fresh
      * in-memory test.

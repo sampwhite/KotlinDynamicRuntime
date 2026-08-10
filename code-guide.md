@@ -181,7 +181,7 @@ disambiguator and the bare name would be ambiguous, `Kdr` is there.
 
 We will be defining JSON schema for anything where such a choice might make sense. Not only will we define
 schema for endpoints, we will define schema for all configuration files as well. And these configuration files
-may be fairly complex defining client accounts or data processing rules. Note, in some cases, we will
+may be fairly complex defining clients or data processing rules. Note, in some cases, we will
 write functions in Kotlin to dynamically generate schema and configuration from patterns. When this
 is fully mature, we should have two levels of schema and configuration in some places. The higher level
 will be more conceptual and simpler, the schema it derives will be more detailed and allow for complete specifity.
@@ -254,11 +254,11 @@ and debug. A context cannot be directly handed off to another thread, instead a 
 and given to the thread, and the sub-context will clone data from the parent context to avoid cross-thread context
 pollution.
 
-At a certain point, a `KdrCxt` may get bound to a particular client account. If that potentially disagrees with
-the account associated with the acting user, then a sub-context should be generated and the desired
-account explicitly assigned. This is relevant for users with admin rights to edit data across client accounts.
-It is also relevant to background jobs that also can have cross-account scope. Once an account is assigned
-to a `KdrCxt` cached data specific to the account can be added to the context. For example, there may be
+At a certain point, a `KdrCxt` may get bound to a particular client. If that potentially disagrees with
+the client associated with the acting user, then a sub-context should be generated and the desired
+client explicitly assigned. This is relevant for users with admin rights to edit data across clients.
+It is also relevant to background jobs that also can have cross-client scope. Once a client is assigned
+to a `KdrCxt` cached data specific to the client can be added to the context. For example, there may be
 complex rule sets particular to a client, and those can now be made conveniently available from the context.
 
 ### Command-line tasks in Kotlin, not shell or python

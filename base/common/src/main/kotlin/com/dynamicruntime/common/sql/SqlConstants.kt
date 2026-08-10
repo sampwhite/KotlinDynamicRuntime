@@ -10,7 +10,7 @@ package com.dynamicruntime.common.sql
  *
  * Note the deliberate departure from the prior-art `dn` spellings: audit columns are `createdBy`/`updatedBy`
  * (numeric userId) and `createdAt`/`updatedAt` (dates), rather than dn's `createdDate`/`modifiedDate`; and a
- * single `account` column replaces dn's `userGroup`/`userAccount` pair.
+ * single `client` column replaces dn's `userGroup`/`userAccount` pair.
  */
 @Suppress("ConstPropertyName")
 object PF {
@@ -35,8 +35,8 @@ object PF {
      */
     const val enabled = "enabled"
 
-    /** Owning the client-account (added by the [TableFeature.account] feature). */
-    const val account = "account"
+    /** Owning the client (added by the [TableFeature.client] feature). */
+    const val client = "client"
 
     /** Owning user's numeric id (added by the [TableFeature.user] feature). */
     const val userId = "userId"

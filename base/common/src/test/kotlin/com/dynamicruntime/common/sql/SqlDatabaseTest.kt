@@ -72,7 +72,7 @@ class SqlDatabaseTest : StringSpec({
         }
     }
 
-    "a user-owned table gains userId and account columns" {
+    "a user-owned table gains userId and client columns" {
         val cxt = KdrCxt.mkSimpleCxt("test")
         val tables = tableModule(cxt, "app") {
             table("UserThing", "A user-owned thing") {
@@ -82,8 +82,8 @@ class SqlDatabaseTest : StringSpec({
             }
         }
         val t = tables.single()
-        t.features shouldBe setOf(TableFeature.user, TableFeature.account)
-        t.columnsByName.keys shouldContainAll setOf(PF.userId, PF.account)
+        t.features shouldBe setOf(TableFeature.user, TableFeature.client)
+        t.columnsByName.keys shouldContainAll setOf(PF.userId, PF.client)
     }
 
     "the enabled column is injected and queryOneEnabled hides non-enabled rows (issue #48)" {

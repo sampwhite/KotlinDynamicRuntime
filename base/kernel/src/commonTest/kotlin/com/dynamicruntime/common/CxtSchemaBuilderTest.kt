@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 class CxtSchemaBuilderTest {
 
     private val sample = UserProfile(
-        authId = "7", userId = 7L, account = "local", roles = setOf("user", "admin"),
+        authId = "7", userId = 7L, client = "local", roles = setOf("user", "admin"),
         publicName = "Ada", hasPassword = true,
     )
 
@@ -40,7 +40,7 @@ class CxtSchemaBuilderTest {
         val back = UserProfile.fromUserInfo(sample.toUserInfo())
         assertEquals(sample.authId, back.authId)
         assertEquals(sample.userId, back.userId)
-        assertEquals(sample.account, back.account)
+        assertEquals(sample.client, back.client)
         assertEquals(sample.roles, back.roles)
         assertEquals(sample.publicName, back.publicName)
         assertEquals(sample.hasPassword, back.hasPassword)

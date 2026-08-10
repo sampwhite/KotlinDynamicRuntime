@@ -1,6 +1,6 @@
 package com.dynamicruntime.common.user
 
-import com.dynamicruntime.common.context.AC
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -77,7 +77,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
             throw KdrException.mkInput("Username '$username' has already been taken.")
         }
 
-        val data = AuthUserRow.mkInitialUser(primaryId, AC.public, roles).toMutableMap()
+        val data = AuthUserRow.mkInitialUser(primaryId, CL.public, roles).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         // The administrator is asserting the address, which stands in for the verification the self-service
@@ -118,7 +118,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "admin") {
         // Downward, it stops the last administrator locking the deployment out of its own admin surface.
         // Upward matters more as the capability narrows: today only an administrator reaches this endpoint, so
         // self-promotion is merely redundant -- but the whole point of AdminRules.canManageUsers is that it will
-        // one day admit someone weaker (an account manager, say), and self-promotion is exactly how such a
+        // one day admit someone weaker (a client manager, say), and self-promotion is exactly how such a
         // caller would escalate to full administrator. Writing the rule symmetrically now means that widening
         // cannot open the hole later.
         //

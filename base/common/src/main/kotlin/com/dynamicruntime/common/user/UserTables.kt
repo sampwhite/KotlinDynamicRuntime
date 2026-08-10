@@ -109,7 +109,7 @@ fun authTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "user
         column(AU.username, "The user's unique preferred name.", required = true)
         column(AU.authUserData, "Auth data: roles, optional encoded password, contacts.") { type = SCT.kObject }
         primaryKey(AU.userId)
-        forAccount()
+        forClient()
         index(AU.primaryId, unique = true)
         index(AU.username, unique = true)
     }
@@ -117,7 +117,7 @@ fun authTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "user
         column(LU.linkSource, "The external identity source (e.g. 'google').", required = true)
         column(LU.linkId, "The source's own primary key for the identity (for Google, the 'sub' claim).", required = true)
         column(LU.linkData, "Claims captured from the source when the link was made.") { type = SCT.kObject }
-        forUsers() // adds the linked-to userId + account columns
+        forUsers() // adds the linked-to userId + client columns
         // The source plus that source's key is the identity, so it is the primary key -- one external identity
         // can only ever point at one local user, enforced by the database rather than by a query-then-insert.
         primaryKey(LU.linkSource, LU.linkId)
@@ -130,7 +130,7 @@ fun authTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "user
         column(AUD.deviceData, "Captured information about the device (IPs, user agents).") { type = SCT.kObject }
         column(AUD.deviceVerified, "Whether the device is verified as trusted.") { type = SCT.boolean }
         column(AUD.verifyExpiration, "When the device's verification expires.") { dateTime() }
-        forUsers() // adds the owning userId + account columns
+        forUsers() // adds the owning userId + client columns
         primaryKey(AU.userId, AUD.deviceGuid)
         index(AUD.deviceGuid)
     }

@@ -10,7 +10,7 @@ everyone has silently agreed to ignore.
 - **Grouped by trigger.** Each `##` section is an observable condition; the items under it are what to do once
   that condition holds. So when a trigger fires you read one section and see everything it unblocks.
 - **Triggers, not wishes.** A trigger is something you will *notice* — "when a second deployment exists," "when
-  we support accounts." "When the app is mature" is not a trigger; it never arrives.
+  we support clients." "When the app is mature" is not a trigger; it never arrives.
 - **Promote and delete.** The moment a trigger fires — or an item simply becomes actionable — move it to a real
   issue and remove it here. This file only ever holds *not-yet-actionable* items; anything ready lives in the
   tracker.
@@ -53,12 +53,12 @@ start to matter.
   per-IP by the login rate limit, but not across IPs) can keep it refetching and serialize real Google logins.
   Add a minimum refetch interval so a miss shortly after a fetch fails fast instead of re-fetching.
 
-## When the runtime supports accounts
+## When the runtime supports clients
 
-The point at which configuration can be scoped to a client account rather than only to the deployment.
+The point at which configuration can be scoped to a client rather than only to the deployment.
 
-- **Per-account configuration** *(from #97 §6 and #155).* Let values currently resolved per-deployment vary per
-  client account. Known candidates: the error-display / obfuscation policy (`obfuscateSensitiveErrors`), the
+- **Per-client configuration** *(from #97 §6 and #155).* Let values currently resolved per-deployment vary per
+  client. Known candidates: the error-display / obfuscation policy (`obfuscateSensitiveErrors`), the
   frontend idle-bump interval (`idleBumpIntervalMs`), and the login-cookie timeout period.
 
 ## When the logging integration is built out (structured / OpenSearch sinks)

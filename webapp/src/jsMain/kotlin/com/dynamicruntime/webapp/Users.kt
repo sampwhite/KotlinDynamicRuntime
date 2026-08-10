@@ -32,7 +32,7 @@ private val usersScope = MainScope()
  * regardless of what the frontend believes.
  *
  * The capability is deliberately not "is an admin". When it grows narrower -- someone administering only the
- * users in their own account, say -- the backend answers differently and this page needs no change.
+ * users in their own client, say -- the backend answers differently and this page needs no change.
  */
 val Users = FC<Props> {
     var config by useState<HomeConfig?>(null)

@@ -12,7 +12,7 @@ import io.kotest.matchers.shouldNotBe
 /**
  * Stage-2 proof (issue #33): the topic service resolves a topic's tables from the schema store, creates
  * them, and drives a standard topic transaction (insert-lock-execute) whose protocol columns are populated
- * from the context — owner (`account`) from the bound owner, audit (`createdBy`/`updatedBy`) from the actor.
+ * from the context — owner (`client`) from the bound owner, audit (`createdBy`/`updatedBy`) from the actor.
  * Also checks the `/db/tables` list handler reads the table catalog from the store.
  */
 class SqlTopicServiceTest : StringSpec({
@@ -29,11 +29,11 @@ class SqlTopicServiceTest : StringSpec({
 
     "a topic transaction inserts, locks, and writes back a row with populated protocol columns" {
         val tables = tableModule(cxt = KdrCxt.mkSimpleCxt("def"), namespace = "acctNs", topic = "acct") {
-            table("AccountState", "Per-account transactional state") {
+            table("ClientState", "Per-client transactional state") {
                 column("stateKey", "Key of the state row.")
                 column("counter", "A counter value.") { type = SCT.integer }
                 primaryKey("stateKey")
-                forAccount()
+                forClient()
                 withTransactions()
             }
         }
@@ -46,7 +46,7 @@ class SqlTopicServiceTest : StringSpec({
 
         // The final written row is left on the context.
         sqlCxt.tranData["counter"] shouldBe 1L
-        sqlCxt.tranData[PF.account] shouldBe "local" // owner: cxt.account
+        sqlCxt.tranData[PF.client] shouldBe "local" // owner: cxt.client
         sqlCxt.tranData[PF.createdBy] shouldBe 0L // actor: system user
         sqlCxt.tranData[PF.lastTranId] shouldNotBe SqlTopicUtil.initialInsertTranId
 
@@ -56,7 +56,7 @@ class SqlTopicServiceTest : StringSpec({
         db.withSession(cxt) {
             val row = db.queryOneStatement(cxt, sqlTopic.qTranLockQuery!!, mapOf("stateKey" to "s1")).shouldNotBeNull()
             row["counter"] shouldBe 1L
-            row[PF.account] shouldBe "local"
+            row[PF.client] shouldBe "local"
             row[PF.lastTranId] shouldNotBe SqlTopicUtil.initialInsertTranId
         }
     }
@@ -76,6 +76,6 @@ class SqlTopicServiceTest : StringSpec({
         val widget = dump.single()
         widget[TI.topic] shouldBe "widget"
         @Suppress("UNCHECKED_CAST")
-        (widget[TI.features] as List<String>) shouldContainAll listOf("user", "account")
+        (widget[TI.features] as List<String>) shouldContainAll listOf("user", "client")
     }
 })

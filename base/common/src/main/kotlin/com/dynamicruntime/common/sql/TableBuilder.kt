@@ -38,7 +38,7 @@ class TableModuleBuilder(val cxt: KdrCxt, val namespace: String, val topic: Stri
 
 /**
  * Builds a single [KdrTable]. Columns are declared with [column]; the primary key with [primaryKey];
- * secondary indexes with [index]; and account/user ownership with [forAccount]/[forUsers]. On [build] the
+ * secondary indexes with [index]; and client/user ownership with [forClient]/[forUsers]. On [build] the
  * table's protocol columns are injected: the [PF.enabled] soft-delete flag and the audit columns
  * ([PF.createdBy]/[PF.updatedBy]/[PF.createdAt]/[PF.updatedAt]) on every table (unless suppressed via
  * [withoutEnabled]), plus the feature columns for any opted-in [TableFeature].
@@ -98,23 +98,23 @@ class TableBuilder(
         indexes.add(KdrIndex(name, fieldNames.toList(), unique))
     }
 
-    /** Marks the table as account-scoped: adds an [PF.account] column. */
-    fun forAccount() {
-        features.add(TableFeature.account)
+    /** Marks the table as client-scoped: adds a [PF.client] column. */
+    fun forClient() {
+        features.add(TableFeature.client)
     }
 
     /**
-     * Marks the table as user-owned: adds a [PF.userId] column and, since user ownership implies an account,
-     * also the [PF.account] column (both features are recorded).
+     * Marks the table as user-owned: adds a [PF.userId] column and, since user ownership implies a client,
+     * also the [PF.client] column (both features are recorded).
      */
     fun forUsers() {
         features.add(TableFeature.user)
-        features.add(TableFeature.account)
+        features.add(TableFeature.client)
     }
 
     /**
      * Marks the table as participating in topic transactions: adds the transaction-lock columns
-     * ([PF.touchedAt] and [PF.lastTranId]). May be combined with [forAccount]/[forUsers]. A topic designates
+     * ([PF.touchedAt] and [PF.lastTranId]). May be combined with [forClient]/[forUsers]. A topic designates
      * one such table as its lock table.
      */
     fun withTransactions() {
@@ -139,12 +139,12 @@ class TableBuilder(
         }
 
         val allSpecs = columnSpecs.toMutableList()
-        // Feature columns (numeric userId, string account).
+        // Feature columns (numeric userId, string client).
         if (TableFeature.user in features) {
             allSpecs.add(mkSpec(PF.userId, integerSchema("Numeric id of the owning user."), required = true))
         }
-        if (TableFeature.account in features) {
-            allSpecs.add(mkSpec(PF.account, stringSchema("Owning client account."), required = true))
+        if (TableFeature.client in features) {
+            allSpecs.add(mkSpec(PF.client, stringSchema("Owning client."), required = true))
         }
         // Transaction-lock columns (present only on a topic's designated lock table).
         if (TableFeature.transactions in features) {

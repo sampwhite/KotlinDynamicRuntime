@@ -10,8 +10,8 @@ import kotlin.time.Instant
  * populates protocol columns from the [KdrCxt] before a write.
  *
  * Protocol population follows issue #33's owner-vs-actor split (see [KdrCxt]): `createdBy`/`updatedBy` come
- * from the acting user ([KdrCxt.userProfile]), while the ownership columns added by the account/user table
- * features come from the bound owner ([KdrCxt.account] / [KdrCxt.userId]). Which columns to fill is driven
+ * from the acting user ([KdrCxt.userProfile]), while the ownership columns added by the client/user table
+ * features come from the bound owner ([KdrCxt.client] / [KdrCxt.userId]). Which columns to fill is driven
  * by the table's declared columns and [TableFeature]s, not hard-coded — so this is not a blind fallback.
  * Rewritten from the prior-art `SqlTopicUtil`.
  */
@@ -87,8 +87,8 @@ object SqlTopicUtil {
         if (table.columnsByName.containsKey(PF.enabled)) {
             data[PF.enabled] = true
         }
-        if (TableFeature.account in table.features) {
-            data.putIfAbsent(PF.account, cxt.account)
+        if (TableFeature.client in table.features) {
+            data.putIfAbsent(PF.client, cxt.client)
         }
         if (TableFeature.user in table.features) {
             data.putIfAbsent(PF.userId, cxt.userId)

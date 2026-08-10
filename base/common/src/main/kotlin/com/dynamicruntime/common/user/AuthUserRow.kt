@@ -12,11 +12,11 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * A user's authentication row, extracted from the `AuthUsers` table into typed fields. Ported from dn's
- * `AuthUserRow`, kd2-simplified to a single [account] (no group/shard). The password is promoted out of the
+ * `AuthUserRow`, kd2-simplified to a single [client] (no group/shard). The password is promoted out of the
  * stored [authUserData] map into [encodedPassword] and scrubbed from [data], so it never rides downstream.
  * The class shape is deliberately independent of the storage shape (fields are read/written explicitly).
  */
-class AuthUserRow(val userId: Long, val account: String, val primaryId: String) {
+class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
     var enabled: Boolean = false
     lateinit var username: String
     var roles: List<String> = listOf(ROLE.user)
@@ -41,7 +41,7 @@ class AuthUserRow(val userId: Long, val account: String, val primaryId: String) 
      * for now; a future variant may load only part of the profile for high-volume paths.
      */
     fun toUserProfile(): UserProfile = UserProfile(
-        authId = userId.toString(), userId = userId, account = account, roles = roles.toSet(),
+        authId = userId.toString(), userId = userId, client = client, roles = roles.toSet(),
         publicName = publicName(), hasPassword = encodedPassword != null,
     )
 
@@ -105,10 +105,10 @@ class AuthUserRow(val userId: Long, val account: String, val primaryId: String) 
         /** Builds a typed row from a stored `AuthUsers` map. */
         fun extract(data: Map<String, Any?>): AuthUserRow {
             val userId = data[AU.userId].toOptLong() ?: throw KdrException("AuthUsers row is missing its userId.")
-            val account = data[PF.account].toOptStr() ?: ""
+            val client = data[PF.client].toOptStr() ?: ""
             val primaryId = data[AU.primaryId].toOptStr()
                 ?: throw KdrException("AuthUsers row is missing its primaryId.")
-            val row = AuthUserRow(userId, account, primaryId)
+            val row = AuthUserRow(userId, client, primaryId)
             row.enabled = data[PF.enabled] == true
             row.username = data[AU.username].toOptStr() ?: (usernameTmpPrefix + primaryId)
             val userData = (data[AU.authUserData]?.toJsonMap() ?: emptyMap()).toMutableMap()
@@ -121,10 +121,10 @@ class AuthUserRow(val userId: Long, val account: String, val primaryId: String) 
         }
 
         /** The initially provisioned row for a freshly verified [primaryId] contact (placeholder username). */
-        fun mkInitialUser(primaryId: String, account: String, roles: List<String>): Map<String, Any?> = mapOf(
+        fun mkInitialUser(primaryId: String, client: String, roles: List<String>): Map<String, Any?> = mapOf(
             AU.primaryId to primaryId,
             AU.username to (usernameTmpPrefix + primaryId),
-            PF.account to account,
+            PF.client to client,
             AU.authUserData to mutableMapOf<String, Any?>(AD.roles to roles),
         )
     }

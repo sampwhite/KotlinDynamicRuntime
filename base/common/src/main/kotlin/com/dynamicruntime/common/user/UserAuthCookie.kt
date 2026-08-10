@@ -32,23 +32,23 @@ object AUTHC {
 /**
  * The contents of the session auth cookie: who the user is and when the session expires. Serialized as a
  * compact JSON map and encrypted with the node's key (via [NodeService]), so the client cannot read or forge
- * it. A per-request check of [expireEpochMs] bounds the session; the actual roles/account are trusted from the
+ * it. A per-request check of [expireEpochMs] bounds the session; the actual roles/client are trusted from the
  * (encrypted) cookie for the fast path -- no database hit on every request. Ported from dn's `UserAuthCookie`,
  * pared down to what verify-code login needs.
  */
 class UserAuthCookie(
     val userId: Long,
-    val account: String,
+    val client: String,
     val roles: List<String>,
     val expireEpochMs: Long,
 ) {
     /** Encrypts this cookie to its wire string using the node key. */
     fun encode(node: NodeService): String =
-        node.encryptString(mapOf(K_USER to userId, K_ACCOUNT to account, K_ROLES to roles, K_EXPIRE to expireEpochMs).toJsonStr(compact = true))
+        node.encryptString(mapOf(K_USER to userId, K_CLIENT to client, K_ROLES to roles, K_EXPIRE to expireEpochMs).toJsonStr(compact = true))
 
     companion object {
         private const val K_USER = "u"
-        private const val K_ACCOUNT = "a"
+        private const val K_CLIENT = "c"
         private const val K_ROLES = "r"
         private const val K_EXPIRE = "e"
 
@@ -56,10 +56,10 @@ class UserAuthCookie(
         fun decode(node: NodeService, cookie: String): UserAuthCookie? = try {
             val m = node.decryptString(cookie).jsonMap() ?: return null
             val userId = m[K_USER].toOptLong() ?: return null
-            val account = m[K_ACCOUNT].toOptStr() ?: return null
+            val client = m[K_CLIENT].toOptStr() ?: return null
             val roles = m[K_ROLES].toJsonListOfStrings()
             val expire = m[K_EXPIRE].toOptLong() ?: return null
-            UserAuthCookie(userId, account, roles, expire)
+            UserAuthCookie(userId, client, roles, expire)
         } catch (_: Exception) {
             null
         }

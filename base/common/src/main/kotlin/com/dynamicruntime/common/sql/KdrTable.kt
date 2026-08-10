@@ -24,14 +24,14 @@ object TI {
 }
 
 /**
- * Optional table capabilities, opted into via the builder ([TableBuilder.forAccount] /
+ * Optional table capabilities, opted into via the builder ([TableBuilder.forClient] /
  * [TableBuilder.forUsers] / [TableBuilder.withTransactions]); each adds its protocol column(s).
- * [transactions] may be combined with either [account] or [user].
+ * [transactions] may be combined with either [client] or [user].
  *
  * A closed operational set that gets serialized in the table info dump, so an enum fits (per the code guide).
  */
 @Suppress("EnumEntryName")
-enum class TableFeature { account, user, transactions }
+enum class TableFeature { client, user, transactions }
 
 /** A database index over one or more columns (by field name), optionally named and/or unique. */
 class KdrIndex(

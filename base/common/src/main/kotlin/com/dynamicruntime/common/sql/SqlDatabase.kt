@@ -1,6 +1,6 @@
 package com.dynamicruntime.common.sql
 
-import com.dynamicruntime.common.context.AC
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
@@ -208,7 +208,7 @@ class SqlDatabase(
     fun executeSchemaChangeSql(cxt: KdrCxt, sql: String) {
         // Schema changes (DDL) run as raw SQL, so they must never execute on behalf of an end user: only
         // system-level startup code (acting as the system user) creates or alters tables.
-        if (cxt.userProfile.userId != AC.systemUserId.toLong()) {
+        if (cxt.userProfile.userId != CL.systemUserId.toLong()) {
             throw KdrException(
                 "Schema-change SQL may only be executed by the system user, but the acting user is " +
                     "${cxt.userProfile.userId}.",

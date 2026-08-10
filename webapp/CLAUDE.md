@@ -11,7 +11,7 @@ The backend serves per-component UI text as **Markdown fragment files** through 
 
 **Request:** `GET /st/<appId>/md/<fileId:buildId>` (e.g. `/st/myapp.acme.en/md/emailForms:9f3ac1`)
 
-- `appId` — **you** construct it: the application you're serving, plus an optional account-variation suffix,
+- `appId` — **you** construct it: the application you're serving, plus an optional client-variation suffix,
   plus an optional locale suffix. Opaque to the backend for now (it ignores it); a future backend may return
   different content per `appId`.
 - `fileId` — names the file `md-fragments/<fileId>.md` in the owning backend component's resources. If that
