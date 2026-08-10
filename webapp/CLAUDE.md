@@ -58,7 +58,12 @@ Current UI-config endpoints:
 - `GET /auth/ui/config` — anonymous; features `{registration, codeLogin, passwordLogin, googleLogin}`, state
   `{userInfo, googleClientId}` (anonymous `userInfo` when logged out). Fragment file `auth`. `googleLogin` is
   on only when the deployment set `KDR_GOOGLE_CLIENT_ID`, and `googleClientId` carries that (public) id —
-  Google's script has to present it, so it is served here rather than hardcoded in the frontend.
+  Google's script has to present it, so it is served here rather than hardcoded in the frontend. A configured
+  id is **not** enough for the button to work: Google also checks the page's origin against the client id's
+  *Authorized JavaScript origins*, and an unregistered one fails entirely in the browser (a `403` plus
+  `[GSI_LOGGER]: The given origin is not allowed for the given client ID`) without the backend seeing
+  anything. `http://localhost:7070` (same-origin, `/wa`) and `http://localhost:8080` (dev server) are separate
+  origins and both need registering; see `environment-variables.md`.
 - `GET /profile/ui/config` — **login-required** (`profile` section); features `{hasPassword, canSetPassword}`,
   state `{userInfo}`. Fragment file `profile`.
 

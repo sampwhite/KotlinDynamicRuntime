@@ -24,8 +24,24 @@ Conventions:
 | `KDR_TEST_INSTANCE` | Force this to be a *test instance*, independent of environment — exposing `forTestingOnly` endpoints and simulating/capturing email by default. Also true implicitly when `KDR_ENV=unit` or `inMemoryOnly` is on. A test instance in an environment other than `local`/`unit` refuses to start, so test affordances cannot reach a real deployment. | unset (derived) |
 | `KDR_CUSTOM_CONFIG` | The class name of the deployment configuration object to discover and apply at startup. | `KdrConfig` |
 | `KDR_LOAD_SAMPLE` | Force-loads (`true`) or skips (`false`) the `sample` module's demo Todo endpoints. | on for `local`/`dev`, off otherwise |
-| `KDR_GOOGLE_CLIENT_ID` | The deployment's Google OAuth **client id**, which turns Google sign-in on: unset (the default) and the feature is neither offered by the auth UI nor accepted by its endpoint. It is public by design — it identifies the application to Google and the browser must present it — so it is an environment variable rather than a secret, and the auth UI config serves it to the frontend. It is also what an incoming Google ID token's `aud` claim is checked against, which is the check that stops another application's tokens from being accepted here; there is deliberately no default, since a guessed value would defeat that check. | unset |
+| `KDR_GOOGLE_CLIENT_ID` | The deployment's Google OAuth **client id**, which turns Google sign-in on: unset (the default) and the feature is neither offered by the auth UI nor accepted by its endpoint. It is public by design — it identifies the application to Google and the browser must present it — so it is an environment variable rather than a secret, and the auth UI config serves it to the frontend. It is also what an incoming Google ID token's `aud` claim is checked against, which is the check that stops another application's tokens from being accepted here; there is deliberately no default, since a guessed value would defeat that check. **Setting it is not sufficient on its own:** every origin the page is served from must also be registered against that client id as an *Authorized JavaScript origin* in Google Cloud Console — see the note below. | unset |
 | `KDR_ADMIN_EMAIL_DOMAIN` | Email domain whose addresses are automatically granted the `admin` role — how a deployment's first administrator comes to exist. An address qualifies when its domain **is** this domain (or a subdomain of it) **and** its local part carries no `+` tag, so `sam@acme.com` becomes an admin while `sam+qa@acme.com` stays an ordinary user, letting one mailbox hold both. Applied when a user is provisioned and re-checked at each login, so it reaches accounts registered before it was set. It only ever *grants*: unsetting it demotes nobody — revoke with `admin/user/setRoles` or `kdr-run com.dynamicruntime.script.GrantRoleKt <loginId> admin --revoke`. Unset means no address is ever auto-granted. | unset |
+
+Notes:
+
+- **Google sign-in also needs the page's origin registered.** `KDR_GOOGLE_CLIENT_ID` turns the feature on, but
+  Google checks the origin the page is served from against the *Authorized JavaScript origins* configured for
+  that client id (Google Cloud Console → APIs & Services → Credentials → the OAuth 2.0 Client ID). An
+  unregistered origin makes Google refuse the button — a `403` on its `credential_button_library` request and
+  `[GSI_LOGGER]: The given origin is not allowed for the given client ID` in the browser console. Nothing
+  reaches this server, so there is no log line here and no misconfiguration the app can detect: the client id
+  is valid, and only Google knows which origins go with it.
+- **An origin is scheme + host + port, and each is separate.** Register `http://localhost:7070` (the
+  same-origin route, where `appui` serves the front end under `/wa`) and `http://localhost:8080` separately if
+  the webpack dev server is also used — and with no path, so `http://localhost:7070`, never
+  `http://localhost:7070/wa`. An instance on another port (`KDR_PORT=7071`, say) is another origin again; the
+  simplest fix there is to leave `KDR_GOOGLE_CLIENT_ID` unset for that instance, which turns the button off
+  rather than drawing one that cannot work.
 
 ## Logging
 
