@@ -36,6 +36,13 @@ object Probe {
     /** Exit code for a usage error or a scenario that could not run. */
     const val failureExit = 1
 
+    /**
+     * The last line of every run, one marker or the other. A reader who has piped the output through `grep`
+     * or `tail` no longer has the exit code, so the report has to say for itself whether it finished.
+     */
+    const val completedMarker = "kdr-probe: completed"
+    const val failedMarker = "kdr-probe: FAILED"
+
     /** Flags accepted before the scenario name. */
     @Suppress("ConstPropertyName")
     object PRF {
@@ -110,13 +117,30 @@ fun main(args: Array<String>) {
             val scenario = Probe.scenarios[name] ?: usage("Unknown scenario '$name'.")
             scenario(cxt)
         }
-    } catch (e: KdrException) {
-        // A probe that cannot do its job says so and stops. Reporting a partial result here is what makes a
-        // broken harness look like a finding about the code.
+    } catch (e: Throwable) {
+        // A probe that cannot do its job says so and stops. Reporting a partial result is what makes a broken
+        // harness look like a finding about the code -- the mistake this whole tool exists to retire.
+        //
+        // Catching Throwable rather than KdrException on purpose, and telling the two apart. A KdrException is
+        // the probe working correctly and reporting that it cannot proceed (almost always the instance);
+        // anything else is a defect in the probe, and saying so stops a reader from taking it as news about
+        // the code under test. Left uncaught, the second kind printed a bare JVM stack trace with no marker at
+        // all, which is exactly the shape a reader skims past.
         println()
-        println("FAILED: ${e.fullMessage()}")
+        if (e is KdrException) {
+            println("${Probe.failedMarker} $name -- ${e.fullMessage()}")
+        } else {
+            println("${Probe.failedMarker} $name -- probe defect: ${e::class.simpleName}: ${e.message}")
+            e.printStackTrace()
+        }
         exitProcess(Probe.failureExit)
     }
+    // The sentinel, and the reason it is unconditional. Scenarios print as they go, so a run that dies partway
+    // leaves output that reads as a short but finished report -- and reading only the table (or grepping for
+    // it) loses the exit code entirely. Absence of this last line means the report is incomplete, however
+    // complete it looks.
+    println()
+    println("${Probe.completedMarker} $name")
 }
 
 /**
