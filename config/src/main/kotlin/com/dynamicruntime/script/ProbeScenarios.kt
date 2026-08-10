@@ -111,7 +111,7 @@ fun accessMatrix(cxt: ProbeContext) {
 }
 
 /**
- * Grants a rung to a session that is already logged in, and re-probes it without a new cookie.
+ * Grants a rung to a session that is already logged in and re-probes it without a new cookie.
  *
  * Two claims meet here, and one of them has already been broken. The dispatcher re-reads live roles before
  * enforcing, so a grant takes effect on the next request (issue #212) -- and the catalog must agree, which it

@@ -40,11 +40,11 @@ class ProbeResponse(val statusCode: Int, val body: Map<String, Any?>, val rawBod
 }
 
 /**
- * A single caller against a running instance: its own cookie jar, so a login sticks and several callers can be
+ * A single caller against a running instance: its own cookie jar, so a login sticks, and several callers can be
  * alive at once (issue #215).
  *
  * **Why this exists rather than curl.** Cookies here live in the process. Passing a cookie *file* through a
- * shell variable is how a probe comes to run anonymously without saying so: while verifying #211 that mistake
+ * shell variable is how a probe comes to run anonymously without saying so: while verifying #211, that mistake
  * produced a clean-looking table of identical numbers for three different callers, which read as data and cost
  * far more to unpick than a crash would have. A wrong probe must fail, not answer plausibly -- hence
  * [becomeUser] throwing rather than returning an unauthenticated session.
@@ -53,6 +53,7 @@ class ProbeResponse(val statusCode: Int, val body: Map<String, Any?>, val rawBod
  * kotest test with mechanical edits instead of a rewrite. The one divergence is that a response carries its
  * own [ProbeResponse.statusCode], because out here every call crosses a real socket and can be refused.
  */
+@Suppress("ConstPropertyName")
 class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) {
     private val cookies = CookieManager(null, CookiePolicy.ACCEPT_ALL)
     private val http: HttpClient = HttpClient.newBuilder()

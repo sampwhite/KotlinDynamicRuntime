@@ -1,3 +1,5 @@
+@file:Suppress("ConstPropertyName")
+
 package com.dynamicruntime.script
 
 import com.dynamicruntime.common.exception.KdrException
@@ -28,7 +30,7 @@ import kotlin.system.exitProcess
  *
  * It talks HTTP to a server that is already up (start one with `KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true
  * kdr-backend`), rather than booting the runtime in-process the way [GrantRole] does. Exercising the real
- * dispatcher, real cookies and the live-role refresh is the entire point; an in-process client would skip the
+ * dispatcher, real cookies, and the live-role refresh is the entire point; an in-process client would skip the
  * layer those defects live in. It depends on the test-only `becomeUser` endpoint, so it only ever works
  * against a test instance -- no separate gating needed.
  */
