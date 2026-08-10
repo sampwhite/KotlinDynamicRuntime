@@ -33,7 +33,7 @@ object APP {
      * makes the app throw on demand, and whatever diagnostic views join it.
      *
      * Separate from [showErrorDetail] on purpose, though both derive from the backend's `isTestInstance`
-     * today. They authorise different things -- seeing internals, versus *manufacturing a failure* -- and a
+     * today. They authorize different things -- seeing internals versus *manufacturing a failure* -- and a
      * flag named for disclosure must not silently confer injection. Kept apart so they can diverge later
      * without one quietly widening the other.
      */

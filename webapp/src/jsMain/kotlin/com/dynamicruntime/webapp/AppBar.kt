@@ -47,7 +47,7 @@ val AppBar = FC<Props> {
     val bump = useRefreshBump()
 
     // Re-read the shell config on every refresh generation -- mount, navigation, and any state mutation
-    // (notably sign-in / sign-out). The menu stays as it was if the config cannot be loaded.
+    // (notably sign-in / sign-out). The menu stays as it was if the config could not be loaded.
     useEffect(generation) {
         appBarScope.launch {
             runCatching { HomeApi.fetchConfig() }.getOrNull()?.let { config = it }
@@ -85,7 +85,7 @@ val AppBar = FC<Props> {
             +"KDR"
         }
         if (elevated) {
-            // Spelled out, not just coloured: a hue on its own tells a colourblind user nothing, and this is
+            // Spelled out, not just colored: a hue on its own tells a colourblind user nothing, and this is
             // the cue that says "the actions available to you right now are privileged".
             span {
                 className = ClassName("admin-badge")

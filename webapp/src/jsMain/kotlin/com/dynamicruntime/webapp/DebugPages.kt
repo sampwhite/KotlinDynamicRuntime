@@ -129,7 +129,7 @@ val DebugIndex = FC<Props> {
  *
  * A dedicated component rather than a conditional inside a real page: real pages stay clean, and a test that
  * drives this is deterministic instead of coupled to whatever a real page happens to do. Issue #223's
- * boundaries shipped with no automated coverage precisely because making the app fail required editing source
+ * boundaries shipped with no automated coverage precisely because making the app fail required editing source code
  * and rebuilding, which a test cannot do.
  */
 val DebugFault = FC<Props> {

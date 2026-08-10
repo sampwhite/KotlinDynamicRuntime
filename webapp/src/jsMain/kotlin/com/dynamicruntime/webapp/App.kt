@@ -133,7 +133,7 @@ val App = FC<Props> {
                             pageUsers -> Users {}
                             // Resolved here rather than in `currentPage()` because the answer depends on the
                             // app config, which arrives asynchronously -- see `debugAllowed` above. Where the
-                            // flag is off this falls through to Home, so the route does not exist rather than
+                            // flag is off, this falls through to Home, so the route does not exist rather than
                             // being refused: nothing should acknowledge that a way to break the app is there
                             // (issue #227).
                             pageDebug -> if (debugAllowed) DebugPage {} else Home {}
