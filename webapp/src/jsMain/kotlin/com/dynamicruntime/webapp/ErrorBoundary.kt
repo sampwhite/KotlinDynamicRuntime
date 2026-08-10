@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import react.ChildrenBuilder
 import react.ComponentType
 import react.FC
 import react.Props
@@ -98,7 +99,6 @@ val ErrorBoundary: ComponentType<ErrorBoundaryProps> =
  * the shell rather than the root. A crash should cost the page, not the navigation -- someone (or a test)
  * needs to be able to click away from a broken screen instead of being stranded on it.
  */
-@Suppress("DuplicatedCode")
 val ErrorFallback = FC<ErrorFallbackProps> { props ->
     div {
         className = ClassName("card wide error-panel")
@@ -108,20 +108,36 @@ val ErrorFallback = FC<ErrorFallbackProps> { props ->
             +("Something went wrong while drawing this page. The rest of the app is still working — use the " +
                 "navigation above to go elsewhere, or reload to try again.")
         }
-        // Shown only where the deployment allows it (`showErrorDetail`, from the backend's isTestInstance).
-        // On a real deployment there is nothing here, and the detail lives in the console rather than on a
-        // user's screen. Read at render time rather than captured, so the first config fetch is reflected.
-        if (appConfig().showErrorDetail) {
-            p {
-                className = ClassName("subtitle")
-                +props.message
-            }
-            props.detail?.let { detail ->
-                pre {
-                    className = ClassName("code")
-                    +detail
-                }
-            }
+        detailWhenPermitted(props)
+    }
+}
+
+/**
+ * Renders the failure's own words -- its message and component stack -- **only where this deployment permits
+ * it**, and nothing at all otherwise.
+ *
+ * Shared by both fallbacks for the one line in it that is not markup: the `showErrorDetail` check. The
+ * surrounding elements are cheap to repeat and might reasonably diverge, but the disclosure rule is policy
+ * about what reaches a user's screen, and a policy kept in two places is a policy that eventually differs in
+ * two places. The name is meant to carry that: a call site says *permitted*, so a reader knows a gate applies
+ * without opening this.
+ *
+ * The gate is read at render time rather than captured, so the first app-config fetch is reflected. It is
+ * false until that fetch lands, which is deliberate -- a config that has not arrived must never be the reason
+ * internals appear.
+ */
+private fun ChildrenBuilder.detailWhenPermitted(props: ErrorFallbackProps) {
+    if (!appConfig().showErrorDetail) {
+        return
+    }
+    p {
+        className = ClassName("subtitle")
+        +props.message
+    }
+    props.detail?.let { detail ->
+        pre {
+            className = ClassName("code")
+            +detail
         }
     }
 }
@@ -134,7 +150,6 @@ val ErrorFallback = FC<ErrorFallbackProps> { props ->
  * thing that broke may be the app bar. A reload is the only honest action here: the page-level fallback can
  * say "go elsewhere" because elsewhere still works, and this one cannot.
  */
-@Suppress("DuplicatedCode")
 val ShellErrorFallback = FC<ErrorFallbackProps> { props ->
     div {
         className = ClassName("card wide error-panel")
@@ -148,18 +163,9 @@ val ShellErrorFallback = FC<ErrorFallbackProps> { props ->
             onClick = { reloadWebApp() }
             +"Reload"
         }
-        if (appConfig().showErrorDetail) {
-            p {
-                className = ClassName("subtitle")
-                +props.message
-            }
-            props.detail?.let { detail ->
-                pre {
-                    className = ClassName("code")
-                    +detail
-                }
-            }
-        }
+        // In practice this stays empty: a shell failure happens before the app-config fetch returns, so the
+        // gate is still false even on a test instance. The console carries the full report either way.
+        detailWhenPermitted(props)
     }
 }
 
