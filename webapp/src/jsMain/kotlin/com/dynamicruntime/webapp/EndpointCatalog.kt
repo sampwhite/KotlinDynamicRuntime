@@ -318,7 +318,7 @@ val EndpointCatalog = FC<Props> {
                 type = inputType
                 this.values = values
                 this.editable = editable
-                this.failures = failures ?: emptyList()
+                this.failures = failures
                 onChange = { values = it }
                 // Clearing on edit, rather than re-validating: validation stays something the user asks for
                 // (Validate, or Run/Download implicitly), so a field being corrected must not keep showing the

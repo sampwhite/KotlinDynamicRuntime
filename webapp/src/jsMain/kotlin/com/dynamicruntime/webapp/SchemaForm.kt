@@ -52,16 +52,21 @@ external interface SchemaFormProps : Props {
     /**
      * Validation failures to show against the fields that caused them. Their paths are the ones the kernel
      * validator reported, and the form rebuilds the same paths as it walks — see [FieldErrors].
+     *
+     * Optional, and genuinely so: a form rendering a *response* has nothing to report against. Declaring it
+     * non-null would not make it safe either -- an external interface is erased on the JS side, so an omitted
+     * prop arrives as `undefined` no matter what the Kotlin type says, and the first call on it throws.
      */
-    var failures: List<SchFailure>
+    var failures: List<SchFailure>?
     /** Called with the full new values map for this object whenever a field changes. */
     var onChange: (Map<String, Any?>) -> Unit
     /**
      * Called with the path of the field the user just edited, so its now-stale failures can be dropped. Fired
      * from the innermost thing touched, never from the parent updates that bubble up behind it — editing one
-     * field must not clear a sibling's error.
+     * field must not clear a sibling's error. Optional for the same reason as [failures]: a read-only form
+     * has no edits to report.
      */
-    var onFieldEdit: (String) -> Unit
+    var onFieldEdit: ((String) -> Unit)?
 }
 
 /**
@@ -117,7 +122,7 @@ fun focusField(path: String) {
 }
 
 val SchemaForm = FC<SchemaFormProps> { props ->
-    val errors = FieldErrors(props.failures, props.onFieldEdit)
+    val errors = FieldErrors(props.failures ?: emptyList(), props.onFieldEdit ?: {})
     div {
         className = ClassName("schema-form")
         // The root path is empty, which is what the validator starts from too, so `childPath` composes the
