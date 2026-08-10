@@ -118,7 +118,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
  * The menu is built here rather than in the frontend so that what a user may reach is decided in one place, by
  * the side that actually knows -- the shell then renders whatever list it is handed. That matters most for the
  * user-administration entry: it appears only for a caller with the [AdminRules.canManageUsers] capability, and
- * when that capability grows narrower (per-account administration, say) the menu narrows with it and no
+ * when that capability grows narrower (per-client administration, say) the menu narrows with it and no
  * frontend changes. It also means a signed-out visitor is never sent the labels of pages they cannot open.
  *
  * Labels are literal here, as the [homeDocs] link labels already are. Their natural home is the `home`

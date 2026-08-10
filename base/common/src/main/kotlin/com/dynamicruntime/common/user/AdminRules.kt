@@ -80,7 +80,7 @@ object AdminRules {
      *
      * Today this is exactly "holds [ROLE.admin]", the same thing the `admin` section gate enforces. It exists
      * as a named capability anyway, because it is the seam where that answer gets *narrower*: a future
-     * deployment may let someone manage only the users inside their own account, at which point this grows a
+     * deployment may let someone manage only the users inside their own client, at which point this grows a
      * scope (and its callers, which already ask "may I manage users?", keep working). Everything that asks the
      * question -- the home menu, a future admin console -- should ask it here rather than testing for a role.
      *

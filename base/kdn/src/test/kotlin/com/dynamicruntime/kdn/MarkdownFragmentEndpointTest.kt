@@ -43,7 +43,7 @@ class MarkdownFragmentEndpointTest : StringSpec({
         val cxt = Startup.mkTestBootCxt("md2", "markdownFragmentAppIdTest")
         val client = TestHttpClient(cxt.instanceConfig)
         val buildId = MarkdownFragmentService.fragmentBuildId("sample").shouldNotBeNull()
-        // A different appId (with account/locale-style suffixes) resolves the same file for now.
+        // A different appId (with client/locale-style suffixes) resolves the same file for now.
         val handler = client.sendGetRequestRaw("/st/myapp.acme.en/md/sample:$buildId")
         handler.rptStatusCode shouldBe EXC.ok
     }

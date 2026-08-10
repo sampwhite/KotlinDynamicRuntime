@@ -31,7 +31,7 @@ class ConfigParsersTest {
     private val sampleUserInfo = mapOf(
         UPF.authId to "auth-9",
         UPF.userId to 9L,
-        UPF.account to "acme",
+        UPF.client to "acme",
         UPF.roles to listOf("admin"),
         UPF.publicName to "Ada",
     )

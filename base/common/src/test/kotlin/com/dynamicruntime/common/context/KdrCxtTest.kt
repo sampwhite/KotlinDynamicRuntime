@@ -7,23 +7,23 @@ import io.kotest.matchers.string.shouldContain
 
 class KdrCxtTest : StringSpec({
 
-    "a simple context defaults its account to the user profile account" {
+    "a simple context defaults its client to the user profile client" {
         val cxt = KdrCxt.mkSimpleCxt("root")
-        cxt.account shouldBe cxt.userProfile.account
-        cxt.account shouldBe AC.local
+        cxt.client shouldBe cxt.userProfile.client
+        cxt.client shouldBe CL.local
     }
 
-    "a sub context inherits the parent account by default" {
+    "a sub context inherits the parent client by default" {
         val root = KdrCxt.mkSimpleCxt("root")
         val sub = root.mkSubContext("child")
-        sub.account shouldBe root.account
+        sub.client shouldBe root.client
     }
 
-    "a sub context can be bound to an alternate account without changing the parent" {
+    "a sub context can be bound to an alternate client without changing the parent" {
         val root = KdrCxt.mkSimpleCxt("root")
-        val sub = root.mkSubContext("child", AC.public)
-        sub.account shouldBe AC.public
-        root.account shouldBe AC.local
+        val sub = root.mkSubContext("child", CL.public)
+        sub.client shouldBe CL.public
+        root.client shouldBe CL.local
     }
 
     "locals propagate as a clone to a sub context but session does not" {

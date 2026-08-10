@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
  * API catalog. See `webapp/CLAUDE.md` for the frontend-facing contract.
  *
  * Request shape: `/<staticRoot>/<appId>/md/<fileId:buildId>`, e.g. `/st/myapp/md/emailForms:9f3ac1`.
- *  - `appId` is an opaque, frontend-constructed id (application + optional account/locale suffixes). It is
+ *  - `appId` is an opaque, frontend-constructed id (application + optional client/locale suffixes). It is
  *    **ignored for now**; a future backend may return different content per `appId`.
  *  - `buildId` is a cache-busting suffix (a content hash; see [fragmentBuildId]). It is **stripped and
  *    ignored** for the lookup -- its only job is to make the URL change when the file changes, so the
@@ -72,7 +72,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      *
      * An **instance** method taking [cxt], deliberately not a static helper: the source is the classpath today,
      * but this is where a future version resolves a fragment through [cxt] -- a database, or an HTTP call to
-     * another service, for a per-account or per-version copy. Callers reach it via [get]; the seam is in place
+     * another service, for a per-client or per-version copy. Callers reach it via [get]; the seam is in place
      * so that change stays inside here.
      */
     fun resolveFragment(cxt: KdrCxt, fileId: String, namespace: String, key: String): String? {

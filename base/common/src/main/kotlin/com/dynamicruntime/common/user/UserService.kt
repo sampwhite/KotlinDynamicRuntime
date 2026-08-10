@@ -107,7 +107,7 @@ class UserService : ServiceInitializer {
         val table = authUsersTable(cxt)
         val stmt = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
         val row = data.toMutableMap()
-        SqlTopicUtil.prepForStdExecute(cxt, table, row) // stamps enabled=true, account, audit columns
+        SqlTopicUtil.prepForStdExecute(cxt, table, row) // stamps enabled=true, client, audit columns
         val counter = LongArray(1)
         sqlCxt.sqlDb.withSession(cxt) {
             sqlCxt.sqlDb.executeStatementGetCounterBack(cxt, stmt, row, counter)

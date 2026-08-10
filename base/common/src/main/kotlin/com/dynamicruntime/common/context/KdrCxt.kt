@@ -9,7 +9,7 @@ import kotlin.time.Instant
  * The universal context object for the runtime. It is passed down a call stack
  * as an explicit alternative to scoped / thread-local variables: from it, you can
  * reach the application configuration, the acting user, the bound owner
- * ([account] / [userId]), the schema store, and free-form association maps for
+ * ([client] / [userId]), the schema store, and free-form association maps for
  * handing extra information to implementers further down the stack.
  *
  * Every context is named and carries a parent context path (the chain of parent
@@ -30,18 +30,18 @@ class KdrCxt(
     /** The current acting user for this context. May be reassigned. */
     var userProfile: UserProfile = UserProfile.systemUser(),
     /**
-     * The client account that *owns* the data this context is operating on. Defaults to the acting user's
-     * account. This is distinct from [userProfile], which is who is *acting*: [account]/[userId] answer "who
-     * owns the row?" (consulted by the account/user table features), while [userProfile] answers "who is
+     * The client that *owns* the data this context is operating on. Defaults to the acting user's
+     * client. This is distinct from [userProfile], which is who is *acting*: [client]/[userId] answer "who
+     * owns the row?" (consulted by the client/user table features), while [userProfile] answers "who is
      * acting on the row?" (consulted to stamp `createdBy`/`updatedBy`). It can be pointed at a different
-     * account -- for admins editing across client accounts, or background jobs with cross-account scope --
-     * by creating a sub context with [mkSubContext] and supplying the alternate account, via
+     * client -- for admins editing across clients, or background jobs with cross-client scope --
+     * by creating a sub context with [mkSubContext] and supplying the alternate client, via
      * [bindToUserProfile], or by direct assignment when a request decides it is operating on another owner's
      * data.
      */
-    var account: String = userProfile.account,
+    var client: String = userProfile.client,
     /**
-     * The numeric id of the user that *owns* the data this context is operating on (companion to [account];
+     * The numeric id of the user that *owns* the data this context is operating on (companion to [client];
      * see that field for the owner-vs-actor distinction). Defaults to the acting user's
      * [UserProfile.userId] and can likewise be reassigned when operating on another user's data.
      */
@@ -76,7 +76,7 @@ class KdrCxt(
     /**
      * A per-context delta on top of the instance clock (issue #160): `now() = instanceNow() + this`. Retained
      * from the original time-travel hook but idle in practice today (instance-scoped travel is what tests use);
-     * it is the seam a future account-scoped clock would layer on.
+     * it is the seam a future client-scoped clock would layer on.
      */
     var nowTimeOffsetInSeconds: Int = 0
 
@@ -126,18 +126,18 @@ class KdrCxt(
     /** Cached read-only schema store; lazily populated via [getSchema]. */
     var schemaStore: KdrSchemaStore? = null
 
-    /** Creates a sub context that inherits this context's bound [account]. */
-    fun mkSubContext(subCxtName: String): KdrCxt = mkSubContext(subCxtName, account)
+    /** Creates a sub context that inherits this context's bound [client]. */
+    fun mkSubContext(subCxtName: String): KdrCxt = mkSubContext(subCxtName, client)
 
     /**
-     * Creates a sub context bound to the supplied [account] instead of inheriting
-     * this context's account. Use this when the acting user's account must differ
-     * from the account being operated on (admin cross-account edits, cross-account
+     * Creates a sub context bound to the supplied [client] instead of inheriting
+     * this context's client. Use this when the acting user's client must differ
+     * from the client being operated on (admin cross-client edits, cross-client
      * background jobs). The sub context clones the propagated [locals] and copies
      * the schema store and originating address, but does NOT carry over [session].
      */
-    fun mkSubContext(subCxtName: String, account: String): KdrCxt {
-        val sub = KdrCxt(subCxtName, instanceConfig, this, userProfile, account, userId)
+    fun mkSubContext(subCxtName: String, client: String): KdrCxt {
+        val sub = KdrCxt(subCxtName, instanceConfig, this, userProfile, client, userId)
         sub.locals.putAll(locals)
         sub.schemaStore = schemaStore
         sub.forwardedFor = forwardedFor
@@ -150,13 +150,13 @@ class KdrCxt(
 
     /**
      * Binds this context to an authenticated [userProfile]: makes it the acting user and resets the owning
-     * [account] and [userId] to that user's own. Called when a request has been authenticated as acting on
-     * behalf of a particular user. Afterward a request may point [account]/[userId] at a different owner
+     * [client] and [userId] to that user's own. Called when a request has been authenticated as acting on
+     * behalf of a particular user. Afterward a request may point [client]/[userId] at a different owner
      * (e.g., when operating on data owned by another user) without changing who is acting ([userProfile]).
      */
     fun bindToUserProfile(userProfile: UserProfile) {
         this.userProfile = userProfile
-        this.account = userProfile.account
+        this.client = userProfile.client
         this.userId = userProfile.userId
     }
 

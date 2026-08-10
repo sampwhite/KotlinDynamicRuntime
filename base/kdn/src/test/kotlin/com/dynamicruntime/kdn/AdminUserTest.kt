@@ -184,7 +184,7 @@ class AdminUserTest : StringSpec({
         val plain = TestUser.create(cxt, "climber@other.com")
 
         // Today the section gate alone stops this -- a non-admin never reaches the endpoint. The assertion
-        // stands guard for when canManageUsers admits a weaker caller (an account-scoped manager), for whom
+        // stands guard for when canManageUsers admits a weaker caller (a client-scoped manager), for whom
         // self-promotion would be the obvious escalation path.
         plain.expectError(
             EXC.authNeeded, ADEP.userSetRoles, mapOf(ADF.userId to plain.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)),

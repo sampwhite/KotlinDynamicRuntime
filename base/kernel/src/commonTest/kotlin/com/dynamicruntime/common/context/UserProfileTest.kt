@@ -18,7 +18,7 @@ class UserProfileTest {
         val original = UserProfile(
             authId = "auth-42",
             userId = 42L,
-            account = "acme",
+            client = "acme",
             roles = setOf("admin", "editor"),
             publicName = "Ada",
             hasPassword = true,
@@ -27,7 +27,7 @@ class UserProfileTest {
 
         assertEquals(original.authId, restored.authId)
         assertEquals(original.userId, restored.userId)
-        assertEquals(original.account, restored.account)
+        assertEquals(original.client, restored.client)
         assertEquals(original.roles, restored.roles)
         assertEquals(original.publicName, restored.publicName)
         assertEquals(original.hasPassword, restored.hasPassword)
@@ -45,7 +45,7 @@ class UserProfileTest {
     fun omitsPublicNameAndHasPasswordWhenAbsent() {
         // The fast-path profile carries no publicName and an unknown (null) hasPassword; toUserInfo omits both,
         // and fromUserInfo restores them as null rather than inventing a value.
-        val info = UserProfile(authId = "auth-7", userId = 7L, account = "acme").toUserInfo()
+        val info = UserProfile(authId = "auth-7", userId = 7L, client = "acme").toUserInfo()
         assertFalse(info.containsKey(UPF.publicName))
         assertFalse(info.containsKey(UPF.hasPassword))
 
@@ -58,8 +58,8 @@ class UserProfileTest {
     fun emptyInfoFallsBackToConstructorDefaults() {
         val restored = UserProfile.fromUserInfo(emptyMap())
         assertNull(restored.authId)
-        assertEquals(AC.systemUserId.toLong(), restored.userId)
-        assertEquals(AC.local, restored.account)
+        assertEquals(CL.systemUserId.toLong(), restored.userId)
+        assertEquals(CL.local, restored.client)
         assertTrue(restored.roles.isEmpty())
         assertFalse(restored.isLoggedIn)
     }

@@ -2,7 +2,7 @@ package com.dynamicruntime.common.context
 
 // Constants for the context package. Per the code guide, these live in
 // upper-cased acronym objects and are always referenced qualified (e.g.
-// `ENV.unit`, `AC.local`), never wildcard-imported. Note the deliberate lack of
+// `ENV.unit`, `CL.local`), never wildcard-imported. Note the deliberate lack of
 // enums: in a runtime whose model is meant to be modified dynamically, a
 // compile-time-enforced enum of choice values runs counter to the goals.
 //
@@ -24,7 +24,7 @@ object ENV {
     const val deployed = "deployed"
 }
 
-// AC (account constants) moved to the kernel (AccountConstants.kt), so shared data classes like UserProfile
+// CL (client constants) moved to the kernel (ClientConstants.kt), so shared data classes like UserProfile
 // can live in the kernel too (issue #78); still referenced as `com.dynamicruntime.common.context.AC`.
 
 /** Application configuration data keys. (A key's name matches its string value.) */

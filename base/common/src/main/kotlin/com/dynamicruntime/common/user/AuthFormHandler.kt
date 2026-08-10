@@ -1,6 +1,6 @@
 package com.dynamicruntime.common.user
 
-import com.dynamicruntime.common.context.AC
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -158,7 +158,7 @@ class AuthFormHandler(
         // The roles a new user starts with: normally just ROLE.user, but an address matching the deployment's
         // configured admin domain is provisioned as an admin -- how the first admin comes to exist (AdminRules).
         val initialRoles = AdminRules.initialRoles(cxt, contactAddress)
-        val data = AuthUserRow.mkInitialUser(contactAddress, AC.public, initialRoles).toMutableMap()
+        val data = AuthUserRow.mkInitialUser(contactAddress, CL.public, initialRoles).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(contactAddress)
@@ -320,7 +320,7 @@ class AuthFormHandler(
      * `LinkedUsers` row instead, where it cannot be mistaken for our own verification.
      */
     private fun mkGoogleUser(cxt: KdrCxt, email: String): AuthUserRow {
-        val data = AuthUserRow.mkInitialUser(email, AC.public, AdminRules.initialRoles(cxt, email)).toMutableMap()
+        val data = AuthUserRow.mkInitialUser(email, CL.public, AdminRules.initialRoles(cxt, email)).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
@@ -384,7 +384,7 @@ class AuthFormHandler(
             return completeLogin(cxt, existing, byCode = false)
         }
         val roles = if (grantAdmin) listOf(ROLE.user, ROLE.admin) else listOf(ROLE.user)
-        val data = AuthUserRow.mkInitialUser(email, AC.public, roles).toMutableMap()
+        val data = AuthUserRow.mkInitialUser(email, CL.public, roles).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(email)

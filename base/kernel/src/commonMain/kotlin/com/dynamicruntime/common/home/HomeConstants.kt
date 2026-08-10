@@ -30,7 +30,7 @@ object HFEAT {
 
     /**
      * Whether this caller may administer other users -- today "has the admin role", later something narrower
-     * (e.g. may edit only users in their own account). It is expressed as a **capability of the caller**, not
+     * (e.g. may edit only users in their own client). It is expressed as a **capability of the caller**, not
      * as their role, precisely so that refinement changes what the backend computes here and nothing else: the
      * frontend already asks "may I?" rather than "am I an admin?".
      */
