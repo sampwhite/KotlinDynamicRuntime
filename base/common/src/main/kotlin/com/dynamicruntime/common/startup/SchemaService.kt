@@ -415,7 +415,7 @@ class SchemaService : ServiceInitializer {
             }
             val service = RequestService.get(cxt)
             val bySection = withheld.groupBy { sectionOf(it.path) }.entries.sortedBy { it.key }.map { (section, eps) ->
-                linkedMapOf<String, Any?>(
+                linkedMapOf(
                     SS.section to section,
                     SS.requiredRole to service?.requiredRoleFor(eps.first().path),
                     EI.endpoints to eps.map { it.path }.sorted(),
@@ -550,7 +550,7 @@ object SS {
     const val explainInput = "explainInput"
     const val paramsEvaluated = "paramsEvaluated"
 
-    // The debug tag that reports what the catalog's access filter withheld (issue #215), the _meta key it is
+    // The debug tag that reports what the catalog's access filter withheld (issue #215), the "_meta" key it is
     // reported under, and that report's own fields. Test instances only -- see `explainAccess`.
     const val explainAccess = "explainAccess"
     const val accessExplained = "accessExplained"

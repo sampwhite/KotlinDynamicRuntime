@@ -180,7 +180,7 @@ class KdrInstanceConfig(
      * Whether this is a **test instance** -- a node where test-only affordances are on: `forTestingOnly`
      * endpoints are exposed (issue #125), and email is simulated and captured by default (issue #158).
      *
-     * An explicit [ACFG.isTestInstance] config entry **decides it**, either way. Otherwise it is inferred:
+     * An explicit [ACFG.isTestInstance] config entry **decides it**, either way. Otherwise, it is inferred:
      * true when the [testInstanceEnvVar] env var is set true, OR the environment is [ENV.unit], OR the
      * instance runs [ACFG.inMemoryOnly].
      *
