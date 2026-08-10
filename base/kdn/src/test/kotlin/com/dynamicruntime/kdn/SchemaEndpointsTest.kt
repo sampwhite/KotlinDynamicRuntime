@@ -2,9 +2,11 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.util.toJsonMap
@@ -145,7 +147,28 @@ class SchemaEndpointsTest : StringSpec({
         // The admin sees them, which is what makes the two assertions above about privilege rather than about
         // the admin endpoints having quietly stopped being registered.
         val chief = TestUser.create(cxt, "chief@other.com", admin = true)
-        pathsFor(chief.client) shouldContainAll listOf(ADEP.users, ADEP.userSetRoles, "/health")
+        val chiefPaths = pathsFor(chief.client)
+        chiefPaths shouldContainAll listOf(ADEP.users, ADEP.userSetRoles, "/health")
+
+        // And the ladder reaches the listing, not just the gate (issue #212): the admin is shown the operator
+        // section despite not holding `operator`, because that is who the dispatcher would actually admit. A
+        // plain-membership test here would hide an endpoint this caller can run -- the same advertise-versus-
+        // serve drift, one rung further down.
+        chief.selfRoles().contains(ROLE.operator) shouldBe false
+        chiefPaths shouldContain "/operator/system/info"
+        plainPaths shouldNotContain "/operator/system/info"
+
+        // A role granted after login shows up without a re-login, matching what the gate would already let
+        // through. The catalog's own section is anonymous, so nothing refreshes roles on its behalf unless it
+        // asks -- and filtering on the login-time cookie would hide these endpoints for the cookie's whole
+        // 30-day life, from exactly the person just given the role.
+        val newOperator = TestUser.create(cxt, "fresh-op@other.com")
+        pathsFor(newOperator.client) shouldNotContain "/operator/system/info"
+        chief.postData(
+            ADEP.userSetRoles,
+            mapOf(ADF.userId to newOperator.userId, ADF.roles to listOf(ROLE.user, ROLE.operator)),
+        )
+        pathsFor(newOperator.client) shouldContain "/operator/system/info"
 
         // The single-endpoint lookup filters identically. Without this it would be a one-call way around the
         // hiding, since it returns the same shape from the same store.

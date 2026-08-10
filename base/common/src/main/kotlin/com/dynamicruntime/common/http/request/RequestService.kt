@@ -129,10 +129,11 @@ class RequestService : ServiceInitializer {
      * section without holding `operator`, because that is who the dispatcher would let in. Testing plain set
      * membership here would reinstate the very drift this function exists to prevent, one rung further down.
      *
-     * It reads the roles already on the profile rather than re-reading them from the database. The dispatcher
-     * refreshes those ([refreshActingRoles]) before it enforces anything, so the gate always decides on
-     * current roles; a catalog listing is a display, and paying a query per endpoint to render it would be a
-     * poor trade against a stale row being briefly listed -- and then refused for real on the call.
+     * It compares against the roles on the profile it is handed, and the caller is responsible for those being
+     * live. The gate gets that from [refreshActingRoles] before enforcing; the catalog calls the same thing
+     * once per request. Filtering on a session cookie's roles instead would hide endpoints from the very
+     * people a role grant just admitted -- and keep hiding them for the cookie's whole life, since the grant
+     * deliberately does not require a re-login.
      */
     fun canAccess(profile: UserProfile, appPath: String): Boolean {
         val role = requiredRoleFor(appPath) ?: return true
