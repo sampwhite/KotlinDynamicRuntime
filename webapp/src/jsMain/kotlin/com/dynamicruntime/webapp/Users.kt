@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
@@ -50,7 +51,7 @@ val Users = FC<Props> {
     // The editor's draft. Nothing here reaches the backend until Save.
     var draftEmail by useState("")
     var draftUsername by useState("")
-    var draftAdmin by useState(false)
+    var draftLevel by useState(ROLE.user)
     var draftEnabled by useState(true)
 
     val generation = useRefreshGeneration()
@@ -118,7 +119,7 @@ val Users = FC<Props> {
         creating = false
         draftEmail = user.primaryId
         draftUsername = user.username
-        draftAdmin = user.isAdmin
+        draftLevel = user.level
         draftEnabled = user.enabled
         note = null
         error = null
@@ -130,7 +131,7 @@ val Users = FC<Props> {
         creating = true
         draftEmail = ""
         draftUsername = ""
-        draftAdmin = false
+        draftLevel = ROLE.user
         draftEnabled = true
         note = null
         error = null
@@ -145,20 +146,28 @@ val Users = FC<Props> {
     /**
      * Applies the draft. Only what actually changed is sent -- the backend has one call per concern (roles,
      * enabled), so an untouched field means no request rather than a redundant write.
+     *
+     * The note distinguishes the two outcomes rather than saying "Saved" either way. A confirmation that
+     * appears when nothing was written is worse than none: it is indistinguishable from a real save, so a
+     * change that silently failed to register still reads as success -- which is exactly how a control that
+     * was not updating its draft went unnoticed.
      */
     fun save() = run {
         val target = editing
         if (target == null) {
-            val created = AdminApi.createUser(draftEmail, draftUsername, if (draftAdmin) adminRoles else null)
+            val created = AdminApi.createUser(draftEmail, draftUsername, rolesAtLevel(emptyList(), draftLevel))
             note = "Created ${created.primaryId}."
         } else {
-            if (draftAdmin != target.isAdmin) {
-                AdminApi.setRoles(target.userId, target.rolesWithAdmin(draftAdmin))
+            var changed = false
+            if (draftLevel != target.level) {
+                AdminApi.setRoles(target.userId, rolesAtLevel(target.roles, draftLevel))
+                changed = true
             }
             if (draftEnabled != target.enabled) {
                 AdminApi.setEnabled(target.userId, draftEnabled)
+                changed = true
             }
-            note = "Saved ${target.primaryId}."
+            note = if (changed) "Saved ${target.primaryId}." else "No changes to ${target.primaryId}."
         }
         closeEditor()
         runSearch(search)
@@ -215,12 +224,27 @@ val Users = FC<Props> {
 
             div {
                 className = ClassName("row")
-                Checkbox {
-                    checked = draftAdmin
-                    disabled = busy || self
-                    onChange = { event -> draftAdmin = event.target.checked as Boolean }
-                    +"Administrator"
+                span {
+                    className = ClassName("field-label")
+                    +"Access level"
                 }
+                // A single choice, not a checkbox each: the levels are rungs of an ordering, so holding two is
+                // not a thing one can be. Picking a rung replaces the one below it (see [rolesAtLevel]).
+                Select {
+                    value = draftLevel
+                    options = accessLevelOptions
+                    disabled = busy || self
+                    style = js("({ minWidth: 180 })")
+                    onChange = { v -> draftLevel = v as? String ?: ROLE.user }
+                }
+            }
+            p {
+                className = ClassName("type-hint")
+                +accessLevelHint
+            }
+
+            div {
+                className = ClassName("row")
                 Checkbox {
                     checked = draftEnabled
                     disabled = busy || self
@@ -326,5 +350,25 @@ private fun clearTimer(id: Int) {
     js("clearTimeout(id)")
 }
 
-/** The roles a user created as an administrator gets: the base role plus admin (the backend requires both). */
-private val adminRoles = listOf(ROLE.user, ROLE.admin)
+/**
+ * The access levels an administrator can assign, lowest first -- the ladder's rungs, labeled for a person.
+ * Built from [RoleLadder.ordered] so a rung added to the ladder cannot be silently missing here; an unlabeled
+ * one falls back to its role name rather than vanishing from the list.
+ */
+private val accessLevelLabels = mapOf(
+    ROLE.user to "User",
+    ROLE.operator to "Operator",
+    ROLE.admin to "Administrator",
+)
+
+private val accessLevelOptions: Array<dynamic> = RoleLadder.ordered.map { role ->
+    val obj: dynamic = js("({})")
+    obj.label = accessLevelLabels[role] ?: role
+    obj.value = role
+    obj
+}.toTypedArray()
+
+/** Says what the middle rung is for, since "operator" does not explain itself the way the other two do. */
+private const val accessLevelHint =
+    "An operator can reach the operator endpoints (system diagnostics); an administrator can do that and " +
+        "manage users. Each level includes the ones below it."

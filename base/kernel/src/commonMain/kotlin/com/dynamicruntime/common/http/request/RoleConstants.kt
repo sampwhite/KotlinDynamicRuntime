@@ -48,6 +48,16 @@ object RoleLadder {
     fun rankOf(role: String): Int? = ordered.indexOf(role).takeIf { it >= 0 }
 
     /**
+     * The highest ladder role in [heldRoles] -- a role set's *level*, as opposed to the capabilities it also
+     * carries -- or null when it holds none. Roles off the ladder are ignored, since they are not levels.
+     *
+     * This is what lets a surface describe someone as "an operator" from a role list: the ladder is an
+     * ordering, so the top rung held is the only one that says anything, and every rung below it is implied
+     * by [satisfies] rather than needing to be listed.
+     */
+    fun highestHeld(heldRoles: Collection<String>): String? = ordered.lastOrNull { it in heldRoles }
+
+    /**
      * Whether [heldRoles] is enough to act where [requiredRole] is demanded.
      *
      * On the ladder, any held role that ranks at or above the requirement passes -- so an admin satisfies an

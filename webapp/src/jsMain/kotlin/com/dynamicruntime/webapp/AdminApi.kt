@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -21,15 +22,34 @@ class AdminUser(
     val enabled: Boolean,
     val hasPassword: Boolean,
 ) {
-    /** Whether this user holds the administrator role -- what the Users page's admin checkbox reflects. */
-    val isAdmin: Boolean get() = roles.contains(ROLE.admin)
+    /**
+     * This user's access level: the highest rung of [RoleLadder] they hold, which is what the Users page's
+     * level selector reflects. Falls back to [ROLE.user] for a row holding no ladder role at all -- the
+     * backend will not create one, but a display should not depend on that.
+     */
+    val level: String get() = RoleLadder.highestHeld(roles) ?: ROLE.user
+}
 
-    /** This user's roles with [ROLE.admin] added or removed, preserving everything else the deployment set. */
-    fun rolesWithAdmin(admin: Boolean): List<String> = when {
-        admin && !isAdmin -> roles + ROLE.admin
-        !admin && isAdmin -> roles.filter { it != ROLE.admin }
-        else -> roles
-    }
+/**
+ * The role list that puts a user at [level], given the roles they hold now.
+ *
+ * Three things it has to get right, which is why it is a function rather than a `+ role` at the call site:
+ *
+ *  - **The rungs are exclusive.** They are an ordering, not independent flags, so moving to a level *replaces*
+ *    whatever rung was held rather than adding to it. Leaving `admin` behind while granting `operator` would
+ *    be a demotion that demotes nothing.
+ *  - **[ROLE.user] is always kept.** A user without it cannot log in at all (the backend's
+ *    `requireUsableRoles` refuses the write), so it is the floor of every level rather than one of the choices.
+ *  - **Roles off the ladder survive untouched.** A deployment's own roles are capabilities, not levels; a
+ *    change of level must not silently strip someone's `billing`.
+ *
+ * A [level] that is not a ladder role leaves the user at the floor, so a bad value can only ever under-grant.
+ * Pure, and tested under `jsNodeTest` -- the frontend guidance keeps this kind of mapping out of the component.
+ */
+fun rolesAtLevel(current: List<String>, level: String): List<String> {
+    val capabilities = current.filter { RoleLadder.rankOf(it) == null }
+    val rung = level.takeIf { RoleLadder.rankOf(it) != null && it != ROLE.user }
+    return listOfNotNull(ROLE.user, rung) + capabilities
 }
 
 /**

@@ -52,6 +52,21 @@ class RoleLadderTest {
     }
 
     @Test
+    fun highestHeldIsTheTopRung() {
+        assertEquals(ROLE.user, RoleLadder.highestHeld(userOnly))
+        assertEquals(ROLE.operator, RoleLadder.highestHeld(operatorRoles))
+        assertEquals(ROLE.admin, RoleLadder.highestHeld(adminRoles))
+        assertEquals(ROLE.admin, RoleLadder.highestHeld(setOf(ROLE.user, ROLE.operator, ROLE.admin)))
+    }
+
+    @Test
+    fun highestHeldIgnoresRolesOffTheLadder() {
+        assertEquals(ROLE.user, RoleLadder.highestHeld(setOf(ROLE.user, "billing")))
+        assertNull(RoleLadder.highestHeld(setOf("billing")))
+        assertNull(RoleLadder.highestHeld(emptySet()))
+    }
+
+    @Test
     fun noRolesSatisfiesNothing() {
         assertFalse(RoleLadder.satisfies(emptySet(), ROLE.user))
         assertFalse(RoleLadder.satisfies(emptySet(), ROLE.operator))
