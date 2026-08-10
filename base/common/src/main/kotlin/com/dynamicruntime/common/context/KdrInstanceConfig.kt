@@ -178,10 +178,18 @@ class KdrInstanceConfig(
 
     /**
      * Whether this is a **test instance** -- a node where test-only affordances are on: `forTestingOnly`
-     * endpoints are exposed (issue #125), and email is simulated and captured by default (issue #158). True
-     * when the [testInstanceEnvVar] env var is set true, OR the environment is [ENV.unit], OR the instance runs
-     * [ACFG.inMemoryOnly]. A node that is a test instance but not in a `local`/`unit` environment refuses to
-     * start (see `SchemaService.checkInit`), so test affordances can never reach a real environment.
+     * endpoints are exposed (issue #125), and email is simulated and captured by default (issue #158).
+     *
+     * An explicit [ACFG.isTestInstance] config entry **decides it**, either way. Otherwise it is inferred:
+     * true when the [testInstanceEnvVar] env var is set true, OR the environment is [ENV.unit], OR the
+     * instance runs [ACFG.inMemoryOnly].
+     *
+     * The explicit form exists because the inference is a chain of ORs and so could only ever say *yes*.
+     * Setting the env var false changed nothing -- a unit test is in [ENV.unit] and in memory, and either
+     * alone re-asserts it -- which left the behavior of a real node untestable, since no test could obtain an
+     * instance that was not a test instance. The override does not weaken anything: a node claiming to be a
+     * test instance outside a `local`/`unit` environment still refuses to start (`SchemaService.checkInit`),
+     * so this can turn affordances *off* in a test but never on where they do not belong.
      *
      * Resolved once and cached: the inputs are fixed by the time the instance boots, and a materialized value
      * is directly inspectable in a debugger while stepping (unlike a recomputed getter). The boot path
@@ -189,10 +197,18 @@ class KdrInstanceConfig(
      * request; off-boot paths (a hand-built config in a test) resolve it correctly on first access.
      */
     val isTestInstance: Boolean by lazy {
+        when (val explicit = get(ACFG.isTestInstance)) {
+            is Boolean -> explicit
+            is String -> explicit.toBooleanStrictOrNull() ?: inferIsTestInstance()
+            else -> inferIsTestInstance()
+        }
+    }
+
+    /** The inferred answer, used when [ACFG.isTestInstance] says nothing. See [isTestInstance]. */
+    private fun inferIsTestInstance(): Boolean =
         getEnvVar(testInstanceEnvVar)?.toBooleanStrictOrNull() == true ||
             env == ENV.unit ||
             get(ACFG.inMemoryOnly) == true
-    }
 
     /**
      * Force-materializes the derived, lazily computed config values (today [isTestInstance]) at a

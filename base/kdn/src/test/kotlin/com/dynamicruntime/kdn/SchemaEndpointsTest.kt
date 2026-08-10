@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.ROLE
@@ -10,7 +11,9 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
@@ -176,6 +179,62 @@ class SchemaEndpointsTest : StringSpec({
             catalogEndpoints(client.sendJsonGetRequest("/schema/endpoint", mapOf(EI.method to "GET", EI.path to path)))
         lookup(plain.client, ADEP.users).shouldBeEmpty()
         lookup(chief.client, ADEP.users).map { it[EI.path] } shouldContain ADEP.users
+    }
+
+    // ---- _debug=explainAccess (issue #215) ----------------------------------
+
+    "explainAccess names what the filter withheld, and the role each withheld section wants" {
+        val cxt = Startup.mkTestBootCxt("schemaExplain", "schemaExplainTest")
+        val plain = TestUser.create(cxt, "explain@other.com")
+
+        val resp = plain.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess))
+        val explained = resp[EP.meta]!!.toJsonMap()[SS.accessExplained]!!.toJsonMap()
+
+        // The roles the filter actually compared -- the value whose staleness was the #211 defect, and the
+        // reason reporting it is worth anything.
+        explained[SS.actingRoles] shouldBe listOf(ROLE.user)
+
+        val withheld = explained[SS.withheld].toJsonListOfMaps()
+        val bySection = withheld.associateBy { it[SS.section] }
+        bySection.keys shouldContainAll listOf("admin", "operator")
+        bySection["admin"]!![SS.requiredRole] shouldBe ROLE.admin
+        bySection["operator"]!![SS.requiredRole] shouldBe ROLE.operator
+        bySection["admin"]!![EI.endpoints].toJsonListOfStrings() shouldContain ADEP.users
+
+        // The explanation and the listing are two readings of one decision, so they must partition the store:
+        // nothing may be both shown and reported as withheld. Recomputing the explanation separately is
+        // exactly how that would stop being true.
+        val shown = catalogEndpoints(resp).map { it[EI.path] }.toSet()
+        val hidden = withheld.flatMap { it[EI.endpoints].toJsonListOfStrings() }.toSet()
+        shown intersect hidden shouldBe emptySet()
+    }
+
+    "explainAccess says nothing unless it is asked for" {
+        val cxt = Startup.mkTestBootCxt("schemaNoExplain", "schemaExplainTest")
+        val resp = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest("/schema/endpoints")
+        resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe false
+    }
+
+    /**
+     * The fence. A real node must not answer this, or the aid would hand an anonymous caller the map of the
+     * privileged surface that issue #211 removed — so it is refused off a test instance however loudly it is
+     * asked for. Reachable only because [ACFG.isTestInstance] can now decide the flag outright; the inference
+     * alone always says "test" here, since a unit test runs in `unit` and in memory.
+     */
+    "explainAccess is withheld on an instance that is not a test instance" {
+        val cxt = Startup.mkTestBootCxt(
+            "schemaExplainProd", "schemaExplainProdTest", mapOf(ACFG.isTestInstance to false),
+        )
+        // Guard the premise: if this were still a test instance the assertion below would pass for the wrong
+        // reason, and a fence test that cannot fail is worse than none.
+        cxt.instanceConfig.isTestInstance shouldBe false
+
+        val resp = TestHttpClient(cxt.instanceConfig)
+            .sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess))
+        resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe false
+        // And the request was otherwise served normally -- the tag is ignored, not rejected, so nothing
+        // confirms the tag exists.
+        catalogEndpoints(resp).map { it[EI.path] } shouldContain "/health"
     }
 
     $$"/schema/sample drops an off-contract $note yet honors a _debug=explainInput echo in the same call" {
