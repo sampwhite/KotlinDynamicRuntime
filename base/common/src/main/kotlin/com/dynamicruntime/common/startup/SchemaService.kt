@@ -17,6 +17,7 @@ import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.RequestService
+import com.dynamicruntime.common.http.request.sectionOf
 import com.dynamicruntime.common.schema.LogSchema
 import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.schema.SCH
@@ -341,9 +342,14 @@ class SchemaService : ServiceInitializer {
             val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
             val schema = cxt.getSchema()
             refreshCallerRoles(cxt)
-            val renderings = schema.endpoints.values
+            // One access decision per endpoint, consumed twice: what survives is rendered, what does not is
+            // what `explainAccess` reports. Deriving the explanation from a second, independent pass is how an
+            // explanation comes to disagree with the filter it claims to describe -- the same drift issue #211
+            // closed between the catalog and the gate.
+            val (visible, withheld) = schema.endpoints.values.partition { ep -> isVisibleTo(cxt, ep.path) }
+            explainAccess(cxt, withheld)
+            val renderings = visible
                 .asSequence()
-                .filter { ep -> isVisibleTo(cxt, ep.path) }
                 .filter { ep ->
                     (namespace == null || ep.namespace == namespace) &&
                             (method == null || ep.method.name == method) &&
@@ -371,9 +377,57 @@ class SchemaService : ServiceInitializer {
             refreshCallerRoles(cxt)
             // Filtered exactly as the listing is: a lookup that answered for an endpoint the listing hides
             // would be a one-call way around the hiding, and this endpoint exists to return the same shape.
-            val endpoint = schema.endpoints["$path:$method"]?.takeIf { isVisibleTo(cxt, it.path) }
+            // Explained the same way too, so "it came back empty" can be told apart from "you may not see it",
+            // which from the outside look identical.
+            val found = schema.endpoints["$path:$method"]
+            val endpoint = found?.takeIf { isVisibleTo(cxt, it.path) }
+            explainAccess(cxt, if (found != null && endpoint == null) listOf(found) else emptyList())
             val renderings = listOfNotNull(endpoint).map { renderEndpoint(it, schema.defs) }
             return linkedMapOf(EI.endpoints to renderings, SCH.dDefs to collectDefs(renderings, schema.defs))
+        }
+
+        /**
+         * Reports, under `_meta`, what the catalog's access filter just withheld from this caller and why --
+         * the `_debug=explainAccess` tag (issue #215).
+         *
+         * It exists because a wrong filtering decision is otherwise invisible: it shows up only as a count one
+         * lower than expected, with nothing to inspect. The stale-roles defect in #211 was found exactly that
+         * way, by reasoning backwards from `36` when `37` was due. So the two things reported are the ones that
+         * were unavailable then: the roles the filter actually compared -- **after** [refreshCallerRoles], since
+         * the difference between those and the session cookie's *was* the bug -- and each withheld endpoint
+         * beside the role its section demands.
+         *
+         * **Fenced to a test instance, and silently.** `_debug` is accepted from any caller in any environment
+         * (`RequestHandler` validates its shape and nothing else), so an unfenced version of this would hand an
+         * anonymous caller in production a map of the privileged surface -- undoing, as a debugging aid, the
+         * very hiding #211 added. The fence is the one test-only affordances already sit behind, which the
+         * runtime refuses to start with outside `local`/`unit`. Off a test instance the key is simply absent
+         * rather than empty or refused: an error would confirm the tag exists.
+         *
+         * [withheld] is what privilege removed, and is deliberately *not* narrowed by the request's
+         * namespace/method/regex filters. The question being answered is "what is being kept from me", which is
+         * a property of the caller; what a query excluded is already evident from the query.
+         */
+        @KdrPrivate
+        fun explainAccess(cxt: KdrCxt, withheld: List<KdrEndpoint>) {
+            if (!cxt.hasDebug(SS.explainAccess) || !cxt.instanceConfig.isTestInstance) {
+                return
+            }
+            val service = RequestService.get(cxt)
+            val bySection = withheld.groupBy { sectionOf(it.path) }.entries.sortedBy { it.key }.map { (section, eps) ->
+                linkedMapOf(
+                    SS.section to section,
+                    SS.requiredRole to service?.requiredRoleFor(eps.first().path),
+                    EI.endpoints to eps.map { it.path }.sorted(),
+                )
+            }
+            cxt.request?.responseMeta?.put(
+                SS.accessExplained,
+                linkedMapOf<String, Any?>(
+                    SS.actingRoles to cxt.userProfile.roles.sorted(),
+                    SS.withheld to bySection,
+                ),
+            )
         }
 
         /**
@@ -495,6 +549,15 @@ object SS {
     // Debug behavior: the debug tag that triggers echoing input under _meta, and the key it is echoed under.
     const val explainInput = "explainInput"
     const val paramsEvaluated = "paramsEvaluated"
+
+    // The debug tag that reports what the catalog's access filter withheld (issue #215), the "_meta" key it is
+    // reported under, and that report's own fields. Test instances only -- see `explainAccess`.
+    const val explainAccess = "explainAccess"
+    const val accessExplained = "accessExplained"
+    const val actingRoles = "actingRoles"
+    const val withheld = "withheld"
+    const val section = "section"
+    const val requiredRole = "requiredRole"
 
     // Sample endpoint request/response fields.
     const val filter = "filter"

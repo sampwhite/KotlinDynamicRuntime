@@ -33,6 +33,17 @@ object ACFG {
     const val env = "env"
     const val inMemoryOnly = "inMemoryOnly"
 
+    /**
+     * Decides [KdrInstanceConfig.isTestInstance] outright when present, instead of it being inferred. Absent
+     * (the normal case) leaves the inference alone.
+     *
+     * It exists because the inference is a chain of ORs, so nothing could previously turn it *off*: a unit
+     * test runs in [ENV.unit] and in memory, and each of those alone makes the instance a test instance. That
+     * left the behavior of a *real* node -- test endpoints absent, test-only debug output withheld -- with no
+     * way to be exercised at all. Set this false to boot an instance that behaves like a deployed one.
+     */
+    const val isTestInstance = "isTestInstance"
+
     /** When true, endpoint responses are validated against their `outputSchema`. Default false; on in tests. */
     const val validateResponseSchema = "validateResponseSchema"
 
