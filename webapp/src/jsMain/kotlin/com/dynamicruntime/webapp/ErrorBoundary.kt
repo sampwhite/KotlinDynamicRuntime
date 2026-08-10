@@ -160,7 +160,10 @@ val ShellErrorFallback = FC<ErrorFallbackProps> { props ->
         }
         button {
             className = ClassName("update-banner-reload")
-            onClick = { reloadWebApp() }
+            // Strips any debug fault parameter on the way out (issue #227). This is the one fallback a
+            // deliberate fault can put on screen, and a plain reload would re-read the URL that caused it --
+            // an offer that could never work. Harmless for an ordinary failure, where there is nothing to strip.
+            onClick = { reloadWithoutFault() }
             +"Reload"
         }
         // In practice this stays empty: a shell failure happens before the app-config fetch returns, so the

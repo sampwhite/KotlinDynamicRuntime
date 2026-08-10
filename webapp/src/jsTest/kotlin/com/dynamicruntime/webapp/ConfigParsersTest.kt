@@ -42,12 +42,17 @@ class ConfigParsersTest {
     fun appConfigReadsFeaturesAndSettings() {
         val cfg = appConfigFrom(
             uiConfig(
-                features = mapOf(APP.obfuscateSensitiveErrors to true, APP.showErrorDetail to true),
+                features = mapOf(
+                    APP.obfuscateSensitiveErrors to true,
+                    APP.showErrorDetail to true,
+                    APP.allowDebugPages to true,
+                ),
                 settings = mapOf(APP.idleBumpIntervalMs to 30_000),
             ),
         )
         assertTrue(cfg.obfuscateSensitiveErrors)
         assertTrue(cfg.showErrorDetail)
+        assertTrue(cfg.allowDebugPages)
         assertEquals(30_000, cfg.idleBumpIntervalMs)
     }
 
@@ -58,6 +63,9 @@ class ConfigParsersTest {
         // Withheld unless the deployment says otherwise (issue #223): a missing flag must not be the reason
         // internals reach a real user's screen, and this is also the pre-first-fetch state.
         assertFalse(cfg.showErrorDetail)
+        // Off until the backend says otherwise: a route that breaks the app on purpose must never appear
+        // because a config fetch had not landed yet (issue #227).
+        assertFalse(cfg.allowDebugPages)
         assertEquals(APP.defaultIdleBumpIntervalMs, cfg.idleBumpIntervalMs)
     }
 

@@ -41,6 +41,11 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 "Whether the frontend may show a caught render failure's message and component stack on screen.",
                 required = true,
             ) { type = SCT.boolean }
+            property(
+                APP.allowDebugPages,
+                "Whether the frontend's debug pages exist, including the route that makes it fail on demand.",
+                required = true,
+            ) { type = SCT.boolean }
         }
         property(UIC.settings, "Deployment-wide tuning values (non-flag) visible to the whole frontend.", required = true) {
             type = SCT.kObject
@@ -61,6 +66,9 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 // build" (issue #223): the flag is already audited, and a node claiming to be a test instance
                 // outside local/unit refuses to start, so a real deployment cannot turn this on by accident.
                 APP.showErrorDetail to c.instanceConfig.isTestInstance,
+                // Same fence, separate flag (issue #227): a route that manufactures a failure is a different
+                // power from showing a stack, even where both happen to be permitted by the same instance.
+                APP.allowDebugPages to c.instanceConfig.isTestInstance,
             ),
             UIC.settings to mapOf(
                 // Always served, defaulting when the deployment did not tune it (a custom-config override, not

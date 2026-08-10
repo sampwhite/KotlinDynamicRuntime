@@ -24,6 +24,12 @@ class AppConfig(
      * the same reason: the detailed form must not be reachable by an ordinary user.
      */
     val showErrorDetail: Boolean,
+    /**
+     * When true, the frontend's debug pages resolve -- including the fault route that makes it throw on
+     * demand (issue #227). False elsewhere, and then those routes do not exist at all rather than being
+     * refused: nothing should acknowledge that a way to break the app is there.
+     */
+    val allowDebugPages: Boolean,
 ) {
     companion object {
         /** The assumed config before the first fetch (and if a fetch fails): do not suppress (matching dev),
@@ -34,6 +40,7 @@ class AppConfig(
             // Withhold detail until the backend says otherwise. A fetch that has not happened (or failed) must
             // not be the reason internals appear on a real deployment's screen.
             showErrorDetail = false,
+            allowDebugPages = false,
         )
     }
 }
@@ -53,6 +60,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
     idleBumpIntervalMs = (config.settings[APP.idleBumpIntervalMs] as? Number)?.toInt()
         ?: APP.defaultIdleBumpIntervalMs,
     showErrorDetail = config.features[APP.showErrorDetail] == true,
+    allowDebugPages = config.features[APP.allowDebugPages] == true,
 )
 
 object AppApi {

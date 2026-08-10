@@ -29,6 +29,17 @@ object APP {
     const val showErrorDetail = "showErrorDetail"
 
     /**
+     * Feature flag: whether the frontend's **debug pages** exist at all (issue #227) -- the fault route that
+     * makes the app throw on demand, and whatever diagnostic views join it.
+     *
+     * Separate from [showErrorDetail] on purpose, though both derive from the backend's `isTestInstance`
+     * today. They authorize different things -- seeing internals versus *manufacturing a failure* -- and a
+     * flag named for disclosure must not silently confer injection. Kept apart so they can diverge later
+     * without one quietly widening the other.
+     */
+    const val allowDebugPages = "allowDebugPages"
+
+    /**
      * Setting (under the envelope's `settings`, not a flag): how often, in milliseconds, the frontend "bumps" its refresh
      * generation while a tab is visible, so a long-open tab notices a timed-out session or a newer deploy
      * (issue #146). Deployment-tunable through the custom-config object; the frontend re-arms its timer when the

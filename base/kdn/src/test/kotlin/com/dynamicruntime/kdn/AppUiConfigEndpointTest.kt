@@ -46,6 +46,20 @@ class AppUiConfigEndpointTest : StringSpec({
         features(TestHttpClient(realCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.showErrorDetail] shouldBe false
     }
 
+    // The debug-page flag (issue #227) rides the same test-instance fence as the error-detail one, but is a
+    // separate flag: seeing internals and *manufacturing a failure* are different powers. The off half is the
+    // one that matters -- it is what keeps a route that deliberately breaks the app off a real deployment.
+    "the debug-page flag is on for a test instance and off for a real one" {
+        val testCxt = Startup.mkTestBootCxt("appCfgDebug", "appCfgDebugTest")
+        features(TestHttpClient(testCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.allowDebugPages] shouldBe true
+
+        val realCxt = Startup.mkTestBootCxt(
+            "appCfgNoDebug", "appCfgNoDebugTest", mapOf(ACFG.isTestInstance to false),
+        )
+        realCxt.instanceConfig.isTestInstance shouldBe false // guard the premise, or the next line proves nothing
+        features(TestHttpClient(realCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.allowDebugPages] shouldBe false
+    }
+
     "the idle-bump interval defaults when the deployment does not tune it" {
         val cxt = Startup.mkTestBootCxt("appCfgIdle", "appCfgIdleTest")
         val client = TestHttpClient(cxt.instanceConfig)
