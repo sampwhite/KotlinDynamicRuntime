@@ -61,6 +61,20 @@ The point at which configuration can be scoped to a client rather than only to t
   client. Known candidates: the error-display / obfuscation policy (`obfuscateSensitiveErrors`), the
   frontend idle-bump interval (`idleBumpIntervalMs`), and the login-cookie timeout period.
 
+## When frontend errors are shipped to a third-party logger
+
+The point at which a render failure in production is *recorded somewhere* rather than only sitting in one
+user's console — which is what makes it worth interrupting them about.
+
+- **Show the user a designed apology, not the current panel** *(from #223).* The error boundary added in #223
+  keeps the app alive and shows a deliberately plain "this section could not be displayed" card, with the
+  detail withheld unless `showErrorDetail` (the backend's `isTestInstance`) says otherwise. That is the right
+  behavior while a failure goes unreported: there is nothing to promise the user, so promising nothing is
+  honest. Once errors reach a logger, the trade changes — the failure is now known to us and being acted on,
+  so the page can be taken over with a proper "We are sorry…" treatment that says so. The seam already exists:
+  `ErrorFallback` in `webapp/.../ErrorBoundary.kt` is a plain component the boundary swaps in, and
+  `installGlobalErrorHandlers` is where the non-render failures already arrive and currently only report.
+
 ## When the logging integration is built out (structured / OpenSearch sinks)
 
 The point at which logs become searchable fields — the moment a per-browser tracing id starts to look worth
