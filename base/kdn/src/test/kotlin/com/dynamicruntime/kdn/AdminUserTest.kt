@@ -60,7 +60,7 @@ class AdminUserTest : StringSpec({
         // The same mailbox, plus-addressed: an ordinary user, which is the point of the exclusion.
         val bossQa = TestUser.register(cxt, "boss+qa@acme.com", "bossqa")
         bossQa.selfRoles() shouldNotContain ROLE.admin
-        bossQa.expectError(EXC.authNeeded, ADEP.users)
+        bossQa.expectError(EXC.notAuthorized, ADEP.users)
     }
 
     // --- the gate ------------------------------------------------------------
@@ -68,10 +68,13 @@ class AdminUserTest : StringSpec({
     "neither an anonymous caller nor a plain user can reach the admin endpoints" {
         val cxt = Startup.mkTestBootCxt("admin", "adminGateTest")
 
+        // Refused either way, but not with the same answer (issue #211): nobody logged in is a 401, which
+        // says "authenticate and retry", while a logged-in non-admin is a 403, where retrying as themselves
+        // never works. The pair is asserted together because the distinction is the whole point.
         TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(ADEP.users)[EP.status] shouldBe EXC.authNeeded
 
         val plain = TestUser.create(cxt, "outsider@other.com")
-        plain.expectError(EXC.authNeeded, ADEP.users)
+        plain.expectError(EXC.notAuthorized, ADEP.users)
     }
 
     // --- the whole flow ------------------------------------------------------
@@ -136,7 +139,7 @@ class AdminUserTest : StringSpec({
 
         // A plain user with a live session of their own, promoted *after* their cookie was issued.
         val deputy = TestUser.create(cxt, "deputy@other.com")
-        deputy.expectError(EXC.authNeeded, ADEP.users)
+        deputy.expectError(EXC.notAuthorized, ADEP.users)
         chief.postData(
             ADEP.userSetRoles, mapOf(ADF.userId to deputy.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)),
         )
@@ -146,7 +149,8 @@ class AdminUserTest : StringSpec({
         // Revoke it: the same session must lose admin access on its very next request, rather than keeping it
         // for the 30-day life of the cookie it is holding.
         chief.postData(ADEP.userSetRoles, mapOf(ADF.userId to deputy.userId, ADF.roles to listOf(ROLE.user)))
-        deputy.expectError(EXC.authNeeded, ADEP.users)
+        // A 403, not a 401: their session is perfectly valid, it just no longer carries the role.
+        deputy.expectError(EXC.notAuthorized, ADEP.users)
 
         // Their ordinary (non-admin) access is untouched by all of this.
         deputy.selfRoles() shouldNotContain ROLE.admin
@@ -187,7 +191,7 @@ class AdminUserTest : StringSpec({
         // stands guard for when canManageUsers admits a weaker caller (a client-scoped manager), for whom
         // self-promotion would be the obvious escalation path.
         plain.expectError(
-            EXC.authNeeded, ADEP.userSetRoles, mapOf(ADF.userId to plain.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)),
+            EXC.notAuthorized, ADEP.userSetRoles, mapOf(ADF.userId to plain.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)),
         )
 
         // And the attempt changed nothing.

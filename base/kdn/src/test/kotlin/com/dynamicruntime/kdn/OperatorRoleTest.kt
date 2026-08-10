@@ -50,13 +50,14 @@ class OperatorRoleTest : StringSpec({
         val plain = TestUser.create(cxt, "plain-op@example.com")
 
         plain.selfRoles() shouldContain ROLE.user
-        plain.expectError(EXC.authNeeded, systemInfo)
+        // 403, not 401: they are logged in and simply lack the rung (issue #211).
+        plain.expectError(EXC.notAuthorized, systemInfo)
     }
 
     "an operator reaches the operator section once the role is granted" {
         val admin = TestUser.create(cxt, "grantor-op@example.com", admin = true)
         val operator = TestUser.create(cxt, "operator-op@example.com")
-        operator.expectError(EXC.authNeeded, systemInfo) // an ordinary user until the grant lands
+        operator.expectError(EXC.notAuthorized, systemInfo) // an ordinary user until the grant lands
 
         grantOperator(admin, operator)
 
@@ -81,7 +82,7 @@ class OperatorRoleTest : StringSpec({
         grantOperator(admin, operator)
 
         operator.selfRoles() shouldContain ROLE.operator
-        operator.expectError(EXC.authNeeded, ADEP.users)
+        operator.expectError(EXC.notAuthorized, ADEP.users)
     }
 
     "the system report carries node identity, uptime and VM statistics" {

@@ -16,7 +16,9 @@ import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.schema.LogSchema
+import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.parseSchemaTypes
@@ -93,6 +95,9 @@ class SchemaService : ServiceInitializer {
                     "Endpoint '${endpoint.collationKey}' references an unknown input type '${endpoint.inputTypeRef}'.",
                 )
         }
+
+        // (The endpoints' access rules are checked in RequestService.checkInit, which owns them and runs in
+        // the later service tier -- see the note there on why it cannot live here.)
 
         schemaStore = store
         cxt.instanceConfig.put(KdrSchemaStore.key, store)
@@ -335,17 +340,21 @@ class SchemaService : ServiceInitializer {
             val pathRegex = (request[SS.pathRegex] as? String)?.let { Regex(it) }
             val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
             val schema = cxt.getSchema()
+            refreshCallerRoles(cxt)
             val renderings = schema.endpoints.values
+                .asSequence()
+                .filter { ep -> isVisibleTo(cxt, ep.path) }
                 .filter { ep ->
                     (namespace == null || ep.namespace == namespace) &&
-                        (method == null || ep.method.name == method) &&
-                        (pathRegex == null || pathRegex.containsMatchIn(ep.path))
+                            (method == null || ep.method.name == method) &&
+                            (pathRegex == null || pathRegex.containsMatchIn(ep.path))
                 }
                 // collationKey is "path:method", so this sorts by path then method (the same path may be
                 // registered under two HTTP methods).
                 .sortedBy { it.collationKey }
                 .take(limit)
                 .map { renderEndpoint(it, schema.defs) }
+                .toList()
             return linkedMapOf(EI.endpoints to renderings, SCH.dDefs to collectDefs(renderings, schema.defs))
         }
 
@@ -359,10 +368,39 @@ class SchemaService : ServiceInitializer {
             val method = (request[EI.method] as? String)?.uppercase()
             val path = request[EI.path] as? String
             val schema = cxt.getSchema()
-            val endpoint = schema.endpoints["$path:$method"]
+            refreshCallerRoles(cxt)
+            // Filtered exactly as the listing is: a lookup that answered for an endpoint the listing hides
+            // would be a one-call way around the hiding, and this endpoint exists to return the same shape.
+            val endpoint = schema.endpoints["$path:$method"]?.takeIf { isVisibleTo(cxt, it.path) }
             val renderings = listOfNotNull(endpoint).map { renderEndpoint(it, schema.defs) }
             return linkedMapOf(EI.endpoints to renderings, SCH.dDefs to collectDefs(renderings, schema.defs))
         }
+
+        /**
+         * Brings the acting caller's "roles" up to date before the catalog decides what to show them, once per
+         * request rather than once per endpoint.
+         *
+         * The dispatcher only refreshes roles for a section that requires one, and the catalog's own section
+         * is anonymous -- so without this the filter would run against whatever the session cookie carried at
+         * login. A role granted since then would not appear, and would keep not appearing for the cookie's
+         * whole life, precisely contradicting the grant taking effect on the next request (issue #212). Costs
+         * one row read on a call that is already assembling every endpoint's schema; no-ops when nobody is
+         * logged in.
+         */
+        @KdrPrivate
+        fun refreshCallerRoles(cxt: KdrCxt) = refreshActingRoles(cxt)
+
+        /**
+         * Whether the acting caller may be *shown* the endpoint at [appPath] -- the catalog's filter (issue
+         * #211), answered by the same [RequestService.canAccess] the dispatcher enforces with, so the catalog
+         * cannot advertise a door that will not open.
+         *
+         * Visible when the request service is absent, which happens only outside a running dispatcher (a unit
+         * test building a store by hand). Nothing is being served there, so there is nothing to protect.
+         */
+        @KdrPrivate
+        fun isVisibleTo(cxt: KdrCxt, appPath: String): Boolean =
+            RequestService.get(cxt)?.canAccess(cxt.userProfile, appPath) ?: true
 
         /** Handler for `/schema/sample`: generate an interesting, schema-conforming set of items. */
         @KdrPrivate
