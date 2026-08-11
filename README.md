@@ -204,6 +204,13 @@ Application behavior is varied at startup largely through environment variables 
 explained in [`code-guide.md`](code-guide.md)). The complete set — application, logging, database, and
 workspace variables — is documented in [`environment-variables.md`](environment-variables.md).
 
+## Designs written before the code
+
+[`gedra-entry.md`](gedra-entry.md) describes the **Gedra entry** — the universal stored entity the next phase
+of the project is built around — together with the JSON-schema constructs it needs (a declared discriminator,
+`if`/`then`/`else`, `g-primaryKey`, `g-derived`). None of it is implemented yet; it is a statement of intent
+to design against, and it records what was deliberately left open or postponed.
+
 ## Deferred work
 
 Work we have deliberately put off — each with the condition that should make us revisit it — lives in
