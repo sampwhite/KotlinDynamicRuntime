@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.user.AuthUserRow
@@ -98,7 +99,13 @@ object GrantRole {
 
     /** `--list`: shows the users matching [search], so an operator can find the right loginId. */
     private fun listUsers(cxt: KdrCxt, service: UserService, search: String): Int {
-        val rows = service.listUsers(cxt, search, listLimit)
+        // Unrestricted, stated rather than defaulted (issue #225). This script is the escape hatch out of the
+        // chicken-and-egg problem -- it is how a fresh deployment gets its first administrator -- so it runs
+        // with no logged-in caller at all, and `ReadScopeRules.forCaller` would confine it to the system
+        // user's own (nonexistent) rows. What entitles it is not a role but the shell: whoever can run this
+        // already has the database credentials. That reasoning belongs at the call site, which is the point of
+        // there being no default to fall through.
+        val rows = service.listUsers(cxt, search, listLimit, ReadScope.unrestricted)
         if (rows.isEmpty()) {
             println("No users match '$search'.")
             return 0

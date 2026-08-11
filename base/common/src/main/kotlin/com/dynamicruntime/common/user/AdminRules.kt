@@ -122,45 +122,17 @@ object AdminRules {
      * Any administrator qualifies, scoped or not: the `userAdmin` section (issue #225) gives a client-scoped
      * administrator a surface of their own, so answering `true` for them no longer offers a menu item leading
      * to a 403 -- the drift issue #211 set out to remove. What differs between the two is *how much they see*
-     * once there, which is [adminReadScope]'s job, not this one's.
+     * once there, which is [ReadScopeRules.forCaller]'s job, not this one's.
      *
      * This shapes the UI; it is not the enforcement point. The endpoints stay gated by their section, so a
      * frontend that ignores this answer still gets a 403.
      */
     fun canManageUsers(cxt: KdrCxt): Boolean = adminScope(cxt) != AdminScope.none
 
-    /**
-     * What an administrator's reads are confined to. Passed to the user queries, so "which rows may I see" is
-     * decided once here rather than per endpoint -- a new admin endpoint gets the scope by construction
-     * instead of by remembering.
-     *
-     * A caller who is not an administrator gets the **narrowest** scope -- their own rows -- rather than the
-     * unrestricted one. This used to return `unrestricted`, reasoning that the section gate closes the admin
-     * surface to them so there is no read for this to constrain. That reasoning was sound and the premise was
-     * false: while the `admin` section accepted the `allClients` capability *alone*, a caller with no admin
-     * level at all reached these endpoints and this handed them every client's rows. The gate is fixed, which
-     * makes this branch unreachable again -- so it costs nothing to have it fail closed, and an assumption
-     * about another component that has already been wrong once should not be the only thing standing between a
-     * non-administrator and the whole table.
-     *
-     * The day ordinary endpoints scope their own reads, *their* scope is also `ofUser`, but resolved somewhere
-     * that knows it is an ordinary read -- not here.
-     */
-    fun adminReadScope(cxt: KdrCxt): ReadScope = when (adminScope(cxt)) {
-        AdminScope.ownClient -> {
-            // A primary organization narrows the scope one width further (issue #225). Most administrators
-            // have none, and then this is exactly the client scope it always was -- organizations are a
-            // per-client choice, so having none is the ordinary case rather than a missing value.
-            val profile = cxt.userProfile
-            val org = profile.org
-            if (org == null) ReadScope.ofClient(profile.client) else ReadScope.ofOrg(profile.client, org)
-        }
-        // The capability outranks a primary organization. Someone who may reach every client is not confined
-        // by which organization they happen to belong to -- the two are different axes, and this is the wider.
-        AdminScope.allClients -> ReadScope.unrestricted
-        // Unreachable through a gated surface; narrowest rather than widest if it ever is reached again.
-        AdminScope.none -> ReadScope.ofUser(cxt.userProfile.userId)
-    }
+    // The read scope moved to `ReadScopeRules.forCaller` (issue #225). It answers the same question for an
+    // administrator and now also for everybody else, and a scope resolver named for administrators is one an
+    // ordinary endpoint's author reads as "not for me" -- so it stopped being an admin rule once the widths
+    // covered every caller. `adminScope` above stays here: *that* is genuinely an administrative question.
 
     /**
      * What the auto-admin rule grants: [ROLE.admin] **and** [ROLE.allClients] (issue #225).
