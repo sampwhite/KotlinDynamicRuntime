@@ -37,6 +37,17 @@ object DbEnv {
      */
     const val dbUser = "KDR_DB_USER"
 
+    /**
+     * Boots despite **blocking** schema drift -- a column the database has, the code does not declare, that is
+     * `NOT NULL` with no default (issue #216). Off by default, so such a deployment refuses to start: it
+     * cannot write, and finding that out at boot beats finding out when a user registers.
+     *
+     * The escape hatch exists because an operator mid-migration has a legitimate reason to start a node that
+     * is in this state, and a check with no way past it is a check that gets deleted. It does not make the
+     * deployment work -- writes still fail -- it only downgrades the refusal to a logged error.
+     */
+    const val allowSchemaDrift = "KDR_ALLOW_SCHEMA_DRIFT"
+
     /** Resolves the default for `inMemoryOnly`: the [inMemoryOnly] env var if set (parsed loosely), else true. */
     fun resolveInMemoryOnly(cxt: KdrCxt): Boolean = cxt.getEnvVar(inMemoryOnly)?.toOptBool() ?: true
 }

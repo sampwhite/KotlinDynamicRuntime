@@ -2,6 +2,7 @@ package com.dynamicruntime.common.sql
 
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.mkUniqueShorterStr
+import java.sql.DatabaseMetaData
 import java.sql.SQLException
 
 /**
@@ -10,8 +11,6 @@ import java.sql.SQLException
  * dropped. All calls must run inside a [SqlDatabase.withSession] block.
  */
 object SqlTableUtil {
-    private class TypeInfo(val name: String, val col: KdrColumn?)
-
     /**
      * Ensures [tableDef] exists (creating or updating it). Returns false if this process has already
      * created/verified the table (so callers can make row provisioning idempotent), true if it acted now.
@@ -37,7 +36,7 @@ object SqlTableUtil {
             ?: throw KdrException("No connection available on database ${sqlDb.dbName}.")
         try {
             val dbMetadata = conn.metaData
-            val existing = HashMap<String, TypeInfo>()
+            val existing = HashMap<String, DbColumnInfo>()
             dbMetadata.getColumns(null, null, dbTableName, null).use { rs ->
                 while (rs.next()) {
                     var name = rs.getString("COLUMN_NAME")
@@ -45,7 +44,12 @@ object SqlTableUtil {
                         // We store identifiers in lower case when identifiers are not case-sensitive.
                         name = name.lowercase()
                     }
-                    existing[name] = TypeInfo(name, null)
+                    // Nullability and the default are read here rather than in a second metadata pass: the
+                    // drift check (issue #216) asks about the same rows this loop is already walking, and a
+                    // driver that answers `columnNullableUnknown` is read as nullable so an ambiguous answer
+                    // produces silence rather than a false alarm.
+                    val nullable = rs.getInt("NULLABLE") != DatabaseMetaData.columnNoNulls
+                    existing[name] = DbColumnInfo(name, nullable, rs.getString("COLUMN_DEF") != null)
                 }
             }
 
@@ -66,6 +70,11 @@ object SqlTableUtil {
                 sb.append(" PRIMARY KEY (").append(primaryKeyClause).append(")\n);")
                 sqlDb.executeSchemaChangeSql(cxt, sb.toString())
             } else {
+                // Before adding anything, look the other way (issue #216): at what the database has and this
+                // declaration does not. Deliberately *before* the ALTERs below, so a column added by this very
+                // boot -- necessarily nullable, since the table has rows -- is not reported as an overdue
+                // backfill on the boot that legitimately created it.
+                SqlSchemaDrift.check(sqlCxt, tableDef, dbTableName, existing, aliases)
                 // Add any missing columns. Different databases handle multi-column adds differently, so we do
                 // one ALTER per column for simplicity; columns are added rarely enough that this is fine.
                 for (col in tableDef.columns) {

@@ -70,6 +70,52 @@ Current UI-config endpoints:
 The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
 the envelope consistent across groups.
 
+## The admin console: editing someone's authority (issue #225)
+
+The Users page edits three **independent** things, and treating them as one control is the mistake the whole
+screen is arranged to prevent:
+
+- **Access level** — a rung of `RoleLadder` (`user` < `operator` < `admin`), shown as a *single-choice*
+  `Select`, because the levels are an ordering and holding two is not a thing one can be.
+- **All clients** — an off-ladder **capability**, a checkbox. The level says *what* someone may do; this says
+  *whose data* they may do it to. Different axes.
+- **Organization** — an optional narrowing *within* a client. Blank means client-wide.
+
+**Compose, never replace.** A role list is sent whole, so an edit that rebuilds it from one control silently
+drops the others. `RoleLadder.rolesAtLevel(current, level)` moves someone between rungs while preserving
+anything off the ladder, and `rolesWithCapability(roles, capability, granted)` moves a capability on or off.
+`draftRoles` composes them **in that order** — that is what lets a level change keep a capability and a
+capability change keep a level. Saving compares role *sets*, not levels, or a capability-only edit would look
+like no change and never be sent.
+
+**Controls that could only ever fail are not shown.** "All clients" appears only to a caller who holds it (the
+backend refuses to grant reach the granter lacks), and the Organization field is editable only by someone not
+confined to one (a confined administrator may assign only their own). This is the advertise-versus-serve drift
+issue #211 exists to remove, relocated into a form: a control that can only produce a 400 is worse than no
+control.
+
+Editing **yourself** disables the level, the capability and the enabled flag — another administrator has to
+change those, so an account cannot demote or disable itself into a lock-out. Organization is deliberately *not*
+disabled there: the field is only rendered for a caller who has none, and giving yourself one *narrows* you.
+Note the one-way door that creates for a client-scoped administrator — once confined, `requireAssignableOrg`
+will not let them clear it, so they need a peer (an `allClients` holder is exempt from the rule entirely). The
+backend treats that as co-equal administration rather than a lock-out.
+
+**But a control that produces a silent no-op is the same family**, and there the fix is a hint rather than
+hiding, because the state is legal and worth keeping: `allClients` below the Administrator level is stored and
+inert (the full-scope surface needs *both*, issue #237). `isAllClientsDormant(level, granted)` — pure, covered
+under `jsNodeTest` — drives a note saying so, and saying that it is **kept**. Do not "fix" this by disabling
+the checkbox: demoting an administrator should leave the capability dormant rather than make someone remember
+to re-grant it, which is the same reasoning that makes `rolesAtLevel` preserve capabilities at all.
+
+`AdminApi` calls the **`userAdmin`** paths ([UADEP]), not the full-scope `admin` ones. That surface serves both
+kinds of administrator correctly — a capability holder is simply unconfined on it — so the console needs no
+branch on who is asking. `canManageUsers` from the home config decides whether the page is offered at all; it
+shapes the UI and is not the enforcement point, which stays the section gate.
+
+Paths, field names and the ladder all come from `base/kernel`, so a backend rename breaks compilation here
+rather than at runtime.
+
 ## Errors: never a blank page (issue #223)
 
 A throw during render used to unmount the whole React tree and leave an empty body — the least informative
