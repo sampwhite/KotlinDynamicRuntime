@@ -35,7 +35,7 @@ dependencies {
 // executable modes through a single compile-sync directory
 // (`build/js/packages/<project>/kotlin`), and the two write *different content to the same path* -- verified.
 // Depending on both distributions in one invocation therefore fails Gradle's validation, and forcing an order
-// would leave a build that is correct only by accident of scheduling. Separate invocations are fine, because
+// would leave a build that is correct only by accident of scheduling. Separate invocations are fine because
 // each syncs and then builds a single mode.
 //
 // Costs of the readable build: ~24 MB rather than ~2 MB, and a slower first load. It is a troubleshooting
