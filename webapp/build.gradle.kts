@@ -118,9 +118,9 @@ kotlin {
                 // dependency bump. The range matches what antd resolves, so no second copy is installed.
                 implementation(npm("dayjs", "^1.11.11"))
 
-                // Coroutines back the suspend-based Todo calls, which use the browser Fetch API directly
-                // (see TodoApi.kt) to hit the `:sample` runtime's endpoints — no HTTP-client library. Its
-                // version is governed by the kotlin-wrappers BOM above.
+                // Coroutines back every suspend-based API call, which uses the browser Fetch API directly
+                // (see `Http.kt`) — no HTTP-client library. Its version is governed by the kotlin-wrappers
+                // BOM above.
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
             }
         }

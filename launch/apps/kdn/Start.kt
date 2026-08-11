@@ -28,7 +28,7 @@ fun main() {
 
     // The webapp host serves the self-contained front end under its own context root (e.g. /wa). Register it
     // unconditionally before booting (schema/services are wired during boot) -- it is a real feature, not a
-    // demo; the shell serves even when the sample Todo endpoints it exercises are absent.
+    // demo, and the shell serves regardless of which optional components a deployment loads.
     InstanceRegistry.register(listOf(AppUiComponent()))
 
     // Discover deployment-injected providers via the JVM ServiceLoader (issue #171). A single pass over the
@@ -45,7 +45,7 @@ fun main() {
     }
 
     // Register discovered components (schema + services) before booting; each self-gates at boot via its
-    // isLoaded/isActive. The `sample` module is the first component discovered this way -- its demo Todo
+    // isLoaded/isActive. The `sample` module is the first component discovered this way -- its demo file
     // endpoints load only in developer environments (see SampleComponent.isLoaded), so no explicit
     // shouldLoadSample gate is needed here anymore.
     InstanceRegistry.register(providers.filterIsInstance<ComponentDefinition>().sortedBy { it.loadPriority() })

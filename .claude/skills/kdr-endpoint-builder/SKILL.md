@@ -157,5 +157,6 @@ those envelope fields are declared by the builder but not yet populated by execu
 `base/common/.../endpoint/EndpointBuilder.kt`; kernel constants in
 `base/kernel/src/commonMain/.../endpoint/EndpointConstants.kt`; execution in
 `base/common/.../http/request/RequestService.kt`. Tests: `base/common/src/test/.../endpoint/`
-(`EndpointBuilderTest.kt`, `EndpointCatalogTest.kt`); worked examples in `sample` (`TodoService`,
-`SampleFileService`) and `base/kdn/.../demo/DemoEndpoints.kt`.
+(`EndpointBuilderTest.kt`, `EndpointCatalogTest.kt`); worked examples in `sample` (`SampleFileService`, for
+the file kinds) and `SchemaService`'s `/schema/sample` and `/schema/complex` (for rich input schema: choices,
+dates, numbers, booleans, deep `$ref`s and recursion).
