@@ -109,6 +109,27 @@ backend sets from `isTestInstance` — the same fence `_debug=explainAccess` use
 of "a dev build". Note the limit: a crash in the *shell* happens before the config fetch returns, so the
 detail is withheld there even on a test instance and the console is where you read it.
 
+## Reading a frontend crash: the readable bundle (issue #230)
+
+What ships is webpack's **production** bundle, and a Kotlin exception reaches JS with `message` undefined and a
+minified `name` — so the error boundary can only report `ji` at a byte offset, however good its plumbing is.
+
+`./gradlew :launch:run -Pwebapp.dev=true` embeds the **development** build in its place. Same filename, same
+resource directory, same URL, identical behavior — the boundaries, the config flags and the debug pages all
+work exactly as before. What changes is that the same crash reports:
+
+```
+IllegalStateException: Deliberate fault from the debug page (issue #227).
+    at DebugFault$lambda (KotlinDynamicRuntime-webapp.js:4548)
+```
+
+naming the Kotlin declaration rather than an offset. Combined with the debug fault routes above, that is the
+difference between a diagnosis and a guess.
+
+It is a **troubleshooting** build: ~24 MB instead of ~2 MB, and a slower first load. And it is one *or* the
+other per build — Kotlin/JS runs both executable modes through a single compile-sync directory whose contents
+differ per mode, so one invocation cannot honestly produce both. Separate invocations are fine.
+
 ## Debug pages (issue #227)
 
 A small area that exists only where the deployment permits it (`allowDebugPages`, from the backend's
