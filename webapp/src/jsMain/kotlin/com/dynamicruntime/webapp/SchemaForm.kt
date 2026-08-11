@@ -15,6 +15,7 @@ import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.common.util.toOptBool
 import com.dynamicruntime.common.util.toOptStr
 import kotlinx.browser.document
 import web.dom.ElementId
@@ -328,7 +329,7 @@ private fun ChildrenBuilder.renderField(
 
     val messages = errors.messagesAt(path)
     fieldFrame(name, prop, required, path, messages) {
-        widget(vt, value, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) }) { newValue ->
+        widget(vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) }) { newValue ->
             errors.noteEdit(path)
             emit(newValue)
         }
@@ -611,10 +612,18 @@ private fun ChildrenBuilder.renderScalarList(
             className = ClassName("${rowClass(elementMessages)} nested")
             // An untyped array declares nothing about its elements, so there is no widget to dispatch on:
             // a plain text box, whose value the validator leaves alone for want of an item type.
-            if (elementType != null) widget(elementType, element, true) { replace(it) } else Input {
-                this.value = displayValue(element)
-                placeholder = "value"
-                onChange = { e -> replace(e.target.value as String) }
+            //
+            // An element is a slot that exists, so `required = true`: there is no absent state to express
+            // inside a list (removing an element is the remove control's job), which is what a boolean
+            // element asks about (issue #261).
+            if (elementType != null) {
+                widget(elementType, element, required = true, editable = true) { replace(it) }
+            } else {
+                Input {
+                    this.value = displayValue(element)
+                    placeholder = "value"
+                    onChange = { e -> replace(e.target.value as String) }
+                }
             }
             removeControl("$name $i") {
                 // Against the list, since removing re-indexes what follows (see renderObjectList).
@@ -665,9 +674,13 @@ private fun ChildrenBuilder.removeControl(what: String, onRemove: () -> Unit) {
  * A field's value cell. In read-only mode ([editable] false — the response view and the read-only input view)
  * it is plain text: the value, annotated with the field's type in words, with no form control. In edit mode it
  * is the control appropriate to the field's kind, reporting changes through [emit].
+ *
+ * [required] is the parent object's statement about this field, not part of [vt] — only the boolean branch
+ * consults it, to decide whether absence is a state the control has to be able to express.
  */
 private fun ChildrenBuilder.widget(
-    vt: SchType, value: Any?, editable: Boolean, describedBy: String? = null, emit: (Any?) -> Unit,
+    vt: SchType, value: Any?, required: Boolean, editable: Boolean, describedBy: String? = null,
+    emit: (Any?) -> Unit,
 ) {
     if (!editable) {
         readOnlyValue(vt, value)
@@ -696,9 +709,29 @@ private fun ChildrenBuilder.widget(
             onChange = { v -> emit(v as? String) }
             markInvalid(asDynamic(), describedBy)
         }
-        vt.jsonType == SCT.boolean -> Checkbox {
-            checked = value == true
+        // Boolean, where absent says nothing the field cannot already say: a checkbox, the compact control
+        // (issue #261). See [booleanIsTwoState] for when that is true.
+        vt.jsonType == SCT.boolean && booleanIsTwoState(vt, required) -> Checkbox {
+            // Absent draws as the default rather than as `false`. It stands for the default -- that is what
+            // makes two states enough here -- so a `default: true` field drawn unchecked would report the
+            // opposite of what it will send.
+            checked = if (value == null) vt.default == true else value == true
             onChange = { e -> emit(e.target.checked as Boolean) }
+            markInvalid(asDynamic(), describedBy)
+        }
+        // Boolean with a reachable third state: the choice widget above, over `true` / `false`, whose
+        // `allowClear` is the way back to absent. Labels are the wire values rather than Yes / No, for the same
+        // reason the form labels a field with its key: this surface documents the payload.
+        vt.jsonType == SCT.boolean -> Select {
+            options = optionsToJs(booleanOptions)
+            this.value = value?.toString()
+            placeholder = "(choose)"
+            allowClear = true
+            style = js("({ minWidth: 200 })")
+            // A real Boolean, never the option's string: `allowCoerce` defaults **off** for a boolean, so
+            // "true" against a boolean type is a plain wrongType failure. Cleared emits null, which
+            // `emptyIsAbsent` reads as absent -- the coerced payload drops the key rather than sending null.
+            onChange = { v -> emit((v as? String)?.toOptBool()) }
             markInvalid(asDynamic(), describedBy)
         }
         // Date field. Bound like every other widget, which it previously was not: with no `value`, antd's
@@ -758,6 +791,29 @@ private fun ChildrenBuilder.widget(
         }
     }
 }
+
+/** The two choices a three-state boolean offers. The wire values, verbatim — see the widget's note on labels. */
+private val booleanOptions = listOf(SchOption("true", "true"), SchOption("false", "false"))
+
+/**
+ * Whether a boolean field has only **two** reachable states, so a checkbox can express it (issue #261).
+ *
+ * A boolean value has three: `true`, `false`, and absent — and `emptyIsAbsent` defaults **true** for scalars,
+ * booleans included, so an absent boolean is "not supplied" rather than `false`. On an update endpoint that is
+ * the difference between *leave this alone* and *set it off*, and a two-state control cannot say which: an
+ * untouched box is indistinguishable from a deliberate `false`, emitting `false` at all takes toggling on and
+ * back off, and nothing gets back to absent.
+ *
+ * The third state collapses in exactly two cases, which is what this asks:
+ *
+ * - a **`default`** — the validator injects it for a missing required property, and a declared default is what
+ *   absent means in any case, so absent is not an outcome of its own; or
+ * - **`required`** — absent is invalid, so only `true` and `false` are reachable.
+ *
+ * Pure, and deliberately so: [SchType] plus the `required` its parent object declares (which lives in the
+ * parent's `required` set, not on the property), decided in one place and covered without a browser.
+ */
+fun booleanIsTwoState(vt: SchType, required: Boolean): Boolean = required || vt.default != null
 
 /** What a free-form map field needs: the value it holds, where to point a screen reader, and how to emit. */
 external interface JsonObjectFieldProps : Props {
