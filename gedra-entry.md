@@ -173,8 +173,14 @@ cannot be interpreted; unknown behavior means data would be stored looking proce
 
 ## Schema constructs
 
-Four things the `Sch*` layer does not have yet. `SchParser` currently rejects `oneOf` and `if` outright, and
-`SchType` has no variant representation, so all of this is net-new.
+Four things the `Sch*` layer does not have yet. `SchType` has no variant or conditional representation, and
+the parser **ignores** a keyword it does not recognize — deliberately, since being strict about standard
+keywords would reject documents a stock validator accepts.
+
+So none of this breaks an existing document; support is purely additive. The cost of not having it is
+quieter and worse: a `oneOf` written today parses, constrains nothing, and reports no failure. A document can
+already claim to be a discriminated union and be enforcing nothing at all, which is the strongest argument
+for building this rather than deferring it again.
 
 ### Discriminated entries
 
