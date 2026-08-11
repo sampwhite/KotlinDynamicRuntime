@@ -96,14 +96,19 @@ class RequestService : ServiceInitializer {
     val operatorSections: List<String> = listOf("operator")
 
     /**
-     * Sections requiring [ROLE.allClients] -- the **full-scope** administration surface (issue #225). Holding
-     * [ROLE.admin] is not enough: an administrator confined to one client does not get a narrowed view of
-     * these endpoints, they get a different surface.
+     * Sections requiring [ROLE.admin] **and** the [ROLE.allClients] capability -- the **full-scope**
+     * administration surface (issue #225). The level alone is not enough: an administrator confined to one
+     * client does not get a narrowed view of these endpoints, they get a different surface
+     * ([scopedAdminSections]).
      *
-     * The required role is the capability rather than a rung, and that works unchanged because
-     * [RoleLadder.satisfies] falls back to exact membership for a role that is not on the ladder. Since #211
-     * the same comparison drives the endpoint catalog, so these are also *invisible* to a caller who cannot
-     * call them -- "see" and "use" are one answer.
+     * **Both, not either.** These sections originally named the capability as their required role, which made
+     * holding it sufficient on its own -- `RoleLadder.satisfies` falls back to exact membership off the
+     * ladder, so it granted the surface rather than widening it. A user demoted to `user` who kept the
+     * capability therefore retained cross-client user administration while being refused the *lesser* scoped
+     * surface, which is the wrong way round. A capability qualifies an authority; it never confers one.
+     *
+     * Since #211 the same comparison drives the endpoint catalog, so these are also *invisible* to a caller
+     * who cannot call them -- "see" and "use" are one answer.
      */
     val adminSections: List<String> = listOf("node", "admin")
 
@@ -153,8 +158,8 @@ class RequestService : ServiceInitializer {
      * deliberately does not require a re-login.
      */
     fun canAccess(profile: UserProfile, appPath: String): Boolean {
-        val role = requiredRoleFor(appPath) ?: return true
-        return RoleLadder.satisfies(profile.roles, role)
+        val rules = sectionRulesMap[sectionOf(appPath)] ?: return true
+        return rules.admits(profile.roles)
     }
 
     /**
@@ -173,7 +178,11 @@ class RequestService : ServiceInitializer {
         for (s in userSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.user)
         for (s in operatorSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.operator)
         for (s in scopedAdminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.admin)
-        for (s in adminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = ROLE.allClients)
+        for (s in adminSections) {
+            sectionRulesMap[s] = SectionRules(
+                s, needsLogin = true, requiredRole = ROLE.admin, requiredCapability = ROLE.allClients,
+            )
+        }
 
         apiContextRoot = (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
         contentContextRoot = (cxt.instanceConfig.get(ACFG.contentContextRoot) as? String) ?: ContextRoot.cp
@@ -251,20 +260,25 @@ class RequestService : ServiceInitializer {
         // and this is not yours", where retrying with the same identity never helps. Answering 401 to a
         // logged-in user invites exactly the retry that cannot work -- and tells a frontend to send them back
         // to a login screen they are already past.
-        val requiredRole = handler.sectionRules?.requiredRole
-        if (requiredRole != null) {
+        val rules = handler.sectionRules
+        if (rules != null && rules.isGated) {
             refreshActingRoles(cxt)
-        }
-        if (requiredRole != null && !RoleLadder.satisfies(cxt.userProfile.roles, requiredRole)) {
-            val loggedIn = cxt.userProfile.isLoggedIn
-            throw KdrException(
-                if (loggedIn) {
-                    "Request requires the '$requiredRole' role."
-                } else {
-                    "Request requires the '$requiredRole' role and no user is logged in."
-                },
-                code = if (loggedIn) EXC.notAuthorized else EXC.authNeeded,
-            )
+            // The same predicate the catalog filters on, so a caller is never shown an endpoint that would
+            // then refuse them. It reports *which* requirement is unmet, because a section can demand a level
+            // and a capability, and telling an administrator they "require the 'admin' role" when what they
+            // lack is `allClients` sends them looking for the wrong thing.
+            val unmet = rules.unmetRequirement(cxt.userProfile.roles)
+            if (unmet != null) {
+                val loggedIn = cxt.userProfile.isLoggedIn
+                throw KdrException(
+                    if (loggedIn) {
+                        "Request requires the '$unmet' role."
+                    } else {
+                        "Request requires the '$unmet' role and no user is logged in."
+                    },
+                    code = if (loggedIn) EXC.notAuthorized else EXC.authNeeded,
+                )
+            }
         }
 
         loadProfile(cxt, handler)

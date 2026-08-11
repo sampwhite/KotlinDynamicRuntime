@@ -281,6 +281,16 @@ val Users = FC<Props> {
                     className = ClassName("type-hint")
                     +allClientsHint
                 }
+                // Granting the capability below the admin level is allowed and saves cleanly, and it also does
+                // nothing -- the full-scope surface wants both. Without this the checkbox reads as conferring
+                // reach it is not conferring, which is the advertise-versus-serve drift noted above, in the
+                // one direction a hidden control cannot fix: here the state is legal and worth keeping.
+                if (isAllClientsDormant(draftLevel, draftAllClients)) {
+                    p {
+                        className = ClassName("type-hint")
+                        +allClientsDormantHint
+                    }
+                }
             }
 
             // Editable only by someone not confined to an organization: the backend lets a confined
@@ -427,6 +437,15 @@ private val accessLevelOptions: Array<dynamic> = RoleLadder.ordered.map { role -
 private const val allClientsHint =
     "Access level says what someone may do; this says whose data they may do it to. Without it an " +
         "administrator manages only their own client. It is also what the full-scope admin endpoints require."
+
+/**
+ * Shown when the capability is checked below the Administrator level, where it is stored but inert. Says that
+ * it is kept rather than dropped, because that is the part an operator cannot see and would otherwise have to
+ * discover by re-granting it after a promotion.
+ */
+private const val allClientsDormantHint =
+    "Dormant below Administrator: the full-scope endpoints require the access level as well as this. " +
+        "It is kept, and takes effect if the level is raised."
 
 /** Explains the optional middle width of the scope, and what leaving it blank means. */
 private const val orgHint =

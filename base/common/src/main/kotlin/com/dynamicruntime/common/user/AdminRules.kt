@@ -134,10 +134,17 @@ object AdminRules {
      * decided once here rather than per endpoint -- a new admin endpoint gets the scope by construction
      * instead of by remembering.
      *
-     * A caller who is not an administrator gets [ReadScope.unrestricted] rather than "nothing": the admin
-     * surface is closed to them by its section gate, so there is no read for this to constrain. The day
-     * ordinary endpoints scope their own reads, *their* scope is `ofUser`, resolved somewhere that knows it
-     * is an ordinary read -- not here.
+     * A caller who is not an administrator gets the **narrowest** scope -- their own rows -- rather than the
+     * unrestricted one. This used to return `unrestricted`, reasoning that the section gate closes the admin
+     * surface to them so there is no read for this to constrain. That reasoning was sound and the premise was
+     * false: while the `admin` section accepted the `allClients` capability *alone*, a caller with no admin
+     * level at all reached these endpoints and this handed them every client's rows. The gate is fixed, which
+     * makes this branch unreachable again -- so it costs nothing to have it fail closed, and an assumption
+     * about another component that has already been wrong once should not be the only thing standing between a
+     * non-administrator and the whole table.
+     *
+     * The day ordinary endpoints scope their own reads, *their* scope is also `ofUser`, but resolved somewhere
+     * that knows it is an ordinary read -- not here.
      */
     fun adminReadScope(cxt: KdrCxt): ReadScope = when (adminScope(cxt)) {
         AdminScope.ownClient -> {
@@ -150,7 +157,9 @@ object AdminRules {
         }
         // The capability outranks a primary organization. Someone who may reach every client is not confined
         // by which organization they happen to belong to -- the two are different axes, and this is the wider.
-        AdminScope.allClients, AdminScope.none -> ReadScope.unrestricted
+        AdminScope.allClients -> ReadScope.unrestricted
+        // Unreachable through a gated surface; narrowest rather than widest if it ever is reached again.
+        AdminScope.none -> ReadScope.ofUser(cxt.userProfile.userId)
     }
 
     /**

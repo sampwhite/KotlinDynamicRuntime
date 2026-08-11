@@ -51,6 +51,20 @@ fun rolesWithCapability(roles: List<String>, capability: String, granted: Boolea
     if (granted) (roles + capability).distinct() else roles.filter { it != capability }
 
 /**
+ * Whether [ROLE.allClients] would be **dormant** at [level]: held, stored, and doing nothing (issue #225).
+ *
+ * The full-scope surface requires the `admin` level *and* the capability, so granting the capability to
+ * somebody below that level changes nothing about what they can reach. That is a legitimate state and the
+ * editor allows it -- demoting an administrator keeps their capability rather than making someone remember to
+ * re-grant it -- but it is not a state a checkbox communicates on its own, so the editor says so instead.
+ *
+ * Asked through [RoleLadder] rather than by comparing to `admin` directly, so it stays true if the level the
+ * capability qualifies ever moves. Pure, and covered under `jsNodeTest`.
+ */
+fun isAllClientsDormant(level: String, granted: Boolean): Boolean =
+    granted && !RoleLadder.satisfies(setOf(level), ROLE.admin)
+
+/**
  * The user-administration calls, behind the **`userAdmin`** section (issue #225) -- so every one of them 403s
  * unless the caller holds the role the shell advertised as `canManageUsers`. The frontend uses that flag to
  * decide what to *show*; this is the surface that is actually gated.
