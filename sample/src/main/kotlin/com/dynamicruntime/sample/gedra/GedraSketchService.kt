@@ -18,7 +18,12 @@ import com.dynamicruntime.common.util.toOptStr
  * nothing else in the codebase does, which is the same bar the file endpoints clear and the reason issue #243
  * removed the demo and todo endpoints that cleared no bar at all.
  *
- * Named for what it is rather than for what it prototypes, so nobody later mistakes it for the real `Gedra`.
+ * Named for what it is rather than for what it prototypes, so nobody later mistakes it for the real `Gedra` --
+ * and the **paths** say the same thing, under a `gedraSketch` section rather than `gedra`. Two reasons, and
+ * the second is the one that bites: `gedra` is a name with a future, so a fixture holding it collides with the
+ * day a real endpoint wants to save an entry. The verb is held to the same standard: this fills entries out
+ * and returns them, so it is `fillOut` and not `save`, which would be a plain untruth in the first place a
+ * reader looks. A convention for fixtures generally is issue #270.
  * The trait vocabulary is deliberately the design document's, since the point is to find out whether that
  * document's shapes survive contact with the form and the validator.
  */
@@ -105,7 +110,7 @@ class GedraSketchService : ServiceInitializer {
             }
 
             generalEndpoint(
-                "/gedra/entry/echo",
+                "/gedraSketch/entry/echo",
                 "Validates one Gedra entry against its trait's branch and reports which branch accepted it. " +
                     "Stores nothing.",
                 HttpMethod.POST,
@@ -133,8 +138,9 @@ class GedraSketchService : ServiceInitializer {
             // own traitId names, so one array carries several shapes and a failure names the element it came
             // from.
             listEndpoint(
-                "/gedra/entries/save",
-                "Validates a set of Gedra entries and answers with them filled out. Stores nothing.",
+                "/gedraSketch/entries/fillOut",
+                "Validates a set of Gedra entries and answers with them filled out. Stores nothing -- the " +
+                    "name says what it does rather than what a real endpoint here would be called.",
                 outputRef = "GedraEntry",
                 method = HttpMethod.POST,
                 // A `limit` would be nonsense here: the answer is one entry per entry supplied, so there is
