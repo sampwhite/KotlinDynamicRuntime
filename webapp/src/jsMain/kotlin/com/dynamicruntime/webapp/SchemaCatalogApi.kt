@@ -161,12 +161,24 @@ private fun newFormData(): dynamic = js("new FormData()")
  * should treat it as a part or as text.
  */
 fun isBrowserFile(v: Any?): Boolean {
+    // Null first, and not as part of the chain below: `typeof null` is "object", so a null clears the type
+    // test and then throws on the very next term. The parameter is `Any?` and every caller reads it out of a
+    // `Map<String, Any?>`, so null is an ordinary value here -- a key the form does not hold, or one whose
+    // value is JSON null -- rather than a case that should never arise (issue #260).
+    if (v == null) {
+        return false
+    }
     val d = v.asDynamic()
     return jsTypeOf(d) == "object" && d.name != undefined && d.size != undefined && jsTypeOf(d.slice) == "function"
 }
 
 /** A picked file's name and size, for showing what was chosen where the file itself cannot go. ASCII only:
- *  this lands in a JSON preview, and the formatter escapes anything else into `\uXXXX` noise. */
+ *  this lands in a JSON preview, and the formatter escapes anything else into `\uXXXX` noise.
+ *
+ *  Only meaningful for a value [isBrowserFile] accepted, which is the gate both callers apply: this reads
+ *  `name` and `size` straight off the value, so anything else yields "(file: undefined, undefined bytes)" at
+ *  best and throws at worst. Keeping the precondition rather than inventing a fallback is deliberate -- there
+ *  is no honest label for a non-file, and a plausible-looking one would hide the miswiring that produced it. */
 fun browserFileLabel(v: Any?): String {
     val d = v.asDynamic()
     return "(file: ${d.name}, ${d.size} bytes)"
