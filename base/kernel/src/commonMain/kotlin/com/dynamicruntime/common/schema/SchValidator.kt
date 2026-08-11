@@ -13,6 +13,7 @@ import com.dynamicruntime.common.util.parseDayLenient
 import com.dynamicruntime.common.util.splitComma
 import com.dynamicruntime.common.util.toDay
 import com.dynamicruntime.common.util.toOptBool
+import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toStartOfDay
 import kotlinx.datetime.LocalDate
 import kotlin.time.Instant
@@ -222,6 +223,11 @@ fun validateValue(
 ): Any? {
     val jsonType = type.jsonType
 
+    // A discriminated union: pick the branch, then validate against that one alone (issue #252).
+    type.variants?.let { variants ->
+        return validateVariant(type, variants, value, path, coerce, failures, opts)
+    }
+
     // A string field carrying a date format is validated by parsing (and optionally becomes a Date).
     if (jsonType == SCT.string && isDateFormat(type.format)) {
         return validateDate(type, value, path, coerce, failures)
@@ -245,6 +251,20 @@ fun validateValue(
         return coerced
     }
 
+    // `const`: the type admits one value. Checked before options, and separately from them, because it is a
+    // statement about the shape rather than a choice being offered -- most often a union branch saying which
+    // branch it is. Compared as text, so a discriminator that arrived as a number still matches its declared
+    // string; JSON Schema compares by instance equality, and a wire value that reads the same is the same
+    // answer to "which branch is this".
+    val constValue = type.constValue
+    if (constValue != null && value.toOptStr() != constValue.toOptStr()) {
+        failures.add(
+            type.failure(path, SchFailCode.invalidOption, "'$value' is not '$constValue'.",
+                listOf(SchOption(constValue.toOptStr() ?: "", constValue.toOptStr() ?: "")))
+        )
+        return value
+    }
+
     val options = type.options
     if (options != null) {
         val choice = value as? String
@@ -261,6 +281,62 @@ fun validateValue(
         SCT.array -> validateArray(type, value as List<*>, path, coerce, failures, opts)
         else -> value // scalar matched, unchanged
     }
+}
+
+/**
+ * Validates a discriminated union: read the discriminator, select one branch, validate against that branch
+ * alone (issue #252).
+ *
+ * The failures are the selected branch's own, reported at the paths the payload actually has — which is the
+ * whole reason the discriminator is declared. Trying every branch and merging what came back produces a list
+ * of complaints from shapes the caller never meant to send, and no way to rank them.
+ *
+ * Three ways this goes wrong, each with its own answer:
+ *
+ * - **Not an object at all** — a plain [SchFailCode.wrongType] before anything else is attempted.
+ * - **No discriminator** — [SchFailCode.missingRequired] against the discriminator's own path, since without
+ *   it there is nothing to select with. Reported there rather than against the union, so the message sits on
+ *   the field someone has to fill in.
+ * - **A value naming no branch** — [SchFailCode.invalidOption] carrying the declared values as its options, so
+ *   the existing "Valid options: …" wording lists what this reader knows. Unless a `defaultMapping` exists, in
+ *   which case an unrecognized value is not an error at all: it goes to the default branch and passes through.
+ */
+@KdrPrivate
+fun validateVariant(
+    type: SchType,
+    variants: SchVariants,
+    value: Any?,
+    path: String,
+    coerce: Boolean,
+    failures: MutableList<SchFailure>,
+    opts: SchOpts,
+): Any? {
+    if (value !is Map<*, *>) {
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        return value
+    }
+    val discriminatorPath = childPath(path, variants.discriminator)
+    val raw = value[variants.discriminator].toOptStr()
+    if (raw == null) {
+        failures.add(
+            type.failure(
+                discriminatorPath, SchFailCode.missingRequired,
+                "Required property '${variants.discriminator}' is missing.",
+            ),
+        )
+        return value
+    }
+    val branch = variants.select(raw)
+    if (branch == null) {
+        failures.add(
+            type.failure(
+                discriminatorPath, SchFailCode.invalidOption, "'$raw' is not a valid option.",
+                variants.values.map { SchOption(it, it) },
+            ),
+        )
+        return value
+    }
+    return validateValue(branch, value, path, coerce, failures, opts)
 }
 
 @KdrPrivate

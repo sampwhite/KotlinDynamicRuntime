@@ -97,6 +97,27 @@ object SCH {
     const val kThen = "then"
     const val kElse = "else"
 
+    /**
+     * OpenAPI's `discriminator`, sitting beside [oneOf] and naming the property that selects the branch
+     * (issue #252). Spelled **bare**, and it is the one keyword of ours that is: see [gPrefix] for the rule
+     * this breaks and why.
+     *
+     * The reduced form only — [propertyName] and [defaultMapping]. OpenAPI's remaining machinery serves
+     * deserialization into a class hierarchy rather than validation, and its own maintainers have an open
+     * proposal to replace or remove the object; `mapping` in particular duplicates what the branches' [const]
+     * values already say, so it is synthesized at the export boundary rather than authored here.
+     */
+    const val discriminator = "discriminator"
+
+    /** Inside [discriminator]: the name of the property whose value selects the branch. */
+    const val propertyName = "propertyName"
+
+    /**
+     * Inside [discriminator]: where a value naming no branch goes (OpenAPI 3.2). A `$ref` to the branch that
+     * accepts what this reader does not recognize; absent means an unrecognized value is a failure.
+     */
+    const val defaultMapping = "defaultMapping"
+
     // Content.
     const val contentEncoding = "contentEncoding"
     const val contentMediaType = "contentMediaType"

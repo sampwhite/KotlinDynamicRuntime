@@ -424,6 +424,9 @@ fun inputObjectType(name: String, properties: Map<String, SchProperty>, required
         additionalProperties = false,
         itemType = null,
         options = null,
+        // An envelope is not a branch of anything and admits no single value, so neither construct applies.
+        constValue = null,
+        variants = null,
         default = null,
         // An endpoint's input envelope is machinery, not a field anyone fills in, so there is nothing here
         // for custom error copy to be about, and no bound on how many fields it may carry.
@@ -454,6 +457,8 @@ val limitInputProperty: SchProperty =
             additionalProperties = false,
             itemType = null,
             options = null,
+            constValue = null,
+            variants = null,
             default = defaultListLimit,
             errorMessages = emptyMap(),
             // Deliberately unbounded rather than `minimum = 1`: a bound here would start rejecting `?limit=0`,
