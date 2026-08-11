@@ -26,11 +26,37 @@ dependencies {
 //
 // `index.html` is deliberately NOT copied: the production shell is rendered by AppUiPage (it has to inject the
 // live context roots), so only the assets that shell references are embedded.
-val embedWebapp = tasks.register<Copy>("embedWebapp") {
-    description = "Embed the web application"
-    dependsOn(":webapp:jsBrowserDistribution")
-    from(project(":webapp").layout.buildDirectory.dir("dist/js/productionExecutable")) {
+// Which build of the webapp to embed (issue #230). `-Pwebapp.dev=true` embeds the **readable** development
+// bundle in place of the production one: same filename, same resource directory, so nothing downstream changes
+// -- the shell links it, the hash is computed from it, and the app behaves identically. What differs is that a
+// crash reports `NullPointerException at ensureNotNull at SchemaForm$lambda` instead of `ji` at a byte offset.
+//
+// One or the other, never both, and that is a constraint rather than a preference. Kotlin/JS runs both
+// executable modes through a single compile-sync directory
+// (`build/js/packages/<project>/kotlin`), and the two write *different content to the same path* -- verified.
+// Depending on both distributions in one invocation therefore fails Gradle's validation, and forcing an order
+// would leave a build that is correct only by accident of scheduling. Separate invocations are fine, because
+// each syncs and then builds a single mode.
+//
+// Costs of the readable build: ~24 MB rather than ~2 MB, and a slower first load. It is a troubleshooting
+// build, not a deployable one.
+val useDevWebapp = (project.findProperty("webapp.dev") as? String) == "true"
+val webappDistTask = if (useDevWebapp) {
+    ":webapp:jsBrowserDevelopmentExecutableDistribution"
+} else {
+    ":webapp:jsBrowserDistribution"
+}
+val webappDistDir = if (useDevWebapp) "dist/js/developmentExecutable" else "dist/js/productionExecutable"
+
+val embedWebapp = tasks.register<Sync>("embedWebapp") {
+    description = "Embed the web application" + if (useDevWebapp) " (readable development build)" else ""
+    dependsOn(webappDistTask)
+    from(project(":webapp").layout.buildDirectory.dir(webappDistDir)) {
         include(
+            // `webapp.js.map` matches nothing in the development build -- that one carries its source map
+            // INLINE as a data URI, which is most of why it is twelve times the size. A `Sync` rather than a
+            // `Copy` for exactly that reason: switching builds must *remove* the previous one's leftovers, or
+            // a stale production sourcemap would sit beside a development bundle claiming to describe it.
             "webapp.js", "webapp.js.map", "app.css",
             // Artwork. The rasters are binary, so AppUiService serves them as bytes; a Copy task moves them
             // verbatim (verified: md5 matches the branding source through the webpack distribution).

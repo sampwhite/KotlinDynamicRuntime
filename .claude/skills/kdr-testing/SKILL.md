@@ -1,6 +1,6 @@
 ---
 name: kdr-testing
-description: Test and verify changes in KotlinDynamicRuntime — booting your own server to drive it by curl, kdr-probe or browser, and writing in-process unit tests. Covers the KDR_PORT/in-memory server conventions (and the don't-touch-7070 rule), the kdr-probe scenario host for driving a running instance as a chosen caller (and extending it, which needs no permission), the _debug=explainAccess tag for why a caller cannot see an endpoint, mkTestBootCxt/mkBootCxt with config overlays including ACFG.isTestInstance to test how a real node behaves, the focused-vs-flow test split and the conventions a shared-instance flow test needs, TestHttpClient and its response-extraction idioms, injecting env-var options through the instance config, selecting your own config object via KDR_CUSTOM_CONFIG to set config values that have no env var, and the TestUser/become-user helper for authenticated tests. Use whenever writing or reviewing a test, verifying a change end-to-end, or booting and driving the app in this codebase — even when the request just says "check that this works" or "run the app".
+description: Test and verify changes in KotlinDynamicRuntime — booting your own server to drive it by curl, kdr-probe or browser, and writing in-process unit tests. Covers -Pwebapp.dev=true for a readable frontend bundle when a crash reports minified nonsense. Covers the KDR_PORT/in-memory server conventions (and the don't-touch-7070 rule), the kdr-probe scenario host for driving a running instance as a chosen caller (and extending it, which needs no permission), the _debug=explainAccess tag for why a caller cannot see an endpoint, mkTestBootCxt/mkBootCxt with config overlays including ACFG.isTestInstance to test how a real node behaves, the focused-vs-flow test split and the conventions a shared-instance flow test needs, TestHttpClient and its response-extraction idioms, injecting env-var options through the instance config, selecting your own config object via KDR_CUSTOM_CONFIG to set config values that have no env var, and the TestUser/become-user helper for authenticated tests. Use whenever writing or reviewing a test, verifying a change end-to-end, or booting and driving the app in this codebase — even when the request just says "check that this works" or "run the app".
 ---
 
 # Testing and verifying changes
@@ -70,6 +70,23 @@ same boot from any directory if `bin/` is on your `PATH`.
   property) — set it in your *own* config object and select it with `KDR_CUSTOM_CONFIG=ClaudeConfig`, so you
   never edit the developer's `KdrConfig` (their run's config can't break yours, and vice versa). Full recipe,
   addressed to you, in the **"For Claude"** section of `examples/custom-config.md`.
+
+**A crash in the frontend reports minified nonsense by default.** The deployed bundle is webpack's production
+build, so a Kotlin exception arrives with no `message` and a mangled `name` — a caught render failure reports
+itself as `ji` at a byte offset. Add **`-Pwebapp.dev=true`** to embed the *readable* build instead (issue #230):
+
+```bash
+cd "$WS" && KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run -Pwebapp.dev=true
+```
+
+The same crash then reports `IllegalStateException … at DebugFault$lambda`, naming the Kotlin declaration. Same
+filename, same URL, same behavior — only the readability differs. Reach for it the moment a frontend failure is
+not obvious; it costs a rebuild and about 24 MB of bundle (vs 2 MB), so it is a troubleshooting build, not a
+default. It is **one or the other per build**: Kotlin/JS runs both executable modes through a single
+compile-sync directory, so a single invocation cannot produce both.
+
+Pair it with the debug fault routes (issue #227) to make the app fail on demand:
+`#page=debug&tool=fault` for a page failure, `#<any page>&fault=shell` for the shell.
 
 **Stop it and free the port when done** (targeted, so you never touch 7070):
 
