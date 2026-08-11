@@ -2,6 +2,7 @@ package com.dynamicruntime.common.endpoint
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.refTargetName
 import com.dynamicruntime.common.schema.typeRefPath

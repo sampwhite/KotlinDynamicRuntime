@@ -48,6 +48,7 @@ val EndpointCatalog = FC<Props> {
     var values by useState<Map<String, Any?>>(emptyMap())
     var editable by useState(true)
     var showOutput by useState(false)
+    var showRaw by useState(false)
     var failures by useState<List<SchFailure>?>(null)
     // Set when a field is edited after a validation pass, so the form can say that what is (or is no longer)
     // on screen predates the edit. Distinguishes "checked, then changed" from "never checked" -- a fresh form
@@ -180,6 +181,7 @@ val EndpointCatalog = FC<Props> {
                         values = emptyMap()
                         editable = true
                         showOutput = false
+                        showRaw = false
                         failures = null
                         revalidate = false
                         coerced = null
@@ -291,7 +293,7 @@ val EndpointCatalog = FC<Props> {
                 }
             }
 
-            // Separate link to reveal the output schema (structure only).
+            // Separate links to reveal the output schema (structure only) and the raw schema of both sides.
             div {
                 className = ClassName("row")
                 Button {
@@ -299,10 +301,25 @@ val EndpointCatalog = FC<Props> {
                     onClick = { showOutput = !showOutput }
                     +if (showOutput) "Hide output schema" else "View output schema"
                 }
+                Button {
+                    type = "link"
+                    onClick = { showRaw = !showRaw }
+                    +if (showRaw) "Hide raw schema" else "View raw schema"
+                }
             }
             if (showOutput) {
                 h2 { +"Output schema" }
                 SchemaOutline { type = cat.outputType(current) }
+            }
+            // The raw documents (issue #262). The field-and-value views above cannot show everything a schema
+            // says -- a discriminator's `defaultMapping`, `additionalProperties`, which type a `$ref` actually
+            // resolves to -- and every construct added to the layer has so far needed a presentation invented
+            // for it. This one needs none, and so answers for constructs that do not exist yet.
+            if (showRaw) {
+                h2 { +"Raw input schema" }
+                rawSchemaBlock(cat.rawDocument(current.inputSchema))
+                h2 { +"Raw output schema" }
+                rawSchemaBlock(cat.rawDocument(current.outputSchema))
             }
 
             h2 { +"Input parameters" }
@@ -671,3 +688,17 @@ private fun writeHash(endpoint: EndpointInfo?, values: Map<String, Any?>) {
  * everything filled in but the file to pick again.
  */
 private fun Map<String, Any?>.withoutFiles(): Map<String, Any?> = filterValues { !isBrowserFile(it) }
+
+/**
+ * One raw schema document, pretty-printed into the same inset well the read-only views already use.
+ *
+ * A `pre` rather than a textarea: this is a rendering to read and copy, not something to edit. The request
+ * panel is a textarea precisely because it *is* editable, and the difference should be visible without having
+ * to click.
+ */
+private fun ChildrenBuilder.rawSchemaBlock(document: Map<String, Any?>) {
+    pre {
+        className = ClassName("code json-value")
+        +document.toJsonStr()
+    }
+}

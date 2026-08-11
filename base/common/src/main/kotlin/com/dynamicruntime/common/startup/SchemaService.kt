@@ -10,7 +10,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
-import com.dynamicruntime.common.endpoint.collectDefs
+import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
