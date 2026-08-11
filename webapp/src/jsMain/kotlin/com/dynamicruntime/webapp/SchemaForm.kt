@@ -221,7 +221,12 @@ private fun ChildrenBuilder.renderProperties(
         // overwritten. A real form-entry GUI would hide it, and would be right to; these two surfaces read
         // the same keyword and reach opposite conclusions, which is the point of the annotation.
         renderField(
-            name, prop, name in type.required || name in alsoRequired, values[name], seen,
+            // Never marked required, derived: the asterisk means "you must supply this", and a field with no
+            // control is not something anybody can supply. It is required of the *stored* shape, which the
+            // response demonstrates by carrying it.
+            name, prop,
+            (name in type.required || name in alsoRequired) && !prop.valueType.derived,
+            values[name], seen,
             editable && !prop.valueType.derived,
             childPath(path, name), errors,
             // A removal has to drop the key, not null it: a null against an object/array type fails the plain

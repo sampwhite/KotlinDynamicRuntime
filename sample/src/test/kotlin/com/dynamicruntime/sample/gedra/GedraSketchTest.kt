@@ -4,10 +4,14 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.collections.shouldContainAll
 
 /**
  * The Gedra entry sketch driven through the request pipeline (issue #252).
@@ -41,9 +45,10 @@ class GedraSketchTest : StringSpec({
             GS.traitId to GS.expenseReport, GS.year to 2024, GS.perItemAmount to 12.5, GS.itemCount to 3,
         ))
         results[GS.branch] shouldBe GS.expenseReport
-        // Four supplied fields, plus the derived total the handler adds -- so the count also says that a
-        // derived value is absent when it reaches the handler and present when it leaves.
-        results[GS.fieldCount] shouldBe 5
+        // Assert the shape rather than a count: the count now also carries the stored envelope, so a number
+        // here would have to be edited every time the envelope changes and would say nothing while it did.
+        val entry = results.getValue(GS.entry)!!.toJsonMap()
+        entry.keys shouldContainAll setOf(GS.year, GS.perItemAmount, GS.itemCount, GS.totalAmount)
     }
 
     "a different traitId in the same field selects a different branch" {
@@ -113,7 +118,7 @@ class GedraSketchTest : StringSpec({
         val results = echo("unknown", mapOf(GS.traitId to "somethingNobodyDeclared", "anything" to 1))
         // The carried field survives: an opaque entry that arrives whole and is stored empty is worse than one
         // that is refused, because nothing says it happened.
-        results[GS.fieldCount] shouldBe 2
+        results.getValue(GS.entry)!!.toJsonMap()["anything"] shouldBe 1L
         results[GS.branch] shouldBe GS.default
         results[GS.traitId] shouldBe "somethingNobodyDeclared"
     }
@@ -121,4 +126,61 @@ class GedraSketchTest : StringSpec({
     "an entry with no traitId at all is refused" {
         status("noTrait", mapOf(GS.year to 2024)) shouldBe 400
     }
+    // --- the round trip (issue #255) -----------------------------------------
+
+    fun save(name: String, entries: List<Map<String, Any?>>): List<Map<String, Any?>> =
+        client(name).sendJsonPostRequest("/gedra/entries/save", mapOf(GS.entries to entries))
+            .getValue(EP.items)!!.toJsonListOfMaps()
+
+    // One array carrying several shapes, each validated against the branch its own traitId names. This is the
+    // whole design under load at once: a union selecting per element, a conditional inside one of the
+    // branches, and a projection deciding what the caller supplies versus what comes back.
+    "an array of differently shaped entries round-trips" {
+        val saved = save("mixed", listOf(
+            mapOf(GS.traitId to GS.expenseReport, GS.year to 2024, GS.perItemAmount to 10.0, GS.itemCount to 3),
+            mapOf(GS.traitId to GS.managerApproval, GS.approved to false, GS.rejectionReason to "Too late."),
+            mapOf(GS.traitId to "somethingNobodyDeclared", "carried" to "through"),
+        ))
+        saved.map { it[GS.traitId] } shouldBe listOf(GS.expenseReport, GS.managerApproval, "somethingNobodyDeclared")
+        // Derived within a branch, and the envelope every entry gains.
+        saved[0][GS.totalAmount] shouldBe 30.0
+        saved.forEach { it[GS.source] shouldBe GS.userSource }
+        saved.map { it[GS.entryId] } shouldBe listOf("e-1", "e-2", "e-3")
+    }
+
+    // A failure has to name the element it came from, or an array of thirty entries reports a problem with no
+    // way to find it.
+    "a failure in one element names that element" {
+        val resp = client("badElement").sendEditRequest(
+            "/gedra/entries/save", null,
+            mapOf(GS.entries to listOf(
+                mapOf(GS.traitId to GS.expenseReport, GS.year to 2024),
+                mapOf(GS.traitId to GS.expenseReport, GS.year to 1999),
+            )),
+            isPut = false,
+        )
+        resp.rptStatusCode shouldBe 400
+    }
+
+    // The entries the caller sends carry none of the stored envelope, and every entry that comes back carries
+    // all of it. Asked in both directions on purpose: this is the projection, seen from the outside.
+    "the caller supplies none of the stored fields and receives all of them" {
+        val sent = mapOf(GS.traitId to GS.managerApproval, GS.approved to true)
+        val saved = save("envelope", listOf(sent)).single()
+        sent.keys shouldNotContain GS.entryId
+        saved.keys shouldContainAll setOf(GS.entryId, GS.source, GS.createdAt)
+    }
+
+    // Echoed back the way read-modify-write does: the envelope is dropped on arrival and re-stamped, so a
+    // client cannot pin an id or backdate a record by sending one.
+    "a client cannot set the stored fields by sending them" {
+        val saved = save("reEchoed", listOf(mapOf(
+            GS.traitId to GS.managerApproval, GS.approved to true,
+            GS.entryId to "e-999", GS.source to "excel", GS.createdAt to "1999-01-01T00:00:00Z",
+        ))).single()
+        saved[GS.entryId] shouldBe "e-1"
+        saved[GS.source] shouldBe GS.userSource
+        saved[GS.createdAt] shouldNotBe "1999-01-01T00:00:00Z"
+    }
+
 })
