@@ -168,7 +168,7 @@ class GedraSketchTest : StringSpec({
         val sent = mapOf(GS.traitId to GS.managerApproval, GS.approved to true)
         val saved = save("envelope", listOf(sent)).single()
         sent.keys shouldNotContain GS.entryId
-        saved.keys shouldContainAll setOf(GS.entryId, GS.source, GS.createdAt)
+        saved.keys shouldContainAll setOf(GS.entryId, GS.source, GS.createdAt, GS.updatedAt)
     }
 
     // Echoed back the way read-modify-write does: the envelope is dropped on arrival and re-stamped, so a

@@ -171,7 +171,11 @@ class GedraSketchService : ServiceInitializer {
 private fun SchTypeBuilder.storedFields() {
     property(GS.entryId, "Stable id of this entry; assigned when stored.", required = true) { derived = true }
     property(GS.source, "How the current value came to be.", required = true) { derived = true }
-    property(GS.createdAt, "When the entry was written.", required = true) {
+    property(GS.createdAt, "When the entry was first written.", required = true) {
+        dateTime()
+        derived = true
+    }
+    property(GS.updatedAt, "When the entry was last changed.", required = true) {
         dateTime()
         derived = true
     }
@@ -191,7 +195,12 @@ private fun stored(entry: Map<String, Any?>, index: Int, now: String): Map<Strin
         // Deduced from context rather than taken from the caller: a direct endpoint call is a person acting,
         // so it reads `user`. An integration would say what it was instead.
         GS.source to GS.userSource,
+        // Both stamps, and the same value here only because the sketch stores nothing: a record that has never
+        // been changed was last changed when it was written. Storage is what makes them diverge, and an entry
+        // carrying only one of them cannot answer "has this been touched since it arrived" -- which is the
+        // question the pair exists for.
         GS.createdAt to now,
+        GS.updatedAt to now,
     )
 
 /**
@@ -217,6 +226,7 @@ object GS {
     const val entryId = "entryId"
     const val source = "source"
     const val createdAt = "createdAt"
+    const val updatedAt = "updatedAt"
     const val userSource = "user"
 
     // Branch fields.
