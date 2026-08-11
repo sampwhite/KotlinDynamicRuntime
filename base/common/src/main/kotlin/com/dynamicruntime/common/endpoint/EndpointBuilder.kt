@@ -520,7 +520,7 @@ fun buildEndpointInputSchema(endpoint: KdrEndpoint, defs: Map<String, Any?>): Ma
     // type lives in the catalog's one `$defs` bag, which the input and the output both resolve against, so
     // removing it there would take it out of the response schema too. Closing that needs a separately
     // projected defs bag, which belongs with the export contract rather than here. Until then the keyword
-    // still travels, and every surface that reads schema honours it -- which is what the form does.
+    // still travels, and every surface that reads schema honors it -- which is what the form does.
     val derivedFields = properties.filterValues { (it as? Map<*, *>)?.get(SCH.derived).let { d -> d == true || d is Map<*, *> } }.keys
     properties.keys.removeAll(derivedFields)
     required.removeAll(derivedFields)

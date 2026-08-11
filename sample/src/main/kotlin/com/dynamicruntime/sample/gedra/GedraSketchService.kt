@@ -66,7 +66,7 @@ class GedraSketchService : ServiceInitializer {
                 property(GS.approved, "Whether it was approved.", required = true) { type = SCT.boolean }
                 property(GS.decidedBy, "Who decided.")
                 property(GS.rejectionReason, "Why it was rejected.")
-                // The conditional case (issue #253), inside a union branch so the two mechanisms are exercised
+                // The conditional case (issue #253), inside a union branch, so the two mechanisms are exercised
                 // in one payload: a reason is required when the decision is a rejection, and inadmissible when
                 // it is not. `presentWhen` emits the `if`/`then`/`else` triple, including the `required` inside
                 // the `if` that stops an absent `approved` from demanding a reason.

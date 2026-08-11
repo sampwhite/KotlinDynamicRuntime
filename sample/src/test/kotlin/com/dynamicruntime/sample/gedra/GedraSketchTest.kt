@@ -85,10 +85,10 @@ class GedraSketchTest : StringSpec({
         val catalog = client("catalogView").sendJsonGetRequest("/schema/endpoint", mapOf(
             "method" to "POST", "path" to "/gedra/entry/echo",
         )).getValue(EP.results)!!.toJsonMap()
-        val defs = catalog.getValue("\$defs")!!.toJsonMap()
+        val defs = catalog.getValue($$"$defs")!!.toJsonMap()
         val branch = defs.getValue("gedra.ExpenseReportEntry")!!.toJsonMap()
         val props = branch.getValue("properties")!!.toJsonMap()
-        // The keyword travels, which is what lets every surface honour it -- see the note in
+        // The keyword travels, which is what lets every surface honor it -- see the note in
         // buildEndpointInputSchema about the shared $defs bag.
         props.getValue(GS.totalAmount)!!.toJsonMap()["g-derived"] shouldBe true
     }
