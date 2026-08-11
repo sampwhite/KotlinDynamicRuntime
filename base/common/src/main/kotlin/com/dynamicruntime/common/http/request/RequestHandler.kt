@@ -580,7 +580,7 @@ class RequestHandler : WebRequest {
          */
         fun obfuscateSensitiveErrors(config: KdrInstanceConfig): Boolean =
             (config.get(ACFG.obfuscateSensitiveErrors) as? Boolean)
-                ?: config.getEnvVar(obfuscateErrorsEnvVar)?.toBooleanStrictOrNull()
+                ?: config.getEnvBool(obfuscateErrorsEnvVar)
                 ?: (config.env == ENV.prod)
 
         /**

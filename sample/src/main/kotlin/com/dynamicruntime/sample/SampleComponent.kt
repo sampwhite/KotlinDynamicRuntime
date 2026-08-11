@@ -30,7 +30,7 @@ class SampleComponent : ComponentDefinition {
      * regardless of environment). Formerly `shouldLoadSample` in the launcher's `Start.kt`.
      */
     override fun isLoaded(cxt: KdrCxt): Boolean {
-        cxt.getEnvVar("KDR_LOAD_SAMPLE")?.let { return it.equals("true", ignoreCase = true) }
+        cxt.getEnvBool("KDR_LOAD_SAMPLE")?.let { return it }
         val env = cxt.instanceConfig.env
         return env == ENV.local || env == ENV.dev
     }

@@ -287,7 +287,8 @@ Worked examples: `SchemaComplexEndpointTest`, `UiConfigEndpointTest`, `AppUiConf
 ## Unit tests: config-resolution helpers, directly
 
 For a pure config-resolution function (the `something(config): Boolean` shape), skip the boot and build a
-config by hand — faster and clearer. `getEnvVar` reads **instance-config entries before the real process
+config by hand — faster and clearer. `getEnvVar` (and `getEnvBool`, which every boolean variable is read
+through) reads **instance-config entries before the real process
 environment**, so you can inject an "env var" with `put`:
 
 ```kotlin

@@ -126,5 +126,5 @@ object SqlSchemaDrift {
         .sorted()
 
     /** Whether an operator has asked to boot despite blocking drift (see [DbEnv.allowSchemaDrift]). */
-    fun isDriftAllowed(cxt: KdrCxt): Boolean = cxt.getEnvVar(DbEnv.allowSchemaDrift)?.toOptBool() ?: false
+    fun isDriftAllowed(cxt: KdrCxt): Boolean = cxt.getEnvBool(DbEnv.allowSchemaDrift) ?: false
 }

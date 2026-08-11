@@ -12,11 +12,11 @@ Conventions:
   therefore set or override any of these without touching the actual environment.
 - **Secrets are not environment variables.** Database passwords live in a secrets file, never in the
   environment or in config — see [Database](#database) below.
-- **Booleans are parsed two different ways**, so the spelling matters. Most read *loosely* (`toOptBool`, which
-  looks at the first letter and deliberately over-accepts, so `yes`/`1`/`t` all mean true). `KDR_OBFUSCATE_ERRORS`
-  reads *strictly*: only exactly `true` or `false` count, and anything else is ignored and falls through to
-  the default rather than failing. **Writing `true` or `false` always works**; anything else is worth checking
-  against the table below.
+- **Booleans are parsed the same way everywhere**, through `KdrCxt.getEnvBool`: the first non-whitespace
+  letter decides, case-insensitively — `true`/`yes`/`y`/`t`/`1` are true and `false`/`no`/`n`/`f`/`0` are
+  false. Anything else means *unreadable*, not false: the variable falls through to its default, so a typo
+  never silently flips a setting. (Three different parsers used to disagree here — one ignored `yes`, another
+  read every spelling except `true` as false.)
 
 ---
 

@@ -37,4 +37,33 @@ class ErrorObfuscationConfigTest : StringSpec({
         c.put(ACFG.obfuscateSensitiveErrors, false)
         RequestHandler.obfuscateSensitiveErrors(c) shouldBe false
     }
+
+    /**
+     * The variable is read through `getEnvBool`, so it accepts the same spellings every other boolean variable
+     * does. It used to parse strictly: `yes` was not `true`, it was *unreadable*, and an unreadable value falls
+     * through to the default -- so setting `KDR_OBFUSCATE_ERRORS=yes` in prod looked like it turned something on
+     * and did exactly nothing.
+     */
+    "the env var accepts the loose spellings, not only 'true' and 'false'" {
+        fun withEnv(value: String) =
+            RequestHandler.obfuscateSensitiveErrors(
+                config(ENV.local).apply { put(RequestHandler.obfuscateErrorsEnvVar, value) },
+            )
+
+        for (yes in listOf("true", "TRUE", "yes", "y", "t", "1")) withEnv(yes) shouldBe true
+        for (no in listOf("false", "no", "n", "f", "0")) withEnv(no) shouldBe false
+    }
+
+    /**
+     * An unrecognized value is *not* read as false. It means "nobody can tell", so it falls through to the
+     * environment default -- which for prod is on. A typo must never be the thing that quietly stops a
+     * deployment obfuscating.
+     */
+    "an unreadable value falls through to the default rather than reading as false" {
+        val local = config(ENV.local).apply { put(RequestHandler.obfuscateErrorsEnvVar, "maybe") }
+        RequestHandler.obfuscateSensitiveErrors(local) shouldBe false // local's default, not the value
+
+        val prod = config(ENV.prod).apply { put(RequestHandler.obfuscateErrorsEnvVar, "maybe") }
+        RequestHandler.obfuscateSensitiveErrors(prod) shouldBe true // prod stays on
+    }
 })
