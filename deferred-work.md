@@ -61,6 +61,35 @@ The point at which configuration can be scoped to a client rather than only to t
   client. Known candidates: the error-display / obfuscation policy (`obfuscateSensitiveErrors`), the
   frontend idle-bump interval (`idleBumpIntervalMs`), and the login-cookie timeout period.
 
+## When a deployment has a second client
+
+The point at which "every client" stops meaning "the only client", so a grant that reads as harmless today
+starts handing out reach over somebody else's data.
+
+- **Auto-admin should grant the level, not global scope** *(from #225).* `AdminRules.autoAdminRoles` grants
+  `admin` **and** `allClients` to every address at `KDR_ADMIN_EMAIL_DOMAIN`. That is right for a single-client
+  deployment and solves a real chicken-and-egg problem — nobody holds `allClients` to begin with, and
+  anti-escalation stops an administrator granting reach they lack, so without it a fresh deployment could only
+  reach its own admin surface through the `GrantRole` script. On a multi-client deployment it is wrong:
+  everyone at the domain becomes a *global* administrator. The blocker was that a client-scoped administrator
+  had nowhere to go; the `userAdmin` section (#231) removed it, so the change is now just a decision — grant
+  the level, and make full scope a deliberate act. Note what has to come with it: something must still be able
+  to mint the first `allClients` holder, which is what the script is for.
+
+## When an organization has to hide content, not just narrow it
+
+The point at which someone expects an organization to be a confidentiality boundary rather than a convenience
+filter — two orgs in one client whose content must not cross.
+
+- **The organization filter is lenient by design, and so cannot hide anything** *(from #225).*
+  `ReadScope.admitsOrg` admits a row whose own org is null, so content belonging to the client as a whole stays
+  visible to every organization inside it. That is deliberate and worth keeping by default: strict matching
+  would make everything a client wrote before adopting organizations vanish the moment somebody was given one
+  — an adoption cliff indistinguishable from data loss. The cost is that an org narrows a view without ever
+  sealing it, and nothing today says so to whoever assigns one. Revisit as a per-client choice (lenient while
+  adopting, strict once migrated) rather than a global flip, and expect a backfill: making it strict is only
+  safe once every row that should belong to an organization actually carries one.
+
 ## When frontend errors are shipped to a third-party logger
 
 The point at which a render failure in production is *recorded somewhere* rather than only sitting in one
