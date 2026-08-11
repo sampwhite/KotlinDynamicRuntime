@@ -38,10 +38,15 @@ Notes:
 - **Google sign-in also needs the page's origin registered.** `KDR_GOOGLE_CLIENT_ID` turns the feature on, but
   Google checks the origin the page is served from against the *Authorized JavaScript origins* configured for
   that client id (Google Cloud Console → APIs & Services → Credentials → the OAuth 2.0 Client ID). An
-  unregistered origin makes Google refuse the button — a `403` on its `credential_button_library` request and
-  `[GSI_LOGGER]: The given origin is not allowed for the given client ID` in the browser console. Nothing
-  reaches this server, so there is no log line here and no misconfiguration the app can detect: the client id
-  is valid, and only Google knows which origins go with it.
+  unregistered origin makes Google refuse the client id. **The symptom varies**, so do not go looking for one
+  in particular: it may be a `403` on Google's `credential_button_library` request with
+  `[GSI_LOGGER]: The given origin is not allowed for the given client ID` in the console; it may be
+  **"Access blocked — You can't sign in to this app because it doesn't comply with Google's OAuth 2.0
+  policy"** inside Google's own window after clicking; and it may be a button that renders perfectly and
+  simply never completes. Nothing reaches this server in any of those cases, so there is no log line here and
+  no misconfiguration the app can detect: the client id is valid, and only Google knows which origins go with
+  it. On a test instance the auth page prints the origin it is served from, beside the button, so you have the
+  exact string to register (issue #250).
 - **An origin is scheme + host + port, and each is separate.** Register `http://localhost:7070` (the
   same-origin route, where `appui` serves the front end under `/wa`) and `http://localhost:8080` separately if
   the webpack dev server is also used — and with no path, so `http://localhost:7070`, never
