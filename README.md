@@ -38,20 +38,29 @@ install options as they are added.
 ## Layout
 
 ```
-base/common      # foundational module (com.dynamicruntime.common)
+base/kernel      # multiplatform (JVM + JS) code shared by backend and front end
+base/common      # foundational JVM module (com.dynamicruntime.common)
 base/kdn         # dynamic-runtime core, depends on common (com.dynamicruntime.kdn)
 config           # configuration builders; re-exports the base modules (com.dynamicruntime.config)
 launch           # application entry points; source root is launch/apps (package roots there)
 sample           # demo app (Todo endpoints) the launcher loads in developer environments
 webapp           # Kotlin/JS + React (antd) front end (the browser bundle)
 appui            # JVM host that serves the webapp bundle under the /wa context root
-bin              # convenience command-line scripts (kdr-install, kdr-run, ...)
+bin              # convenience command-line scripts (see Command-line scripts below)
 build-logic      # included build providing the kdr.kotlin-conventions convention plugins
 examples         # templates a deployment copies into the workspace directory
 ```
 
-Module dependencies: `base/kdn` → `base/common`; `config` → `base/common` + `base/kdn`;
-`sample` → `config`; `appui` → `config`; `launch` → `config` + `sample` + `appui`.
+Module dependencies: `base/common` → `base/kernel` (JVM variant); `base/kdn` → `base/common`;
+`config` → `base/common` + `base/kdn`; `sample` → `config`; `appui` → `config`;
+`launch` → `config` + `sample` + `appui`; `webapp` → `base/kernel` (JS variant).
+
+**`base/kernel` is the one worth knowing about.** Its `commonMain` holds pure, transpile-safe Kotlin — no
+`java.*`, no reflection — including the universal exception, the JSON/date/string utilities, the template
+evaluator, and the **JSON-Schema model with its parser and validator**. The backend depends on its JVM
+variant and the front end on its JS variant, so both run *the same* validation code rather than two
+implementations that agree until they do not. Code moved there keeps its original
+`com.dynamicruntime.common.*` package, so relocating a file changes no call site.
 
 ## Building
 
@@ -97,6 +106,20 @@ talking to the same runtime API on `:7070`:
   (`./gradlew :launch:run` or `:appui:build`) and hard-reload the page — the embedded bundle is a build
   artifact, so there is no hot reload on this path.
 
+  **When a front-end crash is unreadable, add `-Pwebapp.dev=true`.** The production bundle is minified, so a
+  Kotlin exception arrives with no message and a mangled name — a caught render failure reports itself as
+  `ji` at a byte offset. That flag embeds the *readable* build in its place:
+
+  ```sh
+  ./gradlew :launch:run -Pwebapp.dev=true    # same URL, same behavior, legible stack traces
+  ```
+
+  The same crash then names the Kotlin that failed (`IllegalStateException … at SchemaForm$lambda`). The app
+  bar shows a quiet **readable build** badge so it is obvious which bundle a tab is running. It costs about
+  24 MB of bundle rather than 2 MB and a slower first load, so it is a troubleshooting build, not a default —
+  and it is one build *or* the other, never both, because Kotlin/JS runs the two executable modes through a
+  single compile-sync directory.
+
 - **Webpack dev server (iterative development).** For live reload and browser debugging, run the dev server on
   `:8080`, which proxies `/kda` to the runtime on `:7070`:
 
@@ -113,6 +136,43 @@ talking to the same runtime API on `:7070`:
 For the IntelliJ run configurations that launch the server and the `webapp`
 front end — and the setup for debugging both the JVM server and the browser
 front end at once — see [`examples/intellij-dev-setup.md`](examples/intellij-dev-setup.md).
+
+## Command-line scripts
+
+`bin/` holds the deployment's command-line tools. `kdr-install` offers to put them on your `PATH`; otherwise
+invoke them by path. `kdr-help` lists them with these same one-line descriptions.
+
+```
+kdr-install        Idempotently set up or update this deployment to run the kdr commands.
+kdr-backend        Run the backend server (StartKt) via :launch:run.
+kdr-webapp         Start the Kotlin/JS webapp dev server on http://localhost:8080.
+kdr-tests          Run every module's tests (the `check` task across every subproject).
+kdr-probe          Drive a running instance as a chosen caller: scenarios, or a single call.
+kdr-run            Launch any Kotlin main class from the project's runtime classpath.
+kdr-create-config  Scaffold the customConfig provider project and wire it into settings.gradle.kts.
+kdr-source-dirs    Regenerate the source-directory manifest (current-source-directories.txt).
+kdr-help           List the kdr commands (and shell functions) with one-line descriptions.
+```
+
+`kdr-use` is a shell *function* rather than a script (it changes your shell's `PATH` and workspace, which a
+subprocess cannot do); `kdr-install` can add it to your shell's rc file.
+
+Command-line tooling is written in **Kotlin, not shell**: `kdr-run` launches any main class from the runtime
+classpath, and each `bin/` script above it is a thin wrapper that does no deciding. See
+[`code-guide.md`](code-guide.md) for why.
+
+## Testing
+
+```sh
+./gradlew check        # the whole suite; bin/kdr-tests runs exactly this
+```
+
+Use `check`, not `test`. The multiplatform modules (`base/kernel`, `webapp`) have no `test` task at all — they
+expose `jvmTest` / `jsNodeTest` — and Gradle runs a named task wherever it exists while saying nothing about
+the projects lacking it, so `test` leaves those modules' results silently absent.
+
+`kdr-probe` drives a **running** instance as a chosen caller, for the checks a unit test cannot make — real
+cookies, the real dispatcher, live roles. Run it with no arguments to list its scenarios.
 
 ## Conventions
 
