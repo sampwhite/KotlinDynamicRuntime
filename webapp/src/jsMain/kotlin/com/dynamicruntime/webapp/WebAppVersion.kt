@@ -18,6 +18,26 @@ package com.dynamicruntime.webapp
 /** The hash of the bundle this tab is running, from the page bootstrap; empty in dev, which disables the check. */
 private val ownWebAppHash: String = js("(window.kdrCfg && window.kdrCfg.webAppHash) || ''") as String
 
+/**
+ * Whether this tab is running the **readable** (development) bundle rather than the minified one -- what
+ * `-Pwebapp.dev=true` embeds (issue #230).
+ *
+ * Asked of the build itself rather than told by the backend, because the backend does not know either: it
+ * serves whatever was embedded, under the same filename. So the app tests the property that actually matters
+ * -- do exception names survive? -- by throwing one and reading its name back. In the minified build that
+ * comes back mangled (`ji`), which is precisely the condition worth announcing.
+ *
+ * Computed once at load; the answer cannot change within a page.
+ */
+val isReadableBuild: Boolean = run {
+    val thrown = try {
+        error("probe")
+    } catch (e: Throwable) {
+        e
+    }
+    thrown.asDynamic().name as? String == "IllegalStateException"
+}
+
 private var stale = false
 private var onStale: (() -> Unit)? = null
 

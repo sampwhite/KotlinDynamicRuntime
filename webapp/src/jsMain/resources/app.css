@@ -135,6 +135,19 @@ body {
     border-bottom-color: var(--border-admin);
 }
 
+/* The readable-build marker (issue #230). Deliberately quieter than .admin-badge: that one says something
+   about your privileges right now, this one only says which bundle is loaded. Never seen on a real
+   deployment, which ships the minified build. */
+.build-badge {
+    margin-left: 10px;
+    padding: 2px 8px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: .02em;
+}
+
 .admin-badge {
     margin-left: 10px;
     padding: 2px 8px;

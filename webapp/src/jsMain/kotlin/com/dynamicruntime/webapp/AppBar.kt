@@ -92,6 +92,15 @@ val AppBar = FC<Props> {
                 +"Admin"
             }
         }
+        // A quiet marker that this is the readable build (issue #230). It can never appear on a real
+        // deployment: that ships the minified bundle, where the check below is false by construction.
+        if (isReadableBuild) {
+            span {
+                className = ClassName("build-badge")
+                title = "Readable (development) web-app bundle — larger, but crashes name the Kotlin that failed."
+                +"readable build"
+            }
+        }
         div {
             className = ClassName("app-bar-right")
             button {
