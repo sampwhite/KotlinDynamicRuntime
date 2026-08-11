@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.context
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.util.toOptBool
 import java.io.File
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
@@ -177,6 +178,19 @@ class KdrInstanceConfig(
     }
 
     /**
+     * [getEnvVar] parsed as a boolean, or null when it is unset **or unrecognized** -- so a caller's `?:`
+     * default covers both, and a value nobody can read is never mistaken for a deliberate `false`.
+     *
+     * Parsing is [toOptBool]'s loose one (`true`/`yes`/`y`/`t`/`1` and `false`/`no`/`n`/`f`/`0`), which is the
+     * house rule for coercing external data. **Read every boolean variable through this**, rather than
+     * spelling out a parse at the call site: doing the latter is how the codebase came to have three
+     * different answers to "is this variable true" -- a strict `toBooleanStrictOrNull` that ignored `yes`,
+     * a loose `toOptBool`, and an `equals("true")` that quietly read *every* other spelling, `yes` included,
+     * as false. An operator cannot be expected to know which variable got which.
+     */
+    fun getEnvBool(key: String): Boolean? = getEnvVar(key)?.toOptBool()
+
+    /**
      * Whether this is a **test instance** -- a node where test-only affordances are on: `forTestingOnly`
      * endpoints are exposed (issue #125), and email is simulated and captured by default (issue #158).
      *
@@ -206,7 +220,7 @@ class KdrInstanceConfig(
 
     /** The inferred answer, used when [ACFG.isTestInstance] says nothing. See [isTestInstance]. */
     private fun inferIsTestInstance(): Boolean =
-        getEnvVar(testInstanceEnvVar)?.toBooleanStrictOrNull() == true ||
+        getEnvBool(testInstanceEnvVar) == true ||
             env == ENV.unit ||
             get(ACFG.inMemoryOnly) == true
 

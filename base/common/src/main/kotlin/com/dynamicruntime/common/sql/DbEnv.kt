@@ -49,5 +49,5 @@ object DbEnv {
     const val allowSchemaDrift = "KDR_ALLOW_SCHEMA_DRIFT"
 
     /** Resolves the default for `inMemoryOnly`: the [inMemoryOnly] env var if set (parsed loosely), else true. */
-    fun resolveInMemoryOnly(cxt: KdrCxt): Boolean = cxt.getEnvVar(inMemoryOnly)?.toOptBool() ?: true
+    fun resolveInMemoryOnly(cxt: KdrCxt): Boolean = cxt.getEnvBool(inMemoryOnly) ?: true
 }
