@@ -144,7 +144,8 @@ object AdminRules {
      *
      * The tension to revisit: a **multi-client** deployment almost certainly does not want every address at a
      * domain to become a *global* administrator. Once a client-scoped administration surface exists, this
-     * should probably grant the level only, and full scope should become a deliberate act. Recorded on #225.
+     * should probably grant the level only, and full scope should become a deliberate act.
+     * See deferred-work.md#when-a-deployment-has-a-second-client.
      */
     val autoAdminRoles: List<String> = listOf(ROLE.admin, ROLE.allClients)
 
