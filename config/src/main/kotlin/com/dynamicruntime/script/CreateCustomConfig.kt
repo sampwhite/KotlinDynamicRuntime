@@ -98,7 +98,17 @@ fun main(args: Array<String>) {
     }
 
     // Wire settings: the prologue (defines injectComponent), then the injectComponent(":customConfig") call.
-    ensureInjectionPrologue(workDir, examples)
+    // One decision, not two -- the call without the prologue is a settings file that cannot compile, and that
+    // stops every Gradle command in the workspace rather than just this feature (issue #257). So a declined or
+    // non-interactive prompt leaves the scaffold in place and the wiring undone, which a developer can finish
+    // by hand or by re-running.
+    if (!ensureInjectionPrologue(workDir, examples)) {
+        println("kdr-create-config: scaffolded customConfig/, but left settings.gradle.kts alone.")
+        println("                   The injectComponent(\":customConfig\", ...) line needs the prologue above,")
+        println("                   so it was skipped. Add the prologue and re-run to finish the wiring")
+        println("                   (re-running is safe -- it only ever adds what is missing).")
+        return
+    }
     ensureInjectComponent(settings, ":customConfig", "customConfig")
 
     println("kdr-create-config: done. Edit customConfig/$kdrConfigRelPath to set your configuration,")

@@ -43,34 +43,47 @@ internal const val injectionMarker = "kdr-injection-prologue"
  * prologue has the `include(...)` lines but not this block, so `injectComponent(...)` calls would fail to
  * resolve. Offers to insert the canonical block (lifted verbatim from the example) just after
  * `rootProject.name`; silent when it is already present. It prompts and never edits without a yes.
+ *
+ * **Returns whether the prologue is present when it returns** -- already there, or just added. A caller about
+ * to write an `injectComponent(...)` call must check it: writing that call without the prologue leaves a
+ * settings file that cannot compile, which stops *every* Gradle command in the workspace rather than just the
+ * feature being wired (issue #257). There are three ways to come back false -- a declined prompt,
+ * a non-interactive run (see [readYes], where EOF means no), and a settings file with no `rootProject.name`
+ * to anchor on -- and the original bug was that none of them were distinguishable from success.
  */
-internal fun ensureInjectionPrologue(workDir: File, examples: File) {
+internal fun ensureInjectionPrologue(workDir: File, examples: File): Boolean {
     val settings = File(workDir, "settings.gradle.kts")
-    val example = File(examples, "settings.gradle.kts.example")
-    if (!settings.isFile || !example.isFile) {
-        return
+    if (!settings.isFile) {
+        return false
     }
+    // Checked before the example file is needed: a workspace that already carries the prologue is wired
+    // whether or not this checkout can produce the block to insert.
     val liveText = settings.readText()
     if (hasInjectionPrologue(liveText)) {
-        return
+        return true
     }
-    val block = extractMarkedBlock(example.readText(), injectionMarker) ?: return
+    val example = File(examples, "settings.gradle.kts.example")
+    if (!example.isFile) {
+        return false
+    }
+    val block = extractMarkedBlock(example.readText(), injectionMarker) ?: return false
     println("Your settings.gradle.kts is missing the deployment-injection prologue (issue #171):")
     println("it defines injectComponent(...), used to co-build and inject custom config / custom components.")
     print("Add it (just after rootProject.name)? [y/N] ")
     if (!readYes()) {
         println("Left settings.gradle.kts unchanged. To add it later, copy the marked block from")
         println("  ${example.path}")
-        return
+        return false
     }
     val updated = insertInjectionPrologue(liveText, block)
     if (updated == null) {
         println("WARNING: no 'rootProject.name' line to anchor on; add the prologue by hand, copying the marked")
         println("         block from ${example.path}.")
-        return
+        return false
     }
     settings.writeText(updated)
     println("Added the injection prologue to settings.gradle.kts.")
+    return true
 }
 
 /** Whether [settingsText] already defines the deployment-injection prologue (by its `injectComponent` helper). */
@@ -192,13 +205,26 @@ fun hasInjectComponent(settingsText: String, path: String): Boolean =
 /**
  * Ensures the live [settings] contains `injectComponent("[path]", "[dir]")`, so `launch` co-builds the project
  * and wires it onto its runtime classpath. A no-op when it is already present (a commented-out call counts).
- * The injection prologue (which defines `injectComponent`) must be present first — [ensureInjectionPrologue].
  * Appends the call; the prologue's registry handoff runs deferred, so a call after it is fine.
+ *
+ * **Refuses when the injection prologue is absent** ([ensureInjectionPrologue] defines `injectComponent`),
+ * returning false rather than writing a call to something undefined. That precondition was documented here
+ * and merely trusted, and a caller that wrote the call anyway produced a `settings.gradle.kts` that could not
+ * compile -- taking out every Gradle command in the workspace, for everyone using it, not only the feature
+ * being wired (issue #257). Enforced here rather than only at the call site so a *future* caller inherits the
+ * check instead of having to remember it.
+ *
+ * Returns whether the call is present on return.
  */
-internal fun ensureInjectComponent(settings: File, path: String, dir: String) {
+internal fun ensureInjectComponent(settings: File, path: String, dir: String): Boolean {
     val text = settings.readText()
     if (hasInjectComponent(text, path)) {
-        return
+        return true
+    }
+    if (!hasInjectionPrologue(text)) {
+        println("Skipped injectComponent(\"$path\", \"$dir\"): settings.gradle.kts has no injection prologue")
+        println("to define it, and the call alone would stop the whole build from configuring.")
+        return false
     }
     val lead = if (text.isEmpty() || text.endsWith("\n")) "" else "\n"
     settings.appendText(
@@ -206,4 +232,5 @@ internal fun ensureInjectComponent(settings: File, path: String, dir: String) {
             "injectComponent(\"$path\", \"$dir\")\n",
     )
     println("Added injectComponent(\"$path\", \"$dir\") to settings.gradle.kts.")
+    return true
 }
