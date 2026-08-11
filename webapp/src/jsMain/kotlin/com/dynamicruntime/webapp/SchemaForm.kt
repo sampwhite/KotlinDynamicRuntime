@@ -205,6 +205,12 @@ private fun ChildrenBuilder.renderProperties(
         if (name == skip) {
             return@forEach
         }
+        // A derived value is produced by something other than whoever is filling this in (issue #254), so
+        // there is nothing here for them to type. Only while editing: read-only, this same engine shows a
+        // value that exists, and hiding it there would hide part of what the record actually holds.
+        if (editable && prop.valueType.derived) {
+            return@forEach
+        }
         // A forbidden field is hidden -- unless it still holds something, in which case hiding it would hide
         // its failure too, leaving a complaint about a field with nowhere to go and no way to clear it. Shown,
         // it carries its own "not allowed" message and can be emptied.

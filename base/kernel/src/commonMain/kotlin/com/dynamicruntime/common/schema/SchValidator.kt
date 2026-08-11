@@ -194,6 +194,18 @@ class SchOpts(
      * key that is no longer on screen, and nothing they can act on.
      */
     val keepAdditionalProperties: Boolean = false,
+    /**
+     * Validate this as a **request** rather than as a response (issue #254), which is what makes a
+     * `g-derived` property behave differently in each direction: on the way in it is not asked for and not
+     * accepted, on the way out it is an ordinary value.
+     *
+     * A flag rather than a separate projected type, and the reason is the requirement itself: a derived field
+     * a client sends must be **dropped**, not refused. Dropping it means the validator has to know the
+     * property exists — so the type it validates against still declares the field, while the schema published
+     * to that client does not. Those two artifacts are genuinely different, and a projection that removed the
+     * property from both would turn a silent strip into an `additionalProperty` failure.
+     */
+    val forInput: Boolean = false,
 )
 
 /** Result of a coercing validation: the (possibly transformed) [value] and the [failures]. */
@@ -394,6 +406,14 @@ fun validateObject(
     // JSON objects have no meaningful order, so nothing downstream depends on it -- but a person reading the
     // payload does.
     for ((key, prop) in type.properties) {
+        // A derived property on the way in: dropped without complaint, whether or not the caller sent it
+        // (issue #254). Silently, and deliberately so -- read-modify-write is how a form works, so a client
+        // echoing back a value the server computed is doing the ordinary thing, not making a mistake. It is
+        // simply not their field. Contrast a privileged field, where silence would hide the case worth seeing.
+        if (opts.forInput && prop.valueType.derived) {
+            dropped.add(key)
+            continue
+        }
         if (!map.containsKey(key)) {
             continue
         }
@@ -437,6 +457,12 @@ fun validateObject(
             continue
         }
         val reqType = type.properties[req]?.valueType
+        // Required *of the stored shape*, not of the request: a derived property is required in the sense
+        // that a complete record has one, and the server is what supplies it. Demanding it from the caller
+        // would make a field they may not send the reason their request is refused (issue #254).
+        if (opts.forInput && reqType?.derived == true) {
+            continue
+        }
         val default = reqType?.default
         if (default != null) {
             out?.put(req, cloneForInjection(default)) // a default supplies the value, so no failure

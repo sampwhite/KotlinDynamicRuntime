@@ -75,6 +75,15 @@ class SchType(
      */
     val variants: SchVariants?,
     /**
+     * Custom `g-derived` keyword (resolved): the client does not supply this value; something else produces
+     * it (issue #254).
+     *
+     * Surface-invariant -- a derived field is derived for everyone -- so it belongs here rather than in a
+     * per-surface model. What varies is the *direction*: on the way in it is neither asked for nor accepted,
+     * on the way out it is an ordinary value. That difference lives in [SchOpts], not in this flag.
+     */
+    val derived: Boolean,
+    /**
      * The `if`/`then`/`else` rule on this type, or null when it declares none. See [SchCondition].
      *
      * Sits beside [required] rather than inside it because it says something [required] cannot: that a
