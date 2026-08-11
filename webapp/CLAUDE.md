@@ -60,10 +60,19 @@ Current UI-config endpoints:
   on only when the deployment set `KDR_GOOGLE_CLIENT_ID`, and `googleClientId` carries that (public) id —
   Google's script has to present it, so it is served here rather than hardcoded in the frontend. A configured
   id is **not** enough for the button to work: Google also checks the page's origin against the client id's
-  *Authorized JavaScript origins*, and an unregistered one fails entirely in the browser (a `403` plus
-  `[GSI_LOGGER]: The given origin is not allowed for the given client ID`) without the backend seeing
+  *Authorized JavaScript origins*, and an unregistered one fails in the browser without the backend seeing
   anything. `http://localhost:7070` (same-origin, `/wa`) and `http://localhost:8080` (dev server) are separate
-  origins and both need registering; see `environment-variables.md`.
+  origins and both need registering — as is any other port, and `127.0.0.1` is a different origin again from
+  `localhost`. See `environment-variables.md`.
+
+  **The symptom is not reliable, and the frontend cannot detect it** (issue #250). It may be a `403` plus
+  `[GSI_LOGGER]: The given origin is not allowed for the given client ID`; it may be *"Access blocked — You
+  can't sign in to this app…"* inside Google's own window after a click; and it may be a button that renders
+  and never completes. Measured rather than assumed: on an unregistered origin Google's script still loads,
+  `renderButton` still draws a button, and an `error_callback` passed to `initialize` **never fires** — so
+  there is no error for `GoogleSignInButton` to catch, and its `onFail` covers only a script that cannot be
+  *fetched*. What the component does instead is state the page's own origin beside the button where
+  `showErrorDetail` is on, so a developer has the exact string to register.
 - `GET /profile/ui/config` — **login-required** (`profile` section); features `{hasPassword, canSetPassword}`,
   state `{userInfo}`. Fragment file `profile`.
 

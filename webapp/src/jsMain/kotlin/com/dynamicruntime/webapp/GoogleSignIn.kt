@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.p
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
@@ -87,6 +88,25 @@ private fun renderGisButton(elementId: String, clientId: String, onCredential: (
     )
 }
 
+/** The page's own origin (scheme + host + port), which is exactly the string Google wants registered. */
+private fun pageOrigin(): String = js("window.location.origin") as String
+
+/**
+ * What to tell a developer about [origin] beside the Google button.
+ *
+ * Phrased as a standing requirement, **not** as a detected error, and that is the whole design. The component
+ * cannot tell a working origin from a rejected one (see [GoogleSignInButton]), so anything shaped like "this
+ * origin is not registered" would be a red warning on a perfectly healthy dev instance -- a message that cries
+ * wolf gets ignored on the day it is right. Stating the requirement is true either way, and it hands over the
+ * exact string to paste into the Cloud Console, which is the part that is actually missing when this bites.
+ *
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun googleOriginHint(origin: String): String =
+    "Google sign-in requires this page's origin -- $origin -- to be registered as an Authorized JavaScript " +
+        "origin for the client id. A button that does nothing, or an \"Access blocked\" message from Google, " +
+        "is that registration missing. Shown only on a test instance."
+
 external interface GoogleSignInProps : Props {
     /** The deployment's Google OAuth client id, from the auth UI config. */
     var clientId: String
@@ -97,9 +117,20 @@ external interface GoogleSignInProps : Props {
 
 /**
  * Renders the Google sign-in button, or nothing at all when Google's script cannot be reached. A deployment
- * that offers Google sign-in still has to work for a user who cannot load Google's library, so a failure here
+ * that offers Google sign-in still has to work for a user who cannot load Google's library, so *that* failure
  * is silent -- the code and password paths beside it are unaffected, and an error message about a button the
  * user may not have wanted would only be noise.
+ *
+ * **A misconfigured origin is a different failure, and this component cannot see it** (issue #250). Google
+ * refuses a client id on an origin that is not registered against it, but nothing about that reaches our code:
+ * the script loads, [isGisReady] is true, `renderButton` draws a button, and the refusal happens later inside
+ * Google's own UI ("Access blocked...") or not visibly at all. Measured, not assumed -- an `error_callback`
+ * passed to `initialize` never fires for it, so there is no error to hang a message on.
+ *
+ * So instead of reporting a failure it cannot detect, the component states the fact a developer needs
+ * ([originHint]) and leaves the diagnosis to them. It is shown only where `showErrorDetail` is on, which is
+ * the backend's `isTestInstance` -- the same fence the error boundaries use. A real deployment shows nothing,
+ * which is what the paragraph above is about.
  */
 val GoogleSignInButton = FC<GoogleSignInProps> { props ->
     val containerId = "kdr-google-button"
@@ -123,6 +154,14 @@ val GoogleSignInButton = FC<GoogleSignInProps> { props ->
         div {
             className = ClassName("row")
             id = ElementId(containerId)
+        }
+        // Beside the button rather than in a console line, because the person who needs it is looking at the
+        // button that will not work, not at a log. Withheld on a real deployment (issue #250).
+        if (appConfig().showErrorDetail) {
+            p {
+                className = ClassName("type-hint")
+                +googleOriginHint(pageOrigin())
+            }
         }
     }
 }
