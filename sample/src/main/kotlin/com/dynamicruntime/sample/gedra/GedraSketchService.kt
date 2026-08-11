@@ -44,15 +44,19 @@ class GedraSketchService : ServiceInitializer {
                     minimum = 2000
                     maximum = 2100
                 }
-                property(GS.gallonsPerCan, "Capacity of one can.") { type = SCT.number }
-                property(GS.canCount, "How many cans.") { type = SCT.integer }
-                // Derived (issue #254): the caller does not send this, so the input schema does not offer it
-                // and the form does not draw a box for it. The handler computes it and the response carries it.
-                property(GS.totalGallons, "Total capacity; computed, not supplied.") {
+                property(GS.perItemAmount, "Amount claimed for one item.") { type = SCT.number }
+                property(GS.itemCount, "How many items are claimed.") { type = SCT.integer }
+                // Derived (issue #254): the caller does not supply this, so it is not accepted from them and
+                // the form offers no box for it. The handler computes it and the response carries it.
+                //
+                // The trait deliberately has ONE total. An earlier version kept an ordinary `totalAmount`
+                // beside a derived `totalGallons`, and the two were mistaken for each other on sight -- a
+                // computed value appearing in a response reads as the value you typed being overwritten when
+                // a similarly named field is sitting next to it.
+                property(GS.totalAmount, "Total claimed; computed from the two above, not supplied.") {
                     type = SCT.number
                     derived = true
                 }
-                property(GS.totalAmount, "Total claimed, in the client's currency.") { type = SCT.number }
                 property(GS.notes, "Free-text explanation.")
             }
             variantBranch(
@@ -125,14 +129,14 @@ class GedraSketchService : ServiceInitializer {
 /**
  * Fills in what the caller does not supply -- the sketch's stand-in for a trait's pre-processor (issue #254).
  *
- * `totalGallons` is declared `g-derived`, so it is absent from the input schema, undrawn by the form, and
+ * `totalAmount` is declared `g-derived`, so it is absent from the input schema, undrawn by the form, and
  * dropped if a client echoes one back. Something has to produce it, and in a real trait that something is
  * code bound to the trait; here it is this function, which is the smallest honest version of the same thing.
  */
 private fun filledOut(entry: Map<String, Any?>): Map<String, Any?> {
-    val perCan = (entry[GS.gallonsPerCan] as? Number)?.toDouble() ?: return entry
-    val cans = (entry[GS.canCount] as? Number)?.toDouble() ?: return entry
-    return entry + (GS.totalGallons to perCan * cans)
+    val perItem = (entry[GS.perItemAmount] as? Number)?.toDouble() ?: return entry
+    val count = (entry[GS.itemCount] as? Number)?.toDouble() ?: return entry
+    return entry + (GS.totalAmount to perItem * count)
 }
 
 /** Field names and trait ids for the Gedra sketch, kept beside the schema that declares them. */
@@ -146,9 +150,8 @@ object GS {
     const val year = "year"
     const val totalAmount = "totalAmount"
     const val notes = "notes"
-    const val gallonsPerCan = "gallonsPerCan"
-    const val canCount = "canCount"
-    const val totalGallons = "totalGallons"
+    const val perItemAmount = "perItemAmount"
+    const val itemCount = "itemCount"
     const val approved = "approved"
     const val decidedBy = "decidedBy"
     const val rejectionReason = "rejectionReason"

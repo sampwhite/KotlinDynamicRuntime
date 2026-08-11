@@ -205,20 +205,24 @@ private fun ChildrenBuilder.renderProperties(
         if (name == skip) {
             return@forEach
         }
-        // A derived value is produced by something other than whoever is filling this in (issue #254), so
-        // there is nothing here for them to type. Only while editing: read-only, this same engine shows a
-        // value that exists, and hiding it there would hide part of what the record actually holds.
-        if (editable && prop.valueType.derived) {
-            return@forEach
-        }
         // A forbidden field is hidden -- unless it still holds something, in which case hiding it would hide
         // its failure too, leaving a complaint about a field with nowhere to go and no way to clear it. Shown,
         // it carries its own "not allowed" message and can be emptied.
         if (name in forbidden && isBlankValue(values[name])) {
             return@forEach
         }
+        // A derived value is produced by something other than whoever is filling this in (issue #254), so it
+        // is shown and never offered: no box to type in, in either mode.
+        //
+        // Shown rather than hidden, because this surface documents the wire -- the same reason it labels
+        // fields with their key rather than a `title`. Hiding a field the contract contains is the
+        // data-entry instinct applied to a tool for reading a contract, and it cost real confusion: with the
+        // computed field invisible, a value appearing in the response reads as the one you typed being
+        // overwritten. A real form-entry GUI would hide it, and would be right to; these two surfaces read
+        // the same keyword and reach opposite conclusions, which is the point of the annotation.
         renderField(
-            name, prop, name in type.required || name in alsoRequired, values[name], seen, editable,
+            name, prop, name in type.required || name in alsoRequired, values[name], seen,
+            editable && !prop.valueType.derived,
             childPath(path, name), errors,
             // A removal has to drop the key, not null it: a null against an object/array type fails the plain
             // type check (they do not coerce), so "removed" would read as "present but wrong".

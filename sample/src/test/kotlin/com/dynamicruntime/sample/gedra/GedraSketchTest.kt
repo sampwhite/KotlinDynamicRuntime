@@ -37,9 +37,13 @@ class GedraSketchTest : StringSpec({
             .rptStatusCode
 
     "an entry is validated against the branch its traitId names" {
-        val results = echo("expense", mapOf(GS.traitId to GS.expenseReport, GS.year to 2024, GS.totalAmount to 4820.15))
+        val results = echo("expense", mapOf(
+            GS.traitId to GS.expenseReport, GS.year to 2024, GS.perItemAmount to 12.5, GS.itemCount to 3,
+        ))
         results[GS.branch] shouldBe GS.expenseReport
-        results[GS.fieldCount] shouldBe 3
+        // Four supplied fields, plus the derived total the handler adds -- so the count also says that a
+        // derived value is absent when it reaches the handler and present when it leaves.
+        results[GS.fieldCount] shouldBe 5
     }
 
     "a different traitId in the same field selects a different branch" {
@@ -62,17 +66,17 @@ class GedraSketchTest : StringSpec({
     // collapsed the input and output shapes into one.
     "a derived value is computed for the response and never taken from the request" {
         val results = echo("derived", mapOf(
-            GS.traitId to GS.expenseReport, GS.year to 2024, GS.gallonsPerCan to 2.5, GS.canCount to 4,
+            GS.traitId to GS.expenseReport, GS.year to 2024, GS.perItemAmount to 2.5, GS.itemCount to 4,
         ))
         val entry = results.getValue(GS.entry)!!.toJsonMap()
-        entry[GS.totalGallons] shouldBe 10.0
+        entry[GS.totalAmount] shouldBe 10.0
 
         // Echoed back by a client, the way read-modify-write does: dropped, not refused, and not believed.
         val echoed = echo("derivedEchoed", mapOf(
-            GS.traitId to GS.expenseReport, GS.year to 2024, GS.gallonsPerCan to 2.5, GS.canCount to 4,
-            GS.totalGallons to 999.0,
+            GS.traitId to GS.expenseReport, GS.year to 2024, GS.perItemAmount to 2.5, GS.itemCount to 4,
+            GS.totalAmount to 999.0,
         ))
-        echoed.getValue(GS.entry)!!.toJsonMap()[GS.totalGallons] shouldBe 10.0
+        echoed.getValue(GS.entry)!!.toJsonMap()[GS.totalAmount] shouldBe 10.0
     }
 
     // What the caller is shown: the field they may not send is absent from the published input schema, so a
@@ -86,7 +90,7 @@ class GedraSketchTest : StringSpec({
         val props = branch.getValue("properties")!!.toJsonMap()
         // The keyword travels, which is what lets every surface honour it -- see the note in
         // buildEndpointInputSchema about the shared $defs bag.
-        props.getValue(GS.totalGallons)!!.toJsonMap()["g-derived"] shouldBe true
+        props.getValue(GS.totalAmount)!!.toJsonMap()["g-derived"] shouldBe true
     }
 
     // The conditional inside a branch (issue #253): the two mechanisms in one payload.
