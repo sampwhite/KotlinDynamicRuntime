@@ -76,12 +76,16 @@ class RequestService : ServiceInitializer {
      */
     val sectionRulesMap: MutableMap<String, SectionRules> = HashMap()
 
-    // The `demo`/`file`/`home`/`logout`/`todo` sections are listed here to record what they already were:
-    // each had no entry and was therefore served anonymously, so naming them changes no behavior and only
-    // makes the decision visible. `file` (upload as well as download) is the one worth revisiting on its own.
+    // The `file`/`home`/`logout` sections are listed here to record what they already were: each had no entry
+    // and was therefore served anonymously, so naming them changes no behavior and only makes the decision
+    // visible. `file` (upload as well as download) is the one worth revisiting on its own.
+    //
+    // `demo` and `todo` went with the endpoints they gated. A section with rules and no endpoints is harmless
+    // -- the boot check only refuses the reverse -- but it is a standing invitation to add an endpoint under a
+    // name that is anonymous for reasons nobody remembers.
     val anonSections: List<String> = listOf(
         "health", "schema", "content", "portal", "site", "auth", "db", "app", "test",
-        "demo", "file", "home", "logout", "todo",
+        "file", "home", "logout",
     )
     val userSections: List<String> = listOf("user", "profile")
 

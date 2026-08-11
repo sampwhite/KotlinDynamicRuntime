@@ -29,11 +29,11 @@ checked-in instructions for recreating them.
 ## How the pieces fit
 
 - The **server** boots the runtime and serves HTTP on **:7070** under the `kda`
-  context root. Run `:launch:run` (the main app; it registers the demo Todo
-  endpoints in developer environments, exposing `/kda/todo/*`).
+  context root. Run `:launch:run` (the main app; in developer environments it also
+  registers the `sample` module's demo file endpoints, exposing `/kda/file/*`).
 - The **webapp** dev server runs on **:8080** and proxies `/kda` → `:7070`, so
-  the browser makes same-origin calls (no CORS). Start the server first, or the
-  Todo list shows an "API call failed" error.
+  the browser makes same-origin calls (no CORS). Start the server first, or every
+  page shows an "API call failed" error.
 
 ## Run configurations to create
 
@@ -48,7 +48,7 @@ Gradle ones, set the **Gradle project** to the workspace directory and the
 | `webapp` | Gradle | `:webapp:jsBrowserDevelopmentRun` |
 | `webapp (no browser, for debugging)` | Gradle | `:webapp:jsBrowserDevelopmentRun`, arguments `-Pwebapp.open=false` |
 | `webapp debug (Chrome @8080)` | JavaScript Debug | URL `http://localhost:8080`, browser Chrome |
-| `Todo app (server + webapp)` | Compound | runs `KDR server (:launch:run)` + `webapp` |
+| `KDR app (server + webapp)` | Compound | runs `KDR server (:launch:run)` + `webapp` |
 
 The Gradle and Compound configs are plain XML. For example, `KDR server`:
 
@@ -76,7 +76,7 @@ The compound:
 
 ```xml
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Todo app (server + webapp)" type="CompoundRunConfigurationType">
+  <configuration default="false" name="KDR app (server + webapp)" type="CompoundRunConfigurationType">
     <toRun name="KDR server (:launch:run)" type="GradleRunConfiguration" />
     <toRun name="webapp (:webapp:jsBrowserDevelopmentRun)" type="GradleRunConfiguration" />
     <method v="2" />
@@ -90,7 +90,7 @@ The `webapp debug (Chrome @8080)` config is a **JavaScript Debug** type
 
 ## Everyday run (no debugging)
 
-Run **`Todo app (server + webapp)`** with the green **Run** button. It starts the
+Run **`KDR app (server + webapp)`** with the green **Run** button. It starts the
 server on :7070 and the webapp on :8080, and the dev server opens **Chrome** at
 http://localhost:8080 (the webpack devServer `open` targets Chrome specifically).
 
@@ -100,7 +100,7 @@ The server (JVM/Kotlin) and the webapp (JS in the browser) are debugged by two
 separate debuggers, run at the same time:
 
 1. **Server — JVM debug.** Launch **`KDR server (:launch:run)`** with **Debug**.
-   Breakpoints in endpoint handlers (e.g. `TodoService`, the request pipeline)
+   Breakpoints in endpoint handlers (e.g. `AdminEndpoints`, the request pipeline)
    bind and hit. Debugging a Gradle `run` this way is expected and fine.
 
 2. **Webapp — JS debug.** Two steps, in order:
@@ -111,7 +111,7 @@ separate debuggers, run at the same time:
      at :8080 with the debugger attached; breakpoints in `.kt` files bind via the
      dev build's source maps.
 
-You then get the full loop: JS breakpoints in the browser → `fetch('/kda/todo/…')`
+You then get the full loop: JS breakpoints in the browser → `fetch('/kda/…')`
 → proxied to :7070 → JVM breakpoints in the endpoint handlers.
 
 ### Why "no browser" for the webapp while debugging

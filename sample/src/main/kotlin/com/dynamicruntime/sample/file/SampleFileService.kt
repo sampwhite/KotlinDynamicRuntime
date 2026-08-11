@@ -11,9 +11,8 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
  * The sample app's file service: demonstrates the runtime's file endpoints (issue #96) end to end — upload a
- * file, list what has been uploaded, download one back. Follows [com.dynamicruntime.sample.todo.TodoService]:
- * the service owns the store and declares its endpoints inline in [schema], and `SampleComponent` wires them
- * in.
+ * file, list what has been uploaded, download one back. The service owns the store and declares its
+ * endpoints inline in [schema], and `SampleComponent` wires them in.
  *
  * The endpoints are all [com.dynamicruntime.common.endpoint.EndpointKind.file] — the kind that says "this one
  * trades in file content, not JSON" — except `list`, which is an ordinary list of metadata.

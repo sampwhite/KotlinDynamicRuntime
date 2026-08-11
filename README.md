@@ -43,7 +43,7 @@ base/common      # foundational JVM module (com.dynamicruntime.common)
 base/kdn         # dynamic-runtime core, depends on common (com.dynamicruntime.kdn)
 config           # configuration builders; re-exports the base modules (com.dynamicruntime.config)
 launch           # application entry points; source root is launch/apps (package roots there)
-sample           # demo app (Todo endpoints) the launcher loads in developer environments
+sample           # demo app (file upload/download endpoints) the launcher loads in developer environments
 webapp           # Kotlin/JS + React (antd) front end (the browser bundle)
 appui            # JVM host that serves the webapp bundle under the /wa context root
 bin              # convenience command-line scripts (see Command-line scripts below)

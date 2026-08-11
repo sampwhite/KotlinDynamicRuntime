@@ -109,7 +109,7 @@ curl -s -b "$JAR" http://localhost:7071/kda/auth/self/info | jq .results   # now
 ```
 
 A **content differential** confirms a stable-vs-changing value: call twice unchanged (same `contentHash`),
-then change an input (different `contentHash`). The `/demo/*` endpoints (`/demo/calc`, `/demo/todos`) are ideal
+then change an input (different `contentHash`). `/schema/sample` (POST) and `/schema/complex` (PUT) are ideal
 — pure, parameterized, no auth.
 
 **Reach for `kdr-probe` (below) as soon as more than one caller is involved.** The cookie-jar form above is
@@ -282,7 +282,7 @@ the in-process pipeline. It **carries cookies across calls**, so a login on one 
   fun Map<String, Any?>.list(key: String) = getValue(key) as List<*>      // items
   ```
 
-Worked examples: `DemoEndpointsTest`, `UiConfigEndpointTest`, `AppUiConfigEndpointTest` (all in `base/kdn`).
+Worked examples: `SchemaComplexEndpointTest`, `UiConfigEndpointTest`, `AppUiConfigEndpointTest` (all in `base/kdn`).
 
 ## Unit tests: config-resolution helpers, directly
 

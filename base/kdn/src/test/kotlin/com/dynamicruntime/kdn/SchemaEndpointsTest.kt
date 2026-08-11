@@ -73,7 +73,7 @@ class SchemaEndpointsTest : StringSpec({
             catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", params)).map { it[EI.path] }
 
         paths(mapOf(EI.namespace to "node")) shouldBe listOf("/health")
-        // The method filter returns only POST endpoints (which include /schema/sample and the demo POSTs).
+        // The method filter returns only POST endpoints (which include /schema/sample).
         val posts = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.method to "POST")))
         posts.map { it[EI.path] } shouldContain "/schema/sample"
         posts.map { it[EI.method] }.toSet() shouldBe setOf("POST")
