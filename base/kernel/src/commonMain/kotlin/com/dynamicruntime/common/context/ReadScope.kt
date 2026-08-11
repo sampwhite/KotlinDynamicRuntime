@@ -32,11 +32,28 @@ package com.dynamicruntime.common.context
 class ReadScope(
     /** Confine to this client, or null for any client. */
     val client: String? = null,
+    /**
+     * Confine to this organization within [client], or null for any organization. A row whose own org is null
+     * belongs to the client rather than to any organization and stays **visible regardless** -- see
+     * [admitsOrg]; that is the lenient rule, chosen so adopting organizations does not hide the content that
+     * predates them.
+     */
+    val org: String? = null,
     /** Confine to rows owned by this user, or null for any owner. */
     val userId: Long? = null,
 ) {
     /** Whether nothing is constrained -- the reach of an `allClients` administrator. */
-    val isUnrestricted: Boolean get() = client == null && userId == null
+    val isUnrestricted: Boolean get() = client == null && org == null && userId == null
+
+    /**
+     * Whether a row whose organization is [rowOrg] is admitted. An unconfined scope admits everything; a
+     * confined one admits its own organization **and** rows with no organization at all.
+     *
+     * The second half is the whole of the lenient decision. Strict matching would make every row written
+     * before a client adopted organizations vanish the moment anybody was given a primary one -- an adoption
+     * cliff that looks exactly like data loss.
+     */
+    fun admitsOrg(rowOrg: String?): Boolean = org == null || rowOrg == null || rowOrg == org
 
     /**
      * A short, stable token naming this scope's *shape* (not its values), for composing prepared-statement
@@ -46,11 +63,12 @@ class ReadScope(
     val shapeKey: String
         get() = buildString {
             if (client != null) append("C")
+            if (org != null) append("O")
             if (userId != null) append("U")
             if (isEmpty()) append("Any")
         }
 
-    override fun toString(): String = "ReadScope(client=$client, userId=$userId)"
+    override fun toString(): String = "ReadScope(client=$client, org=$org, userId=$userId)"
 
     companion object {
         /** No constraint at all. */
@@ -58,6 +76,9 @@ class ReadScope(
 
         /** Everything owned by [client]. */
         fun ofClient(client: String): ReadScope = ReadScope(client = client)
+
+        /** [client], narrowed to one organization within it (plus that client's org-less rows). */
+        fun ofOrg(client: String, org: String): ReadScope = ReadScope(client = client, org = org)
 
         /** Only what [userId] owns -- an ordinary user's own reach. */
         fun ofUser(userId: Long): ReadScope = ReadScope(userId = userId)

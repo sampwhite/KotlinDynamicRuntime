@@ -140,7 +140,16 @@ object AdminRules {
      * is an ordinary read -- not here.
      */
     fun adminReadScope(cxt: KdrCxt): ReadScope = when (adminScope(cxt)) {
-        AdminScope.ownClient -> ReadScope.ofClient(cxt.userProfile.client)
+        AdminScope.ownClient -> {
+            // A primary organization narrows the scope one width further (issue #225). Most administrators
+            // have none, and then this is exactly the client scope it always was -- organizations are a
+            // per-client choice, so having none is the ordinary case rather than a missing value.
+            val profile = cxt.userProfile
+            val org = profile.org
+            if (org == null) ReadScope.ofClient(profile.client) else ReadScope.ofOrg(profile.client, org)
+        }
+        // The capability outranks a primary organization. Someone who may reach every client is not confined
+        // by which organization they happen to belong to -- the two are different axes, and this is the wider.
         AdminScope.allClients, AdminScope.none -> ReadScope.unrestricted
     }
 

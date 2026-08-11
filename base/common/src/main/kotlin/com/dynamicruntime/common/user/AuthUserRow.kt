@@ -17,6 +17,9 @@ import com.dynamicruntime.common.util.toOptStr
  * The class shape is deliberately independent of the storage shape (fields are read/written explicitly).
  */
 class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
+    /** The user's primary organization within [client], or null when they have none (issue #225). */
+    var org: String? = null
+
     var enabled: Boolean = false
     lateinit var username: String
     var roles: List<String> = listOf(ROLE.user)
@@ -41,7 +44,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
      * for now; a future variant may load only part of the profile for high-volume paths.
      */
     fun toUserProfile(): UserProfile = UserProfile(
-        authId = userId.toString(), userId = userId, client = client, roles = roles.toSet(),
+        authId = userId.toString(), userId = userId, client = client, org = org, roles = roles.toSet(),
         publicName = publicName(), hasPassword = encodedPassword != null,
     )
 
@@ -55,6 +58,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         ADF.userId to userId,
         ADF.primaryId to primaryId,
         ADF.username to username,
+        ADF.org to org,
         ADF.roles to roles,
         ADF.enabled to enabled,
         ADF.hasPassword to (encodedPassword != null),
@@ -65,6 +69,9 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         val newAuthData = authUserData.toMutableMap()
         newAuthData[AD.roles] = roles
         if (encodedPassword != null) newAuthData[AD.encodedPassword] = encodedPassword else newAuthData.remove(AD.encodedPassword)
+        // Removed rather than written as null when absent: most users have no organization, and an explicit
+        // null would be stored in every row's JSON for the sake of the few that do.
+        if (org != null) newAuthData[AD.org] = org else newAuthData.remove(AD.org)
         val retData = data.toMutableMap()
         retData[AU.username] = username
         retData[AU.authUserData] = newAuthData
@@ -95,6 +102,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
                     type = SCT.array
                     items { type = SCT.string }
                 }
+                property(ADF.org, "The user's primary organization within their client, when they have one.")
                 property(ADF.enabled, "Whether the account is active.", required = true) { type = SCT.boolean }
                 property(ADF.hasPassword, "Whether the user has opted into a password.", required = true) {
                     type = SCT.boolean
@@ -113,6 +121,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
             row.username = data[AU.username].toOptStr() ?: (usernameTmpPrefix + primaryId)
             val userData = (data[AU.authUserData]?.toJsonMap() ?: emptyMap()).toMutableMap()
             row.roles = (userData[AD.roles] as? List<*>)?.mapNotNull { it?.toString() } ?: listOf(ROLE.user)
+            row.org = userData[AD.org].toOptStr()?.ifEmpty { null }
             row.encodedPassword = userData[AD.encodedPassword].toOptStr()
             userData.remove(AD.encodedPassword) // never let the password leak downstream via `data`
             row.authUserData = userData
@@ -121,11 +130,18 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         }
 
         /** The initially provisioned row for a freshly verified [primaryId] contact (placeholder username). */
-        fun mkInitialUser(primaryId: String, client: String, roles: List<String>): Map<String, Any?> = mapOf(
+        fun mkInitialUser(
+            primaryId: String,
+            client: String,
+            roles: List<String>,
+            org: String? = null,
+        ): Map<String, Any?> = mapOf(
             AU.primaryId to primaryId,
             AU.username to (usernameTmpPrefix + primaryId),
             PF.client to client,
-            AU.authUserData to mutableMapOf<String, Any?>(AD.roles to roles),
+            AU.authUserData to mutableMapOf<String, Any?>(AD.roles to roles).also {
+                if (org != null) it[AD.org] = org
+            },
         )
     }
 }

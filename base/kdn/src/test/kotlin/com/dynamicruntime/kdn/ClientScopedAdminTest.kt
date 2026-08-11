@@ -206,6 +206,75 @@ class ClientScopedAdminTest : StringSpec({
         )
     }
 
+    // --- organizations within a client -----------------------------------------
+
+    /**
+     * An administrator with a primary organization is confined one width further than their client. The
+     * org-less row is the interesting one: it stays visible, which is the lenient rule that keeps a client's
+     * pre-organization content from vanishing the day somebody is given an org.
+     */
+    "an administrator with a primary org sees their org and the org-less, but not another org" {
+        val cxt = Startup.mkTestBootCxt("orgScope", "orgScopeTest")
+        val service = users(cxt)
+        val full = TestUser.createFullAdmin(cxt, "org-full@example.com")
+
+        val inEng = TestUser.create(cxt, "org-eng@example.com", level = ROLE.admin)
+        full.postData(UADEP.userSetOrg, mapOf(ADF.userId to inEng.userId, ADF.org to "eng"))
+        val inSales = TestUser.create(cxt, "org-sales@example.com")
+        full.postData(UADEP.userSetOrg, mapOf(ADF.userId to inSales.userId, ADF.org to "sales"))
+        TestUser.create(cxt, "org-none@example.com") // no organization at all
+
+        // The org lands on the profile, so it reaches the scope without a database read per request.
+        val engAdmin = TestUser.create(cxt, "org-eng@example.com")
+        val listed = engAdmin.getItems(UADEP.users).map { it[ADF.primaryId].toOptStr() }
+        listed.contains("org-eng@example.com") shouldBe true    // their own org
+        listed.contains("org-none@example.com") shouldBe true   // no org: belongs to the client
+        listed.contains("org-sales@example.com") shouldBe false // another org
+    }
+
+    /** The capability outranks a primary organization: the two are different axes, and this is the wider. */
+    "allClients is not confined by the administrator's own organization" {
+        val cxt = Startup.mkTestBootCxt("orgFull", "orgFullTest")
+        val full = TestUser.createFullAdmin(cxt, "orgfull-admin@example.com")
+        val other = TestUser.create(cxt, "orgfull-other@example.com")
+        full.postData(UADEP.userSetOrg, mapOf(ADF.userId to other.userId, ADF.org to "sales"))
+        full.postData(UADEP.userSetOrg, mapOf(ADF.userId to full.userId, ADF.org to "eng"))
+
+        AdminRules.adminReadScope(
+            KdrCxt(
+                "orgFullCase", cxt.instanceConfig, null,
+                UserProfile(
+                    authId = "1", userId = 1L, client = CL.public, org = "eng",
+                    roles = setOf(ROLE.user, ROLE.admin, ROLE.allClients),
+                ),
+            ),
+        ).isUnrestricted shouldBe true
+    }
+
+    /**
+     * Assigning an organization is itself scoped. A different one would edit a user out of the caller's sight;
+     * clearing one is worse, since an org-less row is visible to the whole client -- so a confined
+     * administrator would be widening someone's reach past their own. Applied to themselves, it is the escape
+     * hatch from confinement, which is why no separate self-check is needed.
+     */
+    "an administrator confined to an org may only assign that org" {
+        val cxt = Startup.mkTestBootCxt("orgAssign", "orgAssignTest")
+        val full = TestUser.createFullAdmin(cxt, "assign-full@example.com")
+        val confined = TestUser.create(cxt, "assign-confined@example.com", level = ROLE.admin)
+        val target = TestUser.create(cxt, "assign-target@example.com")
+        full.postData(UADEP.userSetOrg, mapOf(ADF.userId to confined.userId, ADF.org to "eng"))
+        full.postData(UADEP.userSetOrg, mapOf(ADF.userId to target.userId, ADF.org to "eng"))
+
+        val engAdmin = TestUser.create(cxt, "assign-confined@example.com")
+        engAdmin.selfOrg() shouldBe "eng"
+
+        // Their own organization: allowed.
+        engAdmin.postData(UADEP.userSetOrg, mapOf(ADF.userId to target.userId, ADF.org to "eng"))
+        // A different one, and clearing it: both refused.
+        engAdmin.expectError(EXC.badInput, UADEP.userSetOrg, mapOf(ADF.userId to target.userId, ADF.org to "sales"))
+        engAdmin.expectError(EXC.badInput, UADEP.userSetOrg, mapOf(ADF.userId to target.userId))
+    }
+
     // --- the read filter, at the service level ---------------------------------
 
     "the scope filters the user list, and unrestricted reach does not" {

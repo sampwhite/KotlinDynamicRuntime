@@ -18,7 +18,7 @@ import kotlin.test.assertEquals
 class AccessLevelTest {
 
     private fun user(vararg roles: String) =
-        AdminUser(userId = 1L, primaryId = "a@b.com", username = "a", roles = roles.toList(), enabled = true, hasPassword = false)
+        AdminUser(userId = 1L, primaryId = "a@b.com", username = "a", roles = roles.toList(), org = null, enabled = true, hasPassword = false)
 
     // --- reading a level off a role list -------------------------------------
 

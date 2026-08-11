@@ -64,3 +64,21 @@ class UserProfileTest {
         assertFalse(restored.isLoggedIn)
     }
 }
+
+/**
+ * The primary organization on the profile (issue #225): it rides with the identity rather than in a column, so
+ * it has to survive the same round trips roles and client do.
+ */
+class UserProfileOrgTest {
+    @Test
+    fun orgIsAbsentByDefaultAndSurvivesTheInfoRoundTrip() {
+        val none = UserProfile(authId = "1", userId = 1L, client = "acme")
+        assertNull(none.org)
+        assertFalse(none.toUserInfo().containsKey(UPF.org)) // omitted, not written as null
+        assertNull(UserProfile.fromUserInfo(none.toUserInfo()).org)
+
+        val inOrg = UserProfile(authId = "1", userId = 1L, client = "acme", org = "eng")
+        assertEquals("eng", inOrg.toUserInfo()[UPF.org])
+        assertEquals("eng", UserProfile.fromUserInfo(inOrg.toUserInfo()).org)
+    }
+}

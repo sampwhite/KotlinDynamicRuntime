@@ -75,6 +75,7 @@ class UserService : ServiceInitializer {
     fun queryAdministrableUser(cxt: KdrCxt, userId: Long, scope: ReadScope): AuthUserRow? {
         val row = queryByUserId(cxt, userId) ?: return null
         if (scope.client != null && row.client != scope.client) return null
+        if (!scope.admitsOrg(row.org)) return null
         if (scope.userId != null && row.userId != scope.userId) return null
         return row
     }
@@ -141,7 +142,17 @@ class UserService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
         }
-        return rows.take(limit).map { AuthUserRow.extract(it) }
+        // The organization is the one part of the scope that cannot be a predicate: a user's is held in
+        // `authUserData`, and querying inside a JSON blob is PostgreSQL-specific and absent from H2. So it is
+        // applied here, after extraction -- which is also why `limit` is taken *after* the filter rather than
+        // in SQL: capping first would return short pages made of rows the caller may not see. The cap
+        // therefore costs more rows read than returned under an org scope; acceptable on a human-paced admin
+        // screen, and the reason content gets a real column instead.
+        return rows.asSequence()
+            .map { AuthUserRow.extract(it) }
+            .filter { scope.admitsOrg(it.org) }
+            .take(limit)
+            .toList()
     }
 
     /** Inserts a new `AuthUsers` row (protocol columns stamped), returning the generated `userId`. */

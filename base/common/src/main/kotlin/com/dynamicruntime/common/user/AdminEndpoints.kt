@@ -38,11 +38,12 @@ class UserAdminPaths(
     val userCreate: String,
     val userSetRoles: String,
     val userSetEnabled: String,
+    val userSetOrg: String,
 )
 
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
 fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, "admin", UserAdminPaths(ADEP.users, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled),
+    cxt, "admin", UserAdminPaths(ADEP.users, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg),
 )
 
 /**
@@ -55,7 +56,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  * mean two implementations of the same rules, and the copy is the one that would miss a fix.
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, "userAdmin", UserAdminPaths(UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled),
+    cxt, "userAdmin", UserAdminPaths(UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg),
 )
 
 private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPaths): SchModule =
@@ -91,6 +92,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 type = SCT.array
                 items { type = SCT.string }
             }
+            field(ADF.org, "Primary organization for the new user; defaults to the creator's own.")
         },
     ) { c, request ->
         val primaryId = requireField(request, ADF.primaryId)
@@ -108,7 +110,11 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // The new user belongs to the administrator's own client. It was hardcoded to `public`, which a
         // client-scoped administrator would have found absurd: they would create a user they could not then
         // see. For a full-scope administrator this is the same value it always was.
-        val data = AuthUserRow.mkInitialUser(primaryId, c.userProfile.client, roles).toMutableMap()
+        // Defaults to the creator's own organization for the same reason the client does: a confined
+        // administrator creating a user outside their own scope would immediately lose sight of them.
+        val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null } ?: c.userProfile.org
+        requireAssignableOrg(c, org)
+        val data = AuthUserRow.mkInitialUser(primaryId, c.userProfile.client, roles, org).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         // The administrator is asserting the address, which stands in for the verification the self-service
@@ -198,6 +204,50 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         userService(c).updateUser(c, row)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId enabled=$enabled." }
         row.toAdminInfo()
+    }
+
+    generalEndpoint(
+        paths.userSetOrg,
+        "Sets or clears a user's primary organization within their client.",
+        HttpMethod.POST,
+        outputRef = ADTY.adminUser,
+        inputFields = {
+            field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
+            field(ADF.org, "The organization to assign; omit or send empty to clear it.")
+        },
+    ) { c, request ->
+        val userId = requireUserId(request)
+        val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null }
+        requireAssignableOrg(c, org)
+        val row = loadUser(c, userId)
+        val previous = row.org
+        row.org = org
+        userService(c).updateUser(c, row)
+        LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId org: $previous -> $org." }
+        row.toAdminInfo()
+    }
+}
+
+/**
+ * Guards the organization an administrator is assigning: one confined to an organization may only ever assign
+ * **that** organization (issue #225).
+ *
+ * Both other answers would be an escalation of a kind. A *different* organization moves the user out of the
+ * caller's own scope -- they would be editing somebody into invisibility. **Clearing** it is subtler and
+ * worse: a row with no organization is visible to the whole client under the lenient rule, so clearing one
+ * widens that user's reach beyond the caller's own. Applied to the caller themselves it is the escape hatch
+ * from confinement altogether, which is why this needs no separate self-check.
+ *
+ * An administrator who is not confined to an organization -- most of them -- may assign anything, including
+ * nothing.
+ */
+private fun requireAssignableOrg(cxt: KdrCxt, org: String?) {
+    val actingOrg = cxt.userProfile.org ?: return
+    if (AdminRules.adminScope(cxt) == AdminScope.allClients) return
+    if (org != actingOrg) {
+        throw KdrException.mkInput(
+            "You can only assign the '$actingOrg' organization; you are confined to it.",
+        )
     }
 }
 
