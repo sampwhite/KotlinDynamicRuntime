@@ -3,6 +3,7 @@ package com.dynamicruntime.common.schema
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.deepClone
 import com.dynamicruntime.common.util.jsonArray
@@ -43,12 +44,23 @@ enum class SchFailCode {
     additionalProperty,
 
     /**
+     * A **declared** property was present that this payload may not carry — the `else` side of a conditional
+     * saying it is admissible only when some other field says so (issue #253).
+     *
+     * Its own code rather than [additionalProperty], which it superficially resembles: that one means "your
+     * schema has never heard of this field", while this means "it is a real field, and not one you may set
+     * right now". A client branching on the code should be able to tell a typo from a rule, and only one of
+     * the two is fixed by reading the schema harder.
+     */
+    notAllowed,
+
+    /**
      * The value fell short of its declared lower bound — whichever bound its type measures: `minimum` for a
      * number, `minLength` for a string, `minItems` for an array, `minProperties` for an object.
      *
      * **One code across all four pairs, rather than one per keyword.** A field has a single type, so on a
      * string this can only mean length and on an array only element count — the same reason [badValue] is not
-     * too coarse despite covering dates, booleans and JSON. Eight codes would buy a distinction the field's
+     * too coarse despite covering dates, booleans, and JSON. Eight codes would buy a distinction the field's
      * own type already makes, at the cost of every `g-errors` author having to know which of eight applies.
      * The built-in *messages* still differ per type; only the code is shared.
      *
@@ -253,11 +265,9 @@ fun validateValue(
 
     // `const`: the type admits one value. Checked before options, and separately from them, because it is a
     // statement about the shape rather than a choice being offered -- most often a union branch saying which
-    // branch it is. Compared as text, so a discriminator that arrived as a number still matches its declared
-    // string; JSON Schema compares by instance equality, and a wire value that reads the same is the same
-    // answer to "which branch is this".
+    // branch it is.
     val constValue = type.constValue
-    if (constValue != null && value.toOptStr() != constValue.toOptStr()) {
+    if (constValue != null && !constMatches(constValue, value)) {
         failures.add(
             type.failure(path, SchFailCode.invalidOption, "'$value' is not '$constValue'.",
                 listOf(SchOption(constValue.toOptStr() ?: "", constValue.toOptStr() ?: "")))
@@ -339,6 +349,29 @@ fun validateVariant(
     return validateValue(branch, value, path, coerce, failures, opts)
 }
 
+/**
+ * Whether a wire [value] matches a [declared] constant — the equality rule behind both `const` and the `if`
+ * of a [SchCondition].
+ *
+ * Exact equality first, then equality of string form. The second half is what makes a constant usable at all
+ * on a surface that loses types: a query string carries `true` as `"true"` and `42` as `"42"`, and both are
+ * the same answer to the question the constant is asking. It also spans the numeric widths a JSON parser picks
+ * between, where `1` and `1L` are the same number and different objects.
+ *
+ * **Not `toOptStr()` on both sides**, which is what this replaced and why it exists: that returns null for
+ * anything which is not a `CharSequence`, so two *non-string* values both stringified to null and compared
+ * equal — making a `const` of `42`, or of `true`, match absolutely anything. String constants hid it, because
+ * they are the only kind anything here had until conditions arrived, and a discriminator is always a string.
+ *
+ * Compared through [fmt] rather than `toString`, because a bare `toString` on a `Double` **differs between
+ * platforms**: `1.0` prints as `"1.0"` on the JVM and `"1"` under Kotlin/JS, and `1.0E10` as `"1.0E10"`
+ * against `"10000000000"` (both measured). A kernel whose whole premise is that the two sides reach the same
+ * verdict cannot compare values with a function that disagrees with itself across the wire. `fmt` routes a
+ * `Double` through `fmtD`, which formats identically on both.
+ */
+fun constMatches(declared: Any?, value: Any?): Boolean =
+    declared == value || (declared != null && value != null && declared.fmt() == value.fmt())
+
 @KdrPrivate
 fun validateObject(
     type: SchType,
@@ -416,7 +449,69 @@ fun validateObject(
             )
         }
     }
+    type.condition?.let { checkCondition(type, it, map, dropped, path, failures) }
     return out ?: map
+}
+
+/**
+ * Applies a type's `if`/`then`/`else` rule (issue #253): given what the watched property holds, some
+ * properties become required and others inadmissible.
+ *
+ * Runs **after** the required loop and reads the same `dropped` set, so a field cleared to `""` counts as
+ * absent here exactly as it does there. Otherwise, emptying a conditional field in a form would satisfy the
+ * rule while leaving a key on the wire the rule forbids — the two notions of "not supplied" have to be one
+ * notion.
+ *
+ * Both failures sit on the property they are about rather than on the object, so each lands on a field
+ * somebody can go and fix.
+ */
+@KdrPrivate
+fun checkCondition(
+    type: SchType,
+    condition: SchCondition,
+    map: Map<*, *>,
+    dropped: Set<String>,
+    path: String,
+    failures: MutableList<SchFailure>,
+) {
+    val holds = condition.holds(map)
+    fun supplied(name: String) = map.containsKey(name) && name !in dropped
+    for (name in condition.requiredWhen(holds)) {
+        if (!supplied(name)) {
+            val target = type.properties[name]?.valueType
+            val at = childPath(path, name)
+            val message = "Required property '$name' is missing."
+            failures.add(
+                target?.failure(at, SchFailCode.missingRequired, message)
+                    ?: SchFailure(at, SchFailCode.missingRequired, message),
+            )
+        }
+    }
+    for (name in condition.forbiddenWhen(holds)) {
+        if (supplied(name)) {
+            val target = type.properties[name]?.valueType
+            val at = childPath(path, name)
+            // Names the field that decided, not just the one that lost: "you may not send this" is a puzzle
+            // without the reason, and the reason is always another field the caller also controls.
+            //
+            // The two sides need opposite wording. Forbidden on the `then` side means the deciding field IS
+            // the value; on the `else` side it means it is *not*, and saying "when X is true" there would
+            // describe the state the caller is not in -- a message that reads as a contradiction of the form
+            // in front of them.
+            // `fmt`, not `toOptStr`: that one is a coercion yielding null for any non-string, so a boolean or
+            // numeric constant would print as "empty" -- describing the rule as something nobody wrote.
+            val decider = condition.value?.fmt() ?: "empty"
+            val message = if (holds) {
+                "'$name' is not allowed when '${condition.property}' is '$decider'."
+            } else {
+                "'$name' is only allowed when '${condition.property}' is '$decider'."
+            }
+            failures.add(
+                target?.failure(at, SchFailCode.notAllowed, message)
+                    ?: SchFailure(at, SchFailCode.notAllowed, message),
+            )
+        }
+    }
 }
 
 /**

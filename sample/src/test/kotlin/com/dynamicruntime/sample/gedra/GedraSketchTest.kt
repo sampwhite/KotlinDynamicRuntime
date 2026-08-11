@@ -57,6 +57,20 @@ class GedraSketchTest : StringSpec({
         status("crossBranch", mapOf(GS.traitId to GS.expenseReport, GS.year to 2024, GS.approved to true)) shouldBe 400
     }
 
+    // The conditional inside a branch (issue #253): the two mechanisms in one payload.
+    "a rejection must say why, and an approval must not" {
+        echo("rejected", mapOf(
+            GS.traitId to GS.managerApproval, GS.approved to false, GS.rejectionReason to "Submitted late.",
+        ))[GS.branch] shouldBe GS.managerApproval
+
+        // Rejected with no reason.
+        status("noReason", mapOf(GS.traitId to GS.managerApproval, GS.approved to false)) shouldBe 400
+        // Approved, yet carrying a rejection reason.
+        status("bothWays", mapOf(
+            GS.traitId to GS.managerApproval, GS.approved to true, GS.rejectionReason to "Submitted late.",
+        )) shouldBe 400
+    }
+
     // The default branch keeps an unknown trait readable rather than failing the request -- what a reader
     // holding only some of the trait definitions needs.
     "an unknown traitId falls to the default branch instead of failing" {

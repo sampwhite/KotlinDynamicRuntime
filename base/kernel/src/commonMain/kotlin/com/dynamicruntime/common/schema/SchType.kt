@@ -5,8 +5,8 @@ package com.dynamicruntime.common.schema
  * as opposed to the Map-backed builders. Everything the validator needs is a
  * declared attribute here, so validation never reaches into a raw schema Map.
  *
- * Only the constructs we support so far are modeled; `anyOf`/`allOf`/`if`/`then`/
- * `else` are intentionally not represented yet. A keyword that is not modeled is
+ * Only the constructs we support so far are modeled; `anyOf` and `allOf` are
+ * intentionally not represented yet. A keyword that is not modeled is
  * **ignored** rather than rejected, so a document a stock validator accepts still
  * loads — see [parseSchemaTypes] for what that costs.
  */
@@ -74,6 +74,14 @@ class SchType(
      * on which branch its discriminator selected, so there is no single property set to put there.
      */
     val variants: SchVariants?,
+    /**
+     * The `if`/`then`/`else` rule on this type, or null when it declares none. See [SchCondition].
+     *
+     * Sits beside [required] rather than inside it because it says something [required] cannot: that a
+     * property's necessity — or its very admissibility — depends on another property's value. At most one, for
+     * the reason [SchCondition] gives.
+     */
+    val condition: SchCondition?,
     /**
      * The JSON Schema `default` value, or null if none. A non-null default lets a
      * missing required property pass validation and is injected (cloned) when

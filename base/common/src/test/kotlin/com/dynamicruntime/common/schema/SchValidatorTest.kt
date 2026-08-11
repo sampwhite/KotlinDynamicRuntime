@@ -778,4 +778,56 @@ class SchValidatorTest : StringSpec({
         t.properties["score"]!!.valueType.errorMessages.shouldBeEmpty()
         validate(t, mapOf("score" to "x")).single().userMessage shouldBe null
     }
+
+    // --- const, including the non-string kinds (issue #253) -------------------
+
+    // A regression: `const` was compared by stringifying both sides with `toOptStr`, which yields null for
+    // anything that is not a CharSequence -- so two non-string values both became null and compared EQUAL,
+    // and a `const` of 42 or of `true` matched absolutely anything. String constants hid it completely,
+    // because a discriminator is always a string and nothing else used the keyword.
+    "a non-string const actually constrains the value" {
+        val types = parseSchemaTypes(
+            schemaDefs(cxt, "core") {
+                type("Fixed") {
+                    type = SCT.kObject
+                    property("answer", "The only accepted answer.", required = true) {
+                        type = SCT.integer
+                        const = 42
+                    }
+                    property("flag", "The only accepted flag.", required = true) {
+                        type = SCT.boolean
+                        const = true
+                    }
+                }
+            },
+        )
+        val fixed = types.getValue("core.Fixed")
+
+        validate(fixed, mapOf("answer" to 42, "flag" to true)).shouldBeEmpty()
+
+        val wrongNumber = validate(fixed, mapOf("answer" to 7, "flag" to true))
+        wrongNumber shouldHaveSize 1
+        wrongNumber.first().path shouldBe "answer"
+
+        val wrongFlag = validate(fixed, mapOf("answer" to 42, "flag" to false))
+        wrongFlag shouldHaveSize 1
+        wrongFlag.first().path shouldBe "flag"
+    }
+
+    // The tolerance that makes a constant usable on a surface that loses types: a query string carries every
+    // value as text, and "42" is the same answer as 42 to the question the constant asks.
+    "a const matches a value that arrived as text" {
+        val types = parseSchemaTypes(
+            schemaDefs(cxt, "core") {
+                type("Fixed2") {
+                    type = SCT.kObject
+                    property("answer", "The only accepted answer.", required = true) {
+                        type = SCT.integer
+                        const = 42
+                    }
+                }
+            },
+        )
+        coerceAndValidate(types.getValue("core.Fixed2"), mapOf("answer" to "42")).failures.shouldBeEmpty()
+    }
 })
