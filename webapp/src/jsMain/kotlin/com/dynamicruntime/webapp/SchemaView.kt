@@ -4,6 +4,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.refTargetName
@@ -72,6 +73,25 @@ class Catalog(val endpoints: List<EndpointInfo>, val defs: Map<String, Any?>) {
      */
     fun hasFileInput(ep: EndpointInfo): Boolean =
         inputType(ep).properties.values.any { isBinaryFormat(it.valueType.format) }
+
+    /**
+     * [schema] as a **standalone JSON Schema document**: the node itself, plus a `$defs` bag holding exactly
+     * the types it references (issue #262).
+     *
+     * The `$defs` are what make it standalone. Shown without them, every `$ref` dangles, and what is on screen
+     * is a fragment that no tool can resolve and no reader can follow — which is most of the reason a raw view
+     * is worth having at all. Reachability comes from the kernel's own [collectDefs], the same walk the backend
+     * uses to close the catalog, rather than a second one written here: it already knows the awkward cases,
+     * notably that a discriminator's `defaultMapping` is a bare ref string that a keyword search steps past.
+     *
+     * Deliberately **unmodified** otherwise. No `$schema`, no stripping of `g-` keywords, no synthesized
+     * `discriminator.mapping` — those belong to the export contract, which is not decided yet, and a view that
+     * quietly rewrote the schema would be worse than none while that is true.
+     */
+    fun rawDocument(schema: Map<String, Any?>): Map<String, Any?> {
+        val reachable = collectDefs(listOf(schema), defs)
+        return if (reachable.isEmpty()) schema else schema + (SCH.dDefs to reachable)
+    }
 
     /**
      * The resolved [SchType] of an endpoint's response payload — the type under the envelope's `results`/`item`
