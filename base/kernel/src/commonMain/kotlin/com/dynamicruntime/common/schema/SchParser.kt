@@ -3,6 +3,7 @@ package com.dynamicruntime.common.schema
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toOptDouble
 
@@ -11,8 +12,9 @@ import com.dynamicruntime.common.util.toOptDouble
  * `schemaDefs { ... }`) into resolved [SchType] / [SchProperty] objects.
  *
  * Every `$ref` is checked: its target must be one of the types in [defs] or in
- * [existingTypes]; otherwise a [KdrException] is thrown. `anyOf`/`allOf`/`if`/
- * `then`/`else` are not handled yet.
+ * [existingTypes]; otherwise a [KdrException] is thrown. `anyOf` and `allOf` are
+ * not handled yet; `oneOf` needs a declared discriminator (see [parseVariants])
+ * and `if`/`then`/`else` is read in one narrow shape (see [parseCondition]).
  *
  * **An unrecognized keyword is ignored, not rejected** — deliberately, since being strict about standard
  * keywords would reject documents a stock validator accepts. Note what that costs, because it is not free: a
@@ -188,6 +190,92 @@ fun parseVariants(
     return variants
 }
 
+/**
+ * Parses `if` / `then` / `else` into a [SchCondition], or null when the node declares none (issue #253).
+ *
+ * **Only the shape the entity model needs is accepted**: an `if` testing one property against a `const`, and
+ * `then` / `else` clauses that require or forbid properties. Anything else is refused with a message naming
+ * what was not understood.
+ *
+ * That refusal is a deliberate behavior change, and worth being clear-eyed about: such a document parsed
+ * before this and simply did nothing. General `if`/`then`/`else` applies an arbitrary subschema, which is a
+ * far larger surface than the entity model has asked for, and honoring a fragment of it would produce a
+ * schema that constrains *some* of what it appears to. A conditional that silently half-works is not
+ * diagnosable from the outside — there is no failure to notice — which is the same argument that made a
+ * discriminator-less `oneOf` an error in #252.
+ *
+ * It is not in tension with ignoring keywords we do not know: that policy protects a standard-valid document
+ * from a keyword nobody here has heard of, whereas this is a keyword we now read and a construct we decline
+ * to guess at.
+ */
+@KdrPrivate
+fun parseCondition(name: String?, map: Map<String, Any?>): SchCondition? {
+    val where = name?.let { " on '$it'" } ?: ""
+    val rawIf = map[SCH.kIf]
+    val rawThen = map[SCH.kThen]
+    val rawElse = map[SCH.kElse]
+    if (rawIf == null) {
+        if (rawThen != null || rawElse != null) {
+            throw KdrException.mkConv(
+                "'${SCH.kThen}'/'${SCH.kElse}'$where without an '${SCH.kIf}' decides nothing.",
+            )
+        }
+        return null
+    }
+    if (rawThen == null && rawElse == null) {
+        throw KdrException.mkConv(
+            "'${SCH.kIf}'$where has no '${SCH.kThen}' or '${SCH.kElse}', so it constrains nothing.",
+        )
+    }
+    val ifMap = (rawIf as? Map<*, *>)?.toJsonMap()
+        ?: throw KdrException.mkConv("'${SCH.kIf}'$where must be a schema object.")
+    val tested = ifMap[SCH.properties].toJsonMapOrEmpty()
+    if (tested.size != 1) {
+        throw KdrException.mkConv(
+            "'${SCH.kIf}'$where must test exactly one property with a '${SCH.const}'; this layer reads that " +
+                "shape only. Anything more general is not supported, and is refused rather than half-applied.",
+        )
+    }
+    val (property, rawTest) = tested.entries.first()
+    val test = (rawTest as? Map<*, *>)?.toJsonMap()
+        ?: throw KdrException.mkConv("'${SCH.kIf}'$where must test '$property' with a '${SCH.const}'.")
+    if (SCH.const !in test) {
+        throw KdrException.mkConv(
+            "'${SCH.kIf}'$where tests '$property' with something other than a '${SCH.const}'; only a " +
+                "constant comparison is supported.",
+        )
+    }
+    val (thenRequired, thenForbidden) = parseClause(SCH.kThen, rawThen, where)
+    val (elseRequired, elseForbidden) = parseClause(SCH.kElse, rawElse, where)
+    return SchCondition(property, test[SCH.const], thenRequired, thenForbidden, elseRequired, elseForbidden)
+}
+
+/**
+ * One `then` or `else` clause: `required` names what must be present, `not: {required: […]}` what must be
+ * absent. Those two are the whole supported vocabulary, so a clause carrying anything else is refused.
+ */
+private fun parseClause(keyword: String, raw: Any?, where: String): Pair<Set<String>, Set<String>> {
+    if (raw == null) {
+        return emptySet<String>() to emptySet()
+    }
+    val clause = (raw as? Map<*, *>)?.toJsonMap()
+        ?: throw KdrException.mkConv("'$keyword'$where must be a schema object.")
+    val required = parseRequired(clause[SCH.required])
+    val forbidden = parseRequired(clause[SCH.not].toJsonMapOrEmpty()[SCH.required])
+    val understood = setOf(SCH.required, SCH.not)
+    val extra = clause.keys.filter { it !in understood }
+    if (extra.isNotEmpty()) {
+        throw KdrException.mkConv(
+            "'$keyword'$where carries ${extra.joinToString(", ") { "'$it'" }}; only '${SCH.required}' and " +
+                "'${SCH.not}: {${SCH.required}: [...]}' are supported.",
+        )
+    }
+    if (required.isEmpty() && forbidden.isEmpty()) {
+        throw KdrException.mkConv("'$keyword'$where names no properties, so it constrains nothing.")
+    }
+    return required to forbidden
+}
+
 @KdrPrivate
 fun parseNode(
     name: String?,
@@ -248,6 +336,7 @@ fun parseNode(
         options = parseOptions(map[SCH.options]),
         constValue = map[SCH.const],
         variants = variants,
+        condition = parseCondition(name, map),
         default = map[SCH.default],
         errorMessages = parseErrorMessages(map[SCH.errors], name),
         minBound = map[minBoundKeyword(jsonType)].toOptDouble(),

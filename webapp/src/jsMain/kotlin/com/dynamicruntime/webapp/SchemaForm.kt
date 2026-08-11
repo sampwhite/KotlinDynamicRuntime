@@ -157,15 +157,7 @@ private fun ChildrenBuilder.renderObject(
         }
         return
     }
-    type.properties.forEach { (name, prop) ->
-        renderField(
-            name, prop, name in type.required, values[name], seen, editable, childPath(path, name), errors,
-            // A removal has to drop the key, not null it: a null against an object/array type fails the plain
-            // type check (they do not coerce), so "removed" would read as "present but wrong".
-            emit = { newValue -> onChange(values + (name to newValue)) },
-            omit = { onChange(values - name) },
-        )
-    }
+    renderProperties(type, values, seen, editable, path, errors, onChange)
     // Then anything reported against a key this object does not declare. Nothing above draws these -- there is
     // no property to render -- so without this they exist only in the listing at the foot of the page, which
     // is precisely the "named somewhere you cannot go" problem this issue is about.
@@ -173,6 +165,71 @@ private fun ChildrenBuilder.renderObject(
         undeclaredField(childKeyOf(at, path) ?: at, at, messages)
     }
 }
+
+/**
+ * Renders a type's declared properties, applying its conditional-presence rule if it has one (issue #253).
+ *
+ * Shared by an ordinary object and by a union's selected branch, which is not tidiness but correctness: a
+ * branch is an ordinary type that happens to have been chosen, so a rule declared on it has to apply exactly
+ * as it would anywhere else. When [renderVariant] had a property loop of its own, a conditional inside a
+ * branch was silently ignored — the schema said it, the validator enforced it, and the form knew nothing
+ * about it, which is the worst of the three places to disagree.
+ *
+ * [skip] is how the union keeps its discriminator out: that one is drawn by the union itself, as a choice
+ * rather than as the fixed value the branch declares.
+ */
+private fun ChildrenBuilder.renderProperties(
+    type: SchType,
+    values: Map<String, Any?>,
+    seen: Set<String>,
+    editable: Boolean,
+    path: String,
+    errors: FieldErrors,
+    onChange: (Map<String, Any?>) -> Unit,
+    skip: String? = null,
+) {
+    // A conditional-presence rule decides, from what the watched field currently holds, which properties are
+    // required and which may not appear at all.
+    val condition = type.condition
+    val holds = condition?.holds(values) ?: false
+    val forbidden = condition?.forbiddenWhen(holds) ?: emptySet()
+    val alsoRequired = condition?.requiredWhen(holds) ?: emptySet()
+    // Changing the watched field re-decides the rule, so anything it now forbids has to go with it. Same
+    // reasoning as switching a union's branch: leaving the value behind puts a field on the wire that
+    // validation refuses and the form is no longer showing, which is unfixable from the screen.
+    fun settle(next: Map<String, Any?>, edited: String): Map<String, Any?> =
+        if (condition == null || edited != condition.property) next
+        else next - condition.forbiddenWhen(condition.holds(next))
+
+    type.properties.forEach { (name, prop) ->
+        if (name == skip) {
+            return@forEach
+        }
+        // A forbidden field is hidden -- unless it still holds something, in which case hiding it would hide
+        // its failure too, leaving a complaint about a field with nowhere to go and no way to clear it. Shown,
+        // it carries its own "not allowed" message and can be emptied.
+        if (name in forbidden && isBlankValue(values[name])) {
+            return@forEach
+        }
+        renderField(
+            name, prop, name in type.required || name in alsoRequired, values[name], seen, editable,
+            childPath(path, name), errors,
+            // A removal has to drop the key, not null it: a null against an object/array type fails the plain
+            // type check (they do not coerce), so "removed" would read as "present but wrong".
+            emit = { newValue -> onChange(settle(values + (name to newValue), name)) },
+            omit = { onChange(settle(values - name, name)) },
+        )
+    }
+}
+
+/**
+ * Whether a field currently holds nothing worth showing — absent, or text someone has cleared.
+ *
+ * Matches the kernel's own `emptyIsAbsent` reading of a scalar closely enough for the one decision it makes
+ * here (whether a now-forbidden field still needs to be on screen). It deliberately does not try to be that
+ * rule: the authority on whether a value counts is the validator, and this only chooses what to draw.
+ */
+private fun isBlankValue(value: Any?): Boolean = value == null || (value is String && value.isBlank())
 
 /**
  * Renders a discriminated union: a choice of branch, then that branch's own fields (issue #252).
@@ -254,18 +311,9 @@ private fun ChildrenBuilder.renderVariant(
         return
     }
     // The branch's own fields, minus the discriminator it declares -- already drawn above, and as a choice
-    // rather than as the fixed value the branch states.
-    branch.properties.forEach { (fieldName, prop) ->
-        if (fieldName == name) {
-            return@forEach
-        }
-        renderField(
-            fieldName, prop, fieldName in branch.required, values[fieldName], seen, editable,
-            childPath(path, fieldName), errors,
-            emit = { newValue -> onChange(values + (fieldName to newValue)) },
-            omit = { onChange(values - fieldName) },
-        )
-    }
+    // rather than as the fixed value the branch states. Through the shared loop, so a rule declared on the
+    // branch (a conditional, say) applies exactly as it would on any other type.
+    renderProperties(branch, values, seen, editable, path, errors, onChange, skip = name)
     errors.undeclaredBelow(path, branch.properties.keys).forEach { (at, messages2) ->
         undeclaredField(childKeyOf(at, path) ?: at, at, messages2)
     }

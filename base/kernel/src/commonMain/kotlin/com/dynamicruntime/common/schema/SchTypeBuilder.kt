@@ -41,6 +41,9 @@ class SchErrors(private val data: MutableMap<String, Any?>) {
     /** Shown when the value is not one of the field's declared options. */
     fun invalidOption(message: String) = set(SchFailCode.invalidOption, message)
 
+    /** Shown when the field was supplied but a conditional rule says it may not be, given some other field. */
+    fun notAllowed(message: String) = set(SchFailCode.notAllowed, message)
+
     /**
      * Shown when the value falls short of the field's lower bound — whichever of `minimum`, `minLength`,
      * `minItems` or `minProperties` its type declares. One function, because a field has one type and so one
@@ -156,6 +159,33 @@ open class SchTypeBuilder(
      * same answer we do. Set through "variantBranch" rather than by hand for that case.
      */
     var const: Any? by SchAttr(data, SCH.const)
+
+    /**
+     * Declares that [field] is present exactly when [on] holds [value] — JSON Schema's `if`/`then`/`else`,
+     * emitted in the one shape this layer reads (issue #253).
+     *
+     * The commonest shape a trait's data takes: `{"hasValue": true, "value": "approve"}`, where `value` is
+     * required when the box is ticked and inadmissible when it is not, written as
+     * `presentWhen("value", on = "hasValue", value = true)`.
+     *
+     * **The emitted `if` repeats `required`, and that is the point of having a helper at all.** JSON Schema's
+     * `if` evaluates a subschema, and a bare `{"properties": {"hasValue": {"const": true}}}` passes
+     * *vacuously* when the property is absent — so an omitted `hasValue` would satisfy it, the `then` clause
+     * would fire, and the validator would demand `value` from a payload that said nothing. Written by hand
+     * that trap is invisible until someone submits an empty form; written here it is impossible.
+     *
+     * At most one per type, since JSON Schema allows one `if` per schema object — see [SchCondition].
+     */
+    fun presentWhen(field: String, on: String, value: Any?) {
+        data[SCH.kIf] = linkedMapOf<String, Any?>(
+            SCH.required to listOf(on),
+            SCH.properties to linkedMapOf(on to linkedMapOf(SCH.const to value)),
+        )
+        data[SCH.kThen] = linkedMapOf<String, Any?>(SCH.required to listOf(field))
+        data[SCH.kElse] = linkedMapOf<String, Any?>(
+            SCH.not to linkedMapOf<String, Any?>(SCH.required to listOf(field)),
+        )
+    }
 
     /**
      * Makes this schema a `$ref` to another type. A bare [name] resolves within

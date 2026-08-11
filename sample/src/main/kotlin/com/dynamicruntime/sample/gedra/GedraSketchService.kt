@@ -53,6 +53,12 @@ class GedraSketchService : ServiceInitializer {
             ) {
                 property(GS.approved, "Whether it was approved.", required = true) { type = SCT.boolean }
                 property(GS.decidedBy, "Who decided.")
+                property(GS.rejectionReason, "Why it was rejected.")
+                // The conditional case (issue #253), inside a union branch so the two mechanisms are exercised
+                // in one payload: a reason is required when the decision is a rejection, and inadmissible when
+                // it is not. `presentWhen` emits the `if`/`then`/`else` triple, including the `required` inside
+                // the `if` that stops an absent `approved` from demanding a reason.
+                presentWhen(GS.rejectionReason, on = GS.approved, value = false)
             }
             // Not `variantBranch`: a catch-all must not declare a `const`, or it rejects the very value it is
             // there to accept. See `variantDefault`.
@@ -121,6 +127,7 @@ object GS {
     const val notes = "notes"
     const val approved = "approved"
     const val decidedBy = "decidedBy"
+    const val rejectionReason = "rejectionReason"
 
     // Trait ids.
     const val expenseReport = "expenseReport"
