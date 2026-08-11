@@ -286,7 +286,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             }
             passwordError?.let {
                 p {
-                    className = ClassName("todo-error")
+                    className = ClassName("error-text")
                     +it
                 }
             }

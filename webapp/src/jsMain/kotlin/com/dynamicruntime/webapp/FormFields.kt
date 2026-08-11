@@ -86,7 +86,7 @@ fun ChildrenBuilder.textField(
  */
 fun ChildrenBuilder.errorText(error: DisplayError) {
     p {
-        className = ClassName(if (error.internal) "internal-error" else "todo-error")
+        className = ClassName(if (error.internal) "internal-error" else "error-text")
         if (error.internal) +error.text else MarkdownInline { source = error.text }
     }
 }
