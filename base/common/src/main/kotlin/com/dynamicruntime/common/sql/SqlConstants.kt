@@ -38,6 +38,16 @@ object PF {
     /** Owning the client (added by the [TableFeature.client] feature). */
     const val client = "client"
 
+    /**
+     * Owning organization within the [client] (added by the [TableFeature.org] feature, issue #225).
+     *
+     * **Nullable on purpose, and null is not a missing value**: it means the row belongs to the client as a
+     * whole rather than to any one organization, and such a row stays visible to everybody in the client (see
+     * `ReadScope.admitsOrg`). Organizations are a per-client choice, so a client that uses none writes null
+     * here forever, and a client that adopts them keeps everything it wrote beforehand.
+     */
+    const val org = "org"
+
     /** Owning user's numeric id (added by the [TableFeature.user] feature). */
     const val userId = "userId"
 
@@ -51,6 +61,18 @@ object PF {
 
     /** ID of the last transaction applied to a transaction-lock row (added by [TableFeature.transactions]). */
     const val lastTranId = "lastTranId"
+}
+
+/**
+ * Bind-parameter names for the `ReadScope` predicates [SqlScopeUtil] composes (issue #225). Named apart from
+ * the column names they constrain so a query can mention both without the two colliding, and shared rather
+ * than per-caller so a hand-written extra condition can bind the same value.
+ */
+@Suppress("ConstPropertyName")
+object SCP {
+    const val scopeClient = "scopeClient"
+    const val scopeOrg = "scopeOrg"
+    const val scopeUserId = "scopeUserId"
 }
 
 /**

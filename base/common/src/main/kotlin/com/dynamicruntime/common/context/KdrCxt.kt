@@ -9,7 +9,7 @@ import kotlin.time.Instant
  * The universal context object for the runtime. It is passed down a call stack
  * as an explicit alternative to scoped / thread-local variables: from it, you can
  * reach the application configuration, the acting user, the bound owner
- * ([client] / [userId]), the schema store, and free-form association maps for
+ * ([client] / [org] / [userId]), the schema store, and free-form association maps for
  * handing extra information to implementers further down the stack.
  *
  * Every context is named and carries a parent context path (the chain of parent
@@ -47,6 +47,18 @@ class KdrCxt(
      */
     var userId: Long = userProfile.userId,
 ) : KdrCxtBase {
+    /**
+     * The organization *within* [client] that owns the data this context is operating on, or null when the
+     * data belongs to the client as a whole (issue #225). Completes the owner axis alongside
+     * [client]/[userId], and defaults to the acting user's primary organization -- which is what lets a write
+     * stamp the column without a lookup (see `SqlTopicUtil.prepForStdExecute`).
+     *
+     * Null is the ordinary case, not a missing value: organizations are a per-client choice and most clients
+     * make none. It is a `var` for the same reason [client] is, and it is **reset rather than inherited when
+     * a sub context binds to a different client** ([mkSubContext]) -- an organization name means nothing
+     * outside the client it belongs to, so carrying one across would silently narrow the wrong client's rows.
+     */
+    var org: String? = userProfile.org
     /** Configuration of the running instance/application. */
     val instanceConfig: KdrInstanceConfig = instanceConfig ?: KdrInstanceConfig.codeTest()
 
@@ -138,6 +150,10 @@ class KdrCxt(
      */
     fun mkSubContext(subCxtName: String, client: String): KdrCxt {
         val sub = KdrCxt(subCxtName, instanceConfig, this, userProfile, client, userId)
+        // The bound organization travels only while the bound client does. An org name is only meaningful
+        // inside its own client, so inheriting one across a client change would confine the new client's rows
+        // by a name belonging to the old -- a filter that silently matches almost nothing (issue #225).
+        sub.org = if (client == this.client) org else null
         sub.locals.putAll(locals)
         sub.schemaStore = schemaStore
         sub.forwardedFor = forwardedFor
@@ -158,6 +174,7 @@ class KdrCxt(
         this.userProfile = userProfile
         this.client = userProfile.client
         this.userId = userProfile.userId
+        this.org = userProfile.org
     }
 
     /** Returns the schema store, lazily creating and caching it on first access. */

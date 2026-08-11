@@ -7,6 +7,7 @@ import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.sql.SqlScopeUtil
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
@@ -112,17 +113,16 @@ class UserService : ServiceInitializer {
         val term = search?.trim()?.lowercase()?.ifEmpty { null }
 
         // Every condition goes into the SQL, scope included, so `limit` stays a real cap: filtering after the
-        // query would page through rows the caller cannot see in order to fill a page of ones they can.
-        val conditions = mutableListOf<String>()
+        // query would page through rows the caller cannot see in order to fill a page of ones they can. The
+        // scope half is composed by SqlScopeUtil rather than spelled out here -- one implementation of
+        // scope-to-SQL, so a second scoped query cannot disagree with this one about what a scope means.
         val data = mutableMapOf<String, Any?>()
-        if (scope.client != null) {
-            conditions.add("c:${PF.client} = :${SP.scopeClient}")
-            data[SP.scopeClient] = scope.client
-        }
-        if (scope.userId != null) {
-            conditions.add("c:${AU.userId} = :${SP.scopeUserId}")
-            data[SP.scopeUserId] = scope.userId
-        }
+        val conditions = SqlScopeUtil.scopeConditions(
+            scope, table, data,
+            // Declared, not defaulted: this table cannot express the organization as a predicate (see the
+            // post-filter below), and SqlScopeUtil throws rather than quietly widen the answer.
+            filteredAfterQuery = setOf(PF.org),
+        ).toMutableList()
         if (term != null) {
             conditions.add(
                 "(lower(c:${AU.primaryId}) like :${SP.searchTerm} or lower(c:${AU.username}) like :${SP.searchTerm})",
@@ -290,8 +290,8 @@ class UserService : ServiceInitializer {
     @Suppress("ConstPropertyName")
     object SP {
         const val searchTerm = "searchTerm"
-        const val scopeClient = "scopeClient"
-        const val scopeUserId = "scopeUserId"
+        // The scope bind names moved to `SCP` in the SQL layer when SqlScopeUtil took over composing them
+        // (issue #225) -- they belong with the composer, not with this one of its callers.
     }
 
     @Suppress("ConstPropertyName")
