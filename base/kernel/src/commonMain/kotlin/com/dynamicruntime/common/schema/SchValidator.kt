@@ -60,7 +60,7 @@ enum class SchFailCode {
      *
      * **One code across all four pairs, rather than one per keyword.** A field has a single type, so on a
      * string this can only mean length and on an array only element count — the same reason [badValue] is not
-     * too coarse despite covering dates, booleans and JSON. Eight codes would buy a distinction the field's
+     * too coarse despite covering dates, booleans, and JSON. Eight codes would buy a distinction the field's
      * own type already makes, at the cost of every `g-errors` author having to know which of eight applies.
      * The built-in *messages* still differ per type; only the code is shared.
      *
@@ -458,7 +458,7 @@ fun validateObject(
  * properties become required and others inadmissible.
  *
  * Runs **after** the required loop and reads the same `dropped` set, so a field cleared to `""` counts as
- * absent here exactly as it does there. Otherwise emptying a conditional field in a form would satisfy the
+ * absent here exactly as it does there. Otherwise, emptying a conditional field in a form would satisfy the
  * rule while leaving a key on the wire the rule forbids — the two notions of "not supplied" have to be one
  * notion.
  *
@@ -498,7 +498,7 @@ fun checkCondition(
             // the value; on the `else` side it means it is *not*, and saying "when X is true" there would
             // describe the state the caller is not in -- a message that reads as a contradiction of the form
             // in front of them.
-            // toString, not toOptStr: the latter is a coercion that yields null for anything which is not a
+            // toString, not toOptStr: the latter is a coercion that yields null for anything, which is not a
             // string, so a boolean or numeric constant would print as "empty" -- describing the rule as
             // something nobody wrote.
             val decider = condition.value?.fmt() ?: "empty"

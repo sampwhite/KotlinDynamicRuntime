@@ -12,7 +12,6 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.qualifyTypeName
-import com.dynamicruntime.common.schema.refTargetName
 
 // EI / HttpMethod / EndpointKind / EP / defaultListLimit moved to the kernel (endpoint/EndpointConstants.kt),
 // so the frontend shares this wire vocabulary; still referenced as `com.dynamicruntime.common.endpoint.*`.
