@@ -35,14 +35,20 @@ object AUTHC {
  * it. A per-request check of [expireEpochMs] bounds the session; the actual roles/client are trusted from the
  * (encrypted) cookie for the fast path -- no database hit on every request.
  *
- * The primary organization is deliberately **not** here (issue #225). Nothing needs it: every section that
- * scopes is a gated one, and `refreshActingRoles` rebuilds the profile from the row before the gate, so a
- * cookie value would be overwritten before any read saw it. It becomes a real question when content carries
- * an org and writes on an *anonymous* section stamp it -- that path is never refreshed, which is exactly why
- * `client` is here. At that point it has to arrive together with an answer about staleness: a thirty-day
- * cookie would otherwise keep stamping the org a user had when they logged in, long after an administrator
- * moved them. Ported from dn's `UserAuthCookie`,
- * pared down to what verify-code login needs.
+ * The primary organization is deliberately **not** here (issue #225), and now that content carries an
+ * organization column the omission is a decision rather than a deferral. It buys a property worth keeping:
+ * **a stamped organization is never stale.** `refreshActingRoles` runs only where a section declares a
+ * required role, so a profile carries an org only when it was just read from the row; everywhere else it is
+ * null, and a write stamps nothing. Putting it in the cookie would trade that for the opposite -- a thirty-day
+ * cookie stamping the org a user held at login, long after an administrator moved them, onto rows that then
+ * stay invisible to their real organization.
+ *
+ * What it costs: a logged-in caller writing through an *anonymous* section stamps no organization, so the row
+ * belongs to the client as a whole. That widens rather than leaks -- the row is visible to too many people
+ * inside one client, never to another client -- and no such write path exists today. The fix, when one does,
+ * is to give that endpoint a gated section (which refreshes) rather than to age the value in a cookie.
+ *
+ * Ported from dn's `UserAuthCookie`, pared down to what verify-code login needs.
  */
 class UserAuthCookie(
     val userId: Long,

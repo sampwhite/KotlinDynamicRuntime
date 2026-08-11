@@ -24,14 +24,17 @@ object TI {
 }
 
 /**
- * Optional table capabilities, opted into via the builder ([TableBuilder.forClient] /
+ * Optional table capabilities, opted into via the builder ([TableBuilder.forClient] / [TableBuilder.forOrg] /
  * [TableBuilder.forUsers] / [TableBuilder.withTransactions]); each adds its protocol column(s).
- * [transactions] may be combined with either [client] or [user].
+ * [transactions] may be combined with any of the ownership features.
+ *
+ * [org] is a *narrowing* of [client] rather than a peer of it -- an organization only exists within a client
+ * -- so opting into it implies [client] (issue #225).
  *
  * A closed operational set that gets serialized in the table info dump, so an enum fits (per the code guide).
  */
 @Suppress("EnumEntryName")
-enum class TableFeature { client, user, transactions }
+enum class TableFeature { client, org, user, transactions }
 
 /** A database index over one or more columns (by field name), optionally named and/or unique. */
 class KdrIndex(

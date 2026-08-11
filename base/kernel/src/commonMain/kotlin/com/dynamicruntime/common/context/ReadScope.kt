@@ -15,19 +15,20 @@ package com.dynamicruntime.common.context
  * distinct from `userProfile`, which answers *"who is acting on it?"*. A null field is **no constraint on that
  * dimension**, so [unrestricted] (every field null) reads everything.
  *
- * **Where `org` will go.** A primary organization within a client is a coming feature: it becomes another
- * field here, and the widths become own-user < own-org < own-client < all-clients. It is deliberately not
- * declared yet -- a dimension nothing populates is one somebody half-uses. Three things are already decided:
+ * **The organization width.** With [org] the widths run own-user < own-org < own-client < all-clients. Three
+ * things about it are worth knowing before using this type:
  *
  *  - A row whose org is null **belongs to the client rather than to any organization**, and stays visible to
- *    everyone in that client. The lenient reading, chosen so that adopting orgs does not hide all the content
- *    that predates them.
- *  - A user's assignment is held in `authUserData` and surfaced on [UserProfile] -- **no database column**,
- *    the same way roles are. So it travels with the acting caller, which is what lets a write stamp the org
- *    onto content without a lookup.
- *  - Consequently the two sides are not symmetric. *Content* carries a real org column and filters in SQL, as
- *    `client` does here. *Users* do not, so narrowing a user list to an org can only be done after the query,
- *    which makes [ReadScope.client] the last predicate keeping `limit` an exact cap on that table.
+ *    everyone in that client -- see [admitsOrg]. The lenient reading, chosen so that adopting organizations
+ *    does not hide all the content that predates them.
+ *  - A *user's* assignment is held in `authUserData` and surfaced on [UserProfile] -- **no database column**,
+ *    the same way roles are. So it travels with the acting caller, which is what lets a write stamp the
+ *    organization onto content without a lookup.
+ *  - Consequently the two sides are not symmetric. *Content* carries a real org column
+ *    (`TableBuilder.forOrg`) and filters in SQL, as `client` does, via `SqlScopeUtil`. *Users* do not, so
+ *    narrowing a user list to an organization can only be done after the query -- which is why
+ *    `UserService.listUsers` has to name that dimension as one it filters itself, and why [client] is the last
+ *    predicate keeping `limit` an exact cap on that one table.
  */
 class ReadScope(
     /** Confine to this client, or null for any client. */

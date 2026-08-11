@@ -104,6 +104,21 @@ class TableBuilder(
     }
 
     /**
+     * Marks the table's rows as belonging to an organization *within* a client (issue #225): adds a nullable
+     * [PF.org] column and, since an organization only exists inside a client, also [PF.client].
+     *
+     * Opt a table in when its rows are content a client might want partitioned -- writes then stamp the
+     * author's primary organization automatically (`SqlTopicUtil.prepForStdExecute`) and reads narrow to it
+     * (`SqlScopeUtil.scopeConditions`), neither of which the table's own code has to arrange. Unlike the other
+     * ownership columns the result is **nullable**: null means "the client's, not any organization's", which
+     * is what every row of a client that never adopts organizations looks like.
+     */
+    fun forOrg() {
+        features.add(TableFeature.org)
+        features.add(TableFeature.client)
+    }
+
+    /**
      * Marks the table as user-owned: adds a [PF.userId] column and, since user ownership implies a client,
      * also the [PF.client] column (both features are recorded).
      */
@@ -145,6 +160,12 @@ class TableBuilder(
         }
         if (TableFeature.client in features) {
             allSpecs.add(mkSpec(PF.client, stringSchema("Owning client."), required = true))
+        }
+        // Nullable, unlike the client it sits inside: a null org means the row belongs to the client as a
+        // whole, which is every row of a client that uses no organizations and every row written before one
+        // adopted them. Making it required would force a sentinel value and turn adoption into a migration.
+        if (TableFeature.org in features) {
+            allSpecs.add(mkSpec(PF.org, stringSchema("Owning organization within the client, if any.")))
         }
         // Transaction-lock columns (present only on a topic's designated lock table).
         if (TableFeature.transactions in features) {
