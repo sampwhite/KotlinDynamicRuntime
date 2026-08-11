@@ -11,12 +11,14 @@ import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.AdminScope
+import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 
@@ -62,8 +64,70 @@ class ClientScopedAdminTest : StringSpec({
         AdminRules.adminScope(acting(ROLE.user, ROLE.admin)) shouldBe AdminScope.ownClient
         AdminRules.adminScope(acting(ROLE.user, ROLE.admin, ROLE.allClients)) shouldBe AdminScope.allClients
 
-        AdminRules.adminReadScope(acting(ROLE.user, ROLE.admin)).client shouldBe otherClient
-        AdminRules.adminReadScope(acting(ROLE.user, ROLE.admin, ROLE.allClients)).isUnrestricted shouldBe true
+        ReadScopeRules.forCaller(acting(ROLE.user, ROLE.admin)).client shouldBe otherClient
+        ReadScopeRules.forCaller(acting(ROLE.user, ROLE.admin, ROLE.allClients)).isUnrestricted shouldBe true
+    }
+
+    /**
+     * The four widths in one place (issue #225), read off the resolver rather than off a surface -- because
+     * the narrowest of them has no surface yet. Every scoped read today is on a user-list endpoint behind an
+     * administrative section, so an ordinary caller never arrives at one; this is what the first ordinary
+     * endpoint over an owned table will be handed, and covering it here is what stops it being invented by
+     * hand later.
+     */
+    "the read scope resolves a width for every caller, not only administrators" {
+        val cxt = Startup.mkTestBootCxt("widths", "readScopeWidthsTest")
+
+        fun acting(org: String?, vararg roles: String): KdrCxt = KdrCxt(
+            "widthCase", cxt.instanceConfig, null,
+            UserProfile(authId = "7", userId = 7L, client = otherClient, org = org, roles = roles.toSet()),
+        )
+
+        // Narrowest: not an administrator at all -- their own rows, and not their client's.
+        val own = ReadScopeRules.forCaller(acting(null, ROLE.user))
+        own.userId shouldBe 7L
+        own.client shouldBe null
+        own.isUnrestricted shouldBe false
+
+        // An operator is no wider: the ladder says what may be done, not over whose rows.
+        ReadScopeRules.forCaller(acting(null, ROLE.user, ROLE.operator)).userId shouldBe 7L
+
+        // An administrator with a primary organization: that org within their client...
+        val orgScope = ReadScopeRules.forCaller(acting("eng", ROLE.user, ROLE.admin))
+        orgScope.client shouldBe otherClient
+        orgScope.org shouldBe "eng"
+        orgScope.userId shouldBe null // widened past their own rows, which is the point of the level
+
+        // ...and without one, the whole client.
+        val clientScope = ReadScopeRules.forCaller(acting(null, ROLE.user, ROLE.admin))
+        clientScope.client shouldBe otherClient
+        clientScope.org shouldBe null
+
+        // Widest: the capability, which is not confined by an organization the holder happens to have.
+        ReadScopeRules.forCaller(acting("eng", ROLE.user, ROLE.admin, ROLE.allClients))
+            .isUnrestricted shouldBe true
+    }
+
+    /**
+     * Why the `GrantRole` script passes [ReadScope.unrestricted] by hand instead of asking the resolver.
+     *
+     * It boots the runtime with no logged-in caller, so the resolver confines it to the system user's own
+     * (nonexistent) rows -- and the script's entire job is finding the first administrator in a deployment
+     * that has none. What entitles it is the shell rather than a role. This pins both halves, so "simplifying"
+     * the script to `forCaller` fails here rather than silently listing nobody.
+     */
+    "a caller with no session is confined, which is why the operator script asks for the whole table" {
+        val cxt = Startup.mkTestBootCxt("scriptScope", "scriptScopeTest")
+        seedUserInClient(cxt, "script-visible@acme.com", otherClient)
+
+        // The context a script boots with: the system profile, holding no roles.
+        val systemCxt = KdrCxt("scriptCase", cxt.instanceConfig, null)
+        ReadScopeRules.forCaller(systemCxt).isUnrestricted shouldBe false
+        users(cxt).listUsers(systemCxt, null, 50, ReadScopeRules.forCaller(systemCxt)).isEmpty() shouldBe true
+
+        // Stated explicitly, the same call reaches the row -- what `--list` depends on.
+        users(cxt).listUsers(systemCxt, null, 50, ReadScope.unrestricted)
+            .map { it.primaryId } shouldContain "script-visible@acme.com"
     }
 
     /**
@@ -286,7 +350,7 @@ class ClientScopedAdminTest : StringSpec({
         full.postData(UADEP.userSetOrg, mapOf(ADF.userId to other.userId, ADF.org to "sales"))
         full.postData(UADEP.userSetOrg, mapOf(ADF.userId to full.userId, ADF.org to "eng"))
 
-        AdminRules.adminReadScope(
+        ReadScopeRules.forCaller(
             KdrCxt(
                 "orgFullCase", cxt.instanceConfig, null,
                 UserProfile(

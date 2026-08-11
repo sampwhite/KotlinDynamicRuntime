@@ -48,7 +48,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
 
 /**
  * The **scoped** surface: the `userAdmin` section, which requires only [ROLE.admin] and confines every read to
- * `AdminRules.adminReadScope` (issue #225).
+ * `ReadScopeRules.forCaller` (issue #225).
  *
  * The same module built twice rather than a second set of handlers, because the difference between the two
  * surfaces is *who may enter*, not what they do once inside: the scope is derived from the caller's roles, so
@@ -74,7 +74,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         },
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
-        userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, AdminRules.adminReadScope(c))
+        userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, ReadScopeRules.forCaller(c))
             .map { it.toAdminInfo() }
     }
 
@@ -269,7 +269,7 @@ private fun userService(cxt: KdrCxt): UserService =
  * endpoint to discover that an id belongs to somebody in a client they cannot see.
  */
 private fun loadUser(cxt: KdrCxt, userId: Long): AuthUserRow =
-    userService(cxt).queryAdministrableUser(cxt, userId, AdminRules.adminReadScope(cxt))
+    userService(cxt).queryAdministrableUser(cxt, userId, ReadScopeRules.forCaller(cxt))
         ?: throw KdrException("No user with id $userId.", code = EXC.notFound)
 
 /** Reads a required string field, rejecting a blank one (which validation alone would let through). */

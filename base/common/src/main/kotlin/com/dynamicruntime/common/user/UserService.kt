@@ -101,12 +101,18 @@ class UserService : ServiceInitializer {
      * a deployment's user table is the one table guaranteed to outgrow any page size. `lower(...) like ?` will
      * not use the plain unique indexes, which is acceptable for an admin-only, human-paced screen; a
      * case-insensitive index is the fix if it ever matters.
+     *
+     * [scope] is **required, with no default** (issue #225). It defaulted to
+     * [ReadScope.unrestricted], which is the fail-open shape this whole seam exists to remove: forgetting the
+     * argument returned every row and compiled, ran, and looked correct. A caller that genuinely wants the
+     * whole table now has to write [ReadScope.unrestricted] and be seen doing it; everything else should be
+     * passing `ReadScopeRules.forCaller`.
      */
     fun listUsers(
         cxt: KdrCxt,
         search: String?,
         limit: Int,
-        scope: ReadScope = ReadScope.unrestricted,
+        scope: ReadScope,
     ): List<AuthUserRow> {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUsersTable(cxt)
