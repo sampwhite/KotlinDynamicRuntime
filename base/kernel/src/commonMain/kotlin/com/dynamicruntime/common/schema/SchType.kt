@@ -6,7 +6,9 @@ package com.dynamicruntime.common.schema
  * declared attribute here, so validation never reaches into a raw schema Map.
  *
  * Only the constructs we support so far are modeled; `anyOf`/`allOf`/`if`/`then`/
- * `else` are intentionally not represented yet.
+ * `else` are intentionally not represented yet. A keyword that is not modeled is
+ * **ignored** rather than rejected, so a document a stock validator accepts still
+ * loads — see [parseSchemaTypes] for what that costs.
  */
 class SchType(
     /** Fully qualified name for a `$defs` type; null for an anonymous/inline schema. */
@@ -57,6 +59,21 @@ class SchType(
     var itemType: SchType?,
     /** Choice list for the custom `options` construct; null if not an options field. */
     val options: List<SchOption>?,
+    /**
+     * JSON Schema `const`: the single value this type admits, or null when it admits any.
+     *
+     * Its own field rather than sugar for a one-entry [options] list, because the two say different things to
+     * a reader: `options` is a choice someone makes, `const` is a fact about the shape — most often a branch of
+     * a [variants] union stating which branch it is. A form offers the first and does not offer the second.
+     */
+    val constValue: Any?,
+    /**
+     * The discriminated "union" this type is, or null for an ordinary type. See [SchVariants].
+     *
+     * A union carries its branches here rather than in [properties]: the properties a payload must have depend
+     * on which branch its discriminator selected, so there is no single property set to put there.
+     */
+    val variants: SchVariants?,
     /**
      * The JSON Schema `default` value, or null if none. A non-null default lets a
      * missing required property pass validation and is injected (cloned) when

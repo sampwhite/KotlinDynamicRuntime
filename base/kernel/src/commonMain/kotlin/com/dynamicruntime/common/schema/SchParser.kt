@@ -14,6 +14,13 @@ import com.dynamicruntime.common.util.toOptDouble
  * [existingTypes]; otherwise a [KdrException] is thrown. `anyOf`/`allOf`/`if`/
  * `then`/`else` are not handled yet.
  *
+ * **An unrecognized keyword is ignored, not rejected** — deliberately, since being strict about standard
+ * keywords would reject documents a stock validator accepts. Note what that costs, because it is not free: a
+ * keyword we do not read constrains nothing, silently. Before issue #252 a `oneOf` parsed to a type with no
+ * `type`, no properties and `additionalProperties` true, so a document could claim to be a discriminated union
+ * and enforce nothing at all, with no symptom. That is the argument for reading a construct rather than
+ * deferring it, and the reason [SCH.discriminator] is *required* alongside a `oneOf` we do read.
+ *
  * @return the newly parsed types keyed by fully qualified name.
  */
 fun parseSchemaTypes(
@@ -22,10 +29,11 @@ fun parseSchemaTypes(
 ): Map<String, SchType> {
     val pendingRefs = mutableListOf<SchProperty>()
     val pendingItemRefs = mutableListOf<PendingItemRef>()
+    val pendingBranchRefs = mutableListOf<PendingBranchRef>()
     val parsed = LinkedHashMap<String, SchType>()
     for ((name, raw) in defs) {
         if (raw is Map<*, *>) {
-            parsed[name] = parseNode(name, raw.toJsonMap(), pendingRefs, pendingItemRefs)
+            parsed[name] = parseNode(name, raw.toJsonMap(), pendingRefs, pendingItemRefs, pendingBranchRefs)
         }
     }
     // Resolve $refs against the existing types plus the just-parsed ones.
@@ -42,6 +50,23 @@ fun parseSchemaTypes(
         item.array.itemType = registry[item.refName]
             ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$${item.refName}'.")
     }
+    // Bind a union's branches for the same reason: a branch is normally a $ref, and one of them may refer
+    // back to the union itself. Done a whole union at a time so the branches land in the order the document
+    // declared them, mixed inline and $ref included -- "branch 3" in a boot-check message has to be the
+    // reader's third branch, or the diagnostic sends them to the wrong place.
+    for (union in pendingBranchRefs) {
+        for (source in union.sources) {
+            union.variants.branches.add(
+                source.inline ?: registry[source.refName]
+                    ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$${source.refName}'."),
+            )
+        }
+        union.defaultRef?.let { ref ->
+            union.variants.defaultBranch = registry[ref]
+                ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$$ref'.")
+        }
+        indexVariants(union.owner, union.variants)
+    }
     return parsed
 }
 
@@ -49,12 +74,127 @@ fun parseSchemaTypes(
 @KdrPrivate
 class PendingItemRef(val array: SchType, val refName: String)
 
+/** One declared branch: parsed in place ([inline]) or named for the resolution pass ([refName]). */
+@KdrPrivate
+class BranchSource(val inline: SchType?, val refName: String?)
+
+/**
+ * A union awaiting branch binding. Held per union rather than per branch, so declaration order survives
+ * resolution, and carries [owner] only so the boot check can name the type in its message.
+ */
+@KdrPrivate
+class PendingBranchRef(
+    val variants: SchVariants,
+    val sources: List<BranchSource>,
+    val defaultRef: String?,
+    var owner: SchType?,
+)
+
+/**
+ * Checks a resolved union and builds its value-to-branch index (issue #252).
+ *
+ * **Every branch must declare a `const` for the discriminator property.** That is stricter than OpenAPI, which
+ * lets `mapping` carry the association instead, and the strictness is the point: it is what makes the document
+ * validate identically without the keyword, so a stock validator — which ignores `discriminator` entirely and
+ * tries each branch — reaches our verdict rather than a different one. A union whose branches do not say what
+ * they are would need our reader to be correct, which is exactly the dependency the design avoids.
+ *
+ * The message names the branch, because "some branch is missing a const" in a fifty-type document is the kind
+ * of diagnostic that costs an afternoon.
+ */
+@KdrPrivate
+fun indexVariants(owner: SchType?, variants: SchVariants) {
+    val where = owner?.name?.let { " of '$it'" } ?: ""
+    val byValue = LinkedHashMap<String, SchType>(variants.branches.size)
+    variants.branches.forEachIndexed { index, branch ->
+        val prop = branch.properties[variants.discriminator]
+            ?: throw KdrException.mkConv(
+                "Branch ${index + 1}$where declares no '${variants.discriminator}' property, so nothing " +
+                    "selects it. Every branch of a discriminated union must declare the discriminator with a " +
+                    "'${SCH.const}'.",
+            )
+        val declared = prop.valueType.constValue.toOptStr()
+            ?: throw KdrException.mkConv(
+                "Branch ${index + 1}$where has no '${SCH.const}' for '${variants.discriminator}', so nothing " +
+                    "selects it.",
+            )
+        val clash = byValue.put(declared, branch)
+        if (clash != null) {
+            throw KdrException.mkConv(
+                "Branch ${index + 1}$where repeats the '${variants.discriminator}' value '$declared'; each " +
+                    "branch must claim its own.",
+            )
+        }
+    }
+    variants.byValue = byValue
+}
+
+/**
+ * Parses `oneOf` + `discriminator` into a [SchVariants], or null when the node declares no `oneOf`.
+ *
+ * **A `oneOf` without a `discriminator` is rejected**, and that is a deliberate new strictness rather than an
+ * oversight. It does not conflict with ignoring keywords we do not know: that policy exists, so an unheard-of
+ * keyword cannot reject a standard-valid document, whereas this is a keyword we now read and a construct we
+ * decline to guess at. Try-every-branch is the thing we chose not to build — when nothing matches, it has no
+ * principled way to say whose failures to report — so accepting the document and quietly enforcing nothing
+ * would recreate exactly the silence this issue exists to end.
+ */
+@KdrPrivate
+fun parseVariants(
+    name: String?,
+    map: Map<String, Any?>,
+    pendingRefs: MutableList<SchProperty>,
+    pendingItemRefs: MutableList<PendingItemRef>,
+    pendingBranchRefs: MutableList<PendingBranchRef>,
+    depth: Int,
+): SchVariants? {
+    val rawBranches = map[SCH.oneOf] as? List<*> ?: return null
+    val where = name?.let { " on '$it'" } ?: ""
+    val rawDiscriminator = map[SCH.discriminator]
+    if (rawDiscriminator !is Map<*, *>) {
+        throw KdrException.mkConv(
+            "'${SCH.oneOf}'$where has no '${SCH.discriminator}'. A union has to say which property selects " +
+                "the branch, so a failure can be reported against the branch that was meant.",
+        )
+    }
+    val discriminator = rawDiscriminator.toJsonMap()[SCH.propertyName].toOptStr()
+        ?: throw KdrException.mkConv(
+            "'${SCH.discriminator}'$where has no '${SCH.propertyName}'.",
+        )
+    if (rawBranches.isEmpty()) {
+        throw KdrException.mkConv("'${SCH.oneOf}'$where declares no branches.")
+    }
+    val sources = rawBranches.mapNotNull { raw ->
+        val branchMap = (raw as? Map<*, *>)?.toJsonMap() ?: return@mapNotNull null
+        val ref = branchMap[SCH.dRef].toOptStr()
+        if (ref != null) {
+            BranchSource(null, refTargetName(ref))
+        } else {
+            BranchSource(
+                parseNode(null, branchMap, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1),
+                null,
+            )
+        }
+    }
+    val variants = SchVariants(discriminator, mutableListOf(), null)
+    pendingBranchRefs.add(
+        PendingBranchRef(
+            variants,
+            sources,
+            rawDiscriminator.toJsonMap()[SCH.defaultMapping].toOptStr()?.let { refTargetName(it) },
+            owner = null,
+        ),
+    )
+    return variants
+}
+
 @KdrPrivate
 fun parseNode(
     name: String?,
     map: Map<String, Any?>,
     pendingRefs: MutableList<SchProperty>,
     pendingItemRefs: MutableList<PendingItemRef>,
+    pendingBranchRefs: MutableList<PendingBranchRef>,
     depth: Int = 0,
 ): SchType {
     // Guard against runaway recursion -- e.g., a raw schema Map that references itself (see JsonUtil for the
@@ -68,7 +208,8 @@ fun parseNode(
         for ((k, v) in rawProps) {
             val pName = k.toOptStr() ?: continue
             if (v is Map<*, *>) {
-                properties[pName] = parseProperty(pName, v.toJsonMap(), pendingRefs, pendingItemRefs, depth)
+                properties[pName] =
+                    parseProperty(pName, v.toJsonMap(), pendingRefs, pendingItemRefs, pendingBranchRefs, depth)
             }
         }
     }
@@ -83,11 +224,12 @@ fun parseNode(
         if (itemRef != null) {
             itemRefName = refTargetName(itemRef)
         } else {
-            itemType = parseNode(null, itemsMap, pendingRefs, pendingItemRefs, depth + 1)
+            itemType = parseNode(null, itemsMap, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1)
         }
     }
     val jsonType = map[SCH.type].toOptStr()
     val format = map[SCH.format].toOptStr()
+    val variants = parseVariants(name, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth)
     val schType = SchType(
         name = name,
         jsonType = jsonType,
@@ -104,6 +246,8 @@ fun parseNode(
         additionalProperties = (map[SCH.additionalProperties] as? Boolean) ?: properties.isEmpty(),
         itemType = itemType,
         options = parseOptions(map[SCH.options]),
+        constValue = map[SCH.const],
+        variants = variants,
         default = map[SCH.default],
         errorMessages = parseErrorMessages(map[SCH.errors], name),
         minBound = map[minBoundKeyword(jsonType)].toOptDouble(),
@@ -111,6 +255,11 @@ fun parseNode(
     )
     if (itemRefName != null) {
         pendingItemRefs.add(PendingItemRef(schType, itemRefName))
+    }
+    // The union was parsed before the type that owns it existed; give the boot check the name to complain
+    // about now that it does.
+    if (variants != null) {
+        pendingBranchRefs.lastOrNull { it.variants === variants }?.owner = schType
     }
     return schType
 }
@@ -222,6 +371,7 @@ fun parseProperty(
     map: Map<String, Any?>,
     pendingRefs: MutableList<SchProperty>,
     pendingItemRefs: MutableList<PendingItemRef>,
+    pendingBranchRefs: MutableList<PendingBranchRef>,
     depth: Int,
 ): SchProperty {
     val description = map[SCH.description].toOptStr()
@@ -232,7 +382,7 @@ fun parseProperty(
         return prop
     }
     val prop = SchProperty(name, description, refName = null)
-    prop.valueType = parseNode(null, map, pendingRefs, pendingItemRefs, depth + 1)
+    prop.valueType = parseNode(null, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1)
     return prop
 }
 

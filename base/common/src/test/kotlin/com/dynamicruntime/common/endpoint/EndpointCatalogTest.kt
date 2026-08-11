@@ -8,6 +8,7 @@ import com.dynamicruntime.common.schema.typeRefPath
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
@@ -121,5 +122,23 @@ class EndpointCatalogTest : StringSpec({
         val collected = collectDefs(renderings, recursive.defs)
         // The self-ref terminates: rec.Node is included once (kept as a $ref inside itself, not expanded).
         collected.keys.toList() shouldContainExactlyInAnyOrder listOf("rec.Node", "rec.Out")
+    }
+
+    // A discriminator's defaultMapping is a bare ref string, not a {"$ref": ...} object -- OpenAPI's spelling,
+    // and invisible to a walk that looks for the keyword. Without it the catalog ships a union the receiving
+    // client cannot parse, which is a failure that only shows up in a browser.
+    "the defs bag includes a union's branches and its default branch" {
+        val unionModule = schemaModule(cxt, "u") {
+            variantBranch("Alpha", "kind", "alpha") { property("a", "A field.") }
+            variantBranch("Beta", "kind", "beta") { property("b", "A field.") }
+            variantDefault("Unknown", "kind")
+            variantType("Thing", "A thing.", on = "kind", branches = listOf("Alpha", "Beta"),
+                defaultBranch = "Unknown")
+            generalEndpoint("/u/echo", "Echoes a thing.", HttpMethod.POST, outputRef = "Thing",
+                inputFields = { field("thing", "The thing.", required = true) { ref("Thing") } }) { _, _ -> emptyMap<String, Any?>() }
+        }
+        val renderings = unionModule.endpoints.map { renderEndpoint(it, unionModule.defs) }
+        val collected = collectDefs(renderings, unionModule.defs)
+        collected.keys shouldContainAll setOf("u.Thing", "u.Alpha", "u.Beta", "u.Unknown")
     }
 })

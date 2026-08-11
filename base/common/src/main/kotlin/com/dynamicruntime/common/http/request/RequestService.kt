@@ -83,9 +83,12 @@ class RequestService : ServiceInitializer {
     // `demo` and `todo` went with the endpoints they gated. A section with rules and no endpoints is harmless
     // -- the boot check only refuses the reverse -- but it is a standing invitation to add an endpoint under a
     // name that is anonymous for reasons nobody remembers.
+    // `gedra` is the entry sketch in the `sample` module (issue #252): it stores nothing and reads nothing, so
+    // there is no data behind it to protect, and the module self-gates to developer environments anyway. It
+    // stops being anonymous the moment it stops being a sketch.
     val anonSections: List<String> = listOf(
         "health", "schema", "content", "portal", "site", "auth", "db", "app", "test",
-        "file", "home", "logout",
+        "file", "home", "logout", "gedra",
     )
     val userSections: List<String> = listOf("user", "profile")
 

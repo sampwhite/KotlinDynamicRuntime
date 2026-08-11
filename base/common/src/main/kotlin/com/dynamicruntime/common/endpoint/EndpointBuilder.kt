@@ -424,6 +424,9 @@ fun inputObjectType(name: String, properties: Map<String, SchProperty>, required
         additionalProperties = false,
         itemType = null,
         options = null,
+        // An envelope is not a branch of anything and admits no single value, so neither construct applies.
+        constValue = null,
+        variants = null,
         default = null,
         // An endpoint's input envelope is machinery, not a field anyone fills in, so there is nothing here
         // for custom error copy to be about, and no bound on how many fields it may carry.
@@ -454,6 +457,8 @@ val limitInputProperty: SchProperty =
             additionalProperties = false,
             itemType = null,
             options = null,
+            constValue = null,
+            variants = null,
             default = defaultListLimit,
             errorMessages = emptyMap(),
             // Deliberately unbounded rather than `minimum = 1`: a bound here would start rejecting `?limit=0`,
@@ -537,21 +542,30 @@ fun collectDefs(renderings: List<Map<String, Any?>>, allDefs: Map<String, Any?>)
 fun collectRefsInto(node: Any?, allDefs: Map<String, Any?>, out: MutableMap<String, Any?>) {
     when (node) {
         is Map<*, *> -> {
-            val ref = node[SCH.dRef]
-            if (ref is String) {
-                val name = refTargetName(ref)
-                if (name !in out) {
-                    val target = allDefs[name]
-                    if (target != null) {
-                        out[name] = target // insert first, so a ref back to this type short-circuits
-                        collectRefsInto(target, allDefs, out)
-                    }
-                }
-            }
+            includeRef(node[SCH.dRef], allDefs, out)
+            // A discriminator's `defaultMapping` is a **bare ref string**, not a `{"$ref": …}` object -- that
+            // is OpenAPI's spelling, and it is invisible to a walk that looks for the keyword. Missing it ships
+            // a catalog whose union cannot be parsed by the client that receives it, which is how this was
+            // found: the frontend's error boundary reporting "$ref to unknown type 'gedra.OpaqueEntry'".
+            (node[SCH.discriminator] as? Map<*, *>)?.let { includeRef(it[SCH.defaultMapping], allDefs, out) }
             for (value in node.values) {
                 collectRefsInto(value, allDefs, out)
             }
         }
         is List<*> -> for (element in node) collectRefsInto(element, allDefs, out)
     }
+}
+
+/** Adds the def [ref] points at (and everything it reaches) to [out], if it is a ref that resolves. */
+private fun includeRef(ref: Any?, allDefs: Map<String, Any?>, out: MutableMap<String, Any?>) {
+    if (ref !is String) {
+        return
+    }
+    val name = refTargetName(ref)
+    if (name in out) {
+        return
+    }
+    val target = allDefs[name] ?: return
+    out[name] = target // insert first, so a ref back to this type short-circuits
+    collectRefsInto(target, allDefs, out)
 }
