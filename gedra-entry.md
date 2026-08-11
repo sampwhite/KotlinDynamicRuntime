@@ -273,10 +273,10 @@ heading.
 
 A discriminator cannot express a value whose presence depends on a boolean, because the discriminated property
 must be a string and the branches must be named schemas. That is `if`/`then`/`else`, and it is the most common
-shape a trait's data takes:
+shape a trait's data takes. The `gedra.OptionalChoice` type:
 
 ```json
-"gedra.OptionalChoice": {
+{
   "type": "object",
   "additionalProperties": false,
   "required": ["hasValue"],
@@ -300,10 +300,14 @@ consequence for the form engine, which must re-render when the watched field cha
 
 ### `g-primaryKey`
 
-Declared **on the type**, as an ordered array of property names:
+Declared **on the type**, as an ordered array of property names, alongside `required`:
 
 ```json
-"g-primaryKey": ["year"]
+{
+  "type": "object",
+  "required": ["year", "totalAmount"],
+  "g-primaryKey": ["year"]
+}
 ```
 
 On the type rather than the property, for three reasons: it follows the layer's existing required-is-on-the-side
@@ -334,9 +338,13 @@ not a migration:
 - **an object** — and here is how, once there is a language to say it in.
 
 ```json
-"gallonsPerCan": { "type": "number", "description": "Capacity of one can." },
-"canCount":      { "type": "integer", "description": "How many cans." },
-"totalGallons":  { "type": "number", "g-derived": true, "description": "Total capacity." }
+{
+  "properties": {
+    "gallonsPerCan": { "type": "number", "description": "Capacity of one can." },
+    "canCount":      { "type": "integer", "description": "How many cans." },
+    "totalGallons":  { "type": "number", "g-derived": true, "description": "Total capacity." }
+  }
+}
 ```
 
 Code-backed traits will use the boolean indefinitely, because their values are computed by a pre-processor
