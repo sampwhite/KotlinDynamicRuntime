@@ -292,6 +292,19 @@ class SchemaService : ServiceInitializer {
                 }
                 property(CX.address, "Primary address.", required = true) { ref("Address") } // -> GeoPoint
                 property(CX.tree, "A node hierarchy; its parent chain expands into the result items.") { ref("TreeNode") }
+                // The free-form map case (issue #251): an object declaring no properties, which the parser
+                // reads as open (`additionalProperties` defaults to `properties.isEmpty()`), so any keys are
+                // accepted and none are described. There is nothing to lay out as fields, so the form edits it
+                // as raw JSON. `gedra-entry.md` leans on this shape for an entry's `origin`, which stays
+                // free-form until integrations land.
+                property(CX.extras, "Free-form JSON object; any keys are accepted, none are declared.") {
+                    type = SCT.kObject
+                    // The validator's own wording for this is "This must be of type 'object'", which is true
+                    // and unhelpful to someone looking at a text box: what they need to hear is that the text
+                    // did not parse. The field editor names the line and column; this is what the failure
+                    // listing and any API caller see.
+                    errors { wrongType("This has to be a JSON object, such as {\"a\": 1}.") }
+                }
             }
             type("ComplexQuery") {
                 type = SCT.kObject
@@ -315,6 +328,9 @@ class SchemaService : ServiceInitializer {
                 }
                 property(CX.primaryContact, "The first contact's handle, or empty when there were none.",
                     required = true)
+                property(CX.extraKeys, "How many keys the free-form map carried.", required = true) {
+                    type = SCT.integer
+                }
             }
             listEndpoint(
                 "/schema/complex",
@@ -512,6 +528,12 @@ class SchemaService : ServiceInitializer {
             val contacts = (input[CX.contacts] as? List<*>).orEmpty()
             val primary = (contacts.firstOrNull() as? Map<*, *>)?.get(CX.handle) as? String ?: ""
 
+            // Same reason as the contacts echo, for the free-form map (issue #251): the parent type is closed,
+            // so the question a test needs answered is whether coercion pruned the map's undeclared keys on
+            // the way down into a property that is deliberately open. Without a count coming back, a request
+            // that silently arrived empty is indistinguishable from one that arrived whole.
+            val extraKeys = (input[CX.extras] as? Map<*, *>)?.size ?: 0
+
             // Follow the recursive `parent` chain. Finite data already terminates it; the bound is belt-and-braces.
             val chain = ArrayList<Map<*, *>>()
             var node = input[CX.tree] as? Map<*, *>
@@ -520,21 +542,23 @@ class SchemaService : ServiceInitializer {
                 node = node[CX.parent] as? Map<*, *>
             }
             if (chain.isEmpty()) {
-                return listOf(complexResult(itemName, 0, hasLocation, priority, mode, contacts.size, primary))
+                return listOf(complexResult(itemName, 0, hasLocation, priority, mode, contacts.size, primary, extraKeys))
             }
             return chain.mapIndexed { depth, n ->
                 complexResult(
                     n[CX.label] as? String ?: itemName, depth, hasLocation, priority, mode, contacts.size, primary,
+                    extraKeys,
                 )
             }
         }
 
         private fun complexResult(
             name: String, depth: Int, hasLocation: Boolean, priority: String, mode: String,
-            contactCount: Int, primaryContact: String,
+            contactCount: Int, primaryContact: String, extraKeys: Int,
         ): Map<String, Any?> = linkedMapOf(
             CX.name to name, CX.depth to depth, CX.hasLocation to hasLocation, CX.priority to priority,
             CX.mode to mode, CX.contactCount to contactCount, CX.primaryContact to primaryContact,
+            CX.extraKeys to extraKeys,
         )
     }
 }
@@ -600,6 +624,7 @@ object CX {
     const val aliases = "aliases"
     const val address = "address"
     const val tree = "tree"
+    const val extras = "extras"
 
     // Address / GeoPoint fields.
     const val street = "street"
@@ -622,6 +647,7 @@ object CX {
     const val depth = "depth"
     const val hasLocation = "hasLocation"
     const val contactCount = "contactCount"
+    const val extraKeys = "extraKeys"
     const val primaryContact = "primaryContact"
 
     // Choice values: priority levels and processing modes.

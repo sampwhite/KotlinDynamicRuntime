@@ -590,7 +590,11 @@ fun payloadText(value: Any?): String = value.toJsonMapOrEmpty()
 class RawParse(val values: Map<String, Any?>?, val error: String?, val offset: Int? = null)
 
 /**
- * Parses edited request JSON back into a form's values (issue #191).
+ * Parses edited JSON back into a map (issue #191).
+ *
+ * Serves both surfaces that take JSON as text: the request panel, whose text is a whole payload, and a
+ * free-form map field, whose text is one property's value (issue #251). They want the identical parse and
+ * the identical wording, and [what] names the thing in the one sentence where the noun differs.
  *
  * Kept as a pure top-level function — plain string in, values or message out — so the parsing and the error
  * wording are covered without a browser, which is where the interesting cases are: a trailing comma, a
@@ -598,7 +602,7 @@ class RawParse(val values: Map<String, Any?>?, val error: String?, val offset: I
  *
  * Blank text is an empty payload rather than an error: clearing the box to start over should not be scolded.
  */
-fun parseRawPayload(text: String): RawParse {
+fun parseRawPayload(text: String, what: String = "request"): RawParse {
     if (text.isBlank()) {
         return RawParse(emptyMap(), null)
     }
@@ -606,7 +610,7 @@ fun parseRawPayload(text: String): RawParse {
     // the parser's own complaint for this ("Character '[' indicates a JSON array was present when a map was
     // expected") is accurate but reads as an internal diagnostic rather than an answer.
     if (!text.trim().startsWith("{")) {
-        return RawParse(null, "The request has to be a JSON object — one starting with '{'.")
+        return RawParse(null, "The $what has to be a JSON object — one starting with '{'.")
     }
     val parsed = try {
         text.jsonMap()
@@ -624,7 +628,7 @@ fun parseRawPayload(text: String): RawParse {
         // there is what actually saves someone hunting for it in a long payload.
         return RawParse(null, "Invalid JSON$where: $detail", e.extraData[KdrException.offsetKey] as? Int)
     }
-        ?: return RawParse(null, "The request has to be a JSON object — one starting with '{'.")
+        ?: return RawParse(null, "The $what has to be a JSON object — one starting with '{'.")
     return RawParse(parsed, null)
 }
 
