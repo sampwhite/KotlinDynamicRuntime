@@ -431,3 +431,7 @@ textarea.json-edit:focus {
 }
 /* Unapplied edits: the well is visibly pending until the change is loaded into the form. */
 textarea.json-edit.edited { border-color: var(--accent-bright); }
+/* The same well inside a form row (issue #251). A free-form map field is usually a handful of keys, so it
+   opens at a few lines rather than the request panel's full height -- still resizable for the ones that are
+   not. */
+textarea.json-edit.json-field { min-height: 4.5rem; }

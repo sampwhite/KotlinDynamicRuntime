@@ -133,6 +133,33 @@ class SchemaComplexEndpointTest : StringSpec({
         putStatus("complexElemDeep", q) shouldBe 400
     }
 
+    // The free-form map (issue #251). Worth asserting through the *endpoint*, not just the validator: the
+    // parent type is closed, so the interesting question is whether coercion prunes undeclared keys on the way
+    // down into a property that is deliberately open. It must not -- an open map whose keys are dropped in
+    // transit is indistinguishable from one nobody filled in.
+    "an open map property carries undeclared keys through validation" {
+        val q = validQuery()
+        sub(q, CX.input)[CX.extras] = linkedMapOf<String, Any?>(
+            "channel" to "excel",
+            "nested" to linkedMapOf<String, Any?>("fileRef" to "///x.xlsx"),
+        )
+        val list = items(client("complexExtras").sendJsonPutRequest("/schema/complex", q))
+        // The count is what makes this test able to fail: a request whose map was silently emptied in transit
+        // would still be a valid request returning three items.
+        list.first()[CX.extraKeys] shouldBe 2
+    }
+
+    "an absent open map property is not invented" {
+        val list = items(client("complexNoExtras").sendJsonPutRequest("/schema/complex", validQuery()))
+        list.first()[CX.extraKeys] shouldBe 0
+    }
+
+    "a non-object value for an open map property fails validation" {
+        val q = validQuery()
+        sub(q, CX.input)[CX.extras] = "not a map" // what the form emits when the typed JSON will not parse
+        putStatus("complexExtrasBad", q) shouldBe 400
+    }
+
     "PUT /schema/complex truncates the expanded items by limit" {
         val q = validQuery()
         q[EP.limit] = 2

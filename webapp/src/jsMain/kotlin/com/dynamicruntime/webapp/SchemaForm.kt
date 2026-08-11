@@ -25,6 +25,8 @@ import react.dom.html.ReactHTML.input
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.textarea
+import react.useState
 import web.cssom.ClassName
 import web.html.InputType
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -625,6 +627,15 @@ private fun ChildrenBuilder.widget(
             }
             markInvalid(asDynamic(), describedBy)
         }
+        // A free-form map: an object declaring no properties of its own, so there are no fields to lay out, and
+        // the structured path in `renderField` never claimed it. Before this it fell through to the text box
+        // below, which showed a Kotlin map's `toString` and turned the map into a string the moment anyone
+        // typed in it (issue #251).
+        vt.jsonType == SCT.kObject -> JsonObjectField {
+            this.value = value
+            this.describedBy = describedBy
+            this.onEmit = emit
+        }
         // string / integer / number / unknown: a text box. The kernel validator coerces the entered string to
         // the declared type on validation. Lists do not arrive here in edit mode -- a list of choices is the
         // multi-select above, and any other list is a growing column of these widgets (renderScalarList).
@@ -635,6 +646,93 @@ private fun ChildrenBuilder.widget(
             markInvalid(asDynamic(), describedBy)
         }
     }
+}
+
+/** What a free-form map field needs: the value it holds, where to point a screen reader, and how to emit. */
+external interface JsonObjectFieldProps : Props {
+    var value: Any?
+    var describedBy: String?
+    var onEmit: (Any?) -> Unit
+}
+
+/**
+ * Edits a free-form map — an object type with no declared properties — as raw JSON (issue #251).
+ *
+ * It follows the request-JSON panel's idiom deliberately, down to the `json-edit` class, because the two are
+ * the same act at different scales: **text is not parsed per keystroke**. Splicing JSON by hand is rarely one
+ * keystroke's worth of change, so a half-finished edit is a normal state rather than an error, and
+ * reformatting under the caret while someone types is worse than waiting. **Blur** is where the text is asked
+ * to be JSON — and clicking Validate or Run blurs first, so nothing reaches the kernel without passing here.
+ *
+ * Note what this component does *not* hold: the text. While someone types, the form's own value **is** the
+ * text, because an unparseable edit emits the raw string (see [parseJsonField]). That leaves one piece of
+ * state — the message from the last parse — and sidesteps the usual controlled-editor problem of re-syncing
+ * local text against a value that arrived from somewhere else, which here happens twice: "Apply to form" from
+ * the request panel, and the values restored from the URL hash after the first render.
+ */
+val JsonObjectField = FC<JsonObjectFieldProps> { props ->
+    var parseError by useState<String?>(null)
+    textarea {
+        className = ClassName("code json-edit json-field")
+        value = jsonFieldText(props.value)
+        spellCheck = false
+        placeholder = "{ }"
+        onChange = { e ->
+            // Typing says nothing about whether the text is JSON yet; it only stops claiming the last answer.
+            parseError = null
+            props.onEmit(e.target.value)
+        }
+        onBlur = {
+            val parsed = parseJsonField(jsonFieldText(props.value))
+            parseError = parsed.error
+            props.onEmit(parsed.value)
+        }
+        markInvalid(asDynamic(), props.describedBy)
+    }
+    // Rendered with the same class the kernel's own failures use, and for the same field: someone correcting
+    // a map should not have to learn that two different things can complain about it.
+    parseError?.let { message ->
+        p {
+            className = ClassName("field-error")
+            +message
+        }
+    }
+}
+
+/**
+ * The text a free-form map field shows for [value].
+ *
+ * A `String` passes through untouched — that is text someone is part way through typing, and reformatting it
+ * under the caret is exactly what makes an editor unusable. Anything else is a value the form genuinely
+ * holds, so it is shown as pretty JSON.
+ */
+fun jsonFieldText(value: Any?): String = when (value) {
+    null -> ""
+    is String -> value
+    else -> value.toJsonStr()
+}
+
+/** What a free-form map field's text parsed to: the [value] to hold, and the [error] to show when it will not. */
+class JsonFieldParse(val value: Any?, val error: String?)
+
+/**
+ * Accepts the text of a free-form map field.
+ *
+ * On success the parsed map becomes the field's value. On failure **the text itself does**, deliberately: the
+ * form then holds exactly what is on screen, so the request-JSON panel cannot show something the field
+ * contradicts, and the kernel reports its own `wrongType` against the same path when Validate runs. The
+ * message here is the immediate half of that — it names the offending line and column, which "this must be of
+ * type 'object'" cannot.
+ *
+ * Blank means **absent** rather than an empty map: clearing a field is how someone removes an optional value,
+ * and `{}` stays available to anyone who means it.
+ */
+fun parseJsonField(text: String): JsonFieldParse {
+    if (text.isBlank()) {
+        return JsonFieldParse(null, null)
+    }
+    val parse = parseRawPayload(text, "value")
+    return JsonFieldParse(parse.values ?: text, parse.error)
 }
 
 /**
