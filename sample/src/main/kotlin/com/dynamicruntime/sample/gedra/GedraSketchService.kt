@@ -7,6 +7,7 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.startup.ServiceInitializer
+import kotlin.time.Instant
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -122,7 +123,7 @@ class GedraSketchService : ServiceInitializer {
                 // Getting this far means the union already validated the entry -- the endpoint runs after
                 // input validation, so a wrong-shaped entry never reaches here. What is left is to say which
                 // branch accepted it, which is the part a caller cannot see from a bare 200.
-                val entry = stored(request[GS.entry].toJsonMapOrEmpty(), 0, cxt.instanceNow().toString())
+                val entry = stored(request[GS.entry].toJsonMapOrEmpty(), 0, cxt.instanceNow())
                 val trait = entry[GS.traitId].toOptStr() ?: ""
                 linkedMapOf<String, Any?>(
                     GS.traitId to trait,
@@ -153,7 +154,7 @@ class GedraSketchService : ServiceInitializer {
                     }
                 },
             ) { cxt, request ->
-                val now = cxt.instanceNow().toString()
+                val now = cxt.instanceNow()
                 request[GS.entries].toJsonListOrEmpty().mapIndexed { index, raw ->
                     stored(raw.toJsonMapOrEmpty(), index, now)
                 }
@@ -198,8 +199,14 @@ private fun SchTypeBuilder.storedFields() {
  * Both endpoints go through here, and they have to: `GedraEntry` declares the envelope `required`, so an
  * endpoint that answered with an entry lacking it would fail its own response-schema check. That check is what
  * turned an inconsistency between the two into a test failure rather than a difference nobody noticed.
+ *
+ * [now] stays an `Instant` all the way into the map rather than being formatted here. Serialization is where
+ * a date becomes text -- `JsonUtil` writes it through `fmt`, which is the one place that decides the wire
+ * format (ISO-8601 UTC, milliseconds) -- and the validator recognizes an `Instant` as already being the shape
+ * a `date-time` field declares. Formatting at the call site would put that decision in every handler that
+ * ever stamps a row, which is how one of them ends up with microseconds.
  */
-private fun stored(entry: Map<String, Any?>, index: Int, now: String): Map<String, Any?> =
+private fun stored(entry: Map<String, Any?>, index: Int, now: Instant): Map<String, Any?> =
     filledOut(entry) + linkedMapOf<String, Any?>(
         GS.entryId to "e-${index + 1}",
         // Deduced from context rather than taken from the caller: a direct endpoint call is a person acting,
