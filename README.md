@@ -33,7 +33,7 @@ cd /path/to/workspace              # the workspace directory, which holds Kotlin
 
 `kdr-install` is safe to re-run at any time — it only changes what needs changing. Re-run it to sync new
 configuration (for example, projects a newer `settings.gradle.kts.example` introduces) or to pick up new
-install options as they are added.
+installation options as they are added.
 
 ## Layout
 
@@ -74,7 +74,7 @@ declares `plugins { id("kdr.kotlin-conventions") }` plus its own dependencies.
 
 By design, `settings.gradle.kts` is **not** part of this repository. It is
 provided in the **workspace directory** (the directory that *contains* this one),
-so that a single Gradle build can compose source from multiple repositories for a
+so that a single Gradle build can compose source code from multiple repositories for a
 given deployment. A ready-to-adapt template is provided at
 [`examples/settings.gradle.kts.example`](examples/settings.gradle.kts.example);
 `bin/kdr-install` copies it into the workspace directory as `settings.gradle.kts` for you (or copy it by hand
@@ -115,7 +115,7 @@ talking to the same runtime API on `:7070`:
   ```
 
   The same crash then names the Kotlin that failed (`IllegalStateException … at SchemaForm$lambda`). The app
-  bar shows a quiet **readable build** badge so it is obvious which bundle a tab is running. It costs about
+  bar shows a quiet **readable build** badge, so it is obvious which bundle a tab is running. It costs about
   24 MB of bundle rather than 2 MB and a slower first load, so it is a troubleshooting build, not a default —
   and it is one build *or* the other, never both, because Kotlin/JS runs the two executable modes through a
   single compile-sync directory.
@@ -180,7 +180,7 @@ See [`code-guide.md`](code-guide.md). In brief: Kotlin everywhere, minimal
 reflection, explicit Map-based serialization, lowerCamelCase constants wrapped
 in upper-cased acronym objects (always referenced qualified), JSON-schema-driven
 configuration, a single universal exception (`KdrException`) and context
-(`KdrCxt`) type, and synchronous code on virtual threads rather than coroutines.
+(`KdrCxt`) type, and synchronous code on virtual threads rather than coroutines in the backend.
 
 ## Configuration
 
