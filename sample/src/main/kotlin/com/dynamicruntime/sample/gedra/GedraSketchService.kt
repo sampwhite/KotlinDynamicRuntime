@@ -167,6 +167,10 @@ class GedraSketchService : ServiceInitializer {
  *
  * `entryId` is the stable surrogate `gedra-entry.md` argues for: identity that does not move when the data it
  * describes is edited. This sketch numbers them, having nothing to mint from and nowhere to keep them.
+ *
+ * `createdAt` / `updatedAt` deliberately spell it the way the SQL layer's audit columns already do (`PF`),
+ * because an entry is meant to read like a row -- and `modifiedAt` up here against `updatedAt` one layer down
+ * would be two names for one idea, leaving whoever met the second to guess which the first meant.
  */
 private fun SchTypeBuilder.storedFields() {
     property(GS.entryId, "Stable id of this entry; assigned when stored.", required = true) { derived = true }
