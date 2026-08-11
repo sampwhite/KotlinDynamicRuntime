@@ -3,6 +3,7 @@ package com.dynamicruntime.common.schema
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.deepClone
 import com.dynamicruntime.common.util.jsonArray
@@ -361,9 +362,15 @@ fun validateVariant(
  * anything which is not a `CharSequence`, so two *non-string* values both stringified to null and compared
  * equal — making a `const` of `42`, or of `true`, match absolutely anything. String constants hid it, because
  * they are the only kind anything here had until conditions arrived, and a discriminator is always a string.
+ *
+ * Compared through [fmt] rather than `toString`, because a bare `toString` on a `Double` **differs between
+ * platforms**: `1.0` prints as `"1.0"` on the JVM and `"1"` under Kotlin/JS, and `1.0E10` as `"1.0E10"`
+ * against `"10000000000"` (both measured). A kernel whose whole premise is that the two sides reach the same
+ * verdict cannot compare values with a function that disagrees with itself across the wire. `fmt` routes a
+ * `Double` through `fmtD`, which formats identically on both.
  */
 fun constMatches(declared: Any?, value: Any?): Boolean =
-    declared == value || (declared != null && value != null && declared.toString() == value.toString())
+    declared == value || (declared != null && value != null && declared.fmt() == value.fmt())
 
 @KdrPrivate
 fun validateObject(
@@ -494,7 +501,7 @@ fun checkCondition(
             // toString, not toOptStr: the latter is a coercion that yields null for anything which is not a
             // string, so a boolean or numeric constant would print as "empty" -- describing the rule as
             // something nobody wrote.
-            val decider = condition.value?.toString() ?: "empty"
+            val decider = condition.value?.fmt() ?: "empty"
             val message = if (holds) {
                 "'$name' is not allowed when '${condition.property}' is '$decider'."
             } else {
