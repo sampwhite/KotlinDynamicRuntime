@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
  *
  * The backend stamps a timestamp by putting an `Instant` in the response map and letting serialization format
  * it — one place decides the wire format, so no handler can invent its own. The claim worth testing is that
- * the same holds in the other direction, since the validator and the JSON writer are both kernel code the
+ * the same holds in the other direction; since the validator and the JSON writer are both kernel code, the
  * frontend runs unchanged.
  *
  * Tested **on JS specifically**, not taken on faith from the JVM. `Double.toString` already differs between

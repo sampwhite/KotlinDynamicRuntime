@@ -210,7 +210,7 @@ val EndpointCatalog = FC<Props> {
             // forInput, everywhere this form validates: it is composing a REQUEST, so a `g-derived` field is
             // neither demanded of the person filling it in nor taken from them (issue #254). The same kernel
             // validates responses elsewhere, where those fields are ordinary values -- which is exactly why
-            // the direction has to be passed rather than inferred. Miss it here and the form reports fields
+            // the direction has to be passed rather than inferred. Miss it here, and the form reports fields
             // missing that it does not even draw.
             val result = coerceAndValidate(
                 inputType, vals, SchOpts(keepAdditionalProperties = true, forInput = true),

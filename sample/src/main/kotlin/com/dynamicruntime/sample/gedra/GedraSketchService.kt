@@ -134,9 +134,9 @@ class GedraSketchService : ServiceInitializer {
             }
 
             // The round trip the sketch exists for (issue #255): a set of entries in, the same entries back
-            // filled out. Nothing is stored -- the point is to show what storing would have to do, and to put
+            // filled out. Nothing is stored -- the point is to show what storing would have to do and to put
             // all three schema constructs under load at once. Each element is validated against the branch its
-            // own traitId names, so one array carries several shapes and a failure names the element it came
+            // own traitId names, so one array carries several shapes, and a failure names the element it came
             // from.
             listEndpoint(
                 "/gedraSketch/entries/fillOut",
