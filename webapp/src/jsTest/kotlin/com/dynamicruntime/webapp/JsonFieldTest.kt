@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 /**
  * The free-form map field's two pure halves (issue #251): what text it shows for a value, and what a value it
- * accepts from text. The component around them is a textarea and one piece of state, so these two functions
+ * accepts from text. The surrounding component is a textarea and one piece of state, so these two functions
  * are where all the behavior worth pinning down actually lives.
  */
 class JsonFieldTest {
@@ -25,7 +25,7 @@ class JsonFieldTest {
         assertEquals("", jsonFieldText(null))
     }
 
-    // The single most important property of the editor: a String is text someone is part way through typing,
+    // The single most important property of the editor: a String is text someone is part-way through typing,
     // so it comes back exactly as it went in. Reformatting it -- even into JSON that means the same thing --
     // moves the caret out from under whoever is typing.
     @Test

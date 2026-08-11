@@ -627,7 +627,7 @@ private fun ChildrenBuilder.widget(
             }
             markInvalid(asDynamic(), describedBy)
         }
-        // A free-form map: an object declaring no properties of its own, so there are no fields to lay out and
+        // A free-form map: an object declaring no properties of its own, so there are no fields to lay out, and
         // the structured path in `renderField` never claimed it. Before this it fell through to the text box
         // below, which showed a Kotlin map's `toString` and turned the map into a string the moment anyone
         // typed in it (issue #251).

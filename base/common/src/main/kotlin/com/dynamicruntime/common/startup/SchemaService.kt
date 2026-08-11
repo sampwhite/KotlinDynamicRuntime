@@ -528,7 +528,7 @@ class SchemaService : ServiceInitializer {
             val contacts = (input[CX.contacts] as? List<*>).orEmpty()
             val primary = (contacts.firstOrNull() as? Map<*, *>)?.get(CX.handle) as? String ?: ""
 
-            // Same reason as the contacts echo, for the free-form map (issue #251): the parent type is closed,
+            // The same reason as the contacts echo, for the free-form map (issue #251): the parent type is closed,
             // so the question a test needs answered is whether coercion pruned the map's undeclared keys on
             // the way down into a property that is deliberately open. Without a count coming back, a request
             // that silently arrived empty is indistinguishable from one that arrived whole.

@@ -431,7 +431,7 @@ val EndpointCatalog = FC<Props> {
                                 button {
                                     className = ClassName("failure-jump")
                                     // Explicit, so wrapping this panel in a form later cannot turn a
-                                    // jump-to-field into a submit. Set as a plain attribute rather than
+                                    // jump-to-field into a "submit". Set as a plain attribute rather than
                                     // through the wrappers' ButtonType, whose entry spelling this need not
                                     // ride on.
                                     asDynamic()["type"] = "button"
