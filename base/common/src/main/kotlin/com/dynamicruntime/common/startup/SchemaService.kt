@@ -415,9 +415,13 @@ class SchemaService : ServiceInitializer {
             }
             val service = RequestService.get(cxt)
             val bySection = withheld.groupBy { sectionOf(it.path) }.entries.sortedBy { it.key }.map { (section, eps) ->
+                val rules = service?.sectionRulesMap?.get(section)
                 linkedMapOf(
                     SS.section to section,
-                    SS.requiredRole to service?.requiredRoleFor(eps.first().path),
+                    SS.requiredRole to rules?.requiredRole,
+                    // Reported beside the level, not folded into it: a section can withhold itself for either
+                    // reason, and "requires admin" would be a puzzling explanation for an administrator.
+                    SS.requiredCapability to rules?.requiredCapability,
                     EI.endpoints to eps.map { it.path }.sorted(),
                 )
             }
@@ -558,6 +562,7 @@ object SS {
     const val withheld = "withheld"
     const val section = "section"
     const val requiredRole = "requiredRole"
+    const val requiredCapability = "requiredCapability"
 
     // Sample endpoint request/response fields.
     const val filter = "filter"

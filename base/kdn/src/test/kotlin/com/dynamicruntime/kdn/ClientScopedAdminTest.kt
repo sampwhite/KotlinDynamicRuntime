@@ -107,6 +107,52 @@ class ClientScopedAdminTest : StringSpec({
         TestUser.createFullAdmin(cxt, "full-admin@example.com").getItems(ADEP.users).isEmpty() shouldBe false
     }
 
+    /**
+     * The other half of "reserved", and the one that was wrong: the **capability alone** must not open the
+     * full-scope surface either. A user demoted to [ROLE.user] keeps their off-ladder capabilities by design
+     * (`RoleLadder.rolesAtLevel`, so a level edit does not silently drop one) -- which meant that while the
+     * `admin` section named `allClients` as its *required role*, a demotion left cross-client user
+     * administration intact while correctly removing the lesser scoped surface. Exactly the wrong way round.
+     *
+     * `RoleLadder.satisfies` falls back to exact membership off the ladder, so naming a capability as the
+     * required role makes holding it sufficient on its own. It has to qualify the level, not replace it.
+     */
+    "the capability alone does not open the admin surface" {
+        val cxt = Startup.mkTestBootCxt("demoted", "demotedCapabilityTest")
+
+        val demoted = TestUser.create(
+            cxt, "demoted-cap@example.com", level = ROLE.user, capabilities = listOf(ROLE.allClients),
+        )
+        demoted.selfRoles() shouldBe listOf(ROLE.user, ROLE.allClients)
+        seedUserInClient(cxt, "demoted-outsider@acme.com", otherClient)
+
+        // Both administration surfaces are closed: the full-scope one for want of the level, the scoped one
+        // for the same reason. Reading and writing alike -- a create would otherwise be a way back in.
+        demoted.expectError(EXC.notAuthorized, ADEP.users)
+        demoted.expectError(EXC.notAuthorized, UADEP.users)
+        demoted.expectError(EXC.notAuthorized, ADEP.userCreate, mapOf(ADF.primaryId to "demoted-made@example.com"))
+
+        // And the catalog agrees, since #211 filters it on the same predicate the gate enforces: a surface
+        // they cannot call is not one they are shown.
+        val visible = demoted.getItems("/schema/endpoints").map { it["path"].toOptStr() }
+        visible.any { it == ADEP.users } shouldBe false
+        visible.any { it == UADEP.users } shouldBe false
+    }
+
+    /** The level alone is not enough either -- both halves are required, in both directions. */
+    "the full-scope surface requires the level and the capability together" {
+        val cxt = Startup.mkTestBootCxt("bothHalves", "bothHalvesTest")
+
+        // Level without capability: refused (the scoped surface is what they get instead).
+        TestUser.create(cxt, "halves-scoped@example.com", level = ROLE.admin)
+            .expectError(EXC.notAuthorized, ADEP.users)
+        // Capability without level: refused.
+        TestUser.create(cxt, "halves-cap@example.com", level = ROLE.user, capabilities = listOf(ROLE.allClients))
+            .expectError(EXC.notAuthorized, ADEP.users)
+        // Both: admitted.
+        TestUser.createFullAdmin(cxt, "halves-full@example.com").getItems(ADEP.users).isEmpty() shouldBe false
+    }
+
     // --- the scoped surface, end to end ---------------------------------------
 
     /**

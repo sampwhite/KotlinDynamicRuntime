@@ -55,6 +55,27 @@ class AccessLevelTest {
         )
     }
 
+    // --- a capability that is held but inert -----------------------------------
+
+    /**
+     * The full-scope surface wants the level *and* the capability, so the capability alone reaches nothing.
+     * The editor allows the combination -- it is what a demotion leaves behind -- and says so rather than
+     * refusing it, which is what this predicate drives.
+     */
+    @Test
+    fun theCapabilityIsDormantBelowAdmin() {
+        assertEquals(true, isAllClientsDormant(ROLE.user, granted = true))
+        assertEquals(true, isAllClientsDormant(ROLE.operator, granted = true))
+        assertEquals(false, isAllClientsDormant(ROLE.admin, granted = true))
+    }
+
+    /** Nothing to say when the capability is not being granted at all, at any level. */
+    @Test
+    fun anUngrantedCapabilityIsNotReportedAsDormant() {
+        assertEquals(false, isAllClientsDormant(ROLE.user, granted = false))
+        assertEquals(false, isAllClientsDormant(ROLE.admin, granted = false))
+    }
+
     /** A role list is stored as written, so a duplicate would show up in the console as a repeated role. */
     @Test
     fun grantingWhatIsAlreadyHeldDoesNotDuplicateIt() {
