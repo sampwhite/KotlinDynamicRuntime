@@ -498,9 +498,8 @@ fun checkCondition(
             // the value; on the `else` side it means it is *not*, and saying "when X is true" there would
             // describe the state the caller is not in -- a message that reads as a contradiction of the form
             // in front of them.
-            // toString, not toOptStr: the latter is a coercion that yields null for anything, which is not a
-            // string, so a boolean or numeric constant would print as "empty" -- describing the rule as
-            // something nobody wrote.
+            // `fmt`, not `toOptStr`: that one is a coercion yielding null for any non-string, so a boolean or
+            // numeric constant would print as "empty" -- describing the rule as something nobody wrote.
             val decider = condition.value?.fmt() ?: "empty"
             val message = if (holds) {
                 "'$name' is not allowed when '${condition.property}' is '$decider'."
