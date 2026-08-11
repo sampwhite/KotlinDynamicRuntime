@@ -55,7 +55,7 @@ class EndpointCatalogTest : StringSpec({
     val defs = module.defs
     fun ep(path: String): KdrEndpoint = module.endpoints.single { it.path == path }
 
-    "buildEndpointInputSchema flattens a referenced type's fields, keeping field-level \$refs intact" {
+    $$"buildEndpointInputSchema flattens a referenced type's fields, keeping field-level $refs intact" {
         val input = buildEndpointInputSchema(ep("/things/get"), defs)
         input[SCH.type] shouldBe SCT.kObject
         input[SCH.additionalProperties] shouldBe false

@@ -43,7 +43,7 @@ class RawDocumentTest {
     private val catalog = Catalog(emptyList(), defs)
 
     private fun defsOf(document: Map<String, Any?>): Map<*, *> =
-        assertNotNull(document[SCH.dDefs] as? Map<*, *>, "document should carry a \$defs bag")
+        assertNotNull(document[SCH.dDefs] as? Map<*, *>, $$"document should carry a $defs bag")
 
     @Test
     fun carriesTheTypesAReferenceReaches() {
