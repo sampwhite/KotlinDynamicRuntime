@@ -120,6 +120,22 @@ talking to the same runtime API on `:7070`:
   and it is one build *or* the other, never both, because Kotlin/JS runs the two executable modes through a
   single compile-sync directory.
 
+  **The app can also be told to fail**, which is the other half of diagnosing it. A small set of debug pages
+  exists wherever the deployment permits it (a test instance), reached by URL so a browser test can drive them
+  with nothing but a link:
+
+  ```
+  #page=debug                 what the debug area offers
+  #page=debug&tool=state      the resolved app config and refresh generation this tab is running on
+  #page=debug&tool=fault      throws while rendering, so the page error boundary is seen to catch
+  #<any page>&fault=shell     throws in the app bar, so the backstop boundary is seen to catch
+  ```
+
+  A render failure never blanks the page: an error boundary swaps in a panel inside the shell, leaving the
+  navigation usable, and a second boundary behind it catches a failure in the shell itself. Paired with
+  `-Pwebapp.dev=true`, a deliberate fault reports the Kotlin declaration that threw rather than a byte offset.
+  On a real deployment the debug routes resolve to the home page — they do not exist rather than being refused.
+
 - **Webpack dev server (iterative development).** For live reload and browser debugging, run the dev server on
   `:8080`, which proxies `/kda` to the runtime on `:7070`:
 
