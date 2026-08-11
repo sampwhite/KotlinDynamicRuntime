@@ -15,7 +15,7 @@ import io.kotest.matchers.string.shouldContain
  * Discriminated unions: `oneOf` with a declared `discriminator` (issue #252).
  *
  * Two things are being pinned down here, and they pull in different directions. One is that selection works —
- * the right branch is chosen and its failures come back at the payload's own paths. The other is that
+ * the right branch is chosen, and its failures come back at the payload's own paths. The other is that
  * selection is only ever about *which failures are reported*: every branch carries its own `const`, so a
  * validator that ignores the keyword entirely reaches the same verdict. The second is what keeps the emitted
  * document standard-valid, and it is the one worth guarding, because nothing about a passing selection test
@@ -154,7 +154,7 @@ class SchVariantsTest : StringSpec({
         defs["gedra.Envelope"] = mapOf(
             SCH.type to SCT.kObject,
             SCH.required to listOf("entry"),
-            SCH.properties to mapOf("entry" to mapOf(SCH.dRef to "#/\$defs/gedra.GedraEntry")),
+            SCH.properties to mapOf("entry" to mapOf(SCH.dRef to $$"#/$defs/gedra.GedraEntry")),
         )
         val envelope = parseSchemaTypes(defs).getValue("gedra.Envelope")
         val payload = mapOf("entry" to mapOf("traitId" to "expenseReport", "year" to 2024))
@@ -162,7 +162,7 @@ class SchVariantsTest : StringSpec({
         validate(envelope, payload).shouldBeEmpty()
         val coerced = coerceAndValidate(envelope, payload)
         coerced.failures.shouldBeEmpty()
-        // And the property is still there afterwards -- a union coerced into nothing reads as "you did not
+        // And the property is still there afterward -- a union coerced into nothing reads as "you did not
         // supply it", which is what the form reported.
         (coerced.value as Map<*, *>).keys shouldContainExactly listOf("entry")
     }
@@ -172,7 +172,7 @@ class SchVariantsTest : StringSpec({
         defs["gedra.Gedra"] = mapOf(
             SCH.type to SCT.kObject,
             SCH.properties to mapOf(
-                "entries" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to "#/\$defs/gedra.GedraEntry")),
+                "entries" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to $$"#/$defs/gedra.GedraEntry")),
             ),
         )
         val gedra = parseSchemaTypes(defs).getValue("gedra.Gedra")

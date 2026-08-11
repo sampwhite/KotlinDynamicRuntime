@@ -68,7 +68,7 @@ class SchType(
      */
     val constValue: Any?,
     /**
-     * The discriminated union this type is, or null for an ordinary type. See [SchVariants].
+     * The discriminated "union" this type is, or null for an ordinary type. See [SchVariants].
      *
      * A union carries its branches here rather than in [properties]: the properties a payload must have depend
      * on which branch its discriminator selected, so there is no single property set to put there.

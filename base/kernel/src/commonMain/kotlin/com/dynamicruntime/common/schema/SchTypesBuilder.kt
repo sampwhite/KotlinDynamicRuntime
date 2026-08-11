@@ -55,12 +55,12 @@ open class SchTypesBuilder(val cxt: KdrCxtBase, val namespace: String) {
      * goes (issue #252).
      *
      * Deliberately *not* [variantBranch]. A catch-all is the one branch that must not declare a `const`,
-     * because it has to accept a value it has never heard of — give it one and it rejects exactly the payload
+     * because it has to accept a value it has never heard of — give it one, and it rejects exactly the payload
      * it exists to keep readable, with a message ("'somethingElse' is not 'opaque'") that reads as nonsense to
      * whoever thought they had a fallback. Its own helper rather than a flag on the other one, so the
      * distinction is structural instead of remembered.
      *
-     * The discriminator is still declared, and still required: the value has to survive, and a union's
+     * The discriminator is still declared and still required: the value has to survive, and a union's
      * branches are closed objects that would otherwise reject it as undeclared.
      */
     fun variantDefault(
@@ -90,12 +90,12 @@ open class SchTypesBuilder(val cxt: KdrCxtBase, val namespace: String) {
      * by the [on] property (issue #252).
      *
      * `oneOf`, not `anyOf`: exactly one branch matches, which is what the discriminator makes true, and it is
-     * also the only form the widely-deployed implementations support. No `mapping` is emitted — it would
+     * also the only form the widely deployed implementations support. No `mapping` is emitted — it would
      * duplicate what each branch's `const` already says, and a derived value written into the document is one
      * that can drift; it is synthesized at the export boundary instead.
      *
      * [defaultBranch] names where a value matching no branch goes. Without one, an unrecognized value is a
-     * failure; with one it passes through, which is what a reader that knows only some of the branches needs.
+     * failure; with one it passes through, which is what a reader that knows only some branches needs.
      */
     fun variantType(
         name: String,

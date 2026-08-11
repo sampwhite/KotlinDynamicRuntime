@@ -153,7 +153,7 @@ open class SchTypeBuilder(
      *
      * Its everyday use is a union branch declaring which branch it is — and there it is what makes the branch
      * selectable **without** our discriminator keyword, so a stock validator trying every branch reaches the
-     * same answer we do. Set through [variantBranch] rather than by hand for that case.
+     * same answer we do. Set through "variantBranch" rather than by hand for that case.
      */
     var const: Any? by SchAttr(data, SCH.const)
 

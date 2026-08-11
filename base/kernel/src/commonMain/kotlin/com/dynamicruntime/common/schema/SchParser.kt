@@ -50,7 +50,7 @@ fun parseSchemaTypes(
         item.array.itemType = registry[item.refName]
             ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$${item.refName}'.")
     }
-    // Bind a union's branches, for the same reason: a branch is normally a $ref, and one of them may refer
+    // Bind a union's branches for the same reason: a branch is normally a $ref, and one of them may refer
     // back to the union itself. Done a whole union at a time so the branches land in the order the document
     // declared them, mixed inline and $ref included -- "branch 3" in a boot-check message has to be the
     // reader's third branch, or the diagnostic sends them to the wrong place.
@@ -79,7 +79,7 @@ class PendingItemRef(val array: SchType, val refName: String)
 class BranchSource(val inline: SchType?, val refName: String?)
 
 /**
- * A union awaiting branch binding. Held per union rather than per branch so declaration order survives
+ * A union awaiting branch binding. Held per union rather than per branch, so declaration order survives
  * resolution, and carries [owner] only so the boot check can name the type in its message.
  */
 @KdrPrivate
@@ -113,7 +113,7 @@ fun indexVariants(owner: SchType?, variants: SchVariants) {
                     "selects it. Every branch of a discriminated union must declare the discriminator with a " +
                     "'${SCH.const}'.",
             )
-        val declared = prop.valueType?.constValue.toOptStr()
+        val declared = prop.valueType.constValue.toOptStr()
             ?: throw KdrException.mkConv(
                 "Branch ${index + 1}$where has no '${SCH.const}' for '${variants.discriminator}', so nothing " +
                     "selects it.",
@@ -133,9 +133,9 @@ fun indexVariants(owner: SchType?, variants: SchVariants) {
  * Parses `oneOf` + `discriminator` into a [SchVariants], or null when the node declares no `oneOf`.
  *
  * **A `oneOf` without a `discriminator` is rejected**, and that is a deliberate new strictness rather than an
- * oversight. It does not conflict with ignoring keywords we do not know: that policy exists so an unheard-of
+ * oversight. It does not conflict with ignoring keywords we do not know: that policy exists, so an unheard-of
  * keyword cannot reject a standard-valid document, whereas this is a keyword we now read and a construct we
- * decline to guess at. Try-every-branch is the thing we chose not to build — when nothing matches it has no
+ * decline to guess at. Try-every-branch is the thing we chose not to build — when nothing matches, it has no
  * principled way to say whose failures to report — so accepting the document and quietly enforcing nothing
  * would recreate exactly the silence this issue exists to end.
  */
