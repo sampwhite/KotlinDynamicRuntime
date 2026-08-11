@@ -266,7 +266,18 @@ Three decisions inside that:
   into the working document is a value that can drift. Synthesize it at the export boundary, from the trait
   binding table.
 
-`defaultMapping` is the fallback that makes unresolved traits opaque rather than fatal.
+`defaultMapping` is the fallback that makes unresolved traits opaque rather than fatal. Two things about that
+branch turned out to be load-bearing, both found by building it:
+
+- **It must not declare a `const`.** A catch-all that claims a value rejects exactly the unrecognized entry it
+  exists to accept, and says so in words that read as nonsense (*"'somethingElse' is not 'opaque'"*).
+- **It must be open.** A trait this reader cannot describe is one whose fields it cannot declare, so a closed
+  catch-all rejects every unknown entry that carries anything — which is all of them. Closed also empties an
+  entry silently on the way through, which is worse than refusing it, because nothing says it happened.
+
+One consequence for whoever emits schema to a client: `defaultMapping` holds a **bare ref string**, not a
+`{"$ref": …}` object — OpenAPI's spelling — so a walk that collects reachable types by looking for the keyword
+misses the default branch entirely, and ships a union the receiving client cannot resolve.
 
 **Why not the full OpenAPI Discriminator Object.** Its remaining machinery serves deserialization into a class
 hierarchy rather than validation: branches must be `$ref`s to named schemas, mapping is by component name, and

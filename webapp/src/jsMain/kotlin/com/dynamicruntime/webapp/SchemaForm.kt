@@ -6,6 +6,7 @@ import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.SchVariants
 import com.dynamicruntime.common.schema.byPath
 import com.dynamicruntime.common.schema.childKeyOf
 import com.dynamicruntime.common.schema.childPath
@@ -14,6 +15,7 @@ import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.common.util.toOptStr
 import kotlinx.browser.document
 import web.dom.ElementId
 import org.w3c.dom.HTMLElement
@@ -143,6 +145,10 @@ private fun ChildrenBuilder.renderObject(
     errors: FieldErrors,
     onChange: (Map<String, Any?>) -> Unit,
 ) {
+    type.variants?.let { variants ->
+        renderVariant(type, variants, values, seen, editable, path, errors, onChange)
+        return
+    }
     if (type.properties.isEmpty()) {
         p {
             className = ClassName("type-hint")
@@ -164,6 +170,92 @@ private fun ChildrenBuilder.renderObject(
     // is precisely the "named somewhere you cannot go" problem this issue is about.
     errors.undeclaredBelow(path, type.properties.keys).forEach { (at, messages) ->
         undeclaredField(childKeyOf(at, path) ?: at, at, messages)
+    }
+}
+
+/**
+ * Renders a discriminated union: a choice of branch, then that branch's own fields (issue #252).
+ *
+ * The discriminator is drawn **here** rather than by the branch, even though every branch declares it. A
+ * branch declares it as a `const` — one fixed value, which is a statement about the shape rather than a
+ * choice — so left to the branch it would render as a text box that cannot change the shape it belongs to.
+ * Drawn here it is a select over the declared values, which is the one control that makes a union editable.
+ *
+ * **Switching branches drops the old branch's fields.** Branches are closed objects, so carrying them over
+ * would turn every switch into a payload full of undeclared-property failures against fields the form is no
+ * longer even showing — invisible and unfixable. Values whose names the new branch also declares are kept,
+ * since re-typing a shared field to change one next to it is the kind of thing that makes a form tiring.
+ */
+private fun ChildrenBuilder.renderVariant(
+    type: SchType,
+    variants: SchVariants,
+    values: Map<String, Any?>,
+    seen: Set<String>,
+    editable: Boolean,
+    path: String,
+    errors: FieldErrors,
+    onChange: (Map<String, Any?>) -> Unit,
+) {
+    val name = variants.discriminator
+    val chosen = values[name].toOptStr()
+    val branch = variants.select(chosen)
+    val discriminatorPath = childPath(path, name)
+    val messages = errors.messagesAt(discriminatorPath)
+    // Captured under its own name: inside the Select builder `onChange` is the widget's own prop, and `values`
+    // and `options` are likewise taken.
+    val emitAll = onChange
+    val choices = optionsToJs(variants.values.map { SchOption(it, it) })
+    val describedBy = messages.ifEmpty { null }?.let { fieldErrorsId(discriminatorPath) }
+
+    div {
+        id = ElementId(fieldRowId(discriminatorPath))
+        tabIndex = -1
+        className = ClassName(rowClass(messages))
+        labelSpan(name, required = true)
+        if (editable) {
+            Select {
+                this.options = choices
+                this.value = chosen
+                placeholder = "(choose)"
+                style = js("({ minWidth: 200 })")
+                this.onChange = { v ->
+                    errors.noteEdit(discriminatorPath)
+                    val picked = v as? String
+                    val next = variants.select(picked)
+                    // Keep only what the branch being switched to actually declares (see the note above).
+                    val kept = if (next == null) emptyMap() else values.filterKeys { it in next.properties }
+                    emitAll(kept + (name to picked))
+                }
+                markInvalid(asDynamic(), describedBy)
+            }
+        } else {
+            readOnlyValue(type, chosen)
+        }
+    }
+    fieldErrors(discriminatorPath, messages)
+
+    if (branch == null) {
+        p {
+            className = ClassName("type-hint")
+            +"Choose a $name to see the rest of the fields."
+        }
+        return
+    }
+    // The branch's own fields, minus the discriminator it declares -- already drawn above, and as a choice
+    // rather than as the fixed value the branch states.
+    branch.properties.forEach { (fieldName, prop) ->
+        if (fieldName == name) {
+            return@forEach
+        }
+        renderField(
+            fieldName, prop, fieldName in branch.required, values[fieldName], seen, editable,
+            childPath(path, fieldName), errors,
+            emit = { newValue -> onChange(values + (fieldName to newValue)) },
+            omit = { onChange(values - fieldName) },
+        )
+    }
+    errors.undeclaredBelow(path, branch.properties.keys).forEach { (at, messages2) ->
+        undeclaredField(childKeyOf(at, path) ?: at, at, messages2)
     }
 }
 
@@ -326,8 +418,16 @@ fun choicesSuffix(f: SchFailure): String {
     return " Valid options: ${opts.joinToString(", ") { if (it.label == it.value) it.value else "${it.value} — ${it.label}" }}."
 }
 
-/** An object type with declared fields, as opposed to a free-form object. */
-private fun isStructuredObject(vt: SchType): Boolean = vt.jsonType == SCT.kObject && vt.properties.isNotEmpty()
+/**
+ * An object type with a shape to lay out, as opposed to a free-form map.
+ *
+ * A discriminated union counts, and has to: its fields live on the branch rather than on the union, so it
+ * declares no `properties` of its own and would otherwise look exactly like a free-form map — and be handed to
+ * the raw-JSON editor, which is the one thing a union must not be edited as. Both places that ask this
+ * question (a nested field, and an array's element type) need the same answer, which is why it is asked here.
+ */
+private fun isStructuredObject(vt: SchType): Boolean =
+    vt.variants != null || (vt.jsonType == SCT.kObject && vt.properties.isNotEmpty())
 
 /** The element type when [vt] is a list *of objects*, else null (a list of scalars stays a text widget). */
 private fun objectElementType(vt: SchType): SchType? =

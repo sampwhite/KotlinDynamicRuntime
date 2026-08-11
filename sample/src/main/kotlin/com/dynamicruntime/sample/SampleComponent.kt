@@ -3,6 +3,7 @@ package com.dynamicruntime.sample
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.sample.file.SampleFileService
+import com.dynamicruntime.sample.gedra.GedraSketchService
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
@@ -37,7 +38,9 @@ class SampleComponent : ComponentDefinition {
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         collector.addModule(SampleFileService.schema(cxt))
+        collector.addModule(GedraSketchService.schema(cxt))
     }
 
-    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::SampleFileService)
+    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
+        listOf(::SampleFileService, ::GedraSketchService)
 }

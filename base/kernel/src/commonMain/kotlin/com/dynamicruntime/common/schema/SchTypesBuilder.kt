@@ -72,6 +72,12 @@ open class SchTypesBuilder(val cxt: KdrCxtBase, val namespace: String) {
         type(name) {
             type = SCT.kObject
             description?.let { this.description = it }
+            // Open, and it has to be. A catch-all exists to carry a shape this reader cannot describe, so
+            // declaring its fields is precisely what it cannot do -- and a branch that is closed instead
+            // rejects every unrecognized entry that carries anything, which is all of them. Closed here would
+            // also silently empty an entry on the way through, which is worse than refusing it: nothing says
+            // it happened.
+            additionalProperties = true
             property(discriminator, "Which kind of entry this is; unrecognized by this reader.", required = true) {
                 type = SCT.string
             }
@@ -102,6 +108,9 @@ open class SchTypesBuilder(val cxt: KdrCxtBase, val namespace: String) {
         defaultBranch?.let { discriminator[SCH.defaultMapping] = typeRefPath(it, namespace) }
         defs[qualifyTypeName(name, namespace)] = linkedMapOf(
             SCH.description to description,
+            // Every branch is an object, so the union is one -- said explicitly because a validator that
+            // ignores `discriminator` still reads this, and because it costs nothing to be true.
+            SCH.type to SCT.kObject,
             SCH.oneOf to branches.map { linkedMapOf(SCH.dRef to typeRefPath(it, namespace)) },
             SCH.discriminator to discriminator,
         )
