@@ -146,6 +146,27 @@ class SchVariantsTest : StringSpec({
         direct.first().code shouldBe SchFailCode.invalidOption
     }
 
+    // The shape an endpoint actually presents: input is flat, so a union arrives as one PROPERTY of an
+    // envelope rather than as the whole payload. Reproduced here after the form reported the property missing
+    // for a payload the server accepted.
+    "a union reached through a property validates, and survives coercion" {
+        val defs = entryDefs("OpaqueEntry").toMutableMap()
+        defs["gedra.Envelope"] = mapOf(
+            SCH.type to SCT.kObject,
+            SCH.required to listOf("entry"),
+            SCH.properties to mapOf("entry" to mapOf(SCH.dRef to "#/\$defs/gedra.GedraEntry")),
+        )
+        val envelope = parseSchemaTypes(defs).getValue("gedra.Envelope")
+        val payload = mapOf("entry" to mapOf("traitId" to "expenseReport", "year" to 2024))
+
+        validate(envelope, payload).shouldBeEmpty()
+        val coerced = coerceAndValidate(envelope, payload)
+        coerced.failures.shouldBeEmpty()
+        // And the property is still there afterwards -- a union coerced into nothing reads as "you did not
+        // supply it", which is what the form reported.
+        (coerced.value as Map<*, *>).keys shouldContainExactly listOf("entry")
+    }
+
     "a union is usable as an array element type" {
         val defs = entryDefs().toMutableMap()
         defs["gedra.Gedra"] = mapOf(

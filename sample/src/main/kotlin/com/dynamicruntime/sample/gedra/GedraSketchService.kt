@@ -75,6 +75,11 @@ class GedraSketchService : ServiceInitializer {
                 property(GS.fieldCount, "How many fields the entry carried.", required = true) {
                     type = SCT.integer
                 }
+                // The entry itself, back out through the union. Two things fall out of echoing it rather than
+                // only describing it: the output schema carries a union, so the catalog's structural view has
+                // one to render; and with response-schema validation on, what we send is checked against the
+                // same branches that accepted it -- a round trip rather than a one-way check.
+                property(GS.entry, "The entry as it was validated.", required = true) { ref("GedraEntry") }
             }
 
             generalEndpoint(
@@ -96,6 +101,7 @@ class GedraSketchService : ServiceInitializer {
                     GS.traitId to trait,
                     GS.branch to if (trait == GS.expenseReport || trait == GS.managerApproval) trait else GS.default,
                     GS.fieldCount to entry.size,
+                    GS.entry to entry,
                 )
             }
         }
