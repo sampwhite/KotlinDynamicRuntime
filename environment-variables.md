@@ -12,6 +12,11 @@ Conventions:
   therefore set or override any of these without touching the actual environment.
 - **Secrets are not environment variables.** Database passwords live in a secrets file, never in the
   environment or in config — see [Database](#database) below.
+- **Booleans are parsed two different ways**, so the spelling matters. Most read *loosely* (`toOptBool`, which
+  looks at the first letter and deliberately over-accepts, so `yes`/`1`/`t` all mean true). `KDR_OBFUSCATE_ERRORS`
+  reads *strictly*: only exactly `true` or `false` count, and anything else is ignored and falls through to
+  the default rather than failing. **Writing `true` or `false` always works**; anything else is worth checking
+  against the table below.
 
 ---
 
@@ -25,6 +30,7 @@ Conventions:
 | `KDR_CUSTOM_CONFIG` | The class name of the deployment configuration object to discover and apply at startup. | `KdrConfig` |
 | `KDR_LOAD_SAMPLE` | Force-loads (`true`) or skips (`false`) the `sample` module's demo Todo endpoints. | on for `local`/`dev`, off otherwise |
 | `KDR_GOOGLE_CLIENT_ID` | The deployment's Google OAuth **client id**, which turns Google sign-in on: unset (the default) and the feature is neither offered by the auth UI nor accepted by its endpoint. It is public by design — it identifies the application to Google and the browser must present it — so it is an environment variable rather than a secret, and the auth UI config serves it to the frontend. It is also what an incoming Google ID token's `aud` claim is checked against, which is the check that stops another application's tokens from being accepted here; there is deliberately no default, since a guessed value would defeat that check. **Setting it is not sufficient on its own:** every origin the page is served from must also be registered against that client id as an *Authorized JavaScript origin* in Google Cloud Console — see the note below. | unset |
+| `KDR_OBFUSCATE_ERRORS` | Replaces the message of an error flagged `sensitive` — one that would reveal, say, whether an account exists — with a generic sentence before it reaches the client. The real message is still logged, so nothing is lost to whoever is entitled to see it. The `obfuscateSensitiveErrors` config option wins over this, and this wins over the default. | on when `KDR_ENV=prod`, off otherwise |
 | `KDR_ADMIN_EMAIL_DOMAIN` | Email domain whose addresses are automatically granted the `admin` role — how a deployment's first administrator comes to exist. An address qualifies when its domain **is** this domain (or a subdomain of it) **and** its local part carries no `+` tag, so `sam@acme.com` becomes an admin while `sam+qa@acme.com` stays an ordinary user, letting one mailbox hold both. Applied when a user is provisioned and re-checked at each login, so it reaches accounts registered before it was set. It only ever *grants*: unsetting it demotes nobody — revoke with `admin/user/setRoles` or `kdr-run com.dynamicruntime.script.GrantRoleKt <loginId> admin --revoke`. Unset means no address is ever auto-granted. | unset |
 
 Notes:
@@ -66,6 +72,7 @@ known, everything else is defaulted; in local development, `KDR_DB_TYPE=postgres
 | `KDR_DB_NAME` | The database name — the H2 data file base name (`h2Database/<name>.dat`) and the PostgreSQL database. | `kdr` |
 | `KDR_DB_HOST` | PostgreSQL host, with an optional `:port` suffix (e.g. `db.example.com:5433`). **PostgreSQL only.** | `localhost` **in the `local` environment only**; required in every other environment |
 | `KDR_DB_USER` | PostgreSQL username. **PostgreSQL only** (the H2 variants use a hardcoded user). | `kdr` |
+| `KDR_ALLOW_SCHEMA_DRIFT` | Boot despite **blocking** schema drift — a column the database has, the code does not declare, that is `NOT NULL` with no default. Startup normally refuses, because the framework cannot populate such a column and so every insert into that table already fails. Setting this true downgrades the refusal to a logged error; it does **not** make writes work. For an operator part-way through a migration. | `false` |
 
 Notes:
 
@@ -79,6 +86,12 @@ Notes:
 - **The password is a secret, not a variable.** It is read from `private/secrets.properties` (relative to the
   [workspace directory](README.md#the-workspace)) under a property whose name defaults to `dbPassword`. A
   missing required secret fails startup. Only PostgreSQL needs one; the H2 variants require no password.
+- **Schema changes only ever add.** Startup reconciles the declared tables against the database by adding
+  missing columns and indexes; it never drops or renames anything, so **a rename is a written migration** and
+  the old column stays until you remove it. Since issue #216 startup at least *tells* you: a stranded
+  `NOT NULL` column refuses the boot naming the table and column (`KDR_ALLOW_SCHEMA_DRIFT` to start anyway),
+  and a column the code marks required that the database still allows to be null is logged as a warning —
+  normal right after a deploy that added it, a missing backfill if it persists.
 
 ## Node identity
 
