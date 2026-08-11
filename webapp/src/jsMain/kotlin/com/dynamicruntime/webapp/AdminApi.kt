@@ -19,6 +19,8 @@ class AdminUser(
     val primaryId: String,
     val username: String,
     val roles: List<String>,
+    /** Their primary organization within the client, or null when they have none (issue #225). */
+    val org: String?,
     val enabled: Boolean,
     val hasPassword: Boolean,
 ) {
@@ -69,11 +71,12 @@ object AdminApi {
     }
 
     /** Creates a user directly (no email verification); [username] and [roles] are optional. */
-    suspend fun createUser(primaryId: String, username: String?, roles: List<String>?): AdminUser {
+    suspend fun createUser(primaryId: String, username: String?, roles: List<String>?, org: String?): AdminUser {
         val body = buildMap<String, Any?> {
             put(ADF.primaryId, primaryId.trim())
             username?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.username, it) }
             roles?.takeIf { it.isNotEmpty() }?.let { put(ADF.roles, it) }
+            org?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.org, it) }
         }
         return Http.sendApi("POST", UADEP.userCreate, body).results().toAdminUser()
     }
@@ -82,6 +85,13 @@ object AdminApi {
     suspend fun setRoles(userId: Long, roles: List<String>): AdminUser =
         Http.sendApi("POST", UADEP.userSetRoles, mapOf(ADF.userId to userId, ADF.roles to roles))
             .results().toAdminUser()
+
+    /** Sets or clears a user's primary organization; a null [org] clears it. */
+    suspend fun setOrg(userId: Long, org: String?): AdminUser =
+        Http.sendApi("POST", UADEP.userSetOrg, buildMap {
+            put(ADF.userId, userId)
+            if (org != null) put(ADF.org, org)
+        }).results().toAdminUser()
 
     /** Enables or disables a user's account. */
     suspend fun setEnabled(userId: Long, enabled: Boolean): AdminUser =
@@ -98,6 +108,7 @@ object AdminApi {
         primaryId = this[ADF.primaryId] as? String ?: "",
         username = this[ADF.username] as? String ?: "",
         roles = this[ADF.roles].toJsonListOfStrings(),
+        org = this[ADF.org] as? String,
         enabled = this[ADF.enabled] == true,
         hasPassword = this[ADF.hasPassword] == true,
     )

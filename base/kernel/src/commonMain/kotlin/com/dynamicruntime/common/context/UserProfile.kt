@@ -12,13 +12,14 @@ object UPF {
     const val authId = "authId"
     const val userId = "userId"
     const val client = "client"
+    const val org = "org"
     const val roles = "roles"
     const val publicName = "publicName"
     const val hasPassword = "hasPassword"
 }
 
 /**
- * The authenticated-user information carried by a KdrCxt: identity, roles, the client, and a
+ * The authenticated-user information carried by a KdrCxt: identity, roles, the client and org, and a
  * display name. A real login populates it from the user's row (see the auth layer); an unauthenticated
  * request carries the anonymous profile ([anonymous]). Still lightweight -- richer profile data will load on
  * demand.
@@ -39,6 +40,15 @@ class UserProfile(
      * client.
      */
     val client: String = CL.local,
+    /**
+     * The user's **primary organization** within their [client], or null when they have none -- either the
+     * client has no organizations at all, or this user is not confined to one (issue #225).
+     *
+     * Optional by design: organizations are a per-client choice, so null is the ordinary case and means
+     * "belongs to the client, not to any organization". Held in `authUserData` and carried here rather than
+     * in a database column, which is what lets a write stamp it onto content without a lookup.
+     */
+    val org: String? = null,
     /**
      * Role privileges granted to the user, established by the authentication layer before an endpoint
      * runs. Interior privileges (to specific organizations or content) are determined inside endpoints.
@@ -69,6 +79,7 @@ class UserProfile(
         put(UPF.authId, authId ?: anonymousAuthId)
         put(UPF.userId, userId)
         put(UPF.client, client)
+        if (org != null) put(UPF.org, org)
         put(UPF.roles, roles.toList())
         if (publicName != null) put(UPF.publicName, publicName)
         if (hasPassword != null) put(UPF.hasPassword, hasPassword)
@@ -97,6 +108,7 @@ class UserProfile(
             authId = info.getOptStr(UPF.authId),
             userId = info.getOptLong(UPF.userId) ?: CL.systemUserId.toLong(),
             client = info.getOptStr(UPF.client) ?: CL.local,
+            org = info.getOptStr(UPF.org),
             roles = info[UPF.roles].toJsonListOfStrings().toSet(),
             publicName = info.getOptStr(UPF.publicName),
             hasPassword = info[UPF.hasPassword] as? Boolean,
@@ -113,6 +125,7 @@ class UserProfile(
                 property(UPF.authId, "Authenticated identity, or 'anonymous' when not logged in.", required = true)
                 property(UPF.userId, "The user's numeric id.", required = true) { type = SCT.integer }
                 property(UPF.client, "The client the user belongs to.", required = true)
+                property(UPF.org, "The user's primary organization within the client, when they have one.")
                 property(UPF.roles, "The roles granted to the user.") {
                     type = SCT.array
                     items { type = SCT.string }

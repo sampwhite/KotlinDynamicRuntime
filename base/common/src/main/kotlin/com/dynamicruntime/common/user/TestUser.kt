@@ -8,6 +8,7 @@ import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.http.request.ROLE
 
 /**
@@ -44,6 +45,9 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
 
     /** This user's *current* roles, read live from `/auth/self/info` (not the possibly-stale [userInfo]). */
     fun selfRoles(): List<String> = rolesOf(getData(AEP.selfInfo))
+
+    /** This user's *current* primary organization, read live, or null when they have none (issue #225). */
+    fun selfOrg(): String? = getData(AEP.selfInfo)[UPF.org].toOptStr()
 
     /**
      * Sends to [path] as this user and asserts the call **failed** with [status] (the error envelope's status

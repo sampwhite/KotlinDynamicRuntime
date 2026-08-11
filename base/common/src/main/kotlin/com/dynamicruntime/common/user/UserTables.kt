@@ -64,6 +64,16 @@ object AD {
     /** List of granted role names. */
     const val roles = "roles"
 
+    /**
+     * The user's primary organization within their client, or absent when they have none (issue #225).
+     *
+     * Here rather than in a column on purpose: it rides with the identity (`UserProfile`, and the session
+     * cookie) so a write can stamp it onto content without a lookup. The cost is that it cannot be a SQL
+     * predicate, so narrowing a *user* list to an organization happens after the query -- content, which does
+     * get a column, filters in SQL.
+     */
+    const val org = "org"
+
     /** The encoded password, or absent when the user has not opted into a password (login is by code). */
     const val encodedPassword = "encodedPassword"
 

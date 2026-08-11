@@ -96,7 +96,7 @@ fun refreshActingRoles(cxt: KdrCxt) {
     val live = row.toUserProfile()
     cxt.bindToUserProfile(
         UserProfile(
-            authId = live.authId, userId = live.userId, client = live.client, roles = liveRoles,
+            authId = live.authId, userId = live.userId, client = live.client, org = live.org, roles = liveRoles,
             publicName = live.publicName, hasPassword = live.hasPassword,
         ),
     )

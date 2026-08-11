@@ -53,6 +53,7 @@ val Users = FC<Props> {
     var draftUsername by useState("")
     var draftLevel by useState(ROLE.user)
     var draftAllClients by useState(false)
+    var draftOrg by useState("")
     var draftEnabled by useState(true)
 
     val generation = useRefreshGeneration()
@@ -122,6 +123,7 @@ val Users = FC<Props> {
         draftUsername = user.username
         draftLevel = user.level
         draftAllClients = user.roles.contains(ROLE.allClients)
+        draftOrg = user.org ?: ""
         draftEnabled = user.enabled
         note = null
         error = null
@@ -135,6 +137,7 @@ val Users = FC<Props> {
         draftUsername = ""
         draftLevel = ROLE.user
         draftAllClients = false
+        draftOrg = config?.user?.org ?: ""
         draftEnabled = true
         note = null
         error = null
@@ -166,7 +169,7 @@ val Users = FC<Props> {
     fun save() = run {
         val target = editing
         if (target == null) {
-            val created = AdminApi.createUser(draftEmail, draftUsername, draftRoles(emptyList()))
+            val created = AdminApi.createUser(draftEmail, draftUsername, draftRoles(emptyList()), draftOrg.trim().ifEmpty { null })
             note = "Created ${created.primaryId}."
         } else {
             var changed = false
@@ -175,6 +178,10 @@ val Users = FC<Props> {
             val desired = draftRoles(target.roles)
             if (desired.toSet() != target.roles.toSet()) {
                 AdminApi.setRoles(target.userId, desired)
+                changed = true
+            }
+            if (draftOrg.trim().ifEmpty { null } != target.org) {
+                AdminApi.setOrg(target.userId, draftOrg.trim().ifEmpty { null })
                 changed = true
             }
             if (draftEnabled != target.enabled) {
@@ -274,6 +281,18 @@ val Users = FC<Props> {
                     className = ClassName("type-hint")
                     +allClientsHint
                 }
+            }
+
+            // Editable only by someone not confined to an organization: the backend lets a confined
+            // administrator assign only their own, so anything else here could only ever produce a 400.
+            if (config?.user?.org == null) {
+                textField("Organization", draftOrg, disabled = busy) { draftOrg = it }
+                p {
+                    className = ClassName("type-hint")
+                    +orgHint
+                }
+            } else {
+                readOnlyField("Organization", draftOrg.ifEmpty { "—" })
             }
 
             div {
@@ -408,6 +427,11 @@ private val accessLevelOptions: Array<dynamic> = RoleLadder.ordered.map { role -
 private const val allClientsHint =
     "Access level says what someone may do; this says whose data they may do it to. Without it an " +
         "administrator manages only their own client. It is also what the full-scope admin endpoints require."
+
+/** Explains the optional middle width of the scope, and what leaving it blank means. */
+private const val orgHint =
+    "An optional organization within the client. Someone assigned one sees only their own organization, " +
+        "plus anything belonging to no organization at all. Leave it blank for client-wide."
 
 /** Says what the middle rung is for, since "operator" does not explain itself the way the other two do. */
 private const val accessLevelHint =
