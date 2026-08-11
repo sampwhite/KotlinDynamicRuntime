@@ -339,12 +339,12 @@ input {
     color: var(--text);
     font-size: 1rem;
 }
-.greeting { font-size: 1.2rem; margin-top: 12px; }
-.todo-title { flex: 1; min-width: 120px; }
-.todo-title.done { text-decoration: line-through; color: var(--text-muted); }
-.todo-error { color: var(--danger); margin-top: 12px; }
+/* An expected, user-facing error: plain red copy, styled as part of the page. Named for what it is rather
+   than where it started -- it was `.todo-error` until the Todo demo it was written for went away, by which
+   point every page in the app was using it. */
+.error-text { color: var(--danger); margin-top: 12px; }
 
-/* A raw / internal error (issue #111): unlike an expected `.todo-error`, it is deliberately set apart -- boxed
+/* A raw / internal error (issue #111): unlike an expected `.error-text`, it is deliberately set apart -- boxed
    and monospaced -- so it reads as an unexpected, developer-facing message rather than designed copy. */
 .internal-error {
     color: var(--text-dim);

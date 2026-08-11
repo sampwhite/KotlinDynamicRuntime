@@ -166,7 +166,7 @@ val EndpointCatalog = FC<Props> {
             }
             when {
                 error != null -> p {
-                    className = ClassName("todo-error")
+                    className = ClassName("error-text")
                     +error!!
                 }
                 cat == null -> p {
@@ -419,7 +419,7 @@ val EndpointCatalog = FC<Props> {
                     // by keyboard for free. A root failure has no field to go to, so it stays plain text.
                     fs.forEach { f ->
                         p {
-                            className = ClassName("todo-error")
+                            className = ClassName("error-text")
                             // Both wordings when the schema supplies one: the framework's, which names the
                             // wire problem an API caller has to act on, then the schema's in quotes, which is
                             // what the person at the form was shown. Neither substitutes for the other here.
@@ -489,7 +489,7 @@ val EndpointCatalog = FC<Props> {
                     }
                     rawError?.let { message ->
                         p {
-                            className = ClassName("todo-error")
+                            className = ClassName("error-text")
                             +message
                         }
                     }
@@ -498,7 +498,7 @@ val EndpointCatalog = FC<Props> {
 
             runError?.let {
                 p {
-                    className = ClassName("todo-error")
+                    className = ClassName("error-text")
                     +"Request failed: $it"
                 }
             }

@@ -123,7 +123,7 @@ val Home = FC<Props> {
                 val doc = links.firstOrNull { it.id == openDoc }
                 when {
                     error != null -> p {
-                        className = ClassName("todo-error")
+                        className = ClassName("error-text")
                         +error!!
                     }
                     // A document page: its rendered Markdown, plus a way back to the welcome copy.
