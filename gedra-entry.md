@@ -35,9 +35,9 @@ A gedra is a composition of traits; an entry is one trait's worth of data.
   "source": "user",
   "origin": { "channel": "excel", "fileName": "xxx.xlsx", "fileRef": "///somepath/xxx.xlsx" },
   "createdBy": 232,
-  "modifiedBy": 265,
+  "updatedBy": 265,
   "createdAt": "2020-01-05T06:02:03.256Z",
-  "modifiedAt": "2023-03-01T04:02:03.566Z",
+  "updatedAt": "2023-03-01T04:02:03.566Z",
   "lockedBy": ["wfId1", "wfId2"]
 }
 ```
@@ -52,7 +52,10 @@ A gedra is a composition of traits; an entry is one trait's worth of data.
 - **`origin`** — **immutable**. How the entry arrived, recorded once at creation and never rewritten:
   `channel` plus whatever detail that channel carries. Absent when the entry was created by a direct endpoint
   call.
-- **`createdBy` / `modifiedBy` / `createdAt` / `modifiedAt`** — per entry, not per gedra.
+- **`createdBy` / `updatedBy` / `createdAt` / `updatedAt`** — per entry, not per gedra, and named to match
+  the four audit columns every table already carries (`PF` in the SQL layer). An entry is meant to read
+  like a row, so the resemblance should go as far as the spelling: `modifiedAt` here and `updatedAt` one
+  layer down would be two names for one idea, and whoever wrote the second would have had to choose.
 - **`lockedBy`** — workflow ids currently holding the entry.
 
 ### Why `source` and `origin` are separate
@@ -478,7 +481,7 @@ Genuine optionality within a form — a radio group the user may leave unanswere
   chain after it?** Single-parent and chain-only are the reversible defaults.
 - **Is a trait bound to one gedra kind or a set?** Widening later is easy and narrowing is not.
 - **Do `source` transitions need an audit trail before general history exists?** An approval flipping `source`
-  across a set of traits is an audit event, and `modifiedBy` / `modifiedAt` hold the last change rather than
+  across a set of traits is an audit event, and `updatedBy` / `updatedAt` hold the last change rather than
   the sequence. Either the first release carries a narrow transition log or approvals are unauditable and that
   is stated.
 - **Is `Trait` the wrapper's name?** Adopted here. It fits better than `GedraEntryDef` because the wrapper is

@@ -194,9 +194,9 @@ private fun ChildrenBuilder.renderProperties(
     val holds = condition?.holds(values) ?: false
     val forbidden = condition?.forbiddenWhen(holds) ?: emptySet()
     val alsoRequired = condition?.requiredWhen(holds) ?: emptySet()
-    // Changing the watched field re-decides the rule, so anything it now forbids has to go with it. Same
+    // Changing the watched field re-decides the rule, so anything it now forbids has to go with it. The same
     // reasoning as switching a union's branch: leaving the value behind puts a field on the wire that
-    // validation refuses and the form is no longer showing, which is unfixable from the screen.
+    // validation refuses, and the form is no longer showing, which is unfixable from the screen.
     fun settle(next: Map<String, Any?>, edited: String): Map<String, Any?> =
         if (condition == null || edited != condition.property) next
         else next - condition.forbiddenWhen(condition.holds(next))
@@ -221,7 +221,12 @@ private fun ChildrenBuilder.renderProperties(
         // overwritten. A real form-entry GUI would hide it, and would be right to; these two surfaces read
         // the same keyword and reach opposite conclusions, which is the point of the annotation.
         renderField(
-            name, prop, name in type.required || name in alsoRequired, values[name], seen,
+            // Never marked required, derived: the asterisk means "you must supply this", and a field with no
+            // control is not something anybody can supply. It is required of the *stored* shape, which the
+            // response demonstrates by carrying it.
+            name, prop,
+            (name in type.required || name in alsoRequired) && !prop.valueType.derived,
+            values[name], seen,
             editable && !prop.valueType.derived,
             childPath(path, name), errors,
             // A removal has to drop the key, not null it: a null against an object/array type fails the plain
@@ -494,7 +499,7 @@ fun choicesSuffix(f: SchFailure): String {
  * A discriminated union counts, and has to: its fields live on the branch rather than on the union, so it
  * declares no `properties` of its own and would otherwise look exactly like a free-form map — and be handed to
  * the raw-JSON editor, which is the one thing a union must not be edited as. Both places that ask this
- * question (a nested field, and an array's element type) need the same answer, which is why it is asked here.
+ * question (a nested field and an array's element type) need the same answer, which is why it is asked here.
  */
 private fun isStructuredObject(vt: SchType): Boolean =
     vt.variants != null || (vt.jsonType == SCT.kObject && vt.properties.isNotEmpty())

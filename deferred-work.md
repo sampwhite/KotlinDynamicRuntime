@@ -139,3 +139,25 @@ that "this user's data is broken" becomes a thing that can be true.
   Note what it is *not* for. The frontend fault route in #227 needs none of it, because making the browser
   throw requires no identity — keep the two separate. This one is about the backend misbehaving for a
   particular user, and its natural injection points are the handlers that read and write that user's content.
+
+## When schema is exported for third-party tooling
+
+The point at which somebody outside this codebase needs the API in a form their own tools read — most likely
+a YAML file to point Swagger at, which is what penetration testers and clients building integrations ask for
+first. Noticeable because someone asks for it by name.
+
+- **Project a derived field out of a `$ref`'d type, not just the top level** *(from #254).* An endpoint's
+  published input schema drops its `g-derived` fields, but only the flat top-level ones. A derived field
+  *inside* a referenced type stays visible, because the catalog ships one `$defs` bag that the input and the
+  output both resolve against — removing it there would take it out of the response schema too. Fixing that
+  means the input and the output carry separately projected defs, which is a change to the shape of the
+  catalog and is only worth making once something consumes an export. Until then the keyword travels and each
+  surface honors it, which is why the form draws no control for such a field.
+
+- **The rest of the export contract is already written down** in
+  [`gedra-entry.md`](gedra-entry.md) — `g-` keywords stripped by default with a small transformer table,
+  `discriminator.mapping` synthesized from the branches' `const` values, and the governing rule that an
+  inexact conversion must be *stricter* than us rather than looser. Read it before starting: the decisions are
+  made, only the code is missing. Note one known gap recorded there — `g-primaryKey` has no standard
+  equivalent, so stripping it makes the export looser, which is accepted because the constraint governs our
+  own stored entries rather than anything a third party validates.

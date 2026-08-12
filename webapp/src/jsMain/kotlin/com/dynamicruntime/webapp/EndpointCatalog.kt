@@ -96,7 +96,8 @@ val EndpointCatalog = FC<Props> {
                         // through fixing -- is invisible until a button is pressed.
                         if (hs.values.isNotEmpty()) {
                             val restoredResult = coerceAndValidate(
-                                fetched.inputType(ep), hs.values, SchOpts(keepAdditionalProperties = true),
+                                fetched.inputType(ep), hs.values,
+                                SchOpts(keepAdditionalProperties = true, forInput = true),
                             )
                             failures = restoredResult.failures
                             coerced = payloadText(restoredResult.value)
@@ -206,7 +207,14 @@ val EndpointCatalog = FC<Props> {
             // showing it. Dropped, the panel would be rewritten without the key while the error still named it
             // -- a complaint about something no longer on screen and nothing to act on. It never reaches the
             // wire because a failure stops the "send".
-            val result = coerceAndValidate(inputType, vals, SchOpts(keepAdditionalProperties = true))
+            // forInput, everywhere this form validates: it is composing a REQUEST, so a `g-derived` field is
+            // neither demanded of the person filling it in nor taken from them (issue #254). The same kernel
+            // validates responses elsewhere, where those fields are ordinary values -- which is exactly why
+            // the direction has to be passed rather than inferred. Miss it here, and the form reports fields
+            // missing that it does not even draw.
+            val result = coerceAndValidate(
+                inputType, vals, SchOpts(keepAdditionalProperties = true, forInput = true),
+            )
             failures = result.failures
             revalidate = false
             // Asking to be validated and being told "somewhere below, something is wrong" is the case this
@@ -268,7 +276,7 @@ val EndpointCatalog = FC<Props> {
          * stays visible on the thing it is complaining about. Apply shows you the problem; Validate clears it.
          */
         fun validateFromForm() {
-            val pruned = coerceAndValidate(inputType, values).value.toJsonMapOrEmpty()
+            val pruned = coerceAndValidate(inputType, values, SchOpts(forInput = true)).value.toJsonMapOrEmpty()
             values = pruned
             validateOn(pruned)
         }

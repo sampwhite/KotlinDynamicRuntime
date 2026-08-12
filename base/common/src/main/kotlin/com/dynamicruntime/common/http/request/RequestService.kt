@@ -84,12 +84,16 @@ class RequestService : ServiceInitializer {
     // `demo` and `todo` went with the endpoints they gated. A section with rules and no endpoints is harmless
     // -- the boot check only refuses the reverse -- but it is a standing invitation to add an endpoint under a
     // name that is anonymous for reasons nobody remembers.
-    // `gedra` is the entry sketch in the `sample` module (issue #252): it stores nothing and reads nothing, so
-    // there is no data behind it to protect, and the module self-gates to developer environments anyway. It
-    // stops being anonymous the moment it stops being a sketch.
+    // `gedraSketch` is the entry fixture in the `sample` module (issues #252-#255): it stores nothing and
+    // reads nothing, so there is no data behind it to protect, and the module self-gates to developer
+    // environments anyway.
+    //
+    // The section is deliberately NOT `gedra`. That name belongs to the real entity, and a fixture holding it
+    // is a collision waiting for the day a real endpoint wants to save an entry -- at which point somebody has
+    // to move one of them in a hurry. Naming conventions for fixtures generally are issue #270.
     val anonSections: List<String> = listOf(
         "health", "schema", "content", "portal", "site", "auth", "db", "app", "test",
-        "file", "home", "logout", "gedra",
+        "file", "home", "logout", "gedraSketch",
     )
     val userSections: List<String> = listOf("user", "profile")
 
