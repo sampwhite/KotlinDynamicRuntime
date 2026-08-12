@@ -202,6 +202,40 @@ JSON schema as a whole. The same will be true for complex application configurat
 Besides using "$ref" constructs to do linkage, we will also allow overrides where recursive map merges can
 modify either schema or configuration.
 
+### Rendering a value: two questions before reaching for `toString`
+
+`toString` is Kotlin's answer to "make this readable". It is rarely ours, and the two are easy to confuse
+because the wrong one usually looks right. Before writing it, ask:
+
+**1. Does it behave the same on the JVM and under Kotlin/JS?** For a `Double` it does not. `1.0` prints as
+`"1.0"` on the JVM and `"1"` under Kotlin/JS; `1.0E10` as `"1.0E10"` against `"10000000000"`. Both measured.
+Anything in `base/kernel` runs on both sides, and that module exists so the frontend and backend agree by
+construction — a comparison or a rendering built on a function that disagrees with itself across the wire
+gives that away silently.
+
+`fmt()` (in `ConvertUtil`) is the answer: it routes a `Double` through `fmtD`, a `Float` through `fmtF`, an
+`Instant` through `formatDate` and a `LocalDate` through `formatDay`, and falls through to `toString` for
+everything else. **`toString` is Kotlin's, `fmt` is ours, and anything crossing the wire wants ours.**
+
+**2. Can the serialization engine already handle it?** Usually yes, and then the value should stay *typed*
+rather than being rendered early. `JsonUtil` writes every scalar through `fmt`, so putting an `Instant` (or a
+`LocalDate`) straight into a response map produces the system format without the calling code deciding
+anything.
+
+The second question matters more than it looks, because formatting early can be *correct and still wrong*.
+Calling `formatDate()` in a handler yields exactly the right string — and puts the choice of wire format in
+every handler that ever stamps a row. One of them then differs, and nothing catches it, because each of them
+was individually right. Leaving the value typed means there is nothing to choose.
+
+The cost is that a response map holds objects a debugger shows as objects rather than as data. That is a real
+cost, and it is bounded on purpose: `fmt` knows a **closed, small** set, all of them things JSON has no native
+form for. `JsonMappable` lets a class render itself, but the serializer never *discovers* it — a caller asks,
+explicitly, where the map is built. An open version of that (any class opting into serialization) makes a
+response shape something you have to check rather than know, which is the trade this deliberately does not
+take.
+
+Neither question is about correctness in the small; each of these produced code that passed its tests.
+
 ### Boilerplate: point-specific control, centralized definitions
 
 This code base is deliberately heavy on boilerplate, and we accept that. It is a consequence of the other
