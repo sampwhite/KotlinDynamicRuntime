@@ -1,5 +1,7 @@
 package com.dynamicruntime.common
 
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.util.evalTemplate
@@ -43,6 +45,23 @@ class KernelSharedTest {
         assertEquals("true", (true as Any?).toOptStr())
         // Still held at primitives: a map has no honest string form here.
         assertNull((mapOf("a" to 1) as Any?).toOptStr())
+    }
+
+    /**
+     * A gedra id reads the same in a browser as on a server (issue #287) — which is the reason the type and
+     * its parse are in the kernel while minting is not. A frontend never creates a gedra, but it routes on
+     * ids, displays them, and has every reason to know that the thing in the URL is a form document belonging
+     * to `acme` without asking.
+     */
+    @Test
+    fun aGedraIdReadsTheSameOnEveryTarget() {
+        val id = GedraId.parse("gd.fd.acme.e20260812130405123AbCd~7")
+        assertEquals(GedraDataType.formDoc, id.kind)
+        assertEquals("acme", id.client)
+        assertEquals("7", id.suffix)
+        assertEquals("gd.fd.acme.e20260812130405123AbCd~7", id.toString())
+        // Built from parts, it spells itself the same way it was read.
+        assertEquals(id, GedraId.of(id.kind, id.client, id.baseId, id.suffix))
     }
 
     @Test
