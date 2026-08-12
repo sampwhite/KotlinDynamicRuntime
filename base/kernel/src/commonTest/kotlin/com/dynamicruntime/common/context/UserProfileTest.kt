@@ -84,42 +84,59 @@ class UserProfileOrgTest {
 }
 
 /**
- * Entity accounts: `isEntity`/`entityName` ride on the profile like `org` does, and `displayName` is the one
- * rule -- shared by the app bar and the profile page -- for which name to present.
+ * Named accounts: `isEntity`/`name` ride on the profile like `org` does, and `displayName` is the one rule --
+ * shared by the app bar and the profile page -- for which name to present.
  */
-class UserProfileEntityTest {
+class UserProfileNameTest {
 
     @Test
-    fun entityFieldsAreAbsentByDefaultAndSurviveTheRoundTrip() {
-        val person = UserProfile(authId = "1", userId = 1L, client = "acme", publicName = "ada")
-        assertFalse(person.isEntity)
-        assertNull(person.entityName)
-        // Omitted, not written as false/null, so a personal account's payload does not carry them.
-        assertFalse(person.toUserInfo().containsKey(UPF.isEntity))
-        assertFalse(person.toUserInfo().containsKey(UPF.entityName))
+    fun nameFieldsAreAbsentByDefaultAndSurviveTheRoundTrip() {
+        val unnamed = UserProfile(authId = "1", userId = 1L, client = "acme", publicName = "ada")
+        assertFalse(unnamed.isEntity)
+        assertNull(unnamed.name)
+        // Omitted, not written as false/null, so an unnamed account's payload does not carry them.
+        assertFalse(unnamed.toUserInfo().containsKey(UPF.isEntity))
+        assertFalse(unnamed.toUserInfo().containsKey(UPF.name))
 
-        val biz = UserProfile(authId = "1", userId = 1L, client = "acme", publicName = "acme_co", isEntity = true, entityName = "Acme Co")
+        val biz = UserProfile(authId = "1", userId = 1L, client = "acme", publicName = "acme_co", isEntity = true, name = "Acme Co")
         val restored = UserProfile.fromUserInfo(biz.toUserInfo())
         assertTrue(restored.isEntity)
-        assertEquals("Acme Co", restored.entityName)
+        assertEquals("Acme Co", restored.name)
+
+        // A person's full name round-trips the same way, with no entity flag involved.
+        val person = UserProfile(authId = "1", userId = 1L, client = "acme", publicName = "ada", name = "Ada Lovelace")
+        val restoredPerson = UserProfile.fromUserInfo(person.toUserInfo())
+        assertFalse(restoredPerson.isEntity)
+        assertEquals("Ada Lovelace", restoredPerson.name)
     }
 
     @Test
-    fun displayNameIsTheEntityNameForABusinessAndThePersonalNameOtherwise() {
-        // Personal: the personal name, untouched.
-        assertEquals("ada", UserProfile(authId = "1", publicName = "ada").displayName)
-
-        // Entity with a name: the business name, in place of the login/username.
+    fun displayNameIsTheAccountsOwnNameWhicheverKindItIs() {
+        // A business shows its business name in place of the login/username...
         assertEquals(
             "Acme Co",
-            UserProfile(authId = "1", publicName = "acme_co", isEntity = true, entityName = "Acme Co").displayName,
+            UserProfile(authId = "1", publicName = "acme_co", isEntity = true, name = "Acme Co").displayName,
+        )
+        // ...and a person shows their full name, which the username used to stand in for.
+        assertEquals(
+            "Ada Lovelace",
+            UserProfile(authId = "1", publicName = "ada", name = "Ada Lovelace").displayName,
         )
     }
 
+    /** The flag says what the name *means*, not where to find it -- so it must not change what is displayed. */
     @Test
-    fun anEntityWithoutAUsableNameFallsBackToThePersonalName() {
-        // Being an entity is not a reason to lose the identity the login already has.
-        assertEquals("acme_co", UserProfile(authId = "1", publicName = "acme_co", isEntity = true, entityName = null).displayName)
-        assertEquals("acme_co", UserProfile(authId = "1", publicName = "acme_co", isEntity = true, entityName = "   ").displayName)
+    fun theEntityFlagDoesNotChangeWhichNameIsDisplayed() {
+        val asPerson = UserProfile(authId = "1", publicName = "acme_co", name = "Acme Co")
+        val asBusiness = UserProfile(authId = "1", publicName = "acme_co", isEntity = true, name = "Acme Co")
+        assertEquals(asPerson.displayName, asBusiness.displayName)
+    }
+
+    @Test
+    fun anAccountWithoutAUsableNameFallsBackToThePublicName() {
+        // Having no name yet is not a reason to show nothing: the login identity still stands in.
+        assertEquals("acme_co", UserProfile(authId = "1", publicName = "acme_co", name = null).displayName)
+        assertEquals("acme_co", UserProfile(authId = "1", publicName = "acme_co", name = "   ").displayName)
+        assertEquals("acme_co", UserProfile(authId = "1", publicName = "acme_co", isEntity = true, name = null).displayName)
     }
 }

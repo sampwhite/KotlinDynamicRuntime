@@ -116,13 +116,13 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             field(AFLD.username, "The chosen username.")
             field(AFLD.password, "An optional password to set (login by code works without one).")
             field(AFLD.isEntity, "Whether this is a business account rather than a personal one.") { type = SCT.boolean }
-            field(AFLD.entityName, "The business's name, when registering a business account.")
+            field(AFLD.name, "The account's name: the registrant's full name, or the business's name.")
             field(AFLD.formAuthToken, "The form auth token.", required = true)
             field(AFLD.verifyCode, "The verification code.", required = true)
         }) { c, req ->
         authHandler(c).setLoginData(
             c, req.getReqLong(AFLD.userId), req.getOptStr(AFLD.username), req.getOptStr(AFLD.password),
-            req.getOptBool(AFLD.isEntity), req.getOptStr(AFLD.entityName),
+            req.getOptBool(AFLD.isEntity), req.getOptStr(AFLD.name),
             req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
         )
     }

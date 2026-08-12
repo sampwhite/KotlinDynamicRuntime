@@ -110,7 +110,7 @@ object AuthApi {
      */
     suspend fun finishRegistration(
         userId: Long, token: String, code: String, password: String? = null,
-        isEntity: Boolean = false, entityName: String? = null,
+        isEntity: Boolean = false, name: String? = null,
     ): UserProfile =
         userFrom(
             Http.sendApi(
@@ -121,10 +121,8 @@ object AuthApi {
                     put(AFLD.verifyCode, code)
                     if (!password.isNullOrEmpty()) put(AFLD.password, password)
                     // Only sent when registering a business account, so a personal registration is unchanged.
-                    if (isEntity) {
-                        put(AFLD.isEntity, true)
-                        if (!entityName.isNullOrEmpty()) put(AFLD.entityName, entityName)
-                    }
+                    if (isEntity) put(AFLD.isEntity, true)
+                    if (!name.isNullOrEmpty()) put(AFLD.name, name)
                 },
             ),
         )

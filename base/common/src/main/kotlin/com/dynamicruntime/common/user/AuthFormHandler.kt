@@ -206,7 +206,7 @@ class AuthFormHandler(
      */
     fun setLoginData(
         cxt: KdrCxt, userId: Long, username: String?, password: String?,
-        isEntity: Boolean?, entityName: String?, formAuthToken: String, verifyCode: String,
+        isEntity: Boolean?, name: String?, formAuthToken: String, verifyCode: String,
     ): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
         val row = userService.queryByUserId(cxt, userId)
@@ -219,13 +219,12 @@ class AuthFormHandler(
             }
         }
         updateUsernameAndPassword(row, username, password)
-        // Business-account registration (feature: entity accounts). Only touched when the caller says so, so a
-        // personal registration leaves the defaults. The name is not required or checked for uniqueness -- it
-        // is display copy, and the account is still keyed by its primaryId and username.
-        if (isEntity != null) {
-            row.isEntity = isEntity
-            row.entityName = if (isEntity) entityName?.trim()?.ifEmpty { null } else null
-        }
+        // Each is only touched when the caller says so, so a registration that omits them leaves the defaults.
+        // They are independent: `name` is a person's full name just as readily as a business's, so it is not
+        // conditioned on the flag. Neither is required nor checked for uniqueness -- the name is display copy,
+        // and the account is still keyed by its primaryId and username.
+        if (isEntity != null) row.isEntity = isEntity
+        if (name != null) row.name = name.trim().ifEmpty { null }
         userService.updateUser(cxt, row)
         return completeLogin(cxt, row, byCode = true)
     }

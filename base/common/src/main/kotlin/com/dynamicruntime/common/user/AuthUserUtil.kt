@@ -90,7 +90,7 @@ fun refreshActingRoles(cxt: KdrCxt) {
     cxt.bindToUserProfile(
         UserProfile(
             authId = live.authId, userId = live.userId, client = live.client, org = live.org, roles = liveRoles,
-            publicName = live.publicName, isEntity = live.isEntity, entityName = live.entityName,
+            publicName = live.publicName, isEntity = live.isEntity, name = live.name,
             hasPassword = live.hasPassword,
         ),
     )

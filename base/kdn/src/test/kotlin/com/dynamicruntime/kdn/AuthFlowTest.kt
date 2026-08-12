@@ -208,17 +208,17 @@ class AuthFlowTest : StringSpec({
             "/auth/user/setLoginData",
             mapOf(
                 "userId" to userId, "username" to "acme_co", "formAuthToken" to token, "verifyCode" to code,
-                "isEntity" to true, "entityName" to "Acme Corporation",
+                "isEntity" to true, "name" to "Acme Corporation",
             ),
         ))
         finished[UPF.isEntity] shouldBe true
-        finished[UPF.entityName] shouldBe "Acme Corporation"
+        finished[UPF.name] shouldBe "Acme Corporation"
 
         // And it is durable: a fresh self-info read (from the row, not the response just built) still carries it,
         // which is what lets the app bar and profile page show the business name.
         val self = results(client.sendJsonGetRequest("/auth/self/info"))
         self[UPF.isEntity] shouldBe true
-        self[UPF.entityName] shouldBe "Acme Corporation"
+        self[UPF.name] shouldBe "Acme Corporation"
     }
 
     "a form auth token expires once it is older than its lifetime" {

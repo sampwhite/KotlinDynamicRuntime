@@ -21,8 +21,8 @@ val UserTable = FC<UserTableProps> { props ->
         columns = arrayOf(
             column("Id", "userId", 70),
             column("Email", "primaryId", 220),
-            column("Username", "username", 160),
-            column("Type", "type", 120),
+            column("Name", "name", 200),
+            column("Type", "type", 100),
             column("Roles", "roles", 140),
             column("Status", "status", null),
         )
@@ -31,16 +31,11 @@ val UserTable = FC<UserTableProps> { props ->
             row.key = user.userId.toString()
             row.userId = user.userId.toString()
             row.primaryId = user.primaryId
-            // A placeholder username ("@<email>") means they have not chosen one; showing it verbatim is
-            // noisier than saying so.
-            row.username = if (user.username.startsWith("@")) "—" else user.username
-            // A business account (issue: entity accounts) shows "Business" plus its display name when set;
-            // a personal account shows the "—" placeholder, matching the empty-username convention above.
-            row.type = if (user.isEntity) {
-                user.entityName?.takeIf { it.isNotBlank() }?.let { "Business ($it)" } ?: "Business"
-            } else {
-                "—"
-            }
+            // The account's own name (a person's or a business's). Unnamed accounts show the placeholder
+            // rather than the username standing in for one -- the username is a login id, not a name.
+            row.name = user.name?.takeIf { it.isNotBlank() } ?: "—"
+            // The name column says *what* it is called; this says which kind of thing it is naming.
+            row.type = if (user.isEntity) "Business" else "Person"
             row.roles = user.roles.joinToString(", ")
             row.status = buildList {
                 add(if (user.enabled) "enabled" else "disabled")

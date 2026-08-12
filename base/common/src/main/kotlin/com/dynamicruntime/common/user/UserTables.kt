@@ -75,19 +75,23 @@ object AD {
     const val org = "org"
 
     /**
-     * Whether this account belongs to a **business** rather than a person. When true the account has an
-     * [entityName] that the frontend shows in place of the personal display name. Absent (i.e. false) for an
-     * ordinary personal account. Set at registration, and held here beside the other identity data rather than
-     * in a column, the same way [org] is.
+     * Whether this account belongs to a **business** rather than a person. It says how to read [name] -- a
+     * business's name rather than a person's -- and is absent (i.e. false) for an ordinary personal account.
+     * Set at registration, and held here beside the other identity data rather than in a column, the same way
+     * [org] is.
      */
     const val isEntity = "isEntity"
 
     /**
-     * The business's name, when [isEntity] is true. **Not unique** -- two businesses may share a name -- so it
-     * is display copy, never an identifier; the account is still keyed by its primary id and username. Absent
-     * for a personal account, or for an entity that has not named itself yet.
+     * The account's real-world name: the person's full name, or the business's name when [isEntity] is true.
+     * **Not unique** -- two people or two businesses may share one -- so it is display copy, never an
+     * identifier; the account is still keyed by its primary id and username. Absent when unnamed.
+     *
+     * One field for both cases on purpose: a personal account previously had nowhere to put a full name, so it
+     * was displayed by its login identifier. [isEntity] chooses how to *label* and interpret this, not which
+     * field to read.
      */
-    const val entityName = "entityName"
+    const val name = "name"
 
     /** The encoded password, or absent when the user has not opted into a password (login is by code). */
     const val encodedPassword = "encodedPassword"
