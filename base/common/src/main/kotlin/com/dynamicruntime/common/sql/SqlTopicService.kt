@@ -119,18 +119,24 @@ class SqlTopicService : ServiceInitializer {
         /**
          * The topic-service endpoints: a list-tables endpoint that dumps the table catalog from the schema
          * store, mirroring `SchemaService`'s `/schema/endpoints`. Defined with the service that owns it.
+         *
+         * It sits under the **`operator`** section (issue #273), not the anonymous `db` one it began in. The
+         * dump is an accurate map of the data model -- every table, column, its schema, and the unique indexes
+         * (so, where credentials live and how logins are keyed) -- which is reconnaissance material, not
+         * something to hand any anonymous caller. Unlike `/schema/endpoints`, which filters by what the caller
+         * may call, this filters nothing, so the section gate is the whole of its protection.
          */
         fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "sql") {
             // The TableInfo type is owned by KdrTable, alongside its serialization (toJsonMap).
             KdrTable.defineInfoType(this)
             listEndpoint(
-                "/db/tables",
+                "/operator/db/tables",
                 "Lists the database tables registered for this instance.",
                 outputRef = KdrTable.infoTypeName,
             ) { c, _ -> listTables(c) }
         }
 
-        /** Handler for `/db/tables`: dump every registered table's attributes, sorted by name. */
+        /** Handler for `/operator/db/tables`: dump every registered table's attributes, sorted by name. */
         fun listTables(cxt: KdrCxt): List<Map<String, Any?>> =
             cxt.getSchema().tables.values
                 .sortedBy { it.tableName }

@@ -94,7 +94,7 @@ class RequestService : ServiceInitializer {
     // is the thing a reader needs and the thing that stops a fixture squatting a name a real entity will want
     // -- `gedra` and `file` were both heading for exactly that collision.
     val anonSections: List<String> = listOf(
-        "health", "schema", "content", "portal", "site", "auth", "db", "app",
+        "health", "schema", "content", "portal", "site", "auth", "app",
         "fixture", "demo", "home", "logout",
     )
     val userSections: List<String> = listOf("user", "profile")
