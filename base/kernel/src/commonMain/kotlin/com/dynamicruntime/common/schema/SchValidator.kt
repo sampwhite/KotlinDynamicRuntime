@@ -370,10 +370,13 @@ fun validateVariant(
  * the same answer to the question the constant is asking. It also spans the numeric widths a JSON parser picks
  * between, where `1` and `1L` are the same number and different objects.
  *
- * **Not `toOptStr()` on both sides**, which is what this replaced and why it exists: that returns null for
- * anything which is not a `CharSequence`, so two *non-string* values both stringified to null and compared
+ * **Not `toOptStr()` on both sides**, which is what this replaced and why it exists: it answered null for
+ * anything which was not a `CharSequence`, so two *non-string* values both stringified to null and compared
  * equal — making a `const` of `42`, or of `true`, match absolutely anything. String constants hid it, because
  * they are the only kind anything here had until conditions arrived, and a discriminator is always a string.
+ * `toOptStr` covers primitives as of issue #267, so those two cases are gone, but it still answers null for
+ * anything that is not one — and the symmetry returns for a pair of objects. `fmt` never answers null, so it
+ * never says "absent" about a value that was present.
  *
  * Compared through [fmt] rather than `toString`, because a bare `toString` on a `Double` **differs between
  * platforms**: `1.0` prints as `"1.0"` on the JVM and `"1"` under Kotlin/JS, and `1.0E10` as `"1.0E10"`
@@ -524,8 +527,9 @@ fun checkCondition(
             // the value; on the `else` side it means it is *not*, and saying "when X is true" there would
             // describe the state the caller is not in -- a message that reads as a contradiction of the form
             // in front of them.
-            // `fmt`, not `toOptStr`: that one is a coercion yielding null for any non-string, so a boolean or
-            // numeric constant would print as "empty" -- describing the rule as something nobody wrote.
+            // `fmt`, not `toOptStr`: naming a value is not the same job as converting one. `toOptStr` still
+            // answers null for anything that is not a primitive, and a rule quoted back as "empty" describes
+            // itself as something nobody wrote.
             val decider = condition.value?.fmt() ?: "empty"
             val message = if (holds) {
                 "'$name' is not allowed when '${condition.property}' is '$decider'."

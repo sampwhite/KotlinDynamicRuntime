@@ -6,6 +6,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -229,6 +230,47 @@ class SchVariantsTest : StringSpec({
     }
 
     // Deliberate new strictness: before this issue such a document parsed and enforced nothing at all.
+    // The builders only offer a string discriminator, but an imported document is not obliged to agree, and a
+    // code-numbered union is an ordinary thing to meet. Both halves read the value through `toOptStr` -- the
+    // parser indexing the branches, the validator selecting one -- so before issue #267 both halves saw null:
+    // the union would not even load, failing at boot with "has no const". Written as raw schema because that
+    // is the only way such a document arrives.
+    "a numerically keyed discriminator loads and selects" {
+        fun branch(constValue: Int, field: String) = mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf(
+                "kind" to mapOf(SCH.type to SCT.integer, SCH.const to constValue),
+                field to mapOf(SCH.type to SCT.string),
+            ),
+            SCH.required to listOf(field),
+        )
+        val types = parseSchemaTypes(
+            mapOf(
+                "gedra.First" to branch(1, "a"),
+                "gedra.Second" to branch(2, "b"),
+                "gedra.Keyed" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.oneOf to listOf(
+                        mapOf(SCH.dRef to $$"#/$defs/gedra.First"),
+                        mapOf(SCH.dRef to $$"#/$defs/gedra.Second"),
+                    ),
+                    SCH.discriminator to mapOf(SCH.propertyName to "kind"),
+                ),
+            ),
+        )
+        val keyed = types["gedra.Keyed"].shouldNotBeNull()
+        keyed.variants.shouldNotBeNull().values shouldContainExactly listOf("1", "2")
+
+        // Selection works from the number the wire actually carries...
+        validate(keyed, mapOf("kind" to 2, "b" to "ok")).shouldBeEmpty()
+        // ...and picks the branch that value names, not merely some branch. Sending the *other* branch's field
+        // draws both complaints the selected one has: it has never heard of `a`, and it wanted `b`.
+        validate(keyed, mapOf("kind" to 2, "a" to "ok")).map { it.path to it.code } shouldContainExactlyInAnyOrder
+            listOf("a" to SchFailCode.additionalProperty, "b" to SchFailCode.missingRequired)
+        // The string form of the same number answers the same question, which is what a query string sends.
+        validate(keyed, mapOf("kind" to "1", "a" to "ok")).shouldBeEmpty()
+    }
+
     "a oneOf without a discriminator is refused rather than silently ignored" {
         val defs = mapOf(
             "gedra.Entry" to mapOf(

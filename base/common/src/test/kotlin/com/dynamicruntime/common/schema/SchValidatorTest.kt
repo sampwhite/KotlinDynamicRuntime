@@ -160,6 +160,38 @@ class SchValidatorTest : StringSpec({
         )
     }
 
+    // Authored options are not always authored as strings -- a code list lifted from an enum or a spreadsheet
+    // carries numbers. Before issue #267 the parser read each `value` with the old string-only `toOptStr` and
+    // dropped every entry it could not read, leaving an option list that was *empty rather than absent*: the
+    // field then rejected every value on earth, itself included, with "is not a valid option".
+    "options: a numeric option value is read rather than dropped" {
+        val rec = parseSchemaTypes(
+            mapOf(
+                "core.Rec" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf(
+                        "level" to mapOf(
+                            SCH.type to SCT.string,
+                            SCH.options to listOf(
+                                mapOf(SCH.value to 1, SCH.label to "One"),
+                                mapOf(SCH.value to 2), // label defaults to the (now readable) value
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )["core.Rec"].shouldNotBeNull()
+
+        rec.properties.getValue("level").valueType.options shouldBe
+            listOf(SchOption("1", "One"), SchOption("2", "2"))
+        validate(rec, mapOf("level" to "2")).shouldBeEmpty()
+
+        val failures = validate(rec, mapOf("level" to "3"))
+        failures shouldHaveSize 1
+        failures[0].code shouldBe SchFailCode.invalidOption
+        failures[0].options shouldBe listOf(SchOption("1", "One"), SchOption("2", "2"))
+    }
+
     "default: a required property with a default does not fail when missing" {
         val rec = parseSchemaTypes(
             schemaDefs(cxt, "core") {
