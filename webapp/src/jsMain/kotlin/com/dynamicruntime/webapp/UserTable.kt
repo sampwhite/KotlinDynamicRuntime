@@ -22,6 +22,7 @@ val UserTable = FC<UserTableProps> { props ->
             column("Id", "userId", 70),
             column("Email", "primaryId", 220),
             column("Username", "username", 160),
+            column("Type", "type", 120),
             column("Roles", "roles", 140),
             column("Status", "status", null),
         )
@@ -33,6 +34,13 @@ val UserTable = FC<UserTableProps> { props ->
             // A placeholder username ("@<email>") means they have not chosen one; showing it verbatim is
             // noisier than saying so.
             row.username = if (user.username.startsWith("@")) "—" else user.username
+            // A business account (issue: entity accounts) shows "Business" plus its display name when set;
+            // a personal account shows the "—" placeholder, matching the empty-username convention above.
+            row.type = if (user.isEntity) {
+                user.entityName?.takeIf { it.isNotBlank() }?.let { "Business ($it)" } ?: "Business"
+            } else {
+                "—"
+            }
             row.roles = user.roles.joinToString(", ")
             row.status = buildList {
                 add(if (user.enabled) "enabled" else "disabled")

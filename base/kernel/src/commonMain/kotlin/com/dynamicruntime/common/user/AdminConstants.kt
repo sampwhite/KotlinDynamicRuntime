@@ -21,6 +21,7 @@ object ADEP {
     const val userSetRoles = "/admin/user/setRoles"
     const val userSetEnabled = "/admin/user/setEnabled"
     const val userSetOrg = "/admin/user/setOrg"
+    const val userSetEntity = "/admin/user/setEntity"
 }
 
 /**
@@ -43,6 +44,7 @@ object UADEP {
     const val userSetRoles = "/userAdmin/user/setRoles"
     const val userSetEnabled = "/userAdmin/user/setEnabled"
     const val userSetOrg = "/userAdmin/user/setOrg"
+    const val userSetEntity = "/userAdmin/user/setEntity"
 }
 
 /** Admin request/response field (JSON key) names. */
@@ -53,6 +55,8 @@ object ADF {
     const val username = "username"
     const val roles = "roles"
     const val org = "org"
+    const val isEntity = "isEntity"
+    const val entityName = "entityName"
     const val enabled = "enabled"
     const val hasPassword = "hasPassword"
 

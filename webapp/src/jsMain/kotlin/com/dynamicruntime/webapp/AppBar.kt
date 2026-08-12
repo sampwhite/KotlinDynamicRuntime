@@ -29,16 +29,17 @@ const val signedOutLabel = "Signed out"
  * signed-out on the first paint would be wrong for a moment and would flicker for a signed-in user on every
  * load. [loaded] is what separates "we asked and nobody is" from "we have not asked".
  *
- * A signed-in caller is announced by their [publicName], because a name is itself the statement that somebody
- * is signed in. When they have none, the label falls back to [signedInFallback] rather than to silence --
- * silence is the state this whole function exists to stop being ambiguous.
+ * A signed-in caller is announced by their [displayName] -- the business name for an entity account, the
+ * personal name otherwise, a distinction the caller resolves via `UserProfile.displayName`. A name is itself
+ * the statement that somebody is signed in. When they have none, the label falls back to [signedInFallback]
+ * rather than to silence -- silence is the state this whole function exists to stop being ambiguous.
  *
  * Pure, and covered under `jsNodeTest`.
  */
-fun identityLabel(loaded: Boolean, isLoggedIn: Boolean, publicName: String?): String? = when {
+fun identityLabel(loaded: Boolean, isLoggedIn: Boolean, displayName: String?): String? = when {
     !loaded -> null
     !isLoggedIn -> signedOutLabel
-    else -> publicName?.trim()?.ifEmpty { null } ?: signedInFallback
+    else -> displayName?.trim()?.ifEmpty { null } ?: signedInFallback
 }
 
 /** Shown in place of a name for a signed-in caller who has none -- still says *signed in*, which is the point. */
@@ -131,7 +132,7 @@ val AppBar = FC<Props> {
             // Identity in the bar itself, not only inside the menu (issue #276). Being signed out is a fact
             // worth stating: rendering nothing for it reads exactly like a config that has not arrived, so a
             // user cannot tell "I am signed out" from "this has not loaded". Null while genuinely unknown.
-            identityLabel(config != null, config?.user?.isLoggedIn == true, config?.user?.publicName)?.let { label ->
+            identityLabel(config != null, config?.user?.isLoggedIn == true, config?.user?.displayName)?.let { label ->
                 span {
                     className = ClassName(if (label == signedOutLabel) "identity-badge signed-out" else "identity-badge")
                     +label

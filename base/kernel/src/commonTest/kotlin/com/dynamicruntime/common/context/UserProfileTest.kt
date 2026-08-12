@@ -82,3 +82,44 @@ class UserProfileOrgTest {
         assertEquals("eng", UserProfile.fromUserInfo(inOrg.toUserInfo()).org)
     }
 }
+
+/**
+ * Entity accounts: `isEntity`/`entityName` ride on the profile like `org` does, and `displayName` is the one
+ * rule -- shared by the app bar and the profile page -- for which name to present.
+ */
+class UserProfileEntityTest {
+
+    @Test
+    fun entityFieldsAreAbsentByDefaultAndSurviveTheRoundTrip() {
+        val person = UserProfile(authId = "1", userId = 1L, client = "acme", publicName = "ada")
+        assertFalse(person.isEntity)
+        assertNull(person.entityName)
+        // Omitted, not written as false/null, so a personal account's payload does not carry them.
+        assertFalse(person.toUserInfo().containsKey(UPF.isEntity))
+        assertFalse(person.toUserInfo().containsKey(UPF.entityName))
+
+        val biz = UserProfile(authId = "1", userId = 1L, client = "acme", publicName = "acme_co", isEntity = true, entityName = "Acme Co")
+        val restored = UserProfile.fromUserInfo(biz.toUserInfo())
+        assertTrue(restored.isEntity)
+        assertEquals("Acme Co", restored.entityName)
+    }
+
+    @Test
+    fun displayNameIsTheEntityNameForABusinessAndThePersonalNameOtherwise() {
+        // Personal: the personal name, untouched.
+        assertEquals("ada", UserProfile(authId = "1", publicName = "ada").displayName)
+
+        // Entity with a name: the business name, in place of the login/username.
+        assertEquals(
+            "Acme Co",
+            UserProfile(authId = "1", publicName = "acme_co", isEntity = true, entityName = "Acme Co").displayName,
+        )
+    }
+
+    @Test
+    fun anEntityWithoutAUsableNameFallsBackToThePersonalName() {
+        // Being an entity is not a reason to lose the identity the login already has.
+        assertEquals("acme_co", UserProfile(authId = "1", publicName = "acme_co", isEntity = true, entityName = null).displayName)
+        assertEquals("acme_co", UserProfile(authId = "1", publicName = "acme_co", isEntity = true, entityName = "   ").displayName)
+    }
+}

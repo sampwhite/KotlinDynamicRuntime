@@ -95,7 +95,14 @@ class UserService : ServiceInitializer {
 
     /**
      * Lists `AuthUsers` rows for the admin console, newest first, capped at [limit]. A non-blank [search] is a
-     * case-insensitive substring match against `primaryId` **or** `username`.
+     * case-insensitive substring match against `primaryId`, `username`, **or** the business name of an entity
+     * account.
+     *
+     * The match is applied in Kotlin after extraction, not in SQL, because `entityName` lives in `authUserData`
+     * -- the same JSON blob as `org`, and unqueryable in SQL for the same reason (see the org note below). The
+     * query carries no SQL `LIMIT` anyway; the cap is `.take(limit)` here, and the newest-first default view
+     * already selects every scoped row, so evaluating the term in Kotlin only lifts a typed search to that same
+     * baseline rather than introducing a new full scan.
      *
      * The filter is applied in SQL (not by loading the table and filtering in Kotlin) so the cap is a real one:
      * a deployment's user table is the one table guaranteed to outgrow any page size. `lower(...) like ?` will
@@ -128,18 +135,16 @@ class UserService : ServiceInitializer {
             // Declared, not defaulted: this table cannot express the organization as a predicate (see the
             // post-filter below), and SqlScopeUtil throws rather than quietly widen the answer.
             filteredAfterQuery = setOf(PF.org),
-        ).toMutableList()
-        if (term != null) {
-            conditions.add(
-                "(lower(c:${AU.primaryId}) like :${SP.searchTerm} or lower(c:${AU.username}) like :${SP.searchTerm})",
-            )
-            data[SP.searchTerm] = "%$term%"
-        }
+        )
+        // The search term is deliberately *not* an SQL condition: it now also matches an entity's business
+        // name, which -- like `org` -- lives in `authUserData` and cannot be a predicate. So the whole term
+        // is evaluated in Kotlin below, keeping one match rule across all three fields rather than half in SQL.
         val where = if (conditions.isEmpty()) "" else " where " + conditions.joinToString(" and ")
 
         // Statements are cached by name, so the name carries the query's *shape*: two shapes must not collide,
-        // and two callers of the same shape with different values must share rather than cache one each.
-        val stmtName = "qAuthUsers${scope.shapeKey}${if (term == null) "" else "Search"}"
+        // and two callers of the same shape with different values must share rather than cache one each. The
+        // term no longer varies the shape (it is applied after the query), so it is out of the name.
+        val stmtName = "qAuthUsers${scope.shapeKey}"
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, stmtName, table.columns,
             "select * from t:${UT.authUsers}$where order by c:${AU.userId} desc",
@@ -157,6 +162,7 @@ class UserService : ServiceInitializer {
         return rows.asSequence()
             .map { AuthUserRow.extract(it) }
             .filter { scope.admitsOrg(it.org) }
+            .filter { term == null || it.matchesSearch(term) }
             .take(limit)
             .toList()
     }
@@ -290,14 +296,6 @@ class UserService : ServiceInitializer {
         if (r[AUD.deviceVerified] != true) return false
         val expiration = r[AUD.verifyExpiration].toOptInstant() ?: return false
         return cxt.now() <= expiration
-    }
-
-    /** Bind-parameter names for this service's hand-written queries. */
-    @Suppress("ConstPropertyName")
-    object SP {
-        const val searchTerm = "searchTerm"
-        // The scope bind names moved to `SCP` in the SQL layer when SqlScopeUtil took over composing them
-        // (issue #225) -- they belong with the composer, not with this one of its callers.
     }
 
     @Suppress("ConstPropertyName")

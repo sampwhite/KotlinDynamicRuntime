@@ -140,8 +140,10 @@ val Profile = FC<Props> {
             // Markdown, so the copy can set the name apart from the prose; substitution runs first, so a name
             // carrying Markdown or HTML is escaped as text rather than interpreted.
             MarkdownInline {
+                // The entity's business name when this is an entity account, the personal name otherwise --
+                // one rule, on UserProfile.displayName, shared with the app bar (entity accounts).
                 source = t("profile", "signedInAs", $$"Signed in as **${user.publicName}**")
-                    .evalTemplate(mapOf("user" to mapOf("publicName" to (user?.publicName ?: "your account"))))
+                    .evalTemplate(mapOf("user" to mapOf("publicName" to (user?.displayName ?: "your account"))))
             }
         }
 

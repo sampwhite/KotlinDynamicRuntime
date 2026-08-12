@@ -205,7 +205,8 @@ class AuthFormHandler(
      * Passwords are optional -- omit it and the user logs in by code only.
      */
     fun setLoginData(
-        cxt: KdrCxt, userId: Long, username: String?, password: String?, formAuthToken: String, verifyCode: String,
+        cxt: KdrCxt, userId: Long, username: String?, password: String?,
+        isEntity: Boolean?, entityName: String?, formAuthToken: String, verifyCode: String,
     ): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
         val row = userService.queryByUserId(cxt, userId)
@@ -218,6 +219,13 @@ class AuthFormHandler(
             }
         }
         updateUsernameAndPassword(row, username, password)
+        // Business-account registration (feature: entity accounts). Only touched when the caller says so, so a
+        // personal registration leaves the defaults. The name is not required or checked for uniqueness -- it
+        // is display copy, and the account is still keyed by its primaryId and username.
+        if (isEntity != null) {
+            row.isEntity = isEntity
+            row.entityName = if (isEntity) entityName?.trim()?.ifEmpty { null } else null
+        }
         userService.updateUser(cxt, row)
         return completeLogin(cxt, row, byCode = true)
     }

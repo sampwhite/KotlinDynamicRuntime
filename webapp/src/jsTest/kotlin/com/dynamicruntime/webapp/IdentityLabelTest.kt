@@ -17,29 +17,29 @@ class IdentityLabelTest {
     @Test
     fun saysNothingUntilTheConfigHasArrived() {
         // Not yet loaded: silence is correct here, and *only* here.
-        assertNull(identityLabel(loaded = false, isLoggedIn = false, publicName = null))
+        assertNull(identityLabel(loaded = false, isLoggedIn = false, displayName = null))
         // Even if stale state claims a login, an unloaded config still says nothing.
-        assertNull(identityLabel(loaded = false, isLoggedIn = true, publicName = "Ada"))
+        assertNull(identityLabel(loaded = false, isLoggedIn = true, displayName = "Ada"))
     }
 
     @Test
     fun statesSignedOutOnceItIsKnown() {
-        assertEquals(signedOutLabel, identityLabel(loaded = true, isLoggedIn = false, publicName = null))
+        assertEquals(signedOutLabel, identityLabel(loaded = true, isLoggedIn = false, displayName = null))
         // A leftover name must not make a signed-out caller look signed in.
-        assertEquals(signedOutLabel, identityLabel(loaded = true, isLoggedIn = false, publicName = "Ada"))
+        assertEquals(signedOutLabel, identityLabel(loaded = true, isLoggedIn = false, displayName = "Ada"))
     }
 
     @Test
     fun namesWhoeverIsSignedIn() {
-        assertEquals("Ada", identityLabel(loaded = true, isLoggedIn = true, publicName = "Ada"))
+        assertEquals("Ada", identityLabel(loaded = true, isLoggedIn = true, displayName = "Ada"))
     }
 
     /** A signed-in caller with no usable name still gets a statement, never silence. */
     @Test
     fun fallsBackToStatingTheStateWhenThereIsNoName() {
-        assertEquals(signedInFallback, identityLabel(loaded = true, isLoggedIn = true, publicName = null))
-        assertEquals(signedInFallback, identityLabel(loaded = true, isLoggedIn = true, publicName = ""))
-        assertEquals(signedInFallback, identityLabel(loaded = true, isLoggedIn = true, publicName = "   "))
+        assertEquals(signedInFallback, identityLabel(loaded = true, isLoggedIn = true, displayName = null))
+        assertEquals(signedInFallback, identityLabel(loaded = true, isLoggedIn = true, displayName = ""))
+        assertEquals(signedInFallback, identityLabel(loaded = true, isLoggedIn = true, displayName = "   "))
     }
 
     /** The signed-in fallback must not read as its opposite — they are one word apart. */
