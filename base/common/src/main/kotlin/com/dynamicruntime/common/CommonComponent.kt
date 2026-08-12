@@ -2,7 +2,6 @@ package com.dynamicruntime.common
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.request.RequestService
-import com.dynamicruntime.common.intern.InternService
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.operator.operatorSchema
@@ -82,14 +81,11 @@ class CommonComponent : ComponentDefinition {
      * and the instance-config service (whose `onCreate` loads/creates the node's encryption key from the
      * database, relying on the startup-tier [SqlTopicService] having already resolved the database and
      * created the topic's tables).
-     *
-     * [InternService] is a regular service rather than a startup one on purpose: its job is the last pass, so
-     * it has to run after everything that registers or loads an intern cache (issue #280).
      */
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
         listOf(
             ::RequestService, ::PortalService, ::MarkdownFragmentService, ::MarkdownDocService,
-            ::InstanceConfigService, ::MailService, ::UserService, ::InternService,
+            ::InstanceConfigService, ::MailService, ::UserService,
         )
 
     /** Load just ahead of the standard components (demonstrates relative priority). */

@@ -28,7 +28,8 @@ object IC {
  * That second property is why this is a backend structure and why a cache belongs to **one running instance**.
  * A cache reachable from a global singleton would be shared by every instance in the process — and a test
  * suite boots many — so one instance's ids would answer another instance's existence questions. Hold a cache
- * where the instance holds it, and register it with that instance's [InternService].
+ * as a field of the service that owns the objects those values identify, which is instance-scoped already;
+ * do not hang one off an object or a companion.
  *
  * ### How it reads
  *
@@ -39,8 +40,9 @@ object IC {
  * A lookup tries the settled map first and the pending map second. Every time it has to try the second, a
  * counter moves; at [promoteThreshold] the settled map is rebuilt to fold the pending entries in, and the
  * pending map empties. In the steady state the population is fully settled, and nothing but the first lookup
- * ever runs. A [rebuild] can also be asked for directly, which is what boot does once the extant values are
- * loaded — see [InternService].
+ * ever runs. A [rebuild] can also be asked for directly, which is what an owning service does once it has
+ * loaded the extant values at boot — or it loads them through [internAll], which settles as it goes and saves
+ * the owner from having to remember.
  *
  * The cost is the rebuild itself: an O(size) copy during which writers wait. That is the trade being made
  * deliberately — a hiccup on the rare path in exchange for no synchronization at all on the common one.
@@ -57,7 +59,7 @@ object IC {
  * a concurrent "feeder" and rebuilds from it — which is prior evidence it works here.
  */
 class InternCache<T : Internable>(
-    /** Names the cache in diagnostics and in [InternService]'s registry; unique within an instance. */
+    /** Names the cache in diagnostics — it appears in the message when a value is filed under the wrong key. */
     val name: String,
     /** Slow-path hits before an automatic [rebuild]; see [IC.defaultPromoteThreshold]. */
     val promoteThreshold: Int = IC.defaultPromoteThreshold,
