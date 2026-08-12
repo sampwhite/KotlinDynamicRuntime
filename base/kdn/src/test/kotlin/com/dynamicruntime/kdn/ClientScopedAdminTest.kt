@@ -283,35 +283,54 @@ class ClientScopedAdminTest : StringSpec({
     }
 
     /**
-     * An administrator can make and manage a business account: create one, mark an existing account, rename it,
-     * and clear it (which drops the name). This is the non-registration path -- registration marks a business
-     * at signup, and this is how an administrator does it after the fact or on someone else's account.
+     * An administrator can name an account and say what kind it is: create one either way, name an existing
+     * account, rename it, and reclassify it. This is the non-registration path -- registration collects both at
+     * signup, and this is how an administrator does it after the fact or on someone else's account.
      */
-    "an administrator creates and edits a business account" {
+    "an administrator creates and edits named and business accounts" {
         val cxt = Startup.mkTestBootCxt("entityAdmin", "entityAdminTest")
         val admin = TestUser.createFullAdmin(cxt, "entity-admin@example.com")
 
         // Created as a business, with a name.
         val created = admin.postData(
             UADEP.userCreate,
-            mapOf(ADF.primaryId to "acme@example.com", ADF.isEntity to true, ADF.entityName to "Acme Co"),
+            mapOf(ADF.primaryId to "acme@example.com", ADF.isEntity to true, ADF.name to "Acme Co"),
         )
         created[ADF.isEntity] shouldBe true
-        created[ADF.entityName] shouldBe "Acme Co"
+        created[ADF.name] shouldBe "Acme Co"
+
+        // A person is created the same way, with a full name and no flag -- one field serves both.
+        val madePerson = admin.postData(
+            UADEP.userCreate,
+            mapOf(ADF.primaryId to "ada@example.com", ADF.name to "Ada Lovelace"),
+        )
+        madePerson[ADF.isEntity] shouldBe false
+        madePerson[ADF.name] shouldBe "Ada Lovelace"
 
         // An ordinary account, then marked a business after the fact.
         val person = TestUser.create(cxt, "shop@example.com")
         val marked = admin.postData(
-            UADEP.userSetEntity,
-            mapOf(ADF.userId to person.userId, ADF.isEntity to true, ADF.entityName to "Corner Shop"),
+            UADEP.userSetName,
+            mapOf(ADF.userId to person.userId, ADF.isEntity to true, ADF.name to "Corner Shop"),
         )
         marked[ADF.isEntity] shouldBe true
-        marked[ADF.entityName] shouldBe "Corner Shop"
+        marked[ADF.name] shouldBe "Corner Shop"
 
-        // Cleared -- the flag goes and so does the name, leaving no stale business name behind.
-        val cleared = admin.postData(UADEP.userSetEntity, mapOf(ADF.userId to person.userId, ADF.isEntity to false))
+        // Reclassified back to a person: the flag goes, and the name stays -- it is now read as a personal
+        // name rather than a business one. Dropping it here would be silent data loss on an ordinary edit.
+        val cleared = admin.postData(
+            UADEP.userSetName,
+            mapOf(ADF.userId to person.userId, ADF.isEntity to false, ADF.name to "Corner Shop"),
+        )
         cleared[ADF.isEntity] shouldBe false
-        (cleared[ADF.entityName] == null || cleared[ADF.entityName] == "") shouldBe true
+        cleared[ADF.name] shouldBe "Corner Shop"
+
+        // And an empty name is how a caller actually unsets it.
+        val unnamed = admin.postData(
+            UADEP.userSetName,
+            mapOf(ADF.userId to person.userId, ADF.isEntity to false, ADF.name to ""),
+        )
+        (unnamed[ADF.name] == null || unnamed[ADF.name] == "") shouldBe true
     }
 
     /**
@@ -449,21 +468,21 @@ class ClientScopedAdminTest : StringSpec({
     }
 
     /**
-     * The search matches a business name too, not only the email and username. `entityName` is not an SQL
-     * column, so the term is applied after the query -- this proves that path finds an entity whose email and
+     * The search matches the account's name too, not only the email and username. `name` is not an SQL column,
+     * so the term is applied after the query -- this proves that path finds an account whose email and
      * username share nothing with the name being searched.
      */
-    "the search matches an entity's business name, case-insensitively" {
+    "the search matches an account's name, case-insensitively" {
         val cxt = Startup.mkTestBootCxt("searchEntity", "adminSearchEntityTest")
         val service = users(cxt)
         // A personal user whose address has no overlap with the business name below, so it cannot be the hit.
-        seedUserInClient(cxt, "person@example.com", CL.public)
+        val personId = seedUserInClient(cxt, "person@example.com", CL.public)
         // An entity whose address is likewise unrelated to its name, so a match can only be the name matching.
         val entityId = seedUserInClient(cxt, "contact@example.com", CL.public)
         val entity = service.queryAdministrableUser(cxt, entityId, ReadScope.unrestricted)
             ?: error("Seeded entity should be readable.")
         entity.isEntity = true
-        entity.entityName = "Umbrella Logistics"
+        entity.name = "Umbrella Logistics"
         service.updateUser(cxt, entity)
 
         fun emails(term: String) = service.listUsers(cxt, term, 100, ReadScope.unrestricted).map { it.primaryId }
@@ -472,8 +491,16 @@ class ClientScopedAdminTest : StringSpec({
         emails("umbrella") shouldBe listOf("contact@example.com")
         // ...case-insensitively...
         emails("LOGISTICS") shouldBe listOf("contact@example.com")
-        // ...while email still matches as before, and the name term does not drag in the personal account.
+        // ...while email still matches as before, and the name term does not drag in the other account.
         emails("person@example.com") shouldBe listOf("person@example.com")
+
+        // A person's full name is searched by the same rule -- the field is not business-only. The name has to
+        // be unique across the whole suite: every test in a run shares one in-memory database.
+        val named = service.queryAdministrableUser(cxt, personId, ReadScope.unrestricted)
+            ?: error("Seeded person should be readable.")
+        named.name = "Grace Hopper"
+        service.updateUser(cxt, named)
+        emails("hopper") shouldBe listOf("person@example.com")
     }
 
     /**

@@ -50,12 +50,11 @@ val Users = FC<Props> {
 
     // The editor's draft. Nothing here reaches the backend until Save.
     var draftEmail by useState("")
-    var draftUsername by useState("")
     var draftLevel by useState(ROLE.user)
     var draftAllClients by useState(false)
     var draftOrg by useState("")
     var draftIsEntity by useState(false)
-    var draftEntityName by useState("")
+    var draftName by useState("")
     var draftEnabled by useState(true)
 
     val generation = useRefreshGeneration()
@@ -122,12 +121,11 @@ val Users = FC<Props> {
         editing = user
         creating = false
         draftEmail = user.primaryId
-        draftUsername = user.username
         draftLevel = user.level
         draftAllClients = user.roles.contains(ROLE.allClients)
         draftOrg = user.org ?: ""
         draftIsEntity = user.isEntity
-        draftEntityName = user.entityName ?: ""
+        draftName = user.name ?: ""
         draftEnabled = user.enabled
         note = null
         error = null
@@ -138,12 +136,11 @@ val Users = FC<Props> {
         editing = null
         creating = true
         draftEmail = ""
-        draftUsername = ""
         draftLevel = ROLE.user
         draftAllClients = false
         draftOrg = config?.user?.org ?: ""
         draftIsEntity = false
-        draftEntityName = ""
+        draftName = ""
         draftEnabled = true
         note = null
         error = null
@@ -176,8 +173,9 @@ val Users = FC<Props> {
         val target = editing
         if (target == null) {
             val created = AdminApi.createUser(
-                draftEmail, draftUsername, draftRoles(emptyList()), draftOrg.trim().ifEmpty { null },
-                isEntity = draftIsEntity, entityName = draftEntityName.trim().ifEmpty { null },
+                draftEmail, username = null, roles = draftRoles(emptyList()),
+                org = draftOrg.trim().ifEmpty { null },
+                isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
             )
             note = "Created ${created.primaryId}."
         } else {
@@ -193,11 +191,12 @@ val Users = FC<Props> {
                 AdminApi.setOrg(target.userId, draftOrg.trim().ifEmpty { null })
                 changed = true
             }
-            // Entity status and its name are one concern (clearing the flag also clears the name), so a change
-            // to either sends the pair. The trimmed name is compared so whitespace-only edits are not a change.
-            val draftEntity = draftEntityName.trim().ifEmpty { null }
-            if (draftIsEntity != target.isEntity || (draftIsEntity && draftEntity != target.entityName)) {
-                AdminApi.setEntity(target.userId, draftIsEntity, draftEntity)
+            // The name and what kind of account it is travel together: the flag labels the name rather than
+            // selecting a different field, so one call carries both. The trimmed name is compared so
+            // whitespace-only edits are not a change.
+            val draftNameValue = draftName.trim().ifEmpty { null }
+            if (draftNameValue != target.name || draftIsEntity != target.isEntity) {
+                AdminApi.setName(target.userId, draftNameValue, draftIsEntity)
                 changed = true
             }
             if (draftEnabled != target.enabled) {
@@ -241,7 +240,6 @@ val Users = FC<Props> {
                 textField("Email address", draftEmail, disabled = busy, autoComplete = AC.username) {
                     draftEmail = it
                 }
-                textField("Username (optional)", draftUsername, disabled = busy) { draftUsername = it }
                 p {
                     className = ClassName("type-hint")
                     +"A user created here skips email verification: the address is taken as already confirmed."
@@ -250,8 +248,28 @@ val Users = FC<Props> {
                 // Identity is display-only: the backend offers no rename, and showing an editable field that
                 // silently discards its value would be worse than showing none.
                 readOnlyField("Email address", draftEmail)
-                readOnlyField("Username", draftUsername)
                 readOnlyField("Id", editing?.userId?.toString() ?: "")
+            }
+
+            // What kind of account this is, and its name. Sits with identity rather than down beside the
+            // authority controls, because that is what it is. One name field for both kinds: the checkbox
+            // labels it rather than revealing a second field, which is the same rule the backend applies
+            // (see UserProfile.displayName) -- so unticking it reclassifies the name instead of losing it.
+            div {
+                className = ClassName("row")
+                Checkbox {
+                    checked = draftIsEntity
+                    disabled = busy
+                    onChange = { event -> draftIsEntity = event.target.checked as Boolean }
+                    +"Business account"
+                }
+            }
+            textField(
+                if (draftIsEntity) "Business name" else "Full name", draftName, disabled = busy,
+            ) { draftName = it }
+            p {
+                className = ClassName("type-hint")
+                +nameHint
             }
 
             // Editing yourself: the backend refuses to let anyone change their own administrator status or
@@ -321,25 +339,6 @@ val Users = FC<Props> {
                 readOnlyField("Organization", draftOrg.ifEmpty { "—" })
             }
 
-            // Business account: mark it, and give the business the name shown in place of a personal one.
-            // Clearing the checkbox drops the name, matching the backend.
-            div {
-                className = ClassName("row")
-                Checkbox {
-                    checked = draftIsEntity
-                    disabled = busy
-                    onChange = { event -> draftIsEntity = event.target.checked as Boolean }
-                    +"Business account"
-                }
-            }
-            if (draftIsEntity) {
-                textField("Business name", draftEntityName, disabled = busy) { draftEntityName = it }
-                p {
-                    className = ClassName("type-hint")
-                    +entityNameHint
-                }
-            }
-
             div {
                 className = ClassName("row")
                 Checkbox {
@@ -396,7 +395,10 @@ val Users = FC<Props> {
                 }
                 Input {
                     value = search
-                    placeholder = "Email, username, or business name"
+                    // Names what the console actually shows. The backend still matches a username too, so
+                    // pasting a known one finds the account -- but this page displays none, so advertising it
+                    // would point at something you cannot see here.
+                    placeholder = "Email or name"
                     // Never disabled: this field must keep focus while its own results are loading.
                     onChange = { event ->
                         val term = event.target.value as String
@@ -487,9 +489,10 @@ private const val orgHint =
     "An optional organization within the client. Someone assigned one sees only their own organization, " +
         "plus anything belonging to no organization at all. Leave it blank for client-wide."
 
-/** Explains what the business name is for, and that it is display copy rather than an identifier. */
-private const val entityNameHint =
-    "Shown in place of a personal name for a business account. It need not be unique, and is not a login."
+/** Explains what the name is for, and that it is display copy rather than an identifier. */
+private const val nameHint =
+    "The name shown for this account. It need not be unique, and is not a login -- the email address and " +
+        "username remain the identifiers."
 
 /** Says what the middle rung is for, since "operator" does not explain itself the way the other two do. */
 private const val accessLevelHint =

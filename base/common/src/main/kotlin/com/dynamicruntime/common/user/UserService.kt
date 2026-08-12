@@ -95,10 +95,10 @@ class UserService : ServiceInitializer {
 
     /**
      * Lists `AuthUsers` rows for the admin console, newest first, capped at [limit]. A non-blank [search] is a
-     * case-insensitive substring match against `primaryId`, `username`, **or** the business name of an entity
-     * account.
+     * case-insensitive substring match against `primaryId`, `username`, **or** the account's `name` (a
+     * person's full name or a business's).
      *
-     * The match is applied in Kotlin after extraction, not in SQL, because `entityName` lives in `authUserData`
+     * The match is applied in Kotlin after extraction, not in SQL, because `name` lives in `authUserData`
      * -- the same JSON blob as `org`, and unqueryable in SQL for the same reason (see the org note below). The
      * query carries no SQL `LIMIT` anyway; the cap is `.take(limit)` here, and the newest-first default view
      * already selects every scoped row, so evaluating the term in Kotlin only lifts a typed search to that same
@@ -136,9 +136,9 @@ class UserService : ServiceInitializer {
             // post-filter below), and SqlScopeUtil throws rather than quietly widen the answer.
             filteredAfterQuery = setOf(PF.org),
         )
-        // The search term is deliberately *not* an SQL condition: it now also matches an entity's business
-        // name, which -- like `org` -- lives in `authUserData` and cannot be a predicate. So the whole term
-        // is evaluated in Kotlin below, keeping one match rule across all three fields rather than half in SQL.
+        // The search term is deliberately *not* an SQL condition: it also matches the account's `name`, which
+        // -- like `org` -- lives in `authUserData` and cannot be a predicate. So the whole term is evaluated in
+        // Kotlin below, keeping one match rule across all three fields rather than half in SQL.
         val where = if (conditions.isEmpty()) "" else " where " + conditions.joinToString(" and ")
 
         // Statements are cached by name, so the name carries the query's *shape*: two shapes must not collide,

@@ -16,7 +16,7 @@ object UPF {
     const val roles = "roles"
     const val publicName = "publicName"
     const val isEntity = "isEntity"
-    const val entityName = "entityName"
+    const val name = "name"
     const val hasPassword = "hasPassword"
 }
 
@@ -59,12 +59,17 @@ class UserProfile(
     /** The user's public display name, when known. */
     val publicName: String? = null,
     /**
-     * Whether this account belongs to a **business** rather than a person. When true it carries an
-     * [entityName] the frontend shows in place of the personal name (see [displayName]).
+     * Whether this account belongs to a **business** rather than a person. It says how to *read* [name] --
+     * a business name rather than a personal one -- and gates business-specific behavior; it deliberately no
+     * longer selects which field to display, because [name] now serves both kinds of account.
      */
     val isEntity: Boolean = false,
-    /** The business's (non-unique) name when [isEntity]; null for a personal account or an unnamed entity. */
-    val entityName: String? = null,
+    /**
+     * This account's real-world name: the person's full name, or the business's name when [isEntity]. **Not
+     * unique** -- two people or two businesses may share one -- so it is display copy and never an identifier;
+     * the account stays keyed by its primary id and username. Null when the account has not given one.
+     */
+    val name: String? = null,
     /**
      * Whether the user has opted into a password (login by code always works regardless). Known only on a
      * profile freshly loaded from the auth row; null (and omitted from [toUserInfo]) on the fast path where
@@ -80,16 +85,18 @@ class UserProfile(
     val isLoggedIn: Boolean get() = authId != null && authId != anonymousAuthId
 
     /**
-     * The name to present for this identity: the business's [entityName] when this is an entity account, and
-     * the personal [publicName] otherwise. A single rule, in the kernel, so the backend and the (transpiled)
-     * frontend cannot disagree about which name to show.
+     * The name to present for this identity: its real-world [name] when it has one, and the [publicName]
+     * (a login identifier) only as a fallback. A single rule, in the kernel, so the backend and the
+     * (transpiled) frontend cannot disagree about which name to show.
      *
-     * An entity with no name yet, or a blank one, falls back to [publicName] rather than showing nothing --
-     * being an entity is not a reason to lose the identity the login already has. Null only when there is no
-     * name at all (e.g. the anonymous profile).
+     * [isEntity] does not appear here on purpose. It used to select *which field* to display, back when only a
+     * business had a real name; now both kinds of account carry [name], so the flag says what the name means
+     * rather than where to find it -- and a person's full name gets shown where the username used to be.
+     *
+     * An account with no name yet, or a blank one, falls back to [publicName] rather than showing nothing.
+     * Null only when there is no name at all (e.g. the anonymous profile).
      */
-    val displayName: String? get() =
-        if (isEntity) (entityName?.trim()?.ifEmpty { null } ?: publicName) else publicName
+    val displayName: String? get() = name?.trim()?.ifEmpty { null } ?: publicName
 
     /**
      * A JSON-friendly map dump of this profile's attributes -- the payload returned by user-info endpoints so
@@ -104,7 +111,7 @@ class UserProfile(
         put(UPF.roles, roles.toList())
         if (publicName != null) put(UPF.publicName, publicName)
         if (isEntity) put(UPF.isEntity, true)
-        if (entityName != null) put(UPF.entityName, entityName)
+        if (name != null) put(UPF.name, name)
         if (hasPassword != null) put(UPF.hasPassword, hasPassword)
     }
 
@@ -135,7 +142,7 @@ class UserProfile(
             roles = info[UPF.roles].toJsonListOfStrings().toSet(),
             publicName = info.getOptStr(UPF.publicName),
             isEntity = info[UPF.isEntity] == true,
-            entityName = info.getOptStr(UPF.entityName),
+            name = info.getOptStr(UPF.name),
             hasPassword = info[UPF.hasPassword] as? Boolean,
         )
 
@@ -157,7 +164,7 @@ class UserProfile(
                 }
                 property(UPF.publicName, "The user's public display name, when known.")
                 property(UPF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
-                property(UPF.entityName, "The business's name, when this is an entity account.")
+                property(UPF.name, "The account's real-world name: a person's full name, or a business's name.")
                 property(UPF.hasPassword, "Whether the user has opted into a password.") { type = SCT.boolean }
             }
         }

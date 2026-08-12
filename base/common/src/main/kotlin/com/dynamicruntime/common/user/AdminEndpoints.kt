@@ -40,13 +40,13 @@ class UserAdminPaths(
     val userSetRoles: String,
     val userSetEnabled: String,
     val userSetOrg: String,
-    val userSetEntity: String,
+    val userSetName: String,
 )
 
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
 fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, "admin",
-    UserAdminPaths(ADEP.users, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetEntity),
+    UserAdminPaths(ADEP.users, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetName),
 )
 
 /**
@@ -60,7 +60,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, "userAdmin",
-    UserAdminPaths(UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetEntity),
+    UserAdminPaths(UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetName),
 )
 
 private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPaths): SchModule =
@@ -71,10 +71,10 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
 
     listEndpoint(
         paths.users,
-        "Lists users, newest first, optionally filtered by a search term over email, username, and business name.",
+        "Lists users, newest first, optionally filtered by a search term over email, username, and name.",
         outputRef = ADTY.adminUser,
         inputFields = {
-            field(ADF.search, "Case-insensitive substring to match against the email, username, or business name.")
+            field(ADF.search, "Case-insensitive substring to match against the email, username, or name.")
         },
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
@@ -98,7 +98,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             }
             field(ADF.org, "Primary organization for the new user; defaults to the creator's own.")
             field(ADF.isEntity, "Whether the new account belongs to a business rather than a person.") { type = SCT.boolean }
-            field(ADF.entityName, "The business's name, when creating a business account.")
+            field(ADF.name, "The new account's name: a person's full name, or the business's name.")
         },
     ) { c, request ->
         val primaryId = requireField(request, ADF.primaryId)
@@ -131,12 +131,12 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         if (username != null) {
             data[AU.username] = username
         }
-        // A business account, when the administrator says so at creation. Mirrors the registration path: the
-        // name is display copy, neither required nor checked for uniqueness.
+        // Mirrors the registration path: the name is display copy, neither required nor checked for
+        // uniqueness, and set independently of the flag -- a person has a full name just as a business does.
         if (request.getOptBool(ADF.isEntity) == true) {
             authUserData[AD.isEntity] = true
-            request[ADF.entityName].toOptStr()?.trim()?.ifEmpty { null }?.let { authUserData[AD.entityName] = it }
         }
+        request[ADF.name].toOptStr()?.trim()?.ifEmpty { null }?.let { authUserData[AD.name] = it }
 
         val userId = service.insertUser(c, data)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} created user $userId ('$primaryId') with roles $roles." }
@@ -240,24 +240,26 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
     }
 
     generalEndpoint(
-        paths.userSetEntity,
-        "Marks a user as a business account (or clears it) and sets the business name.",
+        paths.userSetName,
+        "Sets a user's name, and whether the account is a business rather than a person.",
         HttpMethod.POST,
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
             field(ADF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
-            field(ADF.entityName, "The business's name; omit or send empty to leave it unnamed.")
+            field(ADF.name, "The account's name; omit or send empty to leave it unnamed.")
         },
     ) { c, request ->
         val userId = requireUserId(request)
         val isEntity = request.getOptBool(ADF.isEntity) == true
         val row = loadUser(c, userId)
         row.isEntity = isEntity
-        // Clearing entity status drops the name too, so a demoted account does not keep a stale business name.
-        row.entityName = if (isEntity) request[ADF.entityName].toOptStr()?.trim()?.ifEmpty { null } else null
+        // The name is kept across a change of the flag rather than cleared with it: a personal account has a
+        // full name just as a business has a business name, so clearing `isEntity` reclassifies the name
+        // instead of discarding it. Sending an empty name is still how a caller unsets it.
+        row.name = request[ADF.name].toOptStr()?.trim()?.ifEmpty { null }
         userService(c).updateUser(c, row)
-        LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId isEntity=$isEntity." }
+        LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId name/isEntity=$isEntity." }
         row.toAdminInfo()
     }
 }

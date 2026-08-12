@@ -21,7 +21,7 @@ object ADEP {
     const val userSetRoles = "/admin/user/setRoles"
     const val userSetEnabled = "/admin/user/setEnabled"
     const val userSetOrg = "/admin/user/setOrg"
-    const val userSetEntity = "/admin/user/setEntity"
+    const val userSetName = "/admin/user/setName"
 }
 
 /**
@@ -44,7 +44,7 @@ object UADEP {
     const val userSetRoles = "/userAdmin/user/setRoles"
     const val userSetEnabled = "/userAdmin/user/setEnabled"
     const val userSetOrg = "/userAdmin/user/setOrg"
-    const val userSetEntity = "/userAdmin/user/setEntity"
+    const val userSetName = "/userAdmin/user/setName"
 }
 
 /** Admin request/response field (JSON key) names. */
@@ -56,11 +56,11 @@ object ADF {
     const val roles = "roles"
     const val org = "org"
     const val isEntity = "isEntity"
-    const val entityName = "entityName"
+    const val name = "name"
     const val enabled = "enabled"
     const val hasPassword = "hasPassword"
 
-    /** Case-insensitive substring filter applied to `primaryId` and `username` by the list endpoint. */
+    /** Case-insensitive substring filter applied to `primaryId`, `username` and `name` by the list endpoint. */
     const val search = "search"
 }
 

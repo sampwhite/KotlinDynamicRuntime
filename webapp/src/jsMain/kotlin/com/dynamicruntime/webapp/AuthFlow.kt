@@ -38,7 +38,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     var code by useState("")
     // Business-account registration (entity accounts). Both reset on a mode change, below.
     var isEntity by useState(false)
-    var entityName by useState("")
+    var name by useState("")
     // The form token, set once a verification code has been sent, also marks the "enter the code" step.
     var token by useState<String?>(null)
     var error by useState<DisplayError?>(null)
@@ -74,7 +74,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         password = ""
         code = ""
         isEntity = false
-        entityName = ""
+        name = ""
         token = null
         error = null
         devFilled = false
@@ -141,7 +141,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                     val userId = AuthApi.createInitial(id, tk, code.trim())
                     AuthApi.finishRegistration(
                         userId, tk, code.trim(), password.ifEmpty { null },
-                        isEntity = isEntity, entityName = entityName.trim().ifEmpty { null },
+                        isEntity = isEntity, name = name.trim().ifEmpty { null },
                     )
                 }
                 // Setting a password *is* a code login, so this both saves it and signs the user in.
@@ -180,9 +180,10 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             autoComplete = AC.username,
         ) { email = it }
 
-        // Registering a business account (entity accounts): mark it, and give the business a name that the app
-        // will show in place of a personal one. Register mode only, and it stays visible through the code step
-        // so the choice is not lost when the email field locks.
+        // What kind of account this is, and its name. Register mode only, and both stay visible through the
+        // code step so the choice is not lost when the email field locks. The name is asked of everyone -- a
+        // person has a full name just as a business has a business name -- and the checkbox relabels the one
+        // field rather than revealing a second, which is the rule the app displays by (UserProfile.displayName).
         if (register) {
             div {
                 className = ClassName("row")
@@ -193,14 +194,14 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                     +t("register", "isEntityLabel", "This is a business account")
                 }
             }
-            if (isEntity) {
-                textField(
-                    t("register", "entityNameLabel", "Business name"), entityName, disabled = busy,
-                ) { entityName = it }
-                p {
-                    className = ClassName("type-hint")
-                    +t("register", "entityNameHelp", "Shown in place of a personal name. It need not be unique.")
-                }
+            textField(
+                if (isEntity) t("register", "businessNameLabel", "Business name")
+                else t("register", "nameLabel", "Full name"),
+                name, disabled = busy,
+            ) { name = it }
+            p {
+                className = ClassName("type-hint")
+                +t("register", "nameHelp", "The name shown for your account. It need not be unique.")
             }
         }
 
