@@ -5,7 +5,7 @@ package com.dynamicruntime.common.intern
  * (issue #280).
  *
  * The motivating case is an id. An id arrives as text, carries structure worth extracting once (a kind, a
- * client, a counter), and never changes afterwards — so parsing it repeatedly is waste, and holding many equal
+ * client, a counter), and never changes afterward — so parsing it repeatedly is waste, and holding many equal
  * copies of it is waste twice over. Interning gives back the single instance for a form, which makes `===` a
  * legitimate identity test and makes the value a good hash key: its hash is computed once and its equality
  * check usually settles on the reference comparison.
@@ -16,7 +16,7 @@ package com.dynamicruntime.common.intern
  *
  * ### The contract
  *
- * - [toInternString] is *canonical*: two values that are equal return the same string, and two that are not
+ * - [toInternString] is *canonical*: two values that are equal return the same string, and two that are not,
  *   never do. It is the cache key, so a form that two different values can produce silently merges them.
  * - It is *stable*: the same instance returns the same string for its whole life. Implementations are expected
  *   to be immutable, which is the easy way to guarantee this.

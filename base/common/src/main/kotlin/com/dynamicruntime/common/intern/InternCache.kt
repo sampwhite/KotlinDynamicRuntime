@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger
 @Suppress("ConstPropertyName")
 object IC {
     /**
-     * Slow-path hits allowed before the settled map is rebuilt. Deliberately small: a rebuild is O(size) and
+     * Slow-path hits allowed before the settled map is rebuilt. Deliberately small: a rebuild is O(size), and
      * the whole point is to spend it rarely, but a low threshold keeps the pending map short, which is what
      * the slow path costs. A few hundred lookups is a rounding error against the copy they avoid.
      */
@@ -38,7 +38,7 @@ object IC {
  *
  * A lookup tries the settled map first and the pending map second. Every time it has to try the second, a
  * counter moves; at [promoteThreshold] the settled map is rebuilt to fold the pending entries in, and the
- * pending map empties. In the steady state the population is fully settled and nothing but the first lookup
+ * pending map empties. In the steady state the population is fully settled, and nothing but the first lookup
  * ever runs. A [rebuild] can also be asked for directly, which is what boot does once the extant values are
  * loaded — see [InternService].
  *
@@ -108,7 +108,7 @@ class InternCache<T : Internable>(
         if (found == null) {
             // The window that makes this necessary: a rebuild can publish the new settled map and then empty
             // pending between the two lookups above, leaving a key that exists in neither of the maps THIS
-            // call read. Re-reading the field closes it, because a settled map is only ever replaced by a
+            // call read. Re-reading the field closes it because a settled map is only ever replaced by a
             // superset of itself -- so the latest one holds anything promoted while we were looking. The
             // reference check keeps the ordinary "no such key" answer at one comparison.
             val latest = settled

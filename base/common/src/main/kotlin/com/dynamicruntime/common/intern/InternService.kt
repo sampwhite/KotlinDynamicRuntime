@@ -52,7 +52,7 @@ class InternService : ServiceInitializer {
     /** A registered cache by name, or null. The caller knows the value type; this is for diagnostics. */
     fun cache(name: String): InternCache<*>? = caches[name]
 
-    /** Settles every registered cache. Idempotent, and cheap for a cache with nothing pending. */
+    /** Settles every registered cache. Idempotent and cheap for a cache with nothing pending. */
     fun rebuildAll() {
         for (cache in caches.values) {
             cache.rebuild()
@@ -64,6 +64,7 @@ class InternService : ServiceInitializer {
         rebuildAll()
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val serviceName: String = "InternService"
 

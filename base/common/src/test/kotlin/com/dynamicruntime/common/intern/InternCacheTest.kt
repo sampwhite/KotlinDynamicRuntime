@@ -28,7 +28,7 @@ private class Liar(private val spelling: String) : Internable {
 /**
  * The interner (issue #280).
  *
- * Two things are worth testing here and they are not the same thing. One is the contract a caller sees: one
+ * Two things are worth testing here, and they are not the same thing. One is the contract a caller sees: one
  * instance per form, and a miss that means "nothing holds this form". The other is that the contract survives
  * the two-map machinery underneath — because every way this structure can break is a race, and a race that
  * breaks it produces a *plausible* answer (a second instance, or a null for a key that exists) rather than a
