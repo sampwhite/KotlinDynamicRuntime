@@ -177,6 +177,36 @@ prefix for the family of types it owns — the schema layer uses `Sch` (`SchType
 nothing more specific fits — `KdrCxt`, `KdrException`, `KdrRequest`, `KdrResponse`. If you cannot find a better
 disambiguator and the bare name would be ambiguous, `Kdr` is there.
 
+### Endpoints that are not the application: `fixture` and `demo`
+
+Some endpoints exist so a capability can be *exercised* or *shown*, not used. They get one of two section
+roots, chosen by **purpose** — the question is who the endpoint is for, not how it is gated:
+
+* **`fixture`** — it exists so something can be **exercised**: by an automated test, or by a developer driving
+it by hand. `/fixture/becomeUser`, `/fixture/clock`, `/fixture/schema/complex`. A fixture is never shown to a
+client, so every one is gated — `forTestingOnly`, or a module that loads only in developer environments.
+
+* **`demo`** — it exists so a **person** can see the capability work, and it may be deliberately enabled for a
+client as a showcase. `/demo/file/upload`, `/demo/schema/sample`. That possibility is the whole reason the two
+are separate, and it sets a bar: a demo is groomed. Honest verbs, real descriptions, coherent schema — the
+things you would want a client to read.
+
+Three rules follow, and each of them was learned by getting it wrong first:
+
+* **The verb must be true.** `/gedra/entries/save` saved nothing (#255). A reader takes the verb on trust, and
+in a demo a client does too. Name what it actually does: `fillOut`, `echo`.
+
+* **Never take a name the real thing will want.** `gedra` is going to be a real entity and `file` is an
+obvious section for real file endpoints, so a fixture holding either is a collision waiting for the day
+somebody has to move one under time pressure. The root prefix removes the whole class of problem: a fixture
+lives at `/fixture/gedra/...`, leaving `gedra` free.
+
+* **The root is not the gate, and must not be relied on as one.** Keeping a fixture out of production is
+`forTestingOnly` and `isLoaded`; the root only keeps it out of a reader's head as a real endpoint. Nothing
+should ever be absent from production *because* of its name — that is what the earlier `test` root implied,
+and it described the gate rather than the purpose, which is why `/test/simulatedEmails` (a developer
+affordance the shipped frontend reads) ended up filed as a test.
+
 ### Schema
 
 We will be defining JSON schema for anything where such a choice might make sense. Not only will we define

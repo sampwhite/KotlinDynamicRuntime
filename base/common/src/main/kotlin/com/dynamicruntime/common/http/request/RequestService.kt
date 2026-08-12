@@ -77,23 +77,25 @@ class RequestService : ServiceInitializer {
      */
     val sectionRulesMap: MutableMap<String, SectionRules> = HashMap()
 
-    // The `file`/`home`/`logout` sections are listed here to record what they already were: each had no entry
-    // and was therefore served anonymously, so naming them changes no behavior and only makes the decision
-    // visible. `file` (upload as well as download) is the one worth revisiting on its own.
+    // `home`/`logout` are listed here to record what they already were: each had no entry and was therefore
+    // served anonymously, so naming them changes no behavior and only makes the decision visible.
     //
-    // `demo` and `todo` went with the endpoints they gated. A section with rules and no endpoints is harmless
-    // -- the boot check only refuses the reverse -- but it is a standing invitation to add an endpoint under a
-    // name that is anonymous for reasons nobody remembers.
-    // `gedraSketch` is the entry fixture in the `sample` module (issues #252-#255): it stores nothing and
-    // reads nothing, so there is no data behind it to protect, and the module self-gates to developer
-    // environments anyway.
+    // `fixture` and `demo` are the two non-application roots (issue #270), and the split is by *purpose*:
     //
-    // The section is deliberately NOT `gedra`. That name belongs to the real entity, and a fixture holding it
-    // is a collision waiting for the day a real endpoint wants to save an entry -- at which point somebody has
-    // to move one of them in a hurry. Naming conventions for fixtures generally are issue #270.
+    //  - `fixture` exists so a capability can be **exercised** -- by an automated test, or by a developer by
+    //    hand. It is never shown to a client, and every endpoint under it is gated (`forTestingOnly`, or a
+    //    module that loads only in developer environments).
+    //  - `demo` exists so a **person** can see a capability work, and may be deliberately enabled for a client
+    //    as a showcase. That possibility is what earns it a grooming standard: honest verbs, real
+    //    descriptions, coherent schema.
+    //
+    // Both are anonymous, which is what they already were under their old names (`test`, `file`,
+    // `gedraSketch`). The old roots described the *gate* or the *feature*; these describe the purpose, which
+    // is the thing a reader needs and the thing that stops a fixture squatting a name a real entity will want
+    // -- `gedra` and `file` were both heading for exactly that collision.
     val anonSections: List<String> = listOf(
-        "health", "schema", "content", "portal", "site", "auth", "db", "app", "test",
-        "file", "home", "logout", "gedraSketch",
+        "health", "schema", "content", "portal", "site", "auth", "db", "app",
+        "fixture", "demo", "home", "logout",
     )
     val userSections: List<String> = listOf("user", "profile")
 

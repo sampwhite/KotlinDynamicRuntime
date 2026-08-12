@@ -33,7 +33,7 @@ class SchemaEndpointsTest : StringSpec({
     fun catalogEndpoints(resp: Map<String, Any?>): List<Map<String, Any?>> =
         results(resp)[EI.endpoints].toJsonListOfMaps()
 
-    // /schema/sample is a list endpoint: its payload is under `items`.
+    // /demo/schema/sample is a list endpoint: its payload is under `items`.
     fun items(resp: Map<String, Any?>): List<Map<String, Any?>> =
         resp[EP.items].toJsonListOfMaps()
 
@@ -47,7 +47,7 @@ class SchemaEndpointsTest : StringSpec({
 
         val resp = client.sendJsonGetRequest("/schema/endpoints")
         val eps = catalogEndpoints(resp)
-        eps.map { it[EI.path] } shouldContainAll listOf("/health", "/schema/endpoints", "/schema/sample")
+        eps.map { it[EI.path] } shouldContainAll listOf("/health", "/schema/endpoints", "/demo/schema/sample")
 
         val health = eps.first { it[EI.path] == "/health" }
         health.keys shouldContainAll
@@ -58,7 +58,7 @@ class SchemaEndpointsTest : StringSpec({
         health[EI.inputSchema]!!.toJsonMap()[SCH.additionalProperties] shouldBe false
 
         // The shared $defs closes over the types the renderings reference (by $ref), returned once each:
-        // /health's output refs node.Health; /schema/sample's input flattens SampleQuery, whose `filter` refs
+        // /health's output refs node.Health; /demo/schema/sample's input flattens SampleQuery, whose `filter` refs
         // SampleFilter, and its output refs SampleItem, which refs SampleDetails.
         val defs = results(resp)[SCH.dDefs]!!.toJsonMap()
         defs.keys shouldContainAll listOf("node.Health", "schema.SampleFilter", "schema.SampleItem", "schema.SampleDetails")
@@ -73,12 +73,15 @@ class SchemaEndpointsTest : StringSpec({
             catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", params)).map { it[EI.path] }
 
         paths(mapOf(EI.namespace to "node")) shouldBe listOf("/health")
-        // The method filter returns only POST endpoints (which include /schema/sample).
+        // The method filter returns only POST endpoints (which include /demo/schema/sample).
         val posts = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.method to "POST")))
-        posts.map { it[EI.path] } shouldContain "/schema/sample"
+        posts.map { it[EI.path] } shouldContain "/demo/schema/sample"
         posts.map { it[EI.method] }.toSet() shouldBe setOf("POST")
-        paths(mapOf(SS.pathRegex to "^/schema/")) shouldBe
-            listOf("/schema/complex", "/schema/endpoint", "/schema/endpoints", "/schema/sample")
+        // `schema` is now only the catalog's own endpoints: the two exercise surfaces that used to sit beside
+        // them moved to the purpose-named roots (issue #270) -- the fixture to `/fixture/`, the demo to
+        // `/demo/`. The namespace they are *declared* in is still `schema`; the section is not.
+        paths(mapOf(SS.pathRegex to "^/schema/")) shouldBe listOf("/schema/endpoint", "/schema/endpoints")
+        paths(mapOf(SS.pathRegex to "^/fixture/schema/")) shouldBe listOf("/fixture/schema/complex")
     }
 
     "/schema/endpoints caps the number of endpoints by limit" {
@@ -107,12 +110,12 @@ class SchemaEndpointsTest : StringSpec({
         client.sendGetRequest("/schema/endpoint", mapOf(EI.method to "GET")).rptStatusCode shouldBe 400
     }
 
-    "/schema/sample returns a nested, schema-conforming list, with limit truncation" {
+    "/demo/schema/sample returns a nested, schema-conforming list, with limit truncation" {
         val client = client("schemaSample")
 
         // A nested request exercising a choice list, a date, and a nested filter object.
         val full = client.sendJsonPostRequest(
-            "/schema/sample",
+            "/demo/schema/sample",
             mapOf(
                 SS.filter to mapOf(SS.minCount to 1, SS.activeOnly to false),
                 SS.categories to listOf("alpha", "beta"),
@@ -126,7 +129,7 @@ class SchemaEndpointsTest : StringSpec({
         details.keys shouldContainAll listOf(SS.score, SS.tags, SS.rank)
 
         // `limit` truncates the returned items.
-        items(client.sendJsonPostRequest("/schema/sample", mapOf(EP.limit to 5))).size shouldBe 5
+        items(client.sendJsonPostRequest("/demo/schema/sample", mapOf(EP.limit to 5))).size shouldBe 5
     }
 
     // The catalog answers per caller (issue #211), so this one boots its own instance and makes real users
@@ -241,11 +244,11 @@ class SchemaEndpointsTest : StringSpec({
         catalogEndpoints(resp).map { it[EI.path] } shouldContain "/health"
     }
 
-    $$"/schema/sample drops an off-contract $note yet honors a _debug=explainInput echo in the same call" {
+    $$"/demo/schema/sample drops an off-contract $note yet honors a _debug=explainInput echo in the same call" {
         val client = client("schemaOffContract")
 
         val resp = client.sendJsonPostRequest(
-            "/schema/sample",
+            "/demo/schema/sample",
             mapOf(
                 $$"$note" to "mimics standard query semantics", // off-contract annotation, dropped on coercing
                 EP.debug to SS.explainInput, // "_debug" -> echo the evaluated params under _meta

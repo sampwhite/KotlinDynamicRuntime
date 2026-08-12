@@ -100,16 +100,16 @@ PID=$(lsof -i:7071 -sTCP:LISTEN -t); [ -n "$PID" ] && kill "$PID"
 # A success envelope carries requestUri/duration/contentHash + results/item/items.
 curl -s http://localhost:7071/kda/app/ui/config | jq .
 
-# Authenticate with a cookie jar. /test/becomeUser creates-or-finds a user and logs you in (test endpoints
+# Authenticate with a cookie jar. /fixture/becomeUser creates-or-finds a user and logs you in (test endpoints
 # are on here because of KDR_IN_MEMORY_ONLY):
 JAR=/tmp/cookies.txt
-curl -s -c "$JAR" -X POST http://localhost:7071/kda/test/becomeUser -H 'Content-Type: application/json' \
+curl -s -c "$JAR" -X POST http://localhost:7071/kda/fixture/becomeUser -H 'Content-Type: application/json' \
   -d '{"email":"alice@example.com","level":"admin"}' | jq .results
 curl -s -b "$JAR" http://localhost:7071/kda/auth/self/info | jq .results   # now acts as alice
 ```
 
 A **content differential** confirms a stable-vs-changing value: call twice unchanged (same `contentHash`),
-then change an input (different `contentHash`). `/schema/sample` (POST) and `/schema/complex` (PUT) are ideal
+then change an input (different `contentHash`). `/demo/schema/sample` (POST) and `/fixture/schema/complex` (PUT) are ideal
 — pure, parameterized, no auth.
 
 **Reach for `kdr-probe` (below) as soon as more than one caller is involved.** The cookie-jar form above is
@@ -165,11 +165,11 @@ Scenarios print as they go, so a run that dies partway leaves output that reads 
 — and piping through `grep` or `tail` loses the exit code. **Absence of the completion line means the report is
 incomplete however complete it looks.**
 
-## Traveling the clock (`/test/clock`)
+## Traveling the clock (`/fixture/clock`)
 
 Anything gated on elapsed time — a session lapsing, a rate-limit window reopening, a device's trust running
 out — is otherwise unreachable: the shortest of those horizons is fifteen minutes and the longest is thirty
-days. `/test/clock` moves the **instance** clock instead, so the expiry fires now. It is `forTestingOnly`, so
+days. `/fixture/clock` moves the **instance** clock instead, so the expiry fires now. It is `forTestingOnly`, so
 it does not exist outside a test instance; there is no way to move a real deployment's clock.
 
 Five ops, POSTed as `op`: `advance` (with `deltaMs`), `set` (with `atMs`, epoch millis), `freeze`, `unfreeze`,
@@ -178,9 +178,9 @@ Five ops, POSTed as `op`: `advance` (with `deltaMs`), `set` (with `atMs`, epoch 
 ```bash
 # Watch a live session go stale: log in, jump past the thirty-day session, then look again.
 JAR=/tmp/cookies.txt
-curl -s -c "$JAR" -X POST http://localhost:7071/kda/test/becomeUser -H 'Content-Type: application/json' \
+curl -s -c "$JAR" -X POST http://localhost:7071/kda/fixture/becomeUser -H 'Content-Type: application/json' \
   -d '{"email":"alice@example.com"}' > /dev/null
-curl -s -X POST http://localhost:7071/kda/test/clock -H 'Content-Type: application/json' \
+curl -s -X POST http://localhost:7071/kda/fixture/clock -H 'Content-Type: application/json' \
   -d '{"op":"advance","deltaMs":2592100000}' | jq .results
 curl -s -b "$JAR" http://localhost:7071/kda/auth/self/info | jq .results   # now anonymous
 ```
@@ -302,7 +302,7 @@ See `ErrorObfuscationConfigTest` and `AllowTestEndpointsTest` (both in `base/com
 ## Unit tests: authenticated tests with TestUser
 
 `TestUser` (in `base/common`, `user` package) is an authenticated `TestHttpClient` plus the `cxt` it was built
-from. `TestUser.create(cxt, email, level)` calls the `forTestingOnly` `/test/becomeUser` endpoint through a
+from. `TestUser.create(cxt, email, level)` calls the `forTestingOnly` `/fixture/becomeUser` endpoint through a
 fresh client — creating the user if needed and capturing the session cookie — so every call it makes is *as
 that user*. `level` is a rung of the privilege ladder (`ROLE.user`, the default, `ROLE.operator` or
 `ROLE.admin`, each including the ones below it) and applies only to a user being **created**: becoming an

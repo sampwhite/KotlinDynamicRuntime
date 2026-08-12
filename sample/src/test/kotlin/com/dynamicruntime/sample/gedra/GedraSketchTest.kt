@@ -33,11 +33,11 @@ class GedraSketchTest : StringSpec({
         )
 
     fun echo(name: String, entry: Map<String, Any?>): Map<String, Any?> =
-        client(name).sendJsonPostRequest("/gedraSketch/entry/echo", mapOf(GS.entry to entry))
+        client(name).sendJsonPostRequest("/fixture/gedra/entry/echo", mapOf(GS.entry to entry))
             .getValue(EP.results)!!.toJsonMap()
 
     fun status(name: String, entry: Map<String, Any?>): Int =
-        client(name).sendEditRequest("/gedraSketch/entry/echo", null, mapOf(GS.entry to entry), isPut = false)
+        client(name).sendEditRequest("/fixture/gedra/entry/echo", null, mapOf(GS.entry to entry), isPut = false)
             .rptStatusCode
 
     "an entry is validated against the branch its traitId names" {
@@ -88,7 +88,7 @@ class GedraSketchTest : StringSpec({
     // client generated from the catalog cannot even try.
     "the published input schema does not offer a derived field" {
         val catalog = client("catalogView").sendJsonGetRequest("/schema/endpoint", mapOf(
-            "method" to "POST", "path" to "/gedraSketch/entry/echo",
+            "method" to "POST", "path" to "/fixture/gedra/entry/echo",
         )).getValue(EP.results)!!.toJsonMap()
         val defs = catalog.getValue($$"$defs")!!.toJsonMap()
         val branch = defs.getValue("gedra.ExpenseReportEntry")!!.toJsonMap()
@@ -129,7 +129,7 @@ class GedraSketchTest : StringSpec({
     // --- the round trip (issue #255) -----------------------------------------
 
     fun save(name: String, entries: List<Map<String, Any?>>): List<Map<String, Any?>> =
-        client(name).sendJsonPostRequest("/gedraSketch/entries/fillOut", mapOf(GS.entries to entries))
+        client(name).sendJsonPostRequest("/fixture/gedra/entries/fillOut", mapOf(GS.entries to entries))
             .getValue(EP.items)!!.toJsonListOfMaps()
 
     // One array carrying several shapes, each validated against the branch its own traitId names. This is the
@@ -152,7 +152,7 @@ class GedraSketchTest : StringSpec({
     // way to find it.
     "a failure in one element names that element" {
         val resp = client("badElement").sendEditRequest(
-            "/gedraSketch/entries/fillOut", null,
+            "/fixture/gedra/entries/fillOut", null,
             mapOf(GS.entries to listOf(
                 mapOf(GS.traitId to GS.expenseReport, GS.year to 2024),
                 mapOf(GS.traitId to GS.expenseReport, GS.year to 1999),

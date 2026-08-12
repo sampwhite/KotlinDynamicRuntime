@@ -22,7 +22,7 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 class TimeTravelTest : StringSpec({
 
-    "/test/clock advances the instance clock" {
+    "/fixture/clock advances the instance clock" {
         val cxt = Startup.mkTestBootCxt("clock", "clockEndpointTest")
         val client = TestHttpClient(cxt.instanceConfig)
         val before = cxt.instanceNow().toEpochMilliseconds()
