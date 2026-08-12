@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.intern.InternService
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.maps.shouldContainKey
@@ -44,5 +45,18 @@ class StartupTest : StringSpec({
 
         (cxt1.instanceConfig === cxt2.instanceConfig) shouldBe true
         SchemaService.get(cxt1) shouldBe SchemaService.get(cxt2)
+    }
+
+    // Issue #280. The intern service is per instance rather than per process, and this is where that becomes
+    // visible: two instances get two registries, so one instance's ids can never answer another's "does this
+    // exist?" -- which matters most in a test run, where instances are plentiful.
+    "the intern service is wired in, and belongs to its own instance" {
+        val cxt = Startup.mkTestBootCxt("intern", "internWiringTest")
+        val service = InternService.get(cxt).shouldNotBeNull()
+        // Its checkReady pass ran; with no caches registered yet there is simply nothing to settle.
+        service.cacheNames() shouldBe emptyList()
+
+        val other = Startup.mkTestBootCxt("intern2", "internWiringTestB")
+        (InternService.get(other) === service) shouldBe false
     }
 })
