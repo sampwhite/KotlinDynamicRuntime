@@ -1,7 +1,6 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.home.HACT
-import com.dynamicruntime.common.util.evalTemplate
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -18,6 +17,32 @@ import react.useState
 import web.cssom.ClassName
 
 private val appBarScope = MainScope()
+
+/** What the app bar says about identity when nobody is signed in (issue #276). */
+const val signedOutLabel = "Signed out"
+
+/**
+ * What the app bar should say about who is signed in -- or **null to say nothing yet** (issue #276).
+ *
+ * Three states, and the third is the one that makes this a function rather than an `if`. The shell renders
+ * before `/home/ui/config` returns, so until it does the answer is *unknown*, not "signed out": claiming
+ * signed-out on the first paint would be wrong for a moment and would flicker for a signed-in user on every
+ * load. [loaded] is what separates "we asked and nobody is" from "we have not asked".
+ *
+ * A signed-in caller is announced by their [publicName], because a name is itself the statement that somebody
+ * is signed in. When they have none, the label falls back to [signedInFallback] rather than to silence --
+ * silence is the state this whole function exists to stop being ambiguous.
+ *
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun identityLabel(loaded: Boolean, isLoggedIn: Boolean, publicName: String?): String? = when {
+    !loaded -> null
+    !isLoggedIn -> signedOutLabel
+    else -> publicName?.trim()?.ifEmpty { null } ?: signedInFallback
+}
+
+/** Shown in place of a name for a signed-in caller who has none -- still says *signed in*, which is the point. */
+const val signedInFallback = "Signed in"
 
 /**
  * The persistent top app bar: a brand on the left, and a hamburger menu on the right.
@@ -103,6 +128,15 @@ val AppBar = FC<Props> {
         }
         div {
             className = ClassName("app-bar-right")
+            // Identity in the bar itself, not only inside the menu (issue #276). Being signed out is a fact
+            // worth stating: rendering nothing for it reads exactly like a config that has not arrived, so a
+            // user cannot tell "I am signed out" from "this has not loaded". Null while genuinely unknown.
+            identityLabel(config != null, config?.user?.isLoggedIn == true, config?.user?.publicName)?.let { label ->
+                span {
+                    className = ClassName(if (label == signedOutLabel) "identity-badge signed-out" else "identity-badge")
+                    +label
+                }
+            }
             button {
                 className = ClassName("hamburger")
                 onClick = { open = !open }
@@ -116,20 +150,10 @@ val AppBar = FC<Props> {
                 div {
                     className = ClassName("app-menu")
 
-                    // Who is signed in, above their items. Shown only when signed in: the anonymous profile
-                    // has no name worth announcing.
-                    val user = config?.user
-                    if (user != null && user.isLoggedIn) {
-                        span {
-                            className = ClassName("app-menu-label")
-                            // Markdown, so the copy can set the name apart; MarkdownInline renders a span,
-                            // which (unlike a div) is valid inside this one.
-                            MarkdownInline {
-                                source = $$"Signed in as **${user.publicName}**"
-                                    .evalTemplate(mapOf("user" to mapOf("publicName" to (user.publicName ?: "your account"))))
-                            }
-                        }
-                    }
+                    // No "signed in as" label here any more (issue #276). Identity moved to the bar, which is
+                    // visible whether or not the menu is open -- and the bar is still on screen while it is,
+                    // so a label here only repeated the same string a few pixels away. The menu is for
+                    // actions; saying who you are is the bar's job.
 
                     // The items themselves, exactly as the backend composed them for this caller.
                     for (menuItem in config?.menu.orEmpty()) {
