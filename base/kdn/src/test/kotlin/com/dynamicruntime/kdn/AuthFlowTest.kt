@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
@@ -186,6 +187,38 @@ class AuthFlowTest : StringSpec({
 
         // 8. Authenticated again -- and this session is the one the thirty-day block at the end comes back to.
         results(client.sendJsonGetRequest("/auth/self/info"))["userId"] shouldBe userId
+    }
+
+    "registering a business account carries the entity flag and name onto the profile" {
+        val client = mkClient("10.12.12.12")
+        val entityEmail = "contact@acme.example"
+        val token = tokenOf(client)
+        client.sendJsonPostRequest(
+            "/auth/newContact/sendVerify",
+            mapOf("contactAddress" to entityEmail, "contactType" to "email", "formAuthToken" to token),
+        )
+        val code = codeFor(token, entityEmail)
+        val userId = results(client.sendJsonPutRequest(
+            "/auth/user/createInitial",
+            mapOf("contactAddress" to entityEmail, "contactType" to "email", "formAuthToken" to token, "verifyCode" to code),
+        ))["userId"] as Long
+
+        // The registration marks it a business and names it -- the name need not be unique or match a username.
+        val finished = results(client.sendJsonPutRequest(
+            "/auth/user/setLoginData",
+            mapOf(
+                "userId" to userId, "username" to "acme_co", "formAuthToken" to token, "verifyCode" to code,
+                "isEntity" to true, "entityName" to "Acme Corporation",
+            ),
+        ))
+        finished[UPF.isEntity] shouldBe true
+        finished[UPF.entityName] shouldBe "Acme Corporation"
+
+        // And it is durable: a fresh self-info read (from the row, not the response just built) still carries it,
+        // which is what lets the app bar and profile page show the business name.
+        val self = results(client.sendJsonGetRequest("/auth/self/info"))
+        self[UPF.isEntity] shouldBe true
+        self[UPF.entityName] shouldBe "Acme Corporation"
     }
 
     "a form auth token expires once it is older than its lifetime" {

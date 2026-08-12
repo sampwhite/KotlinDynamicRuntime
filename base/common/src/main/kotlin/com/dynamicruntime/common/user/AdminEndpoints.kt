@@ -11,6 +11,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
@@ -32,18 +33,20 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * Registered by the `common` component.
  */
-/** The four paths one user-administration surface is served under. */
+/** The paths one user-administration surface is served under. */
 class UserAdminPaths(
     val users: String,
     val userCreate: String,
     val userSetRoles: String,
     val userSetEnabled: String,
     val userSetOrg: String,
+    val userSetEntity: String,
 )
 
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
 fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, "admin", UserAdminPaths(ADEP.users, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg),
+    cxt, "admin",
+    UserAdminPaths(ADEP.users, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetEntity),
 )
 
 /**
@@ -56,7 +59,8 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  * mean two implementations of the same rules, and the copy is the one that would miss a fix.
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, "userAdmin", UserAdminPaths(UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg),
+    cxt, "userAdmin",
+    UserAdminPaths(UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetEntity),
 )
 
 private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPaths): SchModule =
@@ -67,10 +71,10 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
 
     listEndpoint(
         paths.users,
-        "Lists users, newest first, optionally filtered by a search term over email and username.",
+        "Lists users, newest first, optionally filtered by a search term over email, username, and business name.",
         outputRef = ADTY.adminUser,
         inputFields = {
-            field(ADF.search, "Case-insensitive substring to match against the email or username.")
+            field(ADF.search, "Case-insensitive substring to match against the email, username, or business name.")
         },
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
@@ -93,6 +97,8 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 items { type = SCT.string }
             }
             field(ADF.org, "Primary organization for the new user; defaults to the creator's own.")
+            field(ADF.isEntity, "Whether the new account belongs to a business rather than a person.") { type = SCT.boolean }
+            field(ADF.entityName, "The business's name, when creating a business account.")
         },
     ) { c, request ->
         val primaryId = requireField(request, ADF.primaryId)
@@ -124,6 +130,12 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         authUserData[AD.contacts] = listOf(mapOf(AC2.address to primaryId, AC2.type to AC2.email))
         if (username != null) {
             data[AU.username] = username
+        }
+        // A business account, when the administrator says so at creation. Mirrors the registration path: the
+        // name is display copy, neither required nor checked for uniqueness.
+        if (request.getOptBool(ADF.isEntity) == true) {
+            authUserData[AD.isEntity] = true
+            request[ADF.entityName].toOptStr()?.trim()?.ifEmpty { null }?.let { authUserData[AD.entityName] = it }
         }
 
         val userId = service.insertUser(c, data)
@@ -224,6 +236,28 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         row.org = org
         userService(c).updateUser(c, row)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId org: $previous -> $org." }
+        row.toAdminInfo()
+    }
+
+    generalEndpoint(
+        paths.userSetEntity,
+        "Marks a user as a business account (or clears it) and sets the business name.",
+        HttpMethod.POST,
+        outputRef = ADTY.adminUser,
+        inputFields = {
+            field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
+            field(ADF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
+            field(ADF.entityName, "The business's name; omit or send empty to leave it unnamed.")
+        },
+    ) { c, request ->
+        val userId = requireUserId(request)
+        val isEntity = request.getOptBool(ADF.isEntity) == true
+        val row = loadUser(c, userId)
+        row.isEntity = isEntity
+        // Clearing entity status drops the name too, so a demoted account does not keep a stale business name.
+        row.entityName = if (isEntity) request[ADF.entityName].toOptStr()?.trim()?.ifEmpty { null } else null
+        userService(c).updateUser(c, row)
+        LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId isEntity=$isEntity." }
         row.toAdminInfo()
     }
 }

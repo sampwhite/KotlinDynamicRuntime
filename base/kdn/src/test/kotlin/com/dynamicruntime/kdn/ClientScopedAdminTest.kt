@@ -283,6 +283,38 @@ class ClientScopedAdminTest : StringSpec({
     }
 
     /**
+     * An administrator can make and manage a business account: create one, mark an existing account, rename it,
+     * and clear it (which drops the name). This is the non-registration path -- registration marks a business
+     * at signup, and this is how an administrator does it after the fact or on someone else's account.
+     */
+    "an administrator creates and edits a business account" {
+        val cxt = Startup.mkTestBootCxt("entityAdmin", "entityAdminTest")
+        val admin = TestUser.createFullAdmin(cxt, "entity-admin@example.com")
+
+        // Created as a business, with a name.
+        val created = admin.postData(
+            UADEP.userCreate,
+            mapOf(ADF.primaryId to "acme@example.com", ADF.isEntity to true, ADF.entityName to "Acme Co"),
+        )
+        created[ADF.isEntity] shouldBe true
+        created[ADF.entityName] shouldBe "Acme Co"
+
+        // An ordinary account, then marked a business after the fact.
+        val person = TestUser.create(cxt, "shop@example.com")
+        val marked = admin.postData(
+            UADEP.userSetEntity,
+            mapOf(ADF.userId to person.userId, ADF.isEntity to true, ADF.entityName to "Corner Shop"),
+        )
+        marked[ADF.isEntity] shouldBe true
+        marked[ADF.entityName] shouldBe "Corner Shop"
+
+        // Cleared -- the flag goes and so does the name, leaving no stale business name behind.
+        val cleared = admin.postData(UADEP.userSetEntity, mapOf(ADF.userId to person.userId, ADF.isEntity to false))
+        cleared[ADF.isEntity] shouldBe false
+        (cleared[ADF.entityName] == null || cleared[ADF.entityName] == "") shouldBe true
+    }
+
+    /**
      * Anti-escalation is a check on *adding*, not on the resulting set. A role list replaces rather than
      * merges, so editing somebody who already holds the capability sends it back unchanged -- and judging the
      * result alone would refuse that, leaving a scoped administrator unable to touch such a user at all, for a
@@ -414,6 +446,34 @@ class ClientScopedAdminTest : StringSpec({
         service.listUsers(cxt, "hidden@acme.com", 100, ReadScope.ofClient(CL.public)).isEmpty() shouldBe true
         // ...while the same term unrestricted finds them, so the emptiness is the scope and not the search.
         service.listUsers(cxt, "hidden@acme.com", 100, ReadScope.unrestricted).size shouldBe 1
+    }
+
+    /**
+     * The search matches a business name too, not only the email and username. `entityName` is not an SQL
+     * column, so the term is applied after the query -- this proves that path finds an entity whose email and
+     * username share nothing with the name being searched.
+     */
+    "the search matches an entity's business name, case-insensitively" {
+        val cxt = Startup.mkTestBootCxt("searchEntity", "adminSearchEntityTest")
+        val service = users(cxt)
+        // A personal user whose address has no overlap with the business name below, so it cannot be the hit.
+        seedUserInClient(cxt, "person@example.com", CL.public)
+        // An entity whose address is likewise unrelated to its name, so a match can only be the name matching.
+        val entityId = seedUserInClient(cxt, "contact@example.com", CL.public)
+        val entity = service.queryAdministrableUser(cxt, entityId, ReadScope.unrestricted)
+            ?: error("Seeded entity should be readable.")
+        entity.isEntity = true
+        entity.entityName = "Umbrella Logistics"
+        service.updateUser(cxt, entity)
+
+        fun emails(term: String) = service.listUsers(cxt, term, 100, ReadScope.unrestricted).map { it.primaryId }
+
+        // A substring of the business name finds the entity, and only the entity...
+        emails("umbrella") shouldBe listOf("contact@example.com")
+        // ...case-insensitively...
+        emails("LOGISTICS") shouldBe listOf("contact@example.com")
+        // ...while email still matches as before, and the name term does not drag in the personal account.
+        emails("person@example.com") shouldBe listOf("person@example.com")
     }
 
     /**

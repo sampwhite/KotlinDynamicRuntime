@@ -21,6 +21,10 @@ class AdminUser(
     val roles: List<String>,
     /** Their primary organization within the client, or null when they have none (issue #225). */
     val org: String?,
+    /** Whether this account belongs to a business rather than a person. */
+    val isEntity: Boolean,
+    /** The business's name, when [isEntity]; null otherwise. */
+    val entityName: String?,
     val enabled: Boolean,
     val hasPassword: Boolean,
 ) {
@@ -84,13 +88,20 @@ object AdminApi {
         return Http.getApi(path)[EP.items].toJsonListOfMaps().map { it.toAdminUser() }
     }
 
-    /** Creates a user directly (no email verification); [username] and [roles] are optional. */
-    suspend fun createUser(primaryId: String, username: String?, roles: List<String>?, org: String?): AdminUser {
+    /** Creates a user directly (no email verification); [username], [roles], [org], and entity data are optional. */
+    suspend fun createUser(
+        primaryId: String, username: String?, roles: List<String>?, org: String?,
+        isEntity: Boolean = false, entityName: String? = null,
+    ): AdminUser {
         val body = buildMap<String, Any?> {
             put(ADF.primaryId, primaryId.trim())
             username?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.username, it) }
             roles?.takeIf { it.isNotEmpty() }?.let { put(ADF.roles, it) }
             org?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.org, it) }
+            if (isEntity) {
+                put(ADF.isEntity, true)
+                entityName?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.entityName, it) }
+            }
         }
         return Http.sendApi("POST", UADEP.userCreate, body).results().toAdminUser()
     }
@@ -105,6 +116,14 @@ object AdminApi {
         Http.sendApi("POST", UADEP.userSetOrg, buildMap {
             put(ADF.userId, userId)
             if (org != null) put(ADF.org, org)
+        }).results().toAdminUser()
+
+    /** Marks a user as a business account (or clears it), setting the business name. */
+    suspend fun setEntity(userId: Long, isEntity: Boolean, entityName: String?): AdminUser =
+        Http.sendApi("POST", UADEP.userSetEntity, buildMap {
+            put(ADF.userId, userId)
+            put(ADF.isEntity, isEntity)
+            if (isEntity && entityName != null) put(ADF.entityName, entityName)
         }).results().toAdminUser()
 
     /** Enables or disables a user's account. */
@@ -123,6 +142,8 @@ object AdminApi {
         username = this[ADF.username] as? String ?: "",
         roles = this[ADF.roles].toJsonListOfStrings(),
         org = this[ADF.org] as? String,
+        isEntity = this[ADF.isEntity] == true,
+        entityName = this[ADF.entityName] as? String,
         enabled = this[ADF.enabled] == true,
         hasPassword = this[ADF.hasPassword] == true,
     )

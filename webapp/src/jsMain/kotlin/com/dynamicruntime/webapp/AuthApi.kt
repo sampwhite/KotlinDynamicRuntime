@@ -108,7 +108,10 @@ object AuthApi {
      * Finishes registration, which logs the user in. No username (the frontend doesn't use them); [password] is
      * optional -- login by code works without one -- and when given, the account has it from the outset.
      */
-    suspend fun finishRegistration(userId: Long, token: String, code: String, password: String? = null): UserProfile =
+    suspend fun finishRegistration(
+        userId: Long, token: String, code: String, password: String? = null,
+        isEntity: Boolean = false, entityName: String? = null,
+    ): UserProfile =
         userFrom(
             Http.sendApi(
                 "PUT", AEP.setLoginData,
@@ -117,6 +120,11 @@ object AuthApi {
                     put(AFLD.formAuthToken, token)
                     put(AFLD.verifyCode, code)
                     if (!password.isNullOrEmpty()) put(AFLD.password, password)
+                    // Only sent when registering a business account, so a personal registration is unchanged.
+                    if (isEntity) {
+                        put(AFLD.isEntity, true)
+                        if (!entityName.isNullOrEmpty()) put(AFLD.entityName, entityName)
+                    }
                 },
             ),
         )

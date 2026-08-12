@@ -15,6 +15,8 @@ object UPF {
     const val org = "org"
     const val roles = "roles"
     const val publicName = "publicName"
+    const val isEntity = "isEntity"
+    const val entityName = "entityName"
     const val hasPassword = "hasPassword"
 }
 
@@ -57,6 +59,13 @@ class UserProfile(
     /** The user's public display name, when known. */
     val publicName: String? = null,
     /**
+     * Whether this account belongs to a **business** rather than a person. When true it carries an
+     * [entityName] the frontend shows in place of the personal name (see [displayName]).
+     */
+    val isEntity: Boolean = false,
+    /** The business's (non-unique) name when [isEntity]; null for a personal account or an unnamed entity. */
+    val entityName: String? = null,
+    /**
      * Whether the user has opted into a password (login by code always works regardless). Known only on a
      * profile freshly loaded from the auth row; null (and omitted from [toUserInfo]) on the fast path where
      * the profile was restored from the session cookie without a database read.
@@ -71,6 +80,18 @@ class UserProfile(
     val isLoggedIn: Boolean get() = authId != null && authId != anonymousAuthId
 
     /**
+     * The name to present for this identity: the business's [entityName] when this is an entity account, and
+     * the personal [publicName] otherwise. A single rule, in the kernel, so the backend and the (transpiled)
+     * frontend cannot disagree about which name to show.
+     *
+     * An entity with no name yet, or a blank one, falls back to [publicName] rather than showing nothing --
+     * being an entity is not a reason to lose the identity the login already has. Null only when there is no
+     * name at all (e.g. the anonymous profile).
+     */
+    val displayName: String? get() =
+        if (isEntity) (entityName?.trim()?.ifEmpty { null } ?: publicName) else publicName
+
+    /**
      * A JSON-friendly map dump of this profile's attributes -- the payload returned by user-info endpoints so
      * a frontend can learn who the caller is. `authId` falls back to [anonymousAuthId], and a null
      * `publicName` is simply omitted; the shape is described by [defineInfoType].
@@ -82,6 +103,8 @@ class UserProfile(
         if (org != null) put(UPF.org, org)
         put(UPF.roles, roles.toList())
         if (publicName != null) put(UPF.publicName, publicName)
+        if (isEntity) put(UPF.isEntity, true)
+        if (entityName != null) put(UPF.entityName, entityName)
         if (hasPassword != null) put(UPF.hasPassword, hasPassword)
     }
 
@@ -111,6 +134,8 @@ class UserProfile(
             org = info.getOptStr(UPF.org),
             roles = info[UPF.roles].toJsonListOfStrings().toSet(),
             publicName = info.getOptStr(UPF.publicName),
+            isEntity = info[UPF.isEntity] == true,
+            entityName = info.getOptStr(UPF.entityName),
             hasPassword = info[UPF.hasPassword] as? Boolean,
         )
 
@@ -131,6 +156,8 @@ class UserProfile(
                     items { type = SCT.string }
                 }
                 property(UPF.publicName, "The user's public display name, when known.")
+                property(UPF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
+                property(UPF.entityName, "The business's name, when this is an entity account.")
                 property(UPF.hasPassword, "Whether the user has opted into a password.") { type = SCT.boolean }
             }
         }

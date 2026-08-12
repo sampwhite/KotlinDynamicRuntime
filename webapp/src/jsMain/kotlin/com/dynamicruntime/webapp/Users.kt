@@ -54,6 +54,8 @@ val Users = FC<Props> {
     var draftLevel by useState(ROLE.user)
     var draftAllClients by useState(false)
     var draftOrg by useState("")
+    var draftIsEntity by useState(false)
+    var draftEntityName by useState("")
     var draftEnabled by useState(true)
 
     val generation = useRefreshGeneration()
@@ -124,6 +126,8 @@ val Users = FC<Props> {
         draftLevel = user.level
         draftAllClients = user.roles.contains(ROLE.allClients)
         draftOrg = user.org ?: ""
+        draftIsEntity = user.isEntity
+        draftEntityName = user.entityName ?: ""
         draftEnabled = user.enabled
         note = null
         error = null
@@ -138,6 +142,8 @@ val Users = FC<Props> {
         draftLevel = ROLE.user
         draftAllClients = false
         draftOrg = config?.user?.org ?: ""
+        draftIsEntity = false
+        draftEntityName = ""
         draftEnabled = true
         note = null
         error = null
@@ -169,7 +175,10 @@ val Users = FC<Props> {
     fun save() = run {
         val target = editing
         if (target == null) {
-            val created = AdminApi.createUser(draftEmail, draftUsername, draftRoles(emptyList()), draftOrg.trim().ifEmpty { null })
+            val created = AdminApi.createUser(
+                draftEmail, draftUsername, draftRoles(emptyList()), draftOrg.trim().ifEmpty { null },
+                isEntity = draftIsEntity, entityName = draftEntityName.trim().ifEmpty { null },
+            )
             note = "Created ${created.primaryId}."
         } else {
             var changed = false
@@ -182,6 +191,13 @@ val Users = FC<Props> {
             }
             if (draftOrg.trim().ifEmpty { null } != target.org) {
                 AdminApi.setOrg(target.userId, draftOrg.trim().ifEmpty { null })
+                changed = true
+            }
+            // Entity status and its name are one concern (clearing the flag also clears the name), so a change
+            // to either sends the pair. The trimmed name is compared so whitespace-only edits are not a change.
+            val draftEntity = draftEntityName.trim().ifEmpty { null }
+            if (draftIsEntity != target.isEntity || (draftIsEntity && draftEntity != target.entityName)) {
+                AdminApi.setEntity(target.userId, draftIsEntity, draftEntity)
                 changed = true
             }
             if (draftEnabled != target.enabled) {
@@ -305,6 +321,25 @@ val Users = FC<Props> {
                 readOnlyField("Organization", draftOrg.ifEmpty { "—" })
             }
 
+            // Business account: mark it, and give the business the name shown in place of a personal one.
+            // Clearing the checkbox drops the name, matching the backend.
+            div {
+                className = ClassName("row")
+                Checkbox {
+                    checked = draftIsEntity
+                    disabled = busy
+                    onChange = { event -> draftIsEntity = event.target.checked as Boolean }
+                    +"Business account"
+                }
+            }
+            if (draftIsEntity) {
+                textField("Business name", draftEntityName, disabled = busy) { draftEntityName = it }
+                p {
+                    className = ClassName("type-hint")
+                    +entityNameHint
+                }
+            }
+
             div {
                 className = ClassName("row")
                 Checkbox {
@@ -361,7 +396,7 @@ val Users = FC<Props> {
                 }
                 Input {
                     value = search
-                    placeholder = "Email or username"
+                    placeholder = "Email, username, or business name"
                     // Never disabled: this field must keep focus while its own results are loading.
                     onChange = { event ->
                         val term = event.target.value as String
@@ -451,6 +486,10 @@ private const val allClientsDormantHint =
 private const val orgHint =
     "An optional organization within the client. Someone assigned one sees only their own organization, " +
         "plus anything belonging to no organization at all. Leave it blank for client-wide."
+
+/** Explains what the business name is for, and that it is display copy rather than an identifier. */
+private const val entityNameHint =
+    "Shown in place of a personal name for a business account. It need not be unique, and is not a login."
 
 /** Says what the middle rung is for, since "operator" does not explain itself the way the other two do. */
 private const val accessLevelHint =

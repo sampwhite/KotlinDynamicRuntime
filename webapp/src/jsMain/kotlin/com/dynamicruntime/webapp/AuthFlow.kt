@@ -36,6 +36,9 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     var email by useState("")
     var password by useState("")
     var code by useState("")
+    // Business-account registration (entity accounts). Both reset on a mode change, below.
+    var isEntity by useState(false)
+    var entityName by useState("")
     // The form token, set once a verification code has been sent, also marks the "enter the code" step.
     var token by useState<String?>(null)
     var error by useState<DisplayError?>(null)
@@ -70,6 +73,8 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         email = ""
         password = ""
         code = ""
+        isEntity = false
+        entityName = ""
         token = null
         error = null
         devFilled = false
@@ -134,7 +139,10 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 // Registration takes the password (if any) straight into the account it is creating.
                 register -> {
                     val userId = AuthApi.createInitial(id, tk, code.trim())
-                    AuthApi.finishRegistration(userId, tk, code.trim(), password.ifEmpty { null })
+                    AuthApi.finishRegistration(
+                        userId, tk, code.trim(), password.ifEmpty { null },
+                        isEntity = isEntity, entityName = entityName.trim().ifEmpty { null },
+                    )
                 }
                 // Setting a password *is* a code login, so this both saves it and signs the user in.
                 settingPassword -> AuthApi.setPassword(id, password, tk, code.trim())
@@ -171,6 +179,30 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             t(ns, "emailLabel", "Email address"), email, disabled = busy || codeSent,
             autoComplete = AC.username,
         ) { email = it }
+
+        // Registering a business account (entity accounts): mark it, and give the business a name that the app
+        // will show in place of a personal one. Register mode only, and it stays visible through the code step
+        // so the choice is not lost when the email field locks.
+        if (register) {
+            div {
+                className = ClassName("row")
+                Checkbox {
+                    checked = isEntity
+                    disabled = busy
+                    onChange = { event -> isEntity = event.target.checked as Boolean }
+                    +t("register", "isEntityLabel", "This is a business account")
+                }
+            }
+            if (isEntity) {
+                textField(
+                    t("register", "entityNameLabel", "Business name"), entityName, disabled = busy,
+                ) { entityName = it }
+                p {
+                    className = ClassName("type-hint")
+                    +t("register", "entityNameHelp", "Shown in place of a personal name. It need not be unique.")
+                }
+            }
+        }
 
         if (!codeSent) {
             // Login-only password path, when the deployment enables it.

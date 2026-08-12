@@ -20,6 +20,12 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
     /** The user's primary organization within [client], or null when they have none (issue #225). */
     var org: String? = null
 
+    /** Whether this account belongs to a business rather than a person (see [AD.isEntity]). */
+    var isEntity: Boolean = false
+
+    /** The business's (non-unique) name when [isEntity]; null for a personal account or an unnamed entity. */
+    var entityName: String? = null
+
     var enabled: Boolean = false
     lateinit var username: String
     var roles: List<String> = listOf(ROLE.user)
@@ -40,12 +46,24 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
     fun publicName(): String = if (needsRealUsername) primaryId else username
 
     /**
+     * Whether this row matches an admin-console [lowerTerm] (already lower-cased by the caller): a
+     * case-insensitive substring of the email, the username, or -- for an entity -- its business name. Lives
+     * here so the searchable fields stay listed beside the fields themselves; `UserService.listUsers` applies
+     * it after extraction, since `entityName` is not an SQL column.
+     */
+    fun matchesSearch(lowerTerm: String): Boolean =
+        primaryId.lowercase().contains(lowerTerm) ||
+            username.lowercase().contains(lowerTerm) ||
+            (entityName?.lowercase()?.contains(lowerTerm) == true)
+
+    /**
      * Loads a [UserProfile] from this row -- the acting/display identity for a logged-in user. A convenience
      * for now; a future variant may load only part of the profile for high-volume paths.
      */
     fun toUserProfile(): UserProfile = UserProfile(
         authId = userId.toString(), userId = userId, client = client, org = org, roles = roles.toSet(),
         publicName = publicName(), hasPassword = encodedPassword != null,
+        isEntity = isEntity, entityName = entityName,
     )
 
     /**
@@ -59,6 +77,8 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         ADF.primaryId to primaryId,
         ADF.username to username,
         ADF.org to org,
+        ADF.isEntity to isEntity,
+        ADF.entityName to entityName,
         ADF.roles to roles,
         ADF.enabled to enabled,
         ADF.hasPassword to (encodedPassword != null),
@@ -72,6 +92,10 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         // Removed rather than written as null when absent: most users have no organization, and an explicit
         // null would be stored in every row's JSON for the sake of the few that do.
         if (org != null) newAuthData[AD.org] = org else newAuthData.remove(AD.org)
+        // Entity data rides along the same way: written only when it is actually set, so a personal account's
+        // JSON does not carry `isEntity: false` in every row.
+        if (isEntity) newAuthData[AD.isEntity] = true else newAuthData.remove(AD.isEntity)
+        if (entityName != null) newAuthData[AD.entityName] = entityName else newAuthData.remove(AD.entityName)
         val retData = data.toMutableMap()
         retData[AU.username] = username
         retData[AU.authUserData] = newAuthData
@@ -103,6 +127,8 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
                     items { type = SCT.string }
                 }
                 property(ADF.org, "The user's primary organization within their client, when they have one.")
+                property(ADF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
+                property(ADF.entityName, "The business's name, when this is an entity account.")
                 property(ADF.enabled, "Whether the account is active.", required = true) { type = SCT.boolean }
                 property(ADF.hasPassword, "Whether the user has opted into a password.", required = true) {
                     type = SCT.boolean
@@ -122,6 +148,8 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
             val userData = (data[AU.authUserData]?.toJsonMap() ?: emptyMap()).toMutableMap()
             row.roles = (userData[AD.roles] as? List<*>)?.mapNotNull { it?.toString() } ?: listOf(ROLE.user)
             row.org = userData[AD.org].toOptStr()?.ifEmpty { null }
+            row.isEntity = userData[AD.isEntity] == true
+            row.entityName = userData[AD.entityName].toOptStr()?.ifEmpty { null }
             row.encodedPassword = userData[AD.encodedPassword].toOptStr()
             userData.remove(AD.encodedPassword) // never let the password leak downstream via `data`
             row.authUserData = userData

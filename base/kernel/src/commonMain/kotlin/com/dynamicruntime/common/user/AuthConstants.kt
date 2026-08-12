@@ -40,6 +40,12 @@ object AFLD {
     const val addPassword = "addPassword"
     const val userId = "userId"
 
+    /** Registration flag: this account belongs to a business, not a person (sets `authUserData.isEntity`). */
+    const val isEntity = "isEntity"
+
+    /** The business's (non-unique) name, captured at registration when [isEntity] is set. */
+    const val entityName = "entityName"
+
     /** The Google ID token (a JWT) the browser's Google sign-in hands back, POSTed to [AEP.loginByGoogle]. */
     const val googleCredential = "googleCredential"
 
