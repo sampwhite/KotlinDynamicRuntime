@@ -13,36 +13,36 @@ import io.kotest.matchers.shouldBe
  */
 class ErrorMessageRenderTest : StringSpec({
 
-    val msg = KdrMsg("auth", "error", "noAccount")
+    val msg = KdrMsg("auth", "error", "emailNotAvailable")
 
     "a resolved template is rendered with its params, and is marked fromFragment" {
         val warnings = mutableListOf<String>()
         val rendered = RequestHandler.renderMsg(
-            msg, mapOf("loginId" to "ghost@example.com"),
-            resolve = { _, _, _ -> $$"No account was found for ${loginId}." },
+            msg, mapOf("email" to "ghost@example.com"),
+            resolve = { _, _, _ -> $$"The email ${email} is not available." },
             warn = { warnings.add(it) },
         )
-        rendered.text shouldBe "No account was found for ghost@example.com."
+        rendered.text shouldBe "The email ghost@example.com is not available."
         rendered.fromFragment shouldBe true
         warnings.isEmpty() shouldBe true
     }
 
     "a string param is sanitized before substitution -- a Markdown link cannot be injected" {
         @Suppress("HttpUrlsUsage") val rendered = RequestHandler.renderMsg(
-            msg, mapOf("loginId" to "[click](http://evil.com)"),
-            resolve = { _, _, _ -> $$"No account was found for ${loginId}." },
+            msg, mapOf("email" to "[click](http://evil.com)"),
+            resolve = { _, _, _ -> $$"The email ${email} is not available." },
             warn = { },
         )
         // The link structure is stripped; the text survives, no clickable URL.
         @Suppress("HttpUrlsUsage")
-        rendered.text shouldBe "No account was found for clickhttp://evil.com."
+        rendered.text shouldBe "The email clickhttp://evil.com is not available."
         rendered.fromFragment shouldBe true
     }
 
     "a missing template falls back to the key path, not fromFragment, and warns" {
         val warnings = mutableListOf<String>()
         val rendered = RequestHandler.renderMsg(msg, emptyMap(), resolve = { _, _, _ -> null }, warn = { warnings.add(it) })
-        rendered.text shouldBe "auth/error/noAccount"
+        rendered.text shouldBe "auth/error/emailNotAvailable"
         rendered.fromFragment shouldBe false
         warnings.size shouldBe 1
     }
@@ -52,10 +52,10 @@ class ErrorMessageRenderTest : StringSpec({
         // The template references a param that was not supplied, so evalTemplate throws; renderMsg must swallow it.
         val rendered = RequestHandler.renderMsg(
             msg, emptyMap(),
-            resolve = { _, _, _ -> $$"No account for ${loginId}." },
+            resolve = { _, _, _ -> $$"The email ${email} is missing a param on purpose." },
             warn = { warnings.add(it) },
         )
-        rendered.text shouldBe "auth/error/noAccount"
+        rendered.text shouldBe "auth/error/emailNotAvailable"
         rendered.fromFragment shouldBe false
         warnings.size shouldBe 1
     }

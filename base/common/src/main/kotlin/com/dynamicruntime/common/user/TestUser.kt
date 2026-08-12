@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -117,7 +118,11 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
                 AEP.newContactSendVerify,
                 mapOf(AFLD.contactAddress to email, AFLD.contactType to emailContactType, AFLD.formAuthToken to token),
             )
-            val code = computeVerifyCode(token, email)
+            // Computed the way the server does -- via the instance's own NodeService key -- because a
+            // white-box test runs in-process and legitimately holds the node it is driving. An external
+            // caller, which is the threat, has only HTTP and cannot reach the key.
+            val node = NodeService.get(cxt) ?: error("NodeService is required to compute a verify code.")
+            val code = node.computeVerifyCode(token, email)
             val userId = client.sendJsonPutRequest(
                 AEP.createInitial,
                 mapOf(

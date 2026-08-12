@@ -13,7 +13,7 @@ import com.dynamicruntime.common.user.AERR
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.AUTHC
 import com.dynamicruntime.common.user.RL
-import com.dynamicruntime.common.user.computeVerifyCode
+import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.sanitizeForDisplay
 import com.dynamicruntime.common.util.toJsonMap
@@ -76,6 +76,12 @@ class AuthFlowTest : StringSpec({
     fun tokenOf(client: TestHttpClient): String =
         results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
 
+    // The verification code the server would compute, obtained the way the server does -- through the
+    // instance's NodeService, under its secret key. A white-box test holds the node it drives; the attacker,
+    // who has only HTTP, cannot reach the key, which is the whole point of the code being an HMAC now.
+    fun codeFor(token: String, contact: String): String =
+        NodeService.get(cxt)!!.computeVerifyCode(token, contact)
+
     /** The rendered auth.md copy for an error key, so assertions check the plumbing rather than the wording. */
     fun authMsg(key: String): String? =
         MarkdownFragmentService.get(cxt)!!.resolveFragment(cxt, AFRAG.auth, AERR.ns, key)
@@ -88,7 +94,7 @@ class AuthFlowTest : StringSpec({
             "/auth/newContact/sendVerify",
             mapOf("contactAddress" to contact, "contactType" to "email", "formAuthToken" to token),
         )
-        val code = computeVerifyCode(token, contact)
+        val code = codeFor(token, contact)
         val createResp = client.sendJsonPutRequest(
             "/auth/user/createInitial",
             mapOf("contactAddress" to contact, "contactType" to "email", "formAuthToken" to token, "verifyCode" to code),
@@ -110,7 +116,7 @@ class AuthFlowTest : StringSpec({
             mapOf("loginId" to name, "formAuthToken" to token, "addPassword" to true),
         )
         MailService.get(cxt)!!.lastEmailTo(contact)!!.text.contains("password") shouldBe true
-        val code = computeVerifyCode(token, contact)
+        val code = codeFor(token, contact)
         return client.sendJsonPutRequest(
             "/auth/user/setPassword",
             mapOf("loginId" to name, "password" to password, "formAuthToken" to token, "verifyCode" to code),
@@ -142,7 +148,7 @@ class AuthFlowTest : StringSpec({
         MailService.get(cxt)!!.lastEmailTo(email).shouldNotBeNull()
 
         // 3. Provision the initial user with the (deterministic) verification code.
-        val code1 = computeVerifyCode(token1, email)
+        val code1 = codeFor(token1, email)
         val createResp = client.sendJsonPutRequest(
             "/auth/user/createInitial",
             mapOf("contactAddress" to email, "contactType" to "email", "formAuthToken" to token1, "verifyCode" to code1),
@@ -171,7 +177,7 @@ class AuthFlowTest : StringSpec({
             "/auth/user/sendVerify",
             mapOf("loginId" to username, "formAuthToken" to token2),
         )
-        val code2 = computeVerifyCode(token2, email)
+        val code2 = codeFor(token2, email)
         val login2 = client.sendJsonPostRequest(
             "/auth/login/byCode",
             mapOf("loginId" to username, "formAuthToken" to token2, "verifyCode" to code2),
@@ -239,7 +245,7 @@ class AuthFlowTest : StringSpec({
         repeat(RL.verifyMax - 1) {
             client.sendEditRequest("/auth/login/byCode", null, wrong, isPut = false).rptStatusCode shouldBe EXC.badInput
         }
-        val good = mapOf("loginId" to "omar", "formAuthToken" to token, "verifyCode" to computeVerifyCode(token, contact))
+        val good = mapOf("loginId" to "omar", "formAuthToken" to token, "verifyCode" to codeFor(token, contact))
         results(client.sendJsonPostRequest("/auth/login/byCode", good))["publicName"] shouldBe "omar"
 
         // Proof that the reset happened: a further full run of failures still never trips. Had the counter carried
@@ -301,7 +307,7 @@ class AuthFlowTest : StringSpec({
         // But a code login from the new browser works and makes it familiar...
         val token = tokenOf(other)
         other.sendJsonPostRequest("/auth/user/sendVerify", mapOf("loginId" to "robert", "formAuthToken" to token))
-        val code = computeVerifyCode(token, contact)
+        val code = codeFor(token, contact)
         results(
             other.sendJsonPostRequest(
                 "/auth/login/byCode", mapOf("loginId" to "robert", "formAuthToken" to token, "verifyCode" to code),
@@ -353,7 +359,7 @@ class AuthFlowTest : StringSpec({
         // Log back in by code using the EMAIL as the login id (the frontend never surfaces the username).
         val token = tokenOf(client)
         client.sendJsonPostRequest("/auth/user/sendVerify", mapOf("loginId" to contact, "formAuthToken" to token))
-        val code = computeVerifyCode(token, contact)
+        val code = codeFor(token, contact)
         results(
             client.sendJsonPostRequest(
                 "/auth/login/byCode", mapOf("loginId" to contact, "formAuthToken" to token, "verifyCode" to code),
@@ -369,15 +375,26 @@ class AuthFlowTest : StringSpec({
         // same (sanitized) param the handler does -- so this checks the render *plumbing*, not the wording:
         // someone can reword auth.md without breaking it. That evalTemplate/sanitize is correct is covered by
         // ErrorMessageRenderTest and StrUtilTest.
-        val loginId = "ghost@example.com"
-        val noAccountExpected = authMsg(AERR.noAccount)!!
-            .evalTemplate(mapOf(AERR.loginIdParam to loginId.sanitizeForDisplay()))
-        val noAcct = client.sendJsonPostRequest(
-            "/auth/user/sendVerify", mapOf("loginId" to loginId, "formAuthToken" to token),
+        //
+        // A param-bearing message end to end: register an email, then try to register it again, which returns
+        // the emailNotAvailable copy with the address substituted in. (This used the noAccount message until
+        // issue #275 removed it -- an auth endpoint must not confirm whether an account exists.)
+        val taken = "taken@example.com"
+        registerByCode(client, taken, "takenuser")
+        val token2 = tokenOf(client)
+        val takenExpected = authMsg(AERR.emailNotAvailable)!!
+            .evalTemplate(mapOf(AERR.emailParam to taken.sanitizeForDisplay()))
+        val dup = client.sendJsonPutRequest(
+            "/auth/user/createInitial",
+            mapOf(
+                "contactAddress" to taken, "contactType" to "email",
+                "formAuthToken" to token2, "verifyCode" to codeFor(token2, taken),
+            ),
         )
-        noAcct[EP.errorMessage] shouldBe noAccountExpected
-        // Marked as designed copy, so the frontend knows it is safe to show normally (issue #108).
-        noAcct[EP.errorFromFragment] shouldBe true
+        dup[EP.errorMessage] shouldBe takenExpected
+        // Rendered from the fragment (designed copy). A test instance does not obfuscate, so even this
+        // sensitive message renders its real text and carries the flag (issue #108).
+        dup[EP.errorFromFragment] shouldBe true
 
         // A wrong verification code on registration: the parameter-free codeIncorrect template, likewise
         // compared against the fragment's own current text. Its own contact, so the attempt counts against no
@@ -395,6 +412,45 @@ class AuthFlowTest : StringSpec({
             ),
         )
         badCode[EP.errorMessage] shouldBe authMsg(AERR.codeIncorrect)
+    }
+
+    /**
+     * The auth entry points must not reveal whether an account exists (issue #275). The bug was that a login
+     * id with no account produced a distinct answer -- a 404 "no account was found" -- so anyone could probe
+     * an address and learn if it was registered. Every path now answers a missing account *identically* to the
+     * ordinary failure for a real one.
+     */
+    "an unknown account is indistinguishable from an ordinary failure" {
+        val client = mkClient("10.61.61.61")
+
+        // A real account for the "known" side of each comparison.
+        val known = "known@example.com"
+        registerByCode(client, known, "knownuser")
+
+        // 'Email me a code' answers success for both -- no 404 that would confirm the address is registered.
+        // (The unknown one silently sends nothing; the point is that the response does not differ.)
+        fun sendVerify(who: String): Map<String, Any?> {
+            val token = tokenOf(client)
+            return client.sendJsonPostRequest("/auth/user/sendVerify", mapOf("loginId" to who, "formAuthToken" to token))
+        }
+        sendVerify(known)[EP.status] shouldBe null           // success
+        sendVerify("ghost@example.com")[EP.status] shouldBe null // *also* success, not a 404
+
+        // Login by code with a wrong code: a real account and a missing one fail the same way -- same status
+        // and same message. Before the fix the missing one was a 404 with a different message.
+        fun loginWrongCode(who: String): Map<String, Any?> {
+            val token = tokenOf(client)
+            return client.sendJsonPostRequest(
+                "/auth/login/byCode",
+                mapOf("loginId" to who, "formAuthToken" to token, "verifyCode" to "WRONGCODE"),
+            )
+        }
+        val realWrong = loginWrongCode(known)
+        val ghostWrong = loginWrongCode("ghost@example.com")
+        realWrong[EP.status] shouldBe EXC.badInput
+        ghostWrong[EP.status] shouldBe realWrong[EP.status]           // same status
+        ghostWrong[EP.errorMessage] shouldBe realWrong[EP.errorMessage] // same message
+        ghostWrong[EP.errorMessage] shouldBe authMsg(AERR.codeIncorrect)
     }
 
     // The flow's long jump lives last: everything above runs within about an hour of the boot, and nothing
@@ -430,7 +486,7 @@ class AuthFlowTest : StringSpec({
         results(
             client.sendJsonPostRequest(
                 "/auth/login/byCode",
-                mapOf("loginId" to "piper", "formAuthToken" to token, "verifyCode" to computeVerifyCode(token, contact)),
+                mapOf("loginId" to "piper", "formAuthToken" to token, "verifyCode" to codeFor(token, contact)),
             ),
         )["publicName"] shouldBe "piper"
         client.sendGetRequest("/logout")
@@ -450,15 +506,35 @@ class AuthFlowTest : StringSpec({
         val client = TestHttpClient(obfCxt.instanceConfig)
         val token = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
 
-        // The unknown-account error (sensitive) now shows the generic message, computed from errors.md, and no
-        // longer reveals the email or that the account does not exist.
+        // The exemplar is the "email already taken" error (sensitive): register an address, then register it
+        // again. (This test used the noAccount error until issue #275 removed it; the remaining sensitive
+        // message carries the demonstration.) Codes are computed via this instance's own key.
+        val taken = "taken-obf@example.com"
+        fun obfCode(t: String) = NodeService.get(obfCxt)!!.computeVerifyCode(t, taken)
+        client.sendJsonPostRequest(
+            "/auth/newContact/sendVerify", mapOf("contactAddress" to taken, "contactType" to "email", "formAuthToken" to token),
+        )
+        val userId = results(client.sendJsonPutRequest(
+            "/auth/user/createInitial",
+            mapOf("contactAddress" to taken, "contactType" to "email", "formAuthToken" to token, "verifyCode" to obfCode(token)),
+        ))["userId"] as Long
+        client.sendJsonPutRequest(
+            "/auth/user/setLoginData",
+            mapOf("userId" to userId, "username" to "takenobf", "formAuthToken" to token, "verifyCode" to obfCode(token)),
+        )
+
+        // Now the duplicate registration is refused with a *sensitive* error, which obfuscation replaces by the
+        // generic message from errors.md -- so the address never appears on the wire.
+        val token2 = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
         val obf = RequestHandler.obfuscatedErrorMsg
         val expected = MarkdownFragmentService.get(obfCxt)!!.resolveFragment(obfCxt, obf.fileId, obf.namespace, obf.key)
-        val resp = client.sendJsonPostRequest(
-            "/auth/user/sendVerify", mapOf("loginId" to "ghost@example.com", "formAuthToken" to token),
+        val resp = client.sendJsonPutRequest(
+            "/auth/user/createInitial",
+            mapOf("contactAddress" to taken, "contactType" to "email", "formAuthToken" to token2,
+                "verifyCode" to NodeService.get(obfCxt)!!.computeVerifyCode(token2, taken)),
         )
         resp[EP.errorMessage] shouldBe expected
         resp[EP.errorFromFragment] shouldBe true // still designed copy
-        (resp[EP.errorMessage] as String).contains("ghost@example.com") shouldBe false
+        (resp[EP.errorMessage] as String).contains(taken) shouldBe false
     }
 })

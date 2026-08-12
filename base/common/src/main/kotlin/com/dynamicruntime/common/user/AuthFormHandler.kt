@@ -77,10 +77,23 @@ class AuthFormHandler(
         if (!rateLimiter.allow(key, RL.verifyMax, RL.verifyWindowMs, cxt.now().toEpochMilliseconds())) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyVerifyAttempts), code = EXC.tooManyRequests)
         }
-        if (computeVerifyCode(formAuthToken, contactAddress) != verifyCode) {
+        if (node.computeVerifyCode(formAuthToken, contactAddress) != verifyCode) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.codeIncorrect))
         }
         rateLimiter.reset(key)
+    }
+
+    /**
+     * Refuses a code login for a [loginId] that has no account, **identically to a wrong code for one that
+     * does** (issue #275). Returning a distinct "no account" error here made the endpoint an existence oracle;
+     * this runs the same throttle-and-compare against [loginId] as a contact, so the missing-account case and
+     * the wrong-code case have the same status, message, rate-limiting, and timing. It cannot succeed -- a
+     * keyed code for a contact the caller does not control will not match -- but if it somehow did, there is
+     * still no account, so it refuses regardless.
+     */
+    private fun refuseUnknownLogin(cxt: KdrCxt, loginId: String, formAuthToken: String, verifyCode: String): Nothing {
+        verifyCodeOrThrow(cxt, loginId, formAuthToken, verifyCode)
+        throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.codeIncorrect))
     }
 
     // --- sending verification codes -----------------------------------------
@@ -90,7 +103,7 @@ class AuthFormHandler(
         requireValidToken(cxt, formAuthToken)
         if (!contactAddress.contains("@")) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.emailNoAt))
         requireSendAllowed(cxt, contactAddress)
-        sendVerifyEmail(cxt, contactAddress, computeVerifyCode(formAuthToken, contactAddress), addPassword = false)
+        sendVerifyEmail(cxt, contactAddress, node.computeVerifyCode(formAuthToken, contactAddress), addPassword = false)
     }
 
     /**
@@ -101,12 +114,19 @@ class AuthFormHandler(
     fun sendVerifyToUser(cxt: KdrCxt, loginId: String, formAuthToken: String, addPassword: Boolean = false) {
         requireValidToken(cxt, formAuthToken)
         val user = userService.queryByLoginId(cxt, loginId)
-            ?: throw KdrException.mkMsg(
-                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId),
-                code = EXC.notFound, sensitive = true, // reveals whether an account exists -> obfuscated in prod
-            )
+        if (user == null) {
+            // Answer exactly as the success path does, rather than a 404 that would confirm the address has no
+            // account (issue #275). The old `noAccount` error made this a free membership oracle: ask for a
+            // code, learn whether the address is registered. Run the same throttle so rate-limit behavior does
+            // not distinguish the two either, then send nothing -- there is no mailbox to send to. The cost is
+            // that a real user who mistypes their address gets no email; that is the accepted price of not
+            // being an oracle, and is why the UI copy is "if that address has an account, a code is on its way".
+            requireSendAllowed(cxt, loginId)
+            LogAuth.info(cxt) { "sendVerify for a login id with no account; answering as success (issue #275)." }
+            return
+        }
         requireSendAllowed(cxt, user.primaryId)
-        sendVerifyEmail(cxt, user.primaryId, computeVerifyCode(formAuthToken, user.primaryId), addPassword)
+        sendVerifyEmail(cxt, user.primaryId, node.computeVerifyCode(formAuthToken, user.primaryId), addPassword)
     }
 
     /** Throttles verification emails per source IP and per targeted contact, to blunt flooding. */
@@ -206,10 +226,7 @@ class AuthFormHandler(
     fun loginByCode(cxt: KdrCxt, loginId: String, formAuthToken: String, verifyCode: String): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
         val row = userService.queryByLoginId(cxt, loginId)
-            ?: throw KdrException.mkMsg(
-                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId),
-                code = EXC.notFound, sensitive = true, // reveals whether an account exists -> obfuscated in prod
-            )
+            ?: refuseUnknownLogin(cxt, loginId, formAuthToken, verifyCode)
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
         return completeLogin(cxt, row, byCode = true)
     }
@@ -342,10 +359,7 @@ class AuthFormHandler(
     ): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
         val row = userService.queryByLoginId(cxt, loginId)
-            ?: throw KdrException.mkMsg(
-                KdrMsg(AFRAG.auth, AERR.ns, AERR.noAccount), mapOf(AERR.loginIdParam to loginId),
-                code = EXC.notFound, sensitive = true, // reveals whether an account exists -> obfuscated in prod
-            )
+            ?: refuseUnknownLogin(cxt, loginId, formAuthToken, verifyCode)
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
         setPassword(row, password)
         userService.updateUser(cxt, row)

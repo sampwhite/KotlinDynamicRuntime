@@ -114,11 +114,14 @@ object AERR {
     /** Google supplied the account's email but has not itself verified it, so it cannot identify a user. */
     const val googleEmailUnverified = "googleEmailUnverified"
 
-    // Account-existence (email leak); take a param. Marked sensitive for obfuscation in a later phase.
-    const val noAccount = "noAccount" // param: loginId
-    const val emailNotAvailable = "emailNotAvailable" // param: email
+    // `noAccount` was removed with issue #275: it named an account by whether it exists, and an auth entry
+    // point that answers "no account was found" is a membership oracle. The login/send-verify paths now fail
+    // *identically* whether or not the account exists (see AuthFormHandler), so there is nothing to say here
+    // -- and the message is deliberately gone rather than merely unused, so it cannot be wired back in.
 
-    /** Param keys the `${...}` placeholders reference. */
-    const val loginIdParam = "loginId"
+    /** Registration attempted for an already-taken email. Param `email`; sensitive (obfuscated in prod). */
+    const val emailNotAvailable = "emailNotAvailable"
+
+    /** Param key the `${...}` placeholder in [emailNotAvailable] references. */
     const val emailParam = "email"
 }

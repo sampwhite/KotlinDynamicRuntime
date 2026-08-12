@@ -10,6 +10,8 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.decrypt
 import com.dynamicruntime.common.util.encrypt
+import com.dynamicruntime.common.util.hmacToBytes
+import com.dynamicruntime.common.util.toReadableChars
 import com.dynamicruntime.common.util.formatDate
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Clock
@@ -100,11 +102,27 @@ class NodeService : ServiceInitializer {
      * Encrypts [plainText] with the instance's active key, stamping the key's lookup name as a prefix
      * (`ak|<ciphertext>`) so [decryptString] can select the matching key even after the active key rotates.
      */
-    fun encryptString(plainText: String): String {
-        val key = authKeys[instanceAuthConfigKey]
-            ?: throw KdrException("No encryption key '$instanceAuthConfigKey' is loaded (is InstanceConfigService initialized?).")
-        return "$instanceAuthConfigKey|${plainText.encrypt(key)}"
-    }
+    fun encryptString(plainText: String): String =
+        "$instanceAuthConfigKey|${plainText.encrypt(activeKey())}"
+
+    /**
+     * The verification code for a (form token, contact) pair -- an **HMAC** of the two under this node's
+     * secret key, rendered as human-readable characters.
+     *
+     * It lives here, on the holder of the key, deliberately. The code is checked by *recomputing* it rather
+     * than storing it, so both the send and the verify go through this one method under the same key -- and
+     * because the key never leaves the node, a caller who holds the (public) email address and form token
+     * still cannot derive it. That is the fix for the takeover this replaced: the code used to be a plain,
+     * unkeyed digest of exactly those two public inputs, so anyone could compute any account's code offline
+     * and log in as them. Keeping it a method here, rather than a free function over the raw inputs, is what
+     * makes the unkeyed form impossible to write by accident.
+     */
+    fun computeVerifyCode(formAuthToken: String, contactAddress: String): String =
+        (contactAddress + formAuthToken).hmacToBytes(activeKey()).toReadableChars(4)
+
+    /** The instance's active encryption key, or a hard failure if startup has not loaded one yet. */
+    private fun activeKey(): String = authKeys[instanceAuthConfigKey]
+        ?: throw KdrException("No encryption key '$instanceAuthConfigKey' is loaded (is InstanceConfigService initialized?).")
 
     /** Decrypts a value produced by [encryptString], selecting the key named in its `keyName|data` prefix. */
     fun decryptString(encryptedText: String): String {
