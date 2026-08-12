@@ -13,7 +13,7 @@ import io.kotest.matchers.shouldNotBe
  * Stage-2 proof (issue #33): the topic service resolves a topic's tables from the schema store, creates
  * them, and drives a standard topic transaction (insert-lock-execute) whose protocol columns are populated
  * from the context — owner (`client`) from the bound owner, audit (`createdBy`/`updatedBy`) from the actor.
- * Also checks the `/db/tables` list handler reads the table catalog from the store.
+ * Also checks the `/operator/db/tables` list handler reads the table catalog from the store.
  */
 class SqlTopicServiceTest : StringSpec({
 
