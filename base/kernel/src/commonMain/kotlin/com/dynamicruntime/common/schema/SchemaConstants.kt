@@ -158,6 +158,16 @@ object SCH {
     /** Whether an empty (or null) value for a property means the property was not supplied at all. */
     const val emptyIsAbsent = "g-emptyIsAbsent"
 
+    /**
+     * Marks a property the client does not supply -- something else produces it (issue #254).
+     *
+     * Two forms, both accepted from the start so that widening later is not a migration of stored documents:
+     * `true` says only *that* the value is produced elsewhere, and an object will one day say *how*. Only the
+     * first is interpreted today; a code-backed pre-processor is the everyday case and will keep using it
+     * indefinitely, since the object form is for derivations somebody authors.
+     */
+    const val derived = "g-derived"
+
     /** A labeled choice list on a property (array of `{label, value}` entries). */
     const val options = "g-options"
 

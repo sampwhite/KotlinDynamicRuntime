@@ -335,6 +335,10 @@ fun parseNode(
         itemType = itemType,
         options = parseOptions(map[SCH.options]),
         constValue = map[SCH.const],
+        // `true` or an object; either says the value is produced elsewhere, and only that much is read today.
+        // An object's content is deliberately not kept: there is nothing to consume it, and a ride-along raw
+        // map would be a field nobody reads that still has to be maintained.
+        derived = map[SCH.derived].let { it == true || it is Map<*, *> },
         variants = variants,
         condition = parseCondition(name, map),
         default = map[SCH.default],

@@ -425,6 +425,7 @@ fun inputObjectType(name: String, properties: Map<String, SchProperty>, required
         options = null,
         // An envelope is not a branch of anything and admits no single value, so neither construct applies.
         constValue = null,
+        derived = false,
         variants = null,
         condition = null,
         default = null,
@@ -458,6 +459,7 @@ val limitInputProperty: SchProperty =
             itemType = null,
             options = null,
             constValue = null,
+            derived = false,
             variants = null,
             condition = null,
             default = defaultListLimit,
@@ -510,6 +512,18 @@ fun buildEndpointInputSchema(endpoint: KdrEndpoint, defs: Map<String, Any?>): Ma
             }
         }
     }
+    // The input projection (issue #254): a `g-derived` field is produced by something other than the caller,
+    // so the schema they are shown does not offer it -- and `required` goes with it, or a field they may not
+    // send becomes a field they are told they must.
+    //
+    // Top level only, and the limit is structural rather than an omission: a derived field *inside* a shared
+    // type lives in the catalog's one `$defs` bag, which the input and the output both resolve against, so
+    // removing it there would take it out of the response schema too. Closing that needs a separately
+    // projected defs bag, which belongs with the export contract rather than here. Until then the keyword
+    // still travels, and every surface that reads schema honors it -- which is what the form does.
+    val derivedFields = properties.filterValues { (it as? Map<*, *>)?.get(SCH.derived).let { d -> d == true || d is Map<*, *> } }.keys
+    properties.keys.removeAll(derivedFields)
+    required.removeAll(derivedFields)
     if (endpoint.includeLimit) {
         properties[EP.limit] = linkedMapOf(
             SCH.description to "The maximum number of items to return.",

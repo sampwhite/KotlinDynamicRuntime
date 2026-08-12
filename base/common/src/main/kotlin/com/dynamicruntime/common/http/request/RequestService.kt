@@ -21,6 +21,7 @@ import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.schema.failureSummary
 import com.dynamicruntime.common.schema.parseSchemaTypes
@@ -334,7 +335,10 @@ class RequestService : ServiceInitializer {
         // Endpoint input is a flat set of top-level fields (issue #40), so the flat HTTP input -- query params
         // and/or POST body -- validates directly, with no re-grouping. The input type is closed to undeclared
         // properties, though off-contract `_`/`$` keys remain exempt (see the validator).
-        val result = coerceAndValidate(inputType, data)
+        // forInput: this is a request, so a `g-derived` property is neither demanded of the caller nor taken
+        // from them (issue #254). The same types validate a response elsewhere, where those fields are
+        // ordinary values -- which is why the direction is a parameter rather than a property of the type.
+        val result = coerceAndValidate(inputType, data, SchOpts(forInput = true))
         if (result.failures.isNotEmpty()) {
             // The failures travel STRUCTURED, under extraData, rather than interpolated into the sentence
             // (issue #198). They are already structured -- path, code, message, the schema's own wording, the

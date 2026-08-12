@@ -152,6 +152,17 @@ open class SchTypeBuilder(
     var default: Any? by SchAttr(data, SCH.default)
 
     /**
+     * Custom `g-derived` keyword: this value is produced by something other than the caller (issue #254), so
+     * it is neither asked for on the way in nor accepted from them.
+     *
+     * `true` is the everyday form and says only *that* it is produced elsewhere -- a code-backed pre-processor
+     * supplies it. The parser also accepts an object, reserved for saying *how* once there is a language to
+     * express a computation in; accepting both now means widening later is not a migration of stored
+     * documents.
+     */
+    var derived: Any? by SchAttr(data, SCH.derived)
+
+    /**
      * JSON Schema `const`: the one value this field admits.
      *
      * Its everyday use is a union branch declaring which branch it is — and there it is what makes the branch

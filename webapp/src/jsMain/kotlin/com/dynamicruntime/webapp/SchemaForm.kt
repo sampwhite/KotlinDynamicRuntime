@@ -211,8 +211,18 @@ private fun ChildrenBuilder.renderProperties(
         if (name in forbidden && isBlankValue(values[name])) {
             return@forEach
         }
+        // A derived value is produced by something other than whoever is filling this in (issue #254), so it
+        // is shown and never offered: no box to type in, in either mode.
+        //
+        // Shown rather than hidden, because this surface documents the wire -- the same reason it labels
+        // fields with their key rather than a `title`. Hiding a field the contract contains is the
+        // data-entry instinct applied to a tool for reading a contract, and it cost real confusion: with the
+        // computed field invisible, a value appearing in the response reads as the one you typed being
+        // overwritten. A real form-entry GUI would hide it, and would be right to; these two surfaces read
+        // the same keyword and reach opposite conclusions, which is the point of the annotation.
         renderField(
-            name, prop, name in type.required || name in alsoRequired, values[name], seen, editable,
+            name, prop, name in type.required || name in alsoRequired, values[name], seen,
+            editable && !prop.valueType.derived,
             childPath(path, name), errors,
             // A removal has to drop the key, not null it: a null against an object/array type fails the plain
             // type check (they do not coerce), so "removed" would read as "present but wrong".

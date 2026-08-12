@@ -44,7 +44,19 @@ class GedraSketchService : ServiceInitializer {
                     minimum = 2000
                     maximum = 2100
                 }
-                property(GS.totalAmount, "Total claimed, in the client's currency.") { type = SCT.number }
+                property(GS.perItemAmount, "Amount claimed for one item.") { type = SCT.number }
+                property(GS.itemCount, "How many items are claimed.") { type = SCT.integer }
+                // Derived (issue #254): the caller does not supply this, so it is not accepted from them and
+                // the form offers no box for it. The handler computes it and the response carries it.
+                //
+                // The trait deliberately has ONE total. An earlier version kept an ordinary `totalAmount`
+                // beside a derived `totalGallons`, and the two were mistaken for each other on sight -- a
+                // computed value appearing in a response reads as the value you typed being overwritten when
+                // a similarly named field is sitting next to it.
+                property(GS.totalAmount, "Total claimed; computed from the two above, not supplied.") {
+                    type = SCT.number
+                    derived = true
+                }
                 property(GS.notes, "Free-text explanation.")
             }
             variantBranch(
@@ -54,7 +66,7 @@ class GedraSketchService : ServiceInitializer {
                 property(GS.approved, "Whether it was approved.", required = true) { type = SCT.boolean }
                 property(GS.decidedBy, "Who decided.")
                 property(GS.rejectionReason, "Why it was rejected.")
-                // The conditional case (issue #253), inside a union branch so the two mechanisms are exercised
+                // The conditional case (issue #253), inside a union branch, so the two mechanisms are exercised
                 // in one payload: a reason is required when the decision is a rejection, and inadmissible when
                 // it is not. `presentWhen` emits the `if`/`then`/`else` triple, including the `required` inside
                 // the `if` that stops an absent `approved` from demanding a reason.
@@ -101,7 +113,7 @@ class GedraSketchService : ServiceInitializer {
                 // Getting this far means the union already validated the entry -- the endpoint runs after
                 // input validation, so a wrong-shaped entry never reaches here. What is left is to say which
                 // branch accepted it, which is the part a caller cannot see from a bare 200.
-                val entry = request[GS.entry].toJsonMapOrEmpty()
+                val entry = filledOut(request[GS.entry].toJsonMapOrEmpty())
                 val trait = entry[GS.traitId].toOptStr() ?: ""
                 linkedMapOf<String, Any?>(
                     GS.traitId to trait,
@@ -112,6 +124,19 @@ class GedraSketchService : ServiceInitializer {
             }
         }
     }
+}
+
+/**
+ * Fills in what the caller does not supply -- the sketch's stand-in for a trait's pre-processor (issue #254).
+ *
+ * `totalAmount` is declared `g-derived`, so it is absent from the input schema, undrawn by the form, and
+ * dropped if a client echoes one back. Something has to produce it, and in a real trait that something is
+ * code bound to the trait; here it is this function, which is the smallest honest version of the same thing.
+ */
+private fun filledOut(entry: Map<String, Any?>): Map<String, Any?> {
+    val perItem = (entry[GS.perItemAmount] as? Number)?.toDouble() ?: return entry
+    val count = (entry[GS.itemCount] as? Number)?.toDouble() ?: return entry
+    return entry + (GS.totalAmount to perItem * count)
 }
 
 /** Field names and trait ids for the Gedra sketch, kept beside the schema that declares them. */
@@ -125,6 +150,8 @@ object GS {
     const val year = "year"
     const val totalAmount = "totalAmount"
     const val notes = "notes"
+    const val perItemAmount = "perItemAmount"
+    const val itemCount = "itemCount"
     const val approved = "approved"
     const val decidedBy = "decidedBy"
     const val rejectionReason = "rejectionReason"
