@@ -9,6 +9,7 @@ import java.security.spec.AlgorithmParameterSpec
 import java.util.Base64
 import java.util.zip.CRC32
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
@@ -82,6 +83,21 @@ fun ByteArray.base64EncodeStripped(): String = base64Encode().replace('-', 'z')
 /** A fast, non-security digest of [this] (SHA-256), as raw bytes. */
 fun String.stdHashToBytes(): ByteArray =
     MessageDigest.getInstance("SHA-256").digest(this.toByteArray(Charsets.UTF_8))
+
+/**
+ * An **HMAC-SHA256** of [this] under [key] (a node encryption key), as raw bytes.
+ *
+ * The keyed counterpart to [stdHashToBytes], and the distinction is the whole point. A plain digest of public
+ * inputs is reproducible by anyone who holds those inputs; an HMAC is not, without the secret [key]. Use this
+ * wherever a value has to be recomputable by the server to check it, yet unforgeable by the caller who
+ * supplied the inputs -- a verification code being the case that motivated it, where an unkeyed digest let a
+ * caller derive another account's code from the (public) email and form token.
+ */
+fun String.hmacToBytes(key: String): ByteArray {
+    val mac = Mac.getInstance("HmacSHA256")
+    mac.init(SecretKeySpec(key.keyBytes(), "HmacSHA256"))
+    return mac.doFinal(this.toByteArray(Charsets.UTF_8))
+}
 
 /** A fast, non-security digest of [this], as a compact search-friendly string ([base64EncodeStripped]). */
 fun String.stdHash(): String = this.stdHashToBytes().base64EncodeStripped()

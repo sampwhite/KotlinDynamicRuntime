@@ -77,7 +77,7 @@ class AuthFormHandler(
         if (!rateLimiter.allow(key, RL.verifyMax, RL.verifyWindowMs, cxt.now().toEpochMilliseconds())) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyVerifyAttempts), code = EXC.tooManyRequests)
         }
-        if (computeVerifyCode(formAuthToken, contactAddress) != verifyCode) {
+        if (node.computeVerifyCode(formAuthToken, contactAddress) != verifyCode) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.codeIncorrect))
         }
         rateLimiter.reset(key)
@@ -90,7 +90,7 @@ class AuthFormHandler(
         requireValidToken(cxt, formAuthToken)
         if (!contactAddress.contains("@")) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.emailNoAt))
         requireSendAllowed(cxt, contactAddress)
-        sendVerifyEmail(cxt, contactAddress, computeVerifyCode(formAuthToken, contactAddress), addPassword = false)
+        sendVerifyEmail(cxt, contactAddress, node.computeVerifyCode(formAuthToken, contactAddress), addPassword = false)
     }
 
     /**
@@ -106,7 +106,7 @@ class AuthFormHandler(
                 code = EXC.notFound, sensitive = true, // reveals whether an account exists -> obfuscated in prod
             )
         requireSendAllowed(cxt, user.primaryId)
-        sendVerifyEmail(cxt, user.primaryId, computeVerifyCode(formAuthToken, user.primaryId), addPassword)
+        sendVerifyEmail(cxt, user.primaryId, node.computeVerifyCode(formAuthToken, user.primaryId), addPassword)
     }
 
     /** Throttles verification emails per source IP and per targeted contact, to blunt flooding. */

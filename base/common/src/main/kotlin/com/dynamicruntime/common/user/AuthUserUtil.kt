@@ -5,16 +5,9 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.util.hashPassword
-import com.dynamicruntime.common.util.stdHashToBytes
-import com.dynamicruntime.common.util.toReadableChars
 
-/**
- * The verification code for a (form token, contact) pair. It is deliberately **not stored**: it is a
- * deterministic hash of the contact address and the encrypted, timeout-bounded form token, so it can be
- * recomputed to verify. Ported from dn's `computeVerifyCode`.
- */
-fun computeVerifyCode(formAuthToken: String, contactAddress: String): String =
-    (contactAddress + formAuthToken).stdHashToBytes().toReadableChars(4)
+// The verification code moved to `NodeService.computeVerifyCode`, because it must be keyed under the node's
+// secret and this was a free function over public inputs alone. See that method for the takeover it fixes.
 
 /** Validates a username: starts with a letter, contains only letters/digits/underscore, at least 4 chars. */
 fun checkValidUsername(username: String) {

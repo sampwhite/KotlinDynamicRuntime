@@ -13,7 +13,7 @@ import com.dynamicruntime.common.user.AERR
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.AUTHC
 import com.dynamicruntime.common.user.RL
-import com.dynamicruntime.common.user.computeVerifyCode
+import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.sanitizeForDisplay
 import com.dynamicruntime.common.util.toJsonMap
@@ -76,6 +76,12 @@ class AuthFlowTest : StringSpec({
     fun tokenOf(client: TestHttpClient): String =
         results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
 
+    // The verification code the server would compute, obtained the way the server does -- through the
+    // instance's NodeService, under its secret key. A white-box test holds the node it drives; the attacker,
+    // who has only HTTP, cannot reach the key, which is the whole point of the code being an HMAC now.
+    fun codeFor(token: String, contact: String): String =
+        NodeService.get(cxt)!!.computeVerifyCode(token, contact)
+
     /** The rendered auth.md copy for an error key, so assertions check the plumbing rather than the wording. */
     fun authMsg(key: String): String? =
         MarkdownFragmentService.get(cxt)!!.resolveFragment(cxt, AFRAG.auth, AERR.ns, key)
@@ -88,7 +94,7 @@ class AuthFlowTest : StringSpec({
             "/auth/newContact/sendVerify",
             mapOf("contactAddress" to contact, "contactType" to "email", "formAuthToken" to token),
         )
-        val code = computeVerifyCode(token, contact)
+        val code = codeFor(token, contact)
         val createResp = client.sendJsonPutRequest(
             "/auth/user/createInitial",
             mapOf("contactAddress" to contact, "contactType" to "email", "formAuthToken" to token, "verifyCode" to code),
@@ -110,7 +116,7 @@ class AuthFlowTest : StringSpec({
             mapOf("loginId" to name, "formAuthToken" to token, "addPassword" to true),
         )
         MailService.get(cxt)!!.lastEmailTo(contact)!!.text.contains("password") shouldBe true
-        val code = computeVerifyCode(token, contact)
+        val code = codeFor(token, contact)
         return client.sendJsonPutRequest(
             "/auth/user/setPassword",
             mapOf("loginId" to name, "password" to password, "formAuthToken" to token, "verifyCode" to code),
@@ -142,7 +148,7 @@ class AuthFlowTest : StringSpec({
         MailService.get(cxt)!!.lastEmailTo(email).shouldNotBeNull()
 
         // 3. Provision the initial user with the (deterministic) verification code.
-        val code1 = computeVerifyCode(token1, email)
+        val code1 = codeFor(token1, email)
         val createResp = client.sendJsonPutRequest(
             "/auth/user/createInitial",
             mapOf("contactAddress" to email, "contactType" to "email", "formAuthToken" to token1, "verifyCode" to code1),
@@ -171,7 +177,7 @@ class AuthFlowTest : StringSpec({
             "/auth/user/sendVerify",
             mapOf("loginId" to username, "formAuthToken" to token2),
         )
-        val code2 = computeVerifyCode(token2, email)
+        val code2 = codeFor(token2, email)
         val login2 = client.sendJsonPostRequest(
             "/auth/login/byCode",
             mapOf("loginId" to username, "formAuthToken" to token2, "verifyCode" to code2),
@@ -239,7 +245,7 @@ class AuthFlowTest : StringSpec({
         repeat(RL.verifyMax - 1) {
             client.sendEditRequest("/auth/login/byCode", null, wrong, isPut = false).rptStatusCode shouldBe EXC.badInput
         }
-        val good = mapOf("loginId" to "omar", "formAuthToken" to token, "verifyCode" to computeVerifyCode(token, contact))
+        val good = mapOf("loginId" to "omar", "formAuthToken" to token, "verifyCode" to codeFor(token, contact))
         results(client.sendJsonPostRequest("/auth/login/byCode", good))["publicName"] shouldBe "omar"
 
         // Proof that the reset happened: a further full run of failures still never trips. Had the counter carried
@@ -301,7 +307,7 @@ class AuthFlowTest : StringSpec({
         // But a code login from the new browser works and makes it familiar...
         val token = tokenOf(other)
         other.sendJsonPostRequest("/auth/user/sendVerify", mapOf("loginId" to "robert", "formAuthToken" to token))
-        val code = computeVerifyCode(token, contact)
+        val code = codeFor(token, contact)
         results(
             other.sendJsonPostRequest(
                 "/auth/login/byCode", mapOf("loginId" to "robert", "formAuthToken" to token, "verifyCode" to code),
@@ -353,7 +359,7 @@ class AuthFlowTest : StringSpec({
         // Log back in by code using the EMAIL as the login id (the frontend never surfaces the username).
         val token = tokenOf(client)
         client.sendJsonPostRequest("/auth/user/sendVerify", mapOf("loginId" to contact, "formAuthToken" to token))
-        val code = computeVerifyCode(token, contact)
+        val code = codeFor(token, contact)
         results(
             client.sendJsonPostRequest(
                 "/auth/login/byCode", mapOf("loginId" to contact, "formAuthToken" to token, "verifyCode" to code),
@@ -430,7 +436,7 @@ class AuthFlowTest : StringSpec({
         results(
             client.sendJsonPostRequest(
                 "/auth/login/byCode",
-                mapOf("loginId" to "piper", "formAuthToken" to token, "verifyCode" to computeVerifyCode(token, contact)),
+                mapOf("loginId" to "piper", "formAuthToken" to token, "verifyCode" to codeFor(token, contact)),
             ),
         )["publicName"] shouldBe "piper"
         client.sendGetRequest("/logout")
