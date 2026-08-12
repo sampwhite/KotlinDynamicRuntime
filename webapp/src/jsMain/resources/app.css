@@ -159,7 +159,28 @@ body {
     text-transform: uppercase;
     color: var(--text);
 }
-.app-bar-right { position: relative; }
+.app-bar-right { position: relative; display: flex; align-items: center; gap: 4px; }
+
+/* Who is signed in, in the bar rather than only inside the menu (issue #276). Quiet by default -- it is
+   context, not a call to action -- and set apart when signed out, because that is the state a reader is
+   most likely to have misread as "still loading". Spelled out rather than signalled by colour alone, the
+   same reasoning as `.admin-badge` above. */
+.identity-badge {
+    max-width: 22ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.identity-badge.signed-out {
+    border: 1px dashed var(--border);
+    color: var(--text-dim);
+    font-style: italic;
+}
 
 .hamburger {
     background: transparent;
@@ -204,14 +225,6 @@ body {
 .app-menu-item:hover { background: var(--border); }
 
 /* A non-clickable menu header, e.g. "Signed in as …". */
-.app-menu-label {
-    display: block;
-    padding: 12px 16px 6px;
-    color: var(--text-muted);
-    font-size: 0.85em;
-    border-top: 1px solid var(--border);
-}
-
 /* Home shell: the three link presentations (top bar / left bar / inline) around the content. */
 .home-shell { width: min(1040px, 95vw); }
 .home-topbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
