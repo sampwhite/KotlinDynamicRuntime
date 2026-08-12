@@ -30,7 +30,7 @@ checked-in instructions for recreating them.
 
 - The **server** boots the runtime and serves HTTP on **:7070** under the `kda`
   context root. Run `:launch:run` (the main app; in developer environments it also
-  registers the `sample` module's demo file endpoints, exposing `/kda/file/*`).
+  registers the `sample` module's demo file endpoints, exposing `/kda/demo/file/*`).
 - The **webapp** dev server runs on **:8080** and proxies `/kda` → `:7070`, so
   the browser makes same-origin calls (no CORS). Start the server first, or every
   page shows an "API call failed" error.

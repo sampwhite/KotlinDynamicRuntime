@@ -69,7 +69,7 @@ class SampleFileHttpTest : StringSpec({
 
     fun upload(fileName: String, mimeType: String, content: ByteArray): HttpResponse<String> {
         val boundary = "----kdrTestBoundary${System.nanoTime()}"
-        val request = HttpRequest.newBuilder(URI.create(server.url("/kda/file/upload")))
+        val request = HttpRequest.newBuilder(URI.create(server.url("/kda/demo/file/upload")))
             .header("Content-Type", "$MULTIPART; boundary=$boundary")
             .POST(HttpRequest.BodyPublishers.ofByteArray(multipartBody(boundary, SF.file, fileName, mimeType, content)))
             .build()
@@ -89,7 +89,7 @@ class SampleFileHttpTest : StringSpec({
         (results[SF.size] as Number).toLong() shouldBe largeUpload.size.toLong()
 
         val downloaded = client.send(
-            HttpRequest.newBuilder(URI.create(server.url("/kda/file/download?id=$id"))).build(),
+            HttpRequest.newBuilder(URI.create(server.url("/kda/demo/file/download?id=$id"))).build(),
             HttpResponse.BodyHandlers.ofByteArray(),
         )
         downloaded.statusCode() shouldBe 200
@@ -108,7 +108,7 @@ class SampleFileHttpTest : StringSpec({
         results[SF.mimeType] shouldBe "image/png"
 
         val downloaded = client.send(
-            HttpRequest.newBuilder(URI.create(server.url("/kda/file/download?id=${results[SF.id]}"))).build(),
+            HttpRequest.newBuilder(URI.create(server.url("/kda/demo/file/download?id=${results[SF.id]}"))).build(),
             HttpResponse.BodyHandlers.ofByteArray(),
         )
         downloaded.body().toList() shouldBe small.toList()

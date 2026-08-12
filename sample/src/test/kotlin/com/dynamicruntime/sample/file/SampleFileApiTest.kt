@@ -46,7 +46,7 @@ class SampleFileApiTest : StringSpec({
         val c = client("roundTrip")
 
         val uploaded = c.sendUploadRequest(
-            "/file/upload",
+            "/demo/file/upload",
             mapOf(SF.file to ContentData(pngBytes, "image/png", saveAsFilename = "chart.png")),
         )
         uploaded.rptStatusCode shouldBe 200
@@ -57,7 +57,7 @@ class SampleFileApiTest : StringSpec({
         results[SF.mimeType] shouldBe "image/png"
         (results[SF.size] as Number).toLong() shouldBe pngBytes.size.toLong()
 
-        val downloaded = c.sendGetRequest("/file/download", mapOf(SF.id to id))
+        val downloaded = c.sendGetRequest("/demo/file/download", mapOf(SF.id to id))
         downloaded.rptStatusCode shouldBe 200
         downloaded.rptResponseMimeType shouldBe "image/png"
         // The bytes come back exactly, through the binary response path.
@@ -71,14 +71,14 @@ class SampleFileApiTest : StringSpec({
 
     "an uploaded file appears in the list" {
         val c = client("listing")
-        c.sendUploadRequest("/file/upload", mapOf(SF.file to ContentData("hello".toByteArray(), "text/plain", saveAsFilename = "notes.txt")))
-        val items = c.sendJsonGetRequest("/file/list")[EP.items] as? List<*>
+        c.sendUploadRequest("/demo/file/upload", mapOf(SF.file to ContentData("hello".toByteArray(), "text/plain", saveAsFilename = "notes.txt")))
+        val items = c.sendJsonGetRequest("/demo/file/list")[EP.items] as? List<*>
         items.shouldNotBeNull()
         items.map { it.toJsonMapOrEmpty()[SF.fileName] } shouldContain "notes.txt"
     }
 
     "downloading an unknown id is a 404, not a server error" {
-        val resp = client("missing").sendGetRequest("/file/download", mapOf(SF.id to "0123456789abcdef0123456789abcdef"))
+        val resp = client("missing").sendGetRequest("/demo/file/download", mapOf(SF.id to "0123456789abcdef0123456789abcdef"))
         resp.rptStatusCode shouldBe 404
     }
 
@@ -86,7 +86,7 @@ class SampleFileApiTest : StringSpec({
     // is checked rather than sanitized: anything that is not one of our hex ids is refused outright.
     "a file id that is not ours cannot walk out of the store" {
         for (bad in listOf("../../etc/passwd", "..", "a/b", "abc .bin", "abc\u0000.bin", "ABCDEF", "zz")) {
-            val resp = client("traversal").sendGetRequest("/file/download", mapOf(SF.id to bad))
+            val resp = client("traversal").sendGetRequest("/demo/file/download", mapOf(SF.id to bad))
             // 400 (not a valid id) -- never a 200, and never a 500 from the filesystem.
             resp.rptStatusCode shouldNotBe 200
             resp.rptStatusCode shouldNotBe 500
@@ -97,7 +97,7 @@ class SampleFileApiTest : StringSpec({
     "an upload's filename never becomes the path on disk" {
         val c = client("naming")
         val uploaded = c.sendUploadRequest(
-            "/file/upload",
+            "/demo/file/upload",
             mapOf(SF.file to ContentData("x".toByteArray(), "text/plain", saveAsFilename = "../../evil.txt")),
         )
         val results = uploaded.rptResponseData.shouldNotBeNull().jsonMap()?.get(EP.results).toJsonMapOrEmpty()

@@ -76,10 +76,10 @@ class SchemaComplexEndpointTest : StringSpec({
     )
 
     fun putStatus(cxtName: String, body: Map<String, Any?>): Int =
-        client(cxtName).sendEditRequest("/schema/complex", null, body, isPut = true).rptStatusCode
+        client(cxtName).sendEditRequest("/fixture/schema/complex", null, body, isPut = true).rptStatusCode
 
     "PUT /schema/complex validates a deep, recursive input and expands the parent chain into items" {
-        val resp = client("complexOk").sendJsonPutRequest("/schema/complex", validQuery())
+        val resp = client("complexOk").sendJsonPutRequest("/fixture/schema/complex", validQuery())
         val list = items(resp)
         // The recursive `parent` chain (root -> mid -> leaf) proves the nested/recursive input validated and
         // is navigable; one result per node, deepest last.
@@ -97,11 +97,11 @@ class SchemaComplexEndpointTest : StringSpec({
         input[CX.active] = "true" // boolean from a string
         sub(sub(input, CX.address), CX.location)[CX.lat] = "40.7" // number two refs deep, from a string
         // Coercion succeeds, so the request is processed (an item list, not a 400-error envelope).
-        items(client("complexCoerce").sendJsonPutRequest("/schema/complex", q)).size shouldBe 3
+        items(client("complexCoerce").sendJsonPutRequest("/fixture/schema/complex", q)).size shouldBe 3
     }
 
     "a list of objects is validated element-wise and arrives intact" {
-        val list = items(client("complexContacts").sendJsonPutRequest("/schema/complex", validQuery()))
+        val list = items(client("complexContacts").sendJsonPutRequest("/fixture/schema/complex", validQuery()))
         // Both elements survived, and a field from *inside* the first element came back -- so the array was
         // validated and carried through, not merely tolerated.
         list.first()[CX.contactCount] shouldBe 2
@@ -124,7 +124,7 @@ class SchemaComplexEndpointTest : StringSpec({
         val q = validQuery()
         // contacts[1].location is a GeoPoint; a string latitude two levels inside an array element still coerces.
         sub(elem(sub(q, CX.input), CX.contacts, 1), CX.location)[CX.lat] = "40.7"
-        items(client("complexElemCoerce").sendJsonPutRequest("/schema/complex", q)).size shouldBe 3
+        items(client("complexElemCoerce").sendJsonPutRequest("/fixture/schema/complex", q)).size shouldBe 3
     }
 
     $$"a missing required field inside a list element's own $ref fails validation" {
@@ -143,14 +143,14 @@ class SchemaComplexEndpointTest : StringSpec({
             "channel" to "excel",
             "nested" to linkedMapOf<String, Any?>("fileRef" to "///x.xlsx"),
         )
-        val list = items(client("complexExtras").sendJsonPutRequest("/schema/complex", q))
+        val list = items(client("complexExtras").sendJsonPutRequest("/fixture/schema/complex", q))
         // The count is what makes this test able to fail: a request whose map was silently emptied in transit
         // would still be a valid request returning three items.
         list.first()[CX.extraKeys] shouldBe 2
     }
 
     "an absent open map property is not invented" {
-        val list = items(client("complexNoExtras").sendJsonPutRequest("/schema/complex", validQuery()))
+        val list = items(client("complexNoExtras").sendJsonPutRequest("/fixture/schema/complex", validQuery()))
         list.first()[CX.extraKeys] shouldBe 0
     }
 
@@ -163,7 +163,7 @@ class SchemaComplexEndpointTest : StringSpec({
     "PUT /schema/complex truncates the expanded items by limit" {
         val q = validQuery()
         q[EP.limit] = 2
-        val resp = client("complexLimit").sendJsonPutRequest("/schema/complex", q)
+        val resp = client("complexLimit").sendJsonPutRequest("/fixture/schema/complex", q)
         items(resp).size shouldBe 2
         (resp[EP.numItems] as Number).toInt() shouldBe 2
     }
@@ -199,7 +199,7 @@ class SchemaComplexEndpointTest : StringSpec({
         val ok = validQuery()
         sub(ok, CX.input)[CX.active] = ""
         sub(sub(ok, CX.input), CX.address)[CX.zip] = ""
-        items(client("complexBlankOptional").sendJsonPutRequest("/schema/complex", ok)).size shouldBe 3
+        items(client("complexBlankOptional").sendJsonPutRequest("/fixture/schema/complex", ok)).size shouldBe 3
     }
 
     "an invalid option value fails validation" {
@@ -235,12 +235,12 @@ class SchemaComplexEndpointTest : StringSpec({
     $$"the /schema/endpoint lookup keeps the input $refs intact and closes over the recursive $defs" {
         // Use the single-endpoint lookup (not the full listing) to fetch just this endpoint's definition.
         val resp = client("complexCatalog")
-            .sendJsonGetRequest("/schema/endpoint", mapOf(EI.method to "PUT", EI.path to "/schema/complex"))
+            .sendJsonGetRequest("/schema/endpoint", mapOf(EI.method to "PUT", EI.path to "/fixture/schema/complex"))
         val results = resp[EP.results]!!.toJsonMap()
         val eps = results[EI.endpoints].toJsonListOfMaps()
         eps.size shouldBe 1 // the lookup returns exactly the one requested endpoint
         val complex = eps.single()
-        complex[EI.path] shouldBe "/schema/complex"
+        complex[EI.path] shouldBe "/fixture/schema/complex"
         complex[EI.method] shouldBe "PUT"
 
         // The flattened input keeps `input` as a $ref (client resolves it), plus mode/sinceDate and the

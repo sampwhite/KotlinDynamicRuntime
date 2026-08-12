@@ -53,7 +53,7 @@ class SampleFileService : ServiceInitializer {
             }
 
             fileUploadEndpoint(
-                "/file/upload",
+                "/demo/file/upload",
                 "Upload a file; answers with the stored file's metadata.",
                 outputRef = "FileInfo",
                 inputFields = {
@@ -68,7 +68,7 @@ class SampleFileService : ServiceInitializer {
             }
 
             listEndpoint(
-                "/file/list",
+                "/demo/file/list",
                 "List the uploaded files, newest first.",
                 outputRef = "FileInfo",
             ) { c, _ ->
@@ -76,7 +76,7 @@ class SampleFileService : ServiceInitializer {
             }
 
             fileDownloadEndpoint(
-                "/file/download",
+                "/demo/file/download",
                 "Download a previously uploaded file by id; the response body is the file itself.",
                 inputFields = {
                     field(SF.id, "Id of the file to download (from upload or list).", required = true)

@@ -209,7 +209,7 @@ class SchemaService : ServiceInitializer {
                 property(SS.details, "Nested detail object.", required = true) { ref("SampleDetails") }
             }
             listEndpoint(
-                "/schema/sample",
+                "/demo/schema/sample",
                 "A sample list endpoint exercising nested request/response schema, choices, dates, booleans, and integers.",
                 outputRef = "SampleItem",
                 method = HttpMethod.POST,
@@ -333,12 +333,18 @@ class SchemaService : ServiceInitializer {
                 }
             }
             listEndpoint(
-                "/schema/complex",
+                "/fixture/schema/complex",
                 "Processes a deeply nested, recursive object, expanding its tree's parent chain into result " +
                         $$"items (capped by `limit`). Exercises deep $ref validation and the recursive $defs population.",
                 outputRef = "ComplexResult",
                 method = HttpMethod.PUT,
                 inputRef = "ComplexQuery",
+                // A fixture, so it is absent outside a test instance (issue #270). It exists for
+                // SchemaComplexEndpointTest to assert against, and a client has no business seeing it -- which
+                // is the whole distinction between the `fixture` and `demo` roots. The portal loses its
+                // richest form on a non-test node as a result; `/demo/schema/sample` is the groomed one that
+                // is meant to be seen.
+                forTestingOnly = true,
                 // hasMore / hasNumAvailable are intentionally omitted: the executor does not populate paging
                 // metadata yet (a TODO in buildEnvelope), so requiring them would fail output validation.
             ) { c, request -> complexItems(c, request) }

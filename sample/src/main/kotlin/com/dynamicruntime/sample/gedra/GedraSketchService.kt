@@ -111,7 +111,7 @@ class GedraSketchService : ServiceInitializer {
             }
 
             generalEndpoint(
-                "/gedraSketch/entry/echo",
+                "/fixture/gedra/entry/echo",
                 "Validates one Gedra entry against its trait's branch and reports which branch accepted it. " +
                     "Stores nothing.",
                 HttpMethod.POST,
@@ -139,7 +139,7 @@ class GedraSketchService : ServiceInitializer {
             // own traitId names, so one array carries several shapes, and a failure names the element it came
             // from.
             listEndpoint(
-                "/gedraSketch/entries/fillOut",
+                "/fixture/gedra/entries/fillOut",
                 "Validates a set of Gedra entries and answers with them filled out. Stores nothing -- the " +
                     "name says what it does rather than what a real endpoint here would be called.",
                 outputRef = "GedraEntry",
