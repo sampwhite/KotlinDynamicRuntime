@@ -167,7 +167,7 @@ class ConvertUtilTest : StringSpec({
         ('x' as Any?).toOptStr() shouldBe "x"
     }
 
-    // The bug this widening exists to retire. A conversion answering null reads as "absent", and two absents
+    // The bug this widening exists to retire. A conversion answering null reads as "absent", and two "absents"
     // are equal -- so before #267 these two agreed, which is how a `const` of a non-string matched anything.
     "two different non-strings do not convert to the same thing" {
         (42 as Any?).toOptStr() shouldNotBe (true as Any?).toOptStr()

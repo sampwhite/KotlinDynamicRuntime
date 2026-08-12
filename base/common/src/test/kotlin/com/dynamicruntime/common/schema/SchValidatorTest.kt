@@ -162,7 +162,7 @@ class SchValidatorTest : StringSpec({
 
     // Authored options are not always authored as strings -- a code list lifted from an enum or a spreadsheet
     // carries numbers. Before issue #267 the parser read each `value` with the old string-only `toOptStr` and
-    // dropped every entry it could not read, leaving an options list that was *empty rather than absent*: the
+    // dropped every entry it could not read, leaving an option list that was *empty rather than absent*: the
     // field then rejected every value on earth, itself included, with "is not a valid option".
     "options: a numeric option value is read rather than dropped" {
         val rec = parseSchemaTypes(

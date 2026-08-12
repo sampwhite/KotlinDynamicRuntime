@@ -76,7 +76,7 @@ class SqlTypeRoundTripTest : StringSpec({
 
     // Every other branch of `setStmtParameter` coerces on the way in -- a boolean through `toBool`, a date
     // through `toDbInstant`, a number through `toOptLong`/`toOptDouble`. The string branch was the one that
-    // filtered instead, so a value that was not already text was written as NULL and nothing said so: the
+    // filtered instead, so a value that was not already text was written as NULL, and nothing said so: the
     // insert succeeded, the column came back empty, and the loss surfaced somewhere else entirely. Issue #267
     // made the string branch convert like its siblings.
     "a non-string bound into a string column is stored rather than nulled" {
