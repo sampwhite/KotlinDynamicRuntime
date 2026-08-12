@@ -45,11 +45,27 @@ fun Any?.toJsonListOfMaps(): List<Map<String, Any?>> = toJsonListOrEmpty().map {
 fun Any?.toJsonListOfStrings(): List<String> = (this as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
 
 /**
- * Returns this value's `toString()` rendering only if it is a [CharSequence]
- * (e.g., a String); otherwise null. The receiver is nullable, so a null value (or
- * a non-CharSequence such as a number) yields null.
+ * This value rendered as text when it is one -- a [CharSequence] -- or when it is another primitive: a
+ * [Number], a [Boolean] or a [Char]. Anything else, null included, yields null.
+ *
+ * It converts, like every other `toOptX` here, rather than filtering. Until issue #267 it admitted only a
+ * [CharSequence], and the failure mode of that is worth remembering because it is silent and, worse,
+ * *symmetric*: a conversion answering null reads as "absent", and two absents compare equal. So `42` and
+ * `true` did not merely fail to convert, they converted to the same thing -- which made a schema `const` of a
+ * non-string match anything at all, and a condition watching a boolean always take its `then` branch.
+ *
+ * The line sits at primitives deliberately. `toString()` on a [Map] yields Kotlin's `{a=1}`, which is not JSON
+ * and would trade a silent null for a plausible-looking wrong answer. Naming an arbitrary value -- in a
+ * message, say -- is a different job, and [fmt] does it honestly for objects too.
+ *
+ * Rendered *through* [fmt] rather than `toString`, because a bare `toString` on a [Double] disagrees across
+ * platforms: `1.0` is `"1.0"` on the JVM and `"1"` under Kotlin/JS (both measured). This is kernel code that
+ * the browser and the server both run, so a value has to spell itself the same way on each.
  */
-fun Any?.toOptStr(): String? = if (this is CharSequence) this.toString() else null
+fun Any?.toOptStr(): String? = when (this) {
+    is CharSequence, is Number, is Boolean, is Char -> fmt()
+    else -> null
+}
 
 /**
  * Coerces this value to a member of enum [T] by matching its [Enum.name], or null when it is null, not a

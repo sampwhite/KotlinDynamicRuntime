@@ -73,4 +73,42 @@ class SqlTypeRoundTripTest : StringSpec({
             (deltaMs < 2000L) shouldBe true
         }
     }
+
+    // Every other branch of `setStmtParameter` coerces on the way in -- a boolean through `toBool`, a date
+    // through `toDbInstant`, a number through `toOptLong`/`toOptDouble`. The string branch was the one that
+    // filtered instead, so a value that was not already text was written as NULL and nothing said so: the
+    // insert succeeded, the column came back empty, and the loss surfaced somewhere else entirely. Issue #267
+    // made the string branch convert like its siblings.
+    "a non-string bound into a string column is stored rather than nulled" {
+        val cxt = KdrCxt.mkSimpleCxt("strCol")
+        val db = SqlDatabase.mkInMemoryH2("test_string_column_coercion")
+        val topic = "strCol"
+
+        val table = tableModule(cxt, namespace = "strNs", topic = topic) {
+            table("CodeSample", "A table with a string column fed non-string values.") {
+                column("id", "Auto-increment counter id.", autoIncrement = true) { type = SCT.integer }
+                column("code", "A code held as text.") { type = SCT.string }
+                column("note", "Free text.") { type = SCT.string }
+                primaryKey("id")
+            }
+        }.single()
+
+        val sqlCxt = SqlCxt(cxt, db, topic)
+        db.withSession(cxt) {
+            SqlTableUtil.checkCreateTable(sqlCxt, table) shouldBe true
+            val insertStmt = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
+            val counter = LongArray(1)
+            db.executeStatementGetCounterBack(
+                cxt,
+                insertStmt,
+                mapOf("code" to 42L, "note" to true),
+                counter,
+            ) shouldBe 1
+
+            val selectStmt = SqlTopicUtil.mkNamedTableSelectStmt(sqlCxt, "qById", table, listOf("id"))
+            val got = db.queryOneStatement(cxt, selectStmt, mapOf("id" to counter[0])).shouldNotBeNull()
+            got["code"] shouldBe "42"
+            got["note"] shouldBe "true"
+        }
+    }
 })

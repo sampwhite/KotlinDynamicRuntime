@@ -5,8 +5,10 @@ import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toOptStr
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -26,6 +28,21 @@ class KernelSharedTest {
         assertEquals("Hi Kernel", $$"Hi ${name}".evalTemplate(mapOf("name" to "Kernel")))
         assertEquals(1L, """{"a":1}""".jsonMap()?.get("a"))
         assertEquals("42", 42L.fmt())
+    }
+
+    /**
+     * `toOptStr` converts primitives as of issue #267, and does it through `fmt` for one reason: a bare
+     * `toString` on a `Double` prints `1.0` on the JVM and `1` under Kotlin/JS. This runs on both, so a
+     * regression to `toString` fails on exactly one target — which is the only way to catch it.
+     */
+    @Test
+    fun toOptStrSpellsAValueTheSameWayOnEveryTarget() {
+        assertEquals("1", (1.0 as Any?).toOptStr())
+        assertEquals("10000000000", (1.0e10 as Any?).toOptStr())
+        assertEquals("42", (42 as Any?).toOptStr())
+        assertEquals("true", (true as Any?).toOptStr())
+        // Still held at primitives: a map has no honest string form here.
+        assertNull((mapOf("a" to 1) as Any?).toOptStr())
     }
 
     @Test
