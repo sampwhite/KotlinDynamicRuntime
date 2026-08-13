@@ -179,7 +179,7 @@ class GedraEntryTest : StringSpec({
         failures.map { it.path } shouldContainExactlyInAnyOrder listOf(GE.data)
     }
 
-    // The branch keeps its `const`, so the union can select on it and a stock validator reaches the same
+    // The branch keeps its `const`, so the union can select on it, and a stock validator reaches the same
     // verdict without reading the `discriminator` keyword at all -- the property #252 rests on.
     "the trait id stays top level, where a union can select on it" {
         val entry = parseSchemaTypes(nameDefs()).getValue("globalconfig.NameEntry")
