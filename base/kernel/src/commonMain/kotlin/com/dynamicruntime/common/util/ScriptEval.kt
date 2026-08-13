@@ -100,7 +100,8 @@ fun resolvePath(state: ScriptState, data: Map<String, Any?>, node: PathNode, tol
 }
 
 @KdrPrivate
-fun evalUnary(state: ScriptState, data: Map<String, Any?>, node: UnaryNode, tolerant: Boolean, depth: Int): Any? {
+/** Returns a value or throws, never null -- the null-yielding positions are all in [evalNode]. */
+fun evalUnary(state: ScriptState, data: Map<String, Any?>, node: UnaryNode, tolerant: Boolean, depth: Int): Any {
     val v = evalNode(state, data, node.operand, tolerant, depth)
     return when (node.op) {
         "!" -> !truthy(v)
@@ -113,7 +114,8 @@ fun evalUnary(state: ScriptState, data: Map<String, Any?>, node: UnaryNode, tole
 }
 
 @KdrPrivate
-fun evalBinary(state: ScriptState, data: Map<String, Any?>, node: BinaryNode, tolerant: Boolean, depth: Int): Any? {
+/** Returns a value or throws, never null -- as [evalUnary]; an operator has no absent result to express. */
+fun evalBinary(state: ScriptState, data: Map<String, Any?>, node: BinaryNode, tolerant: Boolean, depth: Int): Any {
     // `&&` and `||` short-circuit, so the right side is not evaluated when the left decides the answer.
     if (node.op == "&&" || node.op == "||") {
         val left = truthy(evalNode(state, data, node.left, tolerant, depth))
@@ -130,7 +132,9 @@ fun evalBinary(state: ScriptState, data: Map<String, Any?>, node: BinaryNode, to
     val r = evalNode(state, data, node.right, operandTolerant, depth)
     return when (node.op) {
         "~" -> {
-            requireNonNull(state, "~", l, r)
+            // Joining text says nothing about what an absent side should become, so it is a type error rather
+            // than a silent "null" in the output. `${(a ?: "") ~ b}` is how an author says otherwise.
+            if (l == null || r == null) throw mkTypeMismatch(state, "~", l, r)
             l.fmt() + r.fmt()
         }
         "+", "-", "*", "/", "%" -> arith(state, node.op, l, r)
@@ -243,10 +247,6 @@ private fun toD(n: Any?): Double = when (n) {
     is Long -> n.toDouble()
     is Double -> n
     else -> 0.0
-}
-
-private fun requireNonNull(state: ScriptState, op: String, l: Any?, r: Any?) {
-    if (l == null || r == null) throw mkTypeMismatch(state, op, l, r)
 }
 
 private fun mkTypeMismatch(state: ScriptState, op: String, l: Any?, r: Any?) = mkScriptException(

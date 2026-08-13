@@ -176,7 +176,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
 
         /** The fragment files every loaded component declared, collected at boot by `InstanceRegistry`. */
         fun registeredFragmentFiles(cxt: KdrCxt): List<String> =
-            (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+            (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.filterIsInstance<String>() ?: emptyList()
 
         /**
          * What a fragment problem does at startup. An explicit [FRAG.checkEnvVar] decides it; otherwise it is
