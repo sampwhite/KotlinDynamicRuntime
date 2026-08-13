@@ -36,7 +36,7 @@ class GedraIdTest : StringSpec({
 
     "every segment survives the round trip" {
         val id = GedraId.parse("gd.fd.acme.e20260812130405123AbCd~7")
-        id.storageType shouldBe GedraStorageType.data
+        id.storageType shouldBe GedraStorageType.dataStore
         id.kind shouldBe GedraDataType.formDoc
         id.dataType shouldBe GedraDataType.formDoc
         id.client shouldBe "acme"
@@ -58,7 +58,7 @@ class GedraIdTest : StringSpec({
     // an id whose storage type said one thing and whose kind said another.
     "storage type follows the kind and cannot be set independently" {
         GedraDataType.entries.forAll { kind ->
-            kind.storageType shouldBe GedraStorageType.data
+            kind.storageType shouldBe GedraStorageType.dataStore
             GedraId.of(kind, "acme", "x").fullId shouldStartWith "gd.${kind.idAbbrev}."
         }
     }
@@ -77,7 +77,7 @@ class GedraIdTest : StringSpec({
         shouldThrow<KdrException> { GedraId.parse("xx.fd.acme.a1") }
             .message.shouldNotBeNull() shouldContain "not a storage type"
         shouldThrow<KdrException> { GedraId.parse("gd.zz.acme.a1") }
-            .message.shouldNotBeNull() shouldContain "not a data kind"
+            .message.shouldNotBeNull() shouldContain "not a 'gd' kind"
     }
 
     // Reserved in the storage enum so nothing else claims `gc`, but with no kinds yet. A reader meeting one

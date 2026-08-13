@@ -41,9 +41,7 @@ object GID {
 @Suppress("EnumEntryName")
 enum class GedraStorageType(val idAbbrev: String) {
     /** Ordinary stored entities: form documents, workflow data, users, file references. */
-    // Backticked because `data` is a modifier keyword and so cannot open a declaration. Only the
-    // declaration needs them: every use site is `GedraStorageType.data`, which is unambiguous.
-    `data`("gd"),
+    dataStore("gd"),
 
     /**
      * Definitions — clients, workflows, traits — which are revisioned and pinned per environment.
@@ -52,7 +50,7 @@ enum class GedraStorageType(val idAbbrev: String) {
      * has no kinds yet: config storage is a later design, and parsing a `gc.` id says so rather than failing
      * in some way a reader would have to interpret.
      */
-    config("gc"),
+    configStore("gc"),
 }
 
 /**
@@ -96,7 +94,7 @@ enum class GedraDataType(override val idAbbrev: String) : GedraKind {
     /** A pointer to (and claim on) file content held in a file store. */
     fileRef("fr");
 
-    override val storageType: GedraStorageType get() = GedraStorageType.data
+    override val storageType: GedraStorageType get() = GedraStorageType.dataStore
 }
 
 /**
@@ -238,12 +236,12 @@ class GedraId private constructor(
                 ?: throw mkBad(fullId, "'${parts[0]}' is not a storage type (${abbrevList()})")
             val kinds = kindsOf(storageType)
             if (kinds.isEmpty()) {
-                throw mkBad(fullId, "'${storageType.name}' gedras are not supported yet")
+                throw mkBad(fullId, "'${parts[0]}' ids are not supported yet")
             }
             val kind = kinds.firstOrNull { it.idAbbrev == parts[1] }
                 ?: throw mkBad(
                     fullId,
-                    "'${parts[1]}' is not a ${storageType.name} kind (${kinds.joinToString(", ") { it.idAbbrev }})",
+                    "'${parts[1]}' is not a '${parts[0]}' kind (${kinds.joinToString(", ") { it.idAbbrev }})",
                 )
             val client = parts[2]
             val tail = parts[3]
@@ -258,8 +256,8 @@ class GedraId private constructor(
 
         /** The kinds belonging to [storageType]; empty for a storage type with no kinds defined yet. */
         fun kindsOf(storageType: GedraStorageType): List<GedraKind> = when (storageType) {
-            GedraStorageType.data -> GedraDataType.entries
-            GedraStorageType.config -> emptyList()
+            GedraStorageType.dataStore -> GedraDataType.entries
+            GedraStorageType.configStore -> emptyList()
         }
 
         /**
