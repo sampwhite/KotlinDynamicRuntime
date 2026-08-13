@@ -194,6 +194,69 @@ class ScriptExprTest : StringSpec({
         (ex.message ?: "") shouldContain "*"
     }
 
+    // --- function calls --------------------------------------------------------
+
+    "the text functions transform their argument" {
+        val data = mapOf<String, Any?>("name" to "  Ada Lovelace  ")
+        evl($$"${upper(trim(name))}", data) shouldBe "ADA LOVELACE"
+        evl($$"${lower(trim(name))}", data) shouldBe "ada lovelace"
+        evl($$"""${trim("  x  ")}""") shouldBe "x"
+    }
+
+    "count measures whatever has a size, and lands in the numeric world" {
+        val data = mapOf<String, Any?>("items" to listOf(1L, 2L, 3L), "obj" to mapOf("a" to 1L), "s" to "abcd")
+        evl($$"${count(items)}|${count(obj)}|${count(s)}", data) shouldBe "3|1|4"
+        // Being a real number is the point: it compares, and so it pluralises.
+        evl($$"""${count(items)} ${count(items) == 1 ? "item" : "items"}""", data) shouldBe "3 items"
+    }
+
+    "abs works on both number kinds" {
+        evl($$"${abs(0 - 5)}|${abs(3)}", emptyMap()) shouldBe "5|3"
+        evl($$"${abs(n)}", mapOf("n" to -2.5)) shouldBe "2.5"
+    }
+
+    "the date functions accept an ISO string as well as an Instant" {
+        val data = mapOf<String, Any?>("at" to "2026-08-13T14:30:00.000Z")
+        evl($$"${formatDay(at)}", data) shouldBe "2026-08-13"
+        evl($$"${formatDate(at)}", data) shouldBe "2026-08-13T14:30:00.000Z"
+    }
+
+    "a call composes with everything else in the grammar" {
+        val data = mapOf<String, Any?>("items" to listOf(1L, 2L), "name" to "ada")
+        // As an operand, in a ternary branch, and on the left of a default.
+        evl($$"${count(items) * 10}", data) shouldBe "20"
+        evl($$"""${count(items) > 1 ? upper(name) : name}""", data) shouldBe "ADA"
+        evl($$"""${upper(missing) ?: "none"}""", data) shouldBe "none"
+        // And arguments are themselves expressions.
+        evl($$"""${upper(name ~ "!")}""", data) shouldBe "ADA!"
+    }
+
+    "an argument of the wrong kind names the function and the value" {
+        errorCode($$"${upper(42)}") shouldBe ScriptError.typeMismatch
+        errorCode($$"""${count(42)}""") shouldBe ScriptError.typeMismatch
+        errorCode($$"""${formatDay("not-a-date")}""") shouldBe ScriptError.typeMismatch
+        val ex = shouldThrow<KdrException> { $$"${upper(42)}".evalTemplate(emptyMap()) }
+        (ex.message ?: "") shouldContain "'upper'"
+        (ex.message ?: "") shouldContain "42"
+    }
+
+    /**
+     * Unknown names and wrong arity are refused while **parsing**, which is what lets the fragment checker
+     * catch a misspelled function with no data at hand -- unlike a bad path, which is only knowable at render.
+     */
+    "an unknown function or a wrong argument count is a syntax error" {
+        errorCode($$"${uppr(name)}", mapOf("name" to "a")) shouldBe ScriptError.syntaxError
+        errorCode($$"${upper()}") shouldBe ScriptError.syntaxError
+        errorCode($$"""${upper("a", "b")}""") shouldBe ScriptError.syntaxError
+        // The message lists what is available, so the fix does not need a trip to the source.
+        val ex = shouldThrow<KdrException> { $$"${uppr(x)}".evalTemplate(emptyMap()) }
+        (ex.message ?: "") shouldContain "upper"
+    }
+
+    "a name followed by no parenthesis is still a path, not a call" {
+        evl($$"${count}", mapOf("count" to 7L)) shouldBe "7"
+    }
+
     // --- syntax ----------------------------------------------------------------
 
     "a malformed expression reports a syntax error" {

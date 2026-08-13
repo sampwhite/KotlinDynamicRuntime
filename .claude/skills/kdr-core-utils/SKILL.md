@@ -81,9 +81,11 @@ Never write `as` / `@Suppress("UNCHECKED_CAST")` — route through `toT()`/`toJs
 
 ## Also in the kernel's util package
 
-- `ScriptUtil` / `ScriptExpr` / `ScriptEval` — `String.evalTemplate(data)`, resolving `${...}` against a
-  nested map. The interior is a small expression language: dotted paths, string/number literals, `+ - * / %`,
-  `== != < > <= >=`, `&& || !`, `cond ? a : b`, and `a ?: b` for a default. `+` concatenates when either side
+- `ScriptUtil` / `ScriptExpr` / `ScriptEval` / `ScriptFunc` — `String.evalTemplate(data)`, resolving `${...}`
+  against a nested map. The interior is a small expression language: dotted paths, string/number literals,
+  `+ - * / %`, `~` (text join), `== != < > <= >=`, `&& || !`, `cond ? a : b`, `a ?: b` for a default, and calls
+  to the built-ins `upper lower trim count abs formatDate formatDay` (a fixed table; unknown names and wrong
+  arity are refused while parsing, so the fragment check catches them without data). `+` concatenates when either side
   is a string and adds when neither is; `- * / %` read a numeric string; a bare missing/null value still
   throws (`?:` and a ternary condition are the only places absence is tolerated). Errors carry a `ScriptError`
   code plus the block's offset/line/column.
