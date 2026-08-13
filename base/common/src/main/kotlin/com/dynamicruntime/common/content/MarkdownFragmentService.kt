@@ -10,7 +10,11 @@ import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.TemplateIssue
+import com.dynamicruntime.common.util.TemplatePaths
 import com.dynamicruntime.common.util.checkFragmentSyntax
+import com.dynamicruntime.common.util.fragmentPaths
+import com.dynamicruntime.common.util.missingFrom
+import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.http.request.ContentServer
 import com.dynamicruntime.common.http.request.ContextFocus
@@ -88,15 +92,23 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * including the ones that are clean -- so a caller can see what was actually covered rather than inferring
      * it from an empty problem list.
      */
-    fun checkFragments(cxt: KdrCxt, only: String? = null): List<FragmentCheckResult> {
+    fun checkFragments(
+        cxt: KdrCxt,
+        only: String? = null,
+        data: Map<String, Any?>? = null,
+    ): List<FragmentCheckResult> {
         val declared = registeredFragmentFiles(cxt)
         val fileIds = if (only != null) listOf(only) else declared
         return fileIds.map { fileId ->
             val text = ContentResources.readText(resourceDir, fileId)
             if (text == null) {
-                FragmentCheckResult(fileId, found = false, issues = emptyList())
+                FragmentCheckResult(fileId, found = false, issues = emptyList(), entries = emptyList())
             } else {
-                FragmentCheckResult(fileId, found = true, issues = text.parseMarkdownFragments().checkFragmentSyntax())
+                val parsed = text.parseMarkdownFragments()
+                val entries = parsed.fragmentPaths().map { e ->
+                    FragmentEntryReport(e.entry, e.paths, data?.let { e.paths.missingFrom(it) } ?: emptyList())
+                }
+                FragmentCheckResult(fileId, found = true, issues = parsed.checkFragmentSyntax(), entries = entries)
             }
         }
     }
@@ -174,9 +186,12 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         /** Schema type name for a per-file check result. */
         const val checkTypeName = "FragmentCheck"
 
+        /** Schema type name for one entry's data requirements within a check result. */
+        const val entryTypeName = "FragmentEntryPaths"
+
         /** The fragment files every loaded component declared, collected at boot by `InstanceRegistry`. */
         fun registeredFragmentFiles(cxt: KdrCxt): List<String> =
-            (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+            (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.filterIsInstance<String>() ?: emptyList()
 
         /**
          * What a fragment problem does at startup. An explicit [FRAG.checkEnvVar] decides it; otherwise it is
@@ -196,6 +211,39 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
          * Under `operator` rather than open: a fragment issue names files, line numbers and copy internals.
          */
         fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "fragmentCheck") {
+            // Described rather than a bare object: `required` and `optional` are a distinction a caller has to
+            // understand to read the report, and an untyped map made them look like one undifferentiated list.
+            type(entryTypeName) {
+                type = SCT.kObject
+                property(FCHK.entry, "The entry, as 'namespace.key' within the fragment file.", required = true)
+                property(
+                    FCHK.required,
+                    "Data paths the entry reads where an absent value would fail the render.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(
+                    FCHK.optional,
+                    "Data paths the entry reads only where it already handles absence itself -- behind '?:', " +
+                        "as a conditional's test, or in a comparison against null -- so leaving these out is safe.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(
+                    FCHK.missing,
+                    "Required paths the supplied 'data' does not provide. Empty when no data was supplied. " +
+                        "This is a presence check only: it does not evaluate, so a value of the wrong type is " +
+                        "not reported here.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+            }
             type(checkTypeName) {
                 type = SCT.kObject
                 property(FCHK.fileId, "The fragment file checked.", required = true)
@@ -209,17 +257,33 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                     type = SCT.array
                     items { type = SCT.kObject }
                 }
+                property(FCHK.entries, "Each entry that reads data, and what it reads.", required = true) {
+                    type = SCT.array
+                    items { ref(entryTypeName) }
+                }
             }
             listEndpoint(
                 "/operator/fragments/check",
-                "Syntax-checks this instance's Markdown fragment files, reporting problems with positions.",
+                "Syntax-checks this instance's Markdown fragment files, reporting problems with positions, and " +
+                    "reports the data each entry reads. With 'data', also reports required paths it lacks; that " +
+                    "is a presence check and does not detect a value of the wrong type.",
                 outputRef = checkTypeName,
                 inputFields = {
                     field(FCHK.fileId, "A single fragment file to check; omit to check every declared file.")
+                    field(
+                        FCHK.data,
+                        "A JSON object to check the required paths against, reported per entry as 'missing'. " +
+                            "Omit to report requirements without checking them.",
+                    )
                 },
             ) { c, request ->
                 val service = get(c) ?: throw KdrException("MarkdownFragmentService is not available.")
-                service.checkFragments(c, request[FCHK.fileId].toOptStr()?.trim()?.ifEmpty { null })
+                // Taken as a JSON string rather than a nested object: this is a GET, and the shape being
+                // checked is by definition free-form -- it is whatever a caller's data map happens to be.
+                val data = request[FCHK.data].toOptStr()?.trim()?.ifEmpty { null }?.let { text ->
+                    text.jsonMap() ?: throw KdrException.mkInput("The '${FCHK.data}' value is not a JSON object.")
+                }
+                service.checkFragments(c, request[FCHK.fileId].toOptStr()?.trim()?.ifEmpty { null }, data)
                     .map { it.toJsonMap() }
             }
         }
@@ -235,11 +299,34 @@ class FragmentCheckResult(
     val fileId: String,
     val found: Boolean,
     val issues: List<TemplateIssue>,
+    val entries: List<FragmentEntryReport>,
 ) : JsonMappable {
     override fun toJsonMap(): Map<String, Any?> = mapOf(
         FCHK.fileId to fileId,
         FCHK.found to found,
         FCHK.issueCount to issues.size,
         FCHK.issues to issues.map { it.toJsonMap() },
+        FCHK.entries to entries.map { it.toJsonMap() },
+    )
+}
+
+/**
+ * What one fragment entry asks of its data, and -- when a caller supplied a map to check against -- which of
+ * those it would not get.
+ *
+ * `required` and `optional` are reported even with no data to check, because that is the useful half on its
+ * own: it says what the Kotlin building this entry's map has to provide, which is a question nobody could
+ * answer before without reading the copy.
+ */
+class FragmentEntryReport(
+    val entry: String,
+    val paths: TemplatePaths,
+    val missing: List<String>,
+) : JsonMappable {
+    override fun toJsonMap(): Map<String, Any?> = mapOf(
+        FCHK.entry to entry,
+        FCHK.required to paths.required.sorted(),
+        FCHK.optional to paths.optional.sorted(),
+        FCHK.missing to missing,
     )
 }

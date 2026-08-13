@@ -42,4 +42,16 @@ object FCHK {
     const val found = "found"
     const val issueCount = "issueCount"
     const val issues = "issues"
+
+    /** Per-entry data requirements, present on every result. */
+    const val entries = "entries"
+    const val entry = "entry"
+    const val required = "required"
+    const val optional = "optional"
+
+    /** Required paths the supplied [data] does not provide; empty unless `data` was given. */
+    const val missing = "missing"
+
+    /** Optional JSON object to check the required paths against. */
+    const val data = "data"
 }

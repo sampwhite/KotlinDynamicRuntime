@@ -89,6 +89,12 @@ Never write `as` / `@Suppress("UNCHECKED_CAST")` — route through `toT()`/`toJs
   is a string and adds when neither is; `- * / %` read a numeric string; a bare missing/null value still
   throws (`?:` and a ternary condition are the only places absence is tolerated). Errors carry a `ScriptError`
   code plus the block's offset/line/column.
+- `ScriptCheck` — checks a template without evaluating it. `analyzeTemplate()` returns both the syntax
+  problems (`TemplateIssue`, with `ScriptError` code and position) and what the template asks of its data:
+  `paths.required` versus `paths.optional`, the latter being reads the template already guards with `?:`, a
+  ternary condition or a `== null` test. `paths.missingFrom(data)` answers which required paths a map fails to
+  supply — the missing-key half of a render failure, with no evaluation. Reported per fragment entry by
+  `GET /operator/fragments/check`, which also takes an optional `data` JSON object.
 - `MarkdownFragmentUtil` — parses a Markdown **fragment file** into `namespace -> key -> value`.
 - `MarkdownRenderUtil` — `String.renderMarkdown()`, escaping all HTML. Frontend and backend render the same.
 - `CollectionUtil` — `Map.deepClone()` (depth-capped).
