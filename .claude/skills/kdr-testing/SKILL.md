@@ -15,6 +15,60 @@ There are two ways to confirm a change in this repo, and they share the same boo
 Prefer doing both for a behavioral change: a focused unit test for the contract, and a quick live drive to
 confirm it works in a running instance (that combination has caught things each alone missed).
 
+## First: are you in a git worktree?
+
+Check before running anything, because the failure here is a **green build that tested the wrong source tree**
+— not an error you would notice:
+
+```bash
+[ "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)" ] && echo "in a worktree"
+```
+
+If you are, the workspace-root advice below misfires. A worktree is created *inside* the repo (at
+`<repo>/.claude/worktrees/<name>`), and the repo is inside the workspace — so "the nearest ancestor holding a
+`settings.gradle.kts`" resolves to the real workspace, whose `settings.gradle.kts` maps every project at a
+fixed relative path:
+
+```kotlin
+project(":base:kernel").projectDir = file("KotlinDynamicRuntime/base/kernel")
+```
+
+That is the **main checkout**. Build from there and Gradle compiles and tests somebody else's working copy
+while your edits sit unread. It succeeds, which is what makes it dangerous — a file you added is simply "no
+tests found", and a change you made is simply absent.
+
+Build a workspace of your own, once, and point `KDR_WORKSPACE_DIR` at it. Everything else here — the `bin/`
+wrappers, `kdr-backend`, `kdr-probe` — already honours that variable, so nothing downstream changes:
+
+```bash
+WT=$(git rev-parse --show-toplevel)                                   # this worktree
+MAIN=$(cd "$(dirname "$(git rev-parse --git-common-dir)")" && pwd)    # the main checkout
+SRC=$(cd "$MAIN/.." && pwd)                                           # the workspace above it
+WS="$HOME/kdr-ws-$(basename "$WT")"                                   # yours, outside both
+
+mkdir -p "$WS"
+ln -sfn "$WT" "$WS/KotlinDynamicRuntime"          # the whole trick: this name, your worktree
+cp "$SRC/settings.gradle.kts" "$SRC/gradle.properties" "$WS/"
+# The settings file also names these as workspace siblings; symlink whichever it references.
+ln -sfn "$SRC/customConfig" "$WS/customConfig"
+ln -sfn "$SRC/playground" "$WS/playground"
+
+export KDR_WORKSPACE_DIR="$WS"
+cd "$WS" && "$WT/gradlew" check
+```
+
+Verified end to end, including a full `check`. Three things worth knowing:
+
+- **Prove it once.** Add a test that exists only in your worktree and run it. From the main workspace it
+  reports `No tests found`; from yours it runs. That five-second check is the difference between building
+  your work and believing you are.
+- The side workspace grows its **own `kotlin-js-store/yarn.lock`**, so it cannot fight the main one — the
+  first `check` is slower (~45s against ~20s) while it resolves JS dependencies.
+- `customConfig` and `playground` are *symlinked*, so their `build/` directories are shared with the main
+  workspace. Fine in practice; do not run both builds at the same moment.
+
+Tear the workspace down with the worktree — it is only symlinks and two copied files.
+
 ## Running the suite
 
 **`./gradlew check`** from the workspace root is the whole suite. Use it before claiming a change is green.
@@ -43,8 +97,9 @@ workspace drifts on its own and every checkout hits this independently.
 Run Gradle from the **workspace root** — the parent of the versioned repo, where the live
 `settings.gradle.kts` and `gradlew` sit. Never hardcode that path: it differs per checkout. Resolve it the
 way `bin/_common.sh` does — from `KDR_WORKSPACE_DIR` if set, else the nearest ancestor holding a
-`settings.gradle.kts`. Start your **own** instance on a free port; do **not** bind or kill port `7070`, which
-is the developer's IntelliJ instance.
+`settings.gradle.kts`. **In a worktree that ancestor walk finds the wrong workspace** — see the worktree
+section above, and set `KDR_WORKSPACE_DIR` first. Start your **own** instance on a free port; do **not** bind
+or kill port `7070`, which is the developer's IntelliJ instance.
 
 ```bash
 # Resolve the workspace root (run from anywhere inside the checkout).
