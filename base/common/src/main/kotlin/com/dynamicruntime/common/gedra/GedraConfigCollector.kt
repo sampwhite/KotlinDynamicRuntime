@@ -48,7 +48,7 @@ object GCFG {
  *
  * Keyed on the **environment**, never on `isTestInstance`: that flag is inferred from in-memory-ness and the
  * unit environment, so an ordinary local run against a real database is not a test instance, and keying on it
- * would hand a developer production behaviour on their own machine.
+ * would hand a developer production behavior on their own machine.
  *
  * This is the third hand-rolled mode resolver, after `MarkdownFragmentService.fragmentCheckMode` and
  * `SqlSchemaDrift.isDriftAllowed` — which is what #303 exists to retire.
@@ -73,13 +73,13 @@ class GedraConfigIssue(
  * Gathers the [GedraConfig]s components contribute, and refuses the ones that would make the set incoherent
  * (issue #299).
  *
- * Checked as each config arrives rather than in one pass afterwards, for a reason worth keeping: the arriving
+ * Checked as each config arrives rather than in one pass afterward, for a reason worth keeping: the arriving
  * config is the one being rejected, and the one already held is the one being kept — so "first contributor
  * wins" falls out of arrival order instead of being imposed, and it is stable across restarts because
  * component load order is (`loadPriority`, then registration).
  *
  * What happens to a problem depends on where this runs; see [gedraConfigCheckMode]. Outside production a
- * problem refuses the boot. In production it is logged at error, the loser is dropped, and the instance
+ * problem refuses the boot. In production, it is logged at error, the loser is dropped, and the instance
  * carries on — which is only survivable because the manufactured union declares a default branch (#301), so
  * entries carrying a dropped trait fall through as unrecognized rather than failing validation. Removing that
  * default branch would quietly make this check unsafe.
