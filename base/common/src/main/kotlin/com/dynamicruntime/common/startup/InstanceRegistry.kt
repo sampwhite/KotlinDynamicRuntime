@@ -76,6 +76,11 @@ object InstanceRegistry {
                 if (component.isLoaded(cxt)) {
                     component.addSchema(cxt, collector)
                     fragmentFiles.addAll(component.fragmentFiles(cxt))
+                    // Same loop, so every config is present before any service binds -- which is what lets
+                    // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
+                    for (config in component.gedraConfigs(cxt)) {
+                        collector.addGedraConfig(cxt, config)
+                    }
                 }
             }
             config.put(FRAG.registryKey, fragmentFiles.distinct())
