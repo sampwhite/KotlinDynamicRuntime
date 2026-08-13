@@ -10,7 +10,11 @@ import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.TemplateIssue
+import com.dynamicruntime.common.util.TemplatePaths
 import com.dynamicruntime.common.util.checkFragmentSyntax
+import com.dynamicruntime.common.util.fragmentPaths
+import com.dynamicruntime.common.util.missingFrom
+import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.http.request.ContentServer
 import com.dynamicruntime.common.http.request.ContextFocus
@@ -88,15 +92,23 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * including the ones that are clean -- so a caller can see what was actually covered rather than inferring
      * it from an empty problem list.
      */
-    fun checkFragments(cxt: KdrCxt, only: String? = null): List<FragmentCheckResult> {
+    fun checkFragments(
+        cxt: KdrCxt,
+        only: String? = null,
+        data: Map<String, Any?>? = null,
+    ): List<FragmentCheckResult> {
         val declared = registeredFragmentFiles(cxt)
         val fileIds = if (only != null) listOf(only) else declared
         return fileIds.map { fileId ->
             val text = ContentResources.readText(resourceDir, fileId)
             if (text == null) {
-                FragmentCheckResult(fileId, found = false, issues = emptyList())
+                FragmentCheckResult(fileId, found = false, issues = emptyList(), entries = emptyList())
             } else {
-                FragmentCheckResult(fileId, found = true, issues = text.parseMarkdownFragments().checkFragmentSyntax())
+                val parsed = text.parseMarkdownFragments()
+                val entries = parsed.fragmentPaths().map { e ->
+                    FragmentEntryReport(e.entry, e.paths, data?.let { e.paths.missingFrom(it) } ?: emptyList())
+                }
+                FragmentCheckResult(fileId, found = true, issues = parsed.checkFragmentSyntax(), entries = entries)
             }
         }
     }
@@ -209,6 +221,10 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                     type = SCT.array
                     items { type = SCT.kObject }
                 }
+                property(FCHK.entries, "Each entry that reads data, and what it reads.", required = true) {
+                    type = SCT.array
+                    items { type = SCT.kObject }
+                }
             }
             listEndpoint(
                 "/operator/fragments/check",
@@ -216,10 +232,20 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 outputRef = checkTypeName,
                 inputFields = {
                     field(FCHK.fileId, "A single fragment file to check; omit to check every declared file.")
+                    field(
+                        FCHK.data,
+                        "A JSON object to check the required paths against, reported per entry as 'missing'. " +
+                            "Omit to report requirements without checking them.",
+                    )
                 },
             ) { c, request ->
                 val service = get(c) ?: throw KdrException("MarkdownFragmentService is not available.")
-                service.checkFragments(c, request[FCHK.fileId].toOptStr()?.trim()?.ifEmpty { null })
+                // Taken as a JSON string rather than a nested object: this is a GET, and the shape being
+                // checked is by definition free-form -- it is whatever a caller's data map happens to be.
+                val data = request[FCHK.data].toOptStr()?.trim()?.ifEmpty { null }?.let { text ->
+                    text.jsonMap() ?: throw KdrException.mkInput("The '${FCHK.data}' value is not a JSON object.")
+                }
+                service.checkFragments(c, request[FCHK.fileId].toOptStr()?.trim()?.ifEmpty { null }, data)
                     .map { it.toJsonMap() }
             }
         }
@@ -235,11 +261,34 @@ class FragmentCheckResult(
     val fileId: String,
     val found: Boolean,
     val issues: List<TemplateIssue>,
+    val entries: List<FragmentEntryReport>,
 ) : JsonMappable {
     override fun toJsonMap(): Map<String, Any?> = mapOf(
         FCHK.fileId to fileId,
         FCHK.found to found,
         FCHK.issueCount to issues.size,
         FCHK.issues to issues.map { it.toJsonMap() },
+        FCHK.entries to entries.map { it.toJsonMap() },
+    )
+}
+
+/**
+ * What one fragment entry asks of its data, and -- when a caller supplied a map to check against -- which of
+ * those it would not get.
+ *
+ * `required` and `optional` are reported even with no data to check, because that is the useful half on its
+ * own: it says what the Kotlin building this entry's map has to provide, which is a question nobody could
+ * answer before without reading the copy.
+ */
+class FragmentEntryReport(
+    val entry: String,
+    val paths: TemplatePaths,
+    val missing: List<String>,
+) : JsonMappable {
+    override fun toJsonMap(): Map<String, Any?> = mapOf(
+        FCHK.entry to entry,
+        FCHK.required to paths.required.sorted(),
+        FCHK.optional to paths.optional.sorted(),
+        FCHK.missing to missing,
     )
 }

@@ -140,7 +140,13 @@ fun evalBinary(state: ScriptState, data: Map<String, Any?>, node: BinaryNode, to
     }
 }
 
-private fun isNullLiteral(n: ScriptNode): Boolean = n is LiteralNode && n.value == null
+/**
+ * Whether [n] is the literal `null`. Not private, because the path analysis in `ScriptCheck.kt` has to decide
+ * tolerance by exactly the same rule this evaluator does -- two copies of "what counts as a null test" would
+ * drift, and the symptom would be a default reported as a missing key.
+ */
+@KdrPrivate
+fun isNullLiteral(n: ScriptNode): Boolean = n is LiteralNode && n.value == null
 
 /** Arithmetic over real numbers only, staying in `Long` while both sides are integral. */
 @KdrPrivate

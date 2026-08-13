@@ -81,6 +81,73 @@ class ScriptCheckTest : StringSpec({
         $$$"cost is $$5 and $${a}".checkTemplateSyntax() shouldBe emptyList()
     }
 
+    // --- what a template asks of its data --------------------------------------
+
+    "a template reports the paths it will read" {
+        val paths = $$"Hi ${user.name}, you have ${count} messages.".analyzeTemplate().paths
+        paths.required shouldBe setOf("user.name", "count")
+        paths.optional shouldBe emptySet()
+    }
+
+    /**
+     * The rule that makes this usable rather than noisy: a path the template already handles the absence of is
+     * **not** required. Reported as stricter than the evaluator, every sensible default would read as a break.
+     */
+    "a path the template already guards is optional, not required" {
+        $$"""${user.name ?: "there"}""".analyzeTemplate().paths.required shouldBe emptySet()
+        $$"""${user.name ?: "there"}""".analyzeTemplate().paths.optional shouldBe setOf("user.name")
+        // A ternary condition, and a null test, are the other two guarded positions.
+        $$"""${admin ? "yes" : "no"}""".analyzeTemplate().paths.required shouldBe emptySet()
+        $$"""${a.b == null ? "none" : "some"}""".analyzeTemplate().paths.required shouldBe emptySet()
+    }
+
+    "an unguarded read of the same path wins over a guarded one" {
+        val paths = $$"""${a ?: "x"} and ${a}""".analyzeTemplate().paths
+        paths.required shouldBe setOf("a")
+        paths.optional shouldBe emptySet()
+    }
+
+    /** "Required" means referenced: both arms of a ternary count, though only one will run. */
+    "both arms of a conditional are required, because either could run" {
+        val paths = $$"""${c ? x.one : x.two}""".analyzeTemplate().paths
+        paths.required shouldBe setOf("x.one", "x.two")
+        paths.optional shouldBe setOf("c")
+    }
+
+    "function arguments are read like any other operand" {
+        $$"${upper(user.name)}".analyzeTemplate().paths.required shouldBe setOf("user.name")
+        $$"""${upper(user.name) ?: "anon"}""".analyzeTemplate().paths.optional shouldBe setOf("user.name")
+    }
+
+    "a template that reads nothing requires nothing" {
+        $$"""Plain copy with ${"a literal"} and ${1 + 2}.""".analyzeTemplate().paths.required shouldBe emptySet()
+    }
+
+    // --- checking requirements against a data map -------------------------------
+
+    "the missing paths are the required ones the data does not supply" {
+        val paths = $$"${user.name} and ${count}".analyzeTemplate().paths
+        paths.missingFrom(mapOf("user" to mapOf("name" to "Ada"), "count" to 3L)) shouldBe emptyList()
+        paths.missingFrom(mapOf("user" to mapOf("name" to "Ada"))) shouldBe listOf("count")
+        // A typo'd path is exactly the failure this is for.
+        $$"${user.nmae}".analyzeTemplate().paths
+            .missingFrom(mapOf("user" to mapOf("name" to "Ada"))) shouldBe listOf("user.nmae")
+    }
+
+    "a null value counts as unsupplied, because that is what would throw" {
+        val paths = $$"${a}".analyzeTemplate().paths
+        paths.missingFrom(mapOf("a" to null)) shouldBe listOf("a")
+        paths.missingFrom(mapOf("a" to "")) shouldBe emptyList() // present and empty is supplied
+    }
+
+    "drilling into a non-object counts as unsupplied" {
+        $$"${a.b}".analyzeTemplate().paths.missingFrom(mapOf("a" to "text")) shouldBe listOf("a.b")
+    }
+
+    "a guarded path is never reported missing, however absent it is" {
+        $$"""${a.b ?: "x"}""".analyzeTemplate().paths.missingFrom(emptyMap()) shouldBe emptyList()
+    }
+
     // --- whole fragment files --------------------------------------------------
 
     "a fragment file check names the namespace and key of each problem" {
@@ -92,6 +159,17 @@ class ScriptCheckTest : StringSpec({
         issues.size shouldBe 2
         issues.any { it.message.startsWith("email.bad:") } shouldBe true
         issues.any { it.message.startsWith("other.alsoBad:") } shouldBe true
+    }
+
+    "fragment paths are reported per entry, and copy that reads nothing is left out" {
+        val parsed = mapOf(
+            "email" to mapOf("body" to $$"Code ${code}", "static" to "No substitutions here."),
+            "greet" to mapOf("hi" to $$"""Hi ${user.name ?: "there"}"""),
+        )
+        val entries = parsed.fragmentPaths().associateBy { it.entry }
+        entries.keys shouldBe setOf("email.body", "greet.hi")
+        entries.getValue("email.body").paths.required shouldBe setOf("code")
+        entries.getValue("greet.hi").paths.optional shouldBe setOf("user.name")
     }
 
     "a clean fragment file reports nothing" {
