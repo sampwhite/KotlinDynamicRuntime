@@ -37,6 +37,25 @@ object GE {
 
     /** When the entry was last changed. */
     const val updatedAt = "updatedAt"
+
+    /**
+     * Which kinds of gedra may carry this entry — a type-level keyword on a generated entry type, holding
+     * kind *names* (`formDoc`), not the two-letter abbreviations, which exist only to keep a [GedraId] short.
+     *
+     * **Absent means the type is not a trait entry at all**, rather than meaning every kind. Spelling a
+     * wildcard as omission would make the universal case the accidental one, and a trait that applies to
+     * everything is exactly what prior art found was not justified. A wildcard, if it is ever wanted, gets
+     * written out loudly.
+     *
+     * A `g-` keyword, so [SCH.gPrefix]'s export rule governs it: stripped by default, and dropping it can
+     * make an export neither stricter nor looser, since it bears on where an entry may be *used* rather than
+     * on whether one is valid. Keeping it on export is a decision for whoever builds the export.
+     *
+     * Deliberately not surfaced on `SchType`. The schema layer does not need to understand a gedra concept
+     * to carry one: the parser ignores keywords it does not know, and the raw defs ride along in the schema
+     * store, so assembly reads it from there.
+     */
+    const val appliesTo = "g-appliesTo"
 }
 
 /**
@@ -58,17 +77,32 @@ object GE {
  * `data` is **required**. An entry with a trait and no data says nothing, and Cedar allowed it and regretted
  * it. A trait whose fields are all optional still satisfies this with an empty map, which is the honest way
  * to say "nothing supplied yet".
+ *
+ * [appliesTo] is the set of gedra kinds that may carry this entry, emitted onto the type as [GE.appliesTo].
+ * A *set* rather than one kind, because a trait like `name` genuinely means the same thing on a form document
+ * and on workflow data — and the alternative, a `name` beside a `wfDataName`, is two names for one concept.
+ * Where two traits really are different concepts they get different ids, which is the right answer anyway.
  */
 fun SchTypesBuilder.traitEntry(
     name: String,
     traitId: String,
+    appliesTo: Set<GedraDataType>,
     description: String? = null,
     dataSchema: SchTypeBuilder.() -> Unit,
 ) {
+    if (appliesTo.isEmpty()) {
+        throw KdrException.mkConv(
+            "Trait '$traitId' says it applies to no kind of gedra, so nothing could ever carry it. Name the " +
+                "kinds it attaches to.",
+        )
+    }
     // A branch, not a bare type: the discriminator has to stay top-level for the union to select on it, which
     // is exactly what `variantBranch` declares -- including the `const` that keeps the branch valid to a
     // reader that ignores the `discriminator` keyword entirely.
     variantBranch(name, GE.traitId, traitId, description) {
+        // Kind names, not abbreviations: this is a document meant to be read, and the enum name is the
+        // settled vocabulary. Sorted so rebuilding the same trait produces the same bytes.
+        data[GE.appliesTo] = appliesTo.map { it.name }.sorted()
         property(GE.data, "This entry's own data, as its trait defines it.", required = true) {
             dataSchema()
             holdDataToAnObject(traitId)

@@ -33,7 +33,7 @@ class GedraEntryTest : StringSpec({
     val cxt = KdrCxt.mkSimpleCxt("gedraEntry")
 
     fun nameDefs() = schemaDefs(cxt, "globalconfig") {
-        traitEntry("NameEntry", "name", "The name somebody gave this document.") {
+        traitEntry("NameEntry", "name", setOf(GedraDataType.formDoc), "The name somebody gave this document.") {
             property("name", "What to call it.", required = true) { maxLength = 128 }
         }
     }
@@ -100,7 +100,7 @@ class GedraEntryTest : StringSpec({
                 type = SCT.kObject
                 property("name", "What to call it.", required = true)
             }
-            traitEntry("NameEntry", "name") { ref("NameData") }
+            traitEntry("NameEntry", "name", setOf(GedraDataType.formDoc)) { ref("NameData") }
         }
         val entry = parseSchemaTypes(defs).getValue("globalconfig.NameEntry")
         entry.properties.getValue(GE.data).refName shouldBe "globalconfig.NameData"
@@ -117,7 +117,38 @@ class GedraEntryTest : StringSpec({
         ).shouldBeEmpty()
     }
 
+    // The keyword that lets a compiled type say where it may be used, so assembly can read it from the type
+    // rather than needing the config object that produced it -- which matters once configs arrive from a
+    // database as well as from code. Kind NAMES, not the id abbreviations, which exist only to keep an id short.
+    "a trait entry declares which kinds may carry it" {
+        val defs = schemaDefs(cxt, "globalconfig") {
+            traitEntry("NameEntry", "name", setOf(GedraDataType.formDoc, GedraDataType.wfData)) {
+                property("name", "What to call it.", required = true)
+            }
+        }
+        defs.getValue("globalconfig.NameEntry").toJsonMapOrEmpty()[GE.appliesTo] shouldBe
+            listOf("formDoc", "wfData")
+    }
+
+    // Absence means "not a trait entry", never "every kind" -- so an ordinary type carries nothing, and the
+    // universal case can never arrive by omission.
+    "a plain type says nothing about kinds" {
+        val defs = schemaDefs(cxt, "globalconfig") {
+            type("Plain") { type = SCT.kObject }
+        }
+        defs.getValue("globalconfig.Plain").toJsonMapOrEmpty().keys shouldNotContain GE.appliesTo
+    }
+
     // --- what is refused -----------------------------------------------------
+
+    "a trait applying to no kind at all is refused" {
+        shouldThrow<KdrException> {
+            schemaDefs(cxt, "globalconfig") {
+                traitEntry("Orphan", "orphan", emptySet()) { property("x", "Something.") }
+            }
+        }.message.shouldNotBeNull() shouldContain "no kind of gedra"
+    }
+
 
     // The one assertion here a successful fixture call could never make. An entry's data is a map so that the
     // envelope can grow without colliding with a trait's own field names; a trait declaring it a scalar takes
@@ -125,7 +156,7 @@ class GedraEntryTest : StringSpec({
     "a trait may not declare its data as anything but a map" {
         val message = shouldThrow<KdrException> {
             schemaDefs(cxt, "globalconfig") {
-                traitEntry("BadEntry", "bad") { type = SCT.string }
+                traitEntry("BadEntry", "bad", setOf(GedraDataType.formDoc)) { type = SCT.string }
             }
         }.message
         message.shouldNotBeNull() shouldContain "'bad'"
@@ -133,7 +164,7 @@ class GedraEntryTest : StringSpec({
 
         shouldThrow<KdrException> {
             schemaDefs(cxt, "globalconfig") {
-                traitEntry("BadEntry", "bad") {
+                traitEntry("BadEntry", "bad", setOf(GedraDataType.formDoc)) {
                     type = SCT.array
                     items { type = SCT.string }
                 }
