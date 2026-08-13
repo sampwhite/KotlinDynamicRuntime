@@ -8,7 +8,13 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.user.AERR
+import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.util.analyzeTemplate
+import com.dynamicruntime.common.util.missingFrom
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
@@ -96,6 +102,55 @@ class FragmentCheckTest : StringSpec({
         val one = operator.getItems("/operator/fragments/check", mapOf(FCHK.fileId to FRAG.errors))
         one.size shouldBe 1
         one[0][FCHK.fileId] shouldBe FRAG.errors
+    }
+
+    "the endpoint reports what each entry asks of its data" {
+        val cxt = Startup.mkTestBootCxt("fragPaths", "fragPathsTest")
+        val operator = TestUser.create(cxt, "frag-paths-op@example.com", level = ROLE.operator)
+
+        val auth = operator.getItems("/operator/fragments/check", mapOf(FCHK.fileId to AFRAG.auth)).single()
+        val entries = auth[FCHK.entries].toJsonListOfMaps().associateBy { it[FCHK.entry] }
+
+        // The error copy that takes a param says so, and names it.
+        val notAvailable = entries.getValue("${AERR.ns}.${AERR.emailNotAvailable}")
+        notAvailable[FCHK.required].toJsonListOfStrings() shouldBe listOf(AERR.emailParam)
+
+        // Static copy is left out entirely rather than listed with nothing to say.
+        entries.keys.contains("register.title") shouldBe false
+    }
+
+    "supplying a data map reports the required paths it would not satisfy" {
+        val cxt = Startup.mkTestBootCxt("fragData", "fragDataTest")
+        val operator = TestUser.create(cxt, "frag-data-op@example.com", level = ROLE.operator)
+
+        fun missingFor(data: String): List<String> {
+            val auth = operator.getItems(
+                "/operator/fragments/check", mapOf(FCHK.fileId to AFRAG.auth, FCHK.data to data),
+            ).single()
+            return auth[FCHK.entries].toJsonListOfMaps()
+                .flatMap { it[FCHK.missing].toJsonListOfStrings() }
+                .distinct()
+        }
+
+        // An empty map satisfies nothing, so every required path is reported...
+        missingFor("{}").contains(AERR.emailParam) shouldBe true
+        // ...and supplying it clears that one.
+        missingFor("""{"${AERR.emailParam}": "a@b.com"}""").contains(AERR.emailParam) shouldBe false
+    }
+
+    /**
+     * The payoff, and the reason requirements are worth reporting at all: this locks a fragment to the Kotlin
+     * that feeds it. `AuthFormHandler` builds a one-key map for `emailNotAvailable`, and the copy reads
+     * `${email}`; renaming either without the other is a 500 in front of a user, found by nobody until then.
+     */
+    "the copy that takes a param is satisfied by the map its caller actually builds" {
+        val cxt = Startup.mkTestBootCxt("fragCaller", "fragCallerTest")
+        val template = service(cxt).resolveFragment(cxt, AFRAG.auth, AERR.ns, AERR.emailNotAvailable)
+            ?: error("The emailNotAvailable fragment should exist.")
+
+        // Exactly the map AuthFormHandler passes to KdrMsg for this message.
+        val supplied = mapOf<String, Any?>(AERR.emailParam to "taken@example.com")
+        template.analyzeTemplate().paths.missingFrom(supplied) shouldBe emptyList()
     }
 
     /** It reports copy internals and file positions, so it sits behind the operator gate like the other diagnostics. */
