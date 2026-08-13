@@ -26,6 +26,11 @@ The backend serves per-component UI text as **Markdown fragment files** through 
 them with the kernel's `String.evalTemplate(data)` — the fragment map *is* the data map, so `${email.subject}`
 reads `map["email"]["subject"]` — then render the resulting Markdown.
 
+A placeholder holds an **expression**, not just a path: literals, `+ - * / %`, comparison, `&& || !`,
+`cond ? a : b`, and `a ?: b` for a default (`${user.name ?: "there"}`). It runs in the kernel, so a preview in
+the browser resolves a template exactly as the backend will. A bare missing or null value still throws — say
+what should happen with `?:` rather than relying on tolerance.
+
 **Authoring a `.md` fragment file:** `# @namespace` opens a namespace (re-declare to switch); `# +key value`
 is an inline value; `# +key` alone starts a next-line value (ends at two blank lines or the next `# ` line);
 `/- ... -/` is a comment. Reference: `base/common/src/main/resources/md-fragments/sample.md`, and

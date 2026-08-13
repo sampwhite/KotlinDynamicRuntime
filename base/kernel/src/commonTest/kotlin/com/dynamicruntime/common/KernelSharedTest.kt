@@ -64,6 +64,27 @@ class KernelSharedTest {
         assertEquals(id, GedraId.of(id.kind, id.client, id.baseId, id.suffix))
     }
 
+    /**
+     * The `${...}` expression grammar evaluates the same in a browser as on a server, which is the point of
+     * putting it in the kernel: a template previewed while being edited must not resolve one way there and
+     * another way when it is finally sent.
+     *
+     * Arithmetic is the part that could plausibly diverge, for the reason the test above exists -- a `Double`
+     * spells itself differently per target unless it goes through `fmt`. So the cases here deliberately
+     * produce numbers, including one whose result is integral.
+     */
+    @Test
+    fun theExpressionGrammarEvaluatesTheSameOnEveryTarget() {
+        val data = mapOf("count" to 3L, "user" to mapOf("name" to "Ada"))
+        assertEquals("7", $$"${1 + 2 * 3}".evalTemplate(data))
+        assertEquals("3.5", $$"${7.0 / 2}".evalTemplate(data))
+        assertEquals("5", $$"${10.0 / 2}".evalTemplate(data)) // integral double: "5", never "5.0"
+        assertEquals("n=3", $$"""${"n=" ~ count}""".evalTemplate(data))
+        assertEquals("Ada", $$"""${user.name ?: "anonymous"}""".evalTemplate(data))
+        assertEquals("anonymous", $$"""${user.missing ?: "anonymous"}""".evalTemplate(data))
+        assertEquals("many", $$"""${count > 1 ? "many" : "one"}""".evalTemplate(data))
+    }
+
     @Test
     fun schemaParsesAndValidatesIdenticallyOnEveryTarget() {
         val types = parseSchemaTypes(
