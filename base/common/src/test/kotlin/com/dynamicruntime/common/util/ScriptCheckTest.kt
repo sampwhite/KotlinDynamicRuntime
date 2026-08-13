@@ -56,6 +56,22 @@ class ScriptCheckTest : StringSpec({
         issues[0].code shouldBe ScriptError.syntaxError
     }
 
+    /**
+     * The gain a call brings to a parse-only check: a misspelled *function* is knowable from the text, while a
+     * misspelled *path* is not. `${uppr(name)}` is caught here, with no data at hand; `${user.nmae}` cannot be.
+     */
+    "a misspelled function is caught, though a misspelled path cannot be" {
+        val issues = $$"${uppr(name)}".checkTemplateSyntax()
+        issues.size shouldBe 1
+        issues[0].code shouldBe ScriptError.syntaxError
+
+        // Wrong arity likewise.
+        $$"${upper()}".checkTemplateSyntax().size shouldBe 1
+
+        // A path typo is data, not text, so it stays invisible to this check.
+        $$"${user.nmae}".checkTemplateSyntax() shouldBe emptyList()
+    }
+
     /** The checker knows nothing about data, so a key nobody provides is not its business. */
     "a reference to data is not an issue, however absent that data would be" {
         $$"${nobody.supplies.this}".checkTemplateSyntax() shouldBe emptyList()

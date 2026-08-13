@@ -26,8 +26,9 @@ The backend serves per-component UI text as **Markdown fragment files** through 
 them with the kernel's `String.evalTemplate(data)` — the fragment map *is* the data map, so `${email.subject}`
 reads `map["email"]["subject"]` — then render the resulting Markdown.
 
-A placeholder holds an **expression**, not just a path: literals, `+ - * / %`, comparison, `&& || !`,
-`cond ? a : b`, and `a ?: b` for a default (`${user.name ?: "there"}`). It runs in the kernel, so a preview in
+A placeholder holds an **expression**, not just a path: literals, `+ - * / %`, `~` to join text, comparison,
+`&& || !`, `cond ? a : b`, `a ?: b` for a default (`${user.name ?: "there"}`), and calls to a fixed set of
+built-in functions (`${upper(user.name)}`, `${count(items)}`, `${formatDay(order.at)}`). It runs in the kernel, so a preview in
 the browser resolves a template exactly as the backend will. A bare missing or null value still throws — say
 what should happen with `?:` rather than relying on tolerance.
 

@@ -85,6 +85,24 @@ class KernelSharedTest {
         assertEquals("many", $$"""${count > 1 ? "many" : "one"}""".evalTemplate(data))
     }
 
+    /**
+     * Built-in functions have to agree across targets too, and they are likelier to drift than the operators:
+     * case conversion and date formatting are exactly the places a platform library would be reached for. These
+     * go through `DateUtil` and Kotlin's own `uppercase`, so the same source answers the same way on both.
+     */
+    @Test
+    fun theBuiltInFunctionsAnswerTheSameOnEveryTarget() {
+        val data = mapOf<String, Any?>(
+            "name" to "  ada  ", "items" to listOf(1, 2, 3), "at" to "2026-08-13T14:30:00.000Z",
+        )
+        assertEquals("ADA", $$"${upper(trim(name))}".evalTemplate(data))
+        assertEquals("3", $$"${count(items)}".evalTemplate(data))
+        assertEquals("2026-08-13", $$"${formatDay(at)}".evalTemplate(data))
+        assertEquals("2026-08-13T14:30:00.000Z", $$"${formatDate(at)}".evalTemplate(data))
+        // A count is a real number, so it compares and pluralises rather than being text that looks numeric.
+        assertEquals("3 items", $$"""${count(items)} ${count(items) == 1 ? "item" : "items"}""".evalTemplate(data))
+    }
+
     @Test
     fun schemaParsesAndValidatesIdenticallyOnEveryTarget() {
         val types = parseSchemaTypes(

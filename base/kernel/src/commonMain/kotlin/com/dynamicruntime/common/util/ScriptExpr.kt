@@ -24,7 +24,8 @@ import com.dynamicruntime.common.annotation.KdrPrivate
  * additive       := multiplicative { ('+' | '-') multiplicative }
  * multiplicative := unary { ('*' | '/' | '%') unary }
  * unary          := ('!' | '-') unary | primary
- * primary        := number | string | 'true' | 'false' | 'null' | path | '(' expression ')'
+ * primary        := number | string | 'true' | 'false' | 'null' | call | path | '(' expression ')'
+ * call           := ident '(' [ expression { ',' expression } ] ')'
  * path           := ident { '.' ident }
  * ```
  *
@@ -58,7 +59,7 @@ class Token(val kind: TokenKind, val text: String, val value: Any?, val pos: Int
 /** The multi-character operators, longest first so `<=` is never read as `<` then `=`. */
 private val multiCharOps = listOf("?:", "==", "!=", "<=", ">=", "&&", "||")
 
-private val singleCharOps = "?:+-*/%<>!().~".toSet()
+private val singleCharOps = "?:+-*/%<>!().~,".toSet()
 
 /**
  * Splits an expression into tokens. Errors carry [ScriptError.syntaxError] and, like every template error,
@@ -167,6 +168,9 @@ class LiteralNode(val value: Any?) : ScriptNode
 class PathNode(val segments: List<String>, val text: String) : ScriptNode
 
 @KdrPrivate
+class CallNode(val fn: ScriptFunction, val args: List<ScriptNode>) : ScriptNode
+
+@KdrPrivate
 class UnaryNode(val op: String, val operand: ScriptNode) : ScriptNode
 
 @KdrPrivate
@@ -216,9 +220,16 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
         return node
     }
 
+    /**
+     * The one place the depth is charged. Everything below walks a **fixed** precedence chain -- ternary,
+     * elvis, six binary levels, unary, primary -- which is constant per expression and says nothing about how
+     * deeply the source actually nests. Charging each of those steps made a mere `${upper(trim(name))}` breach
+     * a cap of 32, because one flat expression already cost ten. Depth is charged where the parser genuinely
+     * re-enters an expression: here, and at the two self-recursive operators below.
+     */
     fun parseExpr(depth: Int): ScriptNode = parseTernary(guard(depth))
 
-    /** Throws past [SEXP.maxDepth]; every descent step passes `guard(depth)` so the count is real. */
+    /** Throws past [SEXP.maxDepth]; charged at real re-entry points so the count reflects actual nesting. */
     fun guard(depth: Int): Int {
         if (depth >= SEXP.maxDepth) {
             throw mkScriptException(
@@ -230,19 +241,20 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
     }
 
     fun parseTernary(depth: Int): ScriptNode {
-        val cond = parseElvis(guard(depth))
+        val cond = parseElvis(depth)
         if (atOp("?") == null) return cond
         take() // '?'
-        val whenTrue = parseExpr(guard(depth))
+        val whenTrue = parseExpr(depth) // parseExpr charges the re-entry
         expectOp(":")
-        val whenFalse = parseExpr(guard(depth)) // right-associative: `a ? b : c ? d : e` chains to the right
+        val whenFalse = parseExpr(depth) // right-associative: `a ? b : c ? d : e` chains to the right
         return TernaryNode(cond, whenTrue, whenFalse)
     }
 
     fun parseElvis(depth: Int): ScriptNode {
-        val left = parseBinary(guard(depth), 0)
+        val left = parseBinary(depth, 0)
         if (atOp("?:") == null) return left
         take() // '?:'
+        // Self-recursive, so an `a ?: b ?: c ?: ...` chain is unbounded and does charge depth.
         return ElvisNode(left, parseElvis(guard(depth)))
     }
 
@@ -251,12 +263,12 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
      * functions is the shape that drifts when an operator is added.
      */
     fun parseBinary(depth: Int, level: Int): ScriptNode {
-        if (level >= binaryLevels.size) return parseUnary(guard(depth))
-        var left = parseBinary(guard(depth), level + 1)
+        if (level >= binaryLevels.size) return parseUnary(depth)
+        var left = parseBinary(depth, level + 1)
         while (true) {
             val op = atOp(*binaryLevels[level]) ?: return left
             take()
-            val right = parseBinary(guard(depth), level + 1)
+            val right = parseBinary(depth, level + 1)
             left = BinaryNode(op, left, right)
         }
     }
@@ -265,9 +277,45 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
         val op = atOp("!", "-")
         if (op != null) {
             take()
+            // Self-recursive, so `!!!!a` is unbounded and does charge depth.
             return UnaryNode(op, parseUnary(guard(depth)))
         }
-        return parsePrimary(guard(depth))
+        return parsePrimary(depth)
+    }
+
+    /**
+     * Parses `name(...)`, resolving the function and checking its arity **here** rather than at evaluation.
+     * That is what lets the fragment checker reject an unknown or misspelled name with no data in hand: a call
+     * is the one construct whose validity is knowable from the text alone.
+     */
+    fun parseCall(depth: Int, name: String): ScriptNode {
+        val fn = scriptFunctions[name] ?: throw mkScriptException(
+            state, ScriptError.syntaxError,
+            "Template expression calls unknown function '$name'. Available: " +
+                scriptFunctions.keys.sorted().joinToString(", ") + ".",
+        )
+        expectOp("(")
+        val args = mutableListOf<ScriptNode>()
+        if (atOp(")") == null) {
+            args.add(parseExpr(guard(depth)))
+            while (atOp(",") != null) {
+                take()
+                args.add(parseExpr(guard(depth)))
+            }
+        }
+        expectOp(")")
+        if (args.size < fn.minArgs || args.size > fn.maxArgs) {
+            val expected = if (fn.minArgs == fn.maxArgs) {
+                "${fn.minArgs} argument" + if (fn.minArgs == 1) "" else "s"
+            } else {
+                "${fn.minArgs} to ${fn.maxArgs} arguments"
+            }
+            throw mkScriptException(
+                state, ScriptError.syntaxError,
+                "Template function '$name' takes $expected but was called with ${args.size}.",
+            )
+        }
+        return CallNode(fn, args)
     }
 
     fun parsePrimary(depth: Int): ScriptNode {
@@ -284,7 +332,9 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
                     "false" -> { take(); return LiteralNode(false) }
                     "null" -> { take(); return LiteralNode(null) }
                 }
-                val segments = mutableListOf(take().text)
+                val nameTok = take()
+                if (atOp("(") != null) return parseCall(guard(depth), nameTok.text)
+                val segments = mutableListOf(nameTok.text)
                 while (atOp(".") != null) {
                     take()
                     val seg = peek()

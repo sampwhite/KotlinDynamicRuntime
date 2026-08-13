@@ -46,6 +46,15 @@ fun evalNode(state: ScriptState, data: Map<String, Any?>, node: ScriptNode, tole
     return when (node) {
         is LiteralNode -> node.value
         is PathNode -> resolvePath(state, data, node, tolerant)
+        is CallNode -> {
+            val args = node.args.map { evalNode(state, data, it, tolerant, next) }
+            // In a tolerant position an absent argument makes the whole call absent, rather than a type error
+            // about the null it produced. `${upper(user.name) ?: "anon"}` is the natural way to write that, and
+            // the alternative -- erroring so the author moves the default inside the call -- would make `?:`
+            // stop working the moment a function appeared to its left. Outside a tolerant position a null
+            // argument can only be a literal `null`, which is a real mistake and still reports.
+            if (tolerant && args.any { it == null }) null else node.fn.invoke(state, args)
+        }
         is UnaryNode -> evalUnary(state, data, node, tolerant, next)
         is BinaryNode -> evalBinary(state, data, node, tolerant, next)
         // The guarded side is evaluated tolerantly: the whole point of `?:` is that the left may not be there.
@@ -243,22 +252,12 @@ private fun requireNonNull(state: ScriptState, op: String, l: Any?, r: Any?) {
 private fun mkTypeMismatch(state: ScriptState, op: String, l: Any?, r: Any?) = mkScriptException(
     state, ScriptError.typeMismatch,
     if (r == null && op == "-") {
-        "Template expression cannot apply '$op' to ${describe(l)}."
+        "Template expression cannot apply '$op' to ${describeValue(l)}."
     } else {
-        "Template expression cannot apply '$op' to ${describe(l)} and ${describe(r)}."
+        "Template expression cannot apply '$op' to ${describeValue(l)} and ${describeValue(r)}."
     },
 )
 
 private fun mkDivideByZero(state: ScriptState, op: String) = mkScriptException(
     state, ScriptError.divideByZero, "Template expression divides by zero with '$op'.",
 )
-
-/** Names a value's kind for an error message, without printing a whole map or list into it. */
-private fun describe(v: Any?): String = when (v) {
-    null -> "null"
-    is String -> "the text '${v.take(30)}'"
-    is Boolean -> "the boolean $v"
-    is Map<*, *> -> "an object"
-    is Collection<*> -> "a list"
-    else -> "the value ${v.fmt()}"
-}
