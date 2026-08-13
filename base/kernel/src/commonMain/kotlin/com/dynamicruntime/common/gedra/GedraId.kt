@@ -27,7 +27,7 @@ object GID {
      * Every kind abbreviation is exactly this long, which is why `userData` abbreviates to `ud` and not `u`.
      * It makes the first six characters of every id a fixed-width prefix (`gd.fd.`, `gd.ud.`, `gc.wf.`), so a
      * column of ids lines up when read by eye — which is most of how ids are read. The value evaporates the
-     * first time an abbreviation is a different length, so [checkKindAbbrevs] enforces it.
+     * first time an abbreviation is a different length, so "checkKindAbbrevs" enforces it.
      */
     const val kindAbbrevLength = 2
 }
@@ -226,7 +226,7 @@ class GedraId private constructor(
          * validated, so re-assembling them could only produce the same characters back.
          */
         fun parse(fullId: String): GedraId {
-            // limit = 4: the base id is opaque and the suffix is split off afterwards, so anything past the
+            // limit = 4: the base id is opaque and the suffix is split off afterward, so anything past the
             // third separator belongs to the caller's own construction and is not ours to divide further.
             val parts = fullId.split(GID.partSep, limit = 4)
             if (parts.size != 4) {
