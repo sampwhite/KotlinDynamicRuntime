@@ -140,3 +140,66 @@ class UserProfileNameTest {
         assertEquals("acme_co", UserProfile(authId = "1", publicName = "acme_co", isEntity = true, name = null).displayName)
     }
 }
+
+/**
+ * The copy-safety guarantees [UserProfile] became a data class for (issue #282).
+ *
+ * These are the tests that go on working when someone adds a field. Both assert on the **whole object**, not
+ * field by field -- an enumerated assertion is the same shape as the bug, and would pass while quietly
+ * ignoring the new field it does not mention.
+ */
+class UserProfileCopyTest {
+
+    /** Every field set to a non-default, so nothing can pass by coinciding with a default. */
+    private fun populated() = UserProfile(
+        authId = "auth-42",
+        userId = 42L,
+        client = "acme",
+        org = "engineering",
+        roles = setOf("user", "admin"),
+        publicName = "ada@example.com",
+        isEntity = true,
+        name = "Acme Co",
+        hasPassword = true,
+    )
+
+    /**
+     * The #282 bug in miniature: take a profile, change only the roles, and everything else must survive.
+     * `refreshActingRoles` did this by hand and dropped `org`, then the entity fields.
+     */
+    @Test
+    fun copyingWithNewRolesPreservesEverythingElse() {
+        val original = populated()
+        val copied = original.copy(roles = setOf("user"))
+
+        assertEquals(setOf("user"), copied.roles)
+        // Compared as whole objects: the point is the fields nobody thought to name.
+        assertEquals(original, copied.copy(roles = original.roles))
+    }
+
+    /**
+     * The serialization pair is the same hazard in another place, and structural equality makes this total:
+     * a field added to the class but forgotten in `toUserInfo` or `fromUserInfo` fails here without anyone
+     * remembering to extend the test.
+     */
+    @Test
+    fun theUserInfoRoundTripCarriesEveryField() {
+        val original = populated()
+        assertEquals(original, UserProfile.fromUserInfo(original.toUserInfo()))
+    }
+
+    /**
+     * Becoming a data class would otherwise have put the account's real name and email into any log line that
+     * interpolated a profile, so [UserProfile.toString] is overridden. Assert what it must *not* carry.
+     */
+    @Test
+    fun toStringDoesNotLeakNamesOrEmails() {
+        val text = populated().toString()
+        assertFalse(text.contains("ada@example.com"))
+        assertFalse(text.contains("Acme Co"))
+        // Still useful for the thing a profile is actually debugged for: who is acting, and what they may do.
+        assertTrue(text.contains("42"))
+        assertTrue(text.contains("admin"))
+    }
+}
+

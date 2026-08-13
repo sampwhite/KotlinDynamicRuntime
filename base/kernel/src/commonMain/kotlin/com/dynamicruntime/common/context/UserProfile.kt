@@ -26,9 +26,17 @@ object UPF {
  * request carries the anonymous profile ([anonymous]). Still lightweight -- richer profile data will load on
  * demand.
  *
+ * A **data class**, for [copy] (issue #282). A caller that wants this profile with one thing changed must use
+ * it rather than calling the constructor with the other eight fields written out: that reconstruction silently
+ * drops whatever it does not mention, and it did -- twice, losing `org` when #225 added it and the entity
+ * fields when #284 did, each time producing a profile that compiled, ran, and was quietly missing a field.
+ * `copy` carries every present *and future* field, so the mistake is no longer available. Note that a
+ * hand-written `withRoles`-style helper would **not** have fixed this: it would still list every field, just
+ * one level further in.
+ *
  * (Named without the `Kdr` prefix per the naming guide: `UserProfile` is specific enough not to be ambiguous.)
  */
-class UserProfile(
+data class UserProfile(
     /** Authenticated identity, or null when no user is authenticated. [anonymous] uses [anonymousAuthId]. */
     val authId: String? = null,
     /**
@@ -97,6 +105,15 @@ class UserProfile(
      * Null only when there is no name at all (e.g. the anonymous profile).
      */
     val displayName: String? get() = name?.trim()?.ifEmpty { null } ?: publicName
+
+    /**
+     * Deliberately **not** the data class's generated dump. This object is on every context, so interpolating
+     * one into a log line is an obvious thing to do while debugging -- and the generated version would write
+     * the person's real name and their email (as [publicName]) into the log file, which becoming a data class
+     * would otherwise have quietly enabled. What is left is what a log is actually for here: who is acting and
+     * what they may do. Use [toUserInfo] to render the whole profile deliberately.
+     */
+    override fun toString(): String = "UserProfile(userId=$userId, client=$client, roles=$roles)"
 
     /**
      * A JSON-friendly map dump of this profile's attributes -- the payload returned by user-info endpoints so
