@@ -32,6 +32,13 @@ interface ComponentDefinition : KdrProvider {
     fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {}
 
     /**
+     * The Markdown fragment files (`md-fragments/<fileId>.md`) this component ships, named so they can be
+     * checked. Nothing enumerates the classpath, so a file that no component declares is a file nothing
+     * validates -- declaring it is what puts it under the startup and `/operator/fragments/check` checks.
+     */
+    fun fragmentFiles(cxt: KdrCxt): List<String> = emptyList()
+
+    /**
      * Services that must be fully initialized before regular [services]. Returned as
      * factories (typically `::Ctor` references) so nothing is instantiated until the
      * registry binds it.

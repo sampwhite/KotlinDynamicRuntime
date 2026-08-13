@@ -78,6 +78,7 @@ known, everything else is defaulted; in local development, `KDR_DB_TYPE=postgres
 | `KDR_DB_HOST` | PostgreSQL host, with an optional `:port` suffix (e.g. `db.example.com:5433`). **PostgreSQL only.** | `localhost` **in the `local` environment only**; required in every other environment |
 | `KDR_DB_USER` | PostgreSQL username. **PostgreSQL only** (the H2 variants use a hardcoded user). | `kdr` |
 | `KDR_ALLOW_SCHEMA_DRIFT` | Boot despite **blocking** schema drift — a column the database has, the code does not declare, that is `NOT NULL` with no default. Startup normally refuses, because the framework cannot populate such a column and so every insert into that table already fails. Setting this true downgrades the refusal to a logged error; it does **not** make writes work. For an operator part-way through a migration. | `false` |
+| `KDR_FRAGMENT_CHECK` | What a malformed Markdown fragment does at startup: `strict` refuses the boot, `warn` logs the problems and serves anyway, `off` skips the check. Unset means **strict everywhere except `prod`**, where it is `warn` — a developer or a test should be stopped by broken copy, while a production node should not refuse every unrelated endpoint over one malformed message (the render path already falls back for that one). Deliberately keyed on the environment rather than `isTestInstance`, which is inferred from in-memory-ness and so is false for an ordinary local run. Check a running node with `GET /operator/fragments/check`. | unset (`strict`, or `warn` in `prod`) |
 
 Notes:
 

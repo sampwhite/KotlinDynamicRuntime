@@ -2,6 +2,7 @@ package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.logging.LogStartup
@@ -68,11 +69,16 @@ object InstanceRegistry {
             config.put(SchemaCollector.key, collector)
 
             val components = componentDefinitions.values.sortedBy { it.loadPriority() }
+            // Fragment files are collected alongside schema and for the same reason: a component knows what it
+            // ships, and nothing else can find out (the classpath is not enumerable here).
+            val fragmentFiles = mutableListOf<String>()
             for (component in components) {
                 if (component.isLoaded(cxt)) {
                     component.addSchema(cxt, collector)
+                    fragmentFiles.addAll(component.fragmentFiles(cxt))
                 }
             }
+            config.put(FRAG.registryKey, fragmentFiles.distinct())
 
             val startupFactories = mutableListOf<() -> ServiceInitializer>()
             val serviceFactories = mutableListOf<() -> ServiceInitializer>()

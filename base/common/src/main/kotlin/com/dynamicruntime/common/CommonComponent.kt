@@ -6,7 +6,10 @@ import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.operator.operatorSchema
 import com.dynamicruntime.common.content.MarkdownDocService
+import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.app.appSchema
 import com.dynamicruntime.common.home.homeSchema
 import com.dynamicruntime.common.test.testSchema
@@ -63,7 +66,17 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(appSchema(cxt))
         // Test-only endpoints (issue #125): filtered out of the store unless the deployment allows them.
         collector.addModule(testSchema(cxt))
+        // Fragment checking: the operator endpoint that validates this instance's Markdown fragment files.
+        collector.addModule(MarkdownFragmentService.schema(cxt))
     }
+
+    /**
+     * The fragment files `base/common` ships. `errors` and `sample` are here as much as the widget-group
+     * files: `errors` is reached through the error-message path rather than a UI-config, so nothing else
+     * names it, and an unchecked error fragment is exactly the one you find out about during an incident.
+     */
+    override fun fragmentFiles(cxt: KdrCxt): List<String> =
+        listOf(AFRAG.auth, AFRAG.profile, HFRAG.home, FRAG.errors, FRAG.sample)
 
     /**
      * Startup services -- fully initialized before regular services. Schema compilation must be ready first
