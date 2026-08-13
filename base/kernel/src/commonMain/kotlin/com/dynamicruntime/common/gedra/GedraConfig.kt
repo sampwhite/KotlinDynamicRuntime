@@ -43,6 +43,18 @@ class GedraTrait(
  * #287 — and it is what lets a config defined in code and one loaded from a database sit side by side
  * without either needing to know which the other is. The revision suffix (`~3`) arrives with config storage;
  * an absent suffix will mean the active revision.
+ *
+ * ### The client segment is the activation scope
+ *
+ * The client in that id is not only ownership. It is how a deployment will decide **which configs, or which
+ * pieces of them, are active for a given client** — the mechanism behind a client seeing its own view of the
+ * schema and endpoints rather than everybody's. Nothing reads it that way yet, and the path is close enough
+ * that the affordance is worth naming rather than rediscovering.
+ *
+ * The consequence that matters today: a config is identified by its **full id**, never by [name] alone. Two
+ * clients may each declare a `coreTraits`, and they are different configs. Anything that indexes configs by
+ * name is correct only for as long as `global` is the only client — a condition nothing enforces and nobody
+ * will remember.
  */
 class GedraConfig(
     /** This config's identity; its base id is [name]. */
@@ -54,7 +66,12 @@ class GedraConfig(
     /** The `$defs` contents its traits generated, keyed by qualified type name. */
     val defs: Map<String, Any?>,
 ) {
-    /** The code-explicit name this config is addressed by, which is also its id's base. */
+    /**
+     * The code-explicit name this config is addressed by, which is also its id's base.
+     *
+     * Unique within a client, **not** across them — see the note on the client segment above. Index configs
+     * by [gedraId] rather than by this.
+     */
     val name: String get() = gedraId.baseId
 
     override fun toString(): String = gedraId.fullId
