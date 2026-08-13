@@ -161,3 +161,18 @@ first. Noticeable because someone asks for it by name.
   made, only the code is missing. Note one known gap recorded there — `g-primaryKey` has no standard
   equivalent, so stripping it makes the export looser, which is accepted because the constraint governs our
   own stored entries rather than anything a third party validates.
+
+## When fragment copy computes with its data
+
+Today a fragment *substitutes* values. The trigger fires the first time one **compares or calculates** with
+them — `${minutes > 5}`, `${count * price}` — because that is when a value of the wrong type becomes possible.
+Until then every substitution is "print this", which no type can get wrong.
+
+- **Type-aware fragment checking** *(from #305; the half #314 left undone).* `/operator/fragments/check`
+  reports the paths an entry requires and which ones a supplied map lacks, but it is a **presence** check: it
+  never evaluates, so `${minutes > 5}` against a `"15"` passes it and still fails at render, since a string is
+  never a number (#293). Catching that means evaluating against realistic values, which means first deciding
+  where those come from — supplied by the caller at the endpoint, or declared beside the fragment so a boot
+  check can run with nobody present. Deferred because the shipped copy reads five paths in total and none of
+  them compute, so a check with nothing to find would be tested against invented cases only.
+
