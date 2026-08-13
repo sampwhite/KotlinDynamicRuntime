@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.gedra.GedraConfig
 
 /**
  * A component bundles a set of contributions -- schema and services -- that an
@@ -37,6 +38,16 @@ interface ComponentDefinition : KdrProvider {
      * validates -- declaring it is what puts it under the startup and `/operator/fragments/check` checks.
      */
     fun fragmentFiles(cxt: KdrCxt): List<String> = emptyList()
+
+    /**
+     * The Gedra config bundles this component defines (issue #299) -- traits now, workflows later. Collected
+     * beside schema, and for the same reason: nothing can enumerate them, so a bundle nobody declares is a
+     * bundle nothing compiles.
+     *
+     * Contributed configs are checked against each other as they arrive (see `GedraConfigCollector`): a trait
+     * id is unique across every namespace and kind, and a namespace has exactly one owner.
+     */
+    fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = emptyList()
 
     /**
      * Services that must be fully initialized before regular [services]. Returned as

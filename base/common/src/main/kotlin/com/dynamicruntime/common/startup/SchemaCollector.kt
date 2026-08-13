@@ -3,6 +3,8 @@ package com.dynamicruntime.common.startup
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
+import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.sql.KdrTable
 
 /**
@@ -27,10 +29,30 @@ class SchemaCollector {
     /** Every contributed table definition, in contribution order. */
     val tables: MutableList<KdrTable> = mutableListOf()
 
+    /**
+     * The Gedra config bundles components contributed, and the checks over them (issue #299).
+     *
+     * Its own collector rather than three more fields here: taking a config involves checking it against
+     * every config already taken, which is logic rather than accumulation, and this class is deliberately the
+     * latter.
+     */
+    val gedraConfigs: GedraConfigCollector = GedraConfigCollector()
+
     /** Folds a module's types and endpoints into the collector. */
     fun addModule(module: SchModule) {
         defs.putAll(module.defs)
         endpoints.addAll(module.endpoints)
+    }
+
+    /**
+     * Takes a Gedra config bundle, checking it against the ones already taken, and folds the entry types its
+     * traits generated into [defs] so they compile with everything else. A config that fails a check is
+     * dropped rather than folded in -- outside production the check throws before reaching here.
+     */
+    fun addGedraConfig(cxt: KdrCxt, config: GedraConfig) {
+        if (gedraConfigs.add(cxt, config)) {
+            defs.putAll(config.defs)
+        }
     }
 
     /** Adds contributed table definitions (from a `tableModule`) into the collector. */
