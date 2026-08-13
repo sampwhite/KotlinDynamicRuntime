@@ -81,7 +81,12 @@ Never write `as` / `@Suppress("UNCHECKED_CAST")` — route through `toT()`/`toJs
 
 ## Also in the kernel's util package
 
-- `ScriptUtil` — `String.evalTemplate(data)`, resolving `${namespace.key}` against a nested map.
+- `ScriptUtil` / `ScriptExpr` / `ScriptEval` — `String.evalTemplate(data)`, resolving `${...}` against a
+  nested map. The interior is a small expression language: dotted paths, string/number literals, `+ - * / %`,
+  `== != < > <= >=`, `&& || !`, `cond ? a : b`, and `a ?: b` for a default. `+` concatenates when either side
+  is a string and adds when neither is; `- * / %` read a numeric string; a bare missing/null value still
+  throws (`?:` and a ternary condition are the only places absence is tolerated). Errors carry a `ScriptError`
+  code plus the block's offset/line/column.
 - `MarkdownFragmentUtil` — parses a Markdown **fragment file** into `namespace -> key -> value`.
 - `MarkdownRenderUtil` — `String.renderMarkdown()`, escaping all HTML. Frontend and backend render the same.
 - `CollectionUtil` — `Map.deepClone()` (depth-capped).
