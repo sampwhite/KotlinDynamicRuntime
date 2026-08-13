@@ -55,6 +55,11 @@ class GedraTrait(
  * clients may each declare a `coreTraits`, and they are different configs. Anything that indexes configs by
  * name is correct only for as long as `global` is the only client — a condition nothing enforces and nobody
  * will remember.
+ *
+ * The same segment bounds **visibility**: a config owned by a client may reference definitions owned by that
+ * client or by `global`, and no others. That is why two clients defining one trait id is harmless — neither
+ * can see the other's — and it is the half of the rule that has to be enforced when a second owner appears,
+ * since `$ref` resolution over one compiled map would otherwise reach anywhere.
  */
 class GedraConfig(
     /** This config's identity; its base id is [name]. */
