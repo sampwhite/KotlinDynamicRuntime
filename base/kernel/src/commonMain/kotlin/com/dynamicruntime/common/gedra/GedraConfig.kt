@@ -10,7 +10,7 @@ import com.dynamicruntime.common.schema.qualifyTypeName
  * One trait: a `traitId`, the entry type it generates, and the gedra kinds that may carry it (issue #298).
  *
  * The trait is the *definition*; the entry type is what the definition produces, and an entry stored on a
- * gedra is an instance of that type. Keeping the three straight is most of understanding this layer.
+ * gedra is an instance of that type. Keeping the three straight is most of what you need to understand this layer.
  *
  * [traitId] is globally unique — across namespaces and across kinds — which is what lets stored data carry a
  * bare trait id and nothing else. [typeName] is namespaced, because two configs may each want a `NameEntry`.
