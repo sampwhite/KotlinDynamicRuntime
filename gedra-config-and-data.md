@@ -20,14 +20,34 @@ A **gedra** is the universal stored entity. There are two families of them:
 - **config** — the definitions that give data its meaning. Traits now; workflow definitions later, and the
   definitions of the client spaces themselves.
 
-Underneath they are the *same shape*: a gedra carrying entries. That is deliberate. Editing, revisioning,
-auditing and permission-checking get written once and apply to both, and a config object can be edited by the
-same machinery that edits a form — which is what makes an administrator authoring a definition an ordinary
-act rather than a special one.
+**Config stored in a database** is a gedra carrying entries, exactly like data. That is deliberate: editing,
+revisioning, auditing and permission-checking get written once and apply to both, and an administrator
+authoring a definition is doing an ordinary act rather than a special one.
 
-Config is bundled rather than scattered. One config object holds a set of traits, and will hold the workflows
-that use them, so that `$ref`s and workflow-to-trait links stay mostly *inside* one object. Links between
-bundles remain possible and are meant to be few — few enough that an audit of them would be worth reading.
+**Config written in source code is not.** It is declared directly, with no entry envelope around it, because
+the envelope exists to answer *when* and *by whom* — and once config is code, version control answers both
+for free. So the wrapper is a **storage** concern rather than a definitional one, and extracting config from
+a database unwraps the definition out of its protocol parent before it becomes ordinary source. See
+[Where config comes from](#where-config-comes-from-and-where-it-goes).
+
+### The bundle is an authoring unit, not an architectural one
+
+A config bundle holds a set of traits, and will hold the workflows that use them, so that `$ref`s and
+workflow-to-trait links stay mostly *inside* one object. Links between bundles remain possible and are meant
+to be few — few enough that an audit of them would be worth reading.
+
+But what actually groups definitions is the **client in their ids**: every config sharing a client is
+assembled together, however many bundles they were written as. That makes granularity a free choice, sized to
+the work rather than to the architecture — the same judgement as deciding whether a subsystem's schema, data
+classes, service and endpoints belong in one Kotlin file or several.
+
+- Setting up a QA scenario — one client, a simple workflow, a few traits to exercise one behaviour — is
+  reasonably **one bundle holding all of it**.
+- A serious client might define the client in one bundle, each workflow in its own, and pull separate groups
+  of traits into bundles of their own.
+
+Both assemble identically. Nothing downstream can tell how the definitions were divided up, which is what
+makes the choice safe to get wrong and cheap to change.
 
 ## How an id works
 
@@ -82,21 +102,18 @@ Three properties fall out of the format and are worth not breaking:
 
 ### A client is itself a defined thing
 
-*Intended; nothing defines a client today.* A client space is not a bare string that appears in ids — it will
-be **config**, defined the way everything else is. Config gedras carry entries like any other gedra, so a
-client's definition is a config gedra carrying an entry of a globally defined trait, rather than a new gedra
-kind. That is what bundling bought: what would have been a `clientDef` kind is an ordinary trait instead.
+*Intended; nothing defines a client today.* A client space is not a bare string that appears in ids — it is
+**config**, declared the way everything else is, in a `GedraConfig` of its own.
 
-Two questions are open, and both are worth settling before anything is built:
+That definition is **scoped to the client it defines**: the bundle declares the client id and carries that
+same id in its own `GedraId`. The apparent circularity is the point rather than a problem — an id can be
+constructed before the thing it names exists, so the definition and the space it defines come into being
+together rather than one waiting on the other.
 
-- **Where a client's own definition lives** — in `global`, or in the client's own space. The self-referential
-  form works, since an id can be constructed before the thing it names exists. What differs is discovery: a
-  separated deployment learns *which* client it serves from its own configuration rather than from data, so
-  either can be loaded, but keeping them in `global` puts every client definition in the one space every
-  deployment already holds.
-- **What that makes `global`.** Today it is the home of shared definitions. If client definitions live there
-  too, it also becomes the registry of who exists — a second job for the one space that never separates, and
-  one to take on deliberately rather than by default.
+It also keeps `global` doing one job. `global` is the home of shared definitions; making it additionally the
+registry of who exists would give the one space that never separates a second responsibility, and a
+client-scoped definition means a deployment serving one client holds that client's definition in the same
+place it holds everything else of theirs.
 
 The client in every id is not bookkeeping. It is the seam the whole stack can be split along, and the depth
 of the cut is a choice we make per deployment rather than once for the architecture.
@@ -263,15 +280,21 @@ in the database — quick to change, quick to get wrong, and exactly right while
 what they need. As a client's application settles and becomes something we maintain and test, those
 definitions move into a source repository and are deployed as code.
 
-Two properties make that a move rather than a rewrite:
+Promotion is a **move plus an unwrapping**, and both halves matter.
 
-- **Code-defined and database-defined config are the same shape**, built by the same objects.
-- **They are identified the same way.** A config bundle declared in code carries a real `GedraId` —
-  `gc.cd.global.coreTraits` — exactly as a stored one will. Nothing has to know which sort it is holding.
+The move is cheap because the two forms are built by the same objects and identified the same way: a config
+bundle declared in code carries a real `GedraId` — `gc.cd.global.coreTraits` — exactly as a stored one does,
+so nothing downstream has to know which sort it is holding.
+
+The unwrapping is what makes the result idiomatic source rather than a database dump. Stored config is
+wrapped in entries so that a database can answer *when* and *by whom*; extracting it takes the definition out
+of that protocol parent and adds it as ordinary config, because the questions the envelope existed to answer
+are now answered by the commit history. Carrying the wrapper into source would preserve a record of edits
+that git already keeps, in a form nobody would read.
 
 Outstanding configuration warnings must be cleared before a config is promoted. A duplicated trait id is
-tolerable while config lives in a database and intolerable once it is code we release, and that gate is what
-gives the warning teeth.
+tolerable while config lives in a database and intolerable once it is code we release and test, and that gate
+is what gives the warning teeth.
 
 ## What is real today
 
@@ -284,7 +307,7 @@ gives the warning teeth.
 | The default branch, and strictness as a reader's choice | designed; not yet built |
 | Client separation across deployments | intended — nothing loads a subset of clients yet |
 | Client-authored config, and the visibility check | intended — every config today is `global`, in code |
-| Client spaces defined in config rather than named in ids | intended — the step after entries can be stored |
+| Client spaces defined in config, scoped to themselves | intended — the step after entries can be stored |
 | Config revisions, and an absent suffix meaning "active" | intended |
 | Promotion from database to source code | intended |
 
