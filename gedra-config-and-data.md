@@ -17,7 +17,8 @@ yet enforced is still a rule worth knowing, because the code is being written to
 A **gedra** is the universal stored entity. There are two families of them:
 
 - **data** — what people entered. Form documents, workflow data, user data, file references.
-- **config** — the definitions that give data its meaning. Traits now; workflow definitions later.
+- **config** — the definitions that give data its meaning. Traits now; workflow definitions later, and the
+  definitions of the client spaces themselves.
 
 Underneath they are the *same shape*: a gedra carrying entries. That is deliberate. Editing, revisioning,
 auditing and permission-checking get written once and apply to both, and a config object can be edited by the
@@ -78,6 +79,24 @@ Three properties fall out of the format and are worth not breaking:
 - **Ids sort usefully** — storage, then kind, then client, then origin, then time.
 
 ## Client separation
+
+### A client is itself a defined thing
+
+*Intended; nothing defines a client today.* A client space is not a bare string that appears in ids — it will
+be **config**, defined the way everything else is. Config gedras carry entries like any other gedra, so a
+client's definition is a config gedra carrying an entry of a globally defined trait, rather than a new gedra
+kind. That is what bundling bought: what would have been a `clientDef` kind is an ordinary trait instead.
+
+Two questions are open, and both are worth settling before anything is built:
+
+- **Where a client's own definition lives** — in `global`, or in the client's own space. The self-referential
+  form works, since an id can be constructed before the thing it names exists. What differs is discovery: a
+  separated deployment learns *which* client it serves from its own configuration rather than from data, so
+  either can be loaded, but keeping them in `global` puts every client definition in the one space every
+  deployment already holds.
+- **What that makes `global`.** Today it is the home of shared definitions. If client definitions live there
+  too, it also becomes the registry of who exists — a second job for the one space that never separates, and
+  one to take on deliberately rather than by default.
 
 The client in every id is not bookkeeping. It is the seam the whole stack can be split along, and the depth
 of the cut is a choice we make per deployment rather than once for the architecture.
@@ -265,6 +284,7 @@ gives the warning teeth.
 | The default branch, and strictness as a reader's choice | designed; not yet built |
 | Client separation across deployments | intended — nothing loads a subset of clients yet |
 | Client-authored config, and the visibility check | intended — every config today is `global`, in code |
+| Client spaces defined in config rather than named in ids | intended — the step after entries can be stored |
 | Config revisions, and an absent suffix meaning "active" | intended |
 | Promotion from database to source code | intended |
 
