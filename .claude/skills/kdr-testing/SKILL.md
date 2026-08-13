@@ -296,6 +296,20 @@ already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
 - **Use a unique `instanceName` per test.** `InstanceRegistry` caches an instance by name, so a reused name
   returns the earlier config and silently ignores your overlay.
 
+- **Every test in a run shares one database, so fixture identifiers must be unique across the whole suite.**
+  The in-memory H2 name is a constant and the URL carries `DB_CLOSE_DELAY=-1`, so rows outlive the instance
+  that made them and every boot sees the same `AuthUsers`. A plain-looking `chief@example.com` in a new test
+  therefore *takes* the address another test builds its administrator from — and the failure lands in **that**
+  test, which passed yesterday and whose code you did not touch. The same applies to any value a test asserts
+  by content: a search test looking for "Ada Lovelace" matches a user another test named. Prefix fixture
+  addresses and names with something specific to the test.
+
+- **A malformed Markdown fragment fails the whole suite**, not one test. Tests run in `ENV.unit`, where the
+  startup fragment check is `strict` (issue #294), so every `mkTestBootCxt` refuses. That is deliberate — it is
+  the same defect a `prod` node would only warn about — but it means a broken `${...}` in a `.md` file reads as
+  "everything is broken" rather than as a content error. `KDR_FRAGMENT_CHECK=warn` gets you booting again while
+  you chase something else.
+
 - **`ACFG.isTestInstance` in the overlay decides that flag outright** (issue #215), and is the only way to
   test how a **real** node behaves — `forTestingOnly` endpoints absent from the store, test-only debug output
   withheld. Everything else about the flag is inferred through a chain of ORs that can only ever say *yes*: a

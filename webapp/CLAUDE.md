@@ -84,16 +84,35 @@ Current UI-config endpoints:
 The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
 the envelope consistent across groups.
 
-## The admin console: editing someone's authority (issue #225)
+## The admin console: editing someone's identity and authority (issue #225)
 
-The Users page edits three **independent** things, and treating them as one control is the mistake the whole
-screen is arranged to prevent:
+The Users page edits several **independent** things, and treating any two as one control is the mistake the
+whole screen is arranged to prevent. Three of them are **authority**:
 
 - **Access level** — a rung of `RoleLadder` (`user` < `operator` < `admin`), shown as a *single-choice*
   `Select`, because the levels are an ordering and holding two is not a thing one can be.
 - **All clients** — an off-ladder **capability**, a checkbox. The level says *what* someone may do; this says
   *whose data* they may do it to. Different axes.
 - **Organization** — an optional narrowing *within* a client. Blank means client-wide.
+
+Two are **identity**, and sit at the top of the editor beside the email for that reason — they say who the
+account is, not what it may do:
+
+- **Name** — the account's real-world name: a person's full name, or a business's. Non-unique display copy,
+  never an identifier.
+- **Business account** — `isEntity`. It says how to *read* the name, not which field to read: there is one
+  name input whose label switches between "Full name" and "Business name", rather than a second field
+  appearing. That mirrors `UserProfile.displayName`, which is `name ?: publicName` with no reference to the
+  flag, so the console and the app cannot disagree about what is shown.
+
+**Unticking "Business account" keeps the name.** It used to clear it, which was right while only a business
+had one and is silent data loss now that a person does — reclassifying an account should not discard what it
+is called. The list shows **Name** and a plain Person/Business **Type**.
+
+**`username` is gone from this page** — no create field, no column — but it keeps its unique column, its index
+and its role as a login id, and the search still matches it. A username is an identifier, not a name, and the
+console displays none, so advertising it in the search placeholder would point at something you cannot see
+here. Do not "tidy" that by dropping the match as well.
 
 **Compose, never replace.** A role list is sent whole, so an edit that rebuilds it from one control silently
 drops the others. `RoleLadder.rolesAtLevel(current, level)` moves someone between rungs while preserving
