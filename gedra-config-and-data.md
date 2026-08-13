@@ -24,6 +24,11 @@ A **gedra** is the universal stored entity. There are two families of them:
 revisioning, auditing and permission-checking get written once and apply to both, and an administrator
 authoring a definition is doing an ordinary act rather than a special one.
 
+Entries are instances of traits, so stored config needs traits of its own — and there is no way to declare
+one yet (#316). They will be hardwired rather than contributed, since what may be stored into config is fixed
+by us, and they are a different animal from the everyday sort: one of them has to describe a JSON Schema
+document, which is checked by *parsing* the candidate rather than by describing our schema layer in schema.
+
 **Config written in source code is not.** It is declared directly, with no entry envelope around it, because
 the envelope exists to answer *when* and *by whom* — and once config is code, version control answers both
 for free. So the wrapper is a **storage** concern rather than a definitional one, and extracting config from
@@ -308,6 +313,7 @@ is what gives the warning teeth.
 | Client separation across deployments | intended — nothing loads a subset of clients yet |
 | Client-authored config, and the visibility check | intended — every config today is `global`, in code |
 | Client spaces defined in config, scoped to themselves | intended — the step after entries can be stored |
+| Traits for stored config, declared separately from data traits | intended — #316 |
 | Config revisions, and an absent suffix meaning "active" | intended |
 | Promotion from database to source code | intended |
 
