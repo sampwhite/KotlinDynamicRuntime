@@ -1,7 +1,6 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.util.hashPassword
@@ -86,12 +85,9 @@ fun refreshActingRoles(cxt: KdrCxt) {
     // Rebind unconditionally, not only when the roles moved: the row is already loaded, and the profile the
     // cookie produced carries identity alone -- no display name, no password status, since those would be
     // stale in a 30-day cookie. Anything that has paid for this read gets the whole live profile.
-    val live = row.toUserProfile()
-    cxt.bindToUserProfile(
-        UserProfile(
-            authId = live.authId, userId = live.userId, client = live.client, org = live.org, roles = liveRoles,
-            publicName = live.publicName, isEntity = live.isEntity, name = live.name,
-            hasPassword = live.hasPassword,
-        ),
-    )
+    //
+    // `copy` rather than the constructor (issue #282): the only thing being changed is the role set, and
+    // writing the other fields out by hand is what silently dropped `org`, and later the entity fields, from
+    // every caller that arrived through here.
+    cxt.bindToUserProfile(row.toUserProfile().copy(roles = liveRoles))
 }
