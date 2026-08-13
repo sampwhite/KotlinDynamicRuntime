@@ -80,11 +80,22 @@ class GedraIdTest : StringSpec({
             .message.shouldNotBeNull() shouldContain "not a 'gd' kind"
     }
 
-    // Reserved in the storage enum so nothing else claims `gc`, but with no kinds yet. A reader meeting one
-    // should be told that plainly rather than left with "'wf' is not a config kind", which reads as a typo.
-    "a config id is refused as unsupported rather than as unrecognized" {
-        shouldThrow<KdrException> { GedraId.parse("gc.wf.acme.acmePaymentWf~7") }
-            .message.shouldNotBeNull() shouldContain "not supported yet"
+    // Config ids became real in #297. The kind segment is `cd`, not a second `gc`: the storage segment
+    // already says config, so reusing it would leave the kind carrying no information.
+    "a config id parses, and its kind comes from the config enum" {
+        val id = GedraId.parse("gc.cd.global.coreTraits~7")
+        id.storageType shouldBe GedraStorageType.configStore
+        id.kind shouldBe GedraConfigType.configDoc
+        id.dataType.shouldBeNull() // a config id is not a data id, and says so rather than guessing
+        id.client shouldBe GID.globalClient
+        id.baseId shouldBe "coreTraits"
+        id.suffix shouldBe "7"
+    }
+
+    "a kind from the wrong storage type is not accepted" {
+        // `fd` is a data kind; under `gc` it is simply unknown, and the message says which family was searched.
+        shouldThrow<KdrException> { GedraId.parse("gc.fd.acme.x") }
+            .message.shouldNotBeNull() shouldContain "not a 'gc' kind"
     }
 
     // The base id is held to `[A-Za-z0-9_]` for two reasons at once: it keeps the separators out, which is

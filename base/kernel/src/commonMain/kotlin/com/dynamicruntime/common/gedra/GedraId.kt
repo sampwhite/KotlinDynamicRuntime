@@ -98,6 +98,25 @@ enum class GedraDataType(override val idAbbrev: String) : GedraKind {
 }
 
 /**
+ * The kinds of gedra stored as config — definitions, which are revisioned and pinned per environment.
+ *
+ * One kind for now, and that is the direction #292 settled rather than a placeholder: traits and workflows
+ * are defined *together* in one bundle, so that `$ref`s and workflow-to-trait links stay mostly inside a
+ * single object rather than spreading across many. What would have been several config kinds is one.
+ *
+ * `configDoc` echoes `formDoc`, and abbreviates to `cd` rather than reusing the storage segment's `gc` —
+ * `gc.cd.` says storage then kind the way `gd.fd.` does, where `gc.gc.` would leave the kind segment
+ * carrying no information at all.
+ */
+@Suppress("EnumEntryName")
+enum class GedraConfigType(override val idAbbrev: String) : GedraKind {
+    /** A bundle of definitions: traits now, workflows later. */
+    configDoc("cd");
+
+    override val storageType: GedraStorageType get() = GedraStorageType.configStore
+}
+
+/**
  * Where a randomly generated base id came from — the single letter it starts with.
  *
  * It is never parsed back out. Its whole job is that somebody looking at an id, or at a column of them, can
@@ -235,6 +254,8 @@ class GedraId private constructor(
             val storageType = GedraStorageType.entries.firstOrNull { it.idAbbrev == parts[0] }
                 ?: throw mkBad(fullId, "'${parts[0]}' is not a storage type (${abbrevList()})")
             val kinds = kindsOf(storageType)
+            // Reachable only for a storage type declared before its kinds are -- which `configStore` itself
+            // was between #287 and #297, so it is a real state rather than a hypothetical one.
             if (kinds.isEmpty()) {
                 throw mkBad(fullId, "'${parts[0]}' ids are not supported yet")
             }
@@ -257,7 +278,7 @@ class GedraId private constructor(
         /** The kinds belonging to [storageType]; empty for a storage type with no kinds defined yet. */
         fun kindsOf(storageType: GedraStorageType): List<GedraKind> = when (storageType) {
             GedraStorageType.dataStore -> GedraDataType.entries
-            GedraStorageType.configStore -> emptyList()
+            GedraStorageType.configStore -> GedraConfigType.entries
         }
 
         /**

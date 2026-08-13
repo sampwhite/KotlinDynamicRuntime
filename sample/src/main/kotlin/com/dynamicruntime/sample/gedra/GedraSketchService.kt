@@ -5,7 +5,7 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.schema.SchTypeBuilder
+import com.dynamicruntime.common.gedra.storedEntryFields
 import com.dynamicruntime.common.startup.ServiceInitializer
 import kotlin.time.Instant
 import com.dynamicruntime.common.util.toJsonListOrEmpty
@@ -66,7 +66,7 @@ class GedraSketchService : ServiceInitializer {
                     derived = true
                 }
                 property(GS.notes, "Free-text explanation.")
-                storedFields()
+                storedEntryFields()
             }
             variantBranch(
                 "ApprovalEntry", GS.traitId, GS.managerApproval,
@@ -80,7 +80,7 @@ class GedraSketchService : ServiceInitializer {
                 // it is not. `presentWhen` emits the `if`/`then`/`else` triple, including the `required` inside
                 // the `if` that stops an absent `approved` from demanding a reason.
                 presentWhen(GS.rejectionReason, on = GS.approved, value = false)
-                storedFields()
+                storedEntryFields()
             }
             // Not `variantBranch`: a catch-all must not declare a `const`, or it rejects the very value it is
             // there to accept. See `variantDefault`.
@@ -160,35 +160,6 @@ class GedraSketchService : ServiceInitializer {
                 }
             }
         }
-    }
-}
-
-/**
- * The fields every stored entry carries and no caller supplies: an id, how the value came to be, and when it
- * was written (issue #255).
- *
- * All three are `g-derived`, which is what makes them the *stored* shape rather than the *sent* shape -- absent
- * from the input schema, undrawn by the form, dropped if a client echoes them back, and required on the way
- * out. Declared once here rather than repeated per branch, so a new trait cannot end up with a different
- * envelope from its siblings.
- *
- * `entryId` is the stable surrogate `gedra-entry.md` argues for: identity that does not move when the data it
- * describes is edited. This sketch numbers them, having nothing to mint from and nowhere to keep them.
- *
- * `createdAt` / `updatedAt` deliberately spell it the way the SQL layer's audit columns already do (`PF`),
- * because an entry is meant to read like a row -- and `modifiedAt` up here against `updatedAt` one layer down
- * would be two names for one idea, leaving whoever met the second to guess which the first meant.
- */
-private fun SchTypeBuilder.storedFields() {
-    property(GS.entryId, "Stable id of this entry; assigned when stored.", required = true) { derived = true }
-    property(GS.source, "How the current value came to be.", required = true) { derived = true }
-    property(GS.createdAt, "When the entry was first written.", required = true) {
-        dateTime()
-        derived = true
-    }
-    property(GS.updatedAt, "When the entry was last changed.", required = true) {
-        dateTime()
-        derived = true
     }
 }
 
