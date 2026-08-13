@@ -186,6 +186,9 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         /** Schema type name for a per-file check result. */
         const val checkTypeName = "FragmentCheck"
 
+        /** Schema type name for one entry's data requirements within a check result. */
+        const val entryTypeName = "FragmentEntryPaths"
+
         /** The fragment files every loaded component declared, collected at boot by `InstanceRegistry`. */
         fun registeredFragmentFiles(cxt: KdrCxt): List<String> =
             (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.filterIsInstance<String>() ?: emptyList()
@@ -208,6 +211,39 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
          * Under `operator` rather than open: a fragment issue names files, line numbers and copy internals.
          */
         fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "fragmentCheck") {
+            // Described rather than a bare object: `required` and `optional` are a distinction a caller has to
+            // understand to read the report, and an untyped map made them look like one undifferentiated list.
+            type(entryTypeName) {
+                type = SCT.kObject
+                property(FCHK.entry, "The entry, as 'namespace.key' within the fragment file.", required = true)
+                property(
+                    FCHK.required,
+                    "Data paths the entry reads where an absent value would fail the render.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(
+                    FCHK.optional,
+                    "Data paths the entry reads only where it already handles absence itself -- behind '?:', " +
+                        "as a conditional's test, or in a comparison against null -- so leaving these out is safe.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(
+                    FCHK.missing,
+                    "Required paths the supplied 'data' does not provide. Empty when no data was supplied. " +
+                        "This is a presence check only: it does not evaluate, so a value of the wrong type is " +
+                        "not reported here.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+            }
             type(checkTypeName) {
                 type = SCT.kObject
                 property(FCHK.fileId, "The fragment file checked.", required = true)
@@ -223,12 +259,14 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 }
                 property(FCHK.entries, "Each entry that reads data, and what it reads.", required = true) {
                     type = SCT.array
-                    items { type = SCT.kObject }
+                    items { ref(entryTypeName) }
                 }
             }
             listEndpoint(
                 "/operator/fragments/check",
-                "Syntax-checks this instance's Markdown fragment files, reporting problems with positions.",
+                "Syntax-checks this instance's Markdown fragment files, reporting problems with positions, and " +
+                    "reports the data each entry reads. With 'data', also reports required paths it lacks; that " +
+                    "is a presence check and does not detect a value of the wrong type.",
                 outputRef = checkTypeName,
                 inputFields = {
                     field(FCHK.fileId, "A single fragment file to check; omit to check every declared file.")
