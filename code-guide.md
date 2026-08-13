@@ -293,6 +293,14 @@ Consumers call `x.toJsonMap()` and `TheType.defineSchema(builder)` rather than r
 re-declaring the fields elsewhere. `KdrEndpoint` (with its `toJsonMap`, `defineInfoType`, and the `EI` field
 constants) is the reference example.
 
+**A data class also for `copy()`, wherever a caller rebuilds an instance to change one field.** Writing the
+other fields out by hand at a call site is the same failure as scattering the serialization: it compiles, it
+runs, and it silently drops whatever it does not mention. `UserProfile` was reconstructed that way to swap a
+role set and lost a field twice — `org` when organizations arrived, then the entity fields — each time serving
+a profile that looked correct and was missing something (issue #282). Note that a hand-written `withX(...)`
+helper does **not** fix this: it still lists every field, one level further in. Only `copy()` carries a field
+nobody has thought of yet.
+
 ### Universal Exception
 
 We will use a richly defined Exception class named "KdrException" which will have an attribute to
