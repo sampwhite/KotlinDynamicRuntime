@@ -101,17 +101,30 @@ way `bin/_common.sh` does — from `KDR_WORKSPACE_DIR` if set, else the nearest 
 section above, and set `KDR_WORKSPACE_DIR` first. Start your **own** instance on a free port; do **not** bind
 or kill port `7070`, which is the developer's IntelliJ instance.
 
+**Pick the port; do not assume 7071.** The developer holds 7070, and any other session — a worktree beside
+you, an earlier one you forgot — may already hold 7071. The way that fails is quiet: your boot dies with
+`java.net.BindException: Address already in use`, and then the readiness poll below **succeeds anyway**,
+because somebody else's server is answering on that port. You go on to drive their instance and read it as
+yours. Both halves are verified; the backgrounded boot is what hides the first from you.
+
 ```bash
 # Resolve the workspace root (run from anywhere inside the checkout).
 WS="${KDR_WORKSPACE_DIR:-$(d=$PWD; while [ "$d" != / ] && [ ! -f "$d/settings.gradle.kts" ]; do d=$(dirname "$d"); done; echo "$d")}"
 
-cd "$WS" && KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run > /tmp/srv.log 2>&1 &
+# Take the first free port at or above 7071 -- never 7070.
+for p in $(seq 7071 7099); do lsof -i:$p -sTCP:LISTEN -t >/dev/null 2>&1 || { PORT=$p; break; }; done
+
+cd "$WS" && KDR_PORT=$PORT KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run > /tmp/srv-$PORT.log 2>&1 &
 # wait for it, then hit it:
-for i in $(seq 1 180); do curl -sf http://localhost:7071/kda/health >/dev/null && { echo up; break; }; sleep 1; done
+for i in $(seq 1 180); do curl -sf http://localhost:$PORT/kda/health >/dev/null && { echo up; break; }; sleep 1; done
 ```
 
-The `bin/` wrappers do this resolution for you, so `KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true kdr-backend` is the
-same boot from any directory if `bin/` is on your `PATH`.
+If you need certainty that the instance answering is the one you started — after a collision, or when reusing
+a port — `/health` reports `nodeStartTime` and a `nodeId` of `ip:port`. A server that started before your
+launch is not yours.
+
+The `bin/` wrappers do the workspace resolution for you, so `KDR_PORT=$PORT KDR_IN_MEMORY_ONLY=true
+kdr-backend` is the same boot from any directory if `bin/` is on your `PATH`.
 
 - `KDR_PORT` moves off 7070 (any free port). `KDR_IN_MEMORY_ONLY=true` uses in-memory H2, so there is no
   database contention — omit it only when the test needs a specific database or its content.
@@ -131,7 +144,7 @@ build, so a Kotlin exception arrives with no `message` and a mangled `name` — 
 itself as `ji` at a byte offset. Add **`-Pwebapp.dev=true`** to embed the *readable* build instead (issue #230):
 
 ```bash
-cd "$WS" && KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run -Pwebapp.dev=true
+cd "$WS" && KDR_PORT=$PORT KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run -Pwebapp.dev=true
 ```
 
 The same crash then reports `IllegalStateException … at DebugFault$lambda`, naming the Kotlin declaration. Same
@@ -143,13 +156,16 @@ compile-sync directory, so a single invocation cannot produce both.
 Pair it with the debug fault routes (issue #227) to make the app fail on demand:
 `#page=debug&tool=fault` for a page failure, `#<any page>&fault=shell` for the shell.
 
-**Stop it and free the port when done** (targeted, so you never touch 7070):
+**Stop it and free the port when done** — kill by *your* port, not a remembered one. With several sessions
+about, a hardcoded number is how you take down somebody else's server:
 
 ```bash
-PID=$(lsof -i:7071 -sTCP:LISTEN -t); [ -n "$PID" ] && kill "$PID"
+PID=$(lsof -i:$PORT -sTCP:LISTEN -t); [ -n "$PID" ] && kill "$PID"
 ```
 
 ## Driving it with curl
+
+The examples below write `7071` for readability; use the port you actually took.
 
 ```bash
 # A success envelope carries requestUri/duration/contentHash + results/item/items.
