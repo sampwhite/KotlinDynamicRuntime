@@ -5,7 +5,6 @@ import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
-import com.dynamicruntime.common.util.toOptBool
 
 /**
  * One live database column, as JDBC metadata describes it (issue #216). [SqlTableUtil] reads these while

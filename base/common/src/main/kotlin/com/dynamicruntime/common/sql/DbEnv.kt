@@ -1,7 +1,6 @@
 package com.dynamicruntime.common.sql
 
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.util.toOptBool
 
 /**
  * Environment-variable names that configure the database, plus the resolver for the in-memory default. All

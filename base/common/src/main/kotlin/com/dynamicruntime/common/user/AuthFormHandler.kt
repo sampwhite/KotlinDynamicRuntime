@@ -5,7 +5,6 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
-import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService

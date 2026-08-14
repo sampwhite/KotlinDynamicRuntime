@@ -67,7 +67,6 @@ object OSI {
     const val nonHeapCommitted = "nonHeapCommitted"
     const val nonHeapMax = "nonHeapMax"
     const val nonHeapInit = "nonHeapInit"
-    const val objectsPendingFinalization = "objectsPendingFinalization"
     const val runtimeTotal = "runtimeTotal"
     const val runtimeFree = "runtimeFree"
     const val runtimeMax = "runtimeMax"
@@ -212,7 +211,6 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             OSI.nonHeapCommitted to nonHeap.committed,
             OSI.nonHeapMax to nonHeap.max,
             OSI.nonHeapInit to nonHeap.init,
-            OSI.objectsPendingFinalization to memoryBean.objectPendingFinalizationCount,
             OSI.runtimeTotal to jvmRuntime.totalMemory(),
             OSI.runtimeFree to jvmRuntime.freeMemory(),
             OSI.runtimeMax to jvmRuntime.maxMemory(),
