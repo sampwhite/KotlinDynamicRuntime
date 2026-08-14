@@ -252,8 +252,9 @@ Two behaviors worth knowing before you touch it, both learned the hard way:
 
 The JS target declares `nodejs()` alongside `browser {}` purely so this task exists; `jsBrowserTest` is
 disabled in `build.gradle.kts` so `check`/`build` never pull in a headless Chrome. There is **no** DOM/React
-test harness yet — component rendering, HTTP, and full-app behavior are still browser-driven (a larger,
-deferred effort).
+test harness yet — component rendering, HTTP, and full-app behavior are still browser-driven, and verifying
+them means opening the app and looking. The case for changing that, and the decision it waits on, is recorded
+at `deferred-work.md#when-a-frontend-change-breaks-a-page-its-author-did-not-open`.
 
 **Keep the mapping testable.** A UI-config fetcher's `UiConfig` → typed-config transform lives as a pure
 top-level function next to its `*Api` object (`appConfigFrom`, `homeConfigFrom`, `authConfigFrom`,
