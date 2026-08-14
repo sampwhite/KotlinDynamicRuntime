@@ -217,6 +217,12 @@ entry: how a gedra is identified, how a deployment can be split by client, what 
 see of another's, and what happens when two definitions disagree. It marks each rule as built or intended,
 because it describes a subsystem partway through being written.
 
+[`gedra-patch.md`](gedra-patch.md) covers the remaining verb: how a stored gedra is **changed**. Creating,
+reading, listing and deleting exist; changing does not, and it is where the difficulty concentrates — locked
+and process-owned entries, merges of partial data, edits that span several documents and several data kinds,
+and a primary key that lives inside the data it identifies. Like `gedra-entry.md` it was written before the
+code, and it records why decisions changed as well as what they became.
+
 ## Deferred work
 
 Work we have deliberately put off — each with the condition that should make us revisit it — lives in
