@@ -10,6 +10,7 @@ import com.dynamicruntime.common.schema.clearedAt
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
+import kotlin.math.roundToInt
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -31,7 +32,9 @@ import react.useState
 import web.cssom.ClassName
 import web.html.HTMLTextAreaElement
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonListOrEmpty
+import com.dynamicruntime.common.util.toOptLong
 
 /** Coroutine scope for firing suspend catalog calls from React effects. */
 private val catalogScope = MainScope()
@@ -556,8 +559,18 @@ val EndpointCatalog = FC<Props> {
  * by [kind]: a `general` result (`results`) and an `item` are single objects; a `list` (`items`) renders each
  * element. [payloadType] is the resolved element/object type; when it is null (an untyped payload), the payload
  * falls back to formatted JSON.
+ *
+ * The envelope's own fields are shown by [envelopeSummary] above the payload rather than through the form:
+ * they describe the *response*, and the form is driven by the payload's `SchType`, which has nothing to say
+ * about them (issue #321).
  */
 private fun ChildrenBuilder.renderResponse(kind: String, payloadType: SchType?, response: Map<String, Any?>) {
+    envelopeSummary(kind, response)?.let { summary ->
+        p {
+            className = ClassName("type-hint")
+            +summary
+        }
+    }
     when (kind) {
         EndpointKind.list.name -> {
             val items = response[EP.items].toJsonListOrEmpty()
@@ -581,6 +594,47 @@ private fun ChildrenBuilder.renderResponse(kind: String, payloadType: SchType?, 
         EndpointKind.item.name -> renderPayload(payloadType, response[EP.item].toJsonMapOrEmpty())
         else -> renderPayload(payloadType, response[EP.results].toJsonMapOrEmpty())
     }
+}
+
+/**
+ * A duration in milliseconds at a precision a reader can use: sub-millisecond calls keep two digits so they do
+ * not collapse to zero, and anything slow enough to care about is shown whole.
+ *
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun roundMs(ms: Double): String = when {
+    ms >= 10.0 -> ms.roundToInt().toString()
+    ms >= 1.0 -> ((ms * 10).roundToInt() / 10.0).fmtD()
+    else -> ((ms * 100).roundToInt() / 100.0).fmtD()
+}
+
+/**
+ * The one-line envelope summary shown above a response payload: how many items a list returned, whether more
+ * are available, and how long the call took. Null when there is nothing worth a line.
+ *
+ * What is *left out* is the point. `contentHash` is for a machine to compare across fetches (issues #113/#114)
+ * and says nothing to a reader; `requestUri` echoes the request just submitted on this very screen; and
+ * `webAppHash` is deployment-global, so it is identical on every response ever rendered here. All three remain
+ * in the raw panel below, which is complete by definition -- this line is for what a person reads and acts on.
+ *
+ * `hasMore` and `numAvailable` are declared by `listEndpoint` only for endpoints that opt in, and are not
+ * populated by execution yet, so each is read strictly when present rather than assumed.
+ *
+ * Pure, and covered under `jsNodeTest` -- which is the reason it is separate from the rendering.
+ */
+fun envelopeSummary(kind: String, response: Map<String, Any?>): String? {
+    val parts = mutableListOf<String>()
+    if (kind == EndpointKind.list.name) {
+        // Fall back to counting what arrived: a list response always has items, even if the count went missing.
+        val numItems = response[EP.numItems].toOptLong() ?: response[EP.items].toJsonListOrEmpty().size.toLong()
+        parts.add(if (numItems == 1L) "1 item" else "$numItems items")
+        if (response[EP.hasMore] == true) parts.add("more available")
+        response[EP.numAvailable].toOptLong()?.let { parts.add("$it in total") }
+    }
+    // `duration` is a Double of milliseconds, so it is rounded for reading rather than truncated: a call taking
+    // 0.42ms would otherwise render as "0ms", which reads as a broken timer rather than a fast endpoint.
+    (response[EP.duration] as? Number)?.toDouble()?.let { parts.add("${roundMs(it)}ms") }
+    return if (parts.isEmpty()) null else parts.joinToString(" \u00b7 ")
 }
 
 /** Renders one payload object read-only via [SchemaForm], or as formatted JSON when its type is unknown. */
