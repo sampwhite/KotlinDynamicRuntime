@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import kotlinx.coroutines.MainScope
@@ -11,12 +12,16 @@ import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.useEffect
+import react.useEffectOnce
 import react.useRef
 import react.useState
 import web.cssom.ClassName
 
 /** Coroutine scope for the users page's suspend backend calls. */
 private val usersScope = MainScope()
+
+/** What identifies a users-page destination: which record the editor is open on. Drafts never appear here. */
+private val userIdentity = setOf(HP.user)
 
 /**
  * User administration, in two views: **find** a user, then **edit** one.
@@ -47,6 +52,8 @@ val Users = FC<Props> {
     // The user being edited, or null in the list view. `creating` opens the same editor with an empty draft.
     var editing by useState<AdminUser?>(null)
     var creating by useState(false)
+    // True once the hash has been read for a record to open; until then the URL is not written back.
+    var restored by useState(false)
 
     // The editor's draft. Nothing here reaches the backend until Save.
     var draftEmail by useState("")
@@ -116,40 +123,102 @@ val Users = FC<Props> {
         }
     }
 
+    /** Seeds the draft from [user]'s current state, or empties it for a user being created. */
+    fun seedDraft(user: AdminUser?) {
+        draftEmail = user?.primaryId ?: ""
+        draftLevel = user?.level ?: ROLE.user
+        draftAllClients = user?.roles?.contains(ROLE.allClients) == true
+        // A new user starts in the editor's own organization; an existing one shows theirs, blank included.
+        draftOrg = (if (user != null) user.org else config?.user?.org) ?: ""
+        draftIsEntity = user?.isEntity == true
+        draftName = user?.name ?: ""
+        draftEnabled = user?.enabled ?: true
+        note = null
+        error = null
+    }
+
     /** Opens the editor on [user], seeding the draft from their current state. */
     fun startEdit(user: AdminUser) {
         editing = user
         creating = false
-        draftEmail = user.primaryId
-        draftLevel = user.level
-        draftAllClients = user.roles.contains(ROLE.allClients)
-        draftOrg = user.org ?: ""
-        draftIsEntity = user.isEntity
-        draftName = user.name ?: ""
-        draftEnabled = user.enabled
-        note = null
-        error = null
+        seedDraft(user)
     }
 
     /** Opens the editor on a new user. */
     fun startCreate() {
         editing = null
         creating = true
-        draftEmail = ""
-        draftLevel = ROLE.user
-        draftAllClients = false
-        draftOrg = config?.user?.org ?: ""
-        draftIsEntity = false
-        draftName = ""
-        draftEnabled = true
-        note = null
-        error = null
+        seedDraft(null)
     }
 
     fun closeEditor() {
         editing = null
         creating = false
         error = null
+    }
+
+    // --- the editor as a place you can come back to (issue #324) ---------------------------------------
+    //
+    // Opening a user used to be React state and nothing else, so it left no history entry: Back from the
+    // editor skipped the whole page and landed wherever you were before arriving at Users. The hash now says
+    // which record is open, exactly as the endpoint catalog says which endpoint is.
+
+    /** Who the editor is open on, as the hash should say it: a user id, `new`, or nothing in the list view. */
+    fun openRecord(): String? = when {
+        creating -> HP.newRecord
+        else -> editing?.userId?.toString()
+    }
+
+    /** The rows the listener can resolve against, read through a ref (it is registered once). */
+    val usersRef = useRef<List<AdminUser>>(emptyList())
+    usersRef.current = users
+
+    /** Opens the editor on what the hash names, or closes it. Used by the hashchange listener below. */
+    fun applyHash() {
+        val open = hashParams()[HP.user]
+        when {
+            open == null -> closeEditor()
+            open == HP.newRecord -> startCreate()
+            else -> {
+                // Resolved against the rows we hold: there is no fetch-one call, and the draft is seeded from
+                // a row in any case. A record we cannot find leaves the editor shut rather than half-open --
+                // and `reachable` below keeps that from being read as a navigation.
+                val found = usersRef.current?.firstOrNull { it.userId.toString() == open }
+                if (found != null) startEdit(found) else closeEditor()
+            }
+        }
+    }
+
+    useEffectOnce {
+        onHashChange { applyHash() }
+    }
+
+    // Open whatever the hash named once the rows are in -- a reload inside the editor, or a link. Until then
+    // the hash cannot be honoured, so `restored` also holds the sync effect below: without that gate it would
+    // run first with an empty editor and push the record out of the URL before anything could read it.
+    useEffect(loaded) {
+        if (loaded && !restored) {
+            applyHash()
+            restored = true
+        }
+    }
+
+    // Keep the hash in step with the editor -- the same arrangement the endpoint catalog uses, and for the
+    // same reason: opening a record is a navigation, so it earns a history entry to come back from.
+    useEffect(editing, creating, restored) {
+        if (!restored) {
+            return@useEffect
+        }
+        val params = buildList {
+            add(HP.page to HMENU.pageUsers)
+            openRecord()?.let { add(HP.user to it) }
+        }
+        // Reachable means the hash as it stands names something this page could show. A `u=` naming a row we
+        // do not hold is a URL to correct in place -- otherwise Back onto it would push again and never move.
+        val current = hashParams()[HP.user]
+        val reachable = current == null || current == HP.newRecord ||
+            users.any { it.userId.toString() == current }
+        applyHashWrite(params, userIdentity, reachable)
     }
 
     /**

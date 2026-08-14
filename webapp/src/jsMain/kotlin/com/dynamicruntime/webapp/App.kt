@@ -165,12 +165,12 @@ private const val pageDebug = "debug"
 private fun currentPage(): String {
     val params = hashParams()
     return when {
-        params["page"] == pageCatalog || params.containsKey("m") -> pageCatalog
-        params["page"] == pageLogin -> pageLogin
-        params["page"] == pageRegister -> pageRegister
-        params["page"] == pageProfile -> pageProfile
-        params["page"] == pageUsers -> pageUsers
-        params["page"] == pageDebug -> pageDebug
+        params[HP.page] == pageCatalog || params.containsKey(HP.method) -> pageCatalog
+        params[HP.page] == pageLogin -> pageLogin
+        params[HP.page] == pageRegister -> pageRegister
+        params[HP.page] == pageProfile -> pageProfile
+        params[HP.page] == pageUsers -> pageUsers
+        params[HP.page] == pageDebug -> pageDebug
         else -> "home"
     }
 }

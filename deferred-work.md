@@ -217,3 +217,20 @@ looked fragile.
   DOM suite through the disabled task, or Playwright driving a booted instance — and picking one is most of the
   work. Note #161 itself is closed: it delivered the pure-logic layer, so nothing currently tracks this.
 
+
+## When a listener that outlives its page starts costing something
+
+`onHashChange` (in `HashRoute.kt`) registers with `window.addEventListener` and nothing ever removes it. Three
+pages now do this — `Home`, `EndpointCatalog` and, since #324, `Users` — and every one of them mounts and
+unmounts on each navigation to and from it, so what accumulates over a session is one live closure per visit,
+each still running on every later hash change.
+
+- **Cleanup for the `hashchange` listeners.** It is currently a leak rather than a defect: the handlers call
+  state setters of unmounted components, which React ignores, so nothing observable happens. The trigger fires
+  when something does — a handler with an effect beyond `setState`, a page whose re-derivation is expensive
+  enough to feel N times over, or a heap that grows across a long session. Deferred because the fix is not the
+  usual one-liner: this wrapper version's effect body is a **cancellable coroutine**
+  (`useEffectOnce { … }` takes `suspend CoroutineScope.() -> Unit`), so cleanup means `try`/`finally` around
+  `awaitCancellation()` rather than a `cleanup { }` block, and nothing in `webapp` uses that idiom yet.
+  Introducing it for a leak with no symptom would make three working effects the place it gets learned.
+  `App`'s listener is deliberately exempt either way — the root never unmounts.

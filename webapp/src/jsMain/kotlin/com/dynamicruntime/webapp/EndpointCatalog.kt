@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
@@ -124,17 +125,20 @@ val EndpointCatalog = FC<Props> {
         }
     }
 
-    // Keep the URL hash in sync with the current selection and input values (replaceState: no history spam,
-    // no hashchange loop). Gated on `restored` so it never overwrites the hash before it has been read.
-    useEffect(selected, values, restored) {
+    // Keep the URL hash in sync with the current selection and input values. Whether that reaches history as a
+    // new entry, a rewrite of the current one, or nothing at all is [hashWrite]'s decision -- a keystroke is
+    // not a navigation, but opening an endpoint is, and before #324 both were replaceState and Back left the
+    // page. Gated on `restored` so it never overwrites the hash before it has been read.
+    useEffect(selected, values, restored, catalog) {
         if (restored) {
-            writeHash(selected, values)
+            writeHash(selected, values, reachable(hashParams(), catalog))
         }
     }
 
     // React to hash changes made from OUTSIDE this component -- the app-bar menu ("Endpoint catalog" drops the
-    // `m=`/`p=` params) and the back/forward buttons -- by re-deriving the selection from the hash. Our own
-    // navigation uses replaceState, which does not fire hashchange, so this never fights the sync effect above.
+    // `m=`/`p=` params) and the back/forward buttons -- by re-deriving the selection from the hash. Neither
+    // replaceState nor pushState fires hashchange, so our own writes never re-enter here; and because the
+    // selection below is derived *from* the hash, the sync effect above then finds nothing to write.
     // The catalog is read through a ref because this listener is registered once and would otherwise capture
     // the (still null) catalog from the first render.
     useEffectOnce {
@@ -722,25 +726,42 @@ private class HashState(val method: String, val path: String, val values: Map<St
 /** Parses the current URL hash into a [HashState], or null when it names no endpoint. */
 private fun readHash(): HashState? {
     val params = hashParams()
-    val method = params["m"] ?: return null
-    val path = params["p"] ?: return null
-    val values = params["v"]?.let { runCatching { it.jsonMap() }.getOrNull() } ?: emptyMap()
+    val method = params[HP.method] ?: return null
+    val path = params[HP.path] ?: return null
+    val values = params[HP.values]?.let { runCatching { it.jsonMap() }.getOrNull() } ?: emptyMap()
     return HashState(method, path, values)
 }
 
-/** Writes the current selection + input values into the URL hash. Stays on `page=catalog`; adds the endpoint
- *  (and its values) when one is selected. */
-private fun writeHash(endpoint: EndpointInfo?, values: Map<String, Any?>) {
-    val params = mutableListOf("page" to "catalog")
+/**
+ * Writes the current selection + input values into the URL hash. Stays on `page=catalog`; adds the endpoint
+ * (and its values) when one is selected. [reachable] says whether the hash as it stands names somewhere this
+ * page can actually show — see [hashWrite], which decides how the write reaches history.
+ */
+private fun writeHash(endpoint: EndpointInfo?, values: Map<String, Any?>, reachable: Boolean) {
+    val params = mutableListOf(HP.page to HMENU.pageCatalog)
     if (endpoint != null) {
-        params.add("m" to endpoint.method)
-        params.add("p" to endpoint.path)
+        params.add(HP.method to endpoint.method)
+        params.add(HP.path to endpoint.path)
         val shareable = values.withoutFiles()
         if (shareable.isNotEmpty()) {
-            params.add("v" to shareable.toJsonStr(compact = true))
+            params.add(HP.values to shareable.toJsonStr(compact = true))
         }
     }
-    replaceHash(params)
+    applyHashWrite(params, endpointIdentity, reachable)
+}
+
+/** What identifies a catalog destination: which endpoint is open. The entered values refine it, never move it. */
+private val endpointIdentity = setOf(HP.method, HP.path)
+
+/**
+ * Whether the hash [params] name a destination this page can show: the list, or an endpoint the catalog
+ * actually has. A [catalog] not yet fetched can vouch for nothing, so it answers false — and with no catalog
+ * there is nothing to navigate between either.
+ */
+private fun reachable(params: Map<String, String>, catalog: Catalog?): Boolean {
+    val method = params[HP.method] ?: return true
+    val path = params[HP.path] ?: return true
+    return catalog?.endpoints?.any { it.method == method && it.path == path } == true
 }
 
 /**
