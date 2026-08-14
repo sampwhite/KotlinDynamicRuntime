@@ -13,6 +13,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.endpoint.defaultListLimit
@@ -88,13 +89,15 @@ class SchemaService : ServiceInitializer {
         // Manufactured last and compiled with everything else: the union's branches are not known until
         // every component has contributed, and by the time anything reads the store it is an ordinary type.
         // Called once with the global scope; per-client views call the same function with a different one.
+        val globalTraits = collected.gedraConfigs.traitsFor(GID.globalClient)
         collected.defs.putAll(
-            entryUnionDefs(
-                cxt,
-                GCFG.globalNamespace,
-                GedraDataType.formDoc,
-                collected.gedraConfigs.traitsFor(GID.globalClient),
-            ),
+            entryUnionDefs(cxt, GCFG.globalNamespace, GedraDataType.formDoc, globalTraits),
+        )
+        // The edit union beside it, from the same traits (issue #337): one source, two renderings. Only the
+        // kinds that have an entry union get one, which today is `formDoc` -- adding a kind means adding it in
+        // both places, which is the right amount of friction for a decision that changes what can be stored.
+        collected.defs.putAll(
+            entryEditUnionDefs(cxt, GCFG.globalNamespace, GedraDataType.formDoc, globalTraits),
         )
 
         val types = parseSchemaTypes(collected.defs)

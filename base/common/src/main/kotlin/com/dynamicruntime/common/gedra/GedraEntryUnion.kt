@@ -19,6 +19,26 @@ object GU {
 
     /** The union's default branch, where a trait this reader has never heard of, goes. */
     fun unknownBranchName(kind: GedraDataType): String = unionName(kind) + "Unknown"
+
+    /**
+     * The union of *edits* to the entries one kind may carry: `formDoc` becomes `FormDocEntryEdit`.
+     *
+     * Derived from [unionName] by one rule rather than given a naming scheme of its own, so the pair reads as
+     * a pair: `FormDocEntry` is what is stored, `FormDocEntryEdit` is what asks to change it.
+     */
+    fun editUnionName(kind: GedraDataType): String = unionName(kind) + "Edit"
+
+    /** The edit union's default branch, for a trait this node does not know. */
+    fun unknownEditBranchName(kind: GedraDataType): String = editUnionName(kind) + "Unknown"
+
+    /**
+     * One trait's edit branch, named from the entry type it edits: `globalconfig.NameEntry` becomes
+     * `globalconfig.NameEntryEdit`.
+     *
+     * Qualified already, so a branch lands in the namespace of the config that declared the trait rather than
+     * in the union's — exactly as the entry types do. A client's trait keeps its own namespace here too.
+     */
+    fun editBranchName(entryTypeName: String): String = entryTypeName + "Edit"
 }
 
 /**
