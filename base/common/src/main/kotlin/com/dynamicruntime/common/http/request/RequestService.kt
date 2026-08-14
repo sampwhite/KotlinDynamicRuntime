@@ -82,7 +82,7 @@ class RequestService : ServiceInitializer {
     //
     // `fixture` and `demo` are the two non-application roots (issue #270), and the split is by *purpose*:
     //
-    //  - `fixture` exists so a capability can be **exercised** -- by an automated test, or by a developer by
+    //  - `fixture` exists so a capability can be **exercised** -- by an automated test or by a developer by
     //    hand. It is never shown to a client, and every endpoint under it is gated (`forTestingOnly`, or a
     //    module that loads only in developer environments).
     //  - `demo` exists so a **person** can see a capability work, and may be deliberately enabled for a client
@@ -97,7 +97,10 @@ class RequestService : ServiceInitializer {
         "health", "schema", "content", "portal", "site", "auth", "app",
         "fixture", "demo", "home", "logout",
     )
-    val userSections: List<String> = listOf("user", "profile")
+    // `gedra` is login-gated and nothing more: how far a caller reaches into stored gedras is a *scope*
+    // question, answered per request by `ReadScopeRules.forCaller`, so one surface serves an ordinary user
+    // and an administrator rather than the two needing separate sections (issue #310).
+    val userSections: List<String> = listOf("user", "profile", "gedra")
 
     /**
      * Sections requiring [ROLE.operator] -- the middle rung of [RoleLadder], between an ordinary user and an
@@ -121,7 +124,7 @@ class RequestService : ServiceInitializer {
      * capability therefore retained cross-client user administration while being refused the *lesser* scoped
      * surface, which is the wrong way round. A capability qualifies an authority; it never confers one.
      *
-     * Since #211 the same comparison drives the endpoint catalog, so these are also *invisible* to a caller
+     * Since #211 the same comparison has driven the endpoint catalog, so these are also *invisible* to a caller
      * who cannot call them -- "see" and "use" are one answer.
      */
     val adminSections: List<String> = listOf("node", "admin")

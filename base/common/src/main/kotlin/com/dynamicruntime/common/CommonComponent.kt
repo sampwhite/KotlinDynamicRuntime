@@ -8,7 +8,11 @@ import com.dynamicruntime.common.operator.operatorSchema
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraDataService
+import com.dynamicruntime.common.gedra.GedraService
 import com.dynamicruntime.common.gedra.coreTraits
+import com.dynamicruntime.common.gedra.gedraDataTables
+import com.dynamicruntime.common.gedra.gedraSchema
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.user.AFRAG
@@ -70,6 +74,9 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(testSchema(cxt))
         // Fragment checking: the operator endpoint that validates this instance's Markdown fragment files.
         collector.addModule(MarkdownFragmentService.schema(cxt))
+        // Gedra data (issue #310): the form-document endpoints and the two tables under them.
+        collector.addModule(gedraSchema(cxt))
+        collector.addTables(gedraDataTables(cxt))
     }
 
     /**
@@ -108,6 +115,9 @@ class CommonComponent : ComponentDefinition {
         listOf(
             ::RequestService, ::PortalService, ::MarkdownFragmentService, ::MarkdownDocService,
             ::InstanceConfigService, ::MailService, ::UserService,
+            // GedraService before the data service that reads it, though the ordering is a courtesy rather
+            // than a requirement: every service is published into the config before any `checkInit` runs.
+            ::GedraService, ::GedraDataService,
         )
 
     /** Load just ahead of the standard components (demonstrates relative priority). */

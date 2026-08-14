@@ -466,9 +466,12 @@ Genuine optionality within a form — a radio group the user may leave unanswere
 
 ## Open questions
 
-- **Is `entries` an array in the gedra document, or rows in a sub-table?** Everything above is a wire shape and
-  holds either way, but primary-key uniqueness (application check against unique index), per-entry audit
-  (fields against columns) and locking all read differently under the two.
+- ~~**Is `entries` an array in the gedra document, or rows in a sub-table?**~~ **Settled (#310): an array**,
+  held under a `data` map on a single `GedraData` row. So primary-key uniqueness is an application check
+  rather than a unique index, per-entry audit is fields rather than columns, and locking is per gedra rather
+  than per entry — the consequences this question anticipated, now decided rather than open. The map around the
+  array is what keeps the decision from being final in the wrong way: a capability that genuinely wants rows
+  can arrive as a second table under the same transaction root without the entries moving.
 - **Is the payload named `data`?** Used throughout this document, replacing `input`. `input` describes the
   direction of one journey and stops being true once the value is stored and read back; `value` collides with
   the inner `value` of the conditional shape.
