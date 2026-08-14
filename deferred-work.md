@@ -123,6 +123,10 @@ logging.
 The point at which a user owns something with structure — a document, workflow state, a part-written form — so
 that "this user's data is broken" becomes a thing that can be true.
 
+**This trigger has fired** (#310: a user now owns form documents). The item below is therefore actionable and
+wants promoting to an issue rather than sitting here; it is left in place only until somebody decides whether
+it is worth doing now, since the file's own rule is that anything ready lives in the tracker.
+
 - **Trigger keywords in email addresses, to make a user fail on demand** *(cedar practice; discussed under
   #227).* On a backend that permits it (`isTestInstance` to begin with), encode keywords into a user's email
   address so that logging in as them injects a chosen failure. The point is **contrast**: run the same flow as
@@ -139,6 +143,19 @@ that "this user's data is broken" becomes a thing that can be true.
   Note what it is *not* for. The frontend fault route in #227 needs none of it, because making the browser
   throw requires no identity — keep the two separate. This one is about the backend misbehaving for a
   particular user, and its natural injection points are the handlers that read and write that user's content.
+
+## When gedra data is held in a memory cache
+
+The point at which a node keeps the gedras it serves in memory rather than querying for each one — anticipated
+in #310 as arriving "not too long from now", and noticeable because somebody builds it.
+
+- **Let a gedra id cache miss mean "no such gedra"** *(from #280, #310).* `InternCache`'s second property is
+  that where a cache holds *every* extant value, a miss answers an existence question without touching the
+  database. `GedraService.gedraIds` cannot claim it: ids are interned as gedras are created and read, so the
+  cache is a subset and a miss means only "not seen here yet". Everything therefore goes through `readId`,
+  which parses on a miss and asserts nothing about existence. A memory cache of the data is what would make
+  the population exhaustive per client, and whoever builds it should say so on that field — the code carries
+  the note at the point where somebody would otherwise assume the stronger reading.
 
 ## When schema is exported for third-party tooling
 

@@ -59,6 +59,24 @@ object GE {
 }
 
 /**
+ * Values for an entry's [GE.source] -- who is accountable for what it currently holds (issue #310).
+ *
+ * One value so far, because a source is minted by whatever channel produced the value, and only one channel
+ * exists. `excel` and its kind arrive with the imports that write them; this is not a closed set waiting to be
+ * filled in, which is also why it is constants rather than an enum -- a client's integration will have its own
+ * and cannot edit ours.
+ *
+ * The field is **mutable**, unlike an entry's origin: an approval flips it in bulk across every trait the
+ * approval covers, which is what makes "which values has nobody vouched for" a plain equality filter. See
+ * `gedra-entry.md`.
+ */
+@Suppress("ConstPropertyName")
+object GSRC {
+    /** A person is accountable: they entered it, edited it, or approved it. What a direct API call sets. */
+    const val user = "user"
+}
+
+/**
  * Declares the entry type for one trait: a branch of the entry union, with the trait's own schema under
  * [GE.data] and the stored envelope around it (issue #297).
  *

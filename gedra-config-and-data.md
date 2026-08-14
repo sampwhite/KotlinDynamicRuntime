@@ -309,7 +309,9 @@ is what gives the warning teeth.
 | The config kind, config bundles, traits, and the entry types they generate | **built** |
 | Component-contributed config, and the checks over it | **built** |
 | The environment split for those checks | **built** |
-| The default branch, and strictness as a reader's choice | designed; not yet built |
+| The default branch, and strictness as a reader's choice | **built** |
+| Storing data gedras, and reading them back within a caller's scope | **built** — form documents, #310 |
+| Updating a stored gedra's entries | intended — a patch, and its own issue |
 | Client separation across deployments | intended — nothing loads a subset of clients yet |
 | Client-authored config, and the visibility check | intended — every config today is `global`, in code |
 | Client spaces defined in config, scoped to themselves | intended — the step after entries can be stored |

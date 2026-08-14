@@ -97,7 +97,10 @@ class RequestService : ServiceInitializer {
         "health", "schema", "content", "portal", "site", "auth", "app",
         "fixture", "demo", "home", "logout",
     )
-    val userSections: List<String> = listOf("user", "profile")
+    // `gedra` is login-gated and nothing more: how far a caller reaches into stored gedras is a *scope*
+    // question, answered per request by `ReadScopeRules.forCaller`, so one surface serves an ordinary user
+    // and an administrator rather than the two needing separate sections (issue #310).
+    val userSections: List<String> = listOf("user", "profile", "gedra")
 
     /**
      * Sections requiring [ROLE.operator] -- the middle rung of [RoleLadder], between an ordinary user and an
