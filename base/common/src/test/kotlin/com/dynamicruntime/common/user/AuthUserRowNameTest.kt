@@ -76,6 +76,33 @@ class AuthUserRowNameTest : StringSpec({
         out[AD.name] shouldBe "Acme Co"
     }
 
+    /**
+     * The normalization is the row's, not each caller's. Four places set a name -- registration, admin create,
+     * admin edit, the profile page -- and every one of them used to apply this rule by hand, which is three
+     * chances to disagree about whether a name of spaces is a name.
+     */
+    "a name is trimmed on assignment, and a blank one is no name" {
+        val row = AuthUserRow.extract(storedRow(emptyMap()))
+        row.name = "  Ada Lovelace  "
+        row.name shouldBe "Ada Lovelace"
+
+        row.name = "   "
+        row.name shouldBe null
+
+        row.name = ""
+        row.name shouldBe null
+
+        // And it survives the write, rather than being trimmed only on the way in.
+        row.name = "  Acme Co  "
+        row.toMap()[AU.authUserData]!!.toJsonMap()[AD.name] shouldBe "Acme Co"
+    }
+
+    "the same rule is reachable where there is no row to assign to" {
+        AuthUserRow.normalizeName("  Grace  ") shouldBe "Grace"
+        AuthUserRow.normalizeName("   ") shouldBe null
+        AuthUserRow.normalizeName(null) shouldBe null
+    }
+
     "clearing the name removes just the name" {
         val row = AuthUserRow.extract(storedRow(mapOf(AD.isEntity to true, AD.name to "Acme Co")))
         row.name = null

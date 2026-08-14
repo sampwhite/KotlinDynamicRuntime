@@ -4,6 +4,8 @@ import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.util.defaultDisplayLen
+import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
@@ -62,6 +64,18 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "profile") {
             // id by coincidence of today's fallback (see AuthUserRow.publicName).
             UIC.state to mapOf(AFLD.userInfo to row.toUserProfile().toUserInfo(), AFLD.loginId to row.primaryId),
         )
+    }
+
+    // Set the name you are shown under (issue #323). Login-required and session-authorized like the clear-password
+    // call below -- a display name is not a credential -- and capped by the schema at the length past which a
+    // display would truncate it anyway, so an over-long value is refused by validation rather than by hand.
+    generalEndpoint(AEP.profileSetName, "Sets the name the caller is shown under; blank clears it.",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.name, "The name to be shown under. Blank clears it, falling back to the login name.") {
+                maxLength = defaultDisplayLen
+            }
+        }) { c, req ->
+        authHandler(c).setOwnName(c, req.getOptStr(AFLD.name))
     }
 
     // Opt back out of password login. Login-required (relies on the session, not a verification code); removing

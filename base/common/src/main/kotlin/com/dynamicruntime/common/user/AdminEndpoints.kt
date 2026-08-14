@@ -136,7 +136,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         if (request.getOptBool(ADF.isEntity) == true) {
             authUserData[AD.isEntity] = true
         }
-        request[ADF.name].toOptStr()?.trim()?.ifEmpty { null }?.let { authUserData[AD.name] = it }
+        AuthUserRow.normalizeName(request[ADF.name].toOptStr())?.let { authUserData[AD.name] = it }
 
         val userId = service.insertUser(c, data)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} created user $userId ('$primaryId') with roles $roles." }
@@ -257,7 +257,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // The name is kept across a change of the flag rather than cleared with it: a personal account has a
         // full name just as a business has a business name, so clearing `isEntity` reclassifies the name
         // instead of discarding it. Sending an empty name is still how a caller unsets it.
-        row.name = request[ADF.name].toOptStr()?.trim()?.ifEmpty { null }
+        row.name = request[ADF.name].toOptStr() // the row normalizes
         userService(c).updateUser(c, row)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId name/isEntity=$isEntity." }
         row.toAdminInfo()

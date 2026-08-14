@@ -26,8 +26,16 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
     /**
      * The account's real-world (non-unique) name: a person's full name, or a business's name when [isEntity].
      * Null when unnamed. Survives a change of [isEntity] -- both kinds of account have one (see [AD.name]).
+     *
+     * **Normalized on assignment** ([normalizeName]): trimmed, and blank stored as no name. Four callers set
+     * this -- registration, admin create, admin edit and the profile page -- and each was applying that rule by
+     * hand, which is three chances for them to disagree about whether `"  "` means "no name" or a name made of
+     * spaces. Putting it in the setter makes it unbypassable rather than merely agreed.
      */
     var name: String? = null
+        set(value) {
+            field = normalizeName(value)
+        }
 
     var enabled: Boolean = false
     lateinit var username: String
@@ -116,6 +124,13 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         const val usernameTmpPrefix = "@"
 
         /**
+         * The one rule for a display name: trimmed, and blank is no name at all. Applied by [name]'s setter,
+         * and exposed for the one caller that has no row to assign to -- admin *create*, which assembles a raw
+         * `authUserData` map before the row exists.
+         */
+        fun normalizeName(value: String?): String? = value?.trim()?.ifEmpty { null }
+
+        /**
          * Defines the [ADTY.adminUser] schema type -- the shape of [toAdminInfo] -- on [builder]. Kept beside
          * the serialization it describes (the co-location rule), so a field added to one is visibly missing
          * from the other.
@@ -153,7 +168,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
             row.roles = (userData[AD.roles] as? List<*>)?.mapNotNull { it?.toString() } ?: listOf(ROLE.user)
             row.org = userData[AD.org].toOptStr()?.ifEmpty { null }
             row.isEntity = userData[AD.isEntity] == true
-            row.name = userData[AD.name].toOptStr()?.ifEmpty { null }
+            row.name = userData[AD.name].toOptStr()
             row.encodedPassword = userData[AD.encodedPassword].toOptStr()
             userData.remove(AD.encodedPassword) // never let the password leak downstream via `data`
             row.authUserData = userData

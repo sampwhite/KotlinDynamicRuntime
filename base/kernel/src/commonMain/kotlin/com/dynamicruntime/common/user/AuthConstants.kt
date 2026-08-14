@@ -23,6 +23,7 @@ object AEP {
     const val logout = "/logout"
     const val profileUiConfig = "/profile/ui/config"
     const val profileClearPassword = "/profile/self/clearPassword"
+    const val profileSetName = "/profile/self/setName"
 }
 
 /** Auth request/response field (JSON key) names, shared so the frontend builds and reads payloads by constant. */

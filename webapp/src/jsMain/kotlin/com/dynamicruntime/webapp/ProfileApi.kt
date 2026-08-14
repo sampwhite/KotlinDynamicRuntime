@@ -61,6 +61,15 @@ object ProfileApi {
     /** GET the profile UI-config. Login-required: a logged-out caller raises, and the page sends them to login. */
     suspend fun fetchConfig(): ProfileConfig = profileConfigFrom(fetchUiConfig(AEP.profileUiConfig))
 
+    /**
+     * Sets the name the caller is shown under; a blank [name] clears it, falling the display back to their
+     * login name. Session-authorized -- no verification code, because a display name is not a credential.
+     */
+    suspend fun setName(name: String): UserProfile =
+        UserProfile.fromUserInfo(
+            Http.sendApi("POST", AEP.profileSetName, mapOf(AFLD.name to name))[EP.results].toJsonMapOrEmpty(),
+        )
+
     /** Removes the caller's password (opting back out of password login); returns the updated user info. */
     suspend fun clearPassword(): UserProfile =
         UserProfile.fromUserInfo(
