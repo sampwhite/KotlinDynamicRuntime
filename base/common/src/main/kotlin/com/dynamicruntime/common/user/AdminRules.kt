@@ -3,7 +3,6 @@ package com.dynamicruntime.common.user
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
-import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.http.request.ROLE
 
 /**
