@@ -84,7 +84,7 @@ class GedraDataEndpointTest : StringSpec({
         entry[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Alice's expenses"
         entry[GE.source] shouldBe GSRC.user
         entry.keys shouldContain GE.entryId
-        // Who wrote it, beside when (issue #325). On a create the actor and the owner are the same person, so
+        // Who wrote it, beside when (issue #325). On a "create" the actor and the owner are the same person, so
         // this cannot yet show that the *actor* is what is recorded -- the divergence only appears once an
         // administrator can edit somebody else's document, which needs the update path. What it does show is
         // that the value is the caller's rather than a constant or the system user, which bob's block confirms
@@ -193,7 +193,7 @@ class GedraDataEndpointTest : StringSpec({
     }
 
     // Delete, and what it means: the document stops being readable and stops being listed. This used to reach
-    // past the service and flip `enabled` with hand-written SQL, because nothing disabled a document through an
+    // past the service and flip `enabled` with handwritten SQL, because nothing disabled a document through an
     // endpoint; #326 gave it one, so the flag is now exercised the way a caller reaches it.
     "a deleted document is not there, by id or in a listing" {
         val deleted = bob.postData(GEP.formDocDelete, mapOf(GDF.gedraId to bobDocId))
@@ -216,7 +216,7 @@ class GedraDataEndpointTest : StringSpec({
     // trying to delete it, and cannot delete it either.
     "one user cannot delete another's document" {
         bob.expectError(404, GEP.formDocDelete, mapOf(GDF.gedraId to aliceDocId))
-        // Still there, and still alice's -- the refused delete changed nothing.
+        // Still there, and still alice's -- the refused "delete" changed nothing.
         alice.getItem(GEP.formDoc, mapOf(GDF.gedraId to aliceDocId))[GDF.gedraId] shouldBe aliceDocId
     }
 

@@ -21,7 +21,7 @@ object GEP {
     const val formDoc = "/gedra/formDoc"
     const val formDocs = "/gedra/formDocs"
 
-    /** The type naming what a delete removed. */
+    /** The type naming what a "delete" removed. */
     const val deletedGedra = "DeletedGedra"
 }
 
