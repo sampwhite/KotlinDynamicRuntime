@@ -51,7 +51,15 @@ class GedraDataRow(
     val kind: GedraDataType = gedraId.dataType
         ?: throw KdrException("'$gedraId' is a config id, so it does not name a row of ${GDT.gedraData}.")
 
-    /** The owning organization within [client], or null when the gedra belongs to the client as a whole. */
+    /**
+     * The owning organization within [client], or null when the gedra belongs to the client as a whole.
+     *
+     * **Unlike [client] and [userId], this one moves.** A gedra can be reassigned between organizations
+     * inside its client, so this is real mutable state rather than a stamp — see the ownership note on
+     * `gedraDataTables`. Nothing writes it back yet, because nothing updates a gedra at all; the write path
+     * that does has to carry it *explicitly*, since `SqlTopicUtil.prepForStdExecute` fills the column
+     * put-if-absent and would otherwise preserve whatever is already stored.
+     */
     var org: String? = null
 
     /** Whether the row is live; a disabled gedra is never handed back (see [PF.enabled]). */
@@ -76,22 +84,6 @@ class GedraDataRow(
         GDF.entries to entries,
         GDF.createdAt to createdAt,
         GDF.updatedAt to updatedAt,
-    )
-
-    /**
-     * The storage map this row writes back as. The protocol columns the SQL layer stamps
-     * (`SqlTopicUtil.prepForStdExecute`) are deliberately absent: ownership and audit come from the context,
-     * and spelling them here would be a second authority on who owns a row.
-     *
-     * [enabled] is the exception and travels, because the standard write stamps it `true` unconditionally --
-     * so a caller disabling a gedra has to be able to say so louder than the stamp. See `UserService.updateUser`,
-     * which defends the same field for the same reason.
-     */
-    fun toMap(): Map<String, Any?> = linkedMapOf(
-        GD.gedraId to gedraId.fullId,
-        GD.gedraKind to kind.name,
-        GD.data to (extra + linkedMapOf<String, Any?>(GD.entries to entries)),
-        PF.enabled to enabled,
     )
 
     companion object {

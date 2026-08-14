@@ -72,6 +72,20 @@ object GD {
  * That asymmetry is the rule `ReadScope` already states from the other side: content gets a real organization
  * column and filters in SQL, while a *user's* organization lives in a JSON blob and cannot. A form document is
  * content.
+ *
+ * ### The three ownership columns are not equally settled
+ *
+ * [PF.client] is stamped once and is effectively **read-only for the life of the row**. It is the seam the
+ * whole stack can be split along, it is baked into the [GD.gedraId] besides, and moving data between clients
+ * is an export and an import that mints new ids rather than an update. [PF.userId] is the same kind of fact.
+ *
+ * [PF.org] is **not**. An organization is a partition *inside* a client, and a gedra can legitimately be
+ * reassigned from one to another — or acquire one for the first time, which is what every row written before a
+ * client adopted organizations does. So it is mutable state that happens to live in an ownership column, and
+ * the one to be careful with: `SqlTopicUtil.prepForStdExecute` fills it put-if-absent, so a write meaning to
+ * *change* it has to say so explicitly, exactly as one meaning to disable a row has to defend [PF.enabled]
+ * against the standard stamp. Reads are unaffected either way -- a scope compares whatever the column now
+ * holds.
  */
 fun gedraDataTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "gedra", topic = gedraDataTopic) {
     table(GDT.gedraDataTran, "Transaction root for one gedra: what a write takes its lock on.") {
