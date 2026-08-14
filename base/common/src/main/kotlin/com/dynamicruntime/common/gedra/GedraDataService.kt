@@ -152,6 +152,65 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
+     * Deletes the gedra [fullId] names, returning whether there was one to delete (issue #326).
+     *
+     * ### A soft delete, and why that is the delete
+     *
+     * The row is marked not [PF.enabled] rather than removed. That is what `enabled` is for -- the SQL layer
+     * calls a row whose flag is not `true` one that is *not there*, and every application read already goes
+     * through that rule, so nothing has to learn about deletion to honor it. Keeping the row is also what makes
+     * the harder cases possible later: a gedra referenced by a workflow, or wanted by an audit, is worse gone
+     * than disabled, and a purge that really removes bytes is a different operation with different authority.
+     *
+     * False is returned for a gedra that is absent, already deleted, of the wrong [kind], or outside [scope] --
+     * the same four-into-one that [queryGedra] does, and for the same reason: a caller who may not see
+     * something must not be able to learn it exists by trying to delete it.
+     *
+     * ### Why the existence check comes before the transaction
+     *
+     * The write goes through a topic transaction, because coordinating changes to one gedra is what the root
+     * table is *for*, and a delete that reached a file store later would have to. But `executeTopicTran`
+     * inserts the lock row when it is missing, so entering it with an id that names nothing would mint a root
+     * row for a gedra that never existed -- a delete quietly creating something. Checking first means the
+     * transaction is only ever entered for a gedra that is really there.
+     *
+     * The gap between the check and the write is harmless: the update is itself scoped and requires the row to
+     * still be enabled, so a second concurrent delete changes no rows and simply reports nothing to do.
+     */
+    fun deleteGedra(cxt: KdrCxt, fullId: String, kind: GedraDataType, scope: ReadScope): Boolean {
+        val row = queryGedra(cxt, fullId, kind, scope) ?: return false
+
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val table = gedraDataTable(cxt)
+        val data = mutableMapOf<String, Any?>(
+            GD.gedraId to row.gedraId.fullId,
+            // The audit half of a delete. `prepForStdExecute` is deliberately not used: it stamps `enabled`
+            // true unconditionally, which is right for a create that revives a disabled row and exactly wrong
+            // here -- the write would succeed and leave the gedra live. `UserService.updateUser` defends the
+            // same field for the same reason; this states it in the SQL instead, so there is nothing to defend.
+            PF.updatedAt to cxt.instanceNow(),
+            PF.updatedBy to cxt.userProfile.userId,
+        )
+        val conditions = mutableListOf(
+            "c:${GD.gedraId} = :${GD.gedraId}",
+            // Already-deleted is not deleted again, which is what makes the returned count mean something.
+            "c:${PF.enabled} = true",
+        )
+        conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, data))
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "uGedraDataDelete${scope.shapeKey}", table.columns,
+            "update t:${GDT.gedraData} set c:${PF.enabled} = false, " +
+                "c:${PF.updatedAt} = :${PF.updatedAt}, c:${PF.updatedBy} = :${PF.updatedBy} " +
+                "where ${conditions.joinToString(" and ")}",
+        )
+        var changed = 0
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranDelete, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
+            changed = sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
+        }
+        return changed > 0
+    }
+
+    /**
      * Every gedra of [kind] within [scope], newest first, capped at [limit].
      *
      * Scope and the enabled flag are both SQL, so the rows that come back are already the rows the caller may
@@ -220,6 +279,9 @@ class GedraDataService : ServiceInitializer {
 
         /** Name of the "create" transaction; it prefixes the generated transaction id. */
         const val tranCreate = "createGedra"
+
+        /** Name of the "delete" transaction; it prefixes the generated transaction id. */
+        const val tranDelete = "deleteGedra"
 
         fun get(cxt: KdrCxt): GedraDataService? = cxt.instanceConfig.get(serviceName) as? GedraDataService
 

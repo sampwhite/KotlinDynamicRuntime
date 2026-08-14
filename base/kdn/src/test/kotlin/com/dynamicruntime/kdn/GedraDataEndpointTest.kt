@@ -18,7 +18,6 @@ import com.dynamicruntime.common.gedra.gedraDataTopic
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.sql.PF
-import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -85,7 +84,7 @@ class GedraDataEndpointTest : StringSpec({
         entry[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Alice's expenses"
         entry[GE.source] shouldBe GSRC.user
         entry.keys shouldContain GE.entryId
-        // Who wrote it, beside when (issue #325). On a create the actor and the owner are the same person, so
+        // Who wrote it, beside when (issue #325). On a "create" the actor and the owner are the same person, so
         // this cannot yet show that the *actor* is what is recorded -- the divergence only appears once an
         // administrator can edit somebody else's document, which needs the update path. What it does show is
         // that the value is the caller's rather than a constant or the system user, which bob's block confirms
@@ -193,20 +192,39 @@ class GedraDataEndpointTest : StringSpec({
         explained[GDBG.scope].toString() shouldBe "ReadScope(client=null, org=null, userId=${alice.userId})"
     }
 
-    "a disabled document is not there" {
-        // Nothing disables one through an endpoint yet -- an update path is its own issue -- so this reaches
-        // past the service to prove the reads honor the flag, rather than to exercise a surface.
-        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
-        val table = cxt.getSchema().tables.getValue(GDT.gedraData)
-        val stmt = SqlStmtUtil.prepareSql(
-            sqlCxt, "uDisableGedraDataForTest", table.columns,
-            "update t:${GDT.gedraData} set c:${PF.enabled} = false where c:${GD.gedraId} = :${GD.gedraId}",
-        )
-        sqlCxt.sqlDb.withSession(cxt) {
-            sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(GD.gedraId to aliceDocId))
-        }
+    // Delete, and what it means: the document stops being readable and stops being listed. This used to reach
+    // past the service and flip `enabled` with handwritten SQL, because nothing disabled a document through an
+    // endpoint; #326 gave it one, so the flag is now exercised the way a caller reaches it.
+    "a deleted document is not there, by id or in a listing" {
+        val deleted = bob.postData(GEP.formDocDelete, mapOf(GDF.gedraId to bobDocId))
+        deleted[GDF.gedraId] shouldBe bobDocId
+
+        bob.expectError(404, GEP.formDoc, args = mapOf(GDF.gedraId to bobDocId))
+        idsOf(bob.getItems(GEP.formDocs)) shouldNotContain bobDocId
+        // Gone for the administrator too, rather than merely hidden from its owner -- a disabled row is one
+        // that is not there, at every width.
+        idsOf(ada.getItems(GEP.formDocs)) shouldNotContain bobDocId
+    }
+
+    // Deleting twice is a 404 rather than a quiet success. The second call did not remove anything, and saying
+    // otherwise would let a caller believe they had just deleted something that went days ago.
+    "deleting the same document again says there is nothing there" {
+        bob.expectError(404, GEP.formDocDelete, mapOf(GDF.gedraId to bobDocId))
+    }
+
+    // The same non-disclosure the read makes: a caller who may not see a document cannot learn it exists by
+    // trying to delete it, and cannot delete it either.
+    "one user cannot delete another's document" {
+        bob.expectError(404, GEP.formDocDelete, mapOf(GDF.gedraId to aliceDocId))
+        // Still there, and still alice's -- the refused "delete" changed nothing.
+        alice.getItem(GEP.formDoc, mapOf(GDF.gedraId to aliceDocId))[GDF.gedraId] shouldBe aliceDocId
+    }
+
+    // An administrator's reach is the same for deleting as for reading, which is what one scope rule for both
+    // buys: nothing had to decide separately who may delete.
+    "a client-scoped administrator can delete a document they do not own" {
+        ada.postData(GEP.formDocDelete, mapOf(GDF.gedraId to aliceDocId))
         alice.expectError(404, GEP.formDoc, args = mapOf(GDF.gedraId to aliceDocId))
-        idsOf(alice.getItems(GEP.formDocs)) shouldNotContain aliceDocId
     }
 
     "an anonymous caller reaches none of it" {
