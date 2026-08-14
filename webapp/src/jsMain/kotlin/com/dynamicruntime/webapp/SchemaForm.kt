@@ -773,12 +773,11 @@ private fun ChildrenBuilder.widget(
             markInvalid(asDynamic(), describedBy)
         }
         // Boolean, where absent says nothing the field cannot already say: a checkbox, the compact control
-        // (issue #261). See [booleanIsTwoState] for when that is true.
+        // (issue #261). See [booleanIsTwoState] for when that is true, and [checkboxDraw] for what it shows.
         vt.jsonType == SCT.boolean && booleanIsTwoState(vt, required) -> Checkbox {
-            // Absent draws as the default rather than as `false`. It stands for the default -- that is what
-            // makes two states enough here -- so a `default: true` field drawn unchecked would report the
-            // opposite of what it will send.
-            checked = if (value == null) vt.default == true else value == true
+            val draw = checkboxDraw(vt, value)
+            checked = draw == CheckDraw.on
+            indeterminate = draw == CheckDraw.unanswered
             onChange = { e -> emit(e.target.checked as Boolean) }
             markInvalid(asDynamic(), describedBy)
         }
@@ -871,12 +870,50 @@ private val booleanOptions = listOf(SchOption("true", "true"), SchOption("false"
  *
  * - a **`default`** — the validator injects it for a missing required property, and a declared default is what
  *   absent means in any case, so absent is not an outcome of its own; or
- * - **`required`** — absent is invalid, so only `true` and `false` are reachable.
+ * - **`required`** — absent is invalid, so only `true` and `false` are reachable *outcomes*. Note the word:
+ *   the form can still be holding absent, and for a while it always is. Which control to give the field and
+ *   what that control should draw are separate questions, and answering only the first is what left the bug
+ *   in #322 — see [checkboxDraw] for the second.
  *
  * Pure, and deliberately so: [SchType] plus the `required` its parent object declares (which lives in the
  * parent's `required` set, not on the property), decided in one place and covered without a browser.
  */
 fun booleanIsTwoState(vt: SchType, required: Boolean): Boolean = required || vt.default != null
+
+/**
+ * What a boolean checkbox draws: on, off, or **no answer yet** (issue #322).
+ *
+ * A third entry on a control [booleanIsTwoState] just called two-state is not a contradiction — it is the
+ * distinction that rule elides. Absent is invalid for a *required* field, which is what makes `true` and
+ * `false` the only two **outcomes**; but it is an entirely ordinary thing for the form to be *holding*, and it
+ * is the state a freshly chosen union branch or a newly admitted conditional field starts in. Drawing that as
+ * an unticked box asserted an answer the form did not have, and the payload then said nothing: the checkbox
+ * looked filled in, a conditional watching it stayed shut, and Run came back 400 on a field the screen showed
+ * as decided. Toggling on and back off — the same gesture #261 removed for optional booleans — was the only
+ * way to turn absent into a real `false`.
+ *
+ * So the three cases, in the order they are asked:
+ *
+ * - a value the form **holds** draws itself, and anything not `true` draws off. A non-boolean pasted through
+ *   the request-JSON panel lands here rather than in [CheckDraw.unanswered]: it is present, it is wrong, and
+ *   the validator's `wrongType` against it is the honest complaint, not a claim that the field is empty;
+ * - **absent with a `default`** draws the default, which is what absent means where one is declared — a
+ *   `default: true` field drawn unticked would report the opposite of what it sends;
+ * - absent with nothing to stand in for it is [CheckDraw.unanswered]. By [booleanIsTwoState] this reaches the
+ *   checkbox only for a required field, which is exactly the field where the missing answer matters.
+ *
+ * The mixed state is deliberately not *emitted* — nothing seeds a value the user did not enter. The form shows
+ * what it holds; the schema's `required` says an answer is owed; validation says so again by name.
+ */
+fun checkboxDraw(vt: SchType, value: Any?): CheckDraw = when {
+    value != null -> if (value == true) CheckDraw.on else CheckDraw.off
+    vt.default != null -> if (vt.default == true) CheckDraw.on else CheckDraw.off
+    else -> CheckDraw.unanswered
+}
+
+/** The three states a boolean checkbox can be drawn in — see [checkboxDraw]. */
+@Suppress("EnumEntryName")
+enum class CheckDraw { on, off, unanswered }
 
 /** What a free-form map field needs: the value it holds, where to point a screen reader, and how to emit. */
 external interface JsonObjectFieldProps : Props {
