@@ -38,23 +38,6 @@ class GedraEntryTest : StringSpec({
         }
     }
 
-    // SCAFFOLD(P5): superseded by the fixture round trip.
-    "a trait's fields land under data, and the envelope stays outside it" {
-        val entry = parseSchemaTypes(nameDefs()).getValue("globalconfig.NameEntry")
-        entry.properties.keys shouldContainExactlyInAnyOrder
-            listOf(GE.traitId, GE.data, GE.entryId, GE.source, GE.createdAt, GE.updatedAt)
-        val data = entry.properties.getValue(GE.data).valueType
-        data.jsonType shouldBe SCT.kObject
-        data.properties.keys shouldContainExactlyInAnyOrder listOf("name")
-    }
-
-    // SCAFFOLD(P5): superseded by the fixture round trip.
-    "an entry validates in the shape the design document declares" {
-        val entry = parseSchemaTypes(nameDefs()).getValue("globalconfig.NameEntry")
-        val sent = mapOf(GE.traitId to "name", GE.data to mapOf("name" to "My Expense Form"))
-        coerceAndValidate(entry, sent, SchOpts(forInput = true)).failures.shouldBeEmpty()
-    }
-
     // The envelope is `g-derived`, which is the whole reason a caller may send an entry without it and a
     // stored one must carry it. One type, two shapes, chosen by the reader -- so neither direction alone
     // shows both halves, which is why this one is not scaffolding.
@@ -78,18 +61,6 @@ class GedraEntryTest : StringSpec({
             GE.createdAt to SchFailCode.missingRequired,
             GE.updatedAt to SchFailCode.missingRequired,
         )
-    }
-
-    // SCAFFOLD(P5): superseded by the fixture round trip.
-    "a stored entry carries the envelope the output shape demands" {
-        val entry = parseSchemaTypes(nameDefs()).getValue("globalconfig.NameEntry")
-        val now = Instant.parse("2026-08-13T10:00:00.000Z")
-        val stored = mapOf(GE.traitId to "name", GE.data to mapOf("name" to "x"))
-            .asStoredEntry(entryId = "e-1", source = "user", createdAt = now)
-
-        validate(entry, stored).shouldBeEmpty()
-        // Never touched since it was written, so the two stamps agree -- storage is what makes them diverge.
-        stored[GE.updatedAt] shouldBe now
     }
 
     // Both authoring styles reach the same shape, which is what lets a trait either declare its data inline
@@ -172,7 +143,9 @@ class GedraEntryTest : StringSpec({
         }
     }
 
-    // SCAFFOLD(P5): superseded by the fixture round trip.
+    // Kept, though it was tagged for removal: a *successful* round trip never sends an entry without data,
+    // so #301's fixture does not reach this. The tag was wrong -- an entry with a trait and no data says
+    // nothing, and only a schema-level check catches it.
     "an entry must carry data at all" {
         val entry = parseSchemaTypes(nameDefs()).getValue("globalconfig.NameEntry")
         val failures = coerceAndValidate(entry, mapOf(GE.traitId to "name"), SchOpts(forInput = true)).failures

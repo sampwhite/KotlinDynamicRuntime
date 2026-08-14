@@ -206,6 +206,26 @@ class SchOpts(
      * property from both would turn a silent strip into an `additionalProperty` failure.
      */
     val forInput: Boolean = false,
+    /**
+     * Whether a discriminator value naming no branch may fall to the union's default branch — that is,
+     * whether this reader honors the `defaultMapping` the document declares (issue #301).
+     *
+     * **Defaults to true, and that is not laxity.** A union that declares a default branch *says so in the
+     * emitted JSON Schema*, so a stock validator reading our document accepts an unknown value. Defaulting
+     * this to false would make our own reading disagree with the document we publish, which is the one
+     * property #252 was built to preserve: a branch alone reaches the same verdict as the union, and the
+     * document means the same thing to somebody else's validator as it does to ours.
+     *
+     * So strictness is a **policy a reader applies**, deliberately, on top of what the document says — and
+     * one that has to be reflected at the export boundary by stripping the default branch, or we publish a
+     * schema we do not honor.
+     *
+     * When to be strict: inside a single client, every trait is known, so an unrecognized one is a caller
+     * error and reporting it is a kindness. Across clients — an administrative surface looking at data from a
+     * client whose config this deployment never loaded — an unknown trait is the architecture working, and
+     * refusing it would take down a payload over an entry nobody asked about.
+     */
+    val allowUnknownVariant: Boolean = true,
 )
 
 /** Result of a coercing validation: the (possibly transformed) [value] and the [failures]. */
@@ -348,7 +368,9 @@ fun validateVariant(
         )
         return value
     }
-    val branch = variants.select(raw)
+    // A strict reader declines the default branch rather than there being a second union without one; see
+    // `SchOpts.allowUnknownVariant`.
+    val branch = if (opts.allowUnknownVariant || variants.isKnown(raw)) variants.select(raw) else null
     if (branch == null) {
         failures.add(
             type.failure(

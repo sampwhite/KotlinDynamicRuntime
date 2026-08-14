@@ -67,29 +67,6 @@ class GedraConfigTest : StringSpec({
         gedraConfig(cxt, "_internal", "globalconfig") {}.name shouldBe "_internal"
     }
 
-    // SCAFFOLD(P5): superseded by the fixture round trip.
-    "a trait records what it generated, and generates a usable entry type" {
-        val config = coreTraits()
-        config.traits.keys.toList() shouldContainExactly listOf("name")
-        val trait = config.traits.getValue("name")
-        trait.typeName shouldBe "globalconfig.NameEntry"
-        trait.appliesTo shouldContainExactly listOf(GedraDataType.formDoc)
-        trait.toString() shouldBe "name -> globalconfig.NameEntry"
-
-        val entry = parseSchemaTypes(config.defs).getValue("globalconfig.NameEntry")
-        validate(
-            entry,
-            mapOf(
-                GE.traitId to "name",
-                GE.data to mapOf("name" to "My Expense Form"),
-                GE.entryId to "e-1",
-                GE.source to "user",
-                GE.createdAt to "2026-08-13T10:00:00.000Z",
-                GE.updatedAt to "2026-08-13T10:00:00.000Z",
-            ),
-        ).shouldBeEmpty()
-    }
-
     // Both authoring styles, and the point of having both: a shared data shape declared once and pointed at,
     // beside one written where it is used. The config builder is a schema builder, which is what makes the
     // shared type declarable in the same block.

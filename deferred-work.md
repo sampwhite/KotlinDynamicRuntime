@@ -154,6 +154,14 @@ first. Noticeable because someone asks for it by name.
   catalog and is only worth making once something consumes an export. Until then the keyword travels and each
   surface honors it, which is why the form draws no control for such a field.
 
+- **Strip the default branch from a strictly-read union** *(from #301).* A manufactured entry union always
+  declares a default branch, so an unrecognized `traitId` can pass through where that is the right answer.
+  Whether a *reader* uses it is a policy the reader applies — `SchOpts.allowUnknownVariant` — and a strictly
+  read endpoint therefore honors less than the document it publishes says. Its exported schema has to have
+  the `discriminator.defaultMapping` and the default branch removed, or we publish a schema we do not honor
+  and a client's own tooling calls a payload valid that we return a 400 for. It is a second projection at the
+  boundary that already has to project `g-derived` out of input shapes, not a new mechanism.
+
 - **The rest of the export contract is already written down** in
   [`gedra-entry.md`](gedra-entry.md) — `g-` keywords stripped by default with a small transformer table,
   `discriminator.mapping` synthesized from the branches' `const` values, and the governing rule that an

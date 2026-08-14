@@ -10,6 +10,10 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
+import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GID
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
@@ -80,6 +84,18 @@ class SchemaService : ServiceInitializer {
         }
         val availableEndpoints =
             if (isTestInstance) collected.endpoints else collected.endpoints.filterNot { it.forTestingOnly }
+
+        // Manufactured last and compiled with everything else: the union's branches are not known until
+        // every component has contributed, and by the time anything reads the store it is an ordinary type.
+        // Called once with the global scope; per-client views call the same function with a different one.
+        collected.defs.putAll(
+            entryUnionDefs(
+                cxt,
+                GCFG.globalNamespace,
+                GedraDataType.formDoc,
+                collected.gedraConfigs.traitsFor(GID.globalClient),
+            ),
+        )
 
         val types = parseSchemaTypes(collected.defs)
         val endpoints = availableEndpoints.associateBy { it.collationKey }
