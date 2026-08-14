@@ -380,6 +380,24 @@ I would start with the summary and treat the cross-kind union as a separate deci
 
 ## Smaller notes
 
+- **A new entry's `entryId` is `mkUniqueId`, and stays that way.** A patch mints one whenever an edit creates an
+  entry, so the choice made in #310 applies here too. It is globally unique rather than unique within its row —
+  more than is needed, but free, and it means entries survive being exported into a different gedra and that an
+  id pasted into a log search identifies one entry without knowing which gedra it came from.
+
+  The alternative, a per-row counter, was reconsidered and rejected twice. Scanning the existing entries and
+  incrementing past the largest has a specific defect: delete the highest and the next insert reuses its
+  number, so a held reference silently points at a different entry. That is fatal for this field rather than
+  untidy, because `entryId` exists precisely to be the **stable** surrogate that `g-primaryKey` is not (see
+  `gedra-entry.md`, *Identity*). A stored high-water mark fixes the reuse and brings a counter that every future
+  write path has to maintain.
+
+  The cost is about 22 characters per entry, accepted as part of a **deliberately verbose storage strategy**.
+  That is a posture rather than an oversight, and it is the same one the product pitch rests on — that machines
+  have scaled far enough for the readable, self-describing option to be the affordable one. Compression is the
+  answer if stored size ever becomes material; the expectation is that it will not, and the trigger to revisit
+  is storage cost showing up as a real number rather than a worry.
+
 - **Locked / adminOnly / processOnly entries** are a *refusal* rather than a filter: an edit naming one should
   fail loudly rather than be quietly skipped, or a caller believes they wrote something they did not. That
   argues for the security pass checking entry-level directives too, not only row-level scope — which means it
