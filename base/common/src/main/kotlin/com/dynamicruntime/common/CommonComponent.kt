@@ -8,6 +8,7 @@ import com.dynamicruntime.common.operator.operatorSchema
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraFixtureEndpoints
 import com.dynamicruntime.common.gedra.coreTraits
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.home.HFRAG
@@ -70,6 +71,8 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(testSchema(cxt))
         // Fragment checking: the operator endpoint that validates this instance's Markdown fragment files.
         collector.addModule(MarkdownFragmentService.schema(cxt))
+        // Gedra (issue #301): the fixture that drives an entry through the whole config chain.
+        collector.addModule(GedraFixtureEndpoints.schema(cxt))
     }
 
     /**

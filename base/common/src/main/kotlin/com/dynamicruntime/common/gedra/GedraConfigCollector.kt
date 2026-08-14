@@ -99,6 +99,18 @@ class GedraConfigCollector {
     /** Every trait kept, keyed by its globally unique id. */
     val traits: Map<String, GedraTrait> get() = traitOwners.toMap()
 
+    /**
+     * The traits [client] can see: its own, and `global`'s. Nothing else — that is the visibility rule, and
+     * this is the one place that has to know it, since assembling a client's view is the only thing that ever
+     * asks the question.
+     *
+     * Every config is `global` today, so this returns everything. It is written as the question rather than
+     * as the answer because the day a second owner exists, the answer changes and the question does not.
+     */
+    fun traitsFor(client: String): List<GedraTrait> = traitConfigs.entries
+        .filter { (_, config) -> config.gedraId.client == GID.globalClient || config.gedraId.client == client }
+        .mapNotNull { (traitId, _) -> traitOwners[traitId] }
+
     /** The `$defs` the kept configs generated, merged, for compiling with everything else. */
     fun defs(): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()
