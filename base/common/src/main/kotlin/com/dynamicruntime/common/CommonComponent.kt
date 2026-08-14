@@ -7,6 +7,8 @@ import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.operator.operatorSchema
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.FRAG
+import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.coreTraits
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.user.AFRAG
@@ -75,6 +77,13 @@ class CommonComponent : ComponentDefinition {
      * files: `errors` is reached through the error-message path rather than a UI-config, so nothing else
      * names it, and an unchecked error fragment is exactly the one you find out about during an incident.
      */
+    /**
+     * The Gedra config this module defines (issue #300): the traits every deployment has, in the reserved
+     * `globalconfig` namespace. Declared here rather than in a sample, because these are part of what the
+     * runtime is -- and because anything a test needs to reach has to come from a component that always loads.
+     */
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(coreTraits(cxt))
+
     override fun fragmentFiles(cxt: KdrCxt): List<String> =
         listOf(AFRAG.auth, AFRAG.profile, HFRAG.home, FRAG.errors, FRAG.sample)
 
