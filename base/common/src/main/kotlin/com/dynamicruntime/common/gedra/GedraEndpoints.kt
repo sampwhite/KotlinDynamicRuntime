@@ -8,6 +8,7 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toOptStr
@@ -16,8 +17,12 @@ import com.dynamicruntime.common.util.toOptStr
 @Suppress("ConstPropertyName")
 object GEP {
     const val formDocCreate = "/gedra/formDoc/create"
+    const val formDocDelete = "/gedra/formDoc/delete"
     const val formDoc = "/gedra/formDoc"
     const val formDocs = "/gedra/formDocs"
+
+    /** The type naming what a delete removed. */
+    const val deletedGedra = "DeletedGedra"
 }
 
 /**
@@ -69,6 +74,38 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         // see `GedraDataService.queryGedra` for why the last of those must not be distinguishable.
             ?: throw KdrException("No form document '$fullId'.", code = EXC.notFound)
         row.toJsonMap()
+    }
+
+    // What a delete answers with. Not the document: a caller who has just deleted something does not want it
+    // handed back looking exactly like a live one, since the type carries no `enabled` to tell them apart.
+    type(GEP.deletedGedra) {
+        type = SCT.kObject
+        description = "Confirmation that a gedra was deleted."
+        property(GDF.gedraId, "Id of the gedra that was deleted.", required = true)
+    }
+
+    // A POST rather than an HTTP DELETE, because `HttpMethod` has no DELETE -- adding one reaches the
+    // dispatcher, the catalog and the form engine, which is a change worth making on its own account rather
+    // than in passing here. The path says the verb in the meantime, as `create` does.
+    generalEndpoint(
+        GEP.formDocDelete,
+        "Deletes a form document, so that it is no longer readable or listed.",
+        HttpMethod.POST,
+        outputRef = GEP.deletedGedra,
+        inputFields = {
+            field(GDF.gedraId, "Id of the form document to delete.", required = true)
+        },
+    ) { c, request ->
+        val fullId = request[GDF.gedraId].toOptStr()
+            ?: throw KdrException.mkInput("A ${GDF.gedraId} is required.")
+        // Absent, already deleted, the wrong kind and out of scope all answer false and all leave as 404 --
+        // the same four-into-one the read makes, so trying to delete something reveals no more than trying to
+        // read it. A second delete is therefore a 404 rather than a quiet success, which says plainly that
+        // there was nothing there rather than implying this call is what removed it.
+        if (!GedraDataService.require(c).deleteGedra(c, fullId, formDoc, ReadScopeRules.forCaller(c))) {
+            throw KdrException("No form document '$fullId'.", code = EXC.notFound)
+        }
+        mapOf(GDF.gedraId to fullId)
     }
 
     listEndpoint(
