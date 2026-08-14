@@ -19,7 +19,6 @@ import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import kotlin.time.Instant
 
 /**
  * The entry builder: a trait's schema under `data`, with the stored envelope around it (issue #297).

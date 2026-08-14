@@ -48,6 +48,7 @@ object GDBG {
  * several documents at once). Nothing here should be extended into an update path by adding a flag to
  * [createGedra] -- the reason those are hard is that they are decisions, not plumbing.
  */
+@Suppress("DuplicatedCode")
 class GedraDataService : ServiceInitializer {
     override val serviceName: String = GedraDataService.serviceName
 
@@ -88,7 +89,7 @@ class GedraDataService : ServiceInitializer {
                 // A direct call to an endpoint means a person is accountable for the value.
                 source = GSRC.user,
                 createdAt = now,
-                // The actor rather than the owner (issue #325). They are the same person here -- a create
+                // The actor rather than the owner (issue #325). They are the same person here -- a "create"
                 // makes the caller the owner -- and are not once an administrator edits somebody else's
                 // document, which is the case the field exists for.
                 createdBy = cxt.userProfile.userId,
