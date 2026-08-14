@@ -5,7 +5,6 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.schemaDefs
 
 /** Names for the types one gedra kind gives rise to (issues #301, #310). */
-@Suppress("ConstPropertyName")
 object GU {
     /**
      * The type of a gedra of one kind: `formDoc` becomes `FormDoc`.
@@ -18,7 +17,7 @@ object GU {
     /** The union type of the entries one kind may carry: `formDoc` becomes `FormDocEntry`. */
     fun unionName(kind: GedraDataType): String = gedraName(kind) + "Entry"
 
-    /** The union's default branch, where a trait this reader has never heard of goes. */
+    /** The union's default branch, where a trait this reader has never heard of, goes. */
     fun unknownBranchName(kind: GedraDataType): String = unionName(kind) + "Unknown"
 }
 
@@ -53,7 +52,7 @@ fun entryUnionDefs(
     kind: GedraDataType,
     traits: Collection<GedraTrait>,
 ): Map<String, Any?> {
-    // Sorted by trait id, so the same set of traits produces the same document however the components that
+    // Sorted by trait id, so the same set of traits produces the same document, however, the components that
     // contributed them happened to be ordered.
     val branches = traits.filter { kind in it.appliesTo }.sortedBy { it.traitId }.map { it.typeName }
     val unionName = GU.unionName(kind)

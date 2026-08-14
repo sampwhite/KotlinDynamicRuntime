@@ -43,7 +43,7 @@ object GDBG {
  *
  * ### What is not here yet
  *
- * **Updating.** Creation assigns entries and that is all it does; a patch is its own issue and its own set of
+ * **Updating.** Creation assigns entries, and that is all it does; a patch is its own issue and its own set of
  * problems (locked and process-owned entries, merging, entry primary keys, deletion, and a batch across
  * several documents at once). Nothing here should be extended into an update path by adding a flag to
  * [createGedra] -- the reason those are hard is that they are decisions, not plumbing.
@@ -213,7 +213,7 @@ class GedraDataService : ServiceInitializer {
     companion object {
         const val serviceName = "GedraDataService"
 
-        /** Name of the create transaction; it prefixes the generated transaction id. */
+        /** Name of the "create" transaction; it prefixes the generated transaction id. */
         const val tranCreate = "createGedra"
 
         fun get(cxt: KdrCxt): GedraDataService? = cxt.instanceConfig.get(serviceName) as? GedraDataService

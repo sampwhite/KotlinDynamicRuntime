@@ -91,7 +91,7 @@ class GedraDataEndpointTest : StringSpec({
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val topic = sqlCxt.sqlTopic.shouldNotBeNull()
         // The root is the topic's lock table, and a row of it exists under the content row's own id. That is
-        // the whole of the two-tier arrangement, and it is what a write reaching a file store will lock on.
+        // the whole of the two-tier arrangement, and it is what a "write" reaching a file store will lock on.
         topic.tranTable.shouldNotBeNull().tableName shouldBe GDT.gedraDataTran
         sqlCxt.sqlDb.withSession(cxt) {
             val root = sqlCxt.sqlDb
@@ -172,7 +172,7 @@ class GedraDataEndpointTest : StringSpec({
     }
 
     // The scope a listing ran with is the one fact its response cannot show: a correctly and an incorrectly
-    // scoped listing differ only in the rows the caller never sees.
+    // scoped listing differs only in the rows the caller never sees.
     "the debug tag reports the scope the listing ran with" {
         val explained = alice.client
             .sendJsonGetRequest(GEP.formDocs, mapOf(EP.debug to GDBG.explainScope))[EP.meta].toJsonMapOrEmpty()

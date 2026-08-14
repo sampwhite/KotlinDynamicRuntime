@@ -65,7 +65,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         val fullId = request[GDF.gedraId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.gedraId} is required.")
         val row = GedraDataService.require(c).queryGedra(c, fullId, formDoc, ReadScopeRules.forCaller(c))
-        // Absent, disabled, the wrong kind and out of scope all arrive here as null and all leave as 404 --
+        // Absent, disabled, the wrong kind and out of scope all arrive here as null, and all leave as 404 --
         // see `GedraDataService.queryGedra` for why the last of those must not be distinguishable.
             ?: throw KdrException("No form document '$fullId'.", code = EXC.notFound)
         row.toJsonMap()

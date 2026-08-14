@@ -82,7 +82,7 @@ object GD {
  * [PF.org] is **not**. An organization is a partition *inside* a client, and a gedra can legitimately be
  * reassigned from one to another — or acquire one for the first time, which is what every row written before a
  * client adopted organizations does. So it is mutable state that happens to live in an ownership column, and
- * the one to be careful with: `SqlTopicUtil.prepForStdExecute` fills it put-if-absent, so a write meaning to
+ * the one to be careful with: `SqlTopicUtil.prepForStdExecute` fills it put-if-absent, so a "write" meaning to
  * *change* it has to say so explicitly, exactly as one meaning to disable a row has to defend [PF.enabled]
  * against the standard stamp. Reads are unaffected either way -- a scope compares whatever the column now
  * holds.
