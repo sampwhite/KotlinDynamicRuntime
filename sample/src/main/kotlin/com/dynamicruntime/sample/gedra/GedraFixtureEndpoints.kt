@@ -47,7 +47,7 @@ object GFX {
  * sending an entry actually connects — the trait's schema, the entry type generated from it, the union
  * manufactured over every such type, and the envelope a stored entry carries. Any of those links could be
  * broken while each part passed its own tests, which is why the tests here are worth more than their size and
- * why several tests in #297, #298 and #300 could be deleted once this existed.
+ * why several tests in #297, #298, and #300 could be deleted once this existed.
  *
  * Named for what it is. `fillOut` rather than `save`, because it fills entries out and returns them, and
  * `save` would be an untruth in the first place a reader looks.

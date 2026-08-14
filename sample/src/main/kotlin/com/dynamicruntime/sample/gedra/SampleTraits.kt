@@ -44,7 +44,7 @@ object ST {
  * and no payload carrying several shapes at once. The manufactured `FormDocEntry` union picks these up
  * alongside `globalconfig`'s `name`, so the fixture drives a union with three branches and a default.
  *
- * Between them they carry every schema construct an entry can: a discriminated branch, a conditional inside
+ * Between them, they carry every schema construct an entry can: a discriminated branch, a conditional inside
  * `data`, a derived value, and bounds. The conditional is the one worth having on purpose — pushing a trait's
  * fields under `data` moved conditionals one level deeper, and the form had a bug of exactly that shape in
  * #253.

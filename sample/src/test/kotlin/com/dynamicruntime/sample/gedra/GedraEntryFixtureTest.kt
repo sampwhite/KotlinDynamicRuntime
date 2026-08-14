@@ -31,7 +31,7 @@ import io.kotest.matchers.string.shouldContain
  * registry collected its bundle, the collector checked it and folded in the entry type it generated, the
  * schema service manufactured the union over every such type and compiled it, the endpoint resolved a
  * reference to a type that did not exist when it was built, and the validator selected the right branch. That
- * is why several tests in #297, #298 and #300 were deleted when this arrived — they asserted, separately,
+ * is why several tests in #297, #298, and #300 were deleted when this arrived — they asserted, separately,
  * things this cannot pass without.
  */
 class GedraEntryFixtureTest : StringSpec({
@@ -171,7 +171,7 @@ class GedraEntryFixtureTest : StringSpec({
         handler.rptStatusCode shouldBe 400
         val body = handler.rptResponseData?.jsonMap() ?: emptyMap()
         val message = body[EP.errorMessage].toString()
-        message shouldContain "${ST.year}"
+        message shouldContain ST.year
         // Nothing about the approval branch, which nobody selected.
         (ST.approved in message) shouldBe false
     }
@@ -236,7 +236,7 @@ class GedraEntryFixtureTest : StringSpec({
 
     // Strictness is a reader's choice rather than a second union: the same type accepts an unknown trait for a
     // caller that can see across clients and refuses one for a caller that cannot. The default honors the
-    // document, because the emitted schema declares the default branch and our reading should not disagree
+    // document because the emitted schema declares the default branch, and our reading should not disagree
     // with what we publish.
     "the same union reads strictly or leniently, as the reader asks" {
         val union = cxt.getSchema().types.getValue(unionName)
