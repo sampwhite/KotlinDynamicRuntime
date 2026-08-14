@@ -201,3 +201,19 @@ Until then every substitution is "print this", which no type can get wrong.
   check can run with nobody present. Deferred because the shipped copy reads five paths in total and none of
   them compute, so a check with nothing to find would be tested against invented cases only.
 
+## When a frontend change breaks a page its author did not open
+
+Today the practice is that whoever changes the front end drives it in a browser and looks. That holds while
+one person can see the whole surface. The trigger fires the first time a change breaks a page its author had
+no reason to open — which is also the first time the practice has demonstrably failed rather than merely
+looked fragile.
+
+- **A DOM/React test suite** *(the half of #161 that was not built).* `jsTest` covers pure logic — plain
+  `Map`/`String` in, typed value out — and `jsBrowserTest` is **disabled** in `webapp/build.gradle.kts` so
+  `check` never needs a headless Chrome; that disable line is the re-enable point. Nothing automated renders a
+  component, drives a form, or exercises `fetch`. The coupling that makes this matter is already here: the app
+  bar and the profile page both render `UserProfile.displayName`, so a change to one *is* a change to the
+  other, and no existing test would notice. Deferred because it needs a harness decision first — an in-browser
+  DOM suite through the disabled task, or Playwright driving a booted instance — and picking one is most of the
+  work. Note #161 itself is closed: it delivered the pure-logic layer, so nothing currently tracks this.
+

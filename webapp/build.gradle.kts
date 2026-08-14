@@ -137,5 +137,7 @@ kotlin {
 
 // The app is a browser bundle, but its unit tests are pure logic and run under Node (`jsNodeTest`). Disable
 // the browser test task so `check`/`build` never requires a headless Chrome (issue #161). Re-enable this if a
-// real in-browser (DOM/React) test suite is ever added.
+// real in-browser (DOM/React) test suite is ever added -- this line is that suite's starting point, and the
+// case for it is recorded at `deferred-work.md#when-a-frontend-change-breaks-a-page-its-author-did-not-open`.
+// (#161 delivered the pure-logic `jsTest` layer and is closed; it does not track the browser half.)
 tasks.named("jsBrowserTest") { enabled = false }
