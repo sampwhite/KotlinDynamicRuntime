@@ -40,6 +40,12 @@ val Profile = FC<Props> {
     var note by useState<String?>(null)
     var busy by useState(false)
     var devFilled by useState(false)
+
+    /**
+     * The name field's draft. Seeded from the loaded config rather than held independently, so a refresh bump
+     * (or a change made elsewhere) re-seeds it instead of leaving a stale value sitting in the field.
+     */
+    var draftName by useState("")
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
 
@@ -59,6 +65,8 @@ val Profile = FC<Props> {
 
     // Re-read the config (and its copy) on every refresh generation (issue #115) -- on mount, and whenever a
     // navigation or state mutation bumps it, so a password change here reloads the page's affordances.
+    useEffect(config) { draftName = config?.user?.name ?: "" }
+
     useEffect(generation) {
         loadConfig { c ->
             profileScope.launch {
@@ -118,6 +126,21 @@ val Profile = FC<Props> {
         }
     }
 
+    /**
+     * Saves the name the caller is shown under (issue #323). A blank value clears it, which is a legitimate
+     * thing to want -- it falls the display back to the login name -- so it is not treated as an empty form.
+     */
+    fun saveName() = run {
+        ProfileApi.setName(draftName.trim())
+        note = if (draftName.isBlank()) {
+            t("profile", "nameCleared", "Your name was cleared.")
+        } else {
+            t("profile", "nameSaved", "Your name was saved.")
+        }
+        // Bump so the app bar follows: it shows the same displayName this page just changed.
+        bump()
+    }
+
     fun removePassword() = run {
         ProfileApi.clearPassword()
         note = t("password", "removedNote", "Your password was removed. You can still sign in with a code.")
@@ -144,6 +167,29 @@ val Profile = FC<Props> {
                 // one rule, on UserProfile.displayName, shared with the app bar (entity accounts).
                 source = t("profile", "signedInAs", $$"Signed in as **${user.publicName}**")
                     .evalTemplate(mapOf("user" to mapOf("publicName" to (user?.displayName ?: "your account"))))
+            }
+        }
+
+        // Sits with the identity line, not among the password controls: what you are called is not a
+        // credential, which is also why saving it needs no emailed code.
+        h2 { +t("profile", "nameTitle", "Your name") }
+        p {
+            className = ClassName("subtitle")
+            +t(
+                "profile", "nameHelp",
+                "The name you are shown under. It need not be unique, and is not how you sign in. " +
+                    "Leave it empty to be shown by your login name instead.",
+            )
+        }
+        textField(t("profile", "nameLabel", "Name"), draftName, disabled = busy) { draftName = it }
+        div {
+            className = ClassName("row")
+            Button {
+                type = "primary"
+                loading = busy
+                disabled = draftName.trim() == (config?.user?.name ?: "")
+                onClick = { saveName() }
+                +t("profile", "nameSave", "Save name")
             }
         }
 

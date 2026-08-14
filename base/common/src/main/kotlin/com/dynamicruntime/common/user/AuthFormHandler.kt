@@ -223,7 +223,7 @@ class AuthFormHandler(
         // conditioned on the flag. Neither is required nor checked for uniqueness -- the name is display copy,
         // and the account is still keyed by its primaryId and username.
         if (isEntity != null) row.isEntity = isEntity
-        if (name != null) row.name = name.trim().ifEmpty { null }
+        if (name != null) row.name = name // the row normalizes: trimmed, blank means none
         userService.updateUser(cxt, row)
         return completeLogin(cxt, row, byCode = true)
     }
@@ -376,6 +376,30 @@ class AuthFormHandler(
      * Removes the currently-logged-in user's password (opt back out of password login; code login still
      * works). Reached from the profile page, so it relies on the authenticated session rather than a code.
      */
+    /**
+     * Sets the caller's own [name] -- what they are shown as -- and returns their refreshed info. A blank name
+     * clears it, which falls the display back to [AuthUserRow.publicName].
+     *
+     * Takes the **session** as its authority, with no verification code, deliberately: a display name is not a
+     * credential, and requiring an emailed code to correct your own name would be the wrong bar (the password
+     * calls next door need one because they change how you sign in). It also does not touch `username`, which
+     * *is* a login identifier and is unique -- editing that is a separate question (issue #323).
+     *
+     * No uniqueness check, because there is none to make: a name is non-unique by design, so two people may
+     * share one exactly as they do in life.
+     */
+    fun setOwnName(cxt: KdrCxt, name: String?): Map<String, Any?> {
+        val row = userService.queryByUserId(cxt, cxt.userProfile.userId)
+            ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
+        row.name = name // the row normalizes: trimmed, and a blank name clears it
+        userService.updateUser(cxt, row)
+        // Rebind, so the rest of this request -- and the info returned -- speak of the new name rather than the
+        // one the session was carrying.
+        val live = row.toUserProfile()
+        cxt.bindToUserProfile(live)
+        return live.toUserInfo()
+    }
+
     fun removePassword(cxt: KdrCxt): Map<String, Any?> {
         val row = userService.queryByUserId(cxt, cxt.userProfile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
