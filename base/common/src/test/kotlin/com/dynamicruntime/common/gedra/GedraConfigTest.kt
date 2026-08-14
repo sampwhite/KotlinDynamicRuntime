@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.validate
@@ -87,6 +88,14 @@ class GedraConfigTest : StringSpec({
         types.getValue("globalconfig.NoteEntry").properties.getValue(GE.data)
             .valueType.properties.keys.toList() shouldContainExactly listOf("text")
         config.traits.keys.toList() shouldContainExactly listOf("name", "note")
+
+        // The trait carries its own data shape (issue #337), so a second manufactured type -- the patch's edit
+        // union -- is built from the trait rather than by finding its entry type in the built defs and reading
+        // a property off it. Both authoring styles reach it, and neither is normalized: a referenced shape
+        // stays a `$ref`, an inlined one stays inline.
+        config.traits.getValue("name").dataSchema[SCH.dRef] shouldBe "#/\$defs/globalconfig.NameData"
+        config.traits.getValue("note").dataSchema.toJsonMapOrEmpty()[SCH.properties]
+            .toJsonMapOrEmpty().keys.toList() shouldContainExactly listOf("text")
     }
 
     // The multi-kind case the set exists for. `name` means the same thing on a form document and on workflow

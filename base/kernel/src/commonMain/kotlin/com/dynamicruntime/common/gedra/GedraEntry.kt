@@ -5,6 +5,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
+import com.dynamicruntime.common.util.deepClone
 import kotlin.time.Instant
 
 /**
@@ -119,13 +120,17 @@ fun SchTypesBuilder.traitEntry(
     appliesTo: Set<GedraDataType>,
     description: String? = null,
     dataSchema: SchTypeBuilder.() -> Unit,
-) {
+): Map<String, Any?> {
     if (appliesTo.isEmpty()) {
         throw KdrException.mkConv(
             "Trait '$traitId' says it applies to no kind of gedra, so nothing could ever carry it. Name the " +
                 "kinds it attaches to.",
         )
     }
+    // The trait's own data shape, handed back so a caller can hold it (issue #337). Captured at the point it
+    // is built rather than reconstructed afterward, so what a trait reports and what its entry type carries
+    // cannot describe different things -- and cloned, so neither can be mutated through the other.
+    var builtData: Map<String, Any?> = emptyMap()
     // A branch, not a bare type: the discriminator has to stay top-level for the union to select on it, which
     // is exactly what `variantBranch` declares -- including the `const` that keeps the branch valid to a
     // reader that ignores the `discriminator` keyword entirely.
@@ -136,9 +141,11 @@ fun SchTypesBuilder.traitEntry(
         property(GE.data, "This entry's own data, as its trait defines it.", required = true) {
             dataSchema()
             holdDataToAnObject(traitId)
+            builtData = data.deepClone()
         }
         storedEntryFields()
     }
+    return builtData
 }
 
 /**
@@ -178,6 +185,33 @@ fun SchTypeBuilder.storedEntryFields() {
     property(GE.updatedBy, "Numeric userId that last changed this entry.", required = true) {
         type = SCT.integer
         derived = true
+    }
+}
+
+/**
+ * Refuses a set of entries that carries one trait twice (issue #337).
+ *
+ * **A gedra holds at most one entry per trait**, and that is the rule the whole addressing story rests on: it
+ * is what lets a patch name an entry by its `traitId` alone, and what makes "an edit with no `entryId`" mean
+ * something definite — update the one that is there, or create the first. Two entries of one trait would make
+ * both questions ambiguous, and the ambiguity would be discovered by whichever of them a later reader happened
+ * to pick.
+ *
+ * It is a *temporary* rule with a known replacement: `g-primaryKey` is what will let several entries share a
+ * trait, distinguished by a key drawn from their data. Until that exists there is nothing to tell them apart,
+ * so the honest thing is to refuse rather than to store a pair nothing can address. Enforced here — one guard
+ * for every write path — rather than at each caller, since a path that forgot it would corrupt quietly.
+ */
+fun checkOneEntryPerTrait(entries: List<Map<String, Any?>>) {
+    val seen = mutableSetOf<String>()
+    for (entry in entries) {
+        val traitId = entry[GE.traitId] as? String ?: continue
+        if (!seen.add(traitId)) {
+            throw KdrException.mkInput(
+                "Trait '$traitId' appears twice among these entries. A gedra holds at most one entry per " +
+                    "trait, so there would be no way to say afterward which of the two was meant.",
+            )
+        }
     }
 }
 

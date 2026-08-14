@@ -75,6 +75,10 @@ class GedraDataService : ServiceInitializer {
      * the timestamps. A caller supplies none of it, which is what `g-derived` on those fields says.
      */
     fun createGedra(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>): GedraDataRow {
+        // At most one entry per trait, refused before anything is minted (issue #337). This was not checked
+        // when create was written, so a caller could store two entries of one trait and leave a gedra nothing
+        // could address by trait alone -- which is how the patch, and the form, expect to address them.
+        checkOneEntryPerTrait(entries)
         // Interned as it is minted, so every later reader of this gedra shares one instance. The cache does
         // not yet hold every extant id, so this buys identity and cheap keys and not existence -- see
         // GedraService.gedraIds.
