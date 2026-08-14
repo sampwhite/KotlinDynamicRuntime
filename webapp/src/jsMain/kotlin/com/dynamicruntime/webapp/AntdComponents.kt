@@ -77,6 +77,11 @@ external val Input: ComponentType<InputProps>
 
 external interface CheckboxProps : PropsWithChildren {
     var checked: Boolean?
+    /**
+     * Draws the box as neither on nor off — antd's "mixed" state, a dash instead of a tick. Visual only: it
+     * does not change what [checked] reports, and a click still arrives as `checked = true`.
+     */
+    var indeterminate: Boolean?
     var disabled: Boolean?
     /** antd passes a change event; read `event.target.checked`. */
     var onChange: ((event: dynamic) -> Unit)?
