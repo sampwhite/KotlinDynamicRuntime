@@ -39,6 +39,18 @@ object GE {
     const val updatedAt = "updatedAt"
 
     /**
+     * Numeric userId of whoever first wrote this entry (issue #325).
+     *
+     * The **actor**, not the owner — who did the editing, as distinct from whose gedra it is. The two differ
+     * whenever an administrator edits somebody else's document, which is the case the field exists for; the
+     * owner is already recorded once on the row and would say nothing new here.
+     */
+    const val createdBy = "createdBy"
+
+    /** Numeric userId of whoever last changed this entry — the actor again; see [createdBy]. */
+    const val updatedBy = "updatedBy"
+
+    /**
      * Which kinds of gedra may carry this entry — a type-level keyword on a generated entry type, holding
      * kind *names* (`formDoc`), not the two-letter abbreviations, which exist only to keep a [GedraId] short.
      *
@@ -130,17 +142,23 @@ fun SchTypesBuilder.traitEntry(
 }
 
 /**
- * The fields every stored entry carries and no caller supplies: an id, how the value came to be, and when it
- * was written.
+ * The fields every stored entry carries and no caller supplies: an id, how the value came to be, and when and
+ * by whom it was written.
  *
  * All of them are `g-derived`, which is what makes this the *stored* shape rather than the *sent* shape —
  * absent from the input schema, undrawn by the form, dropped if a client echoes them back, and required on
  * the way out. Declared once here rather than per trait, so a new trait cannot end up with a different
  * envelope from its siblings.
  *
- * `createdAt` / `updatedAt` deliberately spell it the way the SQL layer's audit columns already do (`PF`),
- * because an entry is meant to read like a row — and `modifiedAt` up here against `updatedAt` one layer down
- * would be two names for one idea.
+ * The four audit fields deliberately spell it the way the SQL layer's audit columns already do (`PF`), because
+ * an entry is meant to read like a row — and `modifiedAt` up here against `updatedAt` one layer down would be
+ * two names for one idea. The resemblance is now the whole set rather than half of it (issue #325): a date
+ * without an actor answers *when* something changed and leaves *who* to be inferred from a log, which is
+ * exactly the question an audit asks first.
+ *
+ * **Per entry, not per gedra**, and that is the point of putting them here. The row's own audit columns record
+ * the last write to the *document*; these record who touched each trait's worth of data, so an approval that
+ * changed one entry does not read as having rewritten the rest.
  */
 fun SchTypeBuilder.storedEntryFields() {
     property(GE.entryId, "Stable id of this entry; assigned when stored.", required = true) { derived = true }
@@ -153,14 +171,29 @@ fun SchTypeBuilder.storedEntryFields() {
         dateTime()
         derived = true
     }
+    property(GE.createdBy, "Numeric userId that first wrote this entry.", required = true) {
+        type = SCT.integer
+        derived = true
+    }
+    property(GE.updatedBy, "Numeric userId that last changed this entry.", required = true) {
+        type = SCT.integer
+        derived = true
+    }
 }
 
 /**
  * This entry with the stored envelope stamped onto it — what storing it would leave behind.
  *
- * [updatedAt] defaults to [createdAt] because a record that has never been changed was last changed when it
- * was written. Storage is what makes the two diverge, and an entry carrying only one of them cannot answer
- * "has this been touched since it arrived", which is the question the pair exists for.
+ * [updatedAt] and [updatedBy] default to their `created` counterparts because a record that has never been
+ * changed was last changed when it was written, by whoever wrote it. Storage is what makes each pair diverge,
+ * and an entry carrying only one half cannot answer "has this been touched since it arrived, and by whom",
+ * which is the question the pairs exist for.
+ *
+ * [createdBy] is the **actor** — the acting user, `KdrCxt.userProfile.userId` — rather than the gedra's owner.
+ * The SQL layer draws the same distinction for the same columns (`SqlTopicUtil.prepForStdExecute` takes
+ * `createdBy` from the actor and the ownership columns from the bound owner), and it is the one that carries
+ * information: the owner is recorded once on the row, so repeating it per entry would say nothing, while the
+ * actor is what differs when an administrator edits somebody else's document.
  *
  * The instants stay [Instant] all the way into the map rather than being formatted here. Serialization is
  * where a date becomes text — `JsonUtil` writes it through `fmt`, the one place that decides the wire format
@@ -172,12 +205,16 @@ fun Map<String, Any?>.asStoredEntry(
     entryId: String,
     source: String,
     createdAt: Instant,
+    createdBy: Long,
     updatedAt: Instant = createdAt,
+    updatedBy: Long = createdBy,
 ): Map<String, Any?> = this + linkedMapOf<String, Any?>(
     GE.entryId to entryId,
     GE.source to source,
     GE.createdAt to createdAt,
     GE.updatedAt to updatedAt,
+    GE.createdBy to createdBy,
+    GE.updatedBy to updatedBy,
 )
 
 /**

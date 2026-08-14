@@ -85,6 +85,13 @@ class GedraDataEndpointTest : StringSpec({
         entry[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Alice's expenses"
         entry[GE.source] shouldBe GSRC.user
         entry.keys shouldContain GE.entryId
+        // Who wrote it, beside when (issue #325). On a create the actor and the owner are the same person, so
+        // this cannot yet show that the *actor* is what is recorded -- the divergence only appears once an
+        // administrator can edit somebody else's document, which needs the update path. What it does show is
+        // that the value is the caller's rather than a constant or the system user, which bob's block confirms
+        // from the other side.
+        entry[GE.createdBy] shouldBe alice.userId
+        entry[GE.updatedBy] shouldBe alice.userId
     }
 
     "both tiers were written, keyed by the same id" {
@@ -111,8 +118,11 @@ class GedraDataEndpointTest : StringSpec({
     // The narrow width of ReadScopeRules, which until now had no endpoint reaching it. Both halves matter: a
     // listing that omits the row, and a direct read by an id bob was handed rather than had to guess.
     "another ordinary user sees none of it, by listing or by id" {
-        bobDocId = bob.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(nameEntry("Bob's expenses"))))
-            .let { it[GDF.gedraId].toOptStr().shouldNotBeNull() }
+        val bobDoc = bob.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(nameEntry("Bob's expenses"))))
+        bobDocId = bobDoc[GDF.gedraId].toOptStr().shouldNotBeNull()
+        // The other side of the audit check above: bob's entry carries bob, so the stamp follows the caller
+        // rather than being a constant that happened to match alice.
+        bobDoc[GDF.entries].toJsonListOfMaps().single()[GE.createdBy] shouldBe bob.userId
 
         idsOf(bob.getItems(GEP.formDocs)) shouldContainExactly listOf(bobDocId)
 

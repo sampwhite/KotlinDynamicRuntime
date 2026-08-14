@@ -85,6 +85,10 @@ object GedraFixtureEndpoints {
                     // A real endpoint deduces this from who is calling; a fixture says what it is.
                     source = GFX.fixtureSource,
                     createdAt = now,
+                    // The actor, exactly as a real endpoint stamps it -- the fixture invents an entry id and a
+                    // source because it stores nothing, but there is a genuine caller here and no reason to
+                    // pretend otherwise.
+                    createdBy = c.userProfile.userId,
                 )
             }
             explainEntries(c, entries)
