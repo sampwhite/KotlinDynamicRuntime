@@ -54,12 +54,16 @@ class GedraEntryTest : StringSpec({
         asInput.failures.shouldBeEmpty()
         asInput.value.toJsonMapOrEmpty().keys shouldNotContain GE.entryId
 
-        // Answering with it: the same type now demands the envelope it did not ask the caller for.
+        // Answering with it: the same type now demands the envelope it did not ask the caller for. Listed
+        // exactly rather than loosely, so growing the envelope is a decision somebody makes here rather than a
+        // thing that happens -- which is what caught the actor fields being added in #325.
         validate(entry, sent).map { it.path to it.code } shouldContainExactlyInAnyOrder listOf(
             GE.entryId to SchFailCode.missingRequired,
             GE.source to SchFailCode.missingRequired,
             GE.createdAt to SchFailCode.missingRequired,
             GE.updatedAt to SchFailCode.missingRequired,
+            GE.createdBy to SchFailCode.missingRequired,
+            GE.updatedBy to SchFailCode.missingRequired,
         )
     }
 
@@ -84,6 +88,8 @@ class GedraEntryTest : StringSpec({
                 GE.source to "user",
                 GE.createdAt to "2026-08-13T10:00:00.000Z",
                 GE.updatedAt to "2026-08-13T10:00:00.000Z",
+                GE.createdBy to 7,
+                GE.updatedBy to 7,
             ),
         ).shouldBeEmpty()
     }

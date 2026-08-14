@@ -61,7 +61,10 @@ class GedraEntryFixtureTest : StringSpec({
         // In any order: a JSON object is unordered, and asserting a sequence here would be asserting
         // something the wire never promised.
         out.keys.toList() shouldContainExactlyInAnyOrder
-            listOf(GE.traitId, GE.data, GE.entryId, GE.source, GE.createdAt, GE.updatedAt)
+            listOf(
+                GE.traitId, GE.data, GE.entryId, GE.source,
+                GE.createdAt, GE.updatedAt, GE.createdBy, GE.updatedBy,
+            )
         out[GE.source] shouldBe GFX.fixtureSource
         // Millisecond precision, UTC, trailing Z -- one place decides the wire format and no handler invents
         // its own.
