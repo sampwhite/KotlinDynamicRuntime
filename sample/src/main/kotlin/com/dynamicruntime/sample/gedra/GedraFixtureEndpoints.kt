@@ -1,6 +1,11 @@
-package com.dynamicruntime.common.gedra
+package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GU
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.asStoredEntry
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -75,7 +80,7 @@ object GedraFixtureEndpoints {
         ) { c, request ->
             val now = c.instanceNow()
             val entries = request[GFX.entries].toJsonListOrEmpty().mapIndexed { index, raw ->
-                raw.toJsonMapOrEmpty().asStoredEntry(
+                filledOut(raw.toJsonMapOrEmpty()).asStoredEntry(
                     entryId = "e-${index + 1}",
                     // A real endpoint deduces this from who is calling; a fixture says what it is.
                     source = GFX.fixtureSource,
@@ -85,6 +90,23 @@ object GedraFixtureEndpoints {
             explainEntries(c, entries)
             entries
         }
+    }
+
+    /**
+     * Produces what the caller does not supply, which for a real trait is code bound to that trait.
+     *
+     * Only `expenseReport` has anything derived, and it is the smallest honest version of a pre-processor:
+     * read the two supplied numbers, write the one that follows from them. A trait whose data does not need
+     * it passes through untouched.
+     */
+    private fun filledOut(entry: Map<String, Any?>): Map<String, Any?> {
+        if (entry[GE.traitId].toOptStr() != ST.expenseReport) {
+            return entry
+        }
+        val data = entry[GE.data].toJsonMapOrEmpty()
+        val perItem = (data[ST.perItemAmount] as? Number)?.toDouble() ?: return entry
+        val count = (data[ST.itemCount] as? Number)?.toDouble() ?: return entry
+        return entry + (GE.data to data + (ST.totalAmount to perItem * count))
     }
 
     /**

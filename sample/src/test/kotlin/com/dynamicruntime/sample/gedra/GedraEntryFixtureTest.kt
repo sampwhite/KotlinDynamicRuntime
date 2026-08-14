@@ -1,13 +1,15 @@
-package com.dynamicruntime.kdn
+package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
-import com.dynamicruntime.common.gedra.GFX
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.startup.InstanceRegistry
+import com.dynamicruntime.kdn.Startup
+import com.dynamicruntime.sample.SampleComponent
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.coerceAndValidate
@@ -34,7 +36,11 @@ import io.kotest.matchers.string.shouldContain
  */
 class GedraEntryFixtureTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("gedraFixture", "gedraFixtureTest")
+    // Registered here rather than discovered: the ServiceLoader entry that finds the component in a running
+    // deployment does not reach the test classpath. And `KDR_LOAD_SAMPLE` forces `isLoaded`, which otherwise
+    // gates to developer environments while `mkTestBootCxt` uses `unit`.
+    InstanceRegistry.register(listOf(SampleComponent()))
+    val cxt = Startup.mkTestBootCxt("gedraFixture", "gedraFixtureTest", mapOf("KDR_LOAD_SAMPLE" to "true"))
     val fillOut = "/fixture/gedra/formDocEntries/fillOut"
     val unionName = "${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"
 
@@ -116,8 +122,101 @@ class GedraEntryFixtureTest : StringSpec({
         ).rptResponseData?.jsonMap() ?: emptyMap()
         val explained = response.getValue(EP.meta).toJsonMapOrEmpty()
             .getValue(GFX.entriesExplained).toJsonMapOrEmpty()
-        explained[GFX.knownTraits] shouldBe listOf(GT.name)
+        explained[GFX.knownTraits] shouldBe listOf(ST.expenseReport, ST.managerApproval, GT.name)
         explained[GFX.branches] shouldBe listOf(GT.name, GFX.default)
+    }
+
+    // --- what only a union with more than one branch can show ----------------
+
+    // Several shapes in one payload, each validated against the branch its own traitId names. This is the
+    // thing a single-branch union cannot test at all, and the reason the sample contributes traits of its own.
+    "one payload carries several shapes, each validated against its own branch" {
+        val client = TestHttpClient(cxt.instanceConfig)
+        val response = client.sendJsonPostRequest(
+            fillOut,
+            mapOf<String, Any?>(
+                GFX.entries to listOf(
+                    entry("My Expense Form"),
+                    mapOf(
+                        GE.traitId to ST.expenseReport,
+                        GE.data to mapOf(ST.year to 2024, ST.perItemAmount to 10, ST.itemCount to 3),
+                    ),
+                    mapOf(
+                        GE.traitId to ST.managerApproval,
+                        GE.data to mapOf(ST.approved to false, ST.rejectionReason to "Too late."),
+                    ),
+                ),
+            ),
+        )
+        val items = response.getValue(EP.items).toJsonListOfMaps()
+        items.map { it[GE.traitId] } shouldContainExactly listOf(GT.name, ST.expenseReport, ST.managerApproval)
+        // The derived value the caller did not send, computed by what stands in for the trait's pre-processor.
+        items[1][GE.data].toJsonMapOrEmpty()[ST.totalAmount] shouldBe 30.0
+    }
+
+    // A failure lands on the selected branch's own field, not on the union and not on some other branch's.
+    // Try-every-branch would also have to complain that `approved` was missing, from a shape nobody sent.
+    "a failure is reported against the branch the traitId selected" {
+        val client = TestHttpClient(cxt.instanceConfig)
+        val handler = client.sendEditRequest(
+            fillOut,
+            emptyMap(),
+            mapOf<String, Any?>(
+                GFX.entries to listOf(
+                    mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 1999)),
+                ),
+            ),
+            isPut = false,
+        )
+        handler.rptStatusCode shouldBe 400
+        val body = handler.rptResponseData?.jsonMap() ?: emptyMap()
+        val message = body[EP.errorMessage].toString()
+        message shouldContain "${ST.year}"
+        // Nothing about the approval branch, which nobody selected.
+        (ST.approved in message) shouldBe false
+    }
+
+    // A derived value is not merely computed -- it is refused on the way in, which is what makes it derived
+    // rather than defaulted. The caller's number is dropped and the computed one takes its place.
+    "a derived value is dropped on the way in and produced on the way out" {
+        val client = TestHttpClient(cxt.instanceConfig)
+        val response = client.sendJsonPostRequest(
+            fillOut,
+            mapOf<String, Any?>(
+                GFX.entries to listOf(
+                    mapOf(
+                        GE.traitId to ST.expenseReport,
+                        GE.data to mapOf(
+                            ST.year to 2024, ST.perItemAmount to 10, ST.itemCount to 3,
+                            ST.totalAmount to 999999,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val data = response.getValue(EP.items).toJsonListOfMaps().first()[GE.data].toJsonMapOrEmpty()
+        data[ST.totalAmount] shouldBe 30.0
+    }
+
+    // The conditional, now one level down inside `data`. Pushing a trait's fields under `data` moved every
+    // conditional deeper, and the form had a bug of exactly that shape in #253 -- so the arrangement is worth
+    // driving rather than assuming.
+    "a conditional inside data still decides what is required and what is refused" {
+        val client = TestHttpClient(cxt.instanceConfig)
+
+        fun approval(data: Map<String, Any?>) = client.sendEditRequest(
+            fillOut,
+            emptyMap(),
+            mapOf<String, Any?>(GFX.entries to listOf(mapOf(GE.traitId to ST.managerApproval, GE.data to data))),
+            isPut = false,
+        )
+
+        // Rejected, so a reason is required.
+        approval(mapOf(ST.approved to false)).rptStatusCode shouldBe 400
+        approval(mapOf(ST.approved to false, ST.rejectionReason to "Too late.")).rptStatusCode shouldBe 200
+        // Approved, so a reason is not admissible.
+        approval(mapOf(ST.approved to true)).rptStatusCode shouldBe 200
+        approval(mapOf(ST.approved to true, ST.rejectionReason to "?")).rptStatusCode shouldBe 400
     }
 
     // --- the union itself ----------------------------------------------------
@@ -126,7 +225,10 @@ class GedraEntryFixtureTest : StringSpec({
     "the union is assembled from the traits that bind to form documents" {
         val union = cxt.getSchema().types[unionName].shouldNotBeNull()
         val variants = union.variants.shouldNotBeNull()
-        variants.values shouldContainExactly listOf(GT.name)
+        // Three branches, from two components -- the runtime's own trait beside the sample's, which is what
+        // makes this a union rather than a wrapper around one type. Ordered by trait id, so the document does
+        // not change with the order components happened to load in.
+        variants.values shouldContainExactly listOf(ST.expenseReport, ST.managerApproval, GT.name)
         variants.discriminator shouldBe GE.traitId
         // A default branch, always -- see below for why.
         variants.defaultBranch.shouldNotBeNull()
@@ -149,6 +251,7 @@ class GedraEntryFixtureTest : StringSpec({
         ).failures
         strict.map { it.path to it.code } shouldContainExactly listOf(GE.traitId to SchFailCode.invalidOption)
         // The refusal names what this reader does know, which is the actionable half.
-        strict.first().options.shouldNotBeNull().map { it.value } shouldContainExactly listOf(GT.name)
+        strict.first().options.shouldNotBeNull().map { it.value } shouldContainExactly
+            listOf(ST.expenseReport, ST.managerApproval, GT.name)
     }
 })

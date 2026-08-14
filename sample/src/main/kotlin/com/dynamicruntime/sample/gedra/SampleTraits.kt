@@ -1,0 +1,91 @@
+package com.dynamicruntime.sample.gedra
+
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.schema.SCT
+
+/** The sample traits' names, kept beside the config that declares them. */
+@Suppress("ConstPropertyName")
+object ST {
+    /** The bundle: `gc.cd.global.sampleTraits`. */
+    const val sampleTraits = "sampleTraits"
+
+    /** The namespace the sample's own definitions live in. */
+    const val namespace = "sampleconfig"
+
+    // --- the expense trait, which exercises a derived value ---
+    const val expenseReport = "expenseReport"
+    const val expenseReportEntry = "ExpenseReportEntry"
+    const val year = "year"
+    const val perItemAmount = "perItemAmount"
+    const val itemCount = "itemCount"
+    const val totalAmount = "totalAmount"
+
+    // --- the approval trait, which exercises a conditional inside `data` ---
+    const val managerApproval = "managerApproval"
+    const val approvalEntry = "ApprovalEntry"
+    const val approved = "approved"
+    const val decidedBy = "decidedBy"
+    const val rejectionReason = "rejectionReason"
+}
+
+/**
+ * Traits that exist to be exercised, not to be shipped (issues #292, #301).
+ *
+ * They live in the `sample` component, which loads only in developer environments, so nothing here reaches a
+ * real deployment — and they are contributed the same way a real trait is, through
+ * `ComponentDefinition.gedraConfigs`, which is what makes them a genuine test of the path rather than a
+ * fixture pretending to be one.
+ *
+ * Two of them, deliberately, because **one trait does not test a union.** With a single branch there is
+ * nothing for a discriminator to select between, no way for a failure to be attributed to the wrong branch,
+ * and no payload carrying several shapes at once. The manufactured `FormDocEntry` union picks these up
+ * alongside `globalconfig`'s `name`, so the fixture drives a union with three branches and a default.
+ *
+ * Between them they carry every schema construct an entry can: a discriminated branch, a conditional inside
+ * `data`, a derived value, and bounds. The conditional is the one worth having on purpose — pushing a trait's
+ * fields under `data` moved conditionals one level deeper, and the form had a bug of exactly that shape in
+ * #253.
+ *
+ * Their namespace is their own. `globalconfig` belongs to the runtime's real definitions, and a sample
+ * writing into it would be the namespace-ownership rule being broken by the first thing to test it.
+ */
+fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, ST.namespace) {
+    trait(
+        ST.expenseReportEntry,
+        ST.expenseReport,
+        setOf(GedraDataType.formDoc),
+        "An expense report for one reporting year.",
+    ) {
+        property(ST.year, "Reporting year this report covers.", required = true) {
+            type = SCT.integer
+            minimum = 2000
+            maximum = 2100
+        }
+        property(ST.perItemAmount, "Amount claimed for one item.") { type = SCT.number }
+        property(ST.itemCount, "How many items are claimed.") { type = SCT.integer }
+        // Derived: the caller does not supply it, the form draws no control for it, and one echoed back is
+        // dropped. Something has to produce it, and for a real trait that something is code bound to the
+        // trait; here it is the fixture's own fill-out.
+        property(ST.totalAmount, "Total claimed; computed from the two above, not supplied.") {
+            type = SCT.number
+            derived = true
+        }
+    }
+
+    trait(
+        ST.approvalEntry,
+        ST.managerApproval,
+        setOf(GedraDataType.formDoc),
+        "A manager's decision on what was submitted.",
+    ) {
+        property(ST.approved, "Whether it was approved.", required = true) { type = SCT.boolean }
+        property(ST.decidedBy, "Who decided.")
+        property(ST.rejectionReason, "Why it was rejected.")
+        // A reason is required when the decision is a rejection and inadmissible when it is not -- now one
+        // level down, inside `data`, which is the arrangement worth having under test.
+        presentWhen(ST.rejectionReason, on = ST.approved, value = false)
+    }
+}
