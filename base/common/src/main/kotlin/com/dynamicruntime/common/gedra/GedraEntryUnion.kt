@@ -72,7 +72,7 @@ fun entryUnionDefs(
     kind: GedraDataType,
     traits: Collection<GedraTrait>,
 ): Map<String, Any?> {
-    // Sorted by trait id, so the same set of traits produces the same document, however, the components that
+    // Sorted by trait id, so the same set of traits produces the same document however the components that
     // contributed them happened to be ordered.
     val branches = traits.filter { kind in it.appliesTo }.sortedBy { it.traitId }.map { it.typeName }
     val unionName = GU.unionName(kind)
