@@ -32,10 +32,10 @@ enum class GedraEditAction {
     /** Remove the entry if it is there; do nothing if it is not. Never an error. */
     deleteOrNoOp,
 
-    /** Merge the supplied keys into the stored entry, or create it when there is none. */
+    /** Merge the supplied keys into the stored entry or create it when there is none. */
     addOrMerge,
 
-    /** Replace the stored entry wholesale, or create it when there is none. */
+    /** Replace the stored entry wholesale or create it when there is none. */
     addOrReplace,
 }
 
@@ -51,7 +51,7 @@ enum class GedraEditAction {
  *   trait (see `checkOneEntryPerTrait`), so that is unambiguous today; when `g-primaryKey` allows several, this
  *   is the field that tells them apart.
  * - **`data` absent** is what a [GedraEditAction.deleteOrNoOp] sends. One branch cannot say "required unless
- *   the action is a delete", so the schema permits it and the service refuses data-less adds — which is also
+ *   the action is a delete", so the schema permits it, and the service refuses data-less adds — which is also
  *   where a merge's completeness is settled, for the same reason.
  */
 fun SchTypeBuilder.editEnvelopeFields() {
@@ -67,7 +67,7 @@ fun SchTypeBuilder.editEnvelopeFields() {
  * The `data` an edit carries — typed by the trait when the trait is known, and an open object when it is not.
  *
  * A known trait's [schema] is copied rather than referenced, and deep-cloned on the way in, so a branch cannot
- * be mutated through the trait it was built from. Where that schema is itself a `$ref`, the ref travels and
+ * be mutated through the trait it was built from. Where that schema is itself a `$ref`, the ref travels, and
  * both the entry type and this one resolve to the same target — one definition, two users, nothing to drift.
  */
 fun SchTypeBuilder.editDataProperty(schema: Map<String, Any?>?) {

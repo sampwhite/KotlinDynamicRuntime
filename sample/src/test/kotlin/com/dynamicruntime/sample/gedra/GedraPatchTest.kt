@@ -88,7 +88,7 @@ class GedraPatchTest : StringSpec({
         entriesOf(alice, docId).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "After"
     }
 
-    // The envelope is where a patch differs from a create: what already existed keeps who made it and when,
+    // The envelope is where a patch differs from a "create": what already existed keeps who made it and when,
     // and only the `updated` half moves. That is the whole reason both pairs are stored (issue #325).
     "an edited entry keeps its creation half and moves its updated half" {
         val before = entriesOf(alice, docId).getValue(GT.name)
@@ -119,7 +119,7 @@ class GedraPatchTest : StringSpec({
         )
         val data = entriesOf(alice, id).getValue(ST.questionnaire)[GE.data].toJsonMapOrEmpty()
         data[ST.notes] shouldBe "second pass"
-        // Untouched, where a replace would have dropped it. This is the difference between the two verbs.
+        // Untouched, where a "replace" would have dropped it. This is the difference between the two verbs.
         data[ST.topic] shouldBe "Travel"
     }
 
@@ -144,9 +144,9 @@ class GedraPatchTest : StringSpec({
     }
 
     "a delete removes an entry, and deleting it again is a no-op rather than an error" {
-        val id = create(alice, nameEntry("Doomed"), mapOf(ST.approved to true).let {
-            mapOf(GE.traitId to ST.managerApproval, GE.data to it)
-        })
+        val id = create(alice, nameEntry("Doomed"),
+            mapOf(GE.traitId to ST.managerApproval, GE.data to mapOf(ST.approved to true))
+        )
 
         alice.postItems(GEP.patch, patch(id to listOf(edit(GedraEditAction.deleteOrNoOp, GT.name))))
             .single()[GPF.outcomes].toJsonListOfMaps().single()[GPF.applied] shouldBe true

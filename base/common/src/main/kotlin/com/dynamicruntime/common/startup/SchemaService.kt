@@ -87,7 +87,7 @@ class SchemaService : ServiceInitializer {
             if (isTestInstance) collected.endpoints else collected.endpoints.filterNot { it.forTestingOnly }
 
         // Manufactured last and compiled with everything else: the union's branches are not known until
-        // every component has contributed, and by the time anything reads the store it is an ordinary type.
+        // every component has contributed, and by the time anything reads the store, it is an ordinary type.
         // Called once with the global scope; per-client views call the same function with a different one.
         val globalTraits = collected.gedraConfigs.traitsFor(GID.globalClient)
         collected.defs.putAll(

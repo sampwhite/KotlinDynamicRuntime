@@ -118,7 +118,7 @@ class GedraConfigBuilder(cxt: KdrCxtBase, namespace: String) : SchTypesBuilder(c
         description: String? = null,
         dataSchema: SchTypeBuilder.() -> Unit,
     ) {
-        // Checked before anything is built, so a duplicate is refused rather than half-declared, and recorded
+        // Checked before anything is built, so a duplicate is refused rather than half-declared and recorded
         // afterward, because the trait cannot be described until its data schema exists.
         val qualified = qualifyTypeName(typeName, namespace)
         checkTraitIsNew(qualified, traitId)

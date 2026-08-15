@@ -81,7 +81,7 @@ class GedraDataService : ServiceInitializer {
      * The order a patch applies kinds in (issue #337).
      *
      * Only the first entry is a decision: a **workflow is edited before the forms it governs**, because it is
-     * where "has this already been done?" is recorded and so has to see a submit first. The rest follow in
+     * where "has this already been done?" is recorded and so has to see a "submit" first. The rest follow in
      * declaration order, which is arbitrary but fixed -- what matters is that the server chooses, so a caller
      * cannot reorder the phases by reordering their request.
      */
@@ -184,7 +184,7 @@ class GedraDataService : ServiceInitializer {
     /**
      * Deletes the gedra [fullId] names, returning whether there was one to delete (issue #326).
      *
-     * ### A soft delete, and why that is the delete
+     * ### A soft delete, and why that is the "delete"
      *
      * The row is marked not [PF.enabled] rather than removed. That is what `enabled` is for -- the SQL layer
      * calls a row whose flag is not `true` one that is *not there*, and every application read already goes
@@ -198,13 +198,13 @@ class GedraDataService : ServiceInitializer {
      *
      * ### Why the existence check comes before the transaction
      *
-     * The write goes through a topic transaction, because coordinating changes to one gedra is what the root
+     * The "write" goes through a topic transaction, because coordinating changes to one gedra is what the root
      * table is *for*, and a delete that reached a file store later would have to. But `executeTopicTran`
      * inserts the lock row when it is missing, so entering it with an id that names nothing would mint a root
      * row for a gedra that never existed -- a delete quietly creating something. Checking first means the
      * transaction is only ever entered for a gedra that is really there.
      *
-     * The gap between the check and the write is harmless: the update is itself scoped and requires the row to
+     * The gap between the check and the "write" is harmless: the update is itself scoped and requires the row to
      * still be enabled, so a second concurrent delete changes no rows and simply reports nothing to do.
      */
     fun deleteGedra(cxt: KdrCxt, fullId: String, kind: GedraDataType, scope: ReadScope): Boolean {
@@ -215,8 +215,8 @@ class GedraDataService : ServiceInitializer {
         val data = mutableMapOf<String, Any?>(
             GD.gedraId to row.gedraId.fullId,
             // The audit half of a delete. `prepForStdExecute` is deliberately not used: it stamps `enabled`
-            // true unconditionally, which is right for a create that revives a disabled row and exactly wrong
-            // here -- the write would succeed and leave the gedra live. `UserService.updateUser` defends the
+            // true unconditionally, which is right for a "create" that revives a disabled row and exactly wrong
+            // here -- the "write" would succeed and leave the gedra live. `UserService.updateUser` defends the
             // same field for the same reason; this states it in the SQL instead, so there is nothing to defend.
             PF.updatedAt to cxt.instanceNow(),
             PF.updatedBy to cxt.userProfile.userId,
@@ -242,17 +242,17 @@ class GedraDataService : ServiceInitializer {
 
 
     /**
-     * Applies a patch across several gedras, and reports what became of each edit (issue #337).
+     * Applies a patch across several gedras and reports what became of each edit (issue #337).
      *
      * ### Two phases, and the first one is the whole security story
      *
      * **Admit everything before writing anything.** Every target is resolved, checked against the kind it was
      * grouped under, and read through [queryGedra] with [scope] -- so a caller who may not reach one of them
      * has the *whole* call refused rather than discovering it partway through, with some gedras already
-     * changed. It is also why the refusal names the id but never says why: absent, disabled, wrong kind and
+     * changed. It is also why the refusal names the id but never says why: absent, disabled, wrong kind, and
      * out of scope answer alike, so a patch reveals no more than a read would.
      *
-     * **Then apply, one topic transaction per target.** Atomicity is per target: each succeeds or fails alone
+     * **Then apply, one topic transaction per target.** Atomicity is per target: each succeeds or fails alone,
      * and the answer says which. That is the arrangement rather than a first cut -- recovery from a partial
      * patch is by replay, since a workflow records what it has already done and a retry skips it. See
      * `gedra-patch.md`.
@@ -302,7 +302,7 @@ class GedraDataService : ServiceInitializer {
             )
         }
         // One edit per trait, for the reason a gedra holds one entry per trait: two edits naming one trait are
-        // either contradictory or a replace written twice, and neither has an honest reading.
+        // either contradictory or a "replace" written twice, and neither has an honest reading.
         val traits = target.edits.map { it.traitId }
         traits.firstOrNull { id -> traits.count { it == id } > 1 }?.let {
             throw KdrException.mkInput(
@@ -315,7 +315,7 @@ class GedraDataService : ServiceInitializer {
         }
     }
 
-    /** Applies one target's edits inside its own topic transaction, and reports each outcome. */
+    /** Applies one target's edits inside its own topic transaction and reports each outcome. */
     private fun applyToOne(
         cxt: KdrCxt,
         kind: GedraDataType,
@@ -324,9 +324,9 @@ class GedraDataService : ServiceInitializer {
     ): GedraPatchResult {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
-        // The scope rides on the write as well as on the admit-phase read, exactly as the delete's does. It is
+        // The scope rides on the "write" as well as on the admit-phase read, exactly as the delete's does. It is
         // belt and braces -- admitting already refused anything out of reach -- and it costs one clause to
-        // make the write itself unable to touch a row the caller may not, rather than relying on an earlier
+        // make the "write" itself unable to touch a row the caller may not, rather than relying on an earlier
         // phase having been correct.
         val bind = mutableMapOf<String, Any?>()
         val conditions = mutableListOf(
@@ -347,7 +347,7 @@ class GedraDataService : ServiceInitializer {
             // Read under the lock: the admit-phase read was for permission, and a merge needs current data.
             val row = readForPatch(cxt, sqlCxt, table, target.gedraId)
             // Keyed by trait because that is how an edit names an entry, and the one-per-trait rule makes the
-            // key unique. Order is preserved so an unrelated entry does not move when its neighbour changes.
+            // key unique. Order is preserved so an unrelated entry does not move when its neighbor changes.
             val byTrait = LinkedHashMap<String, Map<String, Any?>>()
             for (entry in row.entries) {
                 entry[GE.traitId].toOptStr()?.let { byTrait[it] = entry }
@@ -432,7 +432,7 @@ class GedraDataService : ServiceInitializer {
                 "The ${edit.action.name} of '${edit.traitId}' carries no data. Only a " +
                     "${GedraEditAction.deleteOrNoOp.name} may leave it out.",
             )
-        // A merge folds the supplied keys over what is stored; a replace takes the supplied data whole. Keys
+        // A merge folds the supplied keys over what is stored; a "replace" takes the supplied data whole. Keys
         // rather than a deep merge, which is what the questionnaire case wants: a page owns the answers it
         // shows and says nothing about the rest.
         val data = if (edit.action == GedraEditAction.addOrMerge) {
@@ -470,7 +470,7 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * Checks the entries a patch is about to store against the entry union -- the stored shape, not the sent
+     * Checks the entries a patch is about to store against the entry union -- the stored shape, not the "sent"
      * one.
      *
      * The edit was already validated on the way in, so why again? Because a **merge** produces something

@@ -25,10 +25,10 @@ import com.dynamicruntime.common.schema.schemaDefs
  *
  * ### The default branch, again
  *
- * Present for the same reason the entry union has one, and one more. Trait definitions are authored by people
+ * Present for the same reason, the entry union has one, and one more. Trait definitions are authored by people
  * who are not us, so meeting an unknown `traitId` is ordinary; and the general patch endpoint deliberately
  * knows only the global traits, so a client's own trait is *expected* to arrive here and carry its data as
- * plain JSON. Refusing it would make the general endpoint unusable for exactly the callers client separation
+ * plain JSON. Refusing it would make the general endpoint unusable for exactly the caller's client separation
  * exists to serve.
  */
 fun entryEditUnionDefs(
@@ -37,7 +37,7 @@ fun entryEditUnionDefs(
     kind: GedraDataType,
     traits: Collection<GedraTrait>,
 ): Map<String, Any?> {
-    // Sorted by trait id, so the same set of traits produces the same document however the components that
+    // Sorted by trait id, so the same set of traits produces the same document, however, the components that
     // contributed them happened to be ordered.
     val applicable = traits.filter { kind in it.appliesTo }.sortedBy { it.traitId }
     val unionName = GU.editUnionName(kind)
