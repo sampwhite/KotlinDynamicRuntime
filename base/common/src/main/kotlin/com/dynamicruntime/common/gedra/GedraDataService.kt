@@ -278,7 +278,20 @@ class GedraDataService : ServiceInitializer {
         return ordered.flatMap { (kind, targets) -> targets.map { applyToOne(cxt, kind, it, scope) } }
     }
 
-    /** Refuses a target the caller may not reach, or that contradicts the kind it was filed under. */
+    /**
+     * Refuses a target the caller may not reach, or that contradicts the kind it was filed under.
+     *
+     * One scoped query per target, and it stays one even for a caller who is confined by nothing. The scope is
+     * a clause on a query that has to happen anyway: a patch must know the gedra **exists** before entering a
+     * transaction for it, because `executeTopicTran` inserts the lock row when it is missing and would
+     * otherwise mint a root row for a gedra that never was -- the same trap the delete guards.
+     *
+     * So the obvious saving is not one. Skipping the check for an `allClients` administrator, or reading
+     * ownership out of the id's client segment for a client-scoped one, removes a `where` clause and no round
+     * trip: the id says who *would* own the row, never whether there is one. What removes the round trip is
+     * the table cache, and until it exists this is a database query per target, which is the right cost for a
+     * surface where nearly every caller is an ordinary user confined to their own rows.
+     */
     private fun admit(cxt: KdrCxt, kind: GedraDataType, target: GedraPatchTarget, scope: ReadScope) {
         if (target.gedraId.dataType != kind) {
             // The id carries its kind, so a row filed under the wrong group is a request that disagrees with
