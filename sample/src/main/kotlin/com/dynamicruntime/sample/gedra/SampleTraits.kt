@@ -23,6 +23,14 @@ object ST {
     const val itemCount = "itemCount"
     const val totalAmount = "totalAmount"
 
+    // --- the questionnaire trait, which exercises a merge ---
+    const val questionnaire = "questionnaire"
+    const val questionnaireEntry = "QuestionnaireEntry"
+    const val topic = "topic"
+    const val notes = "notes"
+    const val hasIssue = "hasIssue"
+    const val explanation = "explanation"
+
     // --- the approval trait, which exercises a conditional inside `data` ---
     const val managerApproval = "managerApproval"
     const val approvalEntry = "ApprovalEntry"
@@ -73,6 +81,28 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
             type = SCT.number
             derived = true
         }
+    }
+
+    // Every other trait here makes something required, which turns out to make `addOrMerge` unreachable:
+    // a merge sends a fragment, and a fragment cannot satisfy a `required` its page did not ask about. So a
+    // merge needs a trait shaped the way real merge targets are -- **everything optional**, with requiredness
+    // left to the workflow as a soft rule (see the soft-validation section of `gedra-patch.md`). This is that
+    // trait, and the questionnaire is the case it is named for: one entry holding a long body of answers, of
+    // which a page updates a few.
+    trait(
+        ST.questionnaireEntry,
+        ST.questionnaire,
+        setOf(GedraDataType.formDoc),
+        "A body of answers, updated a page at a time.",
+    ) {
+        property(ST.topic, "What this questionnaire is about.")
+        property(ST.notes, "Anything the answerer wanted to add.")
+        property(ST.hasIssue, "Whether the answerer flagged a problem.") { type = SCT.boolean }
+        property(ST.explanation, "What the problem is.")
+        // A conditional over two *optional* fields, which is what makes it possible to send a fragment that is
+        // valid alone and invalid once merged: `{hasIssue: false}` says nothing wrong by itself, and says
+        // something wrong when it lands on a stored explanation.
+        presentWhen(ST.explanation, on = ST.hasIssue, value = true)
     }
 
     trait(

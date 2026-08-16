@@ -52,6 +52,10 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
     fun postItem(path: String, data: Map<String, Any?>): Map<String, Any?> =
         client.sendJsonPostRequest(path, data)[EP.item].toJsonMapOrEmpty()
 
+    /** POSTs [data] to [path] as this user; returns the response's `items` list. */
+    fun postItems(path: String, data: Map<String, Any?>): List<Map<String, Any?>> =
+        client.sendJsonPostRequest(path, data)[EP.items].toJsonListOfMaps()
+
     /** This user's *current* roles, read live from `/auth/self/info` (not the possibly-stale [userInfo]). */
     fun selfRoles(): List<String> = rolesOf(getData(AEP.selfInfo))
 

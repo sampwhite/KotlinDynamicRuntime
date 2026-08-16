@@ -171,6 +171,18 @@ class GedraDataEndpointTest : StringSpec({
         entries[1][GE.data].toJsonMapOrEmpty()["whatever"] shouldBe 1L
     }
 
+    // At most one entry per trait (issue #337). Until `g-primaryKey` exists, there is nothing to tell two
+    // entries of one trait apart, so a gedra carrying both could not be addressed by trait -- which is how the
+    // patch, and the form, expect to address entries. Refused on the way in rather than discovered later.
+    "two entries of one trait are refused" {
+        val before = alice.getItems(GEP.formDocs).size
+        alice.expectError(
+            400, GEP.formDocCreate,
+            mapOf(GDF.entries to listOf(nameEntry("First"), nameEntry("Second"))),
+        )
+        alice.getItems(GEP.formDocs).size shouldBe before
+    }
+
     "an entry that breaks its trait's bound is refused, and nothing is stored" {
         val before = alice.getItems(GEP.formDocs).size
         alice.expectError(

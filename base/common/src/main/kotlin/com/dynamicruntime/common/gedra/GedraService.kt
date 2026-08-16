@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.intern.InternCache
 import com.dynamicruntime.common.startup.ServiceInitializer
 
@@ -53,5 +54,9 @@ class GedraService : ServiceInitializer {
         const val serviceName = "GedraService"
 
         fun get(cxt: KdrCxt): GedraService? = cxt.instanceConfig.get(serviceName) as? GedraService
+
+        /** The service, or a fault naming it -- for a handler that cannot proceed without one. */
+        fun require(cxt: KdrCxt): GedraService = get(cxt)
+            ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }

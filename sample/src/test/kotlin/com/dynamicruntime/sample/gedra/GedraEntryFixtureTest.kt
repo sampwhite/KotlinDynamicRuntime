@@ -125,7 +125,7 @@ class GedraEntryFixtureTest : StringSpec({
         ).rptResponseData?.jsonMap() ?: emptyMap()
         val explained = response.getValue(EP.meta).toJsonMapOrEmpty()
             .getValue(GFX.entriesExplained).toJsonMapOrEmpty()
-        explained[GFX.knownTraits] shouldBe listOf(ST.expenseReport, ST.managerApproval, GT.name)
+        explained[GFX.knownTraits] shouldBe listOf(ST.expenseReport, ST.managerApproval, GT.name, ST.questionnaire)
         explained[GFX.branches] shouldBe listOf(GT.name, GFX.default)
     }
 
@@ -231,7 +231,9 @@ class GedraEntryFixtureTest : StringSpec({
         // Three branches, from two components -- the runtime's own trait beside the sample's, which is what
         // makes this a union rather than a wrapper around one type. Ordered by trait id, so the document does
         // not change with the order components happened to load in.
-        variants.values shouldContainExactly listOf(ST.expenseReport, ST.managerApproval, GT.name)
+        // Sorted by trait id, so the document does not change with the order components happened to load in --
+        // which is also why adding `questionnaire` (issue #337) landed it last rather than anywhere.
+        variants.values shouldContainExactly listOf(ST.expenseReport, ST.managerApproval, GT.name, ST.questionnaire)
         variants.discriminator shouldBe GE.traitId
         // A default branch, always -- see below for why.
         variants.defaultBranch.shouldNotBeNull()
@@ -255,6 +257,6 @@ class GedraEntryFixtureTest : StringSpec({
         strict.map { it.path to it.code } shouldContainExactly listOf(GE.traitId to SchFailCode.invalidOption)
         // The refusal names what this reader does know, which is the actionable half.
         strict.first().options.shouldNotBeNull().map { it.value } shouldContainExactly
-            listOf(ST.expenseReport, ST.managerApproval, GT.name)
+            listOf(ST.expenseReport, ST.managerApproval, GT.name, ST.questionnaire)
     }
 })

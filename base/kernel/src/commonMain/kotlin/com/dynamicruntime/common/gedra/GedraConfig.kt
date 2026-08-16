@@ -24,6 +24,19 @@ class GedraTrait(
     val typeName: String,
     /** The gedra kinds that may carry an entry of this trait; never empty. */
     val appliesTo: Set<GedraDataType>,
+    /**
+     * The schema of the trait's own `data` — the shape under [GE.data] in an entry of this trait (issue #337).
+     *
+     * Held here because a trait *is* its definition, and its data shape is the largest part of that. It was
+     * previously reachable only by finding [typeName] in the built `$defs` and reading a property off it,
+     * which made every consumer depend on the layout of a document rather than on the trait.
+     *
+     * It is what a second manufactured type is built from: the entry union declares complete entries, and the
+     * patch's edit union declares the same data beside an action, so both are generated from *this* rather
+     * than one from the other. Either a `$ref` to a named type or an inline object, depending on how the trait
+     * was authored — the two are equivalent to a reader and neither is normalized here.
+     */
+    val dataSchema: Map<String, Any?>,
 ) {
     override fun toString(): String = "$traitId -> $typeName"
 }
@@ -105,8 +118,12 @@ class GedraConfigBuilder(cxt: KdrCxtBase, namespace: String) : SchTypesBuilder(c
         description: String? = null,
         dataSchema: SchTypeBuilder.() -> Unit,
     ) {
-        record(typeName, traitId, appliesTo)
-        traitEntry(typeName, traitId, appliesTo, description, dataSchema)
+        // Checked before anything is built, so a duplicate is refused rather than half-declared, and recorded
+        // afterward, because the trait cannot be described until its data schema exists.
+        val qualified = qualifyTypeName(typeName, namespace)
+        checkTraitIsNew(qualified, traitId)
+        val built = traitEntry(typeName, traitId, appliesTo, description, dataSchema)
+        traits[traitId] = GedraTrait(traitId, qualified, appliesTo, built)
     }
 
     /**
@@ -124,8 +141,8 @@ class GedraConfigBuilder(cxt: KdrCxtBase, namespace: String) : SchTypesBuilder(c
         trait(typeName, traitId, appliesTo, description) { ref(dataType) }
     }
 
-    private fun record(typeName: String, traitId: String, appliesTo: Set<GedraDataType>) {
-        val qualified = qualifyTypeName(typeName, namespace)
+    /** Refuses a trait id or a generated type name this config has already used. */
+    private fun checkTraitIsNew(qualified: String, traitId: String) {
         traits[traitId]?.let {
             throw KdrException.mkConv(
                 "Trait '$traitId' is declared twice in one config, as '${it.typeName}' and as '$qualified'. " +
@@ -139,7 +156,6 @@ class GedraConfigBuilder(cxt: KdrCxtBase, namespace: String) : SchTypesBuilder(c
                     "would silently replace the first, so it is refused here instead.",
             )
         }
-        traits[traitId] = GedraTrait(traitId, qualified, appliesTo)
     }
 }
 

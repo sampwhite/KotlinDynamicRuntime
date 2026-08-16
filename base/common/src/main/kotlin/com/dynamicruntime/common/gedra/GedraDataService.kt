@@ -2,8 +2,11 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.sql.KdrTable
+import com.dynamicruntime.common.sql.SqlCxt
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlScopeUtil
 import com.dynamicruntime.common.sql.SqlStmtUtil
@@ -12,6 +15,11 @@ import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkUniqueId
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptInstant
+import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptStr
+import kotlin.time.Instant
 
 /** The `_debug` tag the gedra listing answers to, and the `_meta` keys it writes under. */
 @Suppress("ConstPropertyName")
@@ -36,17 +44,24 @@ object GDBG {
 }
 
 /**
- * Storage for gedra **data** (issue #310): creating one, reading one, and listing the ones a caller may see.
+ * Storage for gedra **data**: creating one, reading one, listing the ones a caller may see (issue #310),
+ * deleting one (#326), and patching several (#337).
  *
  * It holds no state of its own -- the identity space it works in belongs to [GedraService], which the config
  * service will share. Registered by the `common` component; found via [get].
  *
  * ### What is not here yet
  *
- * **Updating.** Creation assigns entries, and that is all it does; a patch is its own issue and its own set of
- * problems (locked and process-owned entries, merging, entry primary keys, deletion, and a batch across
- * several documents at once). Nothing here should be extended into an update path by adding a flag to
- * [createGedra] -- the reason those are hard is that they are decisions, not plumbing.
+ * **Enforcing locked, admin-only and process-only entries.** The patch is supposed to refuse an edit naming
+ * one, and cannot: those are directives on the trait wrapper, which does not exist, so there is nowhere for a
+ * trait to declare itself locked. Said here rather than left as a silence, because a patch that looks as
+ * though it honors them and does not is worse than one that plainly cannot yet.
+ *
+ * **`g-primaryKey`.** An entry is addressed by its trait, and a gedra holds at most one entry per trait
+ * ([checkOneEntryPerTrait]). Several entries of one trait, told apart by a key drawn from their data, is what
+ * that keyword will allow.
+ *
+ * **Dry runs, and all-or-nothing across gedras.** See `gedra-patch.md`.
  */
 @Suppress("DuplicatedCode")
 class GedraDataService : ServiceInitializer {
@@ -63,6 +78,17 @@ class GedraDataService : ServiceInitializer {
         ?: throw KdrException("${GDT.gedraData} table is not registered in the schema store.")
 
     /**
+     * The order a patch applies kinds in (issue #337).
+     *
+     * Only the first entry is a decision: a **workflow is edited before the forms it governs**, because it is
+     * where "has this already been done?" is recorded and so has to see a "submit" first. The rest follow in
+     * declaration order, which is arbitrary but fixed -- what matters is that the server chooses, so a caller
+     * cannot reorder the phases by reordering their request.
+     */
+    private val kindApplyOrder: List<GedraDataType> =
+        listOf(GedraDataType.wfData) + GedraDataType.entries.filter { it != GedraDataType.wfData }
+
+    /**
      * Creates a gedra of [kind] owned by the calling context, carrying [entries], and returns it as stored.
      *
      * The two tiers are written inside one topic transaction: the root row is what the lock is taken on, and
@@ -75,6 +101,10 @@ class GedraDataService : ServiceInitializer {
      * the timestamps. A caller supplies none of it, which is what `g-derived` on those fields says.
      */
     fun createGedra(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>): GedraDataRow {
+        // At most one entry per trait, refused before anything is minted (issue #337). This was not checked
+        // when create was written, so a caller could store two entries of one trait and leave a gedra nothing
+        // could address by trait alone -- which is how the patch, and the form, expect to address them.
+        checkOneEntryPerTrait(entries)
         // Interned as it is minted, so every later reader of this gedra shares one instance. The cache does
         // not yet hold every extant id, so this buys identity and cheap keys and not existence -- see
         // GedraService.gedraIds.
@@ -154,7 +184,7 @@ class GedraDataService : ServiceInitializer {
     /**
      * Deletes the gedra [fullId] names, returning whether there was one to delete (issue #326).
      *
-     * ### A soft delete, and why that is the delete
+     * ### A soft delete, and why that is the "delete"
      *
      * The row is marked not [PF.enabled] rather than removed. That is what `enabled` is for -- the SQL layer
      * calls a row whose flag is not `true` one that is *not there*, and every application read already goes
@@ -168,13 +198,13 @@ class GedraDataService : ServiceInitializer {
      *
      * ### Why the existence check comes before the transaction
      *
-     * The write goes through a topic transaction, because coordinating changes to one gedra is what the root
+     * The "write" goes through a topic transaction, because coordinating changes to one gedra is what the root
      * table is *for*, and a delete that reached a file store later would have to. But `executeTopicTran`
      * inserts the lock row when it is missing, so entering it with an id that names nothing would mint a root
      * row for a gedra that never existed -- a delete quietly creating something. Checking first means the
      * transaction is only ever entered for a gedra that is really there.
      *
-     * The gap between the check and the write is harmless: the update is itself scoped and requires the row to
+     * The gap between the check and the "write" is harmless: the update is itself scoped and requires the row to
      * still be enabled, so a second concurrent delete changes no rows and simply reports nothing to do.
      */
     fun deleteGedra(cxt: KdrCxt, fullId: String, kind: GedraDataType, scope: ReadScope): Boolean {
@@ -185,8 +215,8 @@ class GedraDataService : ServiceInitializer {
         val data = mutableMapOf<String, Any?>(
             GD.gedraId to row.gedraId.fullId,
             // The audit half of a delete. `prepForStdExecute` is deliberately not used: it stamps `enabled`
-            // true unconditionally, which is right for a create that revives a disabled row and exactly wrong
-            // here -- the write would succeed and leave the gedra live. `UserService.updateUser` defends the
+            // true unconditionally, which is right for a "create" that revives a disabled row and exactly wrong
+            // here -- the "write" would succeed and leave the gedra live. `UserService.updateUser` defends the
             // same field for the same reason; this states it in the SQL instead, so there is nothing to defend.
             PF.updatedAt to cxt.instanceNow(),
             PF.updatedBy to cxt.userProfile.userId,
@@ -208,6 +238,261 @@ class GedraDataService : ServiceInitializer {
             changed = sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
         }
         return changed > 0
+    }
+
+
+    /**
+     * Applies a patch across several gedras and reports what became of each edit (issue #337).
+     *
+     * ### Two phases, and the first one is the whole security story
+     *
+     * **Admit everything before writing anything.** Every target is resolved, checked against the kind it was
+     * grouped under, and read through [queryGedra] with [scope] -- so a caller who may not reach one of them
+     * has the *whole* call refused rather than discovering it partway through, with some gedras already
+     * changed. It is also why the refusal names the id but never says why: absent, disabled, wrong kind, and
+     * out of scope answer alike, so a patch reveals no more than a read would.
+     *
+     * **Then apply, one topic transaction per target.** Atomicity is per target: each succeeds or fails alone,
+     * and the answer says which. That is the arrangement rather than a first cut -- recovery from a partial
+     * patch is by replay, since a workflow records what it has already done and a retry skips it. See
+     * `gedra-patch.md`.
+     *
+     * Kinds are applied in a fixed order with `wfData` first, because a workflow is the thing that guards
+     * against a double submit and has to see the edit before the forms it governs do. The server chooses that
+     * order rather than honoring the request's, so a caller cannot subvert it by sending forms first.
+     *
+     * The row is read again inside the transaction. The admit-phase read cannot be reused: it happened outside
+     * the lock, and a merge has to work from what is stored now rather than from what was stored a moment ago.
+     */
+    fun patchGedras(
+        cxt: KdrCxt,
+        targetsByKind: Map<GedraDataType, List<GedraPatchTarget>>,
+        scope: ReadScope,
+    ): List<GedraPatchResult> {
+        val ordered = kindApplyOrder.mapNotNull { kind -> targetsByKind[kind]?.let { kind to it } }
+        for ((kind, targets) in ordered) {
+            for (target in targets) {
+                admit(cxt, kind, target, scope)
+            }
+        }
+        return ordered.flatMap { (kind, targets) -> targets.map { applyToOne(cxt, kind, it, scope) } }
+    }
+
+    /**
+     * Refuses a target the caller may not reach, or that contradicts the kind it was filed under.
+     *
+     * One scoped query per target, and it stays one even for a caller who is confined by nothing. The scope is
+     * a clause on a query that has to happen anyway: a patch must know the gedra **exists** before entering a
+     * transaction for it, because `executeTopicTran` inserts the lock row when it is missing and would
+     * otherwise mint a root row for a gedra that never was -- the same trap the delete guards.
+     *
+     * So the obvious saving is not one. Skipping the check for an `allClients` administrator, or reading
+     * ownership out of the id's client segment for a client-scoped one, removes a `where` clause and no round
+     * trip: the id says who *would* own the row, never whether there is one. What removes the round trip is
+     * the table cache, and until it exists this is a database query per target, which is the right cost for a
+     * surface where nearly every caller is an ordinary user confined to their own rows.
+     */
+    private fun admit(cxt: KdrCxt, kind: GedraDataType, target: GedraPatchTarget, scope: ReadScope) {
+        if (target.gedraId.dataType != kind) {
+            // The id carries its kind, so a row filed under the wrong group is a request that disagrees with
+            // itself. Refused rather than believed, because either half could be the mistake.
+            throw KdrException.mkInput(
+                "'${target.gedraId}' is a ${target.gedraId.dataType?.name} gedra but was sent under " +
+                    "'${kind.name}'. A gedra id already says what kind it is, so the two have to agree.",
+            )
+        }
+        // One edit per trait, for the reason a gedra holds one entry per trait: two edits naming one trait are
+        // either contradictory or a "replace" written twice, and neither has an honest reading.
+        val traits = target.edits.map { it.traitId }
+        traits.firstOrNull { id -> traits.count { it == id } > 1 }?.let {
+            throw KdrException.mkInput(
+                "The target '${target.gedraId}' asks two things of trait '$it'. A gedra holds one entry per " +
+                    "trait, so there is no way to say which of the two was meant.",
+            )
+        }
+        if (queryGedra(cxt, target.gedraId.fullId, kind, scope) == null) {
+            throw KdrException("No ${kind.name} gedra '${target.gedraId}'.", code = EXC.notFound)
+        }
+    }
+
+    /** Applies one target's edits inside its own topic transaction and reports each outcome. */
+    private fun applyToOne(
+        cxt: KdrCxt,
+        kind: GedraDataType,
+        target: GedraPatchTarget,
+        scope: ReadScope,
+    ): GedraPatchResult {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val table = gedraDataTable(cxt)
+        // The scope rides on the "write" as well as on the admit-phase read, exactly as the delete's does. It is
+        // belt and braces -- admitting already refused anything out of reach -- and it costs one clause to
+        // make the "write" itself unable to touch a row the caller may not, rather than relying on an earlier
+        // phase having been correct.
+        val bind = mutableMapOf<String, Any?>()
+        val conditions = mutableListOf(
+            "c:${GD.gedraId} = :${GD.gedraId}",
+            "c:${PF.enabled} = true",
+        )
+        conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, bind))
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "uGedraDataPatch${scope.shapeKey}", table.columns,
+            "update t:${GDT.gedraData} set c:${GD.data} = :${GD.data}, " +
+                "c:${PF.updatedAt} = :${PF.updatedAt}, c:${PF.updatedBy} = :${PF.updatedBy} " +
+                "where ${conditions.joinToString(" and ")}",
+        )
+        val outcomes = mutableListOf<GedraEditOutcome>()
+        SqlTopicTranProvider.executeTopicTran(
+            sqlCxt, tranPatch, null, mapOf(GD.gedraId to target.gedraId.fullId),
+        ) {
+            // Read under the lock: the admit-phase read was for permission, and a merge needs current data.
+            val row = readForPatch(cxt, sqlCxt, table, target.gedraId)
+            // Keyed by trait because that is how an edit names an entry, and the one-per-trait rule makes the
+            // key unique. Order is preserved so an unrelated entry does not move when its neighbor changes.
+            val byTrait = LinkedHashMap<String, Map<String, Any?>>()
+            for (entry in row.entries) {
+                entry[GE.traitId].toOptStr()?.let { byTrait[it] = entry }
+            }
+            val now = cxt.instanceNow()
+            for (edit in target.edits) {
+                outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(cxt, edit, byTrait, now)))
+            }
+            val entries = byTrait.values.toList()
+            checkStoredEntries(cxt, kind, entries)
+            val changed = sqlCxt.sqlDb.executeStatement(
+                cxt, stmt,
+                bind + mapOf(
+                    GD.gedraId to target.gedraId.fullId,
+                    GD.data to (row.extra + linkedMapOf<String, Any?>(GD.entries to entries)),
+                    PF.updatedAt to now,
+                    PF.updatedBy to cxt.userProfile.userId,
+                ),
+            )
+            // Zero rows means the gedra stopped being writable between admitting and applying -- deleted, or
+            // moved out of reach. Silence here would report edits as applied that were not, which is the one
+            // outcome the answer must never contain.
+            if (changed == 0) {
+                throw KdrException(
+                    "The gedra '${target.gedraId}' could no longer be written when the patch reached it.",
+                    code = EXC.notFound,
+                )
+            }
+        }
+        return GedraPatchResult(target.gedraId, outcomes)
+    }
+
+    /** The row as it stands inside the transaction; absent here means it went between admitting and applying. */
+    private fun readForPatch(
+        cxt: KdrCxt,
+        sqlCxt: SqlCxt,
+        table: KdrTable,
+        gedraId: GedraId,
+    ): GedraDataRow {
+        val stmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
+        val raw = sqlCxt.sqlDb.queryOneEnabled(cxt, stmt, mapOf(GD.gedraId to gedraId.fullId))
+            ?: throw KdrException("No gedra '$gedraId'.", code = EXC.notFound)
+        return GedraDataRow.extract(gedraService, raw)
+    }
+
+    /**
+     * Applies one edit to the entries held by trait, returning whether anything changed.
+     *
+     * A supplied [GedraEdit.entryId] has to name the entry that is actually there. It is redundant today --
+     * the trait already identifies the entry -- so treating a mismatch as an error costs nothing and turns it
+     * into a cheap staleness check: a caller working from an older copy is told so rather than overwriting
+     * whatever replaced it. When `g-primaryKey` allows several entries per trait, this is the field that will
+     * choose between them, and the check becomes load-bearing rather than a bonus.
+     */
+    private fun applyEdit(
+        cxt: KdrCxt,
+        edit: GedraEdit,
+        byTrait: MutableMap<String, Map<String, Any?>>,
+        now: Instant,
+    ): Boolean {
+        val existing = byTrait[edit.traitId]
+        val existingId = existing?.get(GE.entryId).toOptStr()
+        if (edit.entryId != null && edit.entryId != existingId) {
+            if (existing == null && edit.action == GedraEditAction.deleteOrNoOp) {
+                return false // asked to remove a named entry that is not there; that is the "no op" half
+            }
+            throw KdrException.mkInput(
+                "The edit to '${edit.traitId}' names entry '${edit.entryId}', but the gedra holds " +
+                    (existingId?.let { "'$it'" } ?: "no entry of that trait") +
+                    ". The copy this edit was written against is out of date.",
+            )
+        }
+        if (edit.action == GedraEditAction.deleteOrNoOp) {
+            if (existing == null) {
+                return false
+            }
+            byTrait.remove(edit.traitId)
+            return true
+        }
+        val supplied = edit.data
+            ?: throw KdrException.mkInput(
+                "The ${edit.action.name} of '${edit.traitId}' carries no data. Only a " +
+                    "${GedraEditAction.deleteOrNoOp.name} may leave it out.",
+            )
+        // A merge folds the supplied keys over what is stored; a "replace" takes the supplied data whole. Keys
+        // rather than a deep merge, which is what the questionnaire case wants: a page owns the answers it
+        // shows and says nothing about the rest.
+        val data = if (edit.action == GedraEditAction.addOrMerge) {
+            existing?.get(GE.data).toJsonMapOrEmpty() + supplied
+        } else {
+            supplied
+        }
+        byTrait[edit.traitId] = mkStoredEntry(cxt, edit.traitId, data, existing, now)
+        return true
+    }
+
+    /** The entry as it will be stored: a new envelope, or the existing one with its `updated` half moved on. */
+    private fun mkStoredEntry(
+        cxt: KdrCxt,
+        traitId: String,
+        data: Map<String, Any?>,
+        existing: Map<String, Any?>?,
+        now: Instant,
+    ): Map<String, Any?> {
+        val actor = cxt.userProfile.userId
+        val base = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to data)
+        if (existing == null) {
+            return base.asStoredEntry(cxt.mkUniqueId(), GSRC.user, now, actor)
+        }
+        // An entry that already exists keeps who made it and when; only the `updated` half moves, which is the
+        // whole reason the envelope carries both pairs.
+        return base.asStoredEntry(
+            entryId = existing[GE.entryId].toOptStr() ?: cxt.mkUniqueId(),
+            source = GSRC.user,
+            createdAt = existing[GE.createdAt].toOptInstant() ?: now,
+            createdBy = existing[GE.createdBy].toOptLong() ?: actor,
+            updatedAt = now,
+            updatedBy = actor,
+        )
+    }
+
+    /**
+     * Checks the entries a patch is about to store against the entry union -- the stored shape, not the "sent"
+     * one.
+     *
+     * The edit was already validated on the way in, so why again? Because a **merge** produces something
+     * neither half was: the stored data and the supplied keys each satisfied the trait alone, and their union
+     * may not. A conditional is the ordinary way that happens -- a stored `approved: true` beside a newly
+     * merged `rejectionReason` is two valid halves making one invalid entry.
+     *
+     * Known limit, recorded rather than fixed: a merge fragment is validated against the trait's own schema on
+     * the way in, `required` included. That is a non-issue for the traits merges are for, which mark their
+     * fields optional and leave requiredness to the workflow, and it would bite a trait that mixed required
+     * fields with merge usage. See the soft-validation section of `gedra-patch.md`.
+     */
+    private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {
+        checkOneEntryPerTrait(entries)
+        val union = cxt.getSchema().types["${GCFG.globalNamespace}.${GU.unionName(kind)}"] ?: return
+        val failures = entries.flatMap { validate(union, it) }
+        if (failures.isNotEmpty()) {
+            throw KdrException.mkInput(
+                "The patch would leave ${failures.size} problem(s) in the stored entries: " +
+                    failures.joinToString("; ") { "${it.path}: ${it.message}" },
+            )
+        }
     }
 
     /**
@@ -282,6 +567,9 @@ class GedraDataService : ServiceInitializer {
 
         /** Name of the "delete" transaction; it prefixes the generated transaction id. */
         const val tranDelete = "deleteGedra"
+
+        /** Name of the "patch" transaction; it prefixes the generated transaction id. */
+        const val tranPatch = "patchGedra"
 
         fun get(cxt: KdrCxt): GedraDataService? = cxt.instanceConfig.get(serviceName) as? GedraDataService
 
