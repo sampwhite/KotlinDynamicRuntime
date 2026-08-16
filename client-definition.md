@@ -139,8 +139,8 @@ For this user the `clientId` would be `acme` not `acme#featureX`. When a new use
 an embedded `clientId` in its email, the user will be created in that client, if it exists and is enabled. If it
 does not exist or is not enabled, the user falls back to `public`, with a warning logged and nothing else said.
 
-A `%persona` suffix after the client id names a **persona**, so `user1+local%admin@example.com` is an admin of
-`local`; `%` is one of the characters that terminates the client id. A persona is deliberately not called a
+A `%persona` suffix after the client id names a **persona**, so `user1+hub%admin@example.com` is an admin of
+`hub`; `%` is one of the characters that terminates the client id. A persona is deliberately not called a
 role: for now it is a **subset** of the roles, and it **cannot grant `allClients`**. When more capabilities
 exist there will be a formal definition of a persona and of how it maps onto roles and capabilities, with some
 capabilities possibly depending on the client's own definition. An address on these two domains with **no**
@@ -236,34 +236,46 @@ a client can be declared — which is the safest way to introduce a concept this
 
 # Decisions
 
-## Clients that exist: `local`, `public`, and the name
+## Clients that exist: `hub`, `public`, and the name
 
-**`local` becomes a real client**, defined in the `common` component, and one of the first written in this
-structure. **`public` stays as it is**: existing behavior untouched, with the application's default anonymous
-web resources serving as its resources. It is for demoing rather than real use, and its own shape is still to
-be sketched.
+**`hub` is the client that `local` becomes** — a real client, defined in the `common` component, and one of the
+first written in this structure. **`public` stays as it is**: existing behavior untouched, with the
+application's default anonymous web resources serving as its resources. It is for demoing rather than real use,
+and its own shape is still to be sketched.
 
-**`local` is to be renamed.** `CL.local` and `ENV.local` are the same string meaning unrelated things, and they
-will sit beside each other constantly once a client declares `enabledEnvironments`. It has already caused one
+**Why `local` had to go.** `CL.local` and `ENV.local` are the same string meaning unrelated things, and they
+would sit beside each other constantly once a client declares `enabledEnvironments`. It had already caused one
 misreading: `SqlTopicServiceTest` asserts `PF.client shouldBe "local"`, which scans as an assertion about the
-environment. Of the two, the client is the newcomer — "local" for a development environment is universal
-vocabulary — so the client is what moves.
+environment. Of the two the client is the newcomer — "local" for a development environment is universal
+vocabulary — so the client is what moved.
 
-The rule that narrowed the candidates: **name the position, not the purpose.** What this client is *for* is
-exactly what is still being learned, so any name describing the job (`internal`, `staff`, `ops`, `system`) can
-turn out wrong, while a name describing where it sits stays true. That is also the fairest defence of `local`,
-whose only real defect is the collision. `hq` and `hub` are the candidates.
+**Why `hub`.** The rule that decided it: **name the position, not the purpose.** What this client is *for* is
+exactly what is still being learned, so any name describing the job — `internal`, `staff`, `ops`, `system` —
+could turn out wrong, while a name describing where it sits stays true whatever it comes to hold. That was also
+the fairest defence of `local`, whose only real defect was the collision.
 
-The classification that *does* carry meaning belongs in an **attribute**, not the name, so that several internal
-clients can exist and all be marked. That is what frees the name to be arbitrary, and it is the part that need
-not wait on the naming.
+`hub` names a central point everything connects through, which is what this client is whatever it ends up
+doing, and it survives the future where several internal clients exist — one of them is still the hub. It is
+three characters, so `gd.fd.hub.u2026…` reads as cleanly as a two-letter token would, and it is a word rather
+than an abbreviation, which matters for something said aloud.
 
-**The window.** The rename costs nothing today: no persisted row carries `local`. All five client-scoped tables
-— `AuthUsers`, `LinkedUsers`, `AuthUserDevices`, `GedraDataTran`, `GedraData` — receive `public`, since auth
-writes it explicitly and gedras take it from a request profile, and `InstanceConfig` is not client-scoped. The
-first persisted row carrying `local` appears when something writes a client-scoped table **from a context whose
-client was defaulted** — internal batch activity, or users created in this client once it is defined. The event
-to rename before is a deployment that keeps its database, not a date.
+**What was considered and rejected.** `hq` was the first candidate and carries a military and large-corporation
+register that this is not. Two attempts to soften it by prefixing the family's `g` both landed on words that
+already exist: `ghub` reads as a near-miss of *github*, and `ghq` is *General Headquarters* — more specifically
+military than `hq`, not less. Short letter-strings are dense with prior meaning, so prefixing a common word
+tends to hit another word rather than escape into open space.
+
+**The classification stays an attribute.** Whether a client is internal or customer-facing belongs in a field,
+not in its name, so that several internal clients can exist and all be marked. That is what frees the name to
+be arbitrary, and it is why `hub` need not carry any of that meaning itself.
+
+**The window, and why it is now shut cheaply.** No persisted row carries `local` today: all five client-scoped
+tables — `AuthUsers`, `LinkedUsers`, `AuthUserDevices`, `GedraDataTran`, `GedraData` — receive `public`, since
+auth writes it explicitly and gedras take it from a request profile, and `InstanceConfig` is not client-scoped.
+The first row carrying it would appear when something writes a client-scoped table **from a context whose client
+was defaulted** — internal batch activity, or users created in this client once it is defined. Settling the name
+before that happens means `CL.hub` arrives with the first slice and no row ever carries the old value, so there
+is nothing to migrate.
 
 ## Environments, availability and retirement
 
@@ -323,7 +335,7 @@ On the two domains this applies to — `example.com` and `KDR_ADMIN_EMAIL_DOMAIN
 
 - **no `+`** grants `admin` **and** `operator` in whatever client the user is assigned to;
 - **`+<clientId>`** puts the user in that client;
-- **`%<persona>`** after the client id names the role — `user1+local%admin@example.com` is an admin of `local`.
+- **`%<persona>`** after the client id names the role — `user1+hub%admin@example.com` is an admin of `hub`.
   The client id is read only up to the first character that could not be in one, so `%` terminates it.
 
 Outside production such admins will eventually also hold `allClients`; in production only a subset will, and
@@ -457,7 +469,7 @@ truth for one client.
 **`public` stops being an exception.** A client whose supported set is exactly `#allGlobal`, and which varies
 nothing, computes a schema *equal* to the global one — and with structural sharing, "equal" can be "the same
 object". So `public` being the client that never creates a variant is not a rule the schema builder enforces but
-the result of what `public` declares. `local` becomes the second such client. Nothing needs to refuse `public`
+the result of what `public` declares. `hub` becomes the second such client. Nothing needs to refuse `public`
 the ability to declare a trait, either: doing so would simply make it a variant like anyone else, and the thing
 worth protecting is the *anonymous* schema being the global one, which no client can touch.
 
@@ -571,12 +583,12 @@ anybody's back — and only for a client that is not in production or has `stati
 
 The only place to look for status.
 
-## Blocking the first slice
+## Nothing blocking
 
-**The name replacing `local`.** `hq` and `hub` are with others for an opinion. Free to change now; see the
-window above.
+Everything the first slice needs is decided. What remains is either parked by choice or a question of ordering
+rather than design.
 
-## Not blocking
+## Open
 
 **Dynamic disabling** is a topic of its own, to be taken up when it arrives. Nothing decided here is expected
 to change because of it, so it does not need anticipating.
