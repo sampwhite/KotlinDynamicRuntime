@@ -146,7 +146,8 @@ an embedded `clientId` in its email, the user will be created in that client, if
 does not exist or is not enabled, the user falls back to `public`, with a warning logged and nothing else said.
 
 A `%persona` suffix after the client id names a **persona**, so `user1+hub%admin@example.com` is an admin of
-`hub`; `%` is one of the characters that terminates the client id. A persona is deliberately not called a
+`hub`; `%` is one of the characters that terminates the client id. **A client with no persona is an ordinary
+user**: `user1+acme@example.com` is a normal user of `acme`, not an administrator of it. A persona is deliberately not called a
 role: for now it is a **subset** of the roles, and it **cannot grant `allClients`**. When more capabilities
 exist there will be a formal definition of a persona and of how it maps onto roles and capabilities, with some
 capabilities possibly depending on the client's own definition. An address on these two domains with **no**
@@ -546,6 +547,22 @@ nodes and point at old ones; it must not write into old ones.** With sharing, th
 mutates after its own construction" and becomes "nothing mutates after any construction that might have shared
 it". That is a discipline for one piece of code, not a property to enforce in the type system, and it is
 checkable in a test — build a variant, then assert the global store's types are untouched.
+
+## Where a client's schema is applied
+
+The generic endpoints — create, patch, and the rest — **validate against the caller's client variant**, without
+becoming per-client endpoints. The two halves sit at different points and do not conflict:
+
+- **At the boundary**, an endpoint's published and resolved input type stays **global**. The form shows global
+  traits, a client's own trait arrives on the union's default branch as plain JSON, and the resolved type is the
+  same for every caller — which is what keeps the path-keyed type caches sound.
+- **In the service**, the entries about to be stored are validated against the **caller's client** union. So a
+  client trait that arrived as raw JSON is checked properly after all, against the definition its own client
+  declared.
+
+Permissive at the edge, strict where it is stored. That is what makes "a client's variant schema is applied when
+creating and patching entries" true without pulling per-client generated endpoints forward — those remain later
+work, and are where a client gets *typed input* rather than merely validated storage.
 
 ## Inheritance between clients
 
