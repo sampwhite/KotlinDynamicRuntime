@@ -486,6 +486,18 @@ something different for that client, and a `$ref` pointing at the original name 
 form. So the variant machinery is invoked by clients that overlay, not by clients that merely add — which is
 the same boundary as limiting cloning to what a client actually modified.
 
+## How much of the store a variant covers
+
+**Whatever the code is simplest carrying.** The preference is to vary only what needs varying, but if an
+implementation naturally sweeps in more than that, it is not worth avoiding: the CPU and memory involved are
+small enough to ignore, and simplicity of code is the thing actually being bought.
+
+The part of this that is *not* about size has its own answer. `SqlTopicService` reads the table catalog out of
+the store at boot, before any client exists, so what matters is which store a caller with no client is given —
+and that is already settled: **no client means the global one**, the same rule anonymous callers follow. With
+that, a variant carrying tables identical to global's is harmless, and sharing the map by reference makes it
+free.
+
 ## Rebuilding a variant, and what sharing requires
 
 **A client's version is rebuilt whole.** When the data behind its traits, schema or endpoints changes, the
@@ -565,11 +577,6 @@ The only place to look for status.
 window above.
 
 ## Not blocking
-
-**How much of the store a variant covers.** Path separation and per-client namespaces mean endpoints and
-additive types need no variant at all; overlays do. So the question is narrower than "a store per client" — it
-is which parts vary, and `tables` plainly do not, being read at boot by `SqlTopicService` before any client
-exists.
 
 **Dynamic disabling** is a topic of its own, to be taken up when it arrives. Nothing decided here is expected
 to change because of it, so it does not need anticipating.
