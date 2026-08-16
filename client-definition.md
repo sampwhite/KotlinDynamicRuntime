@@ -160,8 +160,8 @@ to the `traits` defined by the client. Both are future issues.
 
 ## The model
 
-A **client is a config object**, not a table row. It is declared inside a `GedraConfig` whose `GedraId` already
-carries the client, so the id *is* the binding — nothing has to say which client a definition belongs to twice.
+A **client is a config object**, not a table row. It is a typed field beside `traits` on a `GedraConfig` whose
+`GedraId` already carries the client, so the id *is* the binding — nothing has to say which client a definition belongs to twice.
 One bundle therefore defines at most one client, and every bundle sharing a client is read as one whole. Two
 bundles both declaring the *client itself* is a load-time error; two bundles adding traits to the same client is
 the ordinary case.
@@ -340,6 +340,10 @@ One consequence reads backwards until it is said out loud: **naming a persona na
 persona takes only what it names. The two are separate paths — the `allClients` that non-production admins
 receive comes from the auto-admin rule, never from a persona.
 
+`deferred-work.md` used *persona* for a different payload in the same part of an address — the identity-bound
+quality that makes a test user fail on demand. That use has been renamed to **fault**, which is not a coinage:
+#227 already uses it for deliberate failure. The formal concept keeps the word.
+
 **This supersedes the rule where a `+` tag disqualifies an address from auto-admin**, and the inversion is the
 thing to be careful about: an account deliberately created as a non-admin under the old rule reads as a client
 assignment under the new one. It also overtakes a `deferred-work.md` item — *auto-admin should grant the level,
@@ -437,6 +441,17 @@ it asked for and the only thing it could have meant.
 client's supported set must be fully determined by its own definition*. A functional group breaks that by
 construction and is refused whatever it is called; a declared group, if groups ever gain one, does not.
 
+### A client's schemas ride in the same bundle
+
+`GedraConfigBuilder` extends `SchTypesBuilder`, so a config declares ordinary types beside its traits and they
+land in `GedraConfig.defs` — augmented or wholly new, and client-scoped by construction, since the config's id
+carries the client. A client-scoped `GedraConfig` is therefore a **small component**: its own namespace, its own
+types, its own traits, arriving together.
+
+The alternative — tagging component-declared schemas with a client — would split one client's definitions across
+two places that then have to agree. Two paths for injecting schema is the cheaper redundancy than two sources of
+truth for one client.
+
 ### Two consequences
 
 **`public` stops being an exception.** A client whose supported set is exactly `#allGlobal`, and which varies
@@ -471,23 +486,6 @@ anybody's back — and only for a client that is not in production or has `stati
 The only place to look for status.
 
 ## Blocking the first slice
-
-**Where `ClientDef` sits inside `GedraConfig`.** A typed field beside `traits` is the obvious answer while
-source code is the only path. The question is whether it is shaped so that the **stored-entry** form — config
-held in a database is a gedra carrying entries, which is what #316 is about — can produce the same thing later
-without a second definition of what a client is.
-
-**Whether `persona` can mean two things in one address.** What a persona *is* has been settled — a subset of
-the roles, never granting `allClients`, with a formal mapping to come. What has not is that
-[`deferred-work.md`](deferred-work.md) already uses the same word for a different payload,
-under *when user-scoped content is stored*: trigger keywords in an address that make a user fail on demand,
-argued for on exactly the grounds used here — *"an address is the first thing you look at… A persona that
-travels with the identity beats a per-request switch."*
-
-Both proposals put a persona in the local part of an email. If both land they share one address, so either the
-grammar has room for two markers or one of them needs a different word. The fixtures are the first thing to
-build and they take an explicit client and role, so this does not block them — but it wants deciding before
-either convention has users.
 
 **The name replacing `local`.** `hq` and `hub` are with others for an opinion. Free to change now; see the
 window above.

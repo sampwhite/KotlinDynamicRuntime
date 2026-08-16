@@ -81,7 +81,13 @@ class GedraConfig(
     val namespace: String,
     /** Its traits, keyed by [GedraTrait.traitId]. */
     val traits: Map<String, GedraTrait>,
-    /** The `$defs` contents its traits generated, keyed by qualified type name. */
+    /**
+     * The `$defs` this config contributes, keyed by qualified type name.
+     *
+     * Both what its traits generated **and** any type it declared directly — `GedraConfigBuilder` extends
+     * `SchTypesBuilder`, so a config can define ordinary types beside its traits. That is how a client-scoped
+     * config carries schema of its own, augmented or wholly new, without a second place to declare it.
+     */
     val defs: Map<String, Any?>,
 ) {
     /**
