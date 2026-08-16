@@ -486,6 +486,28 @@ something different for that client, and a `$ref` pointing at the original name 
 form. So the variant machinery is invoked by clients that overlay, not by clients that merely add — which is
 the same boundary as limiting cloning to what a client actually modified.
 
+## Rebuilding a variant, and what sharing requires
+
+**A client's version is rebuilt whole.** When the data behind its traits, schema or endpoints changes, the
+client's version is constructed again from the source objects and data; there is no differential repair of a
+computed config object. That removes a whole class of bug — a half-repaired cache is the kind of wrong that
+looks right — at the cost of paying full construction each time, which is exactly why limiting how much is
+cloned matters.
+
+"Rebuilt whole" means *not patched*, not that nothing may be shared. A rebuild is still free to point at
+already-built objects for the parts a client did not modify.
+
+**Construction-time mutability is expected and fine.** Building a graph with relationships needs attributes
+that are written while it is assembled and settled once it is done — `SchVariants` resolving its branches is
+exactly that — and cloning into a parallel hierarchy of immutable classes to avoid it would be ceremony that
+buys nothing.
+
+The one rule that follows, and it is about the *builder* rather than about the types: a variant **may create new
+nodes and point at old ones; it must not write into old ones.** With sharing, the invariant stops being "nothing
+mutates after its own construction" and becomes "nothing mutates after any construction that might have shared
+it". That is a discipline for one piece of code, not a property to enforce in the type system, and it is
+checkable in a test — build a variant, then assert the global store's types are untouched.
+
 ## Inheritance between clients
 
 **`extendsFromClientId` does not need to support chains.** One level: a client extends a template, and that is
@@ -551,12 +573,6 @@ exists.
 
 **Dynamic disabling** is a topic of its own, to be taken up when it arrives. Nothing decided here is expected
 to change because of it, so it does not need anticipating.
-
-**Structural sharing needs parsed types to be genuinely immutable.** Sharing unmodified subtrees is the right
-optimization and depends on nothing mutating a `SchType` after parse — mostly true, except that `SchVariants`
-holds `branches` as a `MutableList` and `defaultBranch` as a `var`, both written during reference resolution.
-After resolution they are stable by convention rather than by construction; sharing makes that convention
-load-bearing and it should probably become real.
 
 **Sequencing the auto-admin inversion.** Under today's rule a `+` tag means *not an admin*; under the new one it
 means *this client*. Any existing plus-addressed account at a real admin domain changes meaning when this lands.
