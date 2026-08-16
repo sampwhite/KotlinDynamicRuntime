@@ -466,6 +466,58 @@ manufactured union's default branch and is carried as plain JSON — the branch 
 that meeting an unknown trait is ordinary. Support governs what a client may *edit*, not what it may *hold*,
 which is what makes an allowlist tolerable to change at all.
 
+## Endpoints, and what path separation buys
+
+A client's own endpoints carry the **`clientId` in the path**, in a recognizable pattern, so two clients never
+define the same path with different behavior. `RequestService` still has to become client-aware, and that is
+the destabilizing part; but clean path separation pays for a good deal of it.
+
+**It dissolves the type-cache problem rather than answering it.** `RequestService` caches resolved input and
+output types keyed by endpoint path, and the worry was that two clients resolving one endpoint to different
+types would silently get each other's. With distinct paths per client, each path resolves to exactly one type,
+so the key is sound as it stands. The condition it rests on is worth naming: the **generic** endpoints, which
+every client shares, resolve against the **global** schema only — which is already the rule, since the general
+patch knows only global traits.
+
+**It also narrows what a variant is for.** A client's *additive* definitions — new traits, new types — live in
+the client's own namespace and are ordinary distinct entries in one bag; nothing has to be varied to hold them.
+What genuinely needs a variant is an **overlay**: when a client narrows an existing type, that name means
+something different for that client, and a `$ref` pointing at the original name has to resolve to the narrowed
+form. So the variant machinery is invoked by clients that overlay, not by clients that merely add — which is
+the same boundary as limiting cloning to what a client actually modified.
+
+## Inheritance between clients
+
+**`extendsFromClientId` does not need to support chains.** One level: a client extends a template, and that is
+all.
+
+**Overlays do compose**, though: an alter or extend can be applied on top of another. Which raises whether a
+narrowing check runs against the schema immediately below it or against the base of the stack — and the two
+turn out to be equivalent rather than merely indistinguishable in practice. Narrowing is transitive: if each
+overlay accepts no more than the one it sits on, then by induction it accepts no more than the base. **Checking
+the immediate parent is therefore both sufficient and cheaper**, since nothing has to carry a reference to the
+base.
+
+## Domains, and what they may decide
+
+`domainPrefix` and `customDomain` matter to exactly two things: the **anonymous** state of the application —
+which web resources an unauthenticated visitor sees — and **self-registration**, which client a new account
+lands in.
+
+That is the whole of it, and it is what keeps a host-derived client safe. The client comes from a header the
+caller controls, where everything else derives it from an authenticated profile; confined to presentation and a
+registration default it never widens what is readable, which stays `ReadScopeRules`' business, from the profile.
+
+## `public` is not a client in the ordinary sense
+
+Every user in `public` is effectively their own client, able to create form entries for themselves alone (a
+later capability). **No normal user holds admin privilege over `public`**, so there is no client-scoped
+administrator there and `ReadScope.ofUser` is the only width that ever applies.
+
+That is what settles the tension in giving `public` a usage type. The worry was that typing it `demo` would put
+demo conveniences — relaxed security, bulk delete — within reach of the client that holds every registered
+user. Those conveniences are administrative, and `public` grants no administrator, so the reach does not exist.
+
 ## The per-client schema
 
 Fetching the current schema becomes a **method on the context**, and the `SchemaService` holds a variant of the
@@ -492,48 +544,19 @@ window above.
 
 ## Not blocking
 
-**Does disabling propagate on its own terms?** Config changes are invalidated explicitly, by an admin, and never
-for a production client. But enablement is an **access** fact, not a schema one, and an access change that waits
-for somebody to press a button is a client that keeps working after it was retired. The safe direction is the
-opposite of the convenient one: a newly *enabled* client can reasonably wait for a rebuild; a newly *disabled*
-one should not. Worth settling with the invalidation endpoint rather than after it.
+**How much of the store a variant covers.** Path separation and per-client namespaces mean endpoints and
+additive types need no variant at all; overlays do. So the question is narrower than "a store per client" — it
+is which parts vary, and `tables` plainly do not, being read at boot by `SqlTopicService` before any client
+exists.
 
-**A whole-store variant duplicates what does not vary.** `KdrSchemaStore` holds types, endpoints, **tables** and
-raw defs. Types vary per client and endpoints eventually will; tables do not and never will. A whole-stack
-variant copies a table catalog identical everywhere, and `SqlTopicService` reads tables out of the store at
-boot, before any client exists. Worth deciding whether the variant covers the whole store or only the parts that
-vary.
+**Dynamic disabling** is a topic of its own, to be taken up when it arrives. Nothing decided here is expected
+to change because of it, so it does not need anticipating.
 
 **Structural sharing needs parsed types to be genuinely immutable.** Sharing unmodified subtrees is the right
 optimization and depends on nothing mutating a `SchType` after parse — mostly true, except that `SchVariants`
 holds `branches` as a `MutableList` and `defaultBranch` as a `var`, both written during reference resolution.
 After resolution they are stable by convention rather than by construction; sharing makes that convention
 load-bearing and it should probably become real.
-
-**The endpoint type caches have no client in the key.** `RequestService` caches resolved input and output types
-in maps keyed by endpoint path. The moment two clients resolve one endpoint to different types, that cache
-serves **the wrong client's type** — not stale after an invalidation but wrong immediately and silently, as
-validation accepting or refusing the wrong things. A latent bug rather than a design question: the key needs the
-client, and explicit invalidation has to reach these too.
-
-**Is a host-derived client presentation-and-default only?** `domainPrefix` and `customDomain` give an anonymous
-request a client taken from a header the caller controls, where everything today derives it from an
-authenticated profile. Both proposed uses are fine; the rule worth fixing before the code exists is that a
-host-derived client may choose what is *shown* and what a new account *defaults to*, and may never widen what is
-*readable* — which stays `ReadScopeRules`' business, from the profile.
-
-**`extendsFromClientId` details.** Are chains allowed (A extends B extends C), and what refuses a cycle? A
-load-time refusal is the natural answer, beside the duplicate check. Does extension narrowing follow
-`gedra-entry.md`'s rule that an overlay may only narrow and that narrowing binds the *write* path — and does the
-soft-validation trap recorded in `gedra-patch.md` apply here too? And the `$ref` point in the specification — a
-client altering the schema a trait pulled in, leaving the trait alone — means the overlay vocabulary addresses
-**type names** as well as trait ids, which is a wider mechanism than trait-level narrowing and probably wants
-saying explicitly.
-
-**`public` typed `demo` while every real user is in it.** If `public` eventually takes usage type `demo`, every
-endpoint reserved for demo clients becomes reachable for the client that today holds all registered users —
-with relaxed security and bulk-delete conveniences among the things demo clients are said to allow. Either real
-users move off `public` first, or `public` takes a different type from the demo work it hosts.
 
 **Sequencing the auto-admin inversion.** Under today's rule a `+` tag means *not an admin*; under the new one it
 means *this client*. Any existing plus-addressed account at a real admin domain changes meaning when this lands.
