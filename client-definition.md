@@ -60,6 +60,12 @@ For the client configuration itself, the client has the following attributes.
   * `demo` - The client exists to demo functionality, usually for sales. It will usually allow
     access to variant behaviors, such as relaxed security, and convenience endpoints for bulk-load delete
     of recently added content.
+* `audience` - Whose client this is: `internal` (ours -- staff, batch activity, the deployment's own work) or
+  `customer` (somebody else's). Orthogonal to `usageType`, which says what a client is *for*: an internal client
+  can be `production`, `dev` or `test`. It is not merely a label -- it decides what a caller is proactively
+  shown, and it relaxes the functional-group restriction below -- so **it may be set only in source code**, never
+  by a client authoring its own configuration in data. The same reasoning that limits a database-defined client
+  to extending template clients.
 * `webResourcesId` - An ID that identifies a package of resources that can have things like a 
   custom favicon (plus other related images), general look and feel images, and CSS file. Note, two different
   clients can share a `webResourceId`. The mechanics of where these packages of resources are in source
@@ -100,8 +106,8 @@ For the client configuration itself, the client has the following attributes.
 * `includedTraits` - The traits this client supports and takes exactly as they stand. A list holding trait ids
  and **group names**, where a group name carries a `#` (no trait id can). `#allGlobal` is the first group and is
  *functional* -- its membership is computed at load time from what is global rather than written down. A
- `production` client may not use a functional group, because a production client's supported set must be fully
- determined by its own definition.
+ functional group is refused when `audience` is `customer` **and** `usageType` is `production` -- see the
+ decision below for why both conditions.
  This list is a **minimum**, not a total: see the traits section below.
 * `organizations` - A complex definition of organizations associated with this client, we will implement this
  at a later date.
@@ -449,20 +455,29 @@ supports that trait at once. The difference is where the coupling lives. A tag a
 remember and can get wrong; `#allGlobal` is a client **declaring that it tracks a computed set**, which is what
 it asked for and the only thing it could have meant.
 
-**A `production` client may not use it**, and the rule generalizes better than the instance: *a production
-client's supported set must be fully determined by its own definition*. A functional group breaks that by
-construction and is refused whatever it is called; a declared group, if groups ever gain one, does not.
+**A functional group is refused when `audience` is `customer` and `usageType` is `production`** — both
+conditions, and each does real work.
 
-### A client's schemas ride in the same bundle
+The rule was never really about production. What makes `#allGlobal` dangerous is that *we* ship a global trait
+and it becomes editable in a client that never reviewed it — which is a statement about **two parties**: somebody
+else depends on this and did not consent to the change. Production was a proxy for that condition rather than
+the condition itself.
 
-`GedraConfigBuilder` extends `SchTypesBuilder`, so a config declares ordinary types beside its traits and they
-land in `GedraConfig.defs` — augmented or wholly new, and client-scoped by construction, since the config's id
-carries the client. A client-scoped `GedraConfig` is therefore a **small component**: its own namespace, its own
-types, its own traits, arriving together.
+So a *customer's* test or dev client may track every new global trait, and arguably should — that is how they
+would preview what is coming. An *internal* client in production may too, because there is no second party:
+we ship the trait, we run the client, we are the reviewer. Only the combination is the case the rule exists for.
 
-The alternative — tagging component-declared schemas with a client — would split one client's definitions across
-two places that then have to agree. Two paths for injecting schema is the cheaper redundancy than two sources of
-truth for one client.
+Stated as the principle rather than the mechanism: **a client's supported set must be fully determined by its
+own definition when somebody other than us depends on it.**
+
+**Not a sixth usage type.** Making `internal` a usage type would undo the separation the two axes exist for:
+`usageType` says what a client is *for*, `audience` says *whose* it is, and the first internal demo client would
+force the question "which is it?". That is the same conflation as using `allClients` to mean "is one of us".
+
+**And it makes `audience` an authority axis.** It stops being a label the moment it gates a capability, so it
+must not be self-declarable: a client authoring its own configuration could otherwise write `audience:
+internal` and take a functional group with it. Settable in source, refused from data — the treatment the
+specification already gives to which clients a database-defined client may extend.
 
 ### Two consequences
 
