@@ -137,7 +137,8 @@ kdr-backend` is the same boot from any directory if `bin/` is on your `PATH`.
 - **A config value with no env var** (a UI tuning value like a refresh interval, or any `AppConfigBuilder`
   property) — set it in your *own* config object and select it with `KDR_CUSTOM_CONFIG=ClaudeConfig`, so you
   never edit the developer's `KdrConfig` (their run's config can't break yours, and vice versa). Full recipe,
-  addressed to you, in the **"For Claude"** section of `examples/custom-config.md`.
+  addressed to you, in the **"For Claude"** section of `<repo>/examples/custom-config.md` — the repo-root
+  `examples/` directory, not one beside this skill.
 
 **A crash in the frontend reports minified nonsense by default.** The deployed bundle is webpack's production
 build, so a Kotlin exception arrives with no `message` and a mangled `name` — a caught render failure reports
