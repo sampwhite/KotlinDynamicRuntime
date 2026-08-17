@@ -56,7 +56,7 @@ data class UserProfile(
      *
      * Optional by design: organizations are a per-client choice, so null is the ordinary case and means
      * "belongs to the client, not to any organization". Held in `authUserData` and carried here rather than
-     * in a database column, which is what lets a "write" stamp it onto content without a lookup.
+     * in a database column, which is what lets a write stamp it onto content without a lookup.
      */
     val org: String? = null,
     /**
@@ -97,7 +97,7 @@ data class UserProfile(
      * (a login identifier) only as a fallback. A single rule, in the kernel, so the backend and the
      * (transpiled) frontend cannot disagree about which name to show.
      *
-     * [isEntity] does not appear here on purpose. It used to select *which field* to display back when only a
+     * [isEntity] does not appear here on purpose. It used to select *which field* to display, back when only a
      * business had a real name; now both kinds of account carry [name], so the flag says what the name means
      * rather than where to find it -- and a person's full name gets shown where the username used to be.
      *

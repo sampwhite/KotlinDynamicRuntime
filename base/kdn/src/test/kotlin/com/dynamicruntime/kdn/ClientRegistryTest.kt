@@ -25,7 +25,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 
 /**
- * The client registry as a booted instance sees it and the administrative listing over it (issue #343).
+ * The client registry as a booted instance sees it, and the administrative listing over it (issue #343).
  *
  * The case worth the setup is the **absent client**: one defined in source code and *not enabled here*. It is
  * precisely a client that is known and not present, and it is reachable today with one instance, no database
