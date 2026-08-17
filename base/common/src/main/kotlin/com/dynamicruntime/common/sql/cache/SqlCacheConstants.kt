@@ -33,10 +33,16 @@ object TCH {
      * The maximum expected difference, in milliseconds, between a row being stamped with its `updatedAt` and
      * that row becoming visible to a query issued by another thread or node. The reload query starts this far
      * *behind* the point it previously reached, so a row committed just after the last pass is not skipped.
-     * Smaller means less needless re-reading; larger means less chance of missing a row when the database is
-     * under pressure.
+     *
+     * It is a **budget with two components plus margin**: the clock skew between the stamping node and the
+     * reading node (~200ms is the deployment assumption; AWS time sync typically holds well under that), and
+     * the time between the stamp being applied and the transaction becoming visible (~50ms typically -- but a
+     * slow statement or a GC pause between stamp and commit has no hard bound). The margin matters because a
+     * row that falls outside the budget on a busy table is not late, it is **missed until its next genuine
+     * write**: the query start never retreats past the rows already seen. Overshooting merely re-reads the
+     * extra window's rows each pass, so the trade is priced steeply toward not missing.
      */
-    const val expectedMaxDriftMs = 200L
+    const val expectedMaxDriftMs = 500L
 
     /**
      * The floor the reload query never starts later than: two minutes behind now. This covers a node whose
@@ -49,15 +55,24 @@ object TCH {
     /**
      * Default for [minRecheckMsEnv]: how far back a cache is asked to reconsider when the state row reports no
      * change at all. It bounds staleness for a change this node never hears about (a row written by a process
-     * that does not participate in the state table -- a migration script, a DBA).
+     * that does not participate in the state table -- a migration script, a DBA), and for a change whose
+     * request-end announcement failed.
+     *
+     * It is deliberately a **backstop, not the promise**. Every write made through the application announces
+     * itself (the write listener sits at the one place all statements pass through), and an announced change
+     * is picked up within [stateReadThrottleMs] of the reader's next request -- none of that waits on this
+     * floor. What the floor buys is a periodic reload query per cache per node even when the state row says
+     * nothing changed, so it is sized in tens of seconds: tight enough that an out-of-band edit is a
+     * coffee-sip late, loose enough that the paranoia query stays rare.
      */
-    const val defaultMinRecheckMs = 5_000L
+    const val defaultMinRecheckMs = 30_000L
 
     /**
      * How often, at most, one node reads the shared state row -- node-global, not per context. Without a
      * throttle, every request's first cached lookup queried the row, which merely traded the query the cache
-     * saved for a different one. Cross-node pickup waits at most this long extra, well inside the
-     * [defaultMinRecheckMs] promise; local writes are unaffected (they mark the cache directly).
+     * saved for a different one. Announced changes reach other nodes within this window plus their next
+     * request -- this throttle, not the [defaultMinRecheckMs] backstop, is what sets cross-node promptness;
+     * local writes are unaffected (they mark the cache directly).
      */
     const val stateReadThrottleMs = 250L
 

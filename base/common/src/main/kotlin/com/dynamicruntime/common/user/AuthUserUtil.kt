@@ -70,9 +70,10 @@ private fun requireUsableForLogin(row: AuthUserRow) {
  *
  * **How prompt is "promptly":** the read goes through the `AuthUsers` table cache, so on the node that made
  * the change it is immediate (a local write forces the next read to reload), and on other nodes it lands when
- * the writer's request ends and their next request re-checks -- worst case the cache's ~5s recheck floor.
- * That is the deliberate trade against a per-request SQL read; the yardstick remains the 30-day cookie this
- * refresh exists to overrule.
+ * the writer's request ends and their next request re-checks -- a fraction of a second, bounded by the
+ * cache's state-row read throttle. Only a change made *outside* the application (a hand-edited row, a
+ * migration) waits for the cache's recheck floor, ~30s by default. That is the deliberate trade against a
+ * per-request SQL read; the yardstick remains the 30-day cookie this refresh exists to overrule.
  *
  * Ordinary user traffic still never touches the database for auth. A disabled account loses every role here,
  * which is what makes `admin/user/setEnabled` bite within the same bounds rather than at cookie expiry; a row

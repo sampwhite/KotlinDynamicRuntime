@@ -113,7 +113,7 @@ at three in the morning, not a code change away.
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `KDR_TABLE_CACHE_DISABLED` | Turns **every** registered table cache off. Each cached lookup then misses and falls back to the SQL query it was replacing, so the deployment loses the speed and nothing else — the escape hatch if a cache is ever suspected of serving stale data. | off |
-| `KDR_TABLE_CACHE_MIN_RECHECK_MS` | How far back a cache reconsiders when the shared state row reports no change at all. It bounds staleness for a change nothing announced — rows written by a migration script or by hand — so lowering it makes such a change visible sooner at the cost of more reload queries. A change made *through the application* is unaffected: it is announced, and picked up immediately (on the writing node) or at the writer's next request end (on the others). | `5000` |
+| `KDR_TABLE_CACHE_MIN_RECHECK_MS` | How far back a cache reconsiders when the shared state row reports no change at all. It bounds staleness for a change nothing announced — rows written by a migration script or by hand — so lowering it makes such a change visible sooner at the cost of more reload queries. A change made *through the application* is unaffected: it is announced, and picked up immediately (on the writing node) or at the writer's next request end (on the others). | `30000` |
 
 ## Node identity
 
