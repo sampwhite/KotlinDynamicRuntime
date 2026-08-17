@@ -2,8 +2,6 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.logging.LogStartup
 
 /** What checking the declared clients produced (issue #343). */
 class ClientCheckResult(
@@ -44,7 +42,7 @@ fun checkClientDefs(cxt: KdrCxt, configs: GedraConfigCollector): ClientCheckResu
         if (problem == null) {
             kept[def.clientId] = def
         } else {
-            report(cxt, mode, problem, issues)
+            reportConfigProblem(cxt, mode, problem, issues)
         }
     }
 
@@ -55,23 +53,10 @@ fun checkClientDefs(cxt: KdrCxt, configs: GedraConfigCollector): ClientCheckResu
         val problem = relatedProblem(def, kept, configs)
         if (problem != null) {
             kept.remove(def.clientId)
-            report(cxt, mode, problem, issues)
+            reportConfigProblem(cxt, mode, problem, issues)
         }
     }
     return ClientCheckResult(kept, issues)
-}
-
-private fun report(cxt: KdrCxt, mode: String, problem: GedraConfigIssue, issues: MutableList<GedraConfigIssue>) {
-    if (mode == GCFG.strict) {
-        throw KdrException(
-            "${problem.message} Fix it, or set ${GCFG.checkEnvVar}=${GCFG.warn} to start anyway " +
-                "(which is the default in ${ENV.prod}).",
-        )
-    }
-    // At error rather than warn, as the config checks log theirs: this is not a caveat, it is a client the
-    // deployment believes it carries and does not.
-    LogStartup.error(cxt, "${problem.message} ${problem.degradedTo}")
-    issues.add(problem)
 }
 
 /** The first thing wrong with [def] judged on its own, or null. */

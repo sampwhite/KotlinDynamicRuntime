@@ -70,6 +70,33 @@ class GedraConfigIssue(
 )
 
 /**
+ * Does to [problem] what [mode] says to do: refuse the boot, or log it, record it and carry on.
+ *
+ * The one place that turns a check's finding into a consequence, so the two sets of config checks -- the ones
+ * over configs as they arrive, and `checkClientDefs` over the clients they declared -- cannot come to differ
+ * about what "strict" and "warn" mean. Only *what is dropped* differs between them, and that is each caller's
+ * to decide: this is told what happened, not what to keep.
+ *
+ * Logged at **error** rather than warn, whichever check found it. A dropped definition is not a caveat; it is
+ * something the deployment believes it has and does not.
+ */
+fun reportConfigProblem(
+    cxt: KdrCxt,
+    mode: String,
+    problem: GedraConfigIssue,
+    issues: MutableList<GedraConfigIssue>,
+) {
+    if (mode == GCFG.strict) {
+        throw KdrException(
+            "${problem.message} Fix it, or set ${GCFG.checkEnvVar}=${GCFG.warn} to start anyway " +
+                "(which is the default in ${ENV.prod}).",
+        )
+    }
+    LogStartup.error(cxt, "${problem.message} ${problem.degradedTo}")
+    issues.add(problem)
+}
+
+/**
  * Gathers the [GedraConfig]s components contribute, and refuses the ones that would make the set incoherent
  * (issue #299).
  *
@@ -135,16 +162,7 @@ class GedraConfigCollector {
             keep(config)
             return true
         }
-        if (mode == GCFG.strict) {
-            throw KdrException(
-                "${problem.message} Fix it, or set ${GCFG.checkEnvVar}=${GCFG.warn} to start anyway " +
-                    "(which is the default in ${ENV.prod}).",
-            )
-        }
-        // Logged at error rather than warn: this is not a caveat, it is a definition the deployment believes
-        // it has and does not.
-        LogStartup.error(cxt, "${problem.message} ${problem.degradedTo}")
-        issues.add(problem)
+        reportConfigProblem(cxt, mode, problem, issues)
         return false
     }
 
