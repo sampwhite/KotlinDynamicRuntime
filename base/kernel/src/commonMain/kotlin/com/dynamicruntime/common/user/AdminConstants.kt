@@ -2,7 +2,7 @@ package com.dynamicruntime.common.user
 
 // Admin (user-management) constants shared with the *frontend*, alongside the auth constants in
 // AuthConstants.kt and for the same reason: an admin console is a Kotlin/JS widget-group waiting to be written,
-// and it should build its calls from the same strings the backend serves them under. Per the code guide these
+// and it should build its calls from the same strings the backend serves them under. Per the code guide, these
 // are lowerCamelCase `const val`s in short upper-case acronym objects, always referenced qualified.
 
 /**

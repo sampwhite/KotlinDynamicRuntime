@@ -12,7 +12,7 @@ class ClientCheckResult(
 )
 
 /**
- * Checks the clients the contributed configs declare, and drops the ones that do not hold up (issue #343).
+ * Checks the clients the contributed configs declare and drops the ones that do not hold up (issue #343).
  *
  * Run **after every config has arrived**, unlike `GedraConfigCollector.add`, which checks each config as it
  * comes. Two of the checks here cannot be answered any earlier: whether an extended client exists, and
@@ -89,7 +89,7 @@ private fun ownProblem(config: GedraConfig, def: ClientDef, kept: Map<String, Cl
     }
     envProblem(config, def)?.let { return it }
     // Both conditions, and each does real work. What makes a functional group dangerous is that we ship a
-    // global trait and it becomes editable in a client that never reviewed it -- which is a statement about
+    // global trait, and it becomes editable in a client that never reviewed it -- which is a statement about
     // two parties, not about production. A customer's dev client tracking new global traits is how they
     // preview what is coming; an internal production client has no second party to surprise.
     if (def.audience == ClientAudience.customer && def.usageType == ClientUsageType.production) {

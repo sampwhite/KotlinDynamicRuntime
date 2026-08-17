@@ -89,7 +89,7 @@ class ClientCheckTest : StringSpec({
     // --- what a definition can be judged on by itself -------------------------
 
     // Only a *declared* id can fail this: the config's own id was held to the same rule when `GedraId.of`
-    // built it. Which is the point of declaring it -- when a definition arrives as data the two halves
+    // built it. Which is the point of declaring it -- when a definition arrives as data, the two halves
     // travel separately, and this is the check that notices.
     "a client id that a gedra id could not carry is refused" {
         refusal(clientConfig("acme", declaredId = "ac-me")) shouldContain "holds '-'"

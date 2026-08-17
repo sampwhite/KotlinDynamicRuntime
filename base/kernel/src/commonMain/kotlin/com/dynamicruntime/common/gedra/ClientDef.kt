@@ -7,7 +7,7 @@ import com.dynamicruntime.common.schema.SchTypesBuilder
 /**
  * What a client is *for* -- the purpose it was created to serve (issue #343).
  *
- * Expected to grow: a new behavior that should be visible in some kinds of client and not others conditions
+ * Expected to grow: a new behavior that should be visible in some kinds of clients and not others conditions
  * itself on this. Only [production], in a production deployment, carries any strong promise that the client
  * will not be torn down and started over.
  *
@@ -105,7 +105,7 @@ object CLD {
  * defines at most one client; every bundle sharing a client is read as one whole. See `client-definition.md`
  * for the reasoning behind each attribute.
  *
- * **Nothing here decides how a request is served.** This slice declares, validates and finds a client; the
+ * **Nothing here decides how a request is served.** This slice declares, validates, and finds a client; the
  * per-client schema, the absent-client gate and domain routing are later work.
  */
 class ClientDef(
@@ -131,7 +131,7 @@ class ClientDef(
      */
     val webResourcesId: String? = null,
     /**
-     * Where this client is enabled. Elsewhere it may still be *referred to* and is otherwise not present.
+     * Where this client is enabled. Elsewhere, it may still be *referred to* and is otherwise not present.
      *
      * The **only** axis deciding which clients a deployment carries -- there is no separate node-level
      * notion -- so two deployments in one environment necessarily carry the same clients, and a deployment
@@ -153,14 +153,14 @@ class ClientDef(
     val preload: Boolean = false,
     /**
      * Whether this client refuses dynamic configuration reload, taking changes only through a deployment.
-     * Applies in production only. Not yet testable; when true, configuration is preferably done in source.
+     * Applies in production only. Not yet testable; when true, configuration is preferably done in source code.
      */
     val staticConfig: Boolean = false,
     /**
      * Another client whose definitions are cloned in first, with this config applied over them.
      *
      * **One level, no chains**: the named client may not itself extend one. Usually a template (to deduplicate
-     * clients), a preview variant of a client, or a test variant of a production one. From data it may name
+     * clients), a preview variant of a client, or a test variant of a production one. From data, it may name
      * only a template; in either case only the *source-code* definition is pulled in, and any database overlay
      * on the extended client is ignored.
      */
@@ -176,13 +176,13 @@ class ClientDef(
      * The traits this client takes exactly as they stand: trait ids, and **group** names carrying
      * [CLD.groupSigil].
      *
-     * A **minimum, not a total.** A trait this client alters, extends or defines is supported without a second
+     * A **minimum, not a total.** A trait this client alters, extends, or defines is supported without a second
      * mention, so the computed supported set is this list with its groups expanded plus everything the client
      * customized. Two names rather than one because an attribute claiming to list what a client supports,
      * which does not list all of it, is the kind of near-truth somebody eventually relies on.
      *
      * A functional group ([CLD.allGlobal]) is refused when [audience] is `customer` **and** [usageType] is
-     * `production`, and both conditions do real work. What makes it dangerous is that *we* ship a global trait
+     * `production`, and both conditions do real work. What makes it dangerous is that *we* ship a global trait,
      * and it becomes editable in a client that never reviewed it -- a statement about two parties. A
      * customer's dev client tracking new global traits is how they preview what is coming; an internal
      * production client has no second party. Stated as the principle: **a client's supported set must be fully

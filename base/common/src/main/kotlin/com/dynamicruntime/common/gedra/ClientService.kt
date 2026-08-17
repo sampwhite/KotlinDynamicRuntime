@@ -22,9 +22,9 @@ import com.dynamicruntime.common.startup.ServiceInitializer
  *   working.
  * - **present** ([isPresent]) -- enabled in *this* environment. This is the operational question, and the one
  *   everything later gates on: a client that is not present behaves as though it were not there, its users
- *   cannot get in and its content cannot be read.
+ *   cannot get in, and its content cannot be read.
  *
- * The distinction is testable today without a database or a configuration reload: a client defined in source
+ * The distinction is testable today without a database or a configuration reload: a client defined in source code
  * and not enabled in `unit` is precisely a client that is known and not present.
  *
  * **Nothing consults this yet except the administrative listing.** That is the point of a declaration-first
