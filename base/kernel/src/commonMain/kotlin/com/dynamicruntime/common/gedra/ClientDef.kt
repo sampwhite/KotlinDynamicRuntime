@@ -139,6 +139,14 @@ class ClientDef(
      *
      * Naming any environment beyond `unit` and `local` requires naming both of those as well: a client in
      * active use must never be one that local development and the unit tests are locked out of.
+     *
+     * **Naming nothing retires the client**, everywhere, and is the only way to do so. The definition stays,
+     * the content stays, and only access stops -- the same decision #326 made for a gedra one level up: keep
+     * the row, flip a flag, let reads treat it as absent. Two things follow. Un-enabling **reclaims nothing**,
+     * so re-enabling brings all of a retired client's content back, including data somebody may have assumed
+     * was gone; deleting a client for real is a different question with the shape of a purge. And a retired
+     * client is still *known* -- it can be referred to, and extended from -- which is why the registry keeps
+     * "known" and "present" apart rather than collapsing them.
      */
     val enabledEnvironments: Set<String> = setOf(ENV.unit, ENV.local, ENV.dev),
     /** Whether to do this client's cache computations before the node reports itself ready. Not yet testable. */

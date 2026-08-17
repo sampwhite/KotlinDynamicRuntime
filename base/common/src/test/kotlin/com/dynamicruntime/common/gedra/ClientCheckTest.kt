@@ -114,8 +114,28 @@ class ClientCheckTest : StringSpec({
         message shouldContain "gc.cd.acme.acmeExtras"
     }
 
-    "a client enabled nowhere is refused" {
-        refusal(clientConfig("acme", environments = emptySet())) shouldContain "names no environments"
+    // Retirement, and the only way to do it: the definition stays and access stops everywhere. Declaring it
+    // has to be possible, which is why nothing checks the set is non-empty -- and it cannot happen by
+    // accident, the field defaulting to a set that is not empty.
+    "a client enabled nowhere is retired, not refused" {
+        val result = checkClientDefs(devCxt, collectorOf(clientConfig("acme", environments = emptySet())))
+        result.issues.shouldBeEmpty()
+        val retired = result.clients["acme"].shouldNotBeNull()
+        ENV.names.forEach { retired.isEnabledIn(it) shouldBe false }
+    }
+
+    // A retired client is still *known*, so it can still be referred to. Extension reads the declared set
+    // rather than the present one, which is what lets a retired template still be built on.
+    "a client may extend a retired one" {
+        val result = checkClientDefs(
+            devCxt,
+            collectorOf(
+                clientConfig("base", environments = emptySet()),
+                clientConfig("leaf", extendsFrom = "base"),
+            ),
+        )
+        result.issues.shouldBeEmpty()
+        result.clients.keys shouldContainExactly setOf("base", "leaf")
     }
 
     "a client naming something that is not an environment is refused" {
