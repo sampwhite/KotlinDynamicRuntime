@@ -1,7 +1,9 @@
 # Frontend guidance (webapp)
 
 Auto-loaded by Claude Code sessions working under `webapp/`. This holds **shared frontend knowledge** — not
-personal config (that belongs in your own, non-versioned, root `CLAUDE.md`).
+personal config (that belongs in your own non-versioned `CLAUDE.md` in the **workspace directory**, the parent
+of this repo). Repo-wide agent guidance — including who owns the workspace's configuration files — is in the
+versioned [`CLAUDE.md`](../CLAUDE.md) at the repository root.
 
 ## Static content: Markdown fragments (issue #59)
 
