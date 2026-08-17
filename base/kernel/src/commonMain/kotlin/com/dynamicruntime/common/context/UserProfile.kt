@@ -31,7 +31,7 @@ object UPF {
  * drops whatever it does not mention, and it did -- twice, losing `org` when #225 added it and the entity
  * fields when #284 did, each time producing a profile that compiled, ran, and was quietly missing a field.
  * `copy` carries every present *and future* field, so the mistake is no longer available. Note that a
- * hand-written `withRoles`-style helper would **not** have fixed this: it would still list every field, just
+ * handwritten `withRoles`-style helper would **not** have fixed this: it would still list every field, just
  * one level further in.
  *
  * (Named without the `Kdr` prefix per the naming guide: `UserProfile` is specific enough not to be ambiguous.)
@@ -45,18 +45,18 @@ data class UserProfile(
      */
     val userId: Long = CL.systemUserId.toLong(),
     /**
-     * The client this user belongs to. Defaults to [CL.local] (the general acting default); the auth
+     * The client this user belongs to. Defaults to [CL.hub] (the general acting default); the auth
      * layer uses [CL.public] for the anonymous profile and for users it manufactures without an explicit
      * client.
      */
-    val client: String = CL.local,
+    val client: String = CL.hub,
     /**
      * The user's **primary organization** within their [client], or null when they have none -- either the
      * client has no organizations at all, or this user is not confined to one (issue #225).
      *
      * Optional by design: organizations are a per-client choice, so null is the ordinary case and means
      * "belongs to the client, not to any organization". Held in `authUserData` and carried here rather than
-     * in a database column, which is what lets a write stamp it onto content without a lookup.
+     * in a database column, which is what lets a write stamp it onto the row without first looking the user up.
      */
     val org: String? = null,
     /**
@@ -102,7 +102,7 @@ data class UserProfile(
      * rather than where to find it -- and a person's full name gets shown where the username used to be.
      *
      * An account with no name yet, or a blank one, falls back to [publicName] rather than showing nothing.
-     * Null only when there is no name at all (e.g. the anonymous profile).
+     * Null only when there is no name at all (e.g., the anonymous profile).
      */
     val displayName: String? get() = name?.trim()?.ifEmpty { null } ?: publicName
 
@@ -154,7 +154,7 @@ data class UserProfile(
         fun fromUserInfo(info: Map<String, Any?>): UserProfile = UserProfile(
             authId = info.getOptStr(UPF.authId),
             userId = info.getOptLong(UPF.userId) ?: CL.systemUserId.toLong(),
-            client = info.getOptStr(UPF.client) ?: CL.local,
+            client = info.getOptStr(UPF.client) ?: CL.hub,
             org = info.getOptStr(UPF.org),
             roles = info[UPF.roles].toJsonListOfStrings().toSet(),
             publicName = info.getOptStr(UPF.publicName),

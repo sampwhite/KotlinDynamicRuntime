@@ -42,7 +42,8 @@ class GedraTrait(
 }
 
 /**
- * A bundle of definitions — traits now, workflows later — carrying its own identity (issue #298).
+ * A bundle of definitions — traits now, workflows later — carrying its own identity (issue #298), and
+ * optionally the definition of the client it is filed under (issue #343).
  *
  * Bundling is the direction #292 settled on rather than an implementation convenience. Traits and the
  * workflows that use them are defined *together*, so `$ref`s and workflow-to-trait links stay mostly inside
@@ -89,6 +90,14 @@ class GedraConfig(
      * config carries schema of its own, augmented or wholly new, without a second place to declare it.
      */
     val defs: Map<String, Any?>,
+    /**
+     * The client this config defines, when it defines one (issue #343).
+     *
+     * A typed field beside [traits] rather than a row somewhere, because a client *is* a definition. At most
+     * one: the config's [gedraId] already carries a client, so a bundle declaring two would have to file both
+     * under one id. Null is the ordinary case -- most bundles add traits to a client somebody else declared.
+     */
+    val client: ClientDef? = null,
 ) {
     /**
      * The code-explicit name this config is addressed by, which is also its id's base.
@@ -108,6 +117,36 @@ class GedraConfig(
 class GedraConfigBuilder(cxt: KdrCxtBase, namespace: String) : SchTypesBuilder(cxt, namespace) {
     @Suppress("MemberVisibilityCanBePrivate")
     val traits: MutableMap<String, GedraTrait> = LinkedHashMap()
+
+    /** The client this config defines, if it declared one; see [defineClient]. */
+    var clientDef: ClientDef? = null
+        private set
+
+    /**
+     * Declares the client this config defines (issue #343).
+     *
+     * Takes a built [ClientDef] rather than repeating its thirteen attributes as parameters. The two would
+     * have to be kept in step by hand, and a definition loaded from data arrives as an object anyway -- so
+     * this is the same call the data path will make.
+     *
+     * Named `defineClient` rather than `client` because `gedraConfig`'s own `client` parameter -- the owner
+     * this config is filed under -- is in scope inside the block, and two different meanings of one word,
+     * one a string and one a call, is a needless thing to have to resolve while reading.
+     *
+     * Declaring a second one throws immediately rather than being collected as a config-set problem: two
+     * clients in one bundle is an authoring mistake with no coherent reading, where the checks in
+     * `GedraConfigCollector` are about how separately-authored bundles fit together.
+     */
+    fun defineClient(def: ClientDef) {
+        clientDef?.let {
+            throw KdrException.mkConv(
+                "This config already defines the client '${it.clientId}' and cannot also define " +
+                    "'${def.clientId}'. A config's id carries exactly one client, so a second definition " +
+                    "would have nowhere to be filed.",
+            )
+        }
+        clientDef = def
+    }
 
     /**
      * Declares a trait whose data shape is written here — the everyday form.
@@ -205,5 +244,6 @@ fun gedraConfig(
         namespace = namespace,
         traits = builder.traits.toMap(),
         defs = builder.defs.toMap(),
+        client = builder.clientDef,
     )
 }

@@ -7,9 +7,12 @@ import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.operator.operatorSchema
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.FRAG
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraService
+import com.dynamicruntime.common.gedra.clientAdminSchema
+import com.dynamicruntime.common.gedra.coreClients
 import com.dynamicruntime.common.gedra.coreTraits
 import com.dynamicruntime.common.gedra.gedraDataTables
 import com.dynamicruntime.common.gedra.gedraSchema
@@ -66,6 +69,8 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(profileSchema(cxt))
         // Admin: the user-management endpoints, gated on ROLE.admin by their `admin` section.
         collector.addModule(adminSchema(cxt))
+        // Admin: the clients this deployment carries (issue #343), in the same full-scope section.
+        collector.addModule(clientAdminSchema(cxt))
         // The same user-administration operations, scoped to the caller's client (issue #225).
         collector.addModule(scopedUserAdminSchema(cxt))
         // Operator: running-the-deployment diagnostics, gated on ROLE.operator by their `operator` section.
@@ -85,30 +90,34 @@ class CommonComponent : ComponentDefinition {
     }
 
     /**
+     * The Gedra configs this module defines: the traits every deployment has, in the reserved `globalconfig`
+     * namespace (issue #300), and the two clients every deployment has (issue #343). Declared here rather
+     * than in a sample, because these are part of what the runtime is -- and because anything a test needs to
+     * reach has to come from a component that always loads.
+     */
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(coreTraits(cxt)) + coreClients(cxt)
+
+    /**
      * The fragment files `base/common` ships. `errors` and `sample` are here as much as the widget-group
      * files: `errors` is reached through the error-message path rather than a UI-config, so nothing else
      * names it, and an unchecked error fragment is exactly the one you find out about during an incident.
      */
-    /**
-     * The Gedra config this module defines (issue #300): the traits every deployment has, in the reserved
-     * `globalconfig` namespace. Declared here rather than in a sample, because these are part of what the
-     * runtime is -- and because anything a test needs to reach has to come from a component that always loads.
-     */
-    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(coreTraits(cxt))
-
     override fun fragmentFiles(cxt: KdrCxt): List<String> =
         listOf(AFRAG.auth, AFRAG.profile, HFRAG.home, FRAG.errors, FRAG.sample)
 
     /**
-     * Startup services -- fully initialized before regular services. Schema compilation must be ready first
-     * (the topic service reads the compiled table definitions); [NodeService] is here so the node's identity
-     * and basic facts are known early; [SqlTopicService] is here so that by the time any regular service's
-     * `onCreate` runs -- notably [InstanceConfigService], which queries the database in its own -- the
-     * database configuration is resolved *and* every topic's tables exist (issue #162). Regular services (and
-     * future startup services) may need all three during their init.
+     * Startup services -- fully initialized before regular services. [ClientService] leads (issue #343),
+     * because schema compilation is heading towards being per-client and a variant cannot be built before it
+     * is known which clients there are; nothing depends on that ordering yet, which is when it is cheap to
+     * establish. Schema compilation comes next, and must be ready before the topic service reads the compiled
+     * table definitions; [NodeService] is here so the node's identity and basic facts are known early;
+     * [SqlTopicService] is here so that by the time any regular service's `onCreate` runs -- notably
+     * [InstanceConfigService], which queries the database in its own -- the database configuration is
+     * resolved *and* every topic's tables exist (issue #162). Regular services (and future startup services)
+     * may need all of them during their init.
      */
     override fun startupServices(cxt: KdrCxt): List<() -> ServiceInitializer> =
-        listOf(::SchemaService, ::NodeService, ::SqlTopicService)
+        listOf(::ClientService, ::SchemaService, ::NodeService, ::SqlTopicService)
 
     /**
      * The request dispatcher, the portal (which registers itself with the dispatcher as a content server),
