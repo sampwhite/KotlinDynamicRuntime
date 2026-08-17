@@ -223,6 +223,11 @@ and process-owned entries, merges of partial data, edits that span several docum
 and a primary key that lives inside the data it identifies. Like `gedra-entry.md` it was written before the
 code, and it records why decisions changed as well as what they became.
 
+[`client-definition.md`](client-definition.md) describes the **client** — the thing whose id sits in every
+`GedraId`, and which turns out to own more than an identifier: which environments it is enabled in, which
+traits it supports, what its callers are shown, and what happens to its content when it is not there. Like
+the others it was written before the code, and it is grown as decisions settle rather than restated.
+
 ## Deferred work
 
 Work we have deliberately put off — each with the condition that should make us revisit it — lives in

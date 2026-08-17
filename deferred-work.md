@@ -137,8 +137,13 @@ it is worth doing now, since the file's own rule is that anything ready lives in
 
   Two properties are why this form was preferred over a flag or a header, and both should survive into
   whatever gets built: an address is the **first thing you look at** when inspecting a login, and it is a
-  **full-text search target** in logs (test instances log addresses where a real one would not). A persona
+  **full-text search target** in logs (test instances log addresses where a real one would not). A **fault**
   that travels with the identity beats a per-request switch when the question spans a whole session.
+
+  This said *persona* until `client-definition.md` claimed that word for a formal concept — a named thing
+  mapping to roles and capabilities, carried after a `%` in the same part of an email address this item wants
+  to write into. Two meanings in one place is the collision; the formal one keeps the word, and *fault* is not
+  a coinage but the vocabulary #227 already uses for deliberate failure.
 
   Note what it is *not* for. The frontend fault route in #227 needs none of it, because making the browser
   throw requires no identity — keep the two separate. This one is about the backend misbehaving for a
