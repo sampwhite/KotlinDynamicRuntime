@@ -27,6 +27,7 @@ import com.dynamicruntime.common.schema.failureSummary
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.toWireMap
 import com.dynamicruntime.common.schema.validate
+import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonStr
@@ -256,6 +257,27 @@ class RequestService : ServiceInitializer {
         }
         handler.focus = focus
 
+        // Table caches. `beginRequest` binds the change monitor that records which cached tables this request
+        // writes; `endRequest` publishes those to the shared state row, which is how the *other* nodes find
+        // out. It brackets the whole of dispatch, in a finally, because a request that changed a table and
+        // then failed still changed it -- and `endRequest` never throws, so it cannot mask that failure. Both
+        // calls are cheap and do nothing at all when no cache is registered; refreshing is lazy, driven by the
+        // first read of a cache.
+        //
+        // Two calls in the one dispatcher, rather than a hook framework introduced to hold them: there is
+        // exactly one dispatcher, and one subscriber.
+        val tableCaches = SqlTableCacheService.get(cxt)
+        tableCaches?.beginRequest(cxt)
+        try {
+            dispatch(cxt, handler, focus)
+        } finally {
+            tableCaches?.endRequest(cxt)
+        }
+    }
+
+    /** The body of [handleRequest], once the context root has been recognized: auth, the section gate, dispatch. */
+    @KdrPrivate
+    fun dispatch(cxt: KdrCxt, handler: RequestHandler, focus: ContextFocus) {
         val appPath = handler.appPath
         val method = handler.method
 

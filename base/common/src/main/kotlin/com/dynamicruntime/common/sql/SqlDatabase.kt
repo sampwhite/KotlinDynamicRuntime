@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
+import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.util.toLowerCaseIdentifier
 import java.sql.Connection
 import java.sql.Driver
@@ -248,9 +249,55 @@ class SqlDatabase(
         val boundStmt = getMustExist(cxt).checkAndGetStatement(stmt)
         val pStmt = getAndBindPreparedStatement(cxt, boundStmt, data)
         try {
-            return pStmt.executeUpdate()
+            val result = pStmt.executeUpdate()
+            publishWrite(cxt, stmt, result)
+            return result
         } catch (e: SQLException) {
             throw SqlStmtUtil.mkException("Could not execute query ${stmt.name}.", e)
+        }
+    }
+
+    /**
+     * Publishes a completed write to the registered [SqlWriteListener]s, with the tables the statement
+     * touched.
+     *
+     * **This is here, at the one place every write passes through, on purpose.** The alternative is for each
+     * service to announce its own writes, which puts the correctness of every listener in the hands of
+     * whoever next adds a write path -- and a forgotten announcement fails *quietly*. A statement already
+     * knows its tables ([SqlStatement.tableNames], captured from its `t:` markers), so nothing has to be
+     * remembered.
+     *
+     * What it deliberately does **not** do is name a listener. The data layer publishes; who subscribes (the
+     * table caches, today) is not its concern -- see [SqlWriteListener] for why that is worth an interface.
+     *
+     * Only for writes: reads go through [queryStatement], and a statement that matched no row
+     * ([rowsAffected] of zero) changed nothing. A write later rolled back is published anyway -- a cache
+     * listener defers its reload until the transaction has ended, so the cost is one reload that finds
+     * nothing, which is the right way round for a guess to be wrong.
+     *
+     * **A listener cannot fail the write.** This runs after `executeUpdate` has already happened (and, for an
+     * insert, before its generated keys are read), so a listener exception here would make a write that
+     * *succeeded* look failed to the caller -- inviting a retry that double-writes -- and would lose the
+     * generated key. The [SqlWriteListener] contract says implementations must not throw; this is where that
+     * contract is enforced rather than hoped for.
+     */
+    @KdrPrivate
+    fun publishWrite(cxt: KdrCxt, stmt: SqlStatement, rowsAffected: Int) {
+        if (rowsAffected <= 0 || stmt.tableNames.isEmpty()) {
+            return
+        }
+        val listeners = SqlTopicService.get(cxt)?.writeListeners ?: return
+        for (listener in listeners) {
+            try {
+                listener.onWrite(cxt, stmt.tableNames)
+            } catch (e: Exception) {
+                LogSql.error(
+                    cxt,
+                    "Write listener failed for tables ${stmt.tableNames} on statement ${stmt.name}; " +
+                        "the write itself succeeded.",
+                    e,
+                )
+            }
         }
     }
 
@@ -265,6 +312,7 @@ class SqlDatabase(
         val pStmt = getAndBindPreparedStatement(cxt, boundStmt, data)
         try {
             val result = pStmt.executeUpdate()
+            publishWrite(cxt, stmt, result)
             if (result > 0 && counterValue != null) {
                 pStmt.generatedKeys.use { generatedKeys ->
                     if (generatedKeys.next()) {

@@ -172,7 +172,14 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
             row.encodedPassword = userData[AD.encodedPassword].toOptStr()
             userData.remove(AD.encodedPassword) // never let the password leak downstream via `data`
             row.authUserData = userData
-            row.data = data
+            // The retained `data` is a copy whose nested auth map is the scrubbed one above. Without this the
+            // scrub only ever touched the copy while `data` kept the caller's original -- with the password
+            // still nested inside it -- making the "scrubbed from data" promise of the class doc false. The
+            // copy also means the row never aliases the caller's map, so a cached raw row cannot be reached
+            // through a row handed out to request code.
+            val retained = data.toMutableMap()
+            retained[AU.authUserData] = userData
+            row.data = retained
             return row
         }
 

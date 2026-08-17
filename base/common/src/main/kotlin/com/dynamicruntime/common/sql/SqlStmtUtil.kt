@@ -56,6 +56,9 @@ object SqlStmtUtil {
         val trimmed = query.trim()
         val sb = StringBuilder(trimmed.length + 20)
         val bindFields = mutableListOf<String>()
+        // Captured as the `t:` markers are translated, so every statement records what it touches for free --
+        // see SqlStatement.tableNames and the cache announcement it drives.
+        val tableNames = mutableListOf<String>()
 
         var inWord = false
         var inQuote = false
@@ -88,7 +91,13 @@ object SqlStmtUtil {
                                 sb.append('?')
                             }
                             'c' -> sb.append(aliases.getColumnName(word.substring(2)))
-                            't' -> sb.append(sqlCxt.sqlDb.mkSqlTableName(word.substring(2)))
+                            't' -> {
+                                val tableName = word.substring(2)
+                                if (tableName !in tableNames) {
+                                    tableNames.add(tableName)
+                                }
+                                sb.append(sqlCxt.sqlDb.mkSqlTableName(tableName))
+                            }
                             else -> sb.append(word) // A strange expression, likely to fail at execution.
                         }
                     } else {
@@ -116,7 +125,7 @@ object SqlStmtUtil {
             sb.append(';')
         }
         val columnsByName = columns.associateBy { it.name }
-        return SqlStatement(sqlCxt.topic, name, trimmed, sb.toString(), columnsByName, bindFields)
+        return SqlStatement(sqlCxt.topic, name, trimmed, sb.toString(), columnsByName, bindFields, tableNames)
     }
 
     /** Builds an INSERT query for [columns], skipping any auto-increment column (and flagging it in [hasAutoIncrement]). */

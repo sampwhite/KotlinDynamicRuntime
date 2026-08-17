@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.schema.SCT
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -59,6 +60,45 @@ class SqlTopicServiceTest : StringSpec({
             row[PF.client] shouldBe "local"
             row[PF.lastTranId] shouldNotBe SqlTopicUtil.initialInsertTranId
         }
+    }
+
+    /**
+     * The data layer's write notification ([SqlWriteListener]). It exists so the SQL layer can publish what it
+     * wrote without naming who cares -- the table caches subscribe to it, rather than `SqlDatabase` reaching
+     * into the cache subsystem directly.
+     *
+     * The assertion that matters is the *read* one: a listener that also fired on selects would make every
+     * query look like a change, which for a cache subscriber means reloading the table on every read.
+     */
+    "a write notifies the registered listeners with its tables, and a read does not" {
+        val tables = tableModule(cxt = KdrCxt.mkSimpleCxt("def"), namespace = "notifyNs", topic = "notify") {
+            table("NotifyState", "Per-client transactional state") {
+                column("stateKey", "Key of the state row.")
+                primaryKey("stateKey")
+                withTransactions()
+            }
+        }
+        val cxt = bootCxt("notifyTest", tables)
+        val service = SqlTopicService.get(cxt).shouldNotBeNull()
+
+        val seen = mutableListOf<List<String>>()
+        val listener = SqlWriteListener { _, tableNames -> seen.add(tableNames) }
+        service.addWriteListener(listener)
+        // Registration is idempotent by identity, so a service whose checkInit runs twice cannot double up.
+        service.addWriteListener(listener)
+        service.writeListeners.size shouldBe 1
+
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, "notify")
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, "touch", null, mapOf("stateKey" to "n1")) {}
+        seen.shouldNotBeEmpty()
+        seen.all { it == listOf("NotifyState") } shouldBe true
+
+        // Reads publish nothing: queryStatement never calls publishWrite.
+        val countAfterWrite = seen.size
+        sqlCxt.sqlDb.withSession(cxt) {
+            sqlCxt.sqlDb.queryOneStatement(cxt, sqlCxt.sqlTopic!!.qTranLockQuery!!, mapOf("stateKey" to "n1"))
+        }
+        seen.size shouldBe countAfterWrite
     }
 
     "listTables dumps the registered tables from the store" {

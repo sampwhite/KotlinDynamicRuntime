@@ -114,11 +114,15 @@ object SqlTopicUtil {
         }
         val lastUpdated = data[PF.updatedAt].toOptInstant()
         if (lastUpdated != null) {
-            // Advance by at least a millisecond when the clock did not move (or barely did, within 2s),
-            // which can happen when queries run very fast or node clocks are slightly out of sync.
+            // Advance by at least a millisecond whenever the clock has not moved past the prior stamp --
+            // **however far behind it is**. This guard used to apply only within a 2-second window, which let
+            // a node whose clock lagged by more stamp a row *earlier* than it already was; a date moving
+            // backwards is what the incremental table caches can never see (their reload skips rows at or
+            // before the version they hold), so such a write was served stale everywhere until the row's next
+            // genuine update. Per-row monotonicity is the invariant, whatever the skew.
             val l = lastUpdated.toEpochMilliseconds()
             val n = now.toEpochMilliseconds()
-            if (n in (l - 2000)..l) {
+            if (n <= l) {
                 now = Instant.fromEpochMilliseconds(l + 1)
             }
         }

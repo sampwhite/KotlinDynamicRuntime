@@ -20,6 +20,16 @@ class SqlStatement(
     val columns: Map<String, KdrColumn>,
     /** The bind parameter field names, in the order they appear in [sql]. */
     val bindFields: List<String>,
+    /**
+     * The logical table names the statement mentions, captured from its `t:` entity markers by
+     * [SqlStmtUtil.prepareSql] -- so *any* statement knows what it touches, whether it was assembled by
+     * [SqlTopicUtil]'s builders or written out by hand.
+     *
+     * This is what lets [SqlDatabase.publishWrite] tell a [SqlWriteListener] what a write touched, without
+     * any caller having to remember to. Nearly always one name; a join or a multi-table statement yields
+     * several.
+     */
+    val tableNames: List<String> = emptyList(),
 ) {
     /** Session key combining topic and name; used to find and reuse [SqlBoundStatement]s. */
     val sessionKey: String = "$name@$topic"

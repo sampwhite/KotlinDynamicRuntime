@@ -63,14 +63,21 @@ private fun requireUsableForLogin(row: AuthUserRow) {
  * this, revoking an administrator would leave them administering for up to a month.
  *
  * So the live read is paid only where the answer actually matters, and there are two such places:
- *  - the dispatcher, before enforcing a section's `requiredRole` -- so a revoked admin is refused immediately;
+ *  - the dispatcher, before enforcing a section's `requiredRole` -- so a revoked admin is refused promptly;
  *  - the shell's UI-config, before deciding which menu items to offer -- so the menu stops offering a page the
  *    caller can no longer open. (Without it the menu is merely *stale*, not unsafe: following the item still
  *    hits the gate above and 401s. But offering a door that will not open is its own bug.)
  *
+ * **How prompt is "promptly":** the read goes through the `AuthUsers` table cache, so on the node that made
+ * the change it is immediate (a local write forces the next read to reload), and on other nodes it lands when
+ * the writer's request ends and their next request re-checks -- a fraction of a second, bounded by the
+ * cache's state-row read throttle. Only a change made *outside* the application (a hand-edited row, a
+ * migration) waits for the cache's recheck floor, ~30s by default. That is the deliberate trade against a
+ * per-request SQL read; the yardstick remains the 30-day cookie this refresh exists to overrule.
+ *
  * Ordinary user traffic still never touches the database for auth. A disabled account loses every role here,
- * which is what makes `admin/user/setEnabled` bite at once rather than at cookie expiry; a row that has
- * vanished is treated the same way.
+ * which is what makes `admin/user/setEnabled` bite within the same bounds rather than at cookie expiry; a row
+ * that has vanished is treated the same way.
  */
 fun refreshActingRoles(cxt: KdrCxt) {
     val profile = cxt.userProfile

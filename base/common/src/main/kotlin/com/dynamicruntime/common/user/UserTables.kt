@@ -3,6 +3,7 @@ package com.dynamicruntime.common.user
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.KdrTable
+import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.tableModule
 
 /** The SQL topic the auth tables belong to. */
@@ -141,6 +142,10 @@ fun authTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "user
         forClient()
         index(AU.primaryId, unique = true)
         index(AU.username, unique = true)
+        // The in-memory cache ([AuthUserCache]) reloads by asking for the rows changed since it last looked,
+        // which is a predicate on `updatedAt` run every few seconds on every node. Without this index that is
+        // a full scan of the one table guaranteed to grow.
+        index(PF.updatedAt)
     }
     table(UT.linkedUsers, "External identities (Google, …) linked to a local user.") {
         column(LU.linkSource, "The external identity source (e.g. 'google').", required = true)
