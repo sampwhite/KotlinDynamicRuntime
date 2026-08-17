@@ -56,7 +56,7 @@ data class UserProfile(
      *
      * Optional by design: organizations are a per-client choice, so null is the ordinary case and means
      * "belongs to the client, not to any organization". Held in `authUserData` and carried here rather than
-     * in a database column, which is what lets a write stamp it onto content without a lookup.
+     * in a database column, which is what lets a write stamp it onto the row without first looking the user up.
      */
     val org: String? = null,
     /**
