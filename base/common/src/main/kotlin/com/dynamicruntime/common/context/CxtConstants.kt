@@ -48,6 +48,15 @@ object ACFG {
     const val validateResponseSchema = "validateResponseSchema"
 
     /**
+     * When true, this node believes the `X-Kdr-Env-Email` header an edge server sets on a request it has
+     * already authenticated (issue #348). It cannot verify that claim -- the real guarantee is that only the
+     * edge can reach this node, a network property -- so the deployment asserts it here. Unset defaults from
+     * `KDR_TRUST_ENV_AUTH_HEADER`, and failing that from [isTestInstance]. Resolved through
+     * `EnvAuthRules.isTrusted`, which is the only thing that should read it.
+     */
+    const val trustEnvAuthHeader = "trustEnvAuthHeader"
+
+    /**
      * When true, an error flagged `sensitive` (e.g., one that would reveal whether an account exists) has its
      * message replaced with a generic one before it goes to the client; the real message is still logged
      * (issue #108). Set directly by tests. When unset, defaults from the `KDR_OBFUSCATE_ERRORS` env var, which

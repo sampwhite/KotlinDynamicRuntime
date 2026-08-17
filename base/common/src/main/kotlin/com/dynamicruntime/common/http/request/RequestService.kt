@@ -9,6 +9,8 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.user.AUTHC
 import com.dynamicruntime.common.user.UserAuthCookie
+import com.dynamicruntime.common.user.ENVA
+import com.dynamicruntime.common.user.EnvAuthRules
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.util.crc32Hex
@@ -212,6 +214,17 @@ class RequestService : ServiceInitializer {
             appContextRoot to ContextFocus.app,
             staticContextRoot to ContextFocus.static,
         )
+
+        // Say out loud, once, that this node believes an unverifiable header (issue #348). The guarantee behind
+        // trusting it is a *deployment* property -- that only an edge can reach this node -- which nothing here
+        // can check. An operator reading the boot log is the one person placed to notice it is not true, so the
+        // assumption belongs in the log rather than only in the memory of whoever set the variable.
+        if (EnvAuthRules.isTrusted(cxt.instanceConfig)) {
+            LogRequest.info(cxt) {
+                "Env auth is TRUSTED: this node accepts '${ENVA.header}' from any caller and treats it as an " +
+                    "authenticated identity. It must be unreachable except through an edge server."
+            }
+        }
 
         // Every endpoint's section must have rules declared above (issue #211). An unruled section is served
         // permissively, so without this check a new section ships open to the world, and nothing says so --

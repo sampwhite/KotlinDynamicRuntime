@@ -129,6 +129,20 @@ class KdrCxt(
     var traceId: String? = null
 
     /**
+     * The address of the person who got through an authenticating **edge** server, when this request arrived
+     * through one and this node trusts it to say so (issue #348). Null otherwise -- including on every node
+     * that is not behind an edge.
+     *
+     * A property of the **channel**, not of the user: it says how the request arrived, not who is acting.
+     * Those are independent, and all four combinations happen -- the common one being an env-authed channel
+     * carrying an ordinarily logged-in user, since env auth never dictates a login. That is precisely why this
+     * lives here beside [forwardedFor] and [traceId] rather than becoming a role on [userProfile].
+     *
+     * Set from `EnvAuthRules.resolveEnvEmail`; never read the header directly. Carried down to sub contexts.
+     */
+    var envAuthEmail: String? = null
+
+    /**
      * The request being processed, or null when this context is not handling one (startup, background
      * jobs, tests). Set when an endpoint invocation begins and inherited by sub contexts. The mutable
      * response accumulator will be a separate field added when endpoint execution is built.

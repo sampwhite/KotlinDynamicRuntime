@@ -11,6 +11,8 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.startup.InstanceRegistry
+import com.dynamicruntime.common.user.ENVA
+import com.dynamicruntime.common.user.EnvAuthRules
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.formatCookieDate
 import com.dynamicruntime.common.util.isVariableName
@@ -181,6 +183,10 @@ class RequestHandler : WebRequest {
             cxt.forwardedFor = forwardedFor
             cxt.appId = appId()
             cxt.traceId = traceId()
+            // Whether an authenticating edge vouched for this request, and for whom (issue #348). Resolved
+            // here beside the other channel facts, and through EnvAuthRules rather than off the header, so
+            // there is one place that decides whether the claim is believed at all.
+            cxt.envAuthEmail = EnvAuthRules.resolveEnvEmail(config, getRequestHeader(ENVA.header))
             createdCxt = cxt
             val service = RequestService.get(cxt)
                 ?: throw KdrException("This node cannot handle endpoint requests.", code = EXC.notSupported)
