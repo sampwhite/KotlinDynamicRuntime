@@ -2,15 +2,22 @@ package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.sql.KdrColumn
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.sql.SqlCxt
 import com.dynamicruntime.common.sql.SqlScopeUtil
+import com.dynamicruntime.common.sql.SqlStatement
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.sql.cache.SqlCacheRow
+import com.dynamicruntime.common.sql.cache.SqlTableCache
+import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
@@ -26,6 +33,13 @@ class UserService : ServiceInitializer {
 
     lateinit var authFormHandler: AuthFormHandler
 
+    /**
+     * The in-memory `AuthUsers` cache, or null when the table-cache service is absent (see [AuthUserCache]).
+     * Every single-row lookup below consults it first and falls back to SQL on a miss, so its absence costs
+     * queries and nothing else. It holds the **raw row maps** -- see [AuthUserCache] for why.
+     */
+    var userCache: SqlTableCache<Map<String, Any?>>? = null
+
     override fun checkInit(cxt: KdrCxt) {
         if (::authFormHandler.isInitialized) return
         val node = NodeService.get(cxt) ?: throw KdrException("NodeService required for UserService.")
@@ -33,6 +47,9 @@ class UserService : ServiceInitializer {
         // Null when the deployment configured no Google client id, which is what disables Google sign-in.
         val googleVerifier = GoogleAuthConfig.mkVerifier(cxt.instanceConfig)
         authFormHandler = AuthFormHandler(this, node, mail, googleVerifier)
+        // Registered during this pass so the table-cache service's own checkReady -- which runs after every
+        // service's checkInit -- finds it and performs the initial load at startup rather than in a request.
+        userCache = AuthUserCache.register(cxt)
     }
 
     // --- AuthUsers queries --------------------------------------------------
@@ -43,11 +60,37 @@ class UserService : ServiceInitializer {
     private fun authUserDevicesTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[UT.authUserDevices]
         ?: throw KdrException("AuthUserDevices table is not registered in the schema store.")
 
-    fun queryByPrimaryId(cxt: KdrCxt, primaryId: String): AuthUserRow? = queryOne(cxt, AU.primaryId, primaryId)
+    fun queryByPrimaryId(cxt: KdrCxt, primaryId: String): AuthUserRow? =
+        cachedUser(cxt) { it.snapshot.byIndex(AU.primaryId, primaryId) } ?: queryOne(cxt, AU.primaryId, primaryId)
 
-    fun queryByUsername(cxt: KdrCxt, username: String): AuthUserRow? = queryOne(cxt, AU.username, username)
+    fun queryByUsername(cxt: KdrCxt, username: String): AuthUserRow? =
+        cachedUser(cxt) { it.snapshot.byIndex(AU.username, username) } ?: queryOne(cxt, AU.username, username)
 
-    fun queryByUserId(cxt: KdrCxt, userId: Long): AuthUserRow? = queryOne(cxt, AU.userId, userId)
+    fun queryByUserId(cxt: KdrCxt, userId: Long): AuthUserRow? =
+        cachedUser(cxt) { it.snapshot.get(it.idOf(userId)) } ?: queryOne(cxt, AU.userId, userId)
+
+    /**
+     * Serves a single-row lookup from the [userCache] when it holds the row, returning null when it does not
+     * -- which every caller above turns into its SQL query, so the cache only ever *saves* a round trip and
+     * never changes an answer. A disabled user is the routine miss (the cache holds enabled rows only), as is
+     * any lookup made before the cache has loaded.
+     *
+     * The cache holds the **raw row map**; each hit extracts a fresh [AuthUserRow] from it, exactly as the
+     * SQL path does from a queried row. So every caller gets its own mutable row (safe to edit and pass to
+     * [updateUser]), the extraction's password scrub applies to what is handed out while the cache keeps
+     * full fidelity, and a hit differs from a query by nothing but the round trip. Nested values inside the
+     * map (contact lists) remain shared with the cache, so a caller must replace rather than mutate them in
+     * place -- which every caller already does.
+     */
+    private inline fun cachedUser(
+        cxt: KdrCxt,
+        lookup: (SqlTableCache<Map<String, Any?>>) -> SqlCacheRow<Map<String, Any?>>?,
+    ): AuthUserRow? {
+        val cache = userCache ?: return null
+        cache.checkRefresh(cxt)
+        val row = lookup(cache) ?: return null
+        return AuthUserRow.extract(row.value)
+    }
 
     /**
      * Resolves a login identifier that is *either* a username *or* a primary contact (email): looks up by
@@ -181,20 +224,73 @@ class UserService : ServiceInitializer {
         return counter[0]
     }
 
-    /** Writes [row] back to its `AuthUsers` record (by `userId`), re-stamping protocol columns. */
+    /**
+     * Writes [row] back to its `AuthUsers` record (by `userId`), re-stamping protocol columns.
+     *
+     * The update is **version-guarded**: it matches the `updatedAt` the row was read with, so a row that has
+     * been changed since -- by another request, another node, or an admin -- refuses with a conflict rather
+     * than being silently overwritten whole. This write replaces the entire row, which is what makes the
+     * guard necessary: an unguarded whole-row write built from a stale read reverts every intervening change
+     * (a role grant, a disable) without any error, and reading through the cache stretches how stale the base
+     * row can be. On a refusal the cache is marked so the very next read is fresh; the caller re-reads and
+     * retries, now working from the row that actually exists.
+     */
     fun updateUser(cxt: KdrCxt, row: AuthUserRow) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUsersTable(cxt)
-        val stmt = SqlTopicUtil.mkTableUpdateStmt(sqlCxt, table)
         val data = row.toMap().toMutableMap()
+        // The version this row was read at, captured before prepForStdExecute stamps the new one.
+        val priorUpdatedAt = data[PF.updatedAt].toOptInstant()
         SqlTopicUtil.prepForStdExecute(cxt, table, data)
         // prepForStdExecute stamps `enabled = true` unconditionally -- deliberate for a "create" that revives a
         // disabled row (issue #48), but wrong for an update, where it would make disabling a user impossible:
         // the write would silently succeed and the row stay enabled. The caller's intent wins here.
         data[PF.enabled] = row.enabled
-        sqlCxt.sqlDb.withSession(cxt) {
-            sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
+        var count = 1
+        if (priorUpdatedAt == null) {
+            // No version to guard on -- a row never read from the database. Not a path any current caller
+            // takes (updates start from a query), but refusing it outright would turn a programming slip into
+            // a data-shaped mystery; the plain update keeps the old semantics for it.
+            val stmt = SqlTopicUtil.mkTableUpdateStmt(sqlCxt, table)
+            sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, data) }
+        } else {
+            data[priorUpdatedAtParam] = priorUpdatedAt
+            val stmt = mkGuardedUserUpdateStmt(sqlCxt, table)
+            sqlCxt.sqlDb.withSession(cxt) { count = sqlCxt.sqlDb.executeStatement(cxt, stmt, data) }
         }
+        if (count == 0) {
+            // The guarded write matched nothing: the row moved under us. Mark the cache so the caller's
+            // re-read is fresh rather than the same stale row that produced this conflict.
+            SqlTableCacheService.get(cxt)?.noteTableChanged(cxt, UT.authUsers)
+            throw KdrException(
+                "User ${row.userId} was modified concurrently; re-read the user and retry the change.",
+                code = EXC.conflict,
+            )
+        }
+        // Success: advance the version the row object carries, so a flow that updates the same row twice
+        // (login does: the update, then completeLogin's auto-admin sync) guards its second write against the
+        // row it just wrote rather than the original read.
+        row.data = row.data.toMutableMap().also { it[PF.updatedAt] = data[PF.updatedAt] }
+    }
+
+    /**
+     * The update-by-userId statement with the optimistic-concurrency condition added: `... and updatedAt =
+     * :priorUpdatedAt`. The bind parameter needs its own column definition (cloned from `updatedAt`, so it
+     * binds as a date) because the standard update already binds `updatedAt` to the *new* value in its SET
+     * clause -- one name cannot carry both.
+     */
+    private fun mkGuardedUserUpdateStmt(sqlCxt: SqlCxt, table: KdrTable): SqlStatement {
+        val setColumns = table.columns.filter { col ->
+            col.name != PF.touchedAt && col.name != PF.createdAt && col.name != PF.createdBy && !col.autoIncrement
+        }
+        val query = SqlStmtUtil.mkUpdateQuery(table.tableName, setColumns, table.primaryKey) +
+            " AND c:${PF.updatedAt} = :$priorUpdatedAtParam"
+        val updatedAtCol = table.columnsByName.getValue(PF.updatedAt)
+        val priorCol = KdrColumn(
+            priorUpdatedAtParam, updatedAtCol.schema, updatedAtCol.storeType, updatedAtCol.isList,
+            required = false, autoIncrement = false,
+        )
+        return SqlStmtUtil.prepareSql(sqlCxt, "uAuthUsersGuarded", table.columns + priorCol, query)
     }
 
     // --- LinkedUsers: external identities -----------------------------------
@@ -301,6 +397,9 @@ class UserService : ServiceInitializer {
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "UserService"
+
+        /** Bind-parameter name for the version guard in [updateUser]'s WHERE clause (name matches value). */
+        const val priorUpdatedAtParam = "priorUpdatedAt"
 
         fun get(cxt: KdrCxt): UserService? = cxt.instanceConfig.get(serviceName) as? UserService
     }

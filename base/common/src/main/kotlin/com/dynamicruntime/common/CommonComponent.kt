@@ -30,6 +30,7 @@ import com.dynamicruntime.common.user.profileSchema
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.PRI
 import com.dynamicruntime.common.sql.SqlTopicService
+import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
@@ -54,6 +55,10 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(SqlTopicService.schema(cxt))
         // Domain tables: the node's private InstanceConfig table (owned by InstanceConfigService).
         collector.addTables(InstanceConfigService.tables(cxt))
+        // The one row every node reads to find out which cached tables have changed (see SqlTableCacheService),
+        // plus the operator endpoint reporting this node's caches against it.
+        collector.addTables(SqlTableCacheService.tables(cxt))
+        collector.addModule(SqlTableCacheService.schema(cxt))
         // Auth (issue #67): the user/auth endpoints and the AuthUsers/AuthUserDevices tables.
         collector.addModule(authSchema(cxt))
         collector.addTables(authTables(cxt))
@@ -113,6 +118,10 @@ class CommonComponent : ComponentDefinition {
      */
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
         listOf(
+            // First, so its own `checkInit` has read the caching environment before any service's `checkInit`
+            // registers a cache with it. Its `checkReady` then performs every cache's initial load, by which
+            // point the whole set is registered.
+            ::SqlTableCacheService,
             ::RequestService, ::PortalService, ::MarkdownFragmentService, ::MarkdownDocService,
             ::InstanceConfigService, ::MailService, ::UserService,
             // GedraService before the data service that reads it, though the ordering is a courtesy rather

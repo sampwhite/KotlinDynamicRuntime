@@ -10,6 +10,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.ServiceInitializer
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * The operational database service: it maps topics to their runtime [SqlTopic] objects and databases,
@@ -28,6 +29,21 @@ class SqlTopicService : ServiceInitializer {
     val databases: MutableMap<String, SqlDatabase> = ConcurrentHashMap()
 
     var isInMemory: Boolean = true
+
+    /**
+     * Consulted (in registration order) after a statement writes rows; see [SqlWriteListener]. Held here
+     * rather than on [SqlDatabase] because a database is built lazily from resolved configuration, while this
+     * service is the data layer's fixed startup-time entry point -- the same arrangement `RequestService`
+     * uses for its content servers.
+     */
+    val writeListeners = CopyOnWriteArrayList<SqlWriteListener>()
+
+    /** Registers a [SqlWriteListener] (idempotent by identity, so a repeated `checkInit` cannot double it). */
+    fun addWriteListener(listener: SqlWriteListener) {
+        if (writeListeners.none { it === listener }) {
+            writeListeners.add(listener)
+        }
+    }
 
     override fun checkInit(cxt: KdrCxt) {
         isInMemory = (cxt.instanceConfig.get(ACFG.inMemoryOnly) as? Boolean) ?: DbEnv.resolveInMemoryOnly(cxt)
