@@ -10,7 +10,7 @@ class KdrCxtTest : StringSpec({
     "a simple context defaults its client to the user profile client" {
         val cxt = KdrCxt.mkSimpleCxt("root")
         cxt.client shouldBe cxt.userProfile.client
-        cxt.client shouldBe CL.local
+        cxt.client shouldBe CL.hub
     }
 
     "a sub context inherits the parent client by default" {
@@ -23,7 +23,7 @@ class KdrCxtTest : StringSpec({
         val root = KdrCxt.mkSimpleCxt("root")
         val sub = root.mkSubContext("child", CL.public)
         sub.client shouldBe CL.public
-        root.client shouldBe CL.local
+        root.client shouldBe CL.hub
     }
 
     "locals propagate as a clone to a sub context but session does not" {

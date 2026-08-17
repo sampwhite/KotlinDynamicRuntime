@@ -1,5 +1,6 @@
 package com.dynamicruntime.common
 
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.schema.SchTypesBuilder
@@ -18,7 +19,7 @@ import kotlin.test.assertTrue
 class CxtSchemaBuilderTest {
 
     private val sample = UserProfile(
-        authId = "7", userId = 7L, client = "local", roles = setOf("user", "admin"),
+        authId = "7", userId = 7L, client = CL.hub, roles = setOf("user", "admin"),
         publicName = "Ada", hasPassword = true,
     )
 

@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.sql
 
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.schema.SCT
@@ -46,7 +47,7 @@ class SqlTopicServiceTest : StringSpec({
 
         // The final written row is left on the context.
         sqlCxt.tranData["counter"] shouldBe 1L
-        sqlCxt.tranData[PF.client] shouldBe "local" // owner: cxt.client
+        sqlCxt.tranData[PF.client] shouldBe CL.hub // owner: cxt.client
         sqlCxt.tranData[PF.createdBy] shouldBe 0L // actor: system user
         sqlCxt.tranData[PF.lastTranId] shouldNotBe SqlTopicUtil.initialInsertTranId
 
@@ -56,7 +57,7 @@ class SqlTopicServiceTest : StringSpec({
         db.withSession(cxt) {
             val row = db.queryOneStatement(cxt, sqlTopic.qTranLockQuery!!, mapOf("stateKey" to "s1")).shouldNotBeNull()
             row["counter"] shouldBe 1L
-            row[PF.client] shouldBe "local"
+            row[PF.client] shouldBe CL.hub
             row[PF.lastTranId] shouldNotBe SqlTopicUtil.initialInsertTranId
         }
     }

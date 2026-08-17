@@ -45,11 +45,11 @@ data class UserProfile(
      */
     val userId: Long = CL.systemUserId.toLong(),
     /**
-     * The client this user belongs to. Defaults to [CL.local] (the general acting default); the auth
+     * The client this user belongs to. Defaults to [CL.hub] (the general acting default); the auth
      * layer uses [CL.public] for the anonymous profile and for users it manufactures without an explicit
      * client.
      */
-    val client: String = CL.local,
+    val client: String = CL.hub,
     /**
      * The user's **primary organization** within their [client], or null when they have none -- either the
      * client has no organizations at all, or this user is not confined to one (issue #225).
@@ -154,7 +154,7 @@ data class UserProfile(
         fun fromUserInfo(info: Map<String, Any?>): UserProfile = UserProfile(
             authId = info.getOptStr(UPF.authId),
             userId = info.getOptLong(UPF.userId) ?: CL.systemUserId.toLong(),
-            client = info.getOptStr(UPF.client) ?: CL.local,
+            client = info.getOptStr(UPF.client) ?: CL.hub,
             org = info.getOptStr(UPF.org),
             roles = info[UPF.roles].toJsonListOfStrings().toSet(),
             publicName = info.getOptStr(UPF.publicName),

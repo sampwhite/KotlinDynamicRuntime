@@ -22,6 +22,15 @@ object ADEP {
     const val userSetEnabled = "/admin/user/setEnabled"
     const val userSetOrg = "/admin/user/setOrg"
     const val userSetName = "/admin/user/setName"
+
+    /**
+     * The clients this deployment carries (issue #343).
+     *
+     * Full-scope only, and it belongs here rather than under [UADEP] for a reason that is not merely tidiness:
+     * a cross-client view is not a client-scoped administrator's business. Somebody confined to one client has
+     * no question this listing answers that their own client's definition does not.
+     */
+    const val clients = "/admin/clients"
 }
 
 /**

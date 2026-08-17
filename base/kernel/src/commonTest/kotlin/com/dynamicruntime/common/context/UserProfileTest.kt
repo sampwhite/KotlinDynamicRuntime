@@ -59,7 +59,7 @@ class UserProfileTest {
         val restored = UserProfile.fromUserInfo(emptyMap())
         assertNull(restored.authId)
         assertEquals(CL.systemUserId.toLong(), restored.userId)
-        assertEquals(CL.local, restored.client)
+        assertEquals(CL.hub, restored.client)
         assertTrue(restored.roles.isEmpty())
         assertFalse(restored.isLoggedIn)
     }
