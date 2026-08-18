@@ -106,6 +106,11 @@ fun overlayType(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String
  *    every client at once by adding it to the underlying type.
  *  - **An empty body inherits; a non-empty one replaces.** `{"name": {}}` keeps the global definition of
  *    `name`, and anything else is this client's definition of it, entire.
+ *
+ * **The order is the client's.** A [LinkedHashMap] built in the overlay's own order, because for `properties`
+ * order is meaning rather than presentation -- it is the order a form shows its fields in. A client that
+ * reorders the set has reordered the form, which is a thing they should be able to do while narrowing it.
+ * (`JsonUtil` keeps the order of a parsed object for the same reason; see `PState.preserveOrder`.)
  */
 private fun mergeProperties(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
     val out = LinkedHashMap<String, Any?>(overlay.size)

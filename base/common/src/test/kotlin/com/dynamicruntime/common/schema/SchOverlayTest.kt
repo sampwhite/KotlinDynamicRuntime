@@ -163,4 +163,35 @@ class SchOverlayTest : StringSpec({
         globalTypes.getValue("core.Doc").properties.getValue("title").valueType
             .properties.getValue("name").valueType.maxBound shouldBe 128.0
     }
+
+    // Order is meaning here, not presentation: `properties` order is the order a form shows its fields in.
+    "a client's property order is the client's" {
+        val global = defs(
+            "core.Three" to linkedMapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to linkedMapOf(
+                    "first" to linkedMapOf(SCH.type to SCT.string),
+                    "second" to linkedMapOf(SCH.type to SCT.string),
+                    "third" to linkedMapOf(SCH.type to SCT.string),
+                ),
+            ),
+        )
+        // Untouched, the global order stands.
+        overlayDefs(global, emptyMap()).node("core.Three", SCH.properties).keys
+            .toList() shouldBe listOf("first", "second", "third")
+
+        // Reordered by the client, and reordering is a thing they may do while narrowing.
+        val out = overlayDefs(
+            global,
+            defs(
+                "core.Three" to mapOf(
+                    SCH.properties to linkedMapOf(
+                        "third" to emptyMap<String, Any?>(),
+                        "first" to emptyMap<String, Any?>(),
+                    ),
+                ),
+            ),
+        )
+        out.node("core.Three", SCH.properties).keys.toList() shouldBe listOf("third", "first")
+    }
 })
