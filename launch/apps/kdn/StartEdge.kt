@@ -22,15 +22,27 @@ object EdgeRole {
     const val name = "edge"
 
     /**
-     * The port an edge binds when nothing names one.
+     * The port an edge binds when nothing names one. `8010`, with `8011` for a second (agent's) edge -- the
+     * same role-then-instance scheme the application band uses at `7070`/`7071`, in a band of its own.
      *
-     * `7080` on a scheme where the tens digit is the role and the ones digit is whose instance: `7070`/`7071`
-     * for the application role (a developer's, an agent's), `7080`/`7081` for the edge. There is no external
-     * convention to copy -- a production reverse proxy binds 80 and 443, and only its management interface has
-     * a conventional port -- so the convention worth having is an internal one that keeps the family
-     * recognizable. It also stays out of `80xx`, the most crowded range on a development machine.
+     * **Chosen for how far it is from `7070`, not for being tidy.** The nearby `7080` was the other candidate
+     * and reads better in a list, but it differs from the application port by one character in the middle --
+     * and the whole point of a separate port is knowing which server answered. Getting it wrong does not
+     * error: it returns a plausible answer from a server nobody meant to ask, which is the failure
+     * `kdr-probe`'s design is written against and the one its hardcoded default already caused once. The
+     * moment it would bite hardest is the next several slices, spent comparing "through the edge" against
+     * "direct to the app" with both ports side by side.
+     *
+     * There is no external convention to copy: a production reverse proxy binds 80 and 443, and only its
+     * management interface has a conventional port. Note `80xx` is otherwise the most crowded range on a
+     * development machine -- 8000, 8008, 8080, 8081, 8443, and 8009 for Tomcat's AJP -- so `8010` is a quiet
+     * pocket in a busy neighborhood rather than open ground.
+     *
+     * Deliberately *not* chosen to signal "a different kind of program", because it is not one: an edge shares
+     * this launcher's boot sequence, runtime, endpoints and webapp, and a number disagreeing with the
+     * structure is a quiet permanent tax.
      */
-    const val defaultPort = 7080
+    const val defaultPort = 8010
 }
 
 fun main() {

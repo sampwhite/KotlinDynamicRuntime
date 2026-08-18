@@ -82,9 +82,9 @@ class BootRoleEnvVarTest : StringSpec({
     "a role never inherits the unprefixed port, and falls to its own default instead" {
         val c = KdrInstanceConfig("rolePort", ENV.local, ENV.liveSource, "edge").apply {
             put("KDR_PORT", "7070")
-            put(ACFG.defaultPort, 7080)
+            put(ACFG.defaultPort, 8010)
         }
-        NodeUtil.extractNodeId(KdrCxt.mkSimpleCxt("t", c)).port shouldBe 7080
+        NodeUtil.extractNodeId(KdrCxt.mkSimpleCxt("t", c)).port shouldBe 8010
 
         // Its own variable is still obeyed -- the role is not being denied a port, only a shared one.
         c.put("KDR_EDGE_PORT", "7085")
