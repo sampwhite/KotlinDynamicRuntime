@@ -12,12 +12,12 @@ import com.dynamicruntime.common.startup.PRI
  * index stays out of it while remaining in the others.
  *
  * A [unique] index maps a key to at most one row and is the substitute for a unique-index SQL lookup; a
- * non-unique one groups rows under a key, in cache load order.
+ * non-unique one collects every row sharing a key, in cache load order.
  */
 class SqlCacheIndex<T : Any>(
-    /** Name the index is looked up by (see [SqlCacheSnapshot.byIndex] / [SqlCacheSnapshot.group]). */
+    /** Name the index is looked up by (see [SqlCacheSnapshot.byIndex] / [SqlCacheSnapshot.allByIndex]). */
     val name: String,
-    /** Whether a key maps to one row (a lookup) or many (a group). */
+    /** Whether a key maps to one row (a lookup) or to every row sharing it. */
     val unique: Boolean = false,
     /** The row's key for this index, or null to leave the row out of it. */
     val keyOf: (T) -> String?,

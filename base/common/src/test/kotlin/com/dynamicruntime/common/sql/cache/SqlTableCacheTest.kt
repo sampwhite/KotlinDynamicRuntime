@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.sql.cache
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
@@ -8,6 +9,7 @@ import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.sql.tableModule
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -48,7 +50,7 @@ class SqlTableCacheTest : StringSpec({
         return cxt
     }
 
-    /** A one-table module: a key, an owner to group by, and a label to index uniquely. */
+    /** A one-table module: a key, an owner to index non-uniquely, and a label to index uniquely. */
     fun gadgetTables(tableName: String, topic: String): List<KdrTable> =
         tableModule(cxt = KdrCxt.mkSimpleCxt("def"), namespace = "gadgetNs", topic = topic) {
             table(tableName, "A gadget.") {
@@ -117,12 +119,12 @@ class SqlTableCacheTest : StringSpec({
         snapshot.get(cache.idOf("g1")).shouldNotBeNull().value.label shouldBe "L1"
         snapshot.get(cache.idOf("g3")).shouldBeNull()
 
-        // A unique index substitutes for a unique-index SQL lookup; a grouped one lists in load order.
+        // A unique index substitutes for a unique-index SQL lookup; a non-unique one lists every row sharing a key, in load order.
         snapshot.byIndex(labelField, "L2").shouldNotBeNull().id shouldBe cache.idOf("g2")
         snapshot.byIndex(labelField, "L3").shouldBeNull()
-        snapshot.group(ownerField, "alice").map { it.id } shouldContainExactly
+        snapshot.allByIndex(ownerField, "alice").map { it.id } shouldContainExactly
             listOf(cache.idOf("g1"), cache.idOf("g2"))
-        snapshot.group(ownerField, "bob") shouldBe emptyList() // the disabled row's group is empty, not present
+        snapshot.allByIndex(ownerField, "bob") shouldBe emptyList() // the disabled row's key holds nothing
     }
 
     "an update replaces the prior entry and moves its index keys with it" {
@@ -149,8 +151,8 @@ class SqlTableCacheTest : StringSpec({
         snapshot.ordered.size shouldBe 2 // the superseded entry is gone, not stacked behind the new one
         snapshot.byIndex(labelField, "L1").shouldBeNull() // the old key no longer resolves
         snapshot.byIndex(labelField, "L1x").shouldNotBeNull().id shouldBe cache.idOf("g1")
-        snapshot.group(ownerField, "alice") shouldBe emptyList()
-        snapshot.group(ownerField, "bob").map { it.id } shouldContainExactlyInAnyOrder
+        snapshot.allByIndex(ownerField, "alice") shouldBe emptyList()
+        snapshot.allByIndex(ownerField, "bob").map { it.id } shouldContainExactlyInAnyOrder
             listOf(cache.idOf("g1"), cache.idOf("g2"))
     }
 
@@ -175,7 +177,7 @@ class SqlTableCacheTest : StringSpec({
         cache.snapshot.size shouldBe 1
         cache.snapshot.get(cache.idOf("g1")).shouldBeNull()
         cache.snapshot.byIndex(labelField, "C1").shouldBeNull()
-        cache.snapshot.group(ownerField, "alice").map { it.id } shouldContainExactly listOf(cache.idOf("g2"))
+        cache.snapshot.allByIndex(ownerField, "alice").map { it.id } shouldContainExactly listOf(cache.idOf("g2"))
 
         // ...but a consumer maintaining its own structure is told, rather than left holding a stale entry.
         val removals = cursor.nextChanges(cxt)
@@ -238,6 +240,92 @@ class SqlTableCacheTest : StringSpec({
         cxt.locals[TCH.monitorKey] = outer
         service.withMonitoring(cxt) { write(cxt, table, "m3", owner = "bob", label = "M3") }
         cxt.locals[TCH.monitorKey] shouldBe outer
+    }
+
+    "a key-scoped cursor replays only its own key, independently of a whole-cache cursor" {
+        val tables = gadgetTables("GadgetMultiCursor", "gcacheMultiCursor")
+        val table = tables.single()
+        val cxt = bootCxt("cacheMultiCursor", tables)
+        write(cxt, table, "g1", owner = "alice", label = "K1")
+        write(cxt, table, "g2", owner = "bob", label = "K2")
+        write(cxt, table, "g3", owner = "alice", label = "K3")
+
+        val cache = gadgetCache(table)
+        val alice = SqlCacheCursor(cache, ownerField, "alice")
+        val everything = SqlCacheCursor(cache)
+
+        alice.nextChanges(cxt).map { it.id } shouldContainExactly listOf(cache.idOf("g1"), cache.idOf("g3"))
+        alice.nextChanges(cxt) shouldBe emptyList()
+        // The two cursors are separate positions over the same cache: draining one leaves the other whole.
+        everything.nextChanges(cxt).map { it.id } shouldContainExactly
+            listOf(cache.idOf("g1"), cache.idOf("g2"), cache.idOf("g3"))
+
+        // A change under another key is not this one's business.
+        write(cxt, table, "g2", owner = "bob", label = "K2x", isUpdate = true)
+        alice.nextChanges(cxt) shouldBe emptyList()
+        everything.nextChanges(cxt).map { it.id } shouldContainExactly listOf(cache.idOf("g2"))
+    }
+
+    /**
+     * The case a filter over the whole stream cannot express, and the reason the per-key streams exist: the
+     * row is still very much alive, so nothing about it is disabled -- but it is no longer alice's, and a
+     * consumer of alice's rows has to be told that or it keeps the row forever.
+     */
+    "a row moving keys is a departure under the old key and an arrival under the new" {
+        val tables = gadgetTables("GadgetMultiMove", "gcacheMultiMove")
+        val table = tables.single()
+        val cxt = bootCxt("cacheMultiMove", tables)
+        write(cxt, table, "g1", owner = "alice", label = "M1")
+
+        val cache = gadgetCache(table)
+        val alice = SqlCacheCursor(cache, ownerField, "alice")
+        val bob = SqlCacheCursor(cache, ownerField, "bob")
+        alice.nextChanges(cxt).map { it.id } shouldContainExactly listOf(cache.idOf("g1"))
+        bob.nextChanges(cxt) shouldBe emptyList()
+
+        write(cxt, table, "g1", owner = "bob", label = "M1", isUpdate = true)
+
+        // Alice is told it left -- as a disabled copy, the same signal a soft delete gives.
+        val departure = alice.nextChanges(cxt)
+        departure.size shouldBe 1
+        departure.single().id shouldBe cache.idOf("g1")
+        departure.single().enabled shouldBe false
+        // Bob is told it arrived, live.
+        val arrival = bob.nextChanges(cxt)
+        arrival.size shouldBe 1
+        arrival.single().id shouldBe cache.idOf("g1")
+        arrival.single().enabled shouldBe true
+
+        // And membership agrees with what the cursors just said.
+        cache.snapshot.allByIndex(ownerField, "alice") shouldBe emptyList()
+        cache.snapshot.allByIndex(ownerField, "bob").map { it.id } shouldContainExactly listOf(cache.idOf("g1"))
+        // Consumed exactly once on both sides.
+        alice.nextChanges(cxt) shouldBe emptyList()
+        bob.nextChanges(cxt) shouldBe emptyList()
+    }
+
+    "disabling a row is a departure from its key, and an unknown key or index is caught" {
+        val tables = gadgetTables("GadgetMultiOff", "gcacheMultiOff")
+        val table = tables.single()
+        val cxt = bootCxt("cacheMultiOff", tables)
+        write(cxt, table, "g1", owner = "alice", label = "D1")
+
+        val cache = gadgetCache(table)
+        val alice = SqlCacheCursor(cache, ownerField, "alice")
+        alice.nextChanges(cxt).size shouldBe 1
+
+        write(cxt, table, "g1", owner = "alice", label = "D1", enabled = false, isUpdate = true)
+        val removal = alice.nextChanges(cxt)
+        removal.single().enabled shouldBe false
+        cache.snapshot.allByIndex(ownerField, "alice") shouldBe emptyList()
+
+        // A key nobody has ever written to is empty, not an error -- unlike a misspelled *index*, which is
+        // a programming mistake that would otherwise read as "nothing is filed under this key".
+        SqlCacheCursor(cache, ownerField, "nobody").nextChanges(cxt) shouldBe emptyList()
+        shouldThrow<KdrException> { SqlCacheCursor(cache, "noSuchIndex", "alice").nextChanges(cxt) }
+        // Half a key scope is refused outright rather than silently widening to the whole table.
+        shouldThrow<KdrException> { SqlCacheCursor(cache, ownerField, null) }
+        shouldThrow<KdrException> { SqlCacheCursor(cache, null, "alice") }
     }
 
     "the shared state row always advances on an announcement, so a lagging clock cannot be silenced" {

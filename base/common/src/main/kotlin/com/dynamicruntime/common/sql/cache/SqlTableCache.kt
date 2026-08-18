@@ -99,6 +99,13 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
     /** The same rows keyed by id, so a reload can find the entry it is replacing. */
     private val entriesById = HashMap<String, SqlCacheRow<T>>()
 
+    /**
+     * Per-key change streams: non-unique index name -> key -> counter-ordered rows, departure tombstones
+     * included. Maintained incrementally by [updateMultiStreams], because unlike every other derived structure
+     * here it is **not** a function of the current rows: a row that left a key is remembered only here.
+     */
+    private val multiStreams = HashMap<String, HashMap<String, TreeMap<Long, SqlCacheRow<T>>>>()
+
     private var counter = 0L
 
     /** The latest [PF.updatedAt] any pass has seen, whether or not the row was stored. */
@@ -120,7 +127,7 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
 
     // --- reading ------------------------------------------------------------
 
-    // A read is `cache.checkRefresh(cxt)` followed by `cache.snapshot.get/byIndex/group(...)` -- see
+    // A read is `cache.checkRefresh(cxt)` followed by `cache.snapshot.get/byIndex/allByIndex(...)` -- see
     // `UserService.cachedUser`. There is deliberately no `get(cxt, id)`-style wrapper pairing the two: it
     // would be a second way to say the same thing, and the two would drift the first time refresh semantics
     // changed. Taking the snapshot explicitly is also what lets a caller read several things from one
@@ -333,13 +340,48 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         }
         entriesByCounter[counter] = row
         entriesById[id] = row
+        updateMultiStreams(prior, row)
         return true
     }
+
+    /**
+     * Files [row] into each non-unique index's stream, and -- when it has *left* a key it was under --
+     * leaves a disabled copy behind there.
+     *
+     * That tombstone is the entire reason these streams exist. A key's consumer is told about a row leaving
+     * the same way it is told about a soft delete, because to a cursor the two are the same event: the row is
+     * no longer yours, drop it. Without it, a row moved from one key to another would simply stop appearing
+     * in the old key's stream, and a consumer that had already seen it would keep it forever.
+     *
+     * A disabled row belongs under no key, so it is treated as absent on both sides.
+     */
+    private fun updateMultiStreams(prior: SqlCacheRow<T>?, row: SqlCacheRow<T>) {
+        for (index in params.indexes) {
+            if (index.unique) {
+                continue
+            }
+            val newKey = if (row.enabled) index.keyOf(row.value) else null
+            val priorKey = if (prior != null && prior.enabled) index.keyOf(prior.value) else null
+            if (prior != null && priorKey != null) {
+                streamFor(index.name, priorKey).remove(prior.counter)
+            }
+            if (priorKey != null && priorKey != newKey) {
+                streamFor(index.name, priorKey)[row.counter] =
+                    SqlCacheRow(row.counter, row.id, row.updatedAt, enabled = false, row.value)
+            }
+            if (newKey != null) {
+                streamFor(index.name, newKey)[row.counter] = row
+            }
+        }
+    }
+
+    private fun streamFor(indexName: String, key: String): TreeMap<Long, SqlCacheRow<T>> =
+        multiStreams.getOrPut(indexName) { HashMap() }.getOrPut(key) { TreeMap() }
 
     /** Rebuilds the immutable read view from the interior and publishes it. Called under the refresh lock. */
     private fun publish(cxt: KdrCxt) {
         val ordered = entriesByCounter.values.toList()
-        // Iterated in counter order, so every derived group comes out in load order too.
+        // Iterated in counter order, so every derived index comes out in load order too.
         val live = ordered.filter { it.enabled }
 
         val byId = LinkedHashMap<String, SqlCacheRow<T>>(live.size)
@@ -348,7 +390,8 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         }
 
         val uniqueIndexes = LinkedHashMap<String, Map<String, SqlCacheRow<T>>>()
-        val groupIndexes = LinkedHashMap<String, Map<String, List<SqlCacheRow<T>>>>()
+        val multiIndexes = LinkedHashMap<String, Map<String, List<SqlCacheRow<T>>>>()
+        val multiStreamsOut = LinkedHashMap<String, Map<String, List<SqlCacheRow<T>>>>()
         for (index in params.indexes) {
             if (index.unique) {
                 val map = LinkedHashMap<String, SqlCacheRow<T>>()
@@ -367,15 +410,23 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
                 }
                 uniqueIndexes[index.name] = map
             } else {
-                val map = LinkedHashMap<String, MutableList<SqlCacheRow<T>>>()
-                for (row in live) {
-                    val key = index.keyOf(row.value) ?: continue
-                    map.getOrPut(key) { mutableListOf() }.add(row)
+                // Both per-key views are derived from the one stream, rather than membership being rebuilt from
+                // `live` in parallel: two derivations of the same thing are two chances to disagree about who
+                // is under a key, and the disagreement would show up only as a cursor and a lookup telling one
+                // consumer different stories.
+                val streams = multiStreams[index.name] ?: emptyMap()
+                val members = LinkedHashMap<String, List<SqlCacheRow<T>>>(streams.size)
+                val changes = LinkedHashMap<String, List<SqlCacheRow<T>>>(streams.size)
+                for ((key, stream) in streams) {
+                    val all = stream.values.toList() // counter-ordered: a TreeMap keyed by counter
+                    changes[key] = all
+                    members[key] = all.filter { it.enabled }
                 }
-                groupIndexes[index.name] = map
+                multiIndexes[index.name] = members
+                multiStreamsOut[index.name] = changes
             }
         }
-        snapshot = SqlCacheSnapshot(byId, uniqueIndexes, groupIndexes, ordered)
+        snapshot = SqlCacheSnapshot(byId, uniqueIndexes, multiIndexes, multiStreamsOut, ordered)
     }
 
     // --- statements & lookups -----------------------------------------------
