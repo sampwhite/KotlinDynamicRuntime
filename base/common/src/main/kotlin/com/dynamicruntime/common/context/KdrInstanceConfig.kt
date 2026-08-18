@@ -82,6 +82,14 @@ class KdrInstanceConfig(
     val env: String,
     /** Environment type, e.g. [ENV.deployed] or [ENV.liveSource]. */
     val envType: String,
+    /**
+     * The boot role this process runs as (issue #377) -- `edge` for a `StartEdge` node, null for an ordinary
+     * one. Every environment variable then gains a per-role override; see [getEnvVar].
+     *
+     * A **constructor parameter** rather than something set afterwards, and deliberately: it has to be settled
+     * before the first environment read, and a value that can be assigned late is one that can be read early.
+     */
+    val bootRole: String? = null,
 ) {
     // Conceptually private: the counter must only be advanced through
     // nextLoggingId(). Left open per the code guide; marked rather than hidden.
@@ -174,7 +182,16 @@ class KdrInstanceConfig(
     fun getEnvVar(key: String): String? {
         // Instance-config entries win over the real process environment, so configuration (and tests) can
         // inject or override an "environment variable" without touching the process environment.
-        return (get(key) as? String) ?: System.getenv(key)
+        //
+        // Under a boot role, the role-prefixed name is tried first and the plain one is the fallback, so an
+        // edge and an application can run side by side on one machine wanting different values for the same
+        // variable. The MORE SPECIFIC name wins outright -- both its config entry and its process variable --
+        // before the plain name is considered at all, because a value naming this role was written for this
+        // role and a general one was not.
+        for (k in envVarNamesFor(key, bootRole)) {
+            ((get(k) as? String) ?: System.getenv(k))?.let { return it }
+        }
+        return null
     }
 
     /**
@@ -256,14 +273,40 @@ class KdrInstanceConfig(
          * environment variable is pushed into the config, so it serves as a default the rest of startup reads
          * through [getEnvVar].
          */
-        fun preBootLoadConfig(): KdrInstanceConfig {
+        fun preBootLoadConfig(bootRole: String? = null): KdrInstanceConfig {
             val fileDefaults = readDefaultEnvVars(File(defaultEnvVarsFileName), System::getenv)
-            val env = System.getenv("KDR_ENV") ?: fileDefaults["KDR_ENV"] ?: ENV.local
-            val config = KdrInstanceConfig(env, env, ENV.liveSource)
+            // Role-aware from the very first read: an edge may want its own KDR_EDGE_ENV, and the environment
+            // name decides everything downstream, so it cannot be the one variable the role does not reach.
+            val env = envVarNamesFor(envName, bootRole)
+                .firstNotNullOfOrNull { System.getenv(it) ?: fileDefaults[it] }
+                ?: ENV.local
+            val config = KdrInstanceConfig(env, env, ENV.liveSource, bootRole)
             for ((k, v) in fileDefaults) {
                 config.put(k, v)
             }
             return config
+        }
+
+        /** The environment variable naming the environment. */
+        const val envName = "KDR_ENV"
+
+        /** The prefix every application environment variable carries. */
+        const val envVarPrefix = "KDR_"
+
+        /**
+         * The names to try for [key], most specific first: under a boot role, `KDR_PORT` becomes
+         * `KDR_EDGE_PORT` then `KDR_PORT`; with no role, just `KDR_PORT`.
+         *
+         * **No role means no prefixing at all**, which is what leaves every existing deployment bit-for-bit
+         * unchanged -- this can only ever add a name that was not being read before.
+         *
+         * A key not carrying the [envVarPrefix] is left alone: it is not one of ours to namespace.
+         */
+        fun envVarNamesFor(key: String, bootRole: String?): List<String> {
+            if (bootRole.isNullOrEmpty() || !key.startsWith(envVarPrefix)) {
+                return listOf(key)
+            }
+            return listOf(envVarPrefix + bootRole.uppercase() + "_" + key.removePrefix(envVarPrefix), key)
         }
 
         /**

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# @desc: Run the edge server (StartEdgeKt) beside an ordinary backend.
+#
+# Boots a KDR node in the `edge` role (issues #347, #377) on http://localhost:7080, so it can run alongside a
+# normal backend on 7070 without contending. Under that role every environment variable gains a per-role
+# override -- `KDR_EDGE_PORT` is consulted before `KDR_PORT`, and so on for every other `KDR_` variable -- which
+# is what lets the two nodes want different values for the same setting on one machine.
+#
+# Extra arguments pass through to Gradle. Runnable from any directory.
+set -euo pipefail
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
+
+echo "kdr-edge: starting the edge server on http://localhost:7080 (:launch:run) ..." >&2
+run_gradle :launch:run -PmainClass=kdn.StartEdgeKt "$@"

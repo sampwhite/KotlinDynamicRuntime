@@ -55,7 +55,9 @@ object InstanceRegistry {
             instanceConfigs[instanceName]?.let { return it }
 
             val env = (overlay[ACFG.env] as? String) ?: System.getenv("KDR_ENV") ?: ENV.local
-            val config = KdrInstanceConfig(instanceName, env, ENV.liveSource)
+            // The boot role rides in on the overlay (issue #377): the launcher put it there, and it has to
+            // reach the instance config every request later reads its environment through.
+            val config = KdrInstanceConfig(instanceName, env, ENV.liveSource, overlay[ACFG.bootRole] as? String)
             config.putAll(overlay)
             // Materialize lazily derived config (isTestInstance) now that env/overlay are settled and boot is
             // still single-threaded -- so it is computed before any request and visible when debugging.

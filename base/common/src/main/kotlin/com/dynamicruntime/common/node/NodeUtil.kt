@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.node
 
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 
 /**
@@ -42,9 +44,26 @@ object NodeUtil {
 
     /** Resolves the HTTP port: the [port] env var (which must be an integer if set), else [defaultPort]. */
     private fun resolvePort(cxt: KdrCxt): Int {
-        val value = cxt.getEnvVar(port)
+        val config = cxt.instanceConfig
+        val role = config.bootRole
+        // The port is the one variable a boot role must NOT inherit from the unprefixed name (issue #377).
+        // Everywhere else `KDR_EDGE_X` falling back to `KDR_X` is exactly right -- a general value applies to
+        // every role. A port cannot: two nodes on one machine sharing one is a collision by construction, and
+        // it is a *quiet* one, since a bind failure followed by a health check answers from whichever server
+        // already owns the port. So under a role only the role's own variable is consulted, and the role's
+        // default stands behind it.
+        //
+        // The cost is that an edge-only deployment setting a bare KDR_PORT gets the role default instead. That
+        // surprise is loud and immediately visible, and `KDR_EDGE_PORT` fixes it; the one it replaces is
+        // silent and lands on somebody else's server.
+        val value = if (role.isNullOrEmpty()) {
+            cxt.getEnvVar(port)
+        } else {
+            KdrInstanceConfig.envVarNamesFor(port, role).first()
+                .let { (config.get(it) as? String) ?: System.getenv(it) }
+        }
         if (value.isNullOrEmpty()) {
-            return defaultPort
+            return (config.get(ACFG.defaultPort) as? Int) ?: defaultPort
         }
         return value.toIntOrNull()
             ?: throw KdrException("Environment variable $port must be an integer port number, but was '$value'.")
