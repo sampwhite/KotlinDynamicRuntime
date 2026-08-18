@@ -83,9 +83,17 @@ object TCH {
      */
     const val timeJumpToleranceMs = 60_000L
 
-    /** A single load returning more rows than this is logged as a warning; a cache is meant for a table that
-     *  fits comfortably in memory, and the warning is how an unsuitable one announces itself. */
-    const val largeLoadWarning = 50_000
+    /**
+     * The **default** ceiling above which a single load is logged as a warning: a cache is meant for a table
+     * that fits comfortably in memory, and the warning is how an unsuitable one announces itself. It is the
+     * fallback for [SqlCacheParams.largeLoadWarning], which a cache raises when it genuinely expects more --
+     * so this number sizes the caches that say nothing, and each cache that knows better carries its own.
+     *
+     * The value was chosen for `AuthUsers`. A cache whose expected maximum is near or above it should not
+     * inherit it: sitting a real ceiling exactly on the warning line makes a healthy at-capacity table warn on
+     * every load, which trains the warning to be ignored.
+     */
+    const val defaultLargeLoadWarning = 50_000
 
     /**
      * Separator joining a multi-column primary key into a [SqlCacheRow] id. A NUL is used because no column
