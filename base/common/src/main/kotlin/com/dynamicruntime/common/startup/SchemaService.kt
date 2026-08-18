@@ -121,7 +121,35 @@ class SchemaService : ServiceInitializer {
 
         schemaStore = store
         cxt.instanceConfig.put(KdrSchemaStore.key, store)
+        // Built after the global store, from it (issue #356). A variant is the same document with one
+        // client's overlays applied and re-parsed, so it cannot exist until the document is complete.
+        clientStores = buildClientVariants(cxt, collected, store)
         isInit = true
+    }
+
+    /**
+     * The schema each client sees, for the clients that vary something. Absent from this map means the global
+     * store; see [storeFor].
+     */
+    @KdrPrivate
+    var clientStores: Map<String, KdrSchemaStore> = emptyMap()
+
+    /**
+     * The compiled schema [client] sees: their variant, or the global store when they have none (issue #356).
+     *
+     * **Not what `KdrCxt.getSchema` returns, and deliberately.** That stays global, because `RequestService`
+     * resolves each endpoint's input and output types through it and caches them **keyed by path** -- so an
+     * endpoint has to mean one type for every caller or the cache is unsound. `client-definition.md` settles
+     * the split as case (a): permissive at the edge, strict where it is stored. The published type stays
+     * global; this is what the *storage* side validates against.
+     *
+     * A client with no variant, and a caller with no client at all, both get the global store -- the same
+     * answer, which is what lets `SqlTopicService` read the table catalog at boot before any client exists
+     * and anonymous callers be served without a special case.
+     */
+    fun storeFor(client: String?): KdrSchemaStore {
+        val store = schemaStore ?: KdrSchemaStore()
+        return if (client == null) store else clientStores[client] ?: store
     }
 
     @Suppress("ConstPropertyName")
