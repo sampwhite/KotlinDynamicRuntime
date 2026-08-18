@@ -484,12 +484,12 @@ class AuthFormHandler(
 
     private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean): Map<String, Any?> {
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
-        // Re-apply the auto-admin rule here, not just at provisioning: the deployment's admin domain is usually
-        // configured *after* its operator already registered, and this is the point where that reaches them. It
-        // writes only on the login that actually changes the roles.
-        if (AdminRules.syncAdminRole(cxt, row)) {
-            userService.updateUser(cxt, row)
-        }
+        // The auto-admin rule is not re-applied here (issue #352). It used to be, so that configuring the
+        // admin domain afterwards reached an operator who had already registered -- but a grant that
+        // re-asserts itself on every login is a permanent property of an address rather than a statement
+        // about how an account was created, and it only ever grants, so a role an administrator deliberately
+        // removed came back at the next login. An address now decides what a user is provisioned as, and from
+        // then on their roles are whatever an administrator has made them.
         val profile = row.toUserProfile()
         cxt.bindToUserProfile(profile)
         cxt.request?.let {

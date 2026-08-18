@@ -30,7 +30,7 @@ class BecomeUserEndpointTest : StringSpec({
 
     "TestUser.create makes a new user and the client is authenticated as them" {
         val cxt = Startup.mkTestBootCxt("becomeNew", "becomeNewTest")
-        val alice = TestUser.create(cxt, "alice@example.com")
+        val alice = TestUser.create(cxt, "become-alice@example.com")
         alice.userId shouldBeGreaterThan 0L
         // A follow-up call through the same client is made as that user -- proving the session cookie stuck.
         alice.getData(AEP.selfInfo)[UPF.userId].toOptLong() shouldBe alice.userId
@@ -38,15 +38,19 @@ class BecomeUserEndpointTest : StringSpec({
 
     "becoming an existing user returns the same user, and the requested level is ignored" {
         val cxt = Startup.mkTestBootCxt("becomeExisting", "becomeExistingTest")
-        val first = TestUser.create(cxt, "bob@example.com", level = ROLE.user)
-        val again = TestUser.create(cxt, "bob@example.com", level = ROLE.admin) // exists already -> level ignored
+        // Prefixed, like every address in this spec: the in-memory database is keyed by name rather than by
+        // instance, so a bare `bob@example.com` is shared with whichever other spec also chose it -- and
+        // since #352 a plain address on a controlled domain is provisioned as an administrator, so a spec
+        // that registers one decides what this spec finds.
+        val first = TestUser.create(cxt, "become-bob@example.com", level = ROLE.user)
+        val again = TestUser.create(cxt, "become-bob@example.com", level = ROLE.admin) // exists already -> level ignored
         again.userId shouldBe first.userId
         TestUser.rolesOf(again.userInfo).contains(ROLE.admin) shouldBe false
     }
 
     "a level places a freshly created user on the ladder" {
         val cxt = Startup.mkTestBootCxt("becomeAdmin", "becomeAdminTest")
-        val admin = TestUser.create(cxt, "carol@example.com", level = ROLE.admin)
+        val admin = TestUser.create(cxt, "become-carol@example.com", level = ROLE.admin)
         TestUser.rolesOf(admin.userInfo).contains(ROLE.admin) shouldBe true
     }
 
@@ -84,10 +88,10 @@ class BecomeUserEndpointTest : StringSpec({
     "failIfUserAlreadyExists rejects an existing user with a 400" {
         val cxt = Startup.mkTestBootCxt("becomeFail", "becomeFailTest")
         val client = TestHttpClient(cxt.instanceConfig)
-        client.sendJsonPostRequest(TEP.becomeUser, mapOf(TEP.email to "dave@example.com"))
+        client.sendJsonPostRequest(TEP.becomeUser, mapOf(TEP.email to "become-dave@example.com"))
         val handler = client.sendEditRequest(
             TEP.becomeUser, null,
-            mapOf(TEP.email to "dave@example.com", TEP.failIfUserAlreadyExists to true), isPut = false,
+            mapOf(TEP.email to "become-dave@example.com", TEP.failIfUserAlreadyExists to true), isPut = false,
         )
         handler.rptStatusCode shouldBe 400
     }

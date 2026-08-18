@@ -66,15 +66,15 @@ The point at which configuration can be scoped to a client rather than only to t
 The point at which "every client" stops meaning "the only client", so a grant that reads as harmless today
 starts handing out reach over somebody else's data.
 
-- **Auto-admin should grant the level, not global scope** *(from #225).* `AdminRules.autoAdminRoles` grants
-  `admin` **and** `allClients` to every address at `KDR_ADMIN_EMAIL_DOMAIN`. That is right for a single-client
-  deployment and solves a real chicken-and-egg problem — nobody holds `allClients` to begin with, and
-  anti-escalation stops an administrator granting reach they lack, so without it a fresh deployment could only
-  reach its own admin surface through the `GrantRole` script. On a multi-client deployment it is wrong:
-  everyone at the domain becomes a *global* administrator. The blocker was that a client-scoped administrator
-  had nowhere to go; the `userAdmin` section (#231) removed it, so the change is now just a decision — grant
-  the level, and make full scope a deliberate act. Note what has to come with it: something must still be able
-  to mint the first `allClients` holder, which is what the script is for.
+- **Auto-admin's scope should narrow before production** *(from #225, revised by #352).* The rule grants
+  `admin`, `operator` and `allClients` to a no-`+` address on a controlled domain — the configured
+  `KDR_ADMIN_EMAIL_DOMAIN`, or `example.com` outside production. #352 settled two thirds of the original item
+  and left this third. It **no longer re-applies on every login**, so the grant is a statement about how an
+  account was provisioned rather than a standing property of an address; and it keeps `allClients`, because
+  dropping it would leave a fresh deployment unable to reach its own admin surface by any route but the
+  `GrantRole` script. What remains is production: the design has `example.com` not working there at all, and
+  only a subset of admin-domain addresses holding `allClients`. Neither is built, and neither can be tested
+  against anything real until there is a production deployment to narrow — which is the trigger.
 
 ## When an organization has to hide content, not just narrow it
 

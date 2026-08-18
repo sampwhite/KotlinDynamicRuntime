@@ -1,6 +1,9 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
@@ -35,18 +38,36 @@ class AdminUserTest : StringSpec({
 
     val adminDomain = "acme.com"
 
+    /** A context in a developer environment, with [domain] configured as the auto-admin domain (or none). */
+    fun cxtWith(domain: String?): KdrCxt {
+        val config = KdrInstanceConfig("adminRules-$domain", ENV.local, ENV.liveSource)
+        domain?.let { config.put(ACFG.adminEmailDomain, it) }
+        return KdrCxt("adminRules", config)
+    }
+
     // --- the auto-admin rule (pure logic; no boot needed) --------------------
 
-    "the admin email domain grants only plain addresses at that domain or a subdomain" {
-        AdminRules.isAutoAdminAddress("boss@acme.com", adminDomain) shouldBe true
-        AdminRules.isAutoAdminAddress("BOSS@ACME.COM", adminDomain) shouldBe true // case-insensitive
-        AdminRules.isAutoAdminAddress("ops@mail.acme.com", adminDomain) shouldBe true // subdomain
+    "an address auto-qualifies on a controlled domain when it carries no plus tag" {
+        // The domain half is `AddressRules.isControlledDomain`, exercised in its own spec; what is checked
+        // here is the half this rule owns -- that a `+` tag disqualifies, and that an unconfigured deployment
+        // still has `example.com` outside production.
+        val configured = cxtWith(adminDomain)
+        AdminRules.isAutoAdminAddress(configured, "boss@acme.com") shouldBe true
+        AdminRules.isAutoAdminAddress(configured, "BOSS@ACME.COM") shouldBe true // case-insensitive
+        AdminRules.isAutoAdminAddress(configured, "ops@mail.acme.com") shouldBe true // subdomain
 
-        AdminRules.isAutoAdminAddress("boss+qa@acme.com", adminDomain) shouldBe false // plus-addressed
-        AdminRules.isAutoAdminAddress("someone@other.com", adminDomain) shouldBe false // other domain
-        AdminRules.isAutoAdminAddress("boss@notacme.com", adminDomain) shouldBe false // suffix, not the domain
-        AdminRules.isAutoAdminAddress("@acme.com", adminDomain) shouldBe false // no local part
-        AdminRules.isAutoAdminAddress("boss@acme.com", null) shouldBe false // unconfigured: nobody qualifies
+        // A `+` tag no longer means "deliberately not an admin" -- it names a client (issue #352) -- but it
+        // still takes the address out of the blanket grant, which is what this asserts.
+        AdminRules.isAutoAdminAddress(configured, "boss+qa@acme.com") shouldBe false
+        AdminRules.isAutoAdminAddress(configured, "someone@other.com") shouldBe false // other domain
+        AdminRules.isAutoAdminAddress(configured, "boss@notacme.com") shouldBe false // suffix, not the domain
+        AdminRules.isAutoAdminAddress(configured, "@acme.com") shouldBe false // no local part
+
+        // Unconfigured, `example.com` is still controlled outside production -- which is what makes a test
+        // instance able to mint its own first administrator.
+        val unconfigured = cxtWith(null)
+        AdminRules.isAutoAdminAddress(unconfigured, "boss@acme.com") shouldBe false
+        AdminRules.isAutoAdminAddress(unconfigured, "boss@example.com") shouldBe true
     }
 
     "registering at the configured domain grants admin, and a plus-addressed sibling gets nothing" {
@@ -61,6 +82,40 @@ class AdminUserTest : StringSpec({
         val bossQa = TestUser.register(cxt, "boss+qa@acme.com", "bossqa")
         bossQa.selfRoles() shouldNotContain ROLE.admin
         bossQa.expectError(EXC.notAuthorized, ADEP.users)
+    }
+
+    "a plain address on a controlled domain is provisioned as a full-scope administrator" {
+        // No admin domain configured, so this is `example.com` doing the work -- which is how a test or a
+        // fresh developer instance mints its own first administrator without the GrantRole script.
+        val cxt = Startup.mkTestBootCxt("autoAdmin", "autoAdminExampleTest")
+        val boss = TestUser.register(cxt, "auto-boss@example.com", "autoboss")
+        boss.selfRoles() shouldContain ROLE.admin
+        boss.selfRoles() shouldContain ROLE.allClients
+        boss.getItems(ADEP.users).isEmpty() shouldBe false
+    }
+
+    /**
+     * The rule applies at provisioning and nowhere else (issue #352).
+     *
+     * It used to be re-applied on every login, and only ever granted -- so a role an administrator had
+     * deliberately removed came back the next time its owner logged in, silently, with the demotion still
+     * sitting in the audit trail. This is the test that says the address decides what an account is *created*
+     * as and stops there.
+     */
+    "a role an administrator removes stays removed across a login" {
+        val cxt = Startup.mkTestBootCxt("autoAdmin", "autoAdminNoResyncTest")
+        val chief = TestUser.register(cxt, "auto-chief@example.com", "autochief")
+        val demoted = TestUser.register(cxt, "auto-demoted@example.com", "autodemoted")
+        demoted.selfRoles() shouldContain ROLE.admin // provisioned as one, being a plain controlled address
+
+        // Co-equal administration: one admin may edit another, which is what makes the demotion possible.
+        chief.postData(ADEP.userSetRoles, mapOf(ADF.userId to demoted.userId, ADF.roles to listOf(ROLE.user)))
+
+        // Logging in again is exactly where the old top-up ran.
+        val afterLogin = TestUser.create(cxt, "auto-demoted@example.com")
+        afterLogin.userId shouldBe demoted.userId
+        afterLogin.selfRoles() shouldNotContain ROLE.admin
+        afterLogin.selfRoles() shouldNotContain ROLE.allClients
     }
 
     // --- the gate ------------------------------------------------------------
