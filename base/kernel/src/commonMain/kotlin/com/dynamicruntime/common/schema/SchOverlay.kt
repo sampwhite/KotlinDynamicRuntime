@@ -72,6 +72,10 @@ private fun mergeNode(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<
         val over = overlay[key]
         out[key] = when {
             key !in overlay -> value
+            // `properties` is the one map that does not merge key-by-key; see [mergeProperties].
+            key == SCH.properties && over is Map<*, *> && value is Map<*, *> ->
+                mergeProperties(value.toJsonMap(), over.toJsonMap())
+
             over is Map<*, *> && value is Map<*, *> -> mergeNode(value.toJsonMap(), over.toJsonMap())
             else -> over
         }
@@ -79,6 +83,31 @@ private fun mergeNode(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<
     for ((key, value) in overlay) {
         if (key !in base) {
             out[key] = value
+        }
+    }
+    return out
+}
+
+/**
+ * The properties an altered type has: **exactly the ones the overlay mentions**, each merged over the base's
+ * version of it.
+ *
+ * The one place a map does not merge key by key, and it is deliberate -- reducing the property set is one of
+ * the three ways a client may narrow a type, and "mention only the keys you want" is how that is written.
+ * Merging here would leave no way to say it at all.
+ *
+ * The bodies still merge, so narrowing one property is a fragment (`{"name": {"g-options": [...]}}`) rather
+ * than a restatement of the property. Which of the two levels merges and which replaces is the whole of the
+ * authoring model: *which* properties is a statement, *what each one is* is an edit.
+ */
+private fun mergeProperties(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
+    val out = LinkedHashMap<String, Any?>(overlay.size)
+    for ((name, over) in overlay) {
+        val body = base[name]
+        out[name] = if (over is Map<*, *> && body is Map<*, *>) {
+            mergeNode(body.toJsonMap(), over.toJsonMap())
+        } else {
+            over
         }
     }
     return out
