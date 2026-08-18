@@ -64,6 +64,10 @@ to change a workspace file and find no statement of ownership either way, treat 
 own server on a free port instead (see the command above). Each additional workspace takes its own port; the
 one in use is recorded in that workspace's `CLAUDE.md`.
 
-`kdr-probe` defaults to `http://localhost:7071` — a *shared, versioned* constant, so in any workspace whose
-server is elsewhere it will silently probe a different server and report confident, wrong results. Pass
-`--url` explicitly unless you are certain the default matches your own instance.
+`kdr-probe` defaults to `http://localhost:7071` — a *shared, versioned* constant, so it is identical in every
+checkout. From a workspace whose server is elsewhere it therefore probes a **different workspace's** server and
+reports confident, wrong results about code that is not there.
+
+**Always pass `--url`.** Not "unless you are certain the default is yours": the default belongs to no workspace
+in particular, and 7071 may in any case be held by another session, so being certain is rarely available and
+being wrong costs nothing to discover — the probe answers, plausibly, instead of failing.
