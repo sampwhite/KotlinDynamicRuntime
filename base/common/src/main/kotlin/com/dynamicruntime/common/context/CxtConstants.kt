@@ -115,7 +115,7 @@ object ACFG {
  * environment it runs in ([ENV]) or which deployment it belongs to.
  *
  * The names live in `base/common` rather than with the components that implement them, because endpoints,
- * services and schema will be *profiled* by role -- declaring which roles they load under -- and those
+ * services, and schema will be *profiled* by role -- declaring which roles they load under -- and those
  * declarations are spread across every module. They could not all depend on the module that owns the role.
  *
  * **Knowing the names is not knowing the implementations.** Common learns that `edge` is a role a node may run

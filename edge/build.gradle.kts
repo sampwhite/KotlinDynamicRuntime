@@ -2,7 +2,7 @@
 // serves this component's endpoints and its own context roots, and gates entry on "Google Env Auth".
 //
 // **Nothing else may compile-depend on this module.** An edge is a KDR node with a diverting front door, not a
-// different runtime, so everything a *backend* needs in order to sit behind one — recognizing the env-auth
+// different runtime, so everything a *backend* needs to sit behind one — recognizing the env-auth
 // header, carrying the address on the context — lives in `base/common` and stays there. The test for where a
 // behavior belongs: does an ordinary node need it to behave correctly? Yes means common; no means here.
 //

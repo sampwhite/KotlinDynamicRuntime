@@ -3,7 +3,7 @@ package com.dynamicruntime.edge
 /**
  * What is genuinely the **edge** boot role's own (issues #377, #386).
  *
- * The role *name* is `BOOT.edge`, in `base/common`, because endpoints and services will be profiled by role
+ * The role *name* is `BOOT.edge`, in `base/common`, because endpoints and services will be profiled by roles
  * and those declarations are spread across every module -- they could not all depend on this one. Common
  * learning that `edge` is a possible role is not common learning what a `KdrEdge` is. The port is not
  * vocabulary, so it stays here, and reaches the runtime through

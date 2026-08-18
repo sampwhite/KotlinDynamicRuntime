@@ -53,7 +53,7 @@ class EdgeComponent : ComponentDefinition {
         const val name = BOOT.edgeComponent
 
         /**
-         * Whether [cxt] is running as an edge -- i.e. this component is loaded.
+         * Whether [cxt] is running as an edge -- i.e., this component is loaded.
          *
          * Asked of the *instance config*, never of a compile-time reference, because nothing outside this
          * module may depend on it.

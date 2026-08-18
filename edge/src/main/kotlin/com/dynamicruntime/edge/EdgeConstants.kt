@@ -17,7 +17,7 @@ import com.dynamicruntime.common.http.request.ContextRoot
  * `/opensearch`), so short roots and long prefixes never compete.
  *
  * The mechanical alternative -- `eda`/`ecp`/`ewa`/`est` -- was rejected: `eda` differs from `kda` by one
- * character in the *middle*, and the entire purpose of separate roots is knowing which server answered. Same
+ * character in the *middle*, and the entire purpose of separate roots is knowing which server answered. The same
  * objection that settled the edge's port at 8010 rather than 7080 (issue #377), and the same failure behind
  * it: a misread does not error, it answers plausibly from the wrong place.
  */
