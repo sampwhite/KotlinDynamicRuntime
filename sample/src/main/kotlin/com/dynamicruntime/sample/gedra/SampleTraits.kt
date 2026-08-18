@@ -32,6 +32,25 @@ object ST {
     const val explanation = "explanation"
 
     // --- the approval trait, which exercises a conditional inside `data` ---
+    /**
+     * A named **interior** type, referenced by [siteVisit]'s data rather than declared inline (issue #379).
+     *
+     * Pulled out on purpose. An overlay applies at two levels and no deeper, so there is no way to address
+     * part of a type -- which means a structure a client may want to narrow has to *be* a type, reachable by
+     * `$ref`, before anyone can narrow it. This is that case under test, and the reason the codebase names
+     * interior types at all.
+     */
+    const val siteAddress = "SiteAddress"
+    const val country = "country"
+    const val postcode = "postcode"
+    const val siteVisit = "siteVisit"
+    const val siteVisitEntry = "SiteVisitEntry"
+    const val visitedOn = "visitedOn"
+    const val address = "address"
+
+    /** The countries the global schema admits; a client may offer fewer, and one does. */
+    val countries: List<String> = listOf("gb", "ie", "fr", "de")
+
     const val managerApproval = "managerApproval"
     const val approvalEntry = "ApprovalEntry"
     const val approved = "approved"
@@ -117,5 +136,29 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         // A reason is required when the decision is a rejection and inadmissible when it is not -- now one
         // level down, inside `data`, which is the arrangement worth having under test.
         presentWhen(ST.rejectionReason, on = ST.approved, value = false)
+    }
+
+    // A named type, so that a client can narrow it (issue #379). Everything else here declares its properties
+    // inline, which leaves nothing for an overlay to target: an overlay reaches a type's own keys and its
+    // property set, and stops. A structure worth narrowing separately has to be a type of its own.
+    type(ST.siteAddress) {
+        type = SCT.kObject
+        description = "Where a visit happened."
+        property(ST.country, "Country the site is in.", required = true) {
+            for (c in ST.countries) option(c)
+        }
+        property(ST.postcode, "Postal code, as written locally.")
+    }
+
+    trait(
+        ST.siteVisitEntry,
+        ST.siteVisit,
+        setOf(GedraDataType.formDoc),
+        "A visit to a site, whose address is a type in its own right.",
+    ) {
+        property(ST.visitedOn, "When the visit happened.") { dayOnlyDate() }
+        // The `$ref` that makes interior alteration possible: a client narrowing `SiteAddress` narrows this
+        // without the trait being edited, or knowing.
+        property(ST.address, "Where the visit happened.", required = true) { ref(ST.siteAddress) }
     }
 }
