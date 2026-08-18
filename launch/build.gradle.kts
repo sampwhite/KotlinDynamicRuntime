@@ -51,7 +51,12 @@ wireInjectedComponents()
 application {
     // The full application entry point: boots the instance and starts the HTTP server.
     // (WiringCheck remains as a separate, server-free dependency-proof entry point.)
-    mainClass.set("kdn.StartKt")
+    //
+    // Selectable with `-PmainClass=` (issue #377), so `:launch:run` can start the edge launcher
+    // (`kdn.StartEdgeKt`, via `bin/kdr-edge`) as well as the application one. The `run` task is the right
+    // entry for both because it rebuilds and embeds the current `:webapp` bundle -- an edge serves the front
+    // end too, so reaching for `bin/kdr-run` and the pathing jar instead would skip that.
+    mainClass.set(providers.gradleProperty("mainClass").orElse("kdn.StartKt"))
 }
 
 // A "pathing" jar (issue #175): a manifest-only jar whose `Class-Path` lists this module's own jar plus every

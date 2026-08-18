@@ -30,6 +30,23 @@ object ACFG {
      */
     const val isTestInstance = "isTestInstance"
 
+    /**
+     * The **boot role** this process is running as (issue #377): `edge` for a `StartEdge` node, unset for an
+     * ordinary one. Set by the launcher, because the launcher *is* the role -- it has to be known before any
+     * application config exists, so it cannot come from one.
+     *
+     * Its effect is to give every environment variable a per-role override: with a role set, a lookup for
+     * `KDR_PORT` tries `KDR_EDGE_PORT` first. See `KdrInstanceConfig.getEnvVar`.
+     */
+    const val bootRole = "bootRole"
+
+    /**
+     * The port this node binds when no environment variable names one -- how a boot role brings its own
+     * default (issue #377), so an edge does not land on the application's port merely because nobody set
+     * `KDR_EDGE_PORT`. Set by the launcher; unset means `NodeUtil.defaultPort`.
+     */
+    const val defaultPort = "defaultPort"
+
     /** When true, endpoint responses are validated against their `outputSchema`. Default false; on in tests. */
     const val validateResponseSchema = "validateResponseSchema"
 

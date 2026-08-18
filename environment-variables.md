@@ -12,6 +12,17 @@ Conventions:
   therefore set or override any of these without touching the actual environment.
 - **Secrets are not environment variables.** Database passwords live in a secrets file, never in the
   environment or in config — see [Database](#database) below.
+- **Every variable has a per-role form.** A node launched in a **boot role** — today only `edge`, via
+  `StartEdge` / `bin/kdr-edge` — resolves `KDR_EDGE_<NAME>` before `KDR_<NAME>`, for *every* variable in this
+  file. That is what lets an edge and an application run side by side on one machine wanting different values
+  for the same setting. **A node with no role does no prefixing at all**, so nothing here changes for an
+  ordinary deployment: the mechanism can only ever add a name that was not being read. See
+  `KdrInstanceConfig.envVarNamesFor` (issue #377).
+- **`KDR_PORT` is the one exception to that fallback.** Under a role, *only* the role's own
+  `KDR_EDGE_PORT` is consulted, and the role's default (`8010` for the edge) stands behind it — a plain
+  `KDR_PORT` is never inherited. Everywhere else a general value sensibly applies to every role; a port cannot,
+  because two nodes on one machine binding one collide, and quietly: a failed bind followed by a health check
+  answers from whichever server already owns the port.
 - **Booleans are parsed the same way everywhere**, through `KdrCxt.getEnvBool`: the first non-whitespace
   letter decides, case-insensitively — `true`/`yes`/`y`/`t`/`1` are true and `false`/`no`/`n`/`f`/`0` are
   false. Anything else means *unreadable*, not false: the variable falls through to its default, so a typo
