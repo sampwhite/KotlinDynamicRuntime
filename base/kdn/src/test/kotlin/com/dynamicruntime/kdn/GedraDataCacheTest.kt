@@ -9,6 +9,10 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataCache
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraEdit
+import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.GedraPatchTarget
+import com.dynamicruntime.common.gedra.GedraService
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.assertions.withClue
@@ -18,6 +22,7 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -238,5 +243,65 @@ class GedraDataCacheTest : StringSpec({
         val caraOnly = service().listGedras(cxt, kind, ReadScope.ofUser(caraId), 500)
         caraOnly.map { it.userId }.toSet() shouldBe setOf(caraId)
         caraOnly.map { it.gedraId.fullId } shouldNotContain cyrusDocId
+    }
+
+    // --- updatedAt monotonicity: a write must stay visible to the cache even within one millisecond ---------
+
+    /**
+     * A patch landing in the same millisecond as the gedra's previous write must still be picked up by the
+     * cache. The cache reloads by walking `updatedAt` forward and skips a row stamped at or before the version
+     * it holds, so without `SqlTopicUtil.nextUpdatedAt` forcing the advance, the clock frozen here would make
+     * the patch invisible to cached reads until the gedra's next write.
+     */
+    "a patch in the same millisecond stays visible to the cache" {
+        val svc = service()
+        val kind = GedraDataType.formDoc
+        val scope = ReadScope.ofClient(client)
+        val clock = cxt.instanceConfig.clock
+        clock.freeze()
+        try {
+            val id = createDoc(caraId, "Before patch")
+            svc.queryGedra(cxt, id, kind, scope).shouldNotBeNull().entries
+                .first()[GE.data].toString() shouldContain "Before patch"
+
+            // Patch the name, with the clock still frozen at the create's millisecond.
+            val target = GedraPatchTarget(
+                GedraService.require(cxt).readId(id),
+                listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.name to "After patch"))),
+            )
+            svc.patchGedras(cxt, mapOf(kind to listOf(target)), scope)
+
+            // The cached read reflects the patch -- it would still show "Before patch" if updatedAt had not
+            // advanced past the frozen create stamp.
+            svc.queryGedra(cxt, id, kind, scope).shouldNotBeNull().entries
+                .first()[GE.data].toString() shouldContain "After patch"
+        } finally {
+            clock.unfreeze()
+        }
+    }
+
+    /**
+     * The delete case, which is worse than the patch case: a disabled gedra never gets a later write to
+     * correct a missed `updatedAt`, so a delete that did not advance it would leave the gedra readable from
+     * cache **forever**. Frozen clock forces the same-millisecond collision the fix has to survive.
+     */
+    "a delete in the same millisecond removes the gedra from the cache" {
+        val svc = service()
+        val kind = GedraDataType.formDoc
+        val scope = ReadScope.ofClient(client)
+        val clock = cxt.instanceConfig.clock
+        clock.freeze()
+        try {
+            val id = createDoc(caraId, "To be deleted")
+            svc.queryGedra(cxt, id, kind, scope).shouldNotBeNull()
+
+            svc.deleteGedra(cxt, id, kind, scope) shouldBe true
+
+            // Gone from the cached read too, not just from SQL: the disable advanced updatedAt, so the cache
+            // saw the tombstone rather than skipping a same-stamped row.
+            svc.queryGedra(cxt, id, kind, scope).shouldBeNull()
+        } finally {
+            clock.unfreeze()
+        }
     }
 })

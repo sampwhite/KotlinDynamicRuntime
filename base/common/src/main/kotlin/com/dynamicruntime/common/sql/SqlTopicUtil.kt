@@ -108,25 +108,43 @@ object SqlTopicUtil {
     fun prepDates(cxt: KdrCxt, data: MutableMap<String, Any?>) {
         // Persisted protocol dates use the instance clock, not the per-context one (issue #160): updatedAt is a
         // queuing date and must be monotonic and consistent across concurrent requests.
-        var now = cxt.instanceNow()
+        val now = cxt.instanceNow()
         if (data[PF.createdAt].toOptInstant() == null) {
             data[PF.createdAt] = now
         }
-        val lastUpdated = data[PF.updatedAt].toOptInstant()
-        if (lastUpdated != null) {
-            // Advance by at least a millisecond whenever the clock has not moved past the prior stamp --
-            // **however far behind it is**. This guard used to apply only within a 2-second window, which let
-            // a node whose clock lagged by more stamp a row *earlier* than it already was; a date moving
-            // backwards is what the incremental table caches can never see (their reload skips rows at or
-            // before the version they hold), so such a write was served stale everywhere until the row's next
-            // genuine update. Per-row monotonicity is the invariant, whatever the skew.
-            val l = lastUpdated.toEpochMilliseconds()
-            val n = now.toEpochMilliseconds()
-            if (n <= l) {
-                now = Instant.fromEpochMilliseconds(l + 1)
-            }
+        data[PF.updatedAt] = advancePast(now, data[PF.updatedAt].toOptInstant())
+    }
+
+    /**
+     * The `updatedAt` to stamp on a write, guaranteed **strictly after** [prior] (the row's current value):
+     * the instance clock now, bumped a millisecond past [prior] when the clock has not moved beyond it.
+     *
+     * The invariant matters because the incremental table caches reload by walking `updatedAt` forward and
+     * **skip a row stamped at or before the version they already hold** -- so a write that does not advance the
+     * date is invisible to every cache until the row's next genuine update. `updatedAt` is stored at
+     * millisecond precision, so two writes to one row within a millisecond collide unless something forces the
+     * advance; this is that something.
+     *
+     * [prepDates] applies it for a write assembled from a whole row. A path that stamps `updatedAt` itself --
+     * a scoped `update ... set updatedAt = :updatedAt` that cannot hand its row to [prepDates] -- must call
+     * this with the row's current value (read under the same lock the write takes), or it reintroduces exactly
+     * the gap [prepDates] closes.
+     */
+    fun nextUpdatedAt(cxt: KdrCxt, prior: Instant?): Instant = advancePast(cxt.instanceNow(), prior)
+
+    /** [now], or one millisecond past [prior] when [now] has not reached beyond it. Shared monotonic bump. */
+    private fun advancePast(now: Instant, prior: Instant?): Instant {
+        // Advance by at least a millisecond whenever the clock has not moved past the prior stamp --
+        // **however far behind it is**. This guard used to apply only within a 2-second window, which let
+        // a node whose clock lagged by more stamp a row *earlier* than it already was; a date moving
+        // backwards is what the incremental table caches can never see (their reload skips rows at or
+        // before the version they hold), so such a write was served stale everywhere until the row's next
+        // genuine update. Per-row monotonicity is the invariant, whatever the skew.
+        if (prior == null) {
+            return now
         }
-        data[PF.updatedAt] = now
+        val l = prior.toEpochMilliseconds()
+        return if (now.toEpochMilliseconds() <= l) Instant.fromEpochMilliseconds(l + 1) else now
     }
 
     /** Sets the transaction-lock bookkeeping for the initial placeholder-row insert. */
