@@ -17,15 +17,18 @@ Three questions, in order. A "no" to any of them means do not cache it.
    (50k) logs a warning; that is the subsystem telling you the answer, not a threshold to tune.
 2. **Are its reads *unscoped* lookups?** `AuthUsers` fits because its reads are identity resolution — one row
    by a unique key, deliberately not client-scoped. A table whose every read is `ReadScope`-filtered does
-   **not** fit: serving those from a cache means re-implementing scope filtering in memory beside
-   `SqlScopeUtil`, which is a second implementation of a security predicate. `gedraData` is the worked example
-   of a table that was considered and rejected on exactly this ground.
+   **not** fit *wholesale*: serving a scope-filtered **listing** from a cache means re-implementing scope
+   filtering in memory beside `SqlScopeUtil`, which is a second implementation of a security predicate.
+   `gedraData` is the worked example of the middle ground — its by-id reads are served from the cache, each
+   checking scope against the one row it found (as `queryAdministrableUser` does), while `listGedras` stays on
+   SQL. A by-id read can check scope; a listing composes it, and there must be only one implementation of that.
 3. **Do its writers round-trip `updatedAt`?** The reload walks `updatedAt` forward and **skips a row stamped
    at or before the version it already holds**. `SqlTopicUtil.prepDates` guarantees the advance only when the
    write carries the prior `updatedAt` through — which a read-modify-write does, and a write assembled from a
    fresh map does not.
 
-A table that fails (2) can still be cached *for cursor consumers only*, with scoped reads left on SQL.
+A table that fails (2) can still be cached for by-id reads and for cursor consumers, with scoped listings
+left on SQL.
 
 ## Declaring a cache
 
@@ -147,6 +150,30 @@ so other nodes hear about it at once rather than at the floor.
 whether this node has caught up, which is where a stale read comes from. Look for `isLoaded`, a missing
 `queryFromDate` (never completed a load), a stuck `pendingReload`, and `sharedState` disagreeing with
 `lastSeen`.
+
+### Is it current *right now*?
+
+The endpoint cannot tell you that, because the `operator` gate resolves the caller's roles through the user
+cache and so refreshes every cache before the handler runs. In process — a test, a script, an
+edit-and-check loop — ask the service instead:
+
+```kotlin
+val state = SqlTableCacheService.get(cxt)?.refreshState(cxt)  // null when no cache service is running
+state?.need           // current | neverRefreshed | changed | reloadPending | aged | disabled
+state?.isRefreshed    // the next cached read sweeps nothing
+state?.needsRefresh   // it will sweep
+state?.pendingTables  // written on this node, not reloaded yet
+```
+
+- **Asking does not refresh.** It reads the memo `getAndRefresh` keeps in `cxt.locals` plus the caches'
+  pending flags — no query, no snapshot moves — which is what makes it safe to ask mid-check.
+- `refreshNeed(cxt)` is the same decision without the surrounding detail, and is what `getAndRefresh` itself
+  calls — so a check and the read after it cannot disagree.
+- `needsRefresh` is **not** `!isRefreshed`: with caching disabled neither holds, and a loop waiting on
+  `!isRefreshed` would wait forever.
+- To act on the answer, `service.checkRefresh(cxt)` sweeps unconditionally, memo or no memo.
+- `changed` after your own write is the expected reading; `reloadPending` on its own means a reload could not
+  run, which in practice means a transaction was open.
 
 `KDR_TABLE_CACHE_DISABLED=true` turns every cache off; each lookup then takes the SQL query it was replacing.
 That is the first thing to try when a cache is suspected, because it isolates the question.
