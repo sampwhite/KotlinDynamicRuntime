@@ -40,6 +40,21 @@ object APP {
     const val allowDebugPages = "allowDebugPages"
 
     /**
+     * Feature flag: whether this request arrived through an authenticating **edge** server (issue #348), so
+     * the frontend can offer a fuller, internal experience to someone who reached the application that way.
+     *
+     * A **boolean, not the address.** The frontend needs to know *that* the channel is env-authed; who the
+     * caller is env-authed as stays server-side on the context, where it is also what reaches the logs. Should
+     * a later issue want to show it, that is a deliberate widening rather than something inherited by default.
+     *
+     * Unlike its neighbours here this is **per-request**, not deployment-global: the same node answers
+     * differently depending on how a request reached it. The app config is still the right home -- it is what
+     * the whole frontend reads once at the app root -- but a caller must not cache the answer across a change
+     * of route into the deployment.
+     */
+    const val isEnvAuthed = "isEnvAuthed"
+
+    /**
      * Setting (under the envelope's `settings`, not a flag): how often, in milliseconds, the frontend "bumps" its refresh
      * generation while a tab is visible, so a long-open tab notices a timed-out session or a newer deploy
      * (issue #146). Deployment-tunable through the custom-config object; the frontend re-arms its timer when the
