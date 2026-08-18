@@ -14,6 +14,7 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkUniqueId
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -343,12 +344,13 @@ class GedraDataService : ServiceInitializer {
         scope: ReadScope,
     ): List<GedraPatchResult> {
         val ordered = kindApplyOrder.mapNotNull { kind -> targetsByKind[kind]?.let { kind to it } }
+        val patchCxt = cxt.mkSubContext("patch", oneClient(cxt, ordered))
         for ((kind, targets) in ordered) {
             for (target in targets) {
-                admit(cxt, kind, target, scope)
+                admit(patchCxt, kind, target, scope)
             }
         }
-        return ordered.flatMap { (kind, targets) -> targets.map { applyToOne(cxt, kind, it, scope) } }
+        return ordered.flatMap { (kind, targets) -> targets.map { applyToOne(patchCxt, kind, it, scope) } }
     }
 
     /**
@@ -365,6 +367,35 @@ class GedraDataService : ServiceInitializer {
      * the table cache, and until it exists this is a database query per target, which is the right cost for a
      * surface where nearly every caller is an ordinary user confined to their own rows.
      */
+    /**
+     * The one client every target belongs to, which the whole patch is then bound to (issue #356).
+     *
+     * **A patch may not span clients.** Each target names its own gedra, so a caller holding `allClients`
+     * could otherwise reach into several at once -- and a client's schema is a property of where the data
+     * lives, so a patch spanning two would have two different sets of rules running inside one transaction.
+     * Refusing is both simpler to reason about and simpler to say: split it into a patch per client.
+     *
+     * The answer binds a sub context, so everything downstream -- validating against the right variant, and
+     * any later client-specific logic -- reads `cxt.client` and is correct without being handed the client.
+     * For a caller without `allClients` this changes nothing: their scope confines them to their own client,
+     * so the only client they can name is the one they were already bound to.
+     *
+     * Note what it does **not** do: choosing a client here never grants reach. `admit` still runs the scope
+     * check and the existence check against every target, so naming a gedra in somebody else's client answers
+     * 404 rather than borrowing that client's rules.
+     */
+    private fun oneClient(cxt: KdrCxt, ordered: List<Pair<GedraDataType, List<GedraPatchTarget>>>): String {
+        val clients = ordered.flatMap { (_, targets) -> targets.map { it.gedraId.client } }.distinct()
+        if (clients.size > 1) {
+            throw KdrException.mkInput(
+                "A patch targets one client at a time, and this one names ${clients.joinToString(", ")}. " +
+                    "A client's schema belongs to where the data lives, so a patch spanning two would apply " +
+                    "two sets of rules inside one transaction. Send a patch per client.",
+            )
+        }
+        return clients.firstOrNull() ?: cxt.client
+    }
+
     private fun admit(cxt: KdrCxt, kind: GedraDataType, target: GedraPatchTarget, scope: ReadScope) {
         if (target.gedraId.dataType != kind) {
             // The id carries its kind, so a row filed under the wrong group is a request that disagrees with
@@ -560,9 +591,25 @@ class GedraDataService : ServiceInitializer {
      * fields optional and leave requiredness to the workflow, and it would bite a trait that mixed required
      * fields with merge usage. See the soft-validation section of `gedra-patch.md`.
      */
+    /**
+     * Checks what is about to be stored against the schema of the client it is being stored **in** (issue
+     * #356) -- `cxt.client`, which the caller has bound to the data's own client.
+     *
+     * This is the strict half of case (a). An endpoint's *published* input type stays global, so the form
+     * shows global traits and `RequestService`'s path-keyed type caches stay sound; a client's own trait
+     * arrives on the union's default branch as plain JSON and would pass unexamined. Here it is checked
+     * properly, against the definitions its own client declared. Permissive at the edge, strict where it is
+     * stored.
+     *
+     * The variant is the **data's**, never the caller's, and the distinction only shows for a caller holding
+     * `allClients`: a client narrows a type so that data living there is valid for that client's users, which
+     * is a fact about the destination rather than about who did the writing. For everybody else the two are
+     * the same client, since their scope confines them to it.
+     */
     private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {
         checkOneEntryPerTrait(entries)
-        val union = cxt.getSchema().types["${GCFG.globalNamespace}.${GU.unionName(kind)}"] ?: return
+        val store = SchemaService.get(cxt)?.storeFor(cxt.client) ?: cxt.getSchema()
+        val union = store.types["${GCFG.globalNamespace}.${GU.unionName(kind)}"] ?: return
         val failures = entries.flatMap { validate(union, it) }
         if (failures.isNotEmpty()) {
             throw KdrException.mkInput(
