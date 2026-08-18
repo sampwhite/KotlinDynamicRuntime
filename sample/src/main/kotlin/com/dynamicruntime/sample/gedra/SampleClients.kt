@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.SCT
 
 /** The sample clients' own names (issue #379). */
@@ -49,7 +50,7 @@ object SC {
  * | | acme | globex |
  * |---|---|---|
  * | takes | two global traits, named | everything, via `#allGlobal` |
- * | alters a trait | not yet expressible -- see the note below | no |
+ * | alters a trait | yes -- `questionnaire`'s data | no |
  * | alters an interior type | yes -- `SiteAddress` | no |
  * | extends | no | yes -- `RichAddress` |
  * | declares its own trait | yes -- `acmeSiteAudit` | no |
@@ -85,12 +86,22 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             ),
         )
 
-        // Altering a *trait* is not expressible yet, and the reason is worth recording here rather than
-        // being rediscovered: a trait's data schema is held **inline** inside its generated entry type, so
-        // narrowing it would mean restating the generated envelope -- `traitId`, `data`, and whatever
-        // `storedEntryFields` currently adds -- none of which the trait's author wrote, and any later
-        // addition to which every client would silently drop. The fix is the rule this file already follows
-        // for `SiteAddress`: give the data a name and `$ref` it. See issue #379.
+        // --- altering a trait ---------------------------------------------------------------------------
+        //
+        // Reached through the trait's **data** type, which is a type of its own since #379 -- an overlay
+        // reaches a type's keys and its property set and stops, so the generated entry envelope around it is
+        // neither restated nor at risk of being dropped.
+        //
+        // Two of the three narrowings at once: a choice list applied to a field that offered none, and a
+        // property (`notes`) left out. Every property acme keeps is named, because mentioning keys *is* how
+        // the set is reduced; `keepProperty` says "as it already is" so that keeping one is not restating it.
+        type("${ST.namespace}.${traitDataTypeName(ST.questionnaireEntry)}") {
+            property(ST.topic, "What this questionnaire is about.") {
+                for (t in SC.acmeTopics) option(t)
+            }
+            keepProperty(ST.hasIssue)
+            keepProperty(ST.explanation)
+        }
 
         // --- altering an interior type ------------------------------------------------------------------
         //

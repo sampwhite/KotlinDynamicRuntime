@@ -244,6 +244,14 @@ class GedraDataService : ServiceInitializer {
             )
         }
 
+        // Against the schema of the client this is being stored **in** (issue #379), which the patch path
+        // already did and this one did not -- so a client's narrowing reached an edit and not a creation, and
+        // the same payload was kept or refused depending on which call made it.
+        //
+        // After the envelope is built, not before: what is checked is the entry as it will be stored, and the
+        // union requires the fields `asStoredEntry` adds.
+        checkStoredEntries(cxt, kind, stored)
+
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
         val stmt = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
