@@ -274,7 +274,13 @@ class KdrInstanceConfig(
          * through [getEnvVar].
          */
         fun preBootLoadConfig(bootRole: String? = null): KdrInstanceConfig {
-            val fileDefaults = readDefaultEnvVars(File(defaultEnvVarsFileName), System::getenv)
+            // Resolved against the WORKSPACE, not the working directory (issue #380). A bare relative path
+            // found the file only when the JVM happened to start in the workspace, which a Gradle `run` task
+            // does not -- so a deployment's defaults were silently not applied, and a missing KDR_PORT fell
+            // through to the built-in default. AppPaths already answers this for the secrets file and the H2
+            // data file, and its walk-up from the working directory covers a launch started anywhere inside
+            // the workspace, which its own KDoc names as the case it exists for.
+            val fileDefaults = readDefaultEnvVars(AppPaths.resolve(defaultEnvVarsFileName), System::getenv)
             // Role-aware from the very first read: an edge may want its own KDR_EDGE_ENV, and the environment
             // name decides everything downstream, so it cannot be the one variable the role does not reach.
             val env = envVarNamesFor(envName, bootRole)
@@ -317,6 +323,7 @@ class KdrInstanceConfig(
         @KdrPrivate
         fun readDefaultEnvVars(file: File, getEnv: (String) -> String?): Map<String, String> {
             if (!file.isFile) {
+                lastLoadReport = "no ${file.name} found at ${file.absolutePath}"
                 return emptyMap()
             }
             val props = Properties()
@@ -327,7 +334,20 @@ class KdrInstanceConfig(
                     result[name] = props.getProperty(name)
                 }
             }
+            lastLoadReport = "${result.size} of ${props.size} entries applied from ${file.absolutePath} " +
+                "(any others are already set in the real environment, which wins)"
             return result
         }
+
+        /**
+         * What the last [readDefaultEnvVars] call did, for a launcher to log once at startup (issue #380).
+         *
+         * **The silence is what let the path bug hide.** An absent file and an empty one produced the same
+         * empty map, so a deployment could not tell "my defaults applied" from "my defaults were never seen",
+         * and the two look identical from outside until something behaves unexpectedly. Held rather than
+         * logged here because this runs before logging is configured.
+         */
+        var lastLoadReport: String = "not loaded"
+            @KdrPrivate set
     }
 }

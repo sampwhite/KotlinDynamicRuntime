@@ -4,7 +4,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.schema.JsonMappable
-import com.dynamicruntime.common.sql.AppPaths
+import com.dynamicruntime.common.context.AppPaths
 import com.dynamicruntime.common.util.RandomUtil
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.jsonMap
