@@ -4,7 +4,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.schema.JsonMappable
-import com.dynamicruntime.common.sql.AppPaths
+import com.dynamicruntime.common.context.AppPaths
 import com.dynamicruntime.common.util.RandomUtil
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.jsonMap
@@ -57,7 +57,7 @@ class SampleFileInfo(
  * name it arrived with is kept as metadata. This is not tidiness: a name is attacker-supplied, and letting it
  * choose a path is how an upload becomes a write to `../../etc/` or an overwrite of another user's file.
  * Sanitizing a name well enough to be a path is a losing game across platforms (`..`, separators, NUL, `C:`,
- * reserved names like `CON`, case-insensitive collisions, unicode look-alikes); *not deriving the path from
+ * reserved names like `CON`, case-insensitive collisions, Unicode look-alikes); *not deriving the path from
  * it* is a guarantee rather than a filter. [ContentData.saveAsFilename] then offers the name back on download,
  * which is where it is safe — as a suggestion, sanitized into a header.
  *

@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.sql
 
+import com.dynamicruntime.common.context.AppPaths
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.ACT

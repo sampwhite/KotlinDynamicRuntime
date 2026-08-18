@@ -1,4 +1,4 @@
-package com.dynamicruntime.common.sql
+package com.dynamicruntime.common.context
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe

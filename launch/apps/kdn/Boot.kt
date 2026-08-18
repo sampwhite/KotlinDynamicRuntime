@@ -44,7 +44,13 @@ fun bootInstance(cxtName: String, bootRole: String? = null, defaultPort: Int? = 
 
     LogSetup.initFromEnv(getEnv = preBootCxt::getEnvVar)
 
-    // The webapp host serves the self-contained front end under its own context root (e.g. /wa). Register it
+    // Say what the workspace defaults file did, at the first moment there is anywhere to say it (issue #380).
+    // It is read before logging exists, so the report is held and emitted here. Worth a line of its own: an
+    // absent file and an empty one used to be indistinguishable, and a deployment whose defaults were never
+    // seen looked exactly like one whose defaults happened to change nothing.
+    LogStartup.info(preBootCxt, "Workspace defaults: ${KdrInstanceConfig.lastLoadReport}")
+
+    // The webapp host serves the self-contained front end under its own context root (e.g., /wa). Register it
     // unconditionally before booting (schema/services are wired during boot) -- it is a real feature, not a
     // demo, and the shell serves regardless of which optional components a deployment loads.
     InstanceRegistry.register(listOf(AppUiComponent()))
