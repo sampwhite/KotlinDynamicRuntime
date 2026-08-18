@@ -281,7 +281,7 @@ class GedraDataService : ServiceInitializer {
             // true unconditionally, which is right for a "create" that revives a disabled row and exactly wrong
             // here -- the "write" would succeed and leave the gedra live. `UserService.updateUser` defends the
             // same field for the same reason; this states it in the SQL instead, so there is nothing to defend.
-            PF.updatedAt to cxt.instanceNow(),
+            // updatedAt is stamped under the lock below, not here, so it is strictly past the row's real value.
             PF.updatedBy to cxt.userProfile.userId,
         )
         val conditions = mutableListOf(
@@ -296,8 +296,18 @@ class GedraDataService : ServiceInitializer {
                 "c:${PF.updatedAt} = :${PF.updatedAt}, c:${PF.updatedBy} = :${PF.updatedBy} " +
                 "where ${conditions.joinToString(" and ")}",
         )
+        val selectStmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
         var changed = 0
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranDelete, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
+            // Stamp updatedAt strictly past the row's *current* value, read here under the lock. A delete that
+            // did not advance it would be permanently invisible to the gedra cache: the cache skips a row at or
+            // before the version it holds, and a disabled gedra never gets a later write to correct that, so it
+            // would stay readable from cache forever. The `row` read before the transaction cannot be trusted
+            // for the bump -- it may have come from the cache, which is exactly what might be behind. A row
+            // gone or already disabled here reads as null, and nextUpdatedAt falls back to now, which is
+            // harmless: the enabled-only update then matches nothing and the delete reports nothing to do.
+            val current = sqlCxt.sqlDb.queryOneEnabled(cxt, selectStmt, mapOf(GD.gedraId to row.gedraId.fullId))
+            data[PF.updatedAt] = SqlTopicUtil.nextUpdatedAt(cxt, current?.get(PF.updatedAt).toOptInstant())
             changed = sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
         }
         return changed > 0
@@ -415,7 +425,11 @@ class GedraDataService : ServiceInitializer {
             for (entry in row.entries) {
                 entry[GE.traitId].toOptStr()?.let { byTrait[it] = entry }
             }
-            val now = cxt.instanceNow()
+            // Strictly past the row's current updatedAt (read under this lock), not merely "now": the gedra
+            // cache reloads by walking updatedAt forward and skips a row stamped at or before the version it
+            // holds, so a re-edit landing in the same millisecond as the last would otherwise be invisible to
+            // the cache until the gedra's next write. See SqlTopicUtil.nextUpdatedAt.
+            val now = SqlTopicUtil.nextUpdatedAt(cxt, row.updatedAt)
             for (edit in target.edits) {
                 outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(cxt, edit, byTrait, now)))
             }

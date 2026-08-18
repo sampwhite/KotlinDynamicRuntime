@@ -10,6 +10,8 @@ import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Instant
 
 /**
  * Stage-2 proof (issue #33): the topic service resolves a topic's tables from the schema store, creates
@@ -118,5 +120,30 @@ class SqlTopicServiceTest : StringSpec({
         widget[TI.topic] shouldBe "widget"
         @Suppress("UNCHECKED_CAST")
         (widget[TI.features] as List<String>) shouldContainAll listOf("user", "client")
+    }
+
+    /**
+     * [SqlTopicUtil.nextUpdatedAt] forces the write date strictly past the row's current one, whatever the
+     * clock says. This is the guarantee a scoped update -- which stamps `updatedAt` itself rather than handing
+     * a whole row to `prepDates` -- leans on so the incremental table caches, which skip a row stamped at or
+     * before the version they hold, cannot miss it. A same-millisecond re-write is the case that matters, so
+     * it is the one asserted.
+     */
+    "nextUpdatedAt advances strictly past the prior stamp" {
+        val cxt = KdrCxt.mkSimpleCxt("nextUpdatedAt")
+        cxt.instanceConfig.clock.freeze() // now no longer moves: two calls read the same instant
+        val now = cxt.instanceNow()
+        val nowMs = now.toEpochMilliseconds()
+
+        // No prior: just now, untouched (sub-millisecond precision and all).
+        SqlTopicUtil.nextUpdatedAt(cxt, null) shouldBe now
+        // Prior at the same millisecond as now (the same-millisecond re-write): bumped to one ms past it. The
+        // bump lands on a whole millisecond -- the stored precision -- rather than carrying now's sub-ms part.
+        SqlTopicUtil.nextUpdatedAt(cxt, now) shouldBe Instant.fromEpochMilliseconds(nowMs + 1)
+        // Prior ahead of a lagging clock: still strictly past the prior, however far behind now is.
+        val ahead = Instant.fromEpochMilliseconds(nowMs + 5000)
+        SqlTopicUtil.nextUpdatedAt(cxt, ahead) shouldBe Instant.fromEpochMilliseconds(nowMs + 5001)
+        // Prior safely behind: the clock wins, no artificial bump.
+        SqlTopicUtil.nextUpdatedAt(cxt, Instant.fromEpochMilliseconds(nowMs - 5000)) shouldBe now
     }
 })
