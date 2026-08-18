@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GD
 import com.dynamicruntime.common.gedra.GedraDataService
@@ -21,32 +22,48 @@ import com.dynamicruntime.common.gedra.workflow.WfState
 import com.dynamicruntime.common.gedra.workflow.WfTask
 import com.dynamicruntime.common.gedra.workflow.WfTransition
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.user.AuthUserRow
+import com.dynamicruntime.common.user.UserService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * Phase 1 of the gedra workflow (issue #381): the transition operation end to end, in process, against a real
- * booted instance -- the guarded advance, the soft-validation refusal that still saves the edit, the
- * reopenable task set, and the **role / group / user assignment** that governs who may act. All workflow state
- * lives in the `data` map (no columns), so it is read back off `GedraDataRow.extra`.
+ * booted instance -- the single-transaction guarded advance, the soft-validation refusal that still saves the
+ * edit, the reopenable task set, and the **fail-closed role / user assignment** that governs who may act. All
+ * workflow state lives in the `data` map (no columns), so it is read back off `GedraDataRow.extra`.
  *
  * Everything is created in this spec's **own client**, so it cannot collide with another spec's rows in the
- * shared in-memory database. Definitions are constructed directly here; the authoring DSL is phase 2.
+ * shared in-memory database. The advisors are **real users** (`UserService.insertUser`), because assigning a
+ * workflow to a user is validated against the user table -- a claim naming a principal nobody can match would
+ * wedge the run. Definitions are constructed directly here; the authoring DSL is phase 2.
  */
 class GedraWorkflowTest : StringSpec({
     val cxt = Startup.mkTestBootCxt("gedraWf", "gedraWfTest")
 
     val client = "gwfclient"
-    val applicantId = 91001L
-    val advisorId = 91002L
-    val advisor2Id = 91003L
-    val strangerId = 91009L
 
     fun service(): GedraDataService = GedraDataService.get(cxt).shouldNotBeNull()
+    fun users(): UserService = UserService.get(cxt).shouldNotBeNull()
+
+    /** Real users: the applicant (plain user) and two advisors (holding the advisor capability). */
+    val applicantId = users().insertUser(
+        cxt, AuthUserRow.mkInitialUser("wf-applicant@example.com", client, listOf(ROLE.user)),
+    )
+    val advisorId = users().insertUser(
+        cxt, AuthUserRow.mkInitialUser("wf-advisor@example.com", client, listOf(ROLE.user, WF.advisor)),
+    )
+    val advisor2Id = users().insertUser(
+        cxt, AuthUserRow.mkInitialUser("wf-advisor2@example.com", client, listOf(ROLE.user, WF.advisor)),
+    )
+    val strangerId = users().insertUser(
+        cxt, AuthUserRow.mkInitialUser("wf-stranger@example.com", client, listOf(ROLE.user)),
+    )
 
     val flow = WfDefinition(
         workflowId = "review",
@@ -116,7 +133,7 @@ class GedraWorkflowTest : StringSpec({
         val fresh = createWorkflow("Not yours")
         shouldThrow<KdrException> {
             GedraWorkflow.transition(asStranger(), fresh, flow, "submit", scope = ReadScope.ofClient(client))
-        }
+        }.code shouldBe EXC.notAuthorized
         // A plain user cannot approve -- they hold neither the role nor the assignment.
         shouldThrow<KdrException> {
             GedraWorkflow.transition(asApplicant(), id, flow, "approve", scope = ReadScope.ofClient(client))
@@ -128,7 +145,7 @@ class GedraWorkflowTest : StringSpec({
 
     "an advisor can claim a workflow, narrowing it from the role to one person" {
         val id = createWorkflow("To claim")
-        // The applicant submits, claiming it to a specific advisor rather than the pool.
+        // The applicant submits, claiming it to a specific (real, advisor-holding) user.
         GedraWorkflow.transition(
             asApplicant(), id, flow, "submit", scope = ReadScope.ofUser(applicantId),
             assign = WfAssignment.ofUser(advisorId),
@@ -141,10 +158,61 @@ class GedraWorkflowTest : StringSpec({
         // The other advisor holds the role but not this claim, so cannot act...
         shouldThrow<KdrException> {
             GedraWorkflow.transition(asAdvisor2(), id, flow, "approve", scope = ReadScope.ofClient(client))
-        }
+        }.code shouldBe EXC.notAuthorized
         // ...while the claimed advisor can.
         GedraWorkflow.transition(asAdvisor(), id, flow, "approve", scope = ReadScope.ofClient(client))
             .toState shouldBe "approved"
+    }
+
+    "an assignment that would wedge the workflow is refused before anything is written" {
+        val id = createWorkflow("Guard the assign")
+        val own = ReadScope.ofUser(applicantId)
+
+        // A group: no membership source exists yet, so no caller could ever match it.
+        shouldThrow<KdrException> {
+            GedraWorkflow.transition(asApplicant(), id, flow, "submit", scope = own, assign = WfAssignment.ofGroup("riskTeam"))
+        }.code shouldBe EXC.notSupported
+        // A user that does not exist.
+        shouldThrow<KdrException> {
+            GedraWorkflow.transition(asApplicant(), id, flow, "submit", scope = own, assign = WfAssignment.ofUser(999_999L))
+        }.message.shouldNotBeNull() shouldContain "no active user"
+        // A user who exists but does not hold the advisor role -- the claim would hand the workflow to
+        // someone who cannot act on it.
+        shouldThrow<KdrException> {
+            GedraWorkflow.transition(asApplicant(), id, flow, "submit", scope = own, assign = WfAssignment.ofUser(strangerId))
+        }.message.shouldNotBeNull() shouldContain "does not hold"
+        // A typoed role capability matches nobody.
+        shouldThrow<KdrException> {
+            GedraWorkflow.transition(asApplicant(), id, flow, "submit", scope = own, assign = WfAssignment.ofRole("advsor"))
+        }
+        // And nothing was written by any of those refusals: still in draft, still the owner's.
+        statusOf(id).shouldBeNull()
+
+        // An assignment on a transition into a NON-advisor-held state is refused too -- a terminal state
+        // holds nobody and a user-held state returns to the owner, by rule, not by caller choice.
+        GedraWorkflow.transition(asApplicant(), id, flow, "submit", scope = own)
+        shouldThrow<KdrException> {
+            GedraWorkflow.transition(
+                asAdvisor(), id, flow, "approve", scope = ReadScope.ofClient(client),
+                assign = WfAssignment.ofUser(advisorId),
+            )
+        }.message.shouldNotBeNull() shouldContain "not advisor-held"
+    }
+
+    "workflow entries are schema-validated: the name trait's constraints now bite on wfData" {
+        val id = createWorkflow()
+        // A name past the trait's maxLength (128) is refused by the same validation a formDoc gets -- the
+        // wfData entry union exists now, so the edit fails rather than storing silently unvalidated data.
+        shouldThrow<KdrException> {
+            GedraWorkflow.transition(
+                asApplicant(), id, flow, "submit",
+                edits = listOf(nameEdit("x".repeat(500))), scope = ReadScope.ofUser(applicantId),
+            )
+        }.message.shouldNotBeNull() shouldContain "problem"
+        // The refused edit stored nothing: the workflow still has no entries and is still in draft.
+        val row = service().queryGedra(cxt, id, GedraDataType.wfData, ReadScope.ofUser(applicantId)).shouldNotBeNull()
+        row.entries shouldBe emptyList()
+        statusOf(id).shouldBeNull()
     }
 
     "the advisor sends a step back, the user resubmits, and the reopened overlay clears" {
@@ -166,7 +234,8 @@ class GedraWorkflowTest : StringSpec({
         }
         back.extra[GD.wfReopened] shouldBe mapOf("details" to "Please correct the name.")
 
-        // Resubmitting moves forward, which clears the overlay so the advisor reviews afresh.
+        // Resubmitting -- the owner moving the workflow forward -- clears the overlay so the advisor reviews
+        // afresh.
         GedraWorkflow.transition(
             asApplicant(), id, flow, "resubmit", edits = listOf(nameEdit("Corrected")),
             scope = ReadScope.ofUser(applicantId),
@@ -184,15 +253,22 @@ class GedraWorkflowTest : StringSpec({
         shouldThrow<KdrException> {
             GedraWorkflow.transition(asAdvisor(), id, flow, "return", scope = ReadScope.ofClient(client))
         }
-        // A transition that does not leave the current state (inReview) is a plain mistake.
+        // A transition that does not leave the current state (inReview) is a CONFLICT -- the same answer a
+        // racing transition gets when the re-check under the lock finds the workflow already moved.
         shouldThrow<KdrException> {
             GedraWorkflow.transition(asApplicant(), id, flow, "submit", scope = ReadScope.ofUser(applicantId))
-        }
+        }.code shouldBe EXC.conflict
 
         GedraWorkflow.transition(asAdvisor(), id, flow, "approve", scope = ReadScope.ofClient(client))
             .toState shouldBe "approved"
         statusOf(id) shouldBe "approved"
-        assignmentOf(id).shouldBeNull() // a terminal state holds nobody
+        assignmentOf(id).shouldBeNull() // a terminal (none-held) state holds nobody...
+
+        // ...and fails closed: nothing leaves a terminal state, and even if a transition were authored out of
+        // one, no caller could match the absent assignment.
+        shouldThrow<KdrException> {
+            GedraWorkflow.transition(asAdvisor(), id, flow, "approve", scope = ReadScope.ofClient(client))
+        }.code shouldBe EXC.conflict
     }
 
     "a refused submit still saves the edit it carried -- soft validation never fails the write" {

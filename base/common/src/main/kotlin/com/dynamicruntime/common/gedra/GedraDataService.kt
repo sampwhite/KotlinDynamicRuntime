@@ -9,6 +9,7 @@ import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.SqlCxt
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlScopeUtil
+import com.dynamicruntime.common.sql.SqlStatement
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.cache.SqlTableCache
@@ -136,8 +137,62 @@ class GedraDataService : ServiceInitializer {
         compareByDescending<Map<String, Any?>> { it[PF.createdAt].toOptInstant() ?: Instant.DISTANT_PAST }
             .thenByDescending { it[GD.gedraId].toOptStr() ?: "" }
 
-    private fun gedraDataTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GDT.gedraData]
+    internal fun gedraDataTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GDT.gedraData]
         ?: throw KdrException("${GDT.gedraData} table is not registered in the schema store.")
+
+    /**
+     * The scoped single-gedra update statement every write path here shares: `update GedraData set [setSql]
+     * where gedraId = :gedraId and enabled = true and <the scope's own conditions>` -- named
+     * `[stmtNamePrefix]<shapeKey>`, since the scope's shape changes the SQL and statements are cached by name.
+     *
+     * One builder rather than a copy per caller because the where clause **is the write-side authorization**:
+     * the patch, the delete and the workflow move must always agree on what "a row this caller may write"
+     * means, and a scope dimension added here reaches all of them at once. [bind] receives the scope's bind
+     * values; the caller adds its own.
+     */
+    internal fun mkScopedGedraUpdate(
+        sqlCxt: SqlCxt,
+        table: KdrTable,
+        scope: ReadScope,
+        stmtNamePrefix: String,
+        setSql: String,
+        bind: MutableMap<String, Any?>,
+    ): SqlStatement {
+        val conditions = mutableListOf(
+            "c:${GD.gedraId} = :${GD.gedraId}",
+            "c:${PF.enabled} = true",
+        )
+        conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, bind))
+        return SqlStmtUtil.prepareSql(
+            sqlCxt, "$stmtNamePrefix${scope.shapeKey}", table.columns,
+            "update t:${GDT.gedraData} set $setSql where ${conditions.joinToString(" and ")}",
+        )
+    }
+
+    /**
+     * Applies [edits] to [entries] and validates the result -- the by-trait fold `applyToOne` performs,
+     * shared so the workflow transition can run the identical edit semantics inside its own transaction
+     * (`GedraWorkflow`). Returns the new entry list; throws on an edit or validation failure, in which case
+     * nothing should be written.
+     */
+    internal fun applyEditsToEntries(
+        cxt: KdrCxt,
+        kind: GedraDataType,
+        edits: List<GedraEdit>,
+        entries: List<Map<String, Any?>>,
+    ): List<Map<String, Any?>> {
+        val byTrait = LinkedHashMap<String, Map<String, Any?>>()
+        for (entry in entries) {
+            entry[GE.traitId].toOptStr()?.let { byTrait[it] = entry }
+        }
+        val now = cxt.instanceNow()
+        for (edit in edits) {
+            applyEdit(cxt, edit, byTrait, now)
+        }
+        val result = byTrait.values.toList()
+        checkStoredEntries(cxt, kind, result)
+        return result
+    }
 
     /**
      * The order a patch applies kinds in (issue #337).
@@ -284,17 +339,12 @@ class GedraDataService : ServiceInitializer {
             // updatedAt is stamped under the lock below, not here, so it is strictly past the row's real value.
             PF.updatedBy to cxt.userProfile.userId,
         )
-        val conditions = mutableListOf(
-            "c:${GD.gedraId} = :${GD.gedraId}",
-            // Already-deleted is not deleted again, which is what makes the returned count mean something.
-            "c:${PF.enabled} = true",
-        )
-        conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, data))
-        val stmt = SqlStmtUtil.prepareSql(
-            sqlCxt, "uGedraDataDelete${scope.shapeKey}", table.columns,
-            "update t:${GDT.gedraData} set c:${PF.enabled} = false, " +
-                "c:${PF.updatedAt} = :${PF.updatedAt}, c:${PF.updatedBy} = :${PF.updatedBy} " +
-                "where ${conditions.joinToString(" and ")}",
+        // The shared scoped-update builder carries the enabled = true condition, which is also what makes the
+        // returned count mean something here: already-deleted is not deleted again.
+        val stmt = mkScopedGedraUpdate(
+            sqlCxt, table, scope, "uGedraDataDelete",
+            "c:${PF.enabled} = false, c:${PF.updatedAt} = :${PF.updatedAt}, c:${PF.updatedBy} = :${PF.updatedBy}",
+            data,
         )
         val selectStmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
         var changed = 0
@@ -402,16 +452,10 @@ class GedraDataService : ServiceInitializer {
         // make the "write" itself unable to touch a row the caller may not, rather than relying on an earlier
         // phase having been correct.
         val bind = mutableMapOf<String, Any?>()
-        val conditions = mutableListOf(
-            "c:${GD.gedraId} = :${GD.gedraId}",
-            "c:${PF.enabled} = true",
-        )
-        conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, bind))
-        val stmt = SqlStmtUtil.prepareSql(
-            sqlCxt, "uGedraDataPatch${scope.shapeKey}", table.columns,
-            "update t:${GDT.gedraData} set c:${GD.data} = :${GD.data}, " +
-                "c:${PF.updatedAt} = :${PF.updatedAt}, c:${PF.updatedBy} = :${PF.updatedBy} " +
-                "where ${conditions.joinToString(" and ")}",
+        val stmt = mkScopedGedraUpdate(
+            sqlCxt, table, scope, "uGedraDataPatch",
+            "c:${GD.data} = :${GD.data}, c:${PF.updatedAt} = :${PF.updatedAt}, c:${PF.updatedBy} = :${PF.updatedBy}",
+            bind,
         )
         val outcomes = mutableListOf<GedraEditOutcome>()
         SqlTopicTranProvider.executeTopicTran(
@@ -458,7 +502,7 @@ class GedraDataService : ServiceInitializer {
     }
 
     /** The row as it stands inside the transaction; absent here means it went between admitting and applying. */
-    private fun readForPatch(
+    internal fun readForPatch(
         cxt: KdrCxt,
         sqlCxt: SqlCxt,
         table: KdrTable,

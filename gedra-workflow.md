@@ -119,10 +119,14 @@ Tasks are also what a targeted **"request changes"** reopens. When the advisor r
 **which tasks** to send back (at least one) with a note; the engine records them under `data.wfReopened` and
 the workflow moves to a user-held state showing exactly those steps as needing attention. A task's effective
 status is therefore derived, not stored: `changesRequested` if the advisor reopened it, else `complete` if its
-required traits are filled, else `pending`. **Any transition that moves the workflow forward clears the
-overlay** — a resubmission is reviewed afresh, because the advisor's ask ("this number looks wrong") is a
-judgement the system cannot see as addressed, only the advisor can. That is the same division of labour the
-soft-validation seam draws: the system checks *presence*, a person checks *correctness*.
+required traits are present, else `pending`. **The owner moving the workflow forward — a transition leaving a
+user-held state — clears the overlay**, so a resubmission is reviewed afresh: the advisor's ask ("this number
+looks wrong") is a judgement the system cannot see as addressed, only the advisor can. Other transitions — an
+advisor-side claim or triage move — **preserve** it, so no unrelated move can erase the notes the user is
+still reading. That is the same division of labour the soft-validation seam draws: the system checks
+*presence*, a person checks *correctness* — and for the same reason, a task's completeness is **presence** of
+its required traits (an entry with a data value, however shaped, even empty), never a judgement of content: a
+trait whose payload is legitimately empty must be able to satisfy a gate, or the submit is blocked forever.
 
 So "send it back to the assets step" is: the advisor's `return` names the `assets` task; the user sees that one
 step flagged with the note, edits it, and resubmits. The state machine stays coarse (four states); the steps
@@ -152,21 +156,25 @@ Two guard kinds cover the near term:
 A completeness check returns a list of *reasons* — the unfinished task ids — never a boolean, for the same
 reason the `PATCH` returns per-edit outcomes: a refused advance has to tell the person *what to go finish*.
 
-### A transition is edits, then a gate, then a state move
+### A transition is edits, then a gate, then a state move — in one transaction
 
-A transition is not a new write path. It is: apply the caller's edits (the existing `patchGedras`) — which
-**commit whether or not the advance is allowed**, the soft-validation contract — then, under a topic
-transaction on the workflow instance, check the required tasks against the resulting entries and, only if they
-pass, write the new status, assignment and reopened overlay into `data` together. The workflow instance is already
-the natural lock root — `GedraDataTran` exists precisely so a lock can span the content table and, later, a
-file store (`GedraTables.kt`). Reading the entries under that lock means the gate sees committed post-edit
-state and the move cannot race an edit, and the monotonic-`updatedAt` rule the cache depends on
-([`SqlTopicUtil.nextUpdatedAt`](base/common/src/main/kotlin/com/dynamicruntime/common/sql/SqlTopicUtil.kt))
-applies to the state write for free.
+A transition is not a new write path. It runs **one topic transaction** on the workflow instance (the natural
+lock root — `GedraDataTran` exists precisely so a lock can span the content table and, later, a file store):
+re-read the row under the lock, **re-verify the state and the assignment against committed data**, apply the
+caller's edits (the identical fold the `PATCH` performs, validation included), check the required tasks
+against the resulting entries, and write once — the entries, and (only if the gate passed) the new status,
+assignment and reopened overlay.
 
-The edits committing before the gate is deliberate, not a compromise: a `submit` that is refused for
-incompleteness must still have *saved what the user typed*, or the refusal would punish them for saving. Only
-the *advance* is withheld.
+The re-verification is what makes the advance genuinely atomic: the pre-lock read may be cache-served or
+simply raced, so a transition taken against a workflow another actor has already moved fails with a
+**conflict** rather than overwriting their move — which is what keeps "no transition leaves a terminal state"
+true at runtime and a claim meaningful across nodes. One transaction also means one `updatedAt` bump per
+transition (the monotonic rule the cache depends on), and one lock take rather than two.
+
+The soft-validation contract is unchanged: a `submit` refused for incompleteness still **saves the edits it
+carried** — the refusal path writes the edited entries without touching the state keys — because the refusal
+must not punish the user for saving. Only the *advance* is withheld. A refusal carrying no edits writes
+nothing at all.
 
 ## The definition, authored in source
 
@@ -233,13 +241,26 @@ Matching a caller against an assignment is `WfAssignment.matches(WfActor)`, wher
 `{roles, groups, userId}`. A role match runs through `RoleLadder.satisfies` — the same predicate the section
 gate and a transition's `by` use — so "assigned to the advisor role" reads roles the one way the whole system
 does. What a *group* means is decided at the edge (the `WfActor` is built from `KdrCxt`), not baked into the
-kernel: today a caller's groups are their organization; a richer group membership slots in there without the
-engine changing.
+kernel — and today the honest answer is **no groups at all**: there is no group-membership source, so the
+engine refuses to *write* a group assignment (`EXC.notSupported`) rather than quietly mapping groups onto
+something else. Mapping the caller's primary organization here was considered and rejected: it would turn "a
+named group of users" into "everyone sharing an org name", un-qualified by client, and stored group rows would
+be indistinguishable from real group ids when a membership source arrives.
 
 Taking a transition needs **both** the transition's `by` role *and* a match against the workflow's current
 assignment — the role says "may do this kind of thing", the assignment says "this one is yours". That is what
 makes a *claim* meaningful: a second advisor holds the role but not the claim, and so cannot act on a workflow
-claimed by the first.
+claimed by the first. `availableTransitions` applies the same two gates, so what a UI shows and what the
+enforcement allows cannot disagree — an unclaimed button is never rendered for a claimed workflow.
+
+**The gate fails closed, in every direction.** No assignment — an ownerless workflow, a process-held
+(`holder = none`) state — means *nobody* may act, not anybody. A stored assignment that cannot be read is a
+fault, never a fall-back to the state's default: falling back would widen a one-person claim to the whole
+advisor pool exactly when the data is least trustworthy. And a caller-supplied assignment is **validated
+before anything is written** — only an advisor-held target accepts one, a named user must exist in the
+workflow's client and hold the advisor role, a named role must be one the deployment knows — because a
+workflow assigned to a principal nobody can match is permanently stuck: the only way to change an assignment
+is to take a transition, which requires matching it.
 
 ### Advisor is a deployment capability role
 
@@ -376,9 +397,10 @@ Nothing before phase 3 commits to the general engine being worth its weight; pha
   pooled workflow, or handing it to a group, is already expressible. Whether a transition that *only*
   retargets the assignee (no state change — "pass this to Alice") is worth its own shape, versus doing it as a
   side effect of some state move, is unsettled until there is a workflow that needs it.
-- **What a group is.** A caller's groups are their organization today. Arbitrary named groups (a review team
-  that is not an org) need a group-membership source that does not exist yet; the `WfActor`/`WfAssignment`
-  model is ready for it, the membership lookup is not.
+- **What a group is.** Arbitrary named groups (a review team that is not an org) need a group-membership
+  source that does not exist yet. The `WfActor`/`WfAssignment` model is ready for it; until it exists the
+  engine **refuses to write** a group assignment rather than approximating one, so nothing has to be migrated
+  when the real thing arrives.
 - **Locked entries and reopenability.** *A follow-up phase, gated on entry locking existing at all — which is
   first a `PATCH`-layer concern (`gedra-patch.md`), not the workflow's.* Locking touches the workflow in both
   directions. It **produces** locks: `approve` is the "approval has occurred" that locks the entries it signs

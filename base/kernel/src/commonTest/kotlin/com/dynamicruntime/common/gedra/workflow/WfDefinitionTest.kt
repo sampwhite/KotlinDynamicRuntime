@@ -51,30 +51,44 @@ class WfDefinitionTest {
     }
 
     @Test
-    fun availableTransitionsGateOnTheCallersRole() {
+    fun availableTransitionsGateOnRoleAndAssignmentTogether() {
         val wf = reviewFlow()
-        assertEquals(listOf("submit"), wf.availableTransitions("draft", setOf(ROLE.user)).map { it.name })
+        val owner = WfActor(setOf(ROLE.user), userId = 42L)
+        val advisor = WfActor(setOf(ROLE.user, WF.advisor), userId = 7L)
+        val pool = WfAssignment.ofRole(WF.advisor)
+
+        // The owner, holding their own draft, sees submit.
+        assertEquals(
+            listOf("submit"),
+            wf.availableTransitions("draft", owner, WfAssignment.ofUser(42L)).map { it.name },
+        )
+        // An advisor on the pool sees the advisor transitions...
         assertEquals(
             setOf("approve", "return"),
-            wf.availableTransitions("inReview", setOf(ROLE.user, WF.advisor)).map { it.name }.toSet(),
+            wf.availableTransitions("inReview", advisor, pool).map { it.name }.toSet(),
         )
-        // A plain user sees none of the advisor transitions, though they exist.
-        assertEquals(emptyList(), wf.availableTransitions("inReview", setOf(ROLE.user)).map { it.name })
-        // A ladder role admits a user transition it ranks above: an admin can resubmit.
+        // ...while a plain user on the same pool sees none (the role gate), and an advisor NOT holding a
+        // claimed workflow sees none either (the assignment gate) -- "see" now applies both, as "do" does.
+        assertEquals(emptyList(), wf.availableTransitions("inReview", owner, pool))
+        assertEquals(emptyList(), wf.availableTransitions("inReview", advisor, WfAssignment.ofUser(8L)))
+        // No assignment fails closed: nobody holds it, nobody sees a button.
+        assertEquals(emptyList(), wf.availableTransitions("inReview", advisor, null))
+        // A ladder role admits a user transition it ranks above: an admin-owner can resubmit their own.
+        val adminOwner = WfActor(setOf(ROLE.user, ROLE.admin), userId = 42L)
         assertEquals(
             listOf("resubmit"),
-            wf.availableTransitions("changesRequested", setOf(ROLE.user, ROLE.admin)).map { it.name },
+            wf.availableTransitions("changesRequested", adminOwner, WfAssignment.ofUser(42L)).map { it.name },
         )
     }
 
     @Test
-    fun completenessRunsPerTaskAndReportsWhichStepsAreUnfinished() {
+    fun completenessIsPresencePerTaskAndReportsWhichStepsAreUnfinished() {
         val wf = reviewFlow()
         val nothing = emptyList<Map<String, Any?>>()
         val incomeOnly = listOf(entry("income", filled = true))
         val both = listOf(entry("income", true), entry("assets", true))
 
-        // A task is complete only when its required traits are filled.
+        // A task is complete when its required traits are present.
         assertTrue(wf.task("income")!!.let { WfEngine.taskComplete(it, incomeOnly) })
         assertTrue(!wf.task("assets")!!.let { WfEngine.taskComplete(it, incomeOnly) })
 
@@ -82,6 +96,15 @@ class WfDefinitionTest {
         assertEquals(listOf("income", "assets"), WfEngine.incompleteTasks(listOf("income", "assets"), wf, nothing))
         assertEquals(listOf("assets"), WfEngine.incompleteTasks(listOf("income", "assets"), wf, incomeOnly))
         assertEquals(emptyList(), WfEngine.incompleteTasks(listOf("income", "assets"), wf, both))
+
+        // Presence, deliberately not content: an entry whose data is a legitimately EMPTY map (an
+        // all-optional trait) satisfies -- otherwise the submit is blocked forever with nothing the user can
+        // do about it. Judging content is the advisor's review, not the gate's.
+        val emptyData = listOf(mapOf(GE.traitId to "income", GE.data to emptyMap<String, Any?>()))
+        assertTrue(wf.task("income")!!.let { WfEngine.taskComplete(it, emptyData) })
+        // An entry with NO data value at all does not satisfy.
+        val noData = listOf(mapOf<String, Any?>(GE.traitId to "income"))
+        assertTrue(!wf.task("income")!!.let { WfEngine.taskComplete(it, noData) })
     }
 
     @Test
@@ -114,6 +137,11 @@ class WfDefinitionTest {
         assertEquals(WfAssigneeKind.user, restored?.kind)
         assertEquals("7", restored?.value)
         assertNull(WfAssignment.fromMap(mapOf("kind" to "nonsense", "value" to "x")))
+        // A value that round-tripped as a number is COERCED, not nulled: a claim must survive a JSON/SQL trip,
+        // because the reader treats an unreadable assignment as a fault rather than falling back to a wider
+        // audience.
+        val coerced = WfAssignment.fromMap(mapOf("kind" to "user", "value" to 7))
+        assertEquals("7", coerced?.value)
     }
 
     @Test
@@ -129,6 +157,11 @@ class WfDefinitionTest {
         assertEquals(WF.advisor, review?.value)
         // ...and a terminal state to nobody.
         assertNull(wf.defaultAssignment("approved", 42L))
+        // An absent owner -- null, or the system user's 0, which is what a null userId column reads back
+        // as -- yields NO assignment rather than ofUser(0): the gate fails closed on null, so an ownerless
+        // workflow is stuck, never everybody's.
+        assertNull(wf.defaultAssignment("draft", null))
+        assertNull(wf.defaultAssignment("draft", 0L))
     }
 
     @Test

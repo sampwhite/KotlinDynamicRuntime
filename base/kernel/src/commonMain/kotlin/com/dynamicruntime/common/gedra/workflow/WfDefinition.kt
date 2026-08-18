@@ -4,6 +4,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * Standard workflow vocabulary. Each name matches its value; a `const val` in an UPPER-CASE object per the
@@ -37,7 +38,12 @@ enum class WfHolder {
     /** The workflow is with an advisor -- they review it, they approve or return it. */
     advisor,
 
-    /** Nobody: a terminal state, or one advanced only by a process. */
+    /**
+     * Nobody: a terminal state, or one advanced only by a process. "Nobody" is enforced, not decorative --
+     * a state held by no one yields no assignment, and the transition gate **fails closed** on a null
+     * assignment, so no person can advance a workflow out of a `none`-held state. A process path that needs
+     * to will have to say so explicitly rather than slipping through an unheld gate.
+     */
     none,
 }
 
@@ -100,12 +106,17 @@ class WfAssignment(val kind: WfAssigneeKind, val value: String) {
         fun ofGroup(group: String): WfAssignment = WfAssignment(WfAssigneeKind.group, group)
         fun ofUser(userId: Long): WfAssignment = WfAssignment(WfAssigneeKind.user, userId.toString())
 
-        /** Reads an assignment back from its stored `{kind, value}` map, or null when there is none / it is malformed. */
+        /**
+         * Reads an assignment back from its stored `{kind, value}` map, or null when it cannot. Values are
+         * **coerced** ([toOptStr]), not cast: a user id that round-tripped through JSON or SQL as a number
+         * must read back as the claim it is, because the caller treats an unreadable assignment as a fault --
+         * a parse failure on a security field must never quietly widen who may act.
+         */
         fun fromMap(stored: Any?): WfAssignment? {
             val map = stored as? Map<*, *> ?: return null
-            val kind = (map[WFA.kind] as? String)?.let { name -> WfAssigneeKind.entries.firstOrNull { it.name == name } }
+            val kind = map[WFA.kind].toOptStr()?.let { name -> WfAssigneeKind.entries.firstOrNull { it.name == name } }
                 ?: return null
-            val value = map[WFA.value] as? String ?: return null
+            val value = map[WFA.value].toOptStr() ?: return null
             return WfAssignment(kind, value)
         }
     }
@@ -276,12 +287,21 @@ class WfDefinition(
         transitionsByName.values.filter { it.from == stateName }
 
     /**
-     * The transitions a caller holding [heldRoles] may take from [stateName]. This is what a UI asks to render
-     * its buttons, and -- because it is the same predicate the transition endpoint will enforce with -- "see"
-     * and "do" cannot disagree.
+     * The transitions [actor] may take from [stateName], given the workflow's current [assignment] -- **both**
+     * gates the transition operation enforces: the transition's role, and a match against who holds the
+     * workflow. This is what a UI asks to render its buttons, and because it applies the same two predicates
+     * the enforcement does, "see" and "do" cannot disagree: a claimed workflow shows no buttons to the
+     * advisor who holds the role but not the claim.
+     *
+     * A null [assignment] means nobody holds the workflow (an ownerless or process-held state), and nobody
+     * may act -- the same fail-closed reading the enforcement applies.
      */
-    fun availableTransitions(stateName: String, heldRoles: Set<String>): List<WfTransition> =
-        transitionsFrom(stateName).filter { RoleLadder.satisfies(heldRoles, it.by) }
+    fun availableTransitions(stateName: String, actor: WfActor, assignment: WfAssignment?): List<WfTransition> {
+        if (assignment == null || !assignment.matches(actor)) {
+            return emptyList()
+        }
+        return transitionsFrom(stateName).filter { RoleLadder.satisfies(actor.roles, it.by) }
+    }
 
     /**
      * Who a workflow that has just landed in [stateName] belongs to, when nothing has claimed it more
@@ -292,7 +312,10 @@ class WfDefinition(
      */
     fun defaultAssignment(stateName: String, ownerUserId: Long?): WfAssignment? =
         when (statesByName[stateName]?.holder) {
-            WfHolder.user -> ownerUserId?.let { WfAssignment.ofUser(it) }
+            // A user-held state belongs to the owner. An absent owner -- null, or the system user's 0, which
+            // is what a null userId column reads back as -- yields NO assignment rather than ofUser(0), and
+            // the gate fails closed on null: an ownerless workflow is stuck, never everybody's.
+            WfHolder.user -> ownerUserId?.takeIf { it != 0L }?.let { WfAssignment.ofUser(it) }
             WfHolder.advisor -> WfAssignment.ofRole(advisorRole)
             WfHolder.none, null -> null
         }
@@ -309,18 +332,22 @@ class WfDefinition(
 object WfEngine {
     /**
      * The [requiredTraitIds] that are **not** satisfied by [entries]: a required trait is satisfied when an
-     * entry of that trait is present and its [GE.data] is a non-empty map. Empty result means all are filled.
+     * entry of that trait is **present** with a non-null [GE.data] -- whatever shape that data takes.
+     *
+     * Presence, deliberately not content: a trait whose payload is legitimately an empty map (all-optional
+     * fields), an array, or a scalar must be able to satisfy a gate, or the submit is blocked forever with no
+     * action that can unblock it. The other side of the same coin -- a present-but-blank answer counting as
+     * complete -- is accepted on purpose: completeness is the system's check for *presence*, and judging
+     * *content* is what the advisor's review exists for (`gedra-workflow.md`, the soft-validation seam).
      */
     fun missingTraits(requiredTraitIds: List<String>, entries: List<Map<String, Any?>>): List<String> {
         val satisfied = entries.mapNotNull { entry ->
-            val traitId = entry[GE.traitId] as? String ?: return@mapNotNull null
-            val data = entry[GE.data] as? Map<*, *>
-            if (data != null && data.isNotEmpty()) traitId else null
+            if (entry[GE.data] != null) entry[GE.traitId].toOptStr() else null
         }.toSet()
         return requiredTraitIds.filter { it !in satisfied }
     }
 
-    /** Whether [task]'s required traits are all filled by [entries]. */
+    /** Whether [task]'s required traits are all present in [entries] (see [missingTraits] for the rule). */
     fun taskComplete(task: WfTask, entries: List<Map<String, Any?>>): Boolean =
         missingTraits(task.requiredTraitIds, entries).isEmpty()
 
