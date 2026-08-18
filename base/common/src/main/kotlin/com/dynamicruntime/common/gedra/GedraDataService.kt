@@ -11,6 +11,7 @@ import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlScopeUtil
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
+import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.ServiceInitializer
@@ -69,9 +70,40 @@ class GedraDataService : ServiceInitializer {
 
     private lateinit var gedraService: GedraService
 
+    /**
+     * The in-memory `GedraData` cache, or null when the table-cache service is absent (see [GedraDataCache]).
+     * Every lookup below consults it first and falls back to SQL on a miss, so its absence costs queries and
+     * nothing else.
+     */
+    var dataCache: SqlTableCache<Map<String, Any?>>? = null
+
     override fun checkInit(cxt: KdrCxt) {
         gedraService = GedraService.get(cxt)
             ?: throw KdrException("GedraService required for GedraDataService.")
+        // Registered during this pass so the cache service's own checkReady -- which runs after every
+        // service's checkInit -- performs the initial load at startup rather than in a request.
+        dataCache = GedraDataCache.register(cxt)
+    }
+
+    /**
+     * Serves a by-id lookup from [dataCache], or null when it cannot -- which the caller turns into its SQL
+     * query, so the cache only ever saves a round trip and never changes an answer.
+     *
+     * The scope is applied **per row**, the way `UserService.queryAdministrableUser` already does it, not by
+     * composing a predicate: composing one would be a second implementation of what `SqlScopeUtil` exists to
+     * be the only copy of. A row the scope refuses returns null here and the caller re-asks SQL, which refuses
+     * it too -- one wasted query on a denied cross-scope probe, in exchange for the cached path having no way
+     * to *widen* an answer.
+     */
+    private fun cachedGedra(cxt: KdrCxt, fullId: String, scope: ReadScope): GedraDataRow? {
+        val cache = dataCache ?: return null
+        cache.checkRefresh(cxt)
+        val row = cache.snapshot.get(cache.idOf(fullId)) ?: return null
+        val extracted = GedraDataRow.extract(gedraService, row.value)
+        if (scope.client != null && extracted.client != scope.client) return null
+        if (!scope.admitsOrg(extracted.org)) return null
+        if (scope.userId != null && extracted.userId != scope.userId) return null
+        return extracted
     }
 
     private fun gedraDataTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GDT.gedraData]
@@ -163,6 +195,7 @@ class GedraDataService : ServiceInitializer {
         if (gedraId.dataType != kind) {
             return null
         }
+        cachedGedra(cxt, gedraId.fullId, scope)?.let { return it }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
         val data = mutableMapOf<String, Any?>(GD.gedraId to gedraId.fullId)
