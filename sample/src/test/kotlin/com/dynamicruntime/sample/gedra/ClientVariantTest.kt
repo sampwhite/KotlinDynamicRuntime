@@ -4,6 +4,11 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.GPF
+import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.startup.InstanceRegistry
@@ -133,6 +138,51 @@ class ClientVariantTest : StringSpec({
         // Nobody else has heard of it, so it rides the default branch untouched.
         create(everyone, bad).shouldNotBeNull()
         create(acme, mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "Nia"))).shouldNotBeNull()
+    }
+
+    // --- a trait nobody has heard of ---------------------------------------------
+    //
+    // The direct answer to "can I make up a trait?": yes, on both calls, for any caller whose client does not
+    // know it either. Both unions declare an **open** default branch (#301), so an entry whose `traitId`
+    // selects no branch is carried as supplied rather than refused -- deliberately, because trait definitions
+    // are authored by people who are not us and a client's config may not be loaded on this node.
+    //
+    // So the generic endpoints are an arbitrary-JSON channel, bounded by scope rather than by schema. #387 is
+    // what closes it for a client that wants it closed: an endpoint naming one client can be strict at the
+    // edge, because it has one answer to whose schema applies.
+
+    "a trait nobody declared is stored as supplied, on create" {
+        val id = create(everyone, mapOf(GE.traitId to "inventedByHand", GE.data to mapOf("anything" to 42L)))
+        val stored = everyone.getItem(GEP.formDoc, mapOf(GDF.gedraId to id))[GDF.entries]
+            .toJsonListOfMaps().single()
+        stored[GE.traitId] shouldBe "inventedByHand"
+        stored[GE.data].toJsonMapOrEmpty()["anything"] shouldBe 42L
+    }
+
+    "a trait nobody declared is stored as supplied, on patch too" {
+        val id = create(everyone, mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Doc")))
+        everyone.postItems(
+            GEP.patch,
+            mapOf(
+                GPF.targets to mapOf(
+                    GedraDataType.formDoc.name to listOf(
+                        mapOf(
+                            GDF.gedraId to id,
+                            GPF.edits to listOf(
+                                mapOf(
+                                    GED.action to GedraEditAction.addOrReplace.name,
+                                    GE.traitId to "alsoInvented",
+                                    GE.data to mapOf("shape" to "unknown"),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val entries = everyone.getItem(GEP.formDoc, mapOf(GDF.gedraId to id))[GDF.entries].toJsonListOfMaps()
+        entries.single { it[GE.traitId] == "alsoInvented" }[GE.data]
+            .toJsonMapOrEmpty()["shape"] shouldBe "unknown"
     }
 })
 
