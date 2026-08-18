@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -97,6 +98,11 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 items { type = SCT.string }
             }
             field(ADF.org, "Primary organization for the new user; defaults to the creator's own.")
+            field(
+                ADF.client,
+                "Client for the new user; defaults to the creator's own. Naming a different one requires the " +
+                    "'${ROLE.allClients}' capability, and it cannot be changed afterwards.",
+            )
             field(ADF.isEntity, "Whether the new account belongs to a business rather than a person.") { type = SCT.boolean }
             field(ADF.name, "The new account's name: a person's full name, or the business's name.")
         },
@@ -120,7 +126,9 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // administrator creating a user outside their own scope would immediately lose sight of them.
         val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null } ?: c.userProfile.org
         requireAssignableOrg(c, org)
-        val data = AuthUserRow.mkInitialUser(primaryId, c.userProfile.client, roles, org).toMutableMap()
+        val data = AuthUserRow
+            .mkInitialUser(primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org)
+            .toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         // The administrator is asserting the address, which stands in for the verification the self-service
@@ -277,6 +285,42 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
  * An administrator who is not confined to an organization -- most of them -- may assign anything, including
  * nothing.
  */
+/**
+ * The client a created user belongs to: [named] when the caller may say so, and their own otherwise (issue
+ * #352).
+ *
+ * Two refusals, and they are different questions. Naming a client **other than your own** takes
+ * [ROLE.allClients] -- a client-scoped administrator creating a user elsewhere would immediately lose sight of
+ * them, which is the same reason the organization defaults the way it does. And any named client has to be one
+ * this node **carries**, since a user in a client that is not present cannot get in.
+ *
+ * There is no set-client call to match this, and there should not be: a user's content carries their client
+ * both in the `client` column and inside every `GedraId`, so moving one would strand it. Create is the only
+ * point at which this is answerable, which is why the console offers the choice only there.
+ */
+private fun assignableClient(cxt: KdrCxt, named: String?): String {
+    val own = cxt.userProfile.client
+    val client = named?.trim()?.ifEmpty { null } ?: return own
+    if (client == own) {
+        return own
+    }
+    if (AdminRules.adminScope(cxt) != AdminScope.allClients) {
+        throw KdrException.mkInput(
+            "You may only create users in your own client ('$own'); naming another takes the " +
+                "'${ROLE.allClients}' capability.",
+        )
+    }
+    val clients = ClientService.get(cxt)
+        ?: throw KdrException("Cannot create a user in '$client': there is no client registry on this node.")
+    if (!clients.isPresent(client)) {
+        throw KdrException.mkInput(
+            "There is no client '$client' on this node. The clients present here are " +
+                "${clients.presentClients.joinToString(", ") { it.clientId }}.",
+        )
+    }
+    return client
+}
+
 private fun requireAssignableOrg(cxt: KdrCxt, org: String?) {
     val actingOrg = cxt.userProfile.org ?: return
     if (AdminRules.adminScope(cxt) == AdminScope.allClients) return

@@ -60,6 +60,9 @@ val Users = FC<Props> {
     var draftLevel by useState(ROLE.user)
     var draftAllClients by useState(false)
     var draftOrg by useState("")
+    var draftClient by useState("")
+    /** The clients a full-scope administrator may create into; empty for everybody else, who get no choice. */
+    var clientChoices by useState<List<ClientChoice>>(emptyList())
     var draftIsEntity by useState(false)
     var draftName by useState("")
     var draftEnabled by useState(true)
@@ -119,6 +122,12 @@ val Users = FC<Props> {
             config = c
             if (c?.canManageUsers == true) {
                 runSearch(search)
+                // Only a full-scope administrator is offered a choice of client, and only they can ask for the
+                // list -- it is a cross-client question. A failure leaves the list empty, which falls back to
+                // the read-only field rather than an error: the client is not the reason they came here.
+                if (c.user.roles.contains(ROLE.allClients)) {
+                    clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
+                }
             }
         }
     }
@@ -130,6 +139,9 @@ val Users = FC<Props> {
         draftAllClients = user?.roles?.contains(ROLE.allClients) == true
         // A new user starts in the editor's own organization; an existing one shows theirs, blank included.
         draftOrg = (if (user != null) user.org else config?.user?.org) ?: ""
+        // The client works the same way, and is the one field with no edit form at all: it is fixed once the
+        // user exists, so an existing row shows theirs read-only.
+        draftClient = (if (user != null) user.client else config?.user?.client) ?: ""
         draftIsEntity = user?.isEntity == true
         draftName = user?.name ?: ""
         draftEnabled = user?.enabled ?: true
@@ -245,6 +257,7 @@ val Users = FC<Props> {
                 draftEmail, username = null, roles = draftRoles(emptyList()),
                 org = draftOrg.trim().ifEmpty { null },
                 isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
+                client = draftClient.trim().ifEmpty { null },
             )
             note = "Created ${created.primaryId}."
         } else {
@@ -396,6 +409,34 @@ val Users = FC<Props> {
                 }
             }
 
+            // Chosen at creation and never again (issue #352). A user's content carries their client both in
+            // its `client` column and inside every gedra id, so moving one would strand it -- there is no
+            // set-client call for an editor to offer, which is why this is a selector on create and plain text
+            // afterwards. Offered only to a caller holding the capability, for the same reason the checkbox
+            // above is: a scoped administrator naming another client could only ever produce a 400.
+            if (creating && clientChoices.isNotEmpty()) {
+                div {
+                    className = ClassName("row")
+                    span {
+                        className = ClassName("field-label")
+                        +"Client"
+                    }
+                    Select {
+                        value = draftClient
+                        options = clientOptions(clientChoices)
+                        disabled = busy
+                        style = js("({ minWidth: 180 })")
+                        onChange = { v -> draftClient = v as? String ?: draftClient }
+                    }
+                }
+                p {
+                    className = ClassName("type-hint")
+                    +clientHint
+                }
+            } else {
+                readOnlyField("Client", draftClient.ifEmpty { "—" })
+            }
+
             // Editable only by someone not confined to an organization: the backend lets a confined
             // administrator assign only their own, so anything else here could only ever produce a 400.
             if (config?.user?.org == null) {
@@ -535,6 +576,22 @@ private val accessLevelOptions: Array<dynamic> = RoleLadder.ordered.map { role -
     obj.value = role
     obj
 }.toTypedArray()
+
+/**
+ * The selector's options, built per render from what the backend served rather than from a fixed list -- the
+ * clients a deployment carries are configuration, and this page has no business having an opinion about them.
+ */
+private fun clientOptions(choices: List<ClientChoice>): Array<dynamic> = choices.map { choice ->
+    val obj: dynamic = js("({})")
+    obj.label = clientChoiceLabel(choice)
+    obj.value = choice.clientId
+    obj
+}.toTypedArray()
+
+/** Says why the choice is offered here and nowhere else. */
+private const val clientHint =
+    "Which client the new user belongs to. It cannot be changed afterwards: their content carries the " +
+        "client, so moving them would leave it behind."
 
 /**
  * Says what the capability does, and that it is a different axis from the level -- the distinction the whole

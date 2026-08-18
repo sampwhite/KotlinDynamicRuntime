@@ -3,12 +3,30 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
+
+/** One client a new user may be put in, as the create form's selector offers them (issue #352). */
+class ClientChoice(val clientId: String, val name: String)
+
+/**
+ * How a client reads in the create form's selector.
+ *
+ * Both halves, because neither alone is enough: the **id** is what gets stored and what appears inside every
+ * one of that user's gedra ids, so it is the thing an administrator will later recognize in a log or a URL,
+ * while the **name** is what a person actually calls the client. A client that has not been given a name shows
+ * its id alone rather than an empty pair of brackets.
+ *
+ * Pure, and covered under `jsNodeTest`, like the other two helpers here.
+ */
+fun clientChoiceLabel(choice: ClientChoice): String =
+    if (choice.name.isEmpty()) choice.clientId else "${choice.name} (${choice.clientId})"
 
 /**
  * One administered user, as the `admin` endpoints describe them ([ADF]). Deliberately not [UserProfile]: that
@@ -19,6 +37,8 @@ class AdminUser(
     val primaryId: String,
     val username: String,
     val roles: List<String>,
+    /** The client they belong to (issue #352). Fixed at creation: moving one would strand their content. */
+    val client: String,
     /** Their primary organization within the client, or null when they have none (issue #225). */
     val org: String?,
     /** Whether this account belongs to a business rather than a person. */
@@ -91,18 +111,33 @@ object AdminApi {
     /** Creates a user directly (no email verification); [username], [roles], [org], and name data are optional. */
     suspend fun createUser(
         primaryId: String, username: String?, roles: List<String>?, org: String?,
-        isEntity: Boolean = false, name: String? = null,
+        isEntity: Boolean = false, name: String? = null, client: String? = null,
     ): AdminUser {
         val body = buildMap<String, Any?> {
             put(ADF.primaryId, primaryId.trim())
             username?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.username, it) }
             roles?.takeIf { it.isNotEmpty() }?.let { put(ADF.roles, it) }
             org?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.org, it) }
+            // Sent only when chosen, so an administrator who never saw the selector gets the backend's own
+            // default -- their own client -- rather than this having to know what that is.
+            client?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.client, it) }
             if (isEntity) put(ADF.isEntity, true)
             name?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.name, it) }
         }
         return Http.sendApi("POST", UADEP.userCreate, body).results().toAdminUser()
     }
+
+    /**
+     * The clients this node carries, for the create form's selector (issue #352).
+     *
+     * The **full-scope** path, unlike everything else here: listing clients is a cross-client question, so
+     * only an `allClients` caller can ask it -- which is exactly the caller who is offered the choice. A
+     * scoped administrator never calls this, because their client is not a decision.
+     */
+    suspend fun listClients(): List<ClientChoice> =
+        Http.getApi(ADEP.clients)[EP.items].toJsonListOfMaps().map {
+            ClientChoice(it[CLD.clientId] as? String ?: "", it[CLD.name] as? String ?: "")
+        }
 
     /** Replaces a user's roles -- the call that grants or revokes administrator rights. */
     suspend fun setRoles(userId: Long, roles: List<String>): AdminUser =
@@ -139,6 +174,7 @@ object AdminApi {
         primaryId = this[ADF.primaryId] as? String ?: "",
         username = this[ADF.username] as? String ?: "",
         roles = this[ADF.roles].toJsonListOfStrings(),
+        client = this[ADF.client] as? String ?: "",
         org = this[ADF.org] as? String,
         isEntity = this[ADF.isEntity] == true,
         name = this[ADF.name] as? String,

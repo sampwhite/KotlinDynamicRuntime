@@ -67,6 +67,15 @@ object ADF {
     const val isEntity = "isEntity"
     const val name = "name"
     const val enabled = "enabled"
+
+    /**
+     * The client the user belongs to (issue #352).
+     *
+     * Read on the create call and reported on every user. **Create only**: a user's client cannot move
+     * afterwards without stranding their content, which carries the old client both in the `client` column and
+     * inside every `GedraId` -- so there is no set-client call for this to name.
+     */
+    const val client = "client"
     const val hasPassword = "hasPassword"
 
     /** Case-insensitive substring filter applied to `primaryId`, `username` and `name` by the list endpoint. */
