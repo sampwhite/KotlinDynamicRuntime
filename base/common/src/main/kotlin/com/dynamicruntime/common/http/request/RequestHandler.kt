@@ -183,7 +183,7 @@ class RequestHandler : WebRequest {
             cxt.forwardedFor = forwardedFor
             cxt.appId = appId()
             cxt.traceId = traceId()
-            // Whether an authenticating edge vouched for this request, and for whom (issue #348). Resolved
+            // Whether an authenticating edge vouched for this request and for whom (issue #348). Resolved
             // here beside the other channel facts, and through EnvAuthRules rather than off the header, so
             // there is one place that decides whether the claim is believed at all.
             cxt.envAuthEmail = EnvAuthRules.resolveEnvEmail(config, getRequestHeader(ENVA.header))

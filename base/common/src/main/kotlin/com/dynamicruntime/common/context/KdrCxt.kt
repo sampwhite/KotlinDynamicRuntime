@@ -234,7 +234,7 @@ class KdrCxt(
     /** Duration since this context was created, in milliseconds. */
     fun durationMs(): Double = (System.nanoTime() - nanoTime) / 1_000_000.0
 
-    /** The instance clock (issue #160): shared by every context, travelled as a whole for tests. Use it for
+    /** The instance clock (issue #160): shared by every context, traveled as a whole for tests. Use it for
      *  persisted/queuing dates (`createdAt`/`updatedAt`/`touchedAt`); see [instanceNow] on [KdrCxtBase]. */
     override fun instanceNow(): Instant = instanceConfig.clock.instanceNow()
 

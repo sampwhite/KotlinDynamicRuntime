@@ -74,7 +74,7 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 // Same fence, separate flag (issue #227): a route that manufactures a failure is a different
                 // power from showing a stack, even where both happen to be permitted by the same instance.
                 APP.allowDebugPages to c.instanceConfig.isTestInstance,
-                // Per-request, unlike its neighbours (issue #348): the answer depends on how this particular
+                // Per-request, unlike its neighbors (issue #348): the answer depends on how this particular
                 // request reached the node, not on how the deployment is configured. Read off the context
                 // rather than the header, so the dispatcher's decision and the frontend's view are one answer.
                 APP.isEnvAuthed to (c.envAuthEmail != null),
