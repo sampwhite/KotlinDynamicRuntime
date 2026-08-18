@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 
 /**
  * How far a caller's user administration reaches (issue #225) -- the *scope* half of an administrator's
@@ -148,13 +149,46 @@ object AdminRules {
      */
     val autoAdminRoles: List<String> = listOf(ROLE.admin, ROLE.allClients)
 
-    /** The roles a newly provisioned user gets: [ROLE.user], plus [autoAdminRoles] when [primaryId] qualifies. */
-    fun initialRoles(cxt: KdrCxt, primaryId: String): List<String> =
+    /**
+     * The roles a newly provisioned user gets: [ROLE.user], plus whatever their address earns them.
+     *
+     * Two routes, and they cannot both apply: [autoAdminRoles] when the address carries no `+` tag and
+     * matches the configured domain, and otherwise whatever persona the tag names (issue #352). That is the
+     * whole of the inversion the design describes -- a `+` tag used to mean only *not an admin*, and now it
+     * says which client and, optionally, what within it.
+     */
+    fun initialRoles(cxt: KdrCxt, primaryId: String): List<String> {
         if (isAutoAdminAddress(primaryId, adminEmailDomain(cxt.instanceConfig))) {
-            listOf(ROLE.user) + autoAdminRoles
-        } else {
-            listOf(ROLE.user)
+            return listOf(ROLE.user) + autoAdminRoles
         }
+        return personaRoles(cxt, primaryId)
+    }
+
+    /**
+     * What the persona in [primaryId] grants, or just [ROLE.user] when it names none (issue #352).
+     *
+     * **A persona can never grant [ROLE.allClients], and that is structural rather than a check.**
+     * [RoleLadder.rolesAtLevel] composes a level out of the ladder plus the capabilities already held, and
+     * here nothing is held -- so a persona naming a capability, `allClients` included, produces the floor.
+     * The escalation ceiling of the whole email convention is therefore a property of how the roles are
+     * built, not a rule somebody has to remember to apply. **A client with no persona is an ordinary user**,
+     * which falls out of the same call.
+     *
+     * A persona that names nothing on the ladder is logged rather than refused. It can only ever
+     * *under*-grant, so the failure is safe, and a typo that silently produced an ordinary user with no word
+     * said is the thing worth avoiding.
+     */
+    fun personaRoles(cxt: KdrCxt, primaryId: String): List<String> {
+        val persona = AddressRules.tagsFor(cxt, primaryId).persona ?: return listOf(ROLE.user)
+        val roles = RoleLadder.rolesAtLevel(emptyList(), persona)
+        if (persona != ROLE.user && roles.size == 1) {
+            LogAuth.warn(cxt) {
+                "Address '$primaryId' names the persona '$persona', which is not one of " +
+                    "${RoleLadder.ordered.joinToString(", ")}; creating an ordinary user."
+            }
+        }
+        return roles
+    }
 
     /**
      * Grants [autoAdminRoles] to an existing [row] that auto-qualifies but does not yet hold them, returning

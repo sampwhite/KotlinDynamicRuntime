@@ -21,6 +21,12 @@ object TEP {
     const val failIfUserAlreadyExists = "failIfUserAlreadyExists"
 
     /**
+     * The client to create the user in (issue #352). Absent means whatever the email address says, which for
+     * an ordinary address is `public` -- so every call written before this existed means what it did.
+     */
+    const val client = "client"
+
+    /**
      * Recent emails a test instance captured instead of sending (issue #158), so a test or the local frontend
      * can read a verification code back. A `forTestingOnly` GET; the fields/type names are in [TSE].
      */
