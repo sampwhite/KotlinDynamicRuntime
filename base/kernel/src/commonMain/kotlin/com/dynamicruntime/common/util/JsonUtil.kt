@@ -184,8 +184,24 @@ class PState(val str: String, val expectedVal: ExpectedVal = ExpectedVal.any) {
     val sb = StringBuilder()
 
     // The following are all parser options that can be set.
-    /** Whether to use LinkedHashMap objects instead of HashMap objects.  */
-    var preserveOrder: Boolean = false
+    /**
+     * Whether to build [LinkedHashMap]s rather than [HashMap]s, so a parsed object keeps the order its keys
+     * were written in. **On by default** (issue #356).
+     *
+     * It was off, and the loss is not recoverable: once an object has been parsed into a `HashMap` the source
+     * order is gone, so wrapping the result in a `LinkedHashMap` afterwards only freezes whatever order the
+     * hashing produced. And the formatter sorts anything that is not a `LinkedHashMap`, so a parse followed by
+     * a format silently rewrote every object into alphabetical order.
+     *
+     * That matters most for **schema**, where key order is meaning rather than presentation: the order of
+     * `properties` is the order a form shows its fields in. Schema built by the Kotlin builders is already
+     * ordered, so nothing served today was affected -- but schema *parsed* from JSON is not, which is every
+     * schema the frontend reads out of a response, and every schema a config in a database will carry.
+     *
+     * Turning it on changes only **parsed** maps. A `HashMap` built by code still formats sorted, so anything
+     * relying on that is untouched.
+     */
+    var preserveOrder: Boolean = true
 
     /** Whether to fail on values that sometimes show up in actual JSON data.
      * This includes things like `NaN`. If `strictValues` is false, and
