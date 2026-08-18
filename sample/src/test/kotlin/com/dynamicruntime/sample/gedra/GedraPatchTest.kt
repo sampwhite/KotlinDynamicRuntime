@@ -1,5 +1,8 @@
 package com.dynamicruntime.sample.gedra
 
+import io.kotest.matchers.string.shouldContain
+import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -225,5 +228,23 @@ class GedraPatchTest : StringSpec({
             ),
         )
         entriesOf(alice, id).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Current"
+    }
+
+    // A client's schema belongs to where the data lives, so a patch spanning two clients would apply two sets
+    // of rules inside one transaction (issue #356). Refused before anything is read, which is why the second
+    // id here need not exist -- the span is decidable from the ids alone.
+    "a patch targets one client at a time" {
+        val id = create(alice, nameEntry("Mine"))
+        val elsewhere = id.replace(".${CL.public}.", ".${CL.hub}.")
+        val envelope = alice.expectError(
+            400, GEP.patch,
+            patch(
+                id to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.name to "Changed"))),
+                elsewhere to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.name to "Theirs"))),
+            ),
+        )
+        envelope[EP.errorMessage].toOptStr()!! shouldContain "one client at a time"
+        // Nothing was applied: the refusal precedes the reads, so the patch is not half-done.
+        entriesOf(alice, id).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Mine"
     }
 })

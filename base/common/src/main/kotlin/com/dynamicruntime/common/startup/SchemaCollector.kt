@@ -5,6 +5,7 @@ import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
+import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.sql.KdrTable
 
 /**
@@ -45,13 +46,38 @@ class SchemaCollector {
     }
 
     /**
+     * Definitions contributed by a **client's own** configs, keyed by client and then by qualified type name
+     * (issue #356).
+     *
+     * Held apart from [defs] rather than merged into it, and the separation is the whole point: a client
+     * altering a type declares it under the name it is altering, so folding those into the shared document
+     * would change that type **for everybody**. Here they are the client's overlay, applied to a copy of the
+     * document when that client's variant is built, and invisible to every other client.
+     *
+     * A name the global document does not have is an ordinary new type for that client; a name it does have
+     * is an alteration, and is held to the narrowing rules. Both arrive the same way, which is why the
+     * distinction is drawn where the overlay is applied rather than where it is declared.
+     */
+    val clientOverlays: MutableMap<String, MutableMap<String, Any?>> = LinkedHashMap()
+
+    /**
      * Takes a Gedra config bundle, checking it against the ones already taken, and folds the entry types its
-     * traits generated into [defs] so they compile with everything else. A config that fails a check is
-     * dropped rather than folded in -- outside production the check throws before reaching here.
+     * traits generated in so they compile with everything else. A config that fails a check is dropped rather
+     * than folded in -- outside production the check throws before reaching here.
+     *
+     * **Where they are folded depends on who owns the config.** A `global` config contributes to the shared
+     * document; a client's own contributes to that client's [clientOverlays]. The config's id carries the
+     * owner, so nothing has to say it twice.
      */
     fun addGedraConfig(cxt: KdrCxt, config: GedraConfig) {
-        if (gedraConfigs.add(cxt, config)) {
+        if (!gedraConfigs.add(cxt, config)) {
+            return
+        }
+        val client = config.gedraId.client
+        if (client == GID.globalClient) {
             defs.putAll(config.defs)
+        } else {
+            clientOverlays.getOrPut(client) { LinkedHashMap() }.putAll(config.defs)
         }
     }
 

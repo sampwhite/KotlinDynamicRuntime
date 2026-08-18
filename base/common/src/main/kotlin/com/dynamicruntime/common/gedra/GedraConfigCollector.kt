@@ -138,6 +138,17 @@ class GedraConfigCollector {
         .filter { (_, config) -> config.gedraId.client == GID.globalClient || config.gedraId.client == client }
         .mapNotNull { (traitId, _) -> traitOwners[traitId] }
 
+    /**
+     * The traits [client] **owns** -- declared in a config of its own, rather than seen from `global`.
+     *
+     * The other half of [traitsFor], and kept apart from it because the two answer different questions: that
+     * one is what a client can *see* (for `$ref` resolution), this is part of what it may *use*. See
+     * `supportedTraits`, which is where they are combined.
+     */
+    fun traitsOwnedBy(client: String): List<GedraTrait> = traitConfigs.entries
+        .filter { (_, config) -> config.gedraId.client == client }
+        .mapNotNull { (traitId, _) -> traitOwners[traitId] }
+
     /** The `$defs` the kept configs generated, merged, for compiling with everything else. */
     fun defs(): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()
