@@ -36,7 +36,7 @@ fun overlayDefs(defs: Map<String, Any?>, overlays: Map<String, Any?>): Map<Strin
     for ((name, body) in defs) {
         val overlay = overlays[name]
         out[name] = if (overlay is Map<*, *> && body is Map<*, *>) {
-            mergeNode(body.toJsonMap(), overlay.toJsonMap())
+            overlayType(body.toJsonMap(), overlay.toJsonMap())
         } else {
             // Shared by reference, never written to. A type this client did not mention is the global one.
             body
@@ -53,30 +53,36 @@ fun overlayDefs(defs: Map<String, Any?>, overlays: Map<String, Any?>): Map<Strin
 }
 
 /**
- * [base] with [overlay] merged over it: a **new** map along the merged path, sharing everything untouched.
+ * One type body with [overlay] applied over it -- **at two levels only**.
  *
- * Two maps merge key by key; anything else replaces. **A list replaces rather than merging**, and that is the
- * rule doing the most work here: `required`, `options` and `oneOf` are complete statements about a type, and
- * shortening one is how a client narrows. Merging them element-wise would make the narrowing case --
- * the whole point of an overlay -- impossible to express.
+ * Public because the narrowing check needs it: what a client may or may not do is a question about the
+ * **result**, not about the fragment they wrote, since a property body they declare replaces rather than
+ * merges. See `narrowingProblems`.
  *
- * Nothing is ever written into [base] or into anything it holds. A key the overlay does not mention is carried
- * across by reference, and a key it does mention gets a freshly built map. That is `client-definition.md`'s
- * sharing invariant -- *"a variant may create new nodes and point at old ones; it must not write into old
- * ones"* -- as a property of how this is written rather than as a discipline somebody has to keep. It also
- * means no depth cap is needed, unlike `deepClone`: nothing deep is copied, so nothing deep can be missed.
+ * A key the overlay does not mention is carried across untouched; a key it does mention **replaces**. There is
+ * no deep merging, and that is the design rather than a simplification: once an overlay starts defining
+ * something, that definition wins completely, so what a client wrote is what a client gets. The one exception
+ * is [SCH.properties], which has its own rule -- see [mergeProperties].
+ *
+ * The consequence is worth stating, because it is what shapes how schema gets authored: **there is no way to
+ * address just a nested part of a type**. An interior structure a client may want to narrow is therefore
+ * pulled out as a named type and referenced by `$ref`, so that it can be altered directly, as a type in its
+ * own right. That is a reason to name interior types, not merely a style preference.
+ *
+ * Nothing is ever written into [base] or anything it holds: unmentioned values are shared by reference and
+ * never mutated. That is `client-definition.md`'s sharing invariant -- *"a variant may create new nodes and
+ * point at old ones; it must not write into old ones"* -- as a property of how this is written rather than a
+ * discipline somebody has to keep.
  */
-private fun mergeNode(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
+fun overlayType(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
     val out = LinkedHashMap<String, Any?>(base.size + overlay.size)
     for ((key, value) in base) {
         val over = overlay[key]
         out[key] = when {
             key !in overlay -> value
-            // `properties` is the one map that does not merge key-by-key; see [mergeProperties].
             key == SCH.properties && over is Map<*, *> && value is Map<*, *> ->
                 mergeProperties(value.toJsonMap(), over.toJsonMap())
 
-            over is Map<*, *> && value is Map<*, *> -> mergeNode(value.toJsonMap(), over.toJsonMap())
             else -> over
         }
     }
@@ -89,26 +95,25 @@ private fun mergeNode(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<
 }
 
 /**
- * The properties an altered type has: **exactly the ones the overlay mentions**, each merged over the base's
- * version of it.
+ * The properties an altered type has: **exactly the ones the overlay mentions**.
  *
- * The one place a map does not merge key by key, and it is deliberate -- reducing the property set is one of
- * the three ways a client may narrow a type, and "mention only the keys you want" is how that is written.
- * Merging here would leave no way to say it at all.
+ * Two rules, and they are the whole authoring model:
  *
- * The bodies still merge, so narrowing one property is a fragment (`{"name": {"g-options": [...]}}`) rather
- * than a restatement of the property. Which of the two levels merges and which replaces is the whole of the
- * authoring model: *which* properties is a statement, *what each one is* is an edit.
+ *  - **Mentioning keys is how the set is reduced.** A property the overlay does not name is gone. That forces
+ *    a client altering a type to state the complete set it offers, which was found in practice to be the right
+ *    thing -- somebody reading a client's definition sees every property their users will see, rather than a
+ *    fragment plus whatever the base happened to hold. The cost, accepted: a property cannot be slipped into
+ *    every client at once by adding it to the underlying type.
+ *  - **An empty body inherits; a non-empty one replaces.** `{"name": {}}` keeps the global definition of
+ *    `name`, and anything else is this client's definition of it, entire.
  */
 private fun mergeProperties(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
     val out = LinkedHashMap<String, Any?>(overlay.size)
     for ((name, over) in overlay) {
-        val body = base[name]
-        out[name] = if (over is Map<*, *> && body is Map<*, *>) {
-            mergeNode(body.toJsonMap(), over.toJsonMap())
-        } else {
-            over
-        }
+        val declared = (over as? Map<*, *>)?.toJsonMap()
+        // Empty means "as it already is", which is how a client keeps a property while reducing the set
+        // around it -- by far the common case, since most alterations change one property and keep the rest.
+        out[name] = if (declared.isNullOrEmpty()) base[name] ?: over else over
     }
     return out
 }

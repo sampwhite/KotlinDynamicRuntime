@@ -37,12 +37,15 @@ import com.dynamicruntime.common.util.toOptStr
  */
 fun narrowingProblems(typeName: String, base: Map<String, Any?>, overlay: Map<String, Any?>): List<String> {
     val problems = mutableListOf<String>()
-    checkNode(typeName, base, overlay, problems)
+    // Compared against the **merged result**, not against the fragment the client wrote. A declared property
+    // body replaces rather than merges, so the fragment says what changed only in the simplest cases; the
+    // result says what this client actually accepts, which is the question.
+    compare(typeName, base, overlayType(base, overlay), problems)
     return problems
 }
 
 /**
- * Keywords an alteration may carry freely: none of them takes part in deciding whether a value is valid.
+ * Keywords a client may change freely: none of them takes part in deciding whether a value is valid.
  *
  * An allowlist rather than a list of forbidden ones, because the failure directions are not symmetric. A
  * keyword nobody thought about is refused and somebody asks why; the other way round it is silently permitted
@@ -52,35 +55,45 @@ private val presentationKeys = setOf(
     SCH.title, SCH.description, SCH.examples, SCH.deprecated, SCH.errors, SCH.dComment,
 )
 
-/** The three keys that may narrow; everything else validating is refused. */
+/** The three keys that may differ by narrowing; every other validating key must match the base exactly. */
 private val narrowingKeys = setOf(SCH.properties, SCH.options, SCH.required)
 
-private fun checkNode(path: String, base: Map<String, Any?>, overlay: Map<String, Any?>, out: MutableList<String>) {
-    for ((key, value) in overlay) {
-        when {
-            key in presentationKeys -> Unit
-            key == SCH.properties -> checkProperties(path, base, value, out)
-            key == SCH.options -> checkOptions(path, base[SCH.options], value, out)
-            key == SCH.required -> checkRequired(path, base, value, out)
-            else -> out.add(
-                "'$path' alters '$key', which takes part in validation and is not one of the three ways a " +
-                    "client may narrow a type (${narrowingKeys.joinToString(", ")}). Extend the type instead, " +
-                    "which creates a name of its own and may do as it likes.",
+private fun compare(path: String, base: Map<String, Any?>, variant: Map<String, Any?>, out: MutableList<String>) {
+    checkProperties(path, base, variant, out)
+    checkOptions(path, base[SCH.options], variant[SCH.options], out)
+    checkRequired(path, base, variant, out)
+    for (key in base.keys + variant.keys) {
+        if (key in presentationKeys || key in narrowingKeys) {
+            continue
+        }
+        if (base[key] != variant[key]) {
+            out.add(
+                "'$path' changes '$key' from ${show(base[key])} to ${show(variant[key])}. That takes part in " +
+                    "validation and is not one of the three ways a client may narrow a type " +
+                    "(${narrowingKeys.joinToString(", ")}). Extend the type instead, which creates a name of " +
+                    "its own and may do as it likes.",
             )
         }
     }
 }
 
+private fun show(value: Any?): String = if (value == null) "absent" else "'$value'"
+
 /** Fewer properties, each still narrowing; never more, and never one the base requires. */
-private fun checkProperties(path: String, base: Map<String, Any?>, value: Any?, out: MutableList<String>) {
-    val declared = (value as? Map<*, *>)?.toJsonMap() ?: return
-    val baseProps = (base[SCH.properties] as? Map<*, *>)?.toJsonMap() ?: emptyMap()
+private fun checkProperties(
+    path: String,
+    base: Map<String, Any?>,
+    variant: Map<String, Any?>,
+    out: MutableList<String>,
+) {
+    val baseProps = (base[SCH.properties] as? Map<*, *>)?.toJsonMap() ?: return
+    val declared = (variant[SCH.properties] as? Map<*, *>)?.toJsonMap() ?: return
     val added = declared.keys.filterNot { it in baseProps }
     if (added.isNotEmpty()) {
         out.add(
-            "'$path' adds the propert${if (added.size == 1) "y" else "ies"} ${added.joinToString(", ") { "'$it'" }}, " +
-                "which widens what the type accepts. A client adds fields by extending the type, not by " +
-                "altering it.",
+            "'$path' adds the propert${if (added.size == 1) "y" else "ies"} " +
+                "${added.joinToString(", ") { "'$it'" }}, which widens what the type accepts. A client adds " +
+                "fields by extending the type, not by altering it.",
         )
     }
     // Dropping a property the base requires widens rather than narrows; see the class note.
@@ -97,20 +110,23 @@ private fun checkProperties(path: String, base: Map<String, Any?>, value: Any?, 
     for ((name, body) in declared) {
         val baseBody = (baseProps[name] as? Map<*, *>)?.toJsonMap() ?: continue
         val declaredBody = (body as? Map<*, *>)?.toJsonMap() ?: continue
-        checkNode("$path.$name", baseBody, declaredBody, out)
+        compare("$path.$name", baseBody, declaredBody, out)
     }
 }
 
 /** A shorter choice list, or a choice list where the base had none. Labels are presentation and are ignored. */
 private fun checkOptions(path: String, baseValue: Any?, value: Any?, out: MutableList<String>) {
     val baseOptions = optionValues(baseValue) ?: return // the base offered no choices: applying some narrows
-    val declared = optionValues(value) ?: return
+    val declared = optionValues(value) ?: run {
+        out.add("'$path' removes its choice list, which widens what the type accepts.")
+        return
+    }
     val added = declared.filterNot { it in baseOptions }
     if (added.isNotEmpty()) {
         out.add(
-            "'$path' offers the choice${if (added.size == 1) "" else "s"} ${added.joinToString(", ") { "'$it'" }}, " +
-                "which the type does not. A client may shorten a choice list or apply one where there was " +
-                "none; adding a choice widens what is accepted.",
+            "'$path' offers the choice${if (added.size == 1) "" else "s"} " +
+                "${added.joinToString(", ") { "'$it'" }}, which the type does not. A client may shorten a " +
+                "choice list or apply one where there was none; adding a choice widens what is accepted.",
         )
     }
 }
@@ -129,21 +145,25 @@ private fun optionValues(value: Any?): List<String>? {
 }
 
 /** More required, never fewer, and never a property this type does not have. */
-private fun checkRequired(path: String, base: Map<String, Any?>, value: Any?, out: MutableList<String>) {
-    val declared = (value as? List<*>)?.mapNotNull { it.toOptStr() } ?: return
+private fun checkRequired(
+    path: String,
+    base: Map<String, Any?>,
+    variant: Map<String, Any?>,
+    out: MutableList<String>,
+) {
+    val declared = (variant[SCH.required] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList()
     val baseRequired = (base[SCH.required] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList()
     val dropped = baseRequired.filterNot { it in declared }
     if (dropped.isNotEmpty()) {
         out.add(
-            "'$path' no longer requires ${dropped.joinToString(", ") { "'$it'" }}. Making a required property " +
-                "optional widens the type: this client would store entries that are invalid everywhere else.",
+            "'$path' no longer requires ${dropped.joinToString(", ") { "'$it'" }}. Making a required " +
+                "property optional widens the type: this client would store entries that are invalid " +
+                "everywhere else.",
         )
     }
-    val baseProps = (base[SCH.properties] as? Map<*, *>)?.toJsonMap() ?: emptyMap()
-    val unknown = declared.filterNot { it in baseProps }
-    if (baseProps.isNotEmpty() && unknown.isNotEmpty()) {
-        out.add(
-            "'$path' requires ${unknown.joinToString(", ") { "'$it'" }}, which the type does not declare.",
-        )
+    val props = (variant[SCH.properties] as? Map<*, *>)?.toJsonMap() ?: emptyMap()
+    val unknown = declared.filterNot { it in props }
+    if (props.isNotEmpty() && unknown.isNotEmpty()) {
+        out.add("'$path' requires ${unknown.joinToString(", ") { "'$it'" }}, which the type does not declare.")
     }
 }

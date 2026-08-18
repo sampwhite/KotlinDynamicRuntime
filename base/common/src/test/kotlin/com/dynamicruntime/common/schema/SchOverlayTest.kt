@@ -41,19 +41,52 @@ class SchOverlayTest : StringSpec({
         overlayDefs(global, emptyMap()) shouldBeSameInstanceAs global
     }
 
-    "an overlay merges into a type rather than replacing it" {
+    // Rule one: an overlay that says nothing about the properties is a presentation-only variant.
+    "an overlay that does not mention properties leaves them untouched" {
+        val global = defs("core.Name" to nameType(128))
+        val out = overlayDefs(global, defs("core.Name" to mapOf(SCH.description to "Ours.")))
+        out.node("core.Name")[SCH.description] shouldBe "Ours."
+        out.node("core.Name", SCH.properties, "name")[SCH.maxLength] shouldBe 128
+        out.node("core.Name")[SCH.required] shouldBe listOf("name")
+    }
+
+    // Rule two: an empty body means "as it already is" -- which is how a client keeps a property while
+    // reducing the set around it, the common case since most alterations change one property and keep the rest.
+    "a property with an empty body keeps the global definition" {
+        val global = defs("core.Name" to nameType(128))
+        val out = overlayDefs(global, defs("core.Name" to mapOf(SCH.properties to mapOf("name" to emptyMap<String, Any?>()))))
+        val name = out.node("core.Name", SCH.properties, "name")
+        name[SCH.maxLength] shouldBe 128
+        name[SCH.description] shouldBe "What to call it."
+    }
+
+    // Rule three, and the one that shapes how schema gets authored: once an overlay defines a property, that
+    // definition wins entire. Nothing below it merges -- so an interior structure worth narrowing is pulled
+    // out as a named type and altered in its own right, since there is no way to address part of one here.
+    "a property the overlay defines is replaced entirely, not merged" {
         val global = defs("core.Name" to nameType(128))
         val out = overlayDefs(
             global,
-            defs("core.Name" to mapOf(SCH.properties to mapOf("name" to mapOf(SCH.maxLength to 40)))),
+            defs("core.Name" to mapOf(SCH.properties to mapOf("name" to mapOf(SCH.type to SCT.string, SCH.maxLength to 40)))),
         )
         val name = out.node("core.Name", SCH.properties, "name")
         name[SCH.maxLength] shouldBe 40
-        // Everything the overlay did not mention survives -- which is what makes an overlay a fragment rather
-        // than a restatement of the whole type.
-        name[SCH.description] shouldBe "What to call it."
-        name[SCH.type] shouldBe SCT.string
-        out.node("core.Name")[SCH.required] shouldBe listOf("name")
+        // Gone, because the client's definition replaced the global one rather than being folded into it.
+        name[SCH.description] shouldBe null
+    }
+
+    "mentioning some properties drops the rest" {
+        val global = defs(
+            "core.Pair" to linkedMapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to linkedMapOf(
+                    "kept" to linkedMapOf(SCH.type to SCT.string),
+                    "dropped" to linkedMapOf(SCH.type to SCT.string),
+                ),
+            ),
+        )
+        val out = overlayDefs(global, defs("core.Pair" to mapOf(SCH.properties to mapOf("kept" to emptyMap<String, Any?>()))))
+        out.node("core.Pair", SCH.properties).keys shouldContainExactly setOf("kept")
     }
 
     // The rule doing the most work: `required`, `options` and `oneOf` are complete statements, and shortening
@@ -84,7 +117,11 @@ class SchOverlayTest : StringSpec({
         val before = global.node("core.Name", SCH.properties, "name")
         val out = overlayDefs(
             global,
-            defs("core.Name" to mapOf(SCH.properties to mapOf("name" to mapOf(SCH.maxLength to 40)))),
+            defs(
+                "core.Name" to mapOf(
+                    SCH.properties to mapOf("name" to mapOf(SCH.type to SCT.string, SCH.maxLength to 40)),
+                ),
+            ),
         )
         before[SCH.maxLength] shouldBe 128
         // A fresh map all the way down the path that was merged, so a later write cannot reach the original.
@@ -95,6 +132,7 @@ class SchOverlayTest : StringSpec({
     // The case that decides the whole design: the ref names the original, and for this client it has to
     // resolve to the narrowed form. Nothing in the referring type is edited -- it does not know.
     "a ref to an altered type resolves to the altered form once re-parsed" {
+        // The client states the property whole, per rule three.
         val global = defs(
             "core.Name" to nameType(128),
             "core.Doc" to linkedMapOf(
@@ -111,7 +149,11 @@ class SchOverlayTest : StringSpec({
         val variant = parseSchemaTypes(
             overlayDefs(
                 global,
-                defs("core.Name" to mapOf(SCH.properties to mapOf("name" to mapOf(SCH.maxLength to 40)))),
+                defs(
+                    "core.Name" to mapOf(
+                        SCH.properties to mapOf("name" to mapOf(SCH.type to SCT.string, SCH.maxLength to 40)),
+                    ),
+                ),
             ),
         )
         variant.getValue("core.Doc").properties.getValue("title").valueType

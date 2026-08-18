@@ -33,13 +33,17 @@ class SchNarrowingTest : StringSpec({
     /**
      * An overlay's property block, with the keys this client keeps.
      *
-     * Every property to be kept has to be named, because mentioning keys **is** how a client reduces the set
-     * -- so altering one property is a statement about the whole set, not an edit to one entry. Spelled out
-     * in a helper here so the tests below read as what they are testing rather than as that rule.
+     * Two of Sam's rules meet here, so the helper carries both. Every property to be kept has to be **named**,
+     * because mentioning keys is how a client reduces the set; and a property whose body is given is
+     * **replaced entire**, so an alteration states the whole body rather than the part that changed. Kept
+     * properties are `{}`, which inherits.
      */
     fun props(vararg altered: Pair<String, Map<String, Any?>>): Map<String, Any?> {
-        val kept = linkedMapOf<String, Any?>("name" to emptyMap<String, Any?>(),
-            "colour" to emptyMap<String, Any?>(), "note" to emptyMap<String, Any?>())
+        val kept = linkedMapOf<String, Any?>(
+            "name" to emptyMap<String, Any?>(),
+            "colour" to emptyMap<String, Any?>(),
+            "note" to emptyMap<String, Any?>(),
+        )
         altered.forEach { (name, body) -> kept[name] = body }
         return mapOf(SCH.properties to kept)
     }
@@ -51,12 +55,16 @@ class SchNarrowingTest : StringSpec({
     }
 
     "shortening a choice list is narrowing" {
-        problems(props("colour" to mapOf(SCH.options to listOf("red", "green")))).shouldBeEmpty()
+        problems(
+            props("colour" to mapOf(SCH.type to SCT.string, SCH.options to listOf("red", "green"))),
+        ).shouldBeEmpty()
     }
 
     // The second half of that rule: an attribute that offered no choices may be given some.
     "applying a choice list where there was none is narrowing" {
-        problems(props("note" to mapOf(SCH.options to listOf("a", "b")))).shouldBeEmpty()
+        problems(
+            props("note" to mapOf(SCH.type to SCT.string, SCH.options to listOf("a", "b"))),
+        ).shouldBeEmpty()
     }
 
     "requiring more is narrowing" {
@@ -67,8 +75,14 @@ class SchNarrowingTest : StringSpec({
 
     "presentation is the client's own business" {
         problems(
-            props("name" to mapOf(SCH.description to "What we call it.", SCH.errors to mapOf("default" to "Nope.")))
-                + (SCH.description to "Ours."),
+            props(
+                "name" to mapOf(
+                    SCH.type to SCT.string,
+                    SCH.maxLength to 128,
+                    SCH.description to "What we call it.",
+                    SCH.errors to mapOf("default" to "Nope."),
+                ),
+            ) + (SCH.description to "Ours."),
         ).shouldBeEmpty()
     }
 
@@ -78,6 +92,7 @@ class SchNarrowingTest : StringSpec({
         problems(
             props(
                 "colour" to mapOf(
+                    SCH.type to SCT.string,
                     SCH.options to listOf(
                         mapOf(SCH.value to "red", SCH.label to "Crimson"),
                         mapOf(SCH.value to "green", SCH.label to "Emerald"),
@@ -97,7 +112,9 @@ class SchNarrowingTest : StringSpec({
     }
 
     "adding a choice is refused" {
-        val found = problems(props("colour" to mapOf(SCH.options to listOf("red", "purple"))))
+        val found = problems(
+            props("colour" to mapOf(SCH.type to SCT.string, SCH.options to listOf("red", "purple"))),
+        )
         found.size shouldBe 1
         found[0] shouldContain "'purple'"
     }
@@ -113,22 +130,25 @@ class SchNarrowingTest : StringSpec({
     // invalid to everybody else.
     "dropping a property the type requires is refused, because it widens" {
         val found = problems(mapOf(SCH.properties to mapOf("colour" to emptyMap<String, Any?>())))
-        found.size shouldBe 1
+        // Two problems, and both are the same mistake seen from each side: the property is gone, and the
+        // `required` it left behind now names something the type does not have.
+        found.size shouldBe 2
         found[0] shouldContain "drops 'name'"
         found[0] shouldContain "invalid to everybody else"
+        found[1] shouldContain "requires 'name'"
     }
 
     "any other validating keyword is refused" {
         problems(mapOf(SCH.additionalProperties to true)).size shouldBe 1
-        problems(mapOf(SCH.properties to mapOf("name" to mapOf(SCH.maxLength to 40)))).size shouldBe 1
-        problems(mapOf(SCH.properties to mapOf("name" to mapOf(SCH.type to SCT.integer)))).size shouldBe 1
+        problems(props("name" to mapOf(SCH.type to SCT.integer, SCH.maxLength to 128))).size shouldBe 1
         problems(mapOf(SCH.default to "x")).size shouldBe 1
     }
 
     // Even a narrowing one, because the list is closed on purpose: a refusal is cheap to relax and a
     // wrongly-permitted widening reaches storage.
     "a tighter bound is refused too, and says what to do instead" {
-        val found = problems(mapOf(SCH.properties to mapOf("name" to mapOf(SCH.maxLength to 40))))
+        val found = problems(props("name" to mapOf(SCH.type to SCT.string, SCH.maxLength to 40)))
+        found.size shouldBe 1
         found[0] shouldContain "'${SCH.maxLength}'"
         found[0] shouldContain "Extend the type instead"
     }
@@ -138,7 +158,7 @@ class SchNarrowingTest : StringSpec({
             mapOf(
                 SCH.required to emptyList<String>(),
                 SCH.properties to mapOf(
-                    "name" to mapOf(SCH.maxLength to 40),
+                    "name" to mapOf(SCH.type to SCT.string, SCH.maxLength to 40),
                     "extra" to emptyMap<String, Any?>(),
                 ),
             ),
