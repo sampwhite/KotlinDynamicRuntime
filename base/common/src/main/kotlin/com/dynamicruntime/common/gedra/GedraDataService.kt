@@ -89,22 +89,52 @@ class GedraDataService : ServiceInitializer {
      * Serves a by-id lookup from [dataCache], or null when it cannot -- which the caller turns into its SQL
      * query, so the cache only ever saves a round trip and never changes an answer.
      *
-     * The scope is applied **per row**, the way `UserService.queryAdministrableUser` already does it, not by
-     * composing a predicate: composing one would be a second implementation of what `SqlScopeUtil` exists to
-     * be the only copy of. A row the scope refuses returns null here and the caller re-asks SQL, which refuses
-     * it too -- one wasted query on a denied cross-scope probe, in exchange for the cached path having no way
-     * to *widen* an answer.
+     * The scope is applied **per row** by [admitsRow], the way `UserService.queryAdministrableUser` already
+     * does it, not by composing a predicate: composing one would be a second implementation of what
+     * `SqlScopeUtil` exists to be the only copy of. A row the scope refuses returns null here and the caller
+     * re-asks SQL, which refuses it too -- one wasted query on a denied cross-scope probe, in exchange for the
+     * cached path having no way to *widen* an answer. The refusal is tested on the raw row *before* extracting
+     * it, so a denied probe does not pay for an extraction it will throw away.
      */
     private fun cachedGedra(cxt: KdrCxt, fullId: String, scope: ReadScope): GedraDataRow? {
         val cache = dataCache ?: return null
         cache.checkRefresh(cxt)
         val row = cache.snapshot.get(cache.idOf(fullId)) ?: return null
-        val extracted = GedraDataRow.extract(gedraService, row.value)
-        if (scope.client != null && extracted.client != scope.client) return null
-        if (!scope.admitsOrg(extracted.org)) return null
-        if (scope.userId != null && extracted.userId != scope.userId) return null
-        return extracted
+        if (!admitsRow(scope, row.value)) return null
+        return GedraDataRow.extract(gedraService, row.value)
     }
+
+    /**
+     * Whether a stored gedra [row] is admitted by [scope] -- the exact set `SqlScopeUtil.scopeConditions`
+     * composes into the SQL `where`, applied to one row in memory. The by-id read and the listing both go
+     * through this, so a cache can no more widen a listing than a lookup, and the two cannot come to disagree
+     * about what a scope means -- the same guarantee the shared `scopeConditions` gives the SQL side.
+     *
+     * It reads the protocol columns exactly as [GedraDataRow.extract] does (`client`/`userId` coerced, an
+     * empty `org` normalized to null), so testing the raw row here and the extracted row there is the same
+     * test -- which is what lets the by-id path move its check ahead of the extraction.
+     */
+    private fun admitsRow(scope: ReadScope, row: Map<String, Any?>): Boolean {
+        if (scope.client != null && row[PF.client].toOptStr() != scope.client) return false
+        if (!scope.admitsOrg(row[PF.org].toOptStr()?.ifEmpty { null })) return false
+        if (scope.userId != null && row[PF.userId].toOptLong() != scope.userId) return false
+        return true
+    }
+
+    /**
+     * The order [listGedras] returns, made to match its SQL `order by c:createdAt desc, c:gedraId desc`: newest
+     * first, with the id breaking a tie so the order is *total* (the id's base is the project's time-sortable
+     * unique id). It has to be total, or two gedras created in the same millisecond would page in whatever
+     * order each side happened to produce, and the cache would disagree with SQL only sometimes.
+     *
+     * A null `createdAt` sorts **last**, but only defensively: `SqlTopicUtil.prepDates` stamps `createdAt` on
+     * every insert, so a stored gedra never has one, which is also why it does not matter that a database's own
+     * null ordering under `desc` (H2 and PostgreSQL differ) is not reproduced here -- the case never arises on
+     * real rows, so the two cannot be seen to differ.
+     */
+    private val gedraListOrder: Comparator<Map<String, Any?>> =
+        compareByDescending<Map<String, Any?>> { it[PF.createdAt].toOptInstant() ?: Instant.DISTANT_PAST }
+            .thenByDescending { it[GD.gedraId].toOptStr() ?: "" }
 
     private fun gedraDataTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GDT.gedraData]
         ?: throw KdrException("${GDT.gedraData} table is not registered in the schema store.")
@@ -529,6 +559,45 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
+     * Serves [listGedras] from [dataCache], or returns null when it cannot -- the same fall-back-to-SQL
+     * contract [cachedGedra] has, so the cache only ever saves work and never changes an answer.
+     *
+     * **It can only serve a scope that names a client.** The `clientKind` index is keyed by client (issue
+     * #363: cache by client, and by kind within a client), so a scope with no client -- an `allClients`
+     * administrator reading every client, or an ordinary user whose scope carries only a `userId` -- has no
+     * key to look up and falls back to SQL. That is not a gap the index should close: a user's *own* gedras
+     * are reached by building their derived id and hitting the primary-key map, which is why there is no
+     * `userId` index; the listing shape the index exists for is the client-wide one an administrator runs.
+     *
+     * The result **equals the SQL path** for the shapes it serves, step for step. `rowsForClientKind` is the
+     * cache's copy of the SQL `where` for a client-scoped listing (both are client+kind, enabled only --
+     * disabled rows are tombstones the index omits); [admitsRow] narrows an organization scope the way the
+     * SQL `org` predicate would; the sort is the SQL `order by`; and [limit] caps the ordered, scoped list
+     * last -- exactly where `listGedras` applies it, since its SQL carries no `limit` either. Extraction comes
+     * after the cap, so only the rows actually returned are built, which the SQL path (extracting its whole
+     * matched set) does not bother to do.
+     */
+    private fun cachedListGedras(
+        cxt: KdrCxt,
+        kind: GedraDataType,
+        scope: ReadScope,
+        limit: Int,
+    ): List<GedraDataRow>? {
+        val cache = dataCache ?: return null
+        val client = scope.client ?: return null
+        cache.checkRefresh(cxt)
+        val matched = GedraDataCache.rowsForClientKind(cache, client, kind.name).asSequence()
+            .map { it.value }
+            .filter { admitsRow(scope, it) }
+            .sortedWith(gedraListOrder)
+            .toList()
+        // Reported before the cap, so `rowsMatched` means the same thing the SQL path's does: how many rows
+        // the scope admitted, not how many the page returned.
+        explainScope(cxt, scope, "cache:${GDX.clientKind}", matched.size)
+        return matched.take(limit).map { GedraDataRow.extract(gedraService, it) }
+    }
+
+    /**
      * Every gedra of [kind] within [scope], newest first, capped at [limit].
      *
      * Scope and the enabled flag are both SQL, so the rows that come back are already the rows the caller may
@@ -536,11 +605,15 @@ class GedraDataService : ServiceInitializer {
      * That is the arrangement #310 asked for on the way to holding this data in memory, and it is `listUsers`'
      * arrangement too.
      *
+     * A client-scoped listing is served from [dataCache] first ([cachedListGedras]); the SQL below is the
+     * fall-back for that and the whole answer for a scope the cache cannot key on.
+     *
      * The prepared statement is named for the kind **and** the scope's shape, because both change the SQL.
      * Statements are cached by name, so two shapes sharing one name would serve whichever query ran first --
      * and the failure would be a listing quietly scoped to somebody else's width.
      */
     fun listGedras(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope, limit: Int): List<GedraDataRow> {
+        cachedListGedras(cxt, kind, scope, limit)?.let { return it }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
         val data = mutableMapOf<String, Any?>(GD.gedraKind to kind.name)

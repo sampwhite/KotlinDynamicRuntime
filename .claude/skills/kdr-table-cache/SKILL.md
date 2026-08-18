@@ -15,20 +15,29 @@ Three questions, in order. A "no" to any of them means do not cache it.
 
 1. **Is it bounded and small?** A cache holds every row on every node. A load over `TCH.largeLoadWarning`
    (50k) logs a warning; that is the subsystem telling you the answer, not a threshold to tune.
-2. **Are its reads *unscoped* lookups?** `AuthUsers` fits because its reads are identity resolution — one row
-   by a unique key, deliberately not client-scoped. A table whose every read is `ReadScope`-filtered does
-   **not** fit *wholesale*: serving a scope-filtered **listing** from a cache means re-implementing scope
-   filtering in memory beside `SqlScopeUtil`, which is a second implementation of a security predicate.
-   `gedraData` is the worked example of the middle ground — its by-id reads are served from the cache, each
-   checking scope against the one row it found (as `queryAdministrableUser` does), while `listGedras` stays on
-   SQL. A by-id read can check scope; a listing composes it, and there must be only one implementation of that.
+2. **Are its reads *scoped*?** A `ReadScope`-filtered table can still be cached — `gedraData` is — but the
+   scope decides *how*, and this is the part to get right. Two rules keep the cache from ever widening an
+   answer:
+   - **A by-id read may check scope per row**, against the one row it found, exactly as
+     `UserService.queryAdministrableUser` does. `gedraData`'s `admitsRow` is that check, shared by the lookup
+     and the listing so the two cannot come to disagree about what a scope admits.
+   - **A listing must never compose a scope predicate in memory** — that would be a second implementation of
+     what `SqlScopeUtil` exists to be the only copy of. It may only be served from an index that is *already*
+     the scope, so the "filter" is an index-key lookup, not a predicate. `gedraData`'s listing is served from
+     the `clientKind` index and **only when the scope names a client**; a scope the index cannot key on (an
+     `allClients` admin over every client, an ordinary user whose scope is client-less) falls back to SQL.
+   `AuthUsers` sidesteps all of this: its reads are identity resolution — one row by a unique key, deliberately
+   unscoped — so it has no scope to honor.
 3. **Do its writers round-trip `updatedAt`?** The reload walks `updatedAt` forward and **skips a row stamped
    at or before the version it already holds**. `SqlTopicUtil.prepDates` guarantees the advance only when the
    write carries the prior `updatedAt` through — which a read-modify-write does, and a write assembled from a
    fresh map does not.
 
-A table that fails (2) can still be cached for by-id reads and for cursor consumers, with scoped listings
-left on SQL.
+The order that a cached listing returns must **equal the SQL `order by` exactly**, including the tiebreak that
+makes it total — `gedraData` sorts `createdAt desc, gedraId desc`, the id breaking a same-millisecond tie so
+the cache and SQL never page the same rows differently. And the `limit` is applied **after** the scope filter,
+not before (the SQL carries no `LIMIT` — it filters, orders, then `take(limit)`), so the cache must filter and
+sort the whole scoped set before capping, or a caller gets fewer of their own rows than they should.
 
 ## Declaring a cache
 
