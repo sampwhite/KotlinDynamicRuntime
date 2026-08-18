@@ -188,7 +188,7 @@ class RequestHandler : WebRequest {
             // through EnvAuthRules rather than off the header and cookies, so there is one place that decides
             // whether the claim is believed at all -- and one place that knows the two directions are fenced
             // differently.
-            val envAuth = EnvAuthRules.resolve(config, getRequestHeader(ENVA.header), getRequestCookies())
+            val envAuth = EnvAuthRules.resolve(config, getRequestHeader(ENVA.header), getRequestCookies(), forwardedFor)
             cxt.envAuthEmail = envAuth.email
             cxt.envAuthSuppressed = envAuth.suppressed
             createdCxt = cxt

@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrInstanceConfig
 
 /** Constants for the environment-auth ("env auth") header contract. */
@@ -19,6 +20,23 @@ object ENVA {
 
     /** Env var that defaults [ACFG.trustEnvAuthHeader] when the config option is unset. */
     const val trustEnvAuthHeaderEnvVar = "KDR_TRUST_ENV_AUTH_HEADER"
+
+    /** Env var that defaults [ACFG.assumeEnvAuth] when the config option is unset. */
+    const val assumeEnvAuthEnvVar = "KDR_ASSUME_ENV_AUTH"
+
+    /**
+     * The identity an *assumed* env auth carries (see [EnvAuthRules.assumesEnvAuth]) -- deliberately synthetic,
+     * because nobody actually authenticated.
+     *
+     * `.invalid` is reserved by RFC 2606 as a top-level domain guaranteed never to resolve, so this can never
+     * collide with a real address however deployments come and go. And the local part names the mechanism that
+     * produced it, so a reader meeting it in a log can find the flag that explains it rather than hunting for
+     * a person who does not exist.
+     *
+     * Not configurable, and it does not need to be: a developer who wants to act as a *particular* address
+     * locally has the `forTestingOnly` fixture, which is a better answer than a second knob.
+     */
+    const val assumedAddress = "assumed@local.invalid"
 
     /**
      * Session cookie by which a caller **suppresses** their own env auth (issue #360) -- the production
@@ -99,6 +117,32 @@ object EnvAuthRules {
             ?: config.isTestInstance
 
     /**
+     * Whether this node **invents** env auth for a request that did not come through a proxy.
+     *
+     * The convenience that makes a developer's own box behave like one behind an edge, so the env-authed
+     * surface is there from the first page load rather than needing a fixture call. The suppress toggle is
+     * what gets them back to the ordinary view, which is much of why it exists.
+     *
+     * Sibling to [isTrusted], and the distinction is worth keeping: that one decides whether to **believe a
+     * claim** somebody made, this one decides whether to **make one up**. They are deliberately independent --
+     * turning off header trust in a test should not silently disable a developer's local convenience.
+     *
+     * **Defaults on only in [ENV.local], not in [ENV.unit].** A test instance covers both, but `TestHttpClient`
+     * sends no forwarded-for header, so defaulting on the test-instance flag alone would make *every request in
+     * the suite* env-authed and quietly flip the baseline every test reasons from.
+     *
+     * The absence of a forwarded-for address (checked by the caller) is **not** what makes this safe -- that is
+     * the signature of a request which bypassed the proxy, which on a real node is the last thing to reward.
+     * The fence is `isTestInstance`, which refuses to boot outside `local`/`unit`. The forwarded-for check does
+     * a different job: telling "I am testing through the edge" apart from "I am hitting the box directly" on a
+     * machine where both happen.
+     */
+    fun assumesEnvAuth(config: KdrInstanceConfig): Boolean =
+        (config.get(ACFG.assumeEnvAuth) as? Boolean)
+            ?: config.getEnvBool(ENVA.assumeEnvAuthEnvVar)
+            ?: (config.isTestInstance && config.env == ENV.local)
+
+    /**
      * Everything a request's env auth amounts to: who an edge vouched for, and whether the session is choosing
      * to act on it (issue #360).
      *
@@ -109,6 +153,7 @@ object EnvAuthRules {
         config: KdrInstanceConfig,
         rawHeader: String?,
         cookies: Map<String, String>,
+        forwardedFor: String?,
     ): EnvAuthState {
         // Suppression is read first and unconditionally: it subtracts, so no environment needs protecting
         // from it, and it applies even where the assertion below is refused.
@@ -119,13 +164,21 @@ object EnvAuthRules {
         // that restores; a browser drops it eventually, which would have made this intermittent rather than
         // absent.) The same reasoning covers the assert cookie below, where an empty value fails to sanitize.
         val suppressed = !cookies[ENVA.suppressCookie].isNullOrEmpty()
+
+        // Independent of trust, because inventing a claim and believing one are different questions. Only for
+        // a request that did not come through a proxy: on a developer's box that is what separates "through
+        // the edge" from "straight at the server", and it is the second case this exists for.
+        val assumed = if (forwardedFor == null && assumesEnvAuth(config)) ENVA.assumedAddress else null
+
         if (!isTrusted(config)) {
-            return EnvAuthState(null, suppressed)
+            return EnvAuthState(assumed, suppressed)
         }
         // The fixture's assertion stands in for the header, so it passes the same trust gate -- and then one
         // more that the header does not need. See ENVA.assertCookie for why this check lives here.
         val asserted = if (config.isTestInstance) sanitizeAddress(cookies[ENVA.assertCookie]) else null
-        return EnvAuthState(sanitizeAddress(rawHeader) ?: asserted, suppressed)
+        // Precedence: a real edge is never shadowed, a deliberate assertion beats a default, and the
+        // assumption only ever fills silence.
+        return EnvAuthState(sanitizeAddress(rawHeader) ?: asserted ?: assumed, suppressed)
     }
 
     /**

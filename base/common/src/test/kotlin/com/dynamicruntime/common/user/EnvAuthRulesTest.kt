@@ -19,6 +19,18 @@ class EnvAuthRulesTest : StringSpec({
     // genuinely off. `unit` flips that inference on, which is what the first test contrasts.
     fun config(env: String = ENV.local) = KdrInstanceConfig("envAuthTest", env, ENV.liveSource)
 
+    /**
+     * Every case below describes a request that arrived **through a proxy** unless it says otherwise, so the
+     * local "assume env auth" convenience -- which fires only on a direct request -- stays out of the way of
+     * cases that are about something else.
+     */
+    fun resolve(
+        c: KdrInstanceConfig,
+        header: String? = null,
+        cookies: Map<String, String> = emptyMap(),
+        forwardedFor: String? = "10.0.0.1",
+    ): EnvAuthState = EnvAuthRules.resolve(c, header, cookies, forwardedFor)
+
     "the default follows isTestInstance -- off on a real-shaped node, on where the app is developed" {
         EnvAuthRules.isTrusted(config(ENV.local)) shouldBe false
         EnvAuthRules.isTrusted(config(ENV.unit)) shouldBe true
@@ -48,33 +60,33 @@ class EnvAuthRulesTest : StringSpec({
     "an untrusted node resolves no address, however well-formed the header" {
         val trusted = config(ENV.local).apply { put(ACFG.trustEnvAuthHeader, true) }
         val untrusted = config(ENV.local).apply { put(ACFG.trustEnvAuthHeader, false) }
-        EnvAuthRules.resolve(trusted, "sam@gyassa.com", emptyMap()).email shouldBe "sam@gyassa.com"
-        EnvAuthRules.resolve(untrusted, "sam@gyassa.com", emptyMap()).email shouldBe null
-        EnvAuthRules.resolve(trusted, null, emptyMap()).email shouldBe null
+        resolve(trusted, "sam@gyassa.com", emptyMap()).email shouldBe "sam@gyassa.com"
+        resolve(untrusted, "sam@gyassa.com", emptyMap()).email shouldBe null
+        resolve(trusted, null, emptyMap()).email shouldBe null
     }
 
     "available and effective are separate answers, and suppression moves only one of them" {
         val c = config(ENV.local).apply { put(ACFG.trustEnvAuthHeader, true) }
 
-        val plain = EnvAuthRules.resolve(c, "sam@gyassa.com", emptyMap())
+        val plain = resolve(c, "sam@gyassa.com", emptyMap())
         plain.isAvailable shouldBe true
         plain.isEffective shouldBe true
 
         // The point of two flags: suppressed, the UI must still know env auth is there, or the control that
         // restores it disappears along with the thing it controls.
-        val off = EnvAuthRules.resolve(c, "sam@gyassa.com", mapOf(ENVA.suppressCookie to "1"))
+        val off = resolve(c, "sam@gyassa.com", mapOf(ENVA.suppressCookie to "1"))
         off.isAvailable shouldBe true
         off.isEffective shouldBe false
         off.email shouldBe "sam@gyassa.com" // the truth survives, because the log line needs it
 
-        val nothing = EnvAuthRules.resolve(c, null, emptyMap())
+        val nothing = resolve(c, null, emptyMap())
         nothing.isAvailable shouldBe false
         nothing.isEffective shouldBe false
     }
 
     "suppression applies even where the node refuses the assertion, because subtracting is always safe" {
         val untrusted = config(ENV.local).apply { put(ACFG.trustEnvAuthHeader, false) }
-        val state = EnvAuthRules.resolve(untrusted, "sam@gyassa.com", mapOf(ENVA.suppressCookie to "1"))
+        val state = resolve(untrusted, "sam@gyassa.com", mapOf(ENVA.suppressCookie to "1"))
         state.isAvailable shouldBe false
         state.suppressed shouldBe true
     }
@@ -89,7 +101,7 @@ class EnvAuthRulesTest : StringSpec({
 
         val testInstance = config(ENV.unit)
         testInstance.isTestInstance shouldBe true // guard the premise
-        EnvAuthRules.resolve(testInstance, null, cookies).email shouldBe "fixture@gyassa.com"
+        resolve(testInstance, null, cookies).email shouldBe "fixture@gyassa.com"
 
         // A node shaped like a real one: trusting the header, but not a test instance.
         val real = config(ENV.local).apply {
@@ -97,13 +109,13 @@ class EnvAuthRulesTest : StringSpec({
             put(ACFG.isTestInstance, false)
         }
         real.isTestInstance shouldBe false // guard the premise, or the next line proves nothing
-        EnvAuthRules.resolve(real, null, cookies).email shouldBe null
+        resolve(real, null, cookies).email shouldBe null
     }
 
     "a real header wins over a fixture assertion, so a live edge is never shadowed by a stale cookie" {
         val c = config(ENV.unit)
         val cookies = mapOf(ENVA.assertCookie to "fixture@gyassa.com")
-        EnvAuthRules.resolve(c, "real@gyassa.com", cookies).email shouldBe "real@gyassa.com"
+        resolve(c, "real@gyassa.com", cookies).email shouldBe "real@gyassa.com"
     }
 
     "an address is normalized the way it will be logged and compared" {
@@ -147,6 +159,68 @@ class EnvAuthRulesTest : StringSpec({
             put(ACFG.trustEnvAuthHeader, true)
             put(ACFG.adminEmailDomain, "gyassa.com")
         }
-        EnvAuthRules.resolve(c, "someone@example.org", emptyMap()).email shouldBe "someone@example.org"
+        resolve(c, "someone@example.org", emptyMap()).email shouldBe "someone@example.org"
+    }
+
+    /**
+     * The local-developer convenience (issue #360): a box with no edge in front behaves like one that has, so
+     * the env-authed surface is there from the first page load.
+     *
+     * Note what makes this safe is NOT the missing forwarded-for -- that is the signature of a request which
+     * bypassed the proxy, and rewarding it is the last thing a real node should do. The fence is the test
+     * instance, which cannot boot outside local/unit. The forwarded-for check separates "through the edge"
+     * from "straight at the server" on a machine where a developer does both.
+     */
+    "a local test instance assumes env auth for a direct request, and never for a proxied one" {
+        val local = config(ENV.local).apply { put(ACFG.isTestInstance, true) }
+        local.isTestInstance shouldBe true // guard the premise
+
+        resolve(local, forwardedFor = null).email shouldBe ENVA.assumedAddress
+        resolve(local, forwardedFor = "10.0.0.1").email shouldBe null
+    }
+
+    /**
+     * The half that would otherwise be discovered as a wall of red: `TestHttpClient` sends no forwarded-for
+     * header, so defaulting this on the test-instance flag alone would make **every request in the suite**
+     * env-authed and silently move the baseline every other test reasons from.
+     */
+    "the unit environment does not assume, even though it is a test instance" {
+        val unit = config(ENV.unit)
+        unit.isTestInstance shouldBe true // guard the premise: it is a test instance, and still does not assume
+        EnvAuthRules.assumesEnvAuth(unit) shouldBe false
+        resolve(unit, forwardedFor = null).email shouldBe null
+    }
+
+    "the assumption is configurable in both directions, and independent of header trust" {
+        val off = config(ENV.local).apply {
+            put(ACFG.isTestInstance, true)
+            put(ACFG.assumeEnvAuth, false)
+        }
+        resolve(off, forwardedFor = null).email shouldBe null
+
+        // Independent of trust on purpose: turning off header trust in a test must not silently disable a
+        // developer's local convenience, because the two answer different questions.
+        val untrusting = config(ENV.local).apply {
+            put(ACFG.isTestInstance, true)
+            put(ACFG.trustEnvAuthHeader, false)
+        }
+        resolve(untrusting, forwardedFor = null).email shouldBe ENVA.assumedAddress
+
+        val viaEnvVar = config(ENV.unit).apply { put(ENVA.assumeEnvAuthEnvVar, "true") }
+        resolve(viaEnvVar, forwardedFor = null).email shouldBe ENVA.assumedAddress
+    }
+
+    "a real header outranks an assumption, so testing through the edge is never masked by it" {
+        val local = config(ENV.local).apply { put(ACFG.isTestInstance, true) }
+        // Direct *and* carrying a header is not a combination a browser produces, but the ordering is what
+        // matters: whatever an edge actually said wins over anything invented.
+        resolve(local, header = "real@gyassa.com", forwardedFor = null).email shouldBe "real@gyassa.com"
+    }
+
+    "an assumed env auth can still be suppressed -- which is why a local developer needs the toggle" {
+        val local = config(ENV.local).apply { put(ACFG.isTestInstance, true) }
+        val state = resolve(local, cookies = mapOf(ENVA.suppressCookie to "1"), forwardedFor = null)
+        state.isAvailable shouldBe true
+        state.isEffective shouldBe false
     }
 })
