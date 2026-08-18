@@ -1,6 +1,7 @@
 package com.dynamicruntime.edge
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -20,7 +21,7 @@ import io.kotest.matchers.string.shouldContain
  */
 class EdgeRootsTest : StringSpec({
 
-    fun config(role: String? = EdgeRole.name) =
+    fun config(role: String? = BOOT.edge) =
         KdrInstanceConfig("edgeRootsTest", ENV.unit, ENV.liveSource, role)
 
     "the component binds the edge's own roots" {

@@ -4,19 +4,15 @@ package com.dynamicruntime.edge
  * The **edge** boot role (issues #377, #386): the identity a node runs as, and the namespace its environment
  * variables live in.
  *
- * Moved here from `StartEdge.kt` when the component arrived. #377 put it in the launcher on the rule that the
- * launcher *is* the role, and the part of that which matters is unchanged: the value is a compile-time literal
- * a launcher passes to `bootInstance`, never configuration, because the role must be settled before any
- * application config exists. What changed is only who owns the string -- the role and the component that
- * implements it belong together, and `launch` may name this module while nothing else may.
+ * The role **name** is `BOOT.edge`, in `base/common`, because endpoints and services will be profiled by role
+ * and those declarations are spread across every module -- they could not all depend on this one. Common
+ * learning that `edge` is a possible role is not common learning what a `KdrEdge` is.
+ *
+ * What stays here is what is genuinely this role's own: the port it binds when nothing names one. #377's rule
+ * still holds where it matters -- the value a launcher passes to `bootInstance` is a compile-time literal,
+ * never configuration, because the role must be settled before application config exists.
  */
 object EdgeRole {
-    /**
-     * The role name, which is also the environment-variable namespace: with this set, a lookup for `KDR_PORT`
-     * tries `KDR_EDGE_PORT` first. A literal here rather than configuration, because the role must be settled
-     * before any application config exists -- and because the launcher is the role.
-     */
-    const val name = "edge"
 
     /**
      * The port an edge binds when nothing names one. `8010`, with `8011` for a second (agent's) edge -- the

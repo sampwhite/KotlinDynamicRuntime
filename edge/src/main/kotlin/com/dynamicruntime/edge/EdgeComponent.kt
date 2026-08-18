@@ -2,6 +2,7 @@ package com.dynamicruntime.edge
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.ServiceInitializer
 
@@ -46,6 +47,6 @@ class EdgeComponent : ComponentDefinition {
          * Asked of the *instance config*, never of a compile-time reference, because nothing outside this
          * module may depend on it.
          */
-        fun isEdge(cxt: KdrCxt): Boolean = cxt.instanceConfig.bootRole == EdgeRole.name
+        fun isEdge(cxt: KdrCxt): Boolean = cxt.instanceConfig.bootRole == BOOT.edge
     }
 }

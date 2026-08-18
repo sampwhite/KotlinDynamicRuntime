@@ -1,5 +1,6 @@
 package kdn
 
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.http.server.HttpServer
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.edge.EdgeComponent
@@ -20,5 +21,5 @@ fun main() {
     // The one place that may name KdrEdge. `launch` is not a component, and knowing which role it boots is
     // exactly its job -- see the module's build file for why nothing else may depend on it.
     InstanceRegistry.register(listOf(EdgeComponent()))
-    HttpServer.launch(bootInstance("startEdge", EdgeRole.name, EdgeRole.defaultPort))
+    HttpServer.launch(bootInstance("startEdge", BOOT.edge, EdgeRole.defaultPort))
 }
