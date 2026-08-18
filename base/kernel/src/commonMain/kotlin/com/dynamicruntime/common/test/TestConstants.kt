@@ -72,3 +72,32 @@ object TSE {
     const val emailType = "SimulatedEmail"
     const val emailsType = "SimulatedEmails"
 }
+
+/**
+ * The `forTestingOnly` env-auth fixture (issue #360): asserts env auth for a browser session that no edge
+ * vouched for, so the env-authed UI can be seen and driven before an edge server exists.
+ *
+ * A browser cannot attach a request header, so without this there is no way to reach the env-authed view in a
+ * real browser at all. The fence is the one [TEP.becomeUser] already sits behind, which fabricates a fully
+ * authenticated admin session -- asserting env auth is strictly less powerful than that.
+ */
+@Suppress("ConstPropertyName")
+object TENV {
+    const val path = "/fixture/envAuth"
+
+    /** Request: which operation to perform -- an [EnvAuthFixtureOp] name. */
+    const val op = "op"
+
+    /** Request: for [EnvAuthFixtureOp.assert], the address to act env-authed as. */
+    const val email = "email"
+}
+
+/**
+ * The operations [TENV.op] accepts (issue #360).
+ *
+ * [clear] drops the pretence and returns the session to whatever the channel really is. It is **not**
+ * `EnvAuthOp.suppress`, which overrides a real env auth; the two coincide only where no edge is in front,
+ * which is the case that makes conflating them tempting and wrong.
+ */
+@Suppress("EnumEntryName")
+enum class EnvAuthFixtureOp { assert, clear }

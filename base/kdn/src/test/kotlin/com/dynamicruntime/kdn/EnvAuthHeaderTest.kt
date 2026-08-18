@@ -5,6 +5,10 @@ import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.app.EnvAuthOp
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.test.EnvAuthFixtureOp
+import com.dynamicruntime.common.test.TENV
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.TestUser
@@ -33,7 +37,9 @@ class EnvAuthHeaderTest : StringSpec({
         // could satisfy one without the other.
         val handler = client.sendGetRequest(APP.uiConfig)
         handler.createdCxt?.envAuthEmail shouldBe "envauth.alice@gyassa.com"
-        features(client.sendJsonGetRequest(APP.uiConfig))[APP.isEnvAuthed] shouldBe true
+        val f = features(client.sendJsonGetRequest(APP.uiConfig))
+        f[APP.isEnvAuthed] shouldBe true
+        f[APP.envAuthAvailable] shouldBe true
     }
 
     "a request that did not come through an edge reports nothing" {
@@ -92,5 +98,87 @@ class EnvAuthHeaderTest : StringSpec({
         userHandler.createdCxt?.envAuthEmail shouldBe "envauth.chan@gyassa.com"
         userHandler.createdCxt?.userProfile?.isLoggedIn shouldBe true
         userHandler.createdCxt?.userProfile?.roles?.contains(ROLE.admin) shouldBe false
+    }
+
+    /**
+     * The round trip the whole slice exists to prove: suppress, and the session stops *acting* env-authed
+     * while still knowing that it is -- which is what keeps the control that restores it on screen.
+     */
+    "suppressing turns the effective flag off and leaves availability on" {
+        val cxt = Startup.mkTestBootCxt("envAuthSuppress", "envAuthSuppressTest")
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.setHeader(ENVA.header, "envauth.sara@gyassa.com")
+
+        client.sendJsonPostRequest(APP.envAuthPath, mapOf(APP.envAuthOp to EnvAuthOp.suppress.name))
+
+        val off = features(client.sendJsonGetRequest(APP.uiConfig))
+        off[APP.isEnvAuthed] shouldBe false
+        off[APP.envAuthAvailable] shouldBe true
+
+        // And the truth survives on the context, because that is what the log line records. Suppression is a
+        // display choice, never a way to act unattributed.
+        client.sendGetRequest(APP.uiConfig).createdCxt?.envAuthEmail shouldBe "envauth.sara@gyassa.com"
+
+        client.sendJsonPostRequest(APP.envAuthPath, mapOf(APP.envAuthOp to EnvAuthOp.restore.name))
+        features(client.sendJsonGetRequest(APP.uiConfig))[APP.isEnvAuthed] shouldBe true
+    }
+
+    "suppressing when there is no env auth to suppress changes nothing" {
+        val cxt = Startup.mkTestBootCxt("envAuthSuppressNone", "envAuthSuppressNoneTest")
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.sendJsonPostRequest(APP.envAuthPath, mapOf(APP.envAuthOp to EnvAuthOp.suppress.name))
+
+        val f = features(client.sendJsonGetRequest(APP.uiConfig))
+        f[APP.isEnvAuthed] shouldBe false
+        f[APP.envAuthAvailable] shouldBe false
+    }
+
+    /**
+     * The fixture is how a browser reaches the env-authed view at all, since it cannot attach a request
+     * header. Note `clear` is not `suppress`: it stops pretending and returns the session to the truth, which
+     * here is no env auth.
+     */
+    "the test fixture asserts env auth for a session no edge vouched for" {
+        val cxt = Startup.mkTestBootCxt("envAuthFixture", "envAuthFixtureTest")
+        val client = TestHttpClient(cxt.instanceConfig)
+
+        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthAvailable] shouldBe false
+
+        client.sendJsonPostRequest(
+            TENV.path,
+            mapOf(TENV.op to EnvAuthFixtureOp.assert.name, TENV.email to "envauth.fix@gyassa.com"),
+        )
+        val on = features(client.sendJsonGetRequest(APP.uiConfig))
+        on[APP.isEnvAuthed] shouldBe true
+        on[APP.envAuthAvailable] shouldBe true
+        client.sendGetRequest(APP.uiConfig).createdCxt?.envAuthEmail shouldBe "envauth.fix@gyassa.com"
+
+        client.sendJsonPostRequest(TENV.path, mapOf(TENV.op to EnvAuthFixtureOp.clear.name))
+        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthAvailable] shouldBe false
+    }
+
+    /**
+     * The security-relevant half, and the one a `forTestingOnly` marking does **not** provide: the endpoint
+     * gate stops the cookie being issued, and nothing stops one being typed into a browser. So a node shaped
+     * like a real one must refuse the cookie itself.
+     *
+     * The endpoint is also absent from such a node's store, which this asserts second -- both halves matter,
+     * because either alone leaves a way in.
+     */
+    "a real-shaped node refuses a forged fixture cookie, and does not serve the fixture at all" {
+        val cxt = Startup.mkTestBootCxt(
+            "envAuthReal", "envAuthRealTest",
+            mapOf(ACFG.isTestInstance to false, ACFG.trustEnvAuthHeader to true),
+        )
+        cxt.instanceConfig.isTestInstance shouldBe false // guard the premise
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.cookies[ENVA.assertCookie] = "attacker@gyassa.com"
+
+        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthAvailable] shouldBe false
+
+        // And the fixture endpoint itself is not in the store on a node like this.
+        client.sendEditRequest(
+            TENV.path, null, mapOf(TENV.op to EnvAuthFixtureOp.clear.name), isPut = false,
+        ).rptStatusCode shouldBe EXC.notFound
     }
 })

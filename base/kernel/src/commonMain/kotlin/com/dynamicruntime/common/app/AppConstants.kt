@@ -40,19 +40,53 @@ object APP {
     const val allowDebugPages = "allowDebugPages"
 
     /**
-     * Feature flag: whether this request arrived through an authenticating **edge** server (issue #348), so
-     * the frontend can offer a fuller, internal experience to someone who reached the application that way.
+     * Feature flag: whether this request is **currently acting** env-authed (issues #348, #360) -- the
+     * *effective* value, not the raw truth of the channel. False when no edge vouched for the request, and
+     * also when the session has deliberately suppressed its env auth ([envAuthPath]).
+     *
+     * **Effective rather than raw is the deliberate half.** Everything that varies with env auth reads this
+     * one, so a consumer that has never heard of suppression still honors it -- and a consumer that forgets
+     * [envAuthAvailable] shows *less* than it might, never more. Failing in the closed direction is the same
+     * choice made for the boot-role default and the header trust flag.
      *
      * A **boolean, not the address.** The frontend needs to know *that* the channel is env-authed; who the
      * caller is env-authed as stays server-side on the context, where it is also what reaches the logs. Should
      * a later issue want to show it, that is a deliberate widening rather than something inherited by default.
      *
-     * Unlike its neighbours here this is **per-request**, not deployment-global: the same node answers
+     * Unlike most of its neighbors here this is **per-request**, not deployment-global: the same node answers
      * differently depending on how a request reached it. The app config is still the right home -- it is what
      * the whole frontend reads once at the app root -- but a caller must not cache the answer across a change
      * of route into the deployment.
      */
     const val isEnvAuthed = "isEnvAuthed"
+
+    /**
+     * Feature flag: whether env auth is **available** on this channel at all (issue #360) -- the truth an edge
+     * asserted, regardless of whether the session is currently acting on it.
+     *
+     * Exists because one boolean cannot express this. While suppressed, [isEnvAuthed] is false but the user
+     * must still be shown the control that restores it -- otherwise the affordance disappears along with the
+     * thing it controls, and there is no way back. So **visibility of the indicator reads this**, and nothing
+     * else should: anything deciding what a user may see or do reads [isEnvAuthed].
+     */
+    const val envAuthAvailable = "envAuthAvailable"
+
+    /**
+     * The endpoint a session uses to suppress its own env auth, or restore it ([EnvAuthOp]). Anonymous and
+     * **not** test-only: this is live behavior in a deployed environment, because seeing the application as an
+     * ordinary user sees it is a real thing to want, not merely a testing affordance.
+     *
+     * Safe to expose because it only ever **subtracts** -- the worst a caller can do to themselves is see less
+     * than they are entitled to. The opposite direction (asserting env auth that no edge granted) is a
+     * `forTestingOnly` fixture precisely because it does not have that property.
+     */
+    const val envAuthPath = "/app/envAuth"
+
+    /** Request field of [envAuthPath]: which operation to perform, an [EnvAuthOp] name. */
+    const val envAuthOp = "op"
+
+    /** The response schema type name for [envAuthPath]: the two flags as they stand after the operation. */
+    const val envAuthStateType = "EnvAuthState"
 
     /**
      * Setting (under the envelope's `settings`, not a flag): how often, in milliseconds, the frontend "bumps" its refresh
@@ -69,3 +103,14 @@ object APP {
      */
     const val defaultIdleBumpIntervalMs = 60_000
 }
+
+/**
+ * The operations [APP.envAuthOp] accepts (issue #360). Names are the wire values, and drive both the schema's
+ * choice list and the endpoint's `when`.
+ *
+ * [suppress] is not the same as clearing a test fixture's assertion: suppressing **overrides** a real env auth,
+ * while clearing merely stops pretending and returns the session to whatever the channel actually is. With no
+ * edge in front the two look identical, which is exactly why they do not share a name.
+ */
+@Suppress("EnumEntryName")
+enum class EnvAuthOp { suppress, restore }

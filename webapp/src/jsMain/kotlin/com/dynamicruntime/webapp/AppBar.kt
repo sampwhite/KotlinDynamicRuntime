@@ -60,7 +60,23 @@ const val signedInFallback = "Signed in"
  * It re-reads the config on every refresh generation, so signing in or out (or being granted a capability)
  * redraws the menu.
  */
-val AppBar = FC<Props> {
+/**
+ * The two env-auth facts the bar draws (issue #360): whether the control should exist at all, and what it
+ * currently says.
+ *
+ * Passed in rather than read from [appConfig] here, because that cache is filled **asynchronously** and
+ * nothing re-renders when it lands -- a component reading it in an effect keyed on the refresh generation runs
+ * before the fetch resolves and then never looks again. `App` already owns config-derived state for exactly
+ * this reason (`debugAllowed`, `idleBumpIntervalMs`); these join it rather than inventing a second way.
+ */
+external interface AppBarProps : Props {
+    /** Whether env auth exists on this channel -- decides whether the control is shown at all. */
+    var envAuthAvailable: Boolean
+    /** Whether the session is currently *acting* env-authed -- decides what the control says. */
+    var envAuthActing: Boolean
+}
+
+val AppBar = FC<AppBarProps> { props ->
     // The one conditional fault that cannot live in a dedicated component (issue #227): proving the *backstop*
     // boundary catches means breaking the chrome, and the chrome is what renders outside the page boundary.
     // Gated on the deployment's allowDebugPages, so on a real deployment this line can never fire.
@@ -96,6 +112,7 @@ val AppBar = FC<Props> {
     // when that capability narrows, the cue narrows with it.
     val elevated = config?.canManageUsers == true
 
+
     header {
         className = ClassName(if (elevated) "app-bar admin" else "app-bar")
         a {
@@ -116,6 +133,31 @@ val AppBar = FC<Props> {
             span {
                 className = ClassName("admin-badge")
                 +"Admin"
+            }
+        }
+        // The env-auth badge, which is also the control that turns it off (issue #360). Shown whenever env
+        // auth is AVAILABLE, never on the effective state -- suppress it and this is the one affordance that
+        // must survive, or there is no way back.
+        //
+        // A button rather than a span, unlike the badges around it: this one does something, and something a
+        // keyboard user must be able to reach. Spelled out for the same reason .admin-badge is -- a hue alone
+        // tells a colorblind user nothing -- and it names the *state*, not the action, so the bar reads as a
+        // description of where you are rather than a row of commands.
+        if (props.envAuthAvailable) {
+            button {
+                className = ClassName(if (props.envAuthActing) "env-badge" else "env-badge off")
+                title = if (props.envAuthActing) {
+                    "You reached this deployment through an authenticated environment. Click to browse as an ordinary user."
+                } else {
+                    "Environment access is suppressed for this session. Click to restore it."
+                }
+                onClick = {
+                    appBarScope.launch {
+                        setEnvAuthSuppressed(props.envAuthActing)
+                        bump()
+                    }
+                }
+                +(if (props.envAuthActing) "env" else "env off")
             }
         }
         // A quiet marker that this is the readable build (issue #230). It can never appear on a real

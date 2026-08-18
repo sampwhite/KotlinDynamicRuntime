@@ -43,6 +43,15 @@ object ACFG {
     const val trustEnvAuthHeader = "trustEnvAuthHeader"
 
     /**
+     * When true, this node **invents** env auth for a request that arrived without a forwarded-for address --
+     * the convenience that makes a developer's own box behave like one sitting behind an edge (issue #360).
+     * Unset defaults from `KDR_ASSUME_ENV_AUTH`, and failing that from being a test instance in `local`
+     * specifically -- not `unit`, where it would make every request in the suite env-authed. Resolved through
+     * `EnvAuthRules.assumesEnvAuth`.
+     */
+    const val assumeEnvAuth = "assumeEnvAuth"
+
+    /**
      * When true, an error flagged `sensitive` (e.g., one that would reveal whether an account exists) has its
      * message replaced with a generic one before it goes to the client; the real message is still logged
      * (issue #108). Set directly by tests. When unset, defaults from the `KDR_OBFUSCATE_ERRORS` env var, which

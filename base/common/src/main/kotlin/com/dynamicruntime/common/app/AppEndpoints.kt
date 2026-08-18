@@ -7,7 +7,11 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.http.request.RequestHandler
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.user.ENVA
+import com.dynamicruntime.common.util.toOptEnum
+import kotlin.time.Instant
 
 /** Schema type name for the app UI-config output (backend-only; the frontend keys off the [APP] wire constants). */
 private const val appUiConfigType = "AppUiConfig"
@@ -48,7 +52,12 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
             ) { type = SCT.boolean }
             property(
                 APP.isEnvAuthed,
-                "Whether this request reached the deployment through an authenticating edge server.",
+                "Whether this request is currently acting env-authed (false when suppressed by the session).",
+                required = true,
+            ) { type = SCT.boolean }
+            property(
+                APP.envAuthAvailable,
+                "Whether env auth is available on this channel at all, whatever the session is acting as.",
                 required = true,
             ) { type = SCT.boolean }
         }
@@ -77,7 +86,11 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 // Per-request, unlike its neighbors (issue #348): the answer depends on how this particular
                 // request reached the node, not on how the deployment is configured. Read off the context
                 // rather than the header, so the dispatcher's decision and the frontend's view are one answer.
-                APP.isEnvAuthed to (c.envAuthEmail != null),
+                //
+                // Effective and available are both served because one cannot be derived from the other, and
+                // the indicator needs the second to survive its own suppression (issue #360).
+                APP.isEnvAuthed to c.isEnvAuthEffective,
+                APP.envAuthAvailable to (c.envAuthEmail != null),
             ),
             UIC.settings to mapOf(
                 // Always served, defaulting when the deployment did not tune it (a custom-config override, not
@@ -86,5 +99,48 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                     (c.instanceConfig.get(ACFG.idleBumpIntervalMs) as? Int ?: APP.defaultIdleBumpIntervalMs),
             ),
         )
+    }
+
+    // Suppress this session's own env auth, or restore it (issue #360). Live behavior in a deployed
+    // environment, not a test affordance: seeing the application as an ordinary user sees it is a real thing
+    // to want. Anonymous because env auth is a property of the *channel* -- an env-authed caller need not be
+    // logged in at all, so gating this on a role would refuse exactly the people it is for.
+    //
+    // Safe unfenced because it only ever subtracts. The opposite direction is a `forTestingOnly` fixture
+    // (TENV.path) precisely because asserting an env auth nobody granted does not have that property.
+    type(APP.envAuthStateType) {
+        type = SCT.kObject
+        property(APP.isEnvAuthed, "Whether the session is acting env-authed after the operation.",
+            required = true) { type = SCT.boolean }
+        property(APP.envAuthAvailable, "Whether env auth is available on this channel at all.",
+            required = true) { type = SCT.boolean }
+    }
+    generalEndpoint(
+        APP.envAuthPath,
+        "Suppress this session's env auth, or restore it.",
+        HttpMethod.POST, outputRef = APP.envAuthStateType,
+        inputFields = {
+            field(APP.envAuthOp, "Whether to suppress env auth for this session or restore it.",
+                required = true) { options(EnvAuthOp.entries) }
+        },
+    ) { c, req ->
+        // The op is choice-constrained above, so validation already rejected anything but an EnvAuthOp name.
+        val op = req[APP.envAuthOp].toOptEnum<EnvAuthOp>()
+            ?: throw KdrException.mkInput("A valid '${APP.envAuthOp}' is required.")
+        // Written through the request's WebRequest -- the transport-neutral seam -- so this works identically
+        // under a real browser and the in-process test client. Safe here because the endpoint handler runs
+        // before the response is sent; a cookie set afterward would be silently dropped.
+        val web = c.request?.webRequest
+        when (op) {
+            // A session cookie (no expiry): the downgrade lasts as long as the browser session and no longer,
+            // so nobody is left in the reduced view weeks later wondering why.
+            EnvAuthOp.suppress -> web?.addResponseCookie(ENVA.suppressCookie, "1", null)
+            EnvAuthOp.restore -> web?.addResponseCookie(ENVA.suppressCookie, "", Instant.fromEpochMilliseconds(0))
+        }
+        // The state as it will be on the NEXT request: this request already resolved its own env auth before
+        // the cookie changed, so reporting c.isEnvAuthEffective here would echo the state being left behind.
+        val suppressed = op == EnvAuthOp.suppress
+        val available = c.envAuthEmail != null
+        mapOf(APP.isEnvAuthed to (available && !suppressed), APP.envAuthAvailable to available)
     }
 }

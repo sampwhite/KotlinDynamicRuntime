@@ -138,9 +138,27 @@ class KdrCxt(
      * carrying an ordinarily logged-in user, since env auth never dictates a login. That is precisely why this
      * lives here beside [forwardedFor] and [traceId] rather than becoming a role on [userProfile].
      *
-     * Set from `EnvAuthRules.resolveEnvEmail`; never read the header directly. Carried down to sub contexts.
+     * **This stays the truth even when the session has suppressed its env auth** (issue #360). Suppression is
+     * a display choice, not a cloak -- the person is still that person, and the log line must still say so, or
+     * "act as if not env-authed" becomes a way to act unattributed. Ask [isEnvAuthEffective] when deciding
+     * what a caller may see or do; read this when recording who they are.
+     *
+     * Set from `EnvAuthRules.resolve`; never read the header directly. Carried down to sub contexts.
      */
     var envAuthEmail: String? = null
+
+    /**
+     * Whether this session has asked to be treated as **not** env-authed (issue #360), through the app-level
+     * suppress endpoint. Independent of [envAuthEmail], which keeps the truth for the log.
+     */
+    var envAuthSuppressed: Boolean = false
+
+    /**
+     * Whether the request is *acting* env-authed: an edge vouched for it and the session has not suppressed
+     * it. **The question anything gating behavior or display should ask** -- reading [envAuthEmail] directly
+     * for that purpose would silently ignore a suppression.
+     */
+    val isEnvAuthEffective: Boolean get() = envAuthEmail != null && !envAuthSuppressed
 
     /**
      * The request being processed, or null when this context is not handling one (startup, background
