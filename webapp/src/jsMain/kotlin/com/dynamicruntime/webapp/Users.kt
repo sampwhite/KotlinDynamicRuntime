@@ -529,6 +529,7 @@ val Users = FC<Props> {
                 }
             } else {
                 UserTable {
+                    showClient = config?.user?.roles?.contains(ROLE.allClients) == true
                     this.users = users
                     onSelect = { startEdit(it) }
                 }

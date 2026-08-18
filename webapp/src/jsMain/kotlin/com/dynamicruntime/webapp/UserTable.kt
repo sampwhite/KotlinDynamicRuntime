@@ -11,6 +11,15 @@ import react.Props
 external interface UserTableProps : Props {
     var users: List<AdminUser>
     var onSelect: (AdminUser) -> Unit
+
+    /**
+     * Whether to show which client each user belongs to (issue #352).
+     *
+     * Off for a client-scoped administrator, whose every row carries the same value -- a column that says one
+     * thing is a column that says nothing. It follows the same rule as the create form's client selector, and
+     * for the same reason: the client is only a distinction to somebody who can see more than one.
+     */
+    var showClient: Boolean
 }
 
 val UserTable = FC<UserTableProps> { props ->
@@ -18,14 +27,15 @@ val UserTable = FC<UserTableProps> { props ->
         size = "small"
         pagination = false
         rowKey = "key"
-        columns = arrayOf(
-            column("Id", "userId", 70),
-            column("Email", "primaryId", 220),
-            column("Name", "name", 200),
-            column("Type", "type", 100),
-            column("Roles", "roles", 140),
-            column("Status", "status", null),
-        )
+        columns = buildList {
+            add(column("Id", "userId", 70))
+            add(column("Email", "primaryId", 220))
+            add(column("Name", "name", 200))
+            add(column("Type", "type", 100))
+            if (props.showClient) add(column("Client", "client", 110))
+            add(column("Roles", "roles", 140))
+            add(column("Status", "status", null))
+        }.toTypedArray()
         dataSource = props.users.map { user ->
             val row: dynamic = js("({})")
             row.key = user.userId.toString()
@@ -36,6 +46,9 @@ val UserTable = FC<UserTableProps> { props ->
             row.name = user.name?.takeIf { it.isNotBlank() } ?: "—"
             // The name column says *what* it is called; this says which kind of thing it is naming.
             row.type = if (user.isEntity) "Business" else "Person"
+            // Always written, even when no column shows it: the row is data, and which columns are drawn is
+            // the table's decision rather than something the data should have to anticipate.
+            row.client = user.client
             row.roles = user.roles.joinToString(", ")
             row.status = buildList {
                 add(if (user.enabled) "enabled" else "disabled")
