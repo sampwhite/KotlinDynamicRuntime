@@ -40,6 +40,10 @@ dependencies {
     // The webapp host: its AppUiComponent serves the self-contained front end (embedded `:webapp` bundle)
     // under the `wa` context root. Registered unconditionally in Start.kt.
     implementation(project(":appui"))
+    // The KdrEdge component (issue #386), registered by StartEdge only. `launch` is the one place permitted
+    // to name it: it is not a component, and knowing which boot role it starts is its job. When boot-role
+    // gating lands this becomes ServiceLoader discovery with the component self-gating, and this line goes.
+    implementation(project(":edge"))
 }
 
 // Deployment-injected providers (issue #171): custom config now, custom components later. The deployment
