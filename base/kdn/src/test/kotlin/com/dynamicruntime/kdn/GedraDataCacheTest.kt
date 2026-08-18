@@ -14,9 +14,11 @@ import com.dynamicruntime.common.util.toOptStr
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The `GedraData` cache: that it holds what it should, indexes it the way the application is organized, and
@@ -117,5 +119,124 @@ class GedraDataCacheTest : StringSpec({
         GedraDataCache.rowsForClient(cache, "noSuchClient") shouldBe emptyList()
         cache.snapshot.allByIndex(GDX.clientKind, GedraDataCache.clientKindKey(client, "noSuchKind")) shouldBe
             emptyList()
+    }
+
+    // --- slice 2: the listing, served from the clientKind index (issue #363) ------------------------------
+
+    /**
+     * Lists gedras of [kind] within [scope], through whichever path is wired: with the cache in place it is
+     * cache-first, and nulling `dataCache` around a second call forces the SQL it must equal.
+     */
+    fun listIds(kind: GedraDataType, scope: ReadScope, limit: Int, viaSql: Boolean = false): List<String> {
+        val svc = service()
+        if (!viaSql) return svc.listGedras(cxt, kind, scope, limit).map { it.gedraId.fullId }
+        val held = svc.dataCache
+        svc.dataCache = null
+        return try {
+            svc.listGedras(cxt, kind, scope, limit).map { it.gedraId.fullId }
+        } finally {
+            svc.dataCache = held
+        }
+    }
+
+    /**
+     * The whole of slice 2: a client-scoped listing served from the `clientKind` index must equal the SQL
+     * listing it replaces **row for row and in order**, because the page a caller sees is
+     * `order by createdAt desc, gedraId desc` and then a cap -- a cache that returned the same set in another
+     * order would be a different, wrong page.
+     */
+    "a client-scoped listing matches SQL row for row and in order" {
+        val kind = GedraDataType.formDoc
+        val scope = ReadScope.ofClient(client)
+
+        val fromCache = listIds(kind, scope, 100)
+        val fromSql = listIds(kind, scope, 100, viaSql = true)
+
+        fromCache shouldBe fromSql
+        fromCache shouldContainAll listOf(caraDocId, cyrusDocId)
+
+        // Independently of SQL: the order really is newest-first, id breaking a tie. Proven against the rows'
+        // own dates rather than trusting the reference, since "match SQL" and "be right" should both hold.
+        val rows = service().listGedras(cxt, kind, scope, 100)
+        val resorted = rows.sortedWith(
+            compareByDescending<com.dynamicruntime.common.gedra.GedraDataRow> { it.createdAt }
+                .thenByDescending { it.gedraId.fullId },
+        )
+        rows.map { it.gedraId.fullId } shouldBe resorted.map { it.gedraId.fullId }
+    }
+
+    /**
+     * The one question slice 2 had to answer: the cap applies **after** the scope filter, not before. A scope
+     * naming a client and a user is cache-served (the client keys the index) and drops the other user's rows,
+     * so it is the case that tells the two orders apart -- if the cap ran first, the newest few rows overall
+     * could be the wrong user's and the caller would get fewer of their own, or none.
+     */
+    "the limit caps the scoped list, and the scope is applied first" {
+        val kind = GedraDataType.formDoc
+        // Interleave the two users, stepping the clock between so createdAt strictly orders them and Cyrus's
+        // is unambiguously newest -- the tie-break is Test C's job, not this one's.
+        val clock = cxt.instanceConfig.clock
+        createDoc(caraId, "Cara A"); clock.advanceBy(1.seconds)
+        createDoc(cyrusId, "Cyrus A"); clock.advanceBy(1.seconds)
+        createDoc(caraId, "Cara B"); clock.advanceBy(1.seconds)
+        val newestCyrus = createDoc(cyrusId, "Cyrus B")
+        service().dataCache.shouldNotBeNull().checkRefresh(cxt)
+
+        // The client-wide newest row is Cyrus's -- the interleaving is real, so "cap then filter" would drop
+        // a Cara row the caller is owed.
+        listIds(kind, ReadScope.ofClient(client), 1) shouldBe listOf(newestCyrus)
+
+        // The Cara-scoped newest two are therefore both Cara's only if the userId filter runs before the cap.
+        val caraScope = ReadScope(client = client, userId = caraId)
+        val caraNewest2 = service().listGedras(cxt, kind, caraScope, 2)
+        caraNewest2.size shouldBe 2
+        caraNewest2.map { it.userId }.toSet() shouldBe setOf(caraId)
+
+        // Cache equals SQL, and equals the front of the full Cara-scoped list -- the cap is just a prefix.
+        caraNewest2.map { it.gedraId.fullId } shouldBe listIds(kind, caraScope, 2, viaSql = true)
+        caraNewest2.map { it.gedraId.fullId } shouldBe listIds(kind, caraScope, 100).take(2)
+    }
+
+    /**
+     * Two gedras sharing a `createdAt` -- the case the id tiebreak exists for -- page by id, the same way from
+     * cache and from SQL. The clock is frozen so the pair genuinely collides; without the tiebreak their order
+     * would be whichever each side happened to produce.
+     */
+    "gedras sharing a createdAt page by id, identically from cache and SQL" {
+        val kind = GedraDataType.formDoc
+        val clock = cxt.instanceConfig.clock
+        clock.freeze()
+        try {
+            val a = createDoc(caraId, "Tie one")
+            val b = createDoc(caraId, "Tie two")
+            service().dataCache.shouldNotBeNull().checkRefresh(cxt)
+            val earlier = maxOf(a, b) // order by gedraId desc, so the lexically larger id comes first
+            val later = minOf(a, b)
+
+            val fromCache = listIds(kind, ReadScope.ofClient(client), 100)
+            val fromSql = listIds(kind, ReadScope.ofClient(client), 100, viaSql = true)
+            fromCache shouldBe fromSql
+            (fromCache.indexOf(earlier) < fromCache.indexOf(later)) shouldBe true
+        } finally {
+            clock.unfreeze()
+        }
+    }
+
+    /**
+     * A scope the `clientKind` index cannot key on -- an `allClients` administrator over every client, or an
+     * ordinary user whose scope carries only a `userId` -- falls back to SQL rather than being served wrong.
+     * The point is that the fallback still answers, and answers correctly.
+     */
+    "a scope with no client falls back to SQL and still lists correctly" {
+        val kind = GedraDataType.formDoc
+
+        // Unrestricted: every client, so this client's rows are a subset of what comes back.
+        service().listGedras(cxt, kind, ReadScope.unrestricted, 500).map { it.gedraId.fullId } shouldContainAll
+            listOf(caraDocId, cyrusDocId)
+
+        // Own-user, client-less: only Cara's rows, and never Cyrus's.
+        val caraOnly = service().listGedras(cxt, kind, ReadScope.ofUser(caraId), 500)
+        caraOnly.map { it.userId }.toSet() shouldBe setOf(caraId)
+        caraOnly.map { it.gedraId.fullId } shouldNotContain cyrusDocId
     }
 })
