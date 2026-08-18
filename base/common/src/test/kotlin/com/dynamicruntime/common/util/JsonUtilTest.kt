@@ -248,4 +248,35 @@ class JsonUtilTest : StringSpec({
         state.strictValues = true
         shouldThrow<KdrException> { parseJson(state, 0) }
     }
+
+    // --- key order (issue #356) -----------------------------------------------
+
+    /**
+     * Order is meaning in a schema: the order of `properties` is the order a form shows its fields in. It
+     * used to be lost at parse -- and unrecoverably, since re-wrapping a `HashMap` afterwards only freezes
+     * whatever order the hashing produced.
+     */
+    "a parsed object keeps the order its keys were written in" {
+        val json = $$"""{"zulu":1,"alpha":2,"mike":3,"bravo":4,"yankee":5}"""
+        json.jsonMap()!!.keys.toList() shouldBe listOf("zulu", "alpha", "mike", "bravo", "yankee")
+    }
+
+    "parse then format leaves an object as it was written" {
+        val json = $$"""{"zulu":1,"alpha":2,"mike":3}"""
+        json.jsonMap().toJsonStr(compact = true) shouldBe json
+    }
+
+    "order survives nesting" {
+        val json = $$"""{"outer":{"zulu":1,"alpha":2}}"""
+        json.jsonMap()!!["outer"].toJsonMapOrEmpty().keys.toList() shouldBe listOf("zulu", "alpha")
+    }
+
+    // Only *parsed* maps changed. A HashMap built by code still formats sorted, so anything relying on that
+    // is untouched -- which is why turning this on broke nothing.
+    "a map built as a HashMap still formats sorted" {
+        val built = HashMap<String, Any?>()
+        built["zulu"] = 1
+        built["alpha"] = 2
+        built.toJsonStr(compact = true) shouldBe $$"""{"alpha":2,"zulu":1}"""
+    }
 })
