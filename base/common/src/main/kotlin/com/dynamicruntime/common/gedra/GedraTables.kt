@@ -105,5 +105,8 @@ fun gedraDataTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         // an ordinary user reads their own rows, an administrator reads their client's.
         index(PF.userId, GD.gedraKind)
         index(PF.client, GD.gedraKind)
+        // The in-memory cache (GedraDataCache) reloads by asking for the rows changed since it last looked,
+        // which is a predicate on `updatedAt` run on every node. Without this index that is a full scan.
+        index(PF.updatedAt)
     }
 }
