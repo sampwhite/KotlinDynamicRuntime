@@ -77,25 +77,35 @@ fun entryUnionDefs(
     val branches = traits.filter { kind in it.appliesTo }.sortedBy { it.traitId }.map { it.typeName }
     val unionName = GU.unionName(kind)
     val unknownName = GU.unknownBranchName(kind)
+    val unknownDescription = "An entry whose trait this reader does not know -- from a client whose " +
+        "definitions it never loaded, or newer than this node."
     return schemaDefs(cxt, namespace) {
-        variantDefault(
-            unknownName,
-            GE.traitId,
-            "An entry whose trait this reader does not know -- from a client whose definitions it never " +
-                "loaded, or newer than this node.",
-        ) {
+        variantDefault(unknownName, GE.traitId, unknownDescription) {
             // Declared even though the branch is open, so the shape a reader can rely on is stated rather
             // than merely tolerated: an entry always has data, known trait or not.
             property(GE.data, "The entry's own data, in a shape this reader cannot describe.") {
                 type = SCT.kObject
             }
         }
-        variantType(
-            unionName,
-            "Any entry that may be carried by a ${kind.name} gedra, selected by its ${GE.traitId}.",
-            on = GE.traitId,
-            branches = branches,
-            defaultBranch = unknownName,
-        )
+        if (branches.isEmpty()) {
+            // A client may support no traits at all -- one that has declared none yet, which is an ordinary
+            // state rather than a misconfiguration (issue #356). There is nothing to select between, so the
+            // union is not a union: it is the unknown branch's own shape, and every entry lands on it as
+            // plain JSON. Said this way because a `oneOf` with no branches is not a document any reader can
+            // make sense of, ours included -- it would refuse the boot rather than accept everything.
+            variantDefault(unionName, GE.traitId, unknownDescription) {
+                property(GE.data, "The entry's own data, in a shape this reader cannot describe.") {
+                    type = SCT.kObject
+                }
+            }
+        } else {
+            variantType(
+                unionName,
+                "Any entry that may be carried by a ${kind.name} gedra, selected by its ${GE.traitId}.",
+                on = GE.traitId,
+                branches = branches,
+                defaultBranch = unknownName,
+            )
+        }
     }
 }

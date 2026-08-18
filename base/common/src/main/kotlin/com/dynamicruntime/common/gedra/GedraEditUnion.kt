@@ -54,21 +54,27 @@ fun entryEditUnionDefs(
                 editDataProperty(trait.dataSchema)
             }
         }
-        variantDefault(
-            unknownName,
-            GE.traitId,
-            "An edit to an entry whose trait this node does not know -- a client's own definition, or one " +
-                "newer than this node. Its data is carried as supplied.",
-        ) {
+        val unknownDescription = "An edit to an entry whose trait this node does not know -- a client's own " +
+            "definition, or one newer than this node. Its data is carried as supplied."
+        variantDefault(unknownName, GE.traitId, unknownDescription) {
             editEnvelopeFields()
             editDataProperty(null)
         }
-        variantType(
-            unionName,
-            "An edit to one entry of a ${kind.name} gedra, selected by its ${GE.traitId}.",
-            on = GE.traitId,
-            branches = applicable.map { GU.editBranchName(it.typeName) },
-            defaultBranch = unknownName,
-        )
+        if (applicable.isEmpty()) {
+            // A client supporting no traits, exactly as `entryUnionDefs` handles it: nothing to select
+            // between, so the union is the unknown branch's own shape and every edit is carried as supplied.
+            variantDefault(unionName, GE.traitId, unknownDescription) {
+                editEnvelopeFields()
+                editDataProperty(null)
+            }
+        } else {
+            variantType(
+                unionName,
+                "An edit to one entry of a ${kind.name} gedra, selected by its ${GE.traitId}.",
+                on = GE.traitId,
+                branches = applicable.map { GU.editBranchName(it.typeName) },
+                defaultBranch = unknownName,
+            )
+        }
     }
 }

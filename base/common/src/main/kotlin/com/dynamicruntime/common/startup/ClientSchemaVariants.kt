@@ -2,9 +2,15 @@ package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.entryEditUnionDefs
+import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.gedraConfigCheckMode
 import com.dynamicruntime.common.gedra.reportConfigProblem
+import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.schema.LogSchema
 import com.dynamicruntime.common.schema.narrowingProblems
 import com.dynamicruntime.common.schema.overlayDefs
@@ -33,15 +39,27 @@ fun buildClientVariants(
     collected: SchemaCollector,
     global: KdrSchemaStore,
 ): Map<String, KdrSchemaStore> {
-    if (collected.clientOverlays.isEmpty()) {
+    val defsByClient = collected.gedraConfigs.configs.mapNotNull { it.client }.associateBy { it.clientId }
+    // Every client that could differ from global: one that overlaid something, and one whose definition
+    // restricts which traits it supports. The second has no overlays at all, so iterating those alone would
+    // miss it -- a client that narrows its trait set purely by declaration is the ordinary case.
+    val clients = (collected.clientOverlays.keys + defsByClient.keys).toSet()
+    if (clients.isEmpty()) {
         return emptyMap()
     }
     val mode = gedraConfigCheckMode(cxt)
     val issues = mutableListOf<GedraConfigIssue>()
     val out = LinkedHashMap<String, KdrSchemaStore>()
-    for ((client, declared) in collected.clientOverlays) {
-        val overlays = keepWhatNarrows(cxt, client, global.defs, declared, mode, issues)
-        val defs = overlayDefs(global.defs, overlays)
+    for (client in clients) {
+        val declared = collected.clientOverlays[client] ?: emptyMap()
+        val authored = keepWhatNarrows(cxt, client, global.defs, declared, mode, issues)
+        val unions = changedUnions(cxt, collected, global, client, defsByClient[client], authored.keys)
+        // The unions are applied **after** the overlay, and so replace rather than merge. `overlayDefs` is
+        // built for an authored alteration, where an unmentioned key means "leave it as it was" -- exactly
+        // wrong for a type regenerated whole, whose absent `oneOf` is the statement being made. Merged, the
+        // global `oneOf` would survive underneath and the client would go on recognizing every trait.
+        val merged = overlayDefs(global.defs, authored)
+        val defs = if (unions.isEmpty()) merged else merged + unions
         if (defs === global.defs) {
             // Identity, not equality: a client whose overlays all fell away -- or who declared none that
             // change anything -- shares the global store rather than paying for a parse that would produce
@@ -54,10 +72,57 @@ fun buildClientVariants(
             tables = global.tables,
             defs = defs,
         )
-        LogSchema.debug(cxt) { "Built a schema variant for '$client' from ${overlays.size} definition(s)." }
+        LogSchema.debug(cxt) {
+            "Built a schema variant for '$client': ${authored.size} altered definition(s), " +
+                "${unions.size} regenerated union(s)."
+        }
     }
     return out
 }
+
+/**
+ * The entry unions for [client], but **only where they differ** from the global ones (issue #356).
+ *
+ * The unions are what makes a client's *supported* set real: `entryUnionDefs` is already a function of
+ * (client, kind) and is called once with the global scope, so a variant is the same call with this client's
+ * `supportedTraits`. A client supporting fewer traits gets a union with fewer branches, and an entry carrying
+ * a trait it does not support lands on the default branch as plain JSON -- carried rather than refused, which
+ * is what makes an allowlist tolerable to change at all (#301).
+ *
+ * Returning only what differs is load-bearing rather than an optimization: a client that supports exactly
+ * what global does produces exactly the global union, and handing that back as an "overlay" would make
+ * `overlayDefs` build a variant that is equal to the global document in every respect while not being the
+ * same object -- so `hub` and `public`, which include `#allGlobal` and vary nothing, would each pay for a
+ * parse and a store to hold the same answer.
+ *
+ * These are **generated**, so they are not put through the narrowing check. Fewer branches is narrower, but
+ * the rule is about what a client may *author*, and nobody authored this.
+ */
+private fun changedUnions(
+    cxt: KdrCxt,
+    collected: SchemaCollector,
+    global: KdrSchemaStore,
+    client: String,
+    def: ClientDef?,
+    overlaidTypes: Set<String>,
+): Map<String, Any?> {
+    val traits = supportedTraits(collected.gedraConfigs, client, def, overlaidTypes)
+    val built = LinkedHashMap<String, Any?>()
+    for (kind in unionKinds) {
+        built.putAll(entryUnionDefs(cxt, GCFG.globalNamespace, kind, traits))
+        built.putAll(entryEditUnionDefs(cxt, GCFG.globalNamespace, kind, traits))
+    }
+    return built.filter { (name, body) -> body != global.defs[name] }
+}
+
+/**
+ * The kinds that have manufactured unions, which is `formDoc` today.
+ *
+ * Named here as well as in `SchemaService` because the two must agree: a kind given a union globally and not
+ * per client would silently keep the global one for every client. Adding a kind means adding it in both
+ * places, which is the right amount of friction for a decision that changes what can be stored.
+ */
+private val unionKinds = listOf(GedraDataType.formDoc)
 
 /**
  * [declared] with any alteration that would widen a global type dropped.

@@ -1,5 +1,11 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
@@ -86,6 +92,21 @@ class ClientSchemaVariantTest : StringSpec({
         message shouldContain "does not narrow"
         message shouldContain "adds the property 'extra'"
     }
+
+    // The other half of a variant: which traits are *in* the union, as opposed to what those traits accept.
+    // `offsite` declares no `includedTraits`, so it supports nothing -- an ordinary state for a client that
+    // has not declared any yet, and one the union has to be able to express.
+    "a client supporting no traits gets a union that recognizes none" {
+        val service = schema(boot("variantTest"))
+        val unionName = "globalconfig." + GU.unionName(GedraDataType.formDoc)
+        // Global selects between its traits by branch...
+        service.storeFor(null).types.getValue(unionName).variants.shouldNotBeNull()
+        // ...and a client supporting none has nothing to select between, so every entry lands on the open
+        // shape as plain JSON rather than the boot refusing a `oneOf` with no branches in it.
+        val theirs = service.storeFor(VariantFixtureComponent.narrowClient).types.getValue(unionName)
+        theirs.variants shouldBe null
+        theirs.additionalProperties shouldBe true
+    }
 })
 
 /** Contributes a global type and a `hub`-owned alteration of it, so a boot has a variant to build. */
@@ -107,6 +128,19 @@ class VariantFixtureComponent : ComponentDefinition {
                 property("sample", "Refers to the sample.") { ref("Sample") }
             }
         },
+        // A client that declares no `includedTraits` at all: it supports nothing, which is an ordinary state
+        // for a client nobody has finished setting up, and one the union has to be able to say.
+        gedraConfig(cxt, "narrowClient", "${narrowClient}config", narrowClient) {
+            defineClient(
+                ClientDef(
+                    clientId = narrowClient,
+                    name = "Narrow",
+                    usageType = ClientUsageType.dev,
+                    audience = ClientAudience.customer,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+        },
         // `hub`'s own: the same name, which makes it an alteration of that type for `hub` alone.
         gedraConfig(cxt, "variantOverlay", "${baseNamespace}hub", CL.hub) {
             // Qualified through the companion, not "$namespace.Sample": inside a builder block `namespace`
@@ -123,6 +157,7 @@ class VariantFixtureComponent : ComponentDefinition {
     companion object {
         const val loadFlag = "KDR_LOAD_VARIANT_FIXTURE"
         const val baseNamespace = "variantfixture"
+        const val narrowClient = "narrowfixture"
         const val sampleType = "$baseNamespace.Sample"
         const val holderType = "$baseNamespace.Holder"
     }
