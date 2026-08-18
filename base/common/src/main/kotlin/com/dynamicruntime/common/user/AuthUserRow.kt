@@ -87,6 +87,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         ADF.userId to userId,
         ADF.primaryId to primaryId,
         ADF.username to username,
+        ADF.client to client,
         ADF.org to org,
         ADF.isEntity to isEntity,
         ADF.name to name,
@@ -145,6 +146,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
                     type = SCT.array
                     items { type = SCT.string }
                 }
+                property(ADF.client, "The client the user belongs to.", required = true)
                 property(ADF.org, "The user's primary organization within their client, when they have one.")
                 property(ADF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
                 property(ADF.name, "The account's real-world name: a person's full name, or a business's name.")

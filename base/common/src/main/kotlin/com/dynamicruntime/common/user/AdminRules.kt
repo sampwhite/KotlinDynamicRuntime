@@ -49,7 +49,7 @@ object ADMR {
  * granted [autoAdminRoles] as its user is provisioned.
  *
  * **At provisioning, and only there** (issue #352). It used to be re-applied on every login as well, so that
- * configuring the domain afterwards reached an operator who had already registered. That went with the `+`
+ * configuring the domain afterward reached an operator who had already registered. That went with the `+`
  * conventions, and the reason is worth keeping: a standing grant that re-asserts itself on every login is not
  * a statement about how an account was created, it is a permanent property of an address -- and one that only
  * ever grants, so a role an administrator deliberately removed would come back at the next login. An address

@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import kotlin.test.Test
@@ -18,7 +19,10 @@ import kotlin.test.assertEquals
 class AccessLevelTest {
 
     private fun user(vararg roles: String) =
-        AdminUser(userId = 1L, primaryId = "a@b.com", username = "a", roles = roles.toList(), org = null, isEntity = false, name = null, enabled = true, hasPassword = false)
+        AdminUser(
+            userId = 1L, primaryId = "a@b.com", username = "a", roles = roles.toList(),
+            client = CL.public, org = null, isEntity = false, name = null, enabled = true, hasPassword = false,
+        )
 
     // --- reading a level off a role list -------------------------------------
 
@@ -106,5 +110,19 @@ class AccessLevelTest {
             rolesWithCapability(listOf(ROLE.user), ROLE.allClients, granted = true), ROLE.admin,
         )
         assertEquals(listOf(ROLE.user, ROLE.admin, ROLE.allClients), promoted)
+    }
+
+    // --- how a client reads in the create form's selector ---------------------
+
+    @Test
+    fun clientLabelCarriesBothTheNameAndTheId() {
+        assertEquals("Hub (hub)", clientChoiceLabel(ClientChoice("hub", "Hub")))
+        assertEquals("Acme Corp (acme)", clientChoiceLabel(ClientChoice("acme", "Acme Corp")))
+    }
+
+    /** An unnamed client shows its id rather than an empty pair of brackets. */
+    @Test
+    fun clientLabelFallsBackToTheIdAlone() {
+        assertEquals("acme", clientChoiceLabel(ClientChoice("acme", "")))
     }
 }
