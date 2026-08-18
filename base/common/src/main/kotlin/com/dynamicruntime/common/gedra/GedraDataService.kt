@@ -603,7 +603,7 @@ class GedraDataService : ServiceInitializer {
      *
      * The variant is the **data's**, never the caller's, and the distinction only shows for a caller holding
      * `allClients`: a client narrows a type so that data living there is valid for that client's users, which
-     * is a fact about the destination rather than about whom did the writing. For everybody else the two are
+     * is a fact about the destination rather than about who did the writing. For everybody else the two are
      * the same client, since their scope confines them to it.
      */
     private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {

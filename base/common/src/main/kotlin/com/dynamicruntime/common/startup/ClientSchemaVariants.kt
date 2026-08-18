@@ -22,7 +22,7 @@ import com.dynamicruntime.common.util.toJsonMap
  *
  * A variant is the global document with one client's overlays applied and **re-parsed**, never the global
  * `SchType` graph edited or cloned. See `overlayDefs` for why: a `$ref` is bound to an object pointer during
- * parsing, so reparsing is what makes a reference to an altered type resolve to the altered form -- for
+ * parsing, so re-parsing is what makes a reference to an altered type resolve to the altered form -- for
  * nested constructs, union branches, and array items alike -- with no traversal to get wrong.
  *
  * Endpoints and tables are **shared by reference** with the global store. `client-definition.md` settles that
