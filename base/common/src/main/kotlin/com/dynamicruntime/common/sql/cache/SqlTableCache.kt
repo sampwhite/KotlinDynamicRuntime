@@ -306,11 +306,11 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
                 "CACHE loaded all of table ${params.tableName}: ${rows.size} rows in ${duration}ms."
             }
         }
-        if (rows.size > TCH.largeLoadWarning) {
+        if (rows.size > params.largeLoadWarning) {
             LogSql.warn(
                 cxt,
                 "CACHE load of table ${params.tableName} returned ${rows.size} rows, which is more than the " +
-                    "${TCH.largeLoadWarning} a table cache is meant to hold; consider whether it should be cached.",
+                    "${params.largeLoadWarning} this cache expects to hold; consider whether it should be cached.",
             )
         }
     }

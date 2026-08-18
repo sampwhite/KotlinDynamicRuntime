@@ -44,6 +44,16 @@ object GedraDataCache {
      */
     fun clientKindKey(client: String, kind: String): String = "$client\u0000$kind"
 
+    /**
+     * The row count past which a load warns this table has outgrown caching. The stated operational ceiling
+     * for gedras is 50,000; the warning sits at **double** that, so a deployment at its expected maximum loads
+     * in silence and the warning means what it says -- volume beyond what the cache was planned for -- rather
+     * than firing the moment capacity is reached. It deliberately does not inherit
+     * [TCH.defaultLargeLoadWarning], which is 50,000 and was sized for `AuthUsers`: that would put the warning
+     * line exactly on the ceiling.
+     */
+    const val largeLoadWarning = 100_000
+
     fun params(): SqlCacheParams<Map<String, Any?>> = SqlCacheParams(
         topic = gedraDataTopic,
         tableName = GDT.gedraData,
@@ -56,6 +66,7 @@ object GedraDataCache {
                 if (client == null || kind == null) null else clientKindKey(client, kind)
             },
         ),
+        largeLoadWarning = largeLoadWarning,
     )
 
     /** Registers the cache with the running service, or returns null when there is none. */

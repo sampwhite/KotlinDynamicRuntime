@@ -41,4 +41,11 @@ class SqlCacheParams<T : Any>(
     val indexes: List<SqlCacheIndex<T>> = emptyList(),
     /** Refresh order across caches, lower first -- for a cache whose consumers depend on another being current. */
     val priority: Int = PRI.standard,
+    /**
+     * Row count above which a load logs a warning that the table may be too large to cache. Defaults to
+     * [TCH.defaultLargeLoadWarning], which was sized for `AuthUsers`; a cache whose expected maximum is near or
+     * above that should set its **own**, comfortably above the size it expects, so a healthy table at capacity
+     * does not warn on every load and train the signal to be ignored.
+     */
+    val largeLoadWarning: Int = TCH.defaultLargeLoadWarning,
 )
