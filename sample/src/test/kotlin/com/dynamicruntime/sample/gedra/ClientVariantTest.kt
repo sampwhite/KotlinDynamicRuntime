@@ -102,31 +102,28 @@ class ClientVariantTest : StringSpec({
 
     // --- a trait the client does not support ------------------------------------
     //
-    // Narrower than it sounds, and worth pinning down because the obvious reading is wrong. `acme` omits
-    // `managerApproval`, so acme's union has no branch for it -- but the **edge** validates against the
-    // *global* union (case (a): the published input type stays global), and global knows that trait
-    // perfectly well. So the edge decides, and acme's omission changes nothing about what acme can store
-    // through the generic endpoints.
-    //
-    // Omission bites where the global reader is also ignorant -- a client's own trait, seen by anybody else
-    // -- which the next block covers. Until per-client endpoints publish a client's own union, `includedTraits`
-    // is a statement about forms and about what a *client-specific* surface would enforce, and not a fence
-    // around the shared one.
+    // Since the write path holds a call to the client's supported set by default (#379), omitting a trait is
+    // a **fence** rather than a note: acme leaves `managerApproval` out, so acme's users cannot store one
+    // without saying they mean to. That is what `includedTraits` was always meant to say, now true on the
+    // shared surface rather than only on the client-specific one #387 will add.
 
-    "omitting a trait does not change what can be stored through the generic endpoints" {
-        // Invalid against the global trait, so the edge refuses it -- for acme exactly as for anybody else,
-        // despite acme not supporting the trait at all.
-        val bad = mapOf(GE.traitId to ST.managerApproval, GE.data to mapOf(ST.decidedBy to "nobody"))
-        refused(everyone, bad).shouldNotBeNull()
-        refused(acme, bad).shouldNotBeNull()
+    "a trait acme omitted is refused for acme and accepted for a client that includes it" {
+        val entry = mapOf(GE.traitId to ST.managerApproval, GE.data to mapOf(ST.approved to true))
+        // globex takes `#allGlobal`, so it supports the trait and stores it.
+        create(globex, entry).shouldNotBeNull()
+        // acme named its traits one at a time and left this one out.
+        refused(acme, entry) shouldContainIgnoringCase ST.managerApproval
+    }
 
-        // Valid against the global trait, so it is stored -- again for acme too, and carried on acme's own
-        // default branch once there, since acme's union cannot recognize it.
-        val good = mapOf(GE.traitId to ST.managerApproval, GE.data to mapOf(ST.approved to true))
-        val id = create(acme, good)
+    "the refusal is a default, not a wall" {
+        val entry = mapOf(GE.traitId to ST.managerApproval, GE.data to mapOf(ST.approved to true))
+        val id = acme.postItem(
+            GEP.formDocCreate,
+            mapOf(GDF.allowAdditionalTraits to true, GDF.entries to listOf(entry)),
+        )[GDF.gedraId].toOptStr().shouldNotBeNull()
+        // Stored, and carried on acme's own default branch once there, since acme's union cannot name it.
         val stored = acme.getItem(GEP.formDoc, mapOf(GDF.gedraId to id))[GDF.entries].toJsonListOfMaps().single()
         stored[GE.traitId] shouldBe ST.managerApproval
-        stored[GE.data].toJsonMapOrEmpty()[ST.approved] shouldBe true
     }
 
     // --- a client's own trait ----------------------------------------------------
@@ -135,8 +132,13 @@ class ClientVariantTest : StringSpec({
         val bad = mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.findings to "no auditor named"))
         // Acme declared it, so acme is held to it: `auditor` is required.
         refused(acme, bad) shouldContainIgnoringCase SC.auditor
-        // Nobody else has heard of it, so it rides the default branch untouched.
-        create(everyone, bad).shouldNotBeNull()
+        // Nobody else has heard of it, so for them it is an unsupported trait -- refused by default, and
+        // carried untouched on the default branch when they say they mean it.
+        refused(everyone, bad).shouldNotBeNull()
+        everyone.postItem(
+            GEP.formDocCreate,
+            mapOf(GDF.allowAdditionalTraits to true, GDF.entries to listOf(bad)),
+        )[GDF.gedraId].toOptStr().shouldNotBeNull()
         create(acme, mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "Nia"))).shouldNotBeNull()
     }
 
@@ -151,19 +153,31 @@ class ClientVariantTest : StringSpec({
     // what closes it for a client that wants it closed: an endpoint naming one client can be strict at the
     // edge, because it has one answer to whose schema applies.
 
-    "a trait nobody declared is stored as supplied, on create" {
-        val id = create(everyone, mapOf(GE.traitId to "inventedByHand", GE.data to mapOf("anything" to 42L)))
+    "a trait nobody declared is refused by default, on create" {
+        refused(everyone, mapOf(GE.traitId to "inventedByHand", GE.data to mapOf("anything" to 42L)))
+            .shouldNotBeNull()
+    }
+
+    "a trait nobody declared is stored as supplied when asked, on create" {
+        val id = everyone.postItem(
+            GEP.formDocCreate,
+            mapOf(
+                GDF.allowAdditionalTraits to true,
+                GDF.entries to listOf(mapOf(GE.traitId to "inventedByHand", GE.data to mapOf("anything" to 42L))),
+            ),
+        )[GDF.gedraId].toOptStr().shouldNotBeNull()
         val stored = everyone.getItem(GEP.formDoc, mapOf(GDF.gedraId to id))[GDF.entries]
             .toJsonListOfMaps().single()
         stored[GE.traitId] shouldBe "inventedByHand"
         stored[GE.data].toJsonMapOrEmpty()["anything"] shouldBe 42L
     }
 
-    "a trait nobody declared is stored as supplied, on patch too" {
+    "a trait nobody declared is stored as supplied when asked, on patch too" {
         val id = create(everyone, mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Doc")))
         everyone.postItems(
             GEP.patch,
             mapOf(
+                GDF.allowAdditionalTraits to true,
                 GPF.targets to mapOf(
                     GedraDataType.formDoc.name to listOf(
                         mapOf(

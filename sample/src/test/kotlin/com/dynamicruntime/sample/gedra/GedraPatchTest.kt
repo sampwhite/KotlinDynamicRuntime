@@ -202,12 +202,14 @@ class GedraPatchTest : StringSpec({
 
     // An unknown trait reaches the union's default branch and is stored as sent, which is what makes the
     // general endpoint usable by a client whose own traits this node never loaded.
-    "an edit naming a trait this node does not know is carried through" {
+    // Opt-in since #379, as on create: an unsupported trait is refused unless the call says otherwise.
+    "an edit naming a trait this node does not know is carried through, when asked" {
         val id = create(alice, nameEntry("Host"))
-        alice.postItems(
-            GEP.patch,
-            patch(id to listOf(edit(GedraEditAction.addOrReplace, "aClientTraitNeverLoaded", mapOf("whatever" to 1)))),
+        val unknown = patch(
+            id to listOf(edit(GedraEditAction.addOrReplace, "aClientTraitNeverLoaded", mapOf("whatever" to 1))),
         )
+        alice.expectError(400, GEP.patch, unknown)
+        alice.postItems(GEP.patch, unknown + (GDF.allowAdditionalTraits to true))
         entriesOf(alice, id).getValue("aClientTraitNeverLoaded")[GE.data]
             .toJsonMapOrEmpty()["whatever"] shouldBe 1L
     }

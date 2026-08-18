@@ -13,7 +13,33 @@ import kotlin.time.Instant
 
 /** Field names for a gedra's wire shape (see [GedraDataRow.toJsonMap]). Each name matches its value. */
 @Suppress("ConstPropertyName")
+/**
+ * What the `allowAdditionalTraits` field says, written once so the type and the patch endpoint cannot come to
+ * describe the same flag differently.
+ */
+const val ADDITIONAL_TRAITS_HINT =
+    "Whether this call may write traits the client does not support. Defaults to false, so a misspelled " +
+        "trait id -- or one belonging to another client -- is refused rather than stored as an unrecognized " +
+        "shape. Reads are unaffected."
+
 object GDF {
+    /**
+     * Whether this call may write traits the client does not support. **Defaults to false** (issue #379).
+     *
+     * A client's `includedTraits` says which traits its people work with, and by default that is what a write
+     * is held to -- so a typo in a `traitId`, or a trait belonging to somebody else's client, is refused
+     * rather than quietly stored as an unrecognized shape. Set true to write outside the client's schema
+     * deliberately: importing another client's export, or storing a trait this node has not loaded a
+     * definition for.
+     *
+     * It governs **what this call writes**, not what the gedra already holds. A document carrying an entry
+     * from before is still editable without the flag, as long as this call is not itself writing an
+     * unsupported trait -- otherwise one legacy entry would make a document permanently unpatchable.
+     *
+     * Reads are unaffected. An unrecognized entry is always carried on the way out, which is what the
+     * union's open default branch is for (#301) and what lets one client read another's export at all.
+     */
+    const val allowAdditionalTraits = "allowAdditionalTraits"
     const val gedraId = "gedraId"
     const val gedraKind = "gedraKind"
     const val client = "client"
@@ -119,6 +145,11 @@ class GedraDataRow(
                     type = SCT.array
                     items { ref(entryRef) }
                 }
+                // Supplied, never stored, never echoed (issue #379). It has to be declared here because the
+                // create endpoint takes this type as its input and a resolved input is closed to anything
+                // undeclared -- so an undeclared flag would be refused rather than read. Optional, so an
+                // answer that omits it (which every answer does) still matches the type.
+                property(GDF.allowAdditionalTraits, ADDITIONAL_TRAITS_HINT) { type = SCT.boolean }
                 property(GDF.createdAt, "When the gedra was created.", required = true) {
                     dateTime()
                     derived = true
