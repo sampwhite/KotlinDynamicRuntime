@@ -104,8 +104,8 @@ Notes:
 A table small enough to fit in memory can be *cached* in it: `SqlTableCache` holds a copy and keeps it
 current by asking, incrementally, for the rows changed since it last looked. `AuthUsers` is cached this way,
 which is what stops every gated request from re-querying the acting user's row. Nodes tell each other about
-changes through one shared row (`KdrCacheState`), read once per request, so an unchanged table costs nothing
-beyond that read.
+changes through one shared row (`KdrCacheState`), which each node reads on a throttle (250ms), so an
+unchanged table costs nothing beyond that occasional read.
 
 Neither variable normally needs setting; they exist because a cache is the kind of thing you want a lever on
 at three in the morning, not a code change away.
@@ -113,7 +113,7 @@ at three in the morning, not a code change away.
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `KDR_TABLE_CACHE_DISABLED` | Turns **every** registered table cache off. Each cached lookup then misses and falls back to the SQL query it was replacing, so the deployment loses the speed and nothing else — the escape hatch if a cache is ever suspected of serving stale data. | off |
-| `KDR_TABLE_CACHE_MIN_RECHECK_MS` | How far back a cache reconsiders when the shared state row reports no change at all. It bounds staleness for a change nothing announced — rows written by a migration script or by hand — so lowering it makes such a change visible sooner at the cost of more reload queries. A change made *through the application* is unaffected: it is announced, and picked up immediately (on the writing node) or at the writer's next request end (on the others). | `30000` |
+| `KDR_TABLE_CACHE_MIN_RECHECK_MS` | How far back a cache reconsiders when the shared state row reports no change at all. It bounds staleness for a change nothing announced — rows written by a migration script or by hand — so lowering it makes such a change visible sooner at the cost of more reload queries. A change made *through the application* is unaffected by this floor: it is announced, so the writing node sees it immediately and the others within the state-row read throttle. | `30000` |
 
 ## Node identity
 
