@@ -129,7 +129,7 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
             ?: throw KdrException.mkInput("A valid '${APP.envAuthOp}' is required.")
         // Written through the request's WebRequest -- the transport-neutral seam -- so this works identically
         // under a real browser and the in-process test client. Safe here because the endpoint handler runs
-        // before the response is sent; a cookie set afterwards would be silently dropped.
+        // before the response is sent; a cookie set afterward would be silently dropped.
         val web = c.request?.webRequest
         when (op) {
             // A session cookie (no expiry): the downgrade lasts as long as the browser session and no longer,

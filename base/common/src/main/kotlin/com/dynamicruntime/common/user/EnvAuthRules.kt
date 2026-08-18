@@ -120,7 +120,7 @@ object EnvAuthRules {
      * Whether this node **invents** env auth for a request that did not come through a proxy.
      *
      * The convenience that makes a developer's own box behave like one behind an edge, so the env-authed
-     * surface is there from the first page load rather than needing a fixture call. The suppress toggle is
+     * surface is there from the first page load rather than needing a fixture call. The "suppress" toggle is
      * what gets them back to the ordinary view, which is much of why it exists.
      *
      * Sibling to [isTrusted], and the distinction is worth keeping: that one decides whether to **believe a
@@ -132,7 +132,7 @@ object EnvAuthRules {
      * the suite* env-authed and quietly flip the baseline every test reasons from.
      *
      * The absence of a forwarded-for address (checked by the caller) is **not** what makes this safe -- that is
-     * the signature of a request which bypassed the proxy, which on a real node is the last thing to reward.
+     * the signature of a request that bypassed the proxy, which on a real node is the last thing to reward.
      * The fence is `isTestInstance`, which refuses to boot outside `local`/`unit`. The forwarded-for check does
      * a different job: telling "I am testing through the edge" apart from "I am hitting the box directly" on a
      * machine where both happen.
