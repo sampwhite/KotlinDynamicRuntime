@@ -194,4 +194,44 @@ class TableCacheSkillExamplesTest : StringSpec({
         cache.snapshot.byIndex(labelField, "S1x").shouldNotBeNull().id shouldBe cache.idOf("r1")
         cache.snapshot.byIndex(labelField, "S1").shouldBeNull()
     }
+
+    /**
+     * The skill's "Is it current right now?" example. The claim that carries it is that **asking does not
+     * refresh** -- without that the check could not be used in the middle of checking something else, and a
+     * test using it would be measuring its own question.
+     */
+    "the refresh-state example answers without refreshing" {
+        val tbl = tables("SkillState", "skillState") + SqlTableCacheService.tables(KdrCxt.mkSimpleCxt("def"))
+        val table = tbl.first { it.tableName == "SkillState" }
+        val cxt = bootCxt("skillState", tbl)
+        val service = SqlTableCacheService()
+        cxt.instanceConfig.put(SqlTableCacheService.serviceName, service)
+        service.checkInit(cxt)
+        val cache = service.register(params(table))
+        write(cxt, table, "r1", owner = "acme", label = "T1")
+
+        // The skill's `SqlTableCacheService.get(cxt)?.refreshState(cxt)`, with the null case asserted away.
+        val state = SqlTableCacheService.get(cxt).shouldNotBeNull().refreshState(cxt)
+        state.need shouldBe SqlCacheRefreshNeed.neverRefreshed
+        state.isRefreshed shouldBe false
+        state.needsRefresh shouldBe true
+        cache.isLoaded shouldBe false // "Asking does not refresh."
+
+        // "To act on the answer, service.checkRefresh(cxt) sweeps unconditionally."
+        service.checkRefresh(cxt)
+        cache.snapshot.byIndex(labelField, "T1").shouldNotBeNull()
+
+        // "`changed` after your own write is the expected reading" -- the edit-and-check loop itself.
+        SqlTableCacheService.getAndRefresh(cxt)
+        service.refreshState(cxt).need shouldBe SqlCacheRefreshNeed.current
+        write(cxt, table, "r2", owner = "acme", label = "T2")
+        val afterWrite = service.refreshState(cxt)
+        afterWrite.need shouldBe SqlCacheRefreshNeed.changed
+        afterWrite.pendingTables shouldContainExactly listOf("SkillState")
+
+        // "needsRefresh is not !isRefreshed": switched off, neither holds.
+        service.isDisabled = true
+        service.refreshState(cxt).isRefreshed shouldBe false
+        service.refreshState(cxt).needsRefresh shouldBe false
+    }
 })

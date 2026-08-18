@@ -355,4 +355,61 @@ class SqlTableCacheTest : StringSpec({
         state["GadgetState"] shouldBe (later + 1.milliseconds)
         state["OtherTable"] shouldBe early
     }
+
+    /**
+     * The refresh state answers what an edit-and-check loop actually asks: *will the next read pick my write
+     * up, and if not, why?* It has to answer **without refreshing** -- a question that changed the thing it
+     * reports could not be asked in the middle of checking something.
+     */
+    "the refresh state names why the next read will sweep, and asking does not sweep" {
+        val tables = gadgetTables("GadgetRefresh", "gcacheRefresh") +
+            SqlTableCacheService.tables(KdrCxt.mkSimpleCxt("def"))
+        val table = tables.first { it.tableName == "GadgetRefresh" }
+        val cxt = bootCxt("cacheRefresh", tables)
+        val service = SqlTableCacheService()
+        cxt.instanceConfig.put(SqlTableCacheService.serviceName, service)
+        service.checkInit(cxt) // also subscribes the write listener, so writes below announce themselves
+        val cache = service.register(gadgetCache(table).params)
+        write(cxt, table, "r1", owner = "alice", label = "R1")
+
+        // Nothing has read a cache on this context yet -- and asking twice leaves the cache still unloaded.
+        service.refreshState(cxt).need shouldBe SqlCacheRefreshNeed.neverRefreshed
+        service.refreshState(cxt).needsRefresh shouldBe true
+        cache.isLoaded shouldBe false
+
+        SqlTableCacheService.getAndRefresh(cxt)
+        val refreshed = service.refreshState(cxt)
+        refreshed.need shouldBe SqlCacheRefreshNeed.current
+        refreshed.isRefreshed shouldBe true
+        refreshed.refreshedAt.shouldNotBeNull()
+        cache.snapshot.get(cache.idOf("r1")).shouldNotBeNull()
+
+        // A local write moves the node-wide generation, so this context's memo is stale. Reported as the
+        // write rather than as the reload it also leaves pending: the write is the cause, the other the effect.
+        write(cxt, table, "r2", owner = "alice", label = "R2")
+        val afterWrite = service.refreshState(cxt)
+        afterWrite.need shouldBe SqlCacheRefreshNeed.changed
+        afterWrite.pendingTables shouldContainExactly listOf("GadgetRefresh")
+        SqlTableCacheService.getAndRefresh(cxt)
+        service.refreshState(cxt).pendingTables shouldBe emptyList()
+
+        // A reload that could not run -- what an open transaction leaves behind -- has no generation move to
+        // explain it, and is the one case the memo alone would call current.
+        cache.markChanged()
+        service.refreshState(cxt).need shouldBe SqlCacheRefreshNeed.reloadPending
+        SqlTableCacheService.getAndRefresh(cxt)
+        service.refreshState(cxt).need shouldBe SqlCacheRefreshNeed.current
+
+        // Past the recheck floor, a long-lived context reconsiders rather than serving one snapshot forever.
+        cxt.instanceConfig.clock.advanceBy((service.minRecheckMs + 1).milliseconds)
+        service.refreshState(cxt).need shouldBe SqlCacheRefreshNeed.aged
+
+        // Switched off, neither predicate holds: nothing is current and nothing ever will be, so a caller
+        // waiting for freshness is told to stop waiting rather than to keep asking.
+        service.isDisabled = true
+        val off = service.refreshState(cxt)
+        off.need shouldBe SqlCacheRefreshNeed.disabled
+        off.isRefreshed shouldBe false
+        off.needsRefresh shouldBe false
+    }
 })

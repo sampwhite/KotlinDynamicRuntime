@@ -337,8 +337,64 @@ class SqlTableCacheService : ServiceInitializer {
         return result
     }
 
-    /** Whether any registered cache has a local write pending a reload; consulted by [getAndRefresh]. */
-    fun hasPendingReload(): Boolean = caches.values.any { it.forceReload }
+    // --- what state the caches are in ---------------------------------------
+
+    /**
+     * What [getAndRefresh] memoizes in [KdrCxt.locals]: which [changeGeneration] the context refreshed at,
+     * and when. Immutable, satisfying the locals contract when copied into a sub-context.
+     */
+    class RefreshMemo(val generation: Long, val refreshedAtMs: Long)
+
+    /** Cached tables this node has written and not yet reloaded, sorted. Empty in the ordinary case. */
+    fun pendingReloadTables(): List<String> =
+        caches.values.filter { it.forceReload }.map { it.params.tableName }.sorted()
+
+    /**
+     * Whether the caches are current *for this context* and, if not, why the next cached read will sweep
+     * them -- **deciding without sweeping**. This is the whole decision, in one place: [getAndRefresh] acts
+     * on it and [refreshState] describes it, so a check and the read after it cannot disagree.
+     *
+     * On the hot path (every cached read reaches it), so it allocates nothing: the branches read volatile
+     * fields, one map entry and a short-circuiting scan of the caches.
+     */
+    fun refreshNeed(cxt: KdrCxt): SqlCacheRefreshNeed {
+        val memo = cxt.locals[TCH.refreshedKey] as? RefreshMemo
+        // Ordered by how directly each explains the sweep, so the reported reason is the one worth acting on:
+        // a local write outranks an aged memo, which is merely the clock.
+        return when {
+            isDisabled -> SqlCacheRefreshNeed.disabled
+            memo == null -> SqlCacheRefreshNeed.neverRefreshed
+            memo.generation != changeGeneration.get() -> SqlCacheRefreshNeed.changed
+            caches.values.any { it.forceReload } -> SqlCacheRefreshNeed.reloadPending
+            cxt.instanceNow().toEpochMilliseconds() - memo.refreshedAtMs >= minRecheckMs ->
+                SqlCacheRefreshNeed.aged
+            else -> SqlCacheRefreshNeed.current
+        }
+    }
+
+    /**
+     * [refreshNeed] with the context around it -- when this context last swept, against which change
+     * generation, and what is pending -- for a human or a failing assertion to read. Refreshes nothing, which
+     * is what makes it usable in the middle of checking something else.
+     *
+     * The intended caller is an edit-and-check loop or a test: having written a row, ask whether the next
+     * read picks it up and get a named reason, instead of inferring one from a row count that can be right
+     * for the wrong reason. It is also the honest way to assert a read came from memory --
+     * [SqlCacheRefreshNeed.current] before the read means no query was issued for it.
+     */
+    fun refreshState(cxt: KdrCxt): SqlCacheRefreshState {
+        val need = refreshNeed(cxt)
+        val memo = cxt.locals[TCH.refreshedKey] as? RefreshMemo
+        return SqlCacheRefreshState(
+            need = need,
+            refreshedAt = memo?.let { Instant.fromEpochMilliseconds(it.refreshedAtMs) },
+            generation = changeGeneration.get(),
+            refreshedAtGeneration = memo?.generation,
+            // `current` has already established there is nothing pending, so the list is skipped rather than
+            // built to be empty.
+            pendingTables = if (need.isCurrent) emptyList() else pendingReloadTables(),
+        )
+    }
 
     @Suppress("ConstPropertyName")
     companion object {
@@ -354,12 +410,6 @@ class SqlTableCacheService : ServiceInitializer {
             get(cxt)?.register(params)
 
         /**
-         * What [getAndRefresh] memoizes in [KdrCxt.locals]: which [changeGeneration] the context refreshed
-         * at, and when. Immutable, satisfying the locals contract when copied into a sub-context.
-         */
-        class RefreshMemo(val generation: Long, val refreshedAtMs: Long)
-
-        /**
          * Refreshes every cache at most **once per context per state of the world**, memoized in
          * [KdrCxt.locals]. This is what makes an attached cache cheap: a request reading four cached tables
          * costs one refresh sweep between them, not four.
@@ -369,15 +419,17 @@ class SqlTableCacheService : ServiceInitializer {
          * its parent's memo, which key-removal could never do), when a cache still has a reload pending (a
          * refresh that could not run, e.g. inside a transaction), or when it is older than [minRecheckMs] (so
          * a long-lived background context re-refreshes rather than serving its first snapshot forever).
+         *
+         * Those three checks live in [refreshNeed], which any caller can ask *without* triggering the sweep
+         * it describes -- one definition of "is this current", answering both the reader and the onlooker.
          */
         fun getAndRefresh(cxt: KdrCxt): SqlTableCacheService? {
             val service = get(cxt) ?: return null
             if (service.isDisabled) return service
-            val memo = cxt.locals[TCH.refreshedKey] as? RefreshMemo
+            // Read before the sweep and stamped on the memo below: dating the memo from *after* a slow sweep
+            // would hide that time inside the recheck window.
             val nowMs = cxt.instanceNow().toEpochMilliseconds()
-            if (memo != null && memo.generation == service.changeGeneration.get() &&
-                nowMs - memo.refreshedAtMs < service.minRecheckMs && !service.hasPendingReload()
-            ) {
+            if (service.refreshNeed(cxt).isCurrent) {
                 return service
             }
             // Capture the generation before refreshing: a write landing mid-refresh then invalidates this
