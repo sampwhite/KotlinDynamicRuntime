@@ -412,7 +412,7 @@ val Users = FC<Props> {
             // Chosen at creation and never again (issue #352). A user's content carries their client both in
             // its `client` column and inside every gedra id, so moving one would strand it -- there is no
             // set-client call for an editor to offer, which is why this is a selector on create and plain text
-            // afterwards. Offered only to a caller holding the capability, for the same reason the checkbox
+            // afterward. Offered only to a caller holding the capability, for the same reason the checkbox
             // above is: a scoped administrator naming another client could only ever produce a 400.
             if (creating && clientChoices.isNotEmpty()) {
                 div {
@@ -591,7 +591,7 @@ private fun clientOptions(choices: List<ClientChoice>): Array<dynamic> = choices
 
 /** Says why the choice is offered here and nowhere else. */
 private const val clientHint =
-    "Which client the new user belongs to. It cannot be changed afterwards: their content carries the " +
+    "Which client the new user belongs to. It cannot be changed afterward: their content carries the " +
         "client, so moving them would leave it behind."
 
 /**

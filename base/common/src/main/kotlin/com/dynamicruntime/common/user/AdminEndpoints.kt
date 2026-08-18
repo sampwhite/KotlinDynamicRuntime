@@ -101,7 +101,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             field(
                 ADF.client,
                 "Client for the new user; defaults to the creator's own. Naming a different one requires the " +
-                    "'${ROLE.allClients}' capability, and it cannot be changed afterwards.",
+                    "'${ROLE.allClients}' capability, and it cannot be changed afterward.",
             )
             field(ADF.isEntity, "Whether the new account belongs to a business rather than a person.") { type = SCT.boolean }
             field(ADF.name, "The new account's name: a person's full name, or the business's name.")

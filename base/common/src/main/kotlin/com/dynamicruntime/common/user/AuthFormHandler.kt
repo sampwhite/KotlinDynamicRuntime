@@ -485,7 +485,7 @@ class AuthFormHandler(
     private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean): Map<String, Any?> {
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
         // The auto-admin rule is not re-applied here (issue #352). It used to be, so that configuring the
-        // admin domain afterwards reached an operator who had already registered -- but a grant that
+        // admin domain afterward reached an operator who had already registered -- but a grant that
         // re-asserts itself on every login is a permanent property of an address rather than a statement
         // about how an account was created, and it only ever grants, so a role an administrator deliberately
         // removed came back at the next login. An address now decides what a user is provisioned as, and from

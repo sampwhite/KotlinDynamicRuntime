@@ -103,7 +103,7 @@ A fourth is **belonging**, and behaves unlike the other three:
 - **Client** — which client the account is in (issue #352). Chosen when the user is **created** and never
   again: their content carries the client both in its `client` column and inside every `GedraId`, so moving
   someone would strand it. There is no set-client call for an editor to offer, which is why this is a `Select`
-  while creating and a read-only field afterwards — the one control on this page whose absence is the point.
+  while creating and a read-only field afterward — the one control on this page whose absence is the point.
   Offered only to a caller holding `allClients`, who is also the only one able to read `/admin/clients` to
   populate it; a scoped administrator's client is not a decision. The list gains a **Client** column under the
   same condition, because a column that says one thing says nothing.
