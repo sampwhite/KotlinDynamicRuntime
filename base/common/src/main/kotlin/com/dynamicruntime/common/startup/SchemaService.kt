@@ -90,15 +90,17 @@ class SchemaService : ServiceInitializer {
         // every component has contributed, and by the time anything reads the store, it is an ordinary type.
         // Called once with the global scope; per-client views call the same function with a different one.
         val globalTraits = collected.gedraConfigs.traitsFor(GID.globalClient)
-        collected.defs.putAll(
-            entryUnionDefs(cxt, GCFG.globalNamespace, GedraDataType.formDoc, globalTraits),
-        )
-        // The edit union beside it, from the same traits (issue #337): one source, two renderings. Only the
-        // kinds that have an entry union get one, which today is `formDoc` -- adding a kind means adding it in
-        // both places, which is the right amount of friction for a decision that changes what can be stored.
-        collected.defs.putAll(
-            entryEditUnionDefs(cxt, GCFG.globalNamespace, GedraDataType.formDoc, globalTraits),
-        )
+        // The kinds that carry validated entries. The union is what `checkStoredEntries` validates against,
+        // and a kind WITHOUT one is silently unvalidated (its lookup is a `?: return`) -- so a kind whose
+        // entries are written by any real path must be in this list. `wfData` joined when the workflow
+        // engine started storing entries on workflow gedras (issue #381); `userData`/`fileRef` have no
+        // entry-writing path yet.
+        val entryKinds = listOf(GedraDataType.formDoc, GedraDataType.wfData)
+        for (kind in entryKinds) {
+            collected.defs.putAll(entryUnionDefs(cxt, GCFG.globalNamespace, kind, globalTraits))
+            // The edit union beside it, from the same traits (issue #337): one source, two renderings.
+            collected.defs.putAll(entryEditUnionDefs(cxt, GCFG.globalNamespace, kind, globalTraits))
+        }
 
         val types = parseSchemaTypes(collected.defs)
         val endpoints = availableEndpoints.associateBy { it.collationKey }

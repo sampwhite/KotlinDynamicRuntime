@@ -49,15 +49,16 @@ fun coreTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, GT.coreTraits, GCFG.
      * the trait and its shape, and a constraint that spans stored rows needs somewhere to be enforced that
      * does not exist yet.
      *
-     * Bound to form documents alone for now. It means the same thing on workflow data and will be bound there
-     * too when there is workflow data to bind it to — which is exactly why `appliesTo` is a set, and why this
-     * is one trait rather than a `name` beside a `wfDataName` meaning the same thing.
+     * Bound to form documents **and workflow data**: it means the same thing on both, which is exactly why
+     * `appliesTo` is a set and this is one trait rather than a `name` beside a `wfDataName` meaning the same
+     * thing. The workflow binding arrived with workflow data itself (`gedra-workflow.md`) — the "when there is
+     * workflow data to bind it to" this comment used to promise.
      */
     trait(
         GT.nameEntry,
         GT.name,
-        setOf(GedraDataType.formDoc),
-        "What somebody chose to call this document.",
+        setOf(GedraDataType.formDoc, GedraDataType.wfData),
+        "What somebody chose to call this document or workflow.",
     ) {
         property(GT.name, "What to call it.", required = true) { maxLength = GT.nameMaxLength }
     }
