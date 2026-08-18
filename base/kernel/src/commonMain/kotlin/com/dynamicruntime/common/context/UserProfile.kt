@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.context
 
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.util.getOptLong
@@ -50,6 +51,22 @@ data class UserProfile(
      * client.
      */
     val client: String = CL.hub,
+    /**
+     * Whether a **database row** stands behind this profile (issue #386).
+     *
+     * False for the three profiles the code manufactures -- [systemUser], [anonymous] and [envAuthed] -- and
+     * true for one read from `AuthUsers`. A property those first two always had and never expressed: they are
+     * skipped by `refreshActingRoles` today because [isLoggedIn] is false, which is *true* but is not the
+     * reason. An env-authed caller is the first case where the two diverge, since that one genuinely is
+     * logged in.
+     *
+     * **Defaults to true, and that direction is deliberate**, against the usual instinct here. Wrongly marked
+     * row-backed means a refresh is attempted: on an ordinary node the row is simply absent and roles are
+     * cleared, which narrows; on a node with no user service it fails loudly. Wrongly marked *not*
+     * row-backed means the refresh is skipped and a **revoked role is retained** -- which widens, and
+     * silently. The safer error is the one that costs access rather than grants it.
+     */
+    val isRowBacked: Boolean = true,
     /**
      * The user's **primary organization** within their [client], or null when they have none -- either the
      * client has no organizations at all, or this user is not confined to one (issue #225).
@@ -141,10 +158,30 @@ data class UserProfile(
         const val infoTypeName = "UserInfo"
 
         /** The implicit, unauthenticated system user used for internal/acting defaults. */
-        fun systemUser(): UserProfile = UserProfile(authId = null)
+        fun systemUser(): UserProfile = UserProfile(authId = null, isRowBacked = false)
 
         /** The profile for a caller who is not logged in: an anonymous identity in the public client. */
-        fun anonymous(): UserProfile = UserProfile(authId = anonymousAuthId, client = CL.public)
+        fun anonymous(): UserProfile =
+            UserProfile(authId = anonymousAuthId, client = CL.public, isRowBacked = false)
+
+        /**
+         * The profile for a caller an **edge** vouched for (issue #386): authenticated by [email] at the
+         * perimeter, acting for [CL.house], and backed by no database row anywhere.
+         *
+         * **[ROLE.operator], because `admin` has nothing to mean on an edge.** The admin sections are user
+         * administration, and an edge has no user store -- there is nothing there to administer. `operator` is
+         * the level for *running the deployment rather than using it*, which is exactly an edge's own surface.
+         * `RoleLadder` ranks admin above it, so nothing is locked in should that change.
+         *
+         * The address is the identity: it is what reaches the log line, and it is why [userId] stays the
+         * default rather than being invented. Nothing may query by it -- see [isRowBacked].
+         */
+        fun envAuthed(email: String): UserProfile = UserProfile(
+            authId = email,
+            client = CL.house,
+            roles = setOf(ROLE.operator),
+            isRowBacked = false,
+        )
 
         /**
          * Reconstructs a [UserProfile] from a [toUserInfo] map -- the mirror of [toUserInfo], so the frontend

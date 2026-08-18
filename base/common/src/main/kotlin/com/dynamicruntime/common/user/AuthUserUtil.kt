@@ -81,8 +81,12 @@ private fun requireUsableForLogin(row: AuthUserRow) {
  */
 fun refreshActingRoles(cxt: KdrCxt) {
     val profile = cxt.userProfile
-    if (!profile.isLoggedIn) {
-        return // anonymous/system callers have no row to read
+    // Skipped when there is no row to read -- which is the actual reason, and worth saying rather than
+    // relying on `isLoggedIn` to imply it (issue #386). The system and anonymous profiles happen to be caught
+    // by both; an env-authed caller is the first that is genuinely logged in and still has no row, and asking
+    // the wrong question about it would send a query after `CL.systemUserId`.
+    if (!profile.isRowBacked || !profile.isLoggedIn) {
+        return
     }
     val row = UserService.get(cxt)?.queryByUserId(cxt, profile.userId) ?: return
     val liveRoles = if (row.enabled) row.roles.toSet() else emptySet()
