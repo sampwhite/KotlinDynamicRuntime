@@ -18,20 +18,31 @@ class EdgeComponent : ComponentDefinition {
     override val providerName: String = name
 
     /**
-     * The edge's own context roots, applied as instance config so the dispatcher binds them (issue #386).
+     * Loaded only on a node booted in the [BOOT.edge] role.
      *
-     * Supplied here rather than by a deployment's config object because they are what makes this node an edge,
-     * not a deployment preference -- and `RequestService.checkInit` reads them from exactly these keys, so
-     * nothing in `base/common` changes to accept them. A deployment can still override any of them, since an
-     * explicit config entry set before boot wins.
+     * This is what lets the component be **discovered** rather than referenced: `ServiceLoader` finds it in
+     * every launcher, including the ordinary one, and it declines there. `InstanceRegistry` gates both schema
+     * and services on this, so declining keeps the whole component out rather than half of it.
+     *
+     * A pure predicate, deliberately -- it is called more than once per boot (schema, then services), so
+     * anything with an effect belongs in [EdgeService], not here.
      */
-    override fun isLoaded(cxt: KdrCxt): Boolean {
+    override fun isLoaded(cxt: KdrCxt): Boolean = isEdge(cxt)
+
+    /**
+     * The instance config that makes this node an edge: its context roots, and the port its role binds.
+     *
+     * Defaults, not overrides -- each reads before it writes, so a deployment that chose its own keeps it.
+     * These are what make the node an edge rather than preferences about it, which is why they are supplied by
+     * the component rather than left to a deployment's config object to remember.
+     */
+    override fun applyInstanceConfig(cxt: KdrCxt) {
         val config = cxt.instanceConfig
         config.put(ACFG.apiContextRoot, config.get(ACFG.apiContextRoot) ?: EdgeRoot.ea)
         config.put(ACFG.contentContextRoot, config.get(ACFG.contentContextRoot) ?: EdgeRoot.ec)
         config.put(ACFG.appContextRoot, config.get(ACFG.appContextRoot) ?: EdgeRoot.ew)
         config.put(ACFG.staticContextRoot, config.get(ACFG.staticContextRoot) ?: EdgeRoot.es)
-        return true
+        config.put(ACFG.defaultPort, config.get(ACFG.defaultPort) ?: EdgeRole.defaultPort)
     }
 
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::EdgeService)
@@ -39,7 +50,7 @@ class EdgeComponent : ComponentDefinition {
     @Suppress("ConstPropertyName")
     companion object {
         /** The name this component announces itself under, in logs and provider selection. */
-        const val name = "KdrEdge"
+        const val name = BOOT.edgeComponent
 
         /**
          * Whether [cxt] is running as an edge -- i.e. this component is loaded.

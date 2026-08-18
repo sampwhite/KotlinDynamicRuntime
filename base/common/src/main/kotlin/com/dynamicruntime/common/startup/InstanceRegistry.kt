@@ -71,29 +71,34 @@ object InstanceRegistry {
             config.put(SchemaCollector.key, collector)
 
             val components = componentDefinitions.values.sortedBy { it.loadPriority() }
+            // Decided once, then reused: `isLoaded` is a predicate and was being asked twice, which quietly
+            // made it a place where an effect would run twice too.
+            val loaded = components.filter { it.isLoaded(cxt) }
+
+            // Components contribute their own instance config before anything reads it (issue #386) -- ahead
+            // of schema collection and of every service, including the startup tier that fixes node identity.
+            for (component in loaded) {
+                component.applyInstanceConfig(cxt)
+            }
             // Fragment files are collected alongside schema and for the same reason: a component knows what it
             // ships, and nothing else can find out (the classpath is not enumerable here).
             val fragmentFiles = mutableListOf<String>()
-            for (component in components) {
-                if (component.isLoaded(cxt)) {
-                    component.addSchema(cxt, collector)
-                    fragmentFiles.addAll(component.fragmentFiles(cxt))
-                    // Same loop, so every config is present before any service binds -- which is what lets
-                    // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
-                    for (config in component.gedraConfigs(cxt)) {
-                        collector.addGedraConfig(cxt, config)
-                    }
+            for (component in loaded) {
+                component.addSchema(cxt, collector)
+                fragmentFiles.addAll(component.fragmentFiles(cxt))
+                // Same loop, so every config is present before any service binds -- which is what lets
+                // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
+                for (config in component.gedraConfigs(cxt)) {
+                    collector.addGedraConfig(cxt, config)
                 }
             }
             config.put(FRAG.registryKey, fragmentFiles.distinct())
 
             val startupFactories = mutableListOf<() -> ServiceInitializer>()
             val serviceFactories = mutableListOf<() -> ServiceInitializer>()
-            for (component in components) {
-                if (component.isLoaded(cxt) && component.isActive(cxt)) {
-                    startupFactories.addAll(component.startupServices(cxt))
-                    serviceFactories.addAll(component.services(cxt))
-                }
+            for (component in loaded.filter { it.isActive(cxt) }) {
+                startupFactories.addAll(component.startupServices(cxt))
+                serviceFactories.addAll(component.services(cxt))
             }
 
             bindAndInitServices(cxt, startupFactories)

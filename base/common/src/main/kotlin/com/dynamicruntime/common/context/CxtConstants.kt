@@ -141,4 +141,15 @@ object BOOT {
      * environment-variable namespace, so a lookup for `KDR_PORT` on such a node tries `KDR_EDGE_PORT` first.
      */
     const val edge = "edge"
+
+    /**
+     * The `providerName` of the component that implements the [edge] role, so a launcher can **require** it
+     * without naming its class -- see `bootInstance`'s required-components check.
+     *
+     * A name here rather than a literal in the launcher for the ordinary reason: the component declares the
+     * same string, and two spellings of one fact drift. Common learning the name is not common learning the
+     * implementation, which is the line [ACFG.bootRole] already draws.
+     */
+    const val edgeComponent = "KdrEdge"
+
 }

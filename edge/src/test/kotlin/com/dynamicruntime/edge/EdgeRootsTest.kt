@@ -24,19 +24,32 @@ class EdgeRootsTest : StringSpec({
     fun config(role: String? = BOOT.edge) =
         KdrInstanceConfig("edgeRootsTest", ENV.unit, ENV.liveSource, role)
 
-    "the component binds the edge's own roots" {
+    /**
+     * The gate that lets the component be *discovered* rather than referenced: `ServiceLoader` finds it in
+     * every launcher, including the ordinary one, and it declines there. `InstanceRegistry` gates both schema
+     * and services on this, so declining keeps the whole component out rather than half of it.
+     */
+    "the component loads only in the edge role" {
+        EdgeComponent().isLoaded(KdrCxt.mkSimpleCxt("t", config())) shouldBe true
+        EdgeComponent().isLoaded(KdrCxt.mkSimpleCxt("t", config(role = null))) shouldBe false
+        EdgeComponent().isLoaded(KdrCxt.mkSimpleCxt("t", config(role = "somethingElse"))) shouldBe false
+    }
+
+    "the component contributes its roots and its port" {
         val c = config()
-        EdgeComponent().isLoaded(KdrCxt.mkSimpleCxt("t", c)) shouldBe true
+        EdgeComponent().applyInstanceConfig(KdrCxt.mkSimpleCxt("t", c))
         c.get(ACFG.apiContextRoot) shouldBe EdgeRoot.ea
         c.get(ACFG.contentContextRoot) shouldBe EdgeRoot.ec
         c.get(ACFG.appContextRoot) shouldBe EdgeRoot.ew
         c.get(ACFG.staticContextRoot) shouldBe EdgeRoot.es
+        // The launcher carries no copy of this number; the role owns it.
+        c.get(ACFG.defaultPort) shouldBe EdgeRole.defaultPort
     }
 
     // A deployment may still choose its own; these are what makes a node an edge, not a preference about it.
     "a deployment's explicit root wins over the default" {
         val c = config().apply { put(ACFG.apiContextRoot, "zz") }
-        EdgeComponent().isLoaded(KdrCxt.mkSimpleCxt("t", c))
+        EdgeComponent().applyInstanceConfig(KdrCxt.mkSimpleCxt("t", c))
         c.get(ACFG.apiContextRoot) shouldBe "zz"
     }
 
@@ -48,7 +61,7 @@ class EdgeRootsTest : StringSpec({
     "an edge configured with an application's root refuses to boot" {
         val c = config().apply { put(ACFG.apiContextRoot, ContextRoot.kda) }
         val cxt = KdrCxt.mkSimpleCxt("t", c)
-        EdgeComponent().isLoaded(cxt)
+        EdgeComponent().applyInstanceConfig(cxt)
         val e = shouldThrow<KdrException> { EdgeService().checkInit(cxt) }
         e.fullMessage() shouldContain ContextRoot.kda
         e.fullMessage() shouldContain "ambiguous"
@@ -58,7 +71,7 @@ class EdgeRootsTest : StringSpec({
         for (clash in listOf(ContextRoot.cp, ContextRoot.wa, ContextRoot.st)) {
             val c = config().apply { put(ACFG.contentContextRoot, clash) }
             val cxt = KdrCxt.mkSimpleCxt("t", c)
-            EdgeComponent().isLoaded(cxt)
+            EdgeComponent().applyInstanceConfig(cxt)
             shouldThrow<KdrException> { EdgeService().checkInit(cxt) }
         }
     }
@@ -66,7 +79,7 @@ class EdgeRootsTest : StringSpec({
     "the edge's own roots pass the check" {
         val c = config()
         val cxt = KdrCxt.mkSimpleCxt("t", c)
-        EdgeComponent().isLoaded(cxt)
+        EdgeComponent().applyInstanceConfig(cxt)
         EdgeService().checkInit(cxt) // does not throw
     }
 })

@@ -6,6 +6,9 @@
 // direction: `config` itself does not depend on `launch`.
 import com.dynamicruntime.buildlogic.wireInjectedComponents
 
+// Resolved outside `dependencies` so the null check reads once; see the edge note inside.
+val edgeProject = findProject(":edge")
+
 plugins {
     id("kdr.kotlin-conventions")
     application
@@ -40,10 +43,14 @@ dependencies {
     // The webapp host: its AppUiComponent serves the self-contained front end (embedded `:webapp` bundle)
     // under the `wa` context root. Registered unconditionally in Start.kt.
     implementation(project(":appui"))
-    // The KdrEdge component (issue #386), registered by StartEdge only. `launch` is the one place permitted
-    // to name it: it is not a component, and knowing which boot role it starts is its job. When boot-role
-    // gating lands this becomes ServiceLoader discovery with the component self-gating, and this line goes.
-    implementation(project(":edge"))
+    // The KdrEdge component (issue #386). `runtimeOnly` and discovered via ServiceLoader, exactly like
+    // `sample`: the launcher never references it at compile time, so nothing here names the edge.
+    //
+    // Guarded, because a module is only in the build if a workspace's own (non-versioned)
+    // settings.gradle.kts includes it. An unguarded project(":edge") fails at CONFIGURATION time for anyone
+    // who has not added that line -- their whole build refuses, not merely one file. Declaring nothing is not
+    // an error here; `StartEdge` reports the absence itself, to whoever actually runs an edge.
+    edgeProject?.let { runtimeOnly(project(it.path)) }
 }
 
 // Deployment-injected providers (issue #171): custom config now, custom components later. The deployment

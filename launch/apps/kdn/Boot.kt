@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.appui.AppUiComponent
@@ -34,7 +35,12 @@ import java.util.ServiceLoader
  * pre-boot context before any `AppConfigApplier` runs, so the role has to be settled earlier than application
  * config exists. It is also the honest place for it -- the launcher *is* the role.
  */
-fun bootInstance(cxtName: String, bootRole: String? = null, defaultPort: Int? = null): KdrCxt {
+fun bootInstance(
+    cxtName: String,
+    bootRole: String? = null,
+    defaultPort: Int? = null,
+    requiredComponents: List<String> = emptyList(),
+): KdrCxt {
     // Pre-boot: build the instance config (from KDR_ENV and the default-environment-variables file) and a
     // context to read it, so the deployment configuration can be loaded BEFORE the application boots and can
     // therefore influence how it starts up. Env-var lookups from here on go through the context, so the
@@ -66,6 +72,23 @@ fun bootInstance(cxtName: String, bootRole: String? = null, defaultPort: Int? = 
             "Discovered provider '${p.providerName}' (${p::class.java.name}) from " +
                 "${p::class.java.protectionDomain?.codeSource?.location}"
         }
+    }
+
+    // A launcher may name components it cannot run without (issue #386). Checked by `providerName`, so no
+    // launcher has to reference a component's class -- which is the whole point: `StartEdge` must not compile
+    // against `KdrEdge`, or every workspace lacking `:edge` in its settings fails to configure.
+    //
+    // Reported here, at boot, rather than caught by the compiler. That trades immediate discovery for
+    // *scoped* discovery: a compile dependency fails for everyone who builds the project, including people
+    // who never run an edge, while this fails only for whoever actually starts one -- and says what to do.
+    val discovered = providers.filterIsInstance<ComponentDefinition>().map { it.providerName }.toSet()
+    val missing = requiredComponents.filterNot { it in discovered }
+    if (missing.isNotEmpty()) {
+        throw KdrException(
+            "Cannot start '$cxtName': required component(s) ${missing.joinToString(", ")} were not discovered. " +
+                "Add the module to this workspace's settings.gradle.kts (e.g. `include(\"edge\")` plus its " +
+                "projectDir line) and rebuild. Discovered: ${discovered.sorted()}.",
+        )
     }
 
     // Register discovered components (schema + services) before booting; each self-gates at boot via its
