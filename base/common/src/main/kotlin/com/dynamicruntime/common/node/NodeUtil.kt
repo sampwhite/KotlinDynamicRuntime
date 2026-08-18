@@ -17,7 +17,7 @@ object NodeUtil {
 
     /**
      * Overrides the HTTP port the server binds to (default [defaultPort]). Set this to run a second instance
-     * alongside another (e.g. an automated agent's server beside a developer's) without a port collision --
+     * alongside another (e.g., an automated agent's server beside a developer's) without a port collision --
      * usually together with `KDR_IN_MEMORY_ONLY=true` so the two do not contend on a database.
      */
     const val port = "KDR_PORT"
