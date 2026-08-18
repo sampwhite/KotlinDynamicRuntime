@@ -49,6 +49,11 @@ val App = FC<Props> {
     // again -- the debug page would simply never appear. Assigning here re-renders exactly once, when the answer
     // actually changes.
     var debugAllowed by useState(false)
+
+    // The env-auth pair for the bar (issue #360). Held here, beside the other values derived from the app
+    // config, because that config arrives asynchronously and its module cache re-renders nothing on its own.
+    var envAuthAvailable by useState(false)
+    var envAuthActing by useState(false)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
         onWebAppStale { updateAvailable = true }
@@ -70,6 +75,8 @@ val App = FC<Props> {
             // Pick up a reconfigured interval; a change re-keys useIdleBump, which retires the old timer.
             idleBumpIntervalMs = appConfig().idleBumpIntervalMs
             debugAllowed = appConfig().allowDebugPages
+            envAuthAvailable = appConfig().envAuthAvailable
+            envAuthActing = appConfig().isEnvAuthed
         }
     }
 
@@ -110,7 +117,10 @@ val App = FC<Props> {
                         }
                     }
                 }
-                AppBar {}
+                AppBar {
+                    this.envAuthAvailable = envAuthAvailable
+                    this.envAuthActing = envAuthActing
+                }
                 div {
                     className = ClassName("app-content")
                     // The boundary wraps the page, NOT the root, so a render failure costs the page and not the

@@ -203,4 +203,30 @@ class ConfigParsersTest {
         // An empty state yields the default (system) profile, which is not "logged in".
         assertFalse(UserProfile.fromUserInfo(emptyMap()).isLoggedIn)
     }
+
+    /**
+     * The env-auth pair (issue #360). Both default false when absent, for the same reason `showErrorDetail`
+     * does: a config that has not arrived must never be why an internal affordance appears.
+     *
+     * The case that matters is the third -- suppressed. `isEnvAuthed` false with `envAuthAvailable` true is
+     * what keeps the control that restores the session on screen, and reading either flag alone would lose it.
+     */
+    @Test
+    fun envAuthFlagsReadThroughIndependently() {
+        val absent = appConfigFrom(uiConfig())
+        assertFalse(absent.isEnvAuthed)
+        assertFalse(absent.envAuthAvailable)
+
+        val on = appConfigFrom(
+            uiConfig(features = mapOf(APP.isEnvAuthed to true, APP.envAuthAvailable to true)),
+        )
+        assertTrue(on.isEnvAuthed)
+        assertTrue(on.envAuthAvailable)
+
+        val suppressed = appConfigFrom(
+            uiConfig(features = mapOf(APP.isEnvAuthed to false, APP.envAuthAvailable to true)),
+        )
+        assertFalse(suppressed.isEnvAuthed)
+        assertTrue(suppressed.envAuthAvailable)
+    }
 }

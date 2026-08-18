@@ -183,10 +183,14 @@ class RequestHandler : WebRequest {
             cxt.forwardedFor = forwardedFor
             cxt.appId = appId()
             cxt.traceId = traceId()
-            // Whether an authenticating edge vouched for this request and for whom (issue #348). Resolved
-            // here beside the other channel facts, and through EnvAuthRules rather than off the header, so
-            // there is one place that decides whether the claim is believed at all.
-            cxt.envAuthEmail = EnvAuthRules.resolveEnvEmail(config, getRequestHeader(ENVA.header))
+            // Whether an authenticating edge vouched for this request and for whom, and whether the session
+            // is choosing to act on it (issues #348, #360). Resolved here beside the other channel facts, and
+            // through EnvAuthRules rather than off the header and cookies, so there is one place that decides
+            // whether the claim is believed at all -- and one place that knows the two directions are fenced
+            // differently.
+            val envAuth = EnvAuthRules.resolve(config, getRequestHeader(ENVA.header), getRequestCookies())
+            cxt.envAuthEmail = envAuth.email
+            cxt.envAuthSuppressed = envAuth.suppressed
             createdCxt = cxt
             val service = RequestService.get(cxt)
                 ?: throw KdrException("This node cannot handle endpoint requests.", code = EXC.notSupported)

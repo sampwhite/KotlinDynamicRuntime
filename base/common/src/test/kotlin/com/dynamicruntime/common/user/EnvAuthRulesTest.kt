@@ -48,9 +48,62 @@ class EnvAuthRulesTest : StringSpec({
     "an untrusted node resolves no address, however well-formed the header" {
         val trusted = config(ENV.local).apply { put(ACFG.trustEnvAuthHeader, true) }
         val untrusted = config(ENV.local).apply { put(ACFG.trustEnvAuthHeader, false) }
-        EnvAuthRules.resolveEnvEmail(trusted, "sam@gyassa.com") shouldBe "sam@gyassa.com"
-        EnvAuthRules.resolveEnvEmail(untrusted, "sam@gyassa.com") shouldBe null
-        EnvAuthRules.resolveEnvEmail(trusted, null) shouldBe null
+        EnvAuthRules.resolve(trusted, "sam@gyassa.com", emptyMap()).email shouldBe "sam@gyassa.com"
+        EnvAuthRules.resolve(untrusted, "sam@gyassa.com", emptyMap()).email shouldBe null
+        EnvAuthRules.resolve(trusted, null, emptyMap()).email shouldBe null
+    }
+
+    "available and effective are separate answers, and suppression moves only one of them" {
+        val c = config(ENV.local).apply { put(ACFG.trustEnvAuthHeader, true) }
+
+        val plain = EnvAuthRules.resolve(c, "sam@gyassa.com", emptyMap())
+        plain.isAvailable shouldBe true
+        plain.isEffective shouldBe true
+
+        // The point of two flags: suppressed, the UI must still know env auth is there, or the control that
+        // restores it disappears along with the thing it controls.
+        val off = EnvAuthRules.resolve(c, "sam@gyassa.com", mapOf(ENVA.suppressCookie to "1"))
+        off.isAvailable shouldBe true
+        off.isEffective shouldBe false
+        off.email shouldBe "sam@gyassa.com" // the truth survives, because the log line needs it
+
+        val nothing = EnvAuthRules.resolve(c, null, emptyMap())
+        nothing.isAvailable shouldBe false
+        nothing.isEffective shouldBe false
+    }
+
+    "suppression applies even where the node refuses the assertion, because subtracting is always safe" {
+        val untrusted = config(ENV.local).apply { put(ACFG.trustEnvAuthHeader, false) }
+        val state = EnvAuthRules.resolve(untrusted, "sam@gyassa.com", mapOf(ENVA.suppressCookie to "1"))
+        state.isAvailable shouldBe false
+        state.suppressed shouldBe true
+    }
+
+    /**
+     * The half a `forTestingOnly` marking does not buy. Fencing the fixture endpoint stops the assert cookie
+     * being *issued*; nothing stops one being typed into a browser. A reader that honored it anywhere would
+     * hand env auth to anyone who can set a cookie -- so the fence has to live here, in the reader.
+     */
+    "the fixture's assert cookie is honored on a test instance and refused anywhere else" {
+        val cookies = mapOf(ENVA.assertCookie to "fixture@gyassa.com")
+
+        val testInstance = config(ENV.unit)
+        testInstance.isTestInstance shouldBe true // guard the premise
+        EnvAuthRules.resolve(testInstance, null, cookies).email shouldBe "fixture@gyassa.com"
+
+        // A node shaped like a real one: trusting the header, but not a test instance.
+        val real = config(ENV.local).apply {
+            put(ACFG.trustEnvAuthHeader, true)
+            put(ACFG.isTestInstance, false)
+        }
+        real.isTestInstance shouldBe false // guard the premise, or the next line proves nothing
+        EnvAuthRules.resolve(real, null, cookies).email shouldBe null
+    }
+
+    "a real header wins over a fixture assertion, so a live edge is never shadowed by a stale cookie" {
+        val c = config(ENV.unit)
+        val cookies = mapOf(ENVA.assertCookie to "fixture@gyassa.com")
+        EnvAuthRules.resolve(c, "real@gyassa.com", cookies).email shouldBe "real@gyassa.com"
     }
 
     "an address is normalized the way it will be logged and compared" {
@@ -94,6 +147,6 @@ class EnvAuthRulesTest : StringSpec({
             put(ACFG.trustEnvAuthHeader, true)
             put(ACFG.adminEmailDomain, "gyassa.com")
         }
-        EnvAuthRules.resolveEnvEmail(c, "someone@example.org") shouldBe "someone@example.org"
+        EnvAuthRules.resolve(c, "someone@example.org", emptyMap()).email shouldBe "someone@example.org"
     }
 })

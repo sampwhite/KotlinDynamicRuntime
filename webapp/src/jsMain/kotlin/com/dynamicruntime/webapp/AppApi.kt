@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.app.APP
+import com.dynamicruntime.common.app.EnvAuthOp
 
 /**
  * The app-level config the whole frontend shares (issues #118/#120): deployment-global policy fetched once at
@@ -30,6 +31,17 @@ class AppConfig(
      * refused: nothing should acknowledge that a way to break the app is there.
      */
     val allowDebugPages: Boolean,
+    /**
+     * Whether this session is **currently acting** env-authed (issue #360) -- reached the deployment through
+     * an authenticating edge, and has not suppressed it. Anything that varies with env auth reads this.
+     */
+    val isEnvAuthed: Boolean,
+    /**
+     * Whether env auth is **available** at all, whatever the session is acting as (issue #360). Only the
+     * indicator's visibility reads this: while suppressed, [isEnvAuthed] is false but the control that
+     * restores it must stay on screen, or there is no way back.
+     */
+    val envAuthAvailable: Boolean,
 ) {
     companion object {
         /** The assumed config before the first fetch (and if a fetch fails): do not suppress (matching dev),
@@ -41,6 +53,10 @@ class AppConfig(
             // not be the reason internals appear on a real deployment's screen.
             showErrorDetail = false,
             allowDebugPages = false,
+            // Assume neither until the backend says so, for the same reason as showErrorDetail: a fetch that
+            // has not happened must not be why an internal affordance appears.
+            isEnvAuthed = false,
+            envAuthAvailable = false,
         )
     }
 }
@@ -61,6 +77,8 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
         ?: APP.defaultIdleBumpIntervalMs,
     showErrorDetail = config.features[APP.showErrorDetail] == true,
     allowDebugPages = config.features[APP.allowDebugPages] == true,
+    isEnvAuthed = config.features[APP.isEnvAuthed] == true,
+    envAuthAvailable = config.features[APP.envAuthAvailable] == true,
 )
 
 object AppApi {
@@ -69,4 +87,18 @@ object AppApi {
         val config = runCatching { fetchUiConfig(APP.uiConfig) }.getOrNull() ?: return
         cached = appConfigFrom(config)
     }
+}
+
+/**
+ * Suppresses this session's env auth, or restores it (issue #360), then re-reads the app config so the
+ * indicator reflects the new state.
+ *
+ * The switch is a **backend** call rather than local state on purpose: remembering "off" in the browser would
+ * leave the two sides disagreeing -- the backend still reporting env-authed while the screen pretends
+ * otherwise -- and the first thing that ever varies with env auth would quietly follow the wrong one.
+ */
+suspend fun setEnvAuthSuppressed(suppressed: Boolean) {
+    val op = if (suppressed) EnvAuthOp.suppress else EnvAuthOp.restore
+    runCatching { Http.sendApi("POST", APP.envAuthPath, mapOf(APP.envAuthOp to op.name)) }
+    AppApi.load()
 }
