@@ -62,6 +62,9 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
     /** This user's *current* primary organization, read live, or null when they have none (issue #225). */
     fun selfOrg(): String? = getData(AEP.selfInfo)[UPF.org].toOptStr()
 
+    /** The client this user belongs to, read live -- which client creation put them in (issue #352). */
+    fun selfClient(): String? = getData(AEP.selfInfo)[UPF.client].toOptStr()
+
     /**
      * Sends to [path] as this user and asserts the call **failed** with [status] (the error envelope's status
      * field, issue #103), returning the envelope for any further checks. A GET when [data] is null, otherwise a
@@ -103,12 +106,18 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
             email: String,
             level: String = ROLE.user,
             capabilities: List<String> = emptyList(),
+            userClient: String? = null,
         ): TestUser {
             val client = TestHttpClient(cxt.instanceConfig)
-            val userInfo = client.sendJsonPostRequest(
-                TEP.becomeUser,
-                mapOf(TEP.email to email, TEP.level to level, TEP.capabilities to capabilities),
-            )[EP.results].toJsonMapOrEmpty()
+            val body = buildMap {
+                put(TEP.email, email)
+                put(TEP.level, level)
+                put(TEP.capabilities, capabilities)
+                // Sent only when asked for, so the endpoint's own default -- read the client off the address --
+                // is what an ordinary call gets, rather than this having to know what that default is.
+                if (userClient != null) put(TEP.client, userClient)
+            }
+            val userInfo = client.sendJsonPostRequest(TEP.becomeUser, body)[EP.results].toJsonMapOrEmpty()
             return TestUser(client, cxt, userInfo)
         }
 

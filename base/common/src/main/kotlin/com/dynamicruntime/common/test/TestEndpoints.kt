@@ -57,6 +57,12 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
                 "Fail instead of logging in when a user with this email already exists.") {
                 type = SCT.boolean
             }
+            field(
+                TEP.client,
+                "Client to create the user in (ignored when the user already exists). Defaults to whatever " +
+                    "the email address names, which for an ordinary address is the public client. A client " +
+                    "this node does not carry is refused rather than quietly replaced.",
+            )
         },
     ) { c, request ->
         val service = UserService.get(c) ?: throw KdrException("UserService is not available.")
@@ -67,6 +73,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             level = request.getOptStr(TEP.level) ?: ROLE.user,
             capabilities = request[TEP.capabilities].toJsonListOfStrings(),
             failIfUserAlreadyExists = request[TEP.failIfUserAlreadyExists] == true,
+            client = request.getOptStr(TEP.client),
         )
     }
 

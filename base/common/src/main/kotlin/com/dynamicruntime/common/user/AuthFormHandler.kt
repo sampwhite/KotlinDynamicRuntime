@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -178,7 +179,12 @@ class AuthFormHandler(
         // The roles a new user starts with: normally just ROLE.user, but an address matching the deployment's
         // configured admin domain is provisioned as an admin -- how the first admin comes to exist (AdminRules).
         val initialRoles = AdminRules.initialRoles(cxt, contactAddress)
-        val data = AuthUserRow.mkInitialUser(contactAddress, CL.public, initialRoles).toMutableMap()
+        // Which client they land in is the address's business too, on a controlled domain (issue #352): a
+        // `+acme` tag puts them in `acme`, and anything else -- including a client this node does not carry --
+        // is `public`, exactly as every registration was before.
+        val data = AuthUserRow
+            .mkInitialUser(contactAddress, AddressRules.clientForNewUser(cxt, contactAddress), initialRoles)
+            .toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(contactAddress)
@@ -344,7 +350,9 @@ class AuthFormHandler(
      * `LinkedUsers` row instead, where it cannot be mistaken for our own verification.
      */
     private fun mkGoogleUser(cxt: KdrCxt, email: String): AuthUserRow {
-        val data = AuthUserRow.mkInitialUser(email, CL.public, AdminRules.initialRoles(cxt, email)).toMutableMap()
+        val data = AuthUserRow
+            .mkInitialUser(email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email))
+            .toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
@@ -422,6 +430,7 @@ class AuthFormHandler(
      */
     fun becomeUserByEmail(
         cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
+        client: String? = null,
     ): Map<String, Any?> {
         val existing = userService.queryByLoginId(cxt, email)
         if (existing != null) {
@@ -431,7 +440,7 @@ class AuthFormHandler(
             return completeLogin(cxt, existing, byCode = false)
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
-        val data = AuthUserRow.mkInitialUser(email, CL.public, roles).toMutableMap()
+        val data = AuthUserRow.mkInitialUser(email, fixtureClient(cxt, email, client), roles).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(email)
@@ -446,14 +455,41 @@ class AuthFormHandler(
      * Binds the acting profile and flags the request for the cookie hook; returns the user-info payload. A
      * [byCode] login additionally flags the device to be marked familiar (see KdrRequest.trustDevice).
      */
+    /**
+     * The client the fixture creates a user in: [named] when it is given, and otherwise whatever [email] says.
+     *
+     * An explicit client this node does not carry is **refused**, where a registration falls back to `public`.
+     * The difference is who is on the other end. A test asking for a client that is not present has made a
+     * mistake, and silently getting `public` is how it goes unnoticed until an assertion three files away
+     * fails for a reason that has nothing to do with what it was checking.
+     */
+    private fun fixtureClient(cxt: KdrCxt, email: String, named: String?): String {
+        val client = named ?: return AddressRules.clientForNewUser(cxt, email)
+        val clients = ClientService.get(cxt)
+            ?: throw KdrException("Cannot create a user in '$client': there is no client registry on this node.")
+        if (!clients.isPresent(client)) {
+            val why = if (clients.known(client) != null) {
+                "it is declared but not enabled in '${cxt.instanceConfig.env}'"
+            } else {
+                "no config declares it"
+            }
+            throw KdrException(
+                "Cannot create a user in the client '$client': $why. The clients present here are " +
+                    "${clients.presentClients.joinToString(", ") { it.clientId }}.",
+                code = EXC.badInput,
+            )
+        }
+        return client
+    }
+
     private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean): Map<String, Any?> {
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
-        // Re-apply the auto-admin rule here, not just at provisioning: the deployment's admin domain is usually
-        // configured *after* its operator already registered, and this is the point where that reaches them. It
-        // writes only on the login that actually changes the roles.
-        if (AdminRules.syncAdminRole(cxt, row)) {
-            userService.updateUser(cxt, row)
-        }
+        // The auto-admin rule is not re-applied here (issue #352). It used to be, so that configuring the
+        // admin domain afterwards reached an operator who had already registered -- but a grant that
+        // re-asserts itself on every login is a permanent property of an address rather than a statement
+        // about how an account was created, and it only ever grants, so a role an administrator deliberately
+        // removed came back at the next login. An address now decides what a user is provisioned as, and from
+        // then on their roles are whatever an administrator has made them.
         val profile = row.toUserProfile()
         cxt.bindToUserProfile(profile)
         cxt.request?.let {

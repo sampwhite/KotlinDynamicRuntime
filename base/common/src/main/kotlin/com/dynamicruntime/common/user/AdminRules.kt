@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 
 /**
  * How far a caller's user administration reaches (issue #225) -- the *scope* half of an administrator's
@@ -43,22 +44,29 @@ object ADMR {
  *
  * The admin endpoints are gated on [ROLE.admin] (they live under the `admin` section), which leaves the obvious
  * chicken-and-egg problem: with every user provisioned as a plain [ROLE.user], nobody could ever reach them. The
- * escape hatch is a configured email domain: an address **at that domain** (or a subdomain of it) whose local
- * part carries no `+` tag is granted [ROLE.admin] when its user is provisioned, and again on each login (see
- * [syncAdminRole]) so the rule also reaches accounts that predate the configuration.
+ * escape hatch is the **controlled domains** -- the configured admin domain and `example.com` outside
+ * production, see [AddressRules.isControlledDomain] -- where an address whose local part carries no `+` tag is
+ * granted [autoAdminRoles] as its user is provisioned.
  *
- * The `+` exclusion is the useful half of the rule. Plus-addressing means one operator mailbox can register any
- * number of accounts (`sam+test1@acme.com`, `sam+qa@acme.com`) that deliver to the same inbox but are *not*
- * admins -- so a deployment can test ordinary-user behavior without a second domain and without hand-editing
- * roles.
+ * **At provisioning, and only there** (issue #352). It used to be re-applied on every login as well, so that
+ * configuring the domain afterwards reached an operator who had already registered. That went with the `+`
+ * conventions, and the reason is worth keeping: a standing grant that re-asserts itself on every login is not
+ * a statement about how an account was created, it is a permanent property of an address -- and one that only
+ * ever grants, so a role an administrator deliberately removed would come back at the next login. An address
+ * now says what a user is created *as*, and after that their roles are whatever an administrator has made
+ * them. A deployment that configures its domain late reaches its operator through the `GrantRole` script or
+ * through another administrator, which is where role changes belong.
  *
- * The domain is matched against the address's domain part only. A bare suffix test over the whole address would
- * make `notacme.com` match a configured `acme.com`, which is precisely the mistake that hands an attacker an
- * admin account for the price of a domain registration.
+ * The `+` exclusion is no longer "this address is deliberately not an admin". A `+` tag now names a client and
+ * optionally a persona within it (see [AddressRules]), so the exclusion here says something narrower: an
+ * address that names a client is describing a user of that client, and the blanket grant is for the
+ * deployment's own people rather than for anyone who tagged their way into one.
  *
- * The rule only ever **grants**. Removing the configuration does not demote anyone (nor does an address that
- * stops matching): revocation is an explicit administrative act -- see the `admin/user/setRoles` endpoint and
- * the `GrantRole` command-line script.
+ * The domain is matched against the address's domain part only, never as a suffix of the whole address -- see
+ * [AddressRules.isControlledDomain] for why that distinction is the one that matters.
+ *
+ * The rule only ever **grants**, and only at provisioning. Revocation is an explicit administrative act -- see
+ * the `admin/user/setRoles` endpoint and the `GrantRole` command-line script.
  */
 object AdminRules {
     /**
@@ -73,23 +81,22 @@ object AdminRules {
     }
 
     /**
-     * Whether [address] auto-qualifies for [ROLE.admin] against [domain]: its domain part is [domain] or a
-     * subdomain of it, and its local part is non-empty and carries no `+` tag. A null [domain] (unconfigured)
-     * never qualifies.
+     * Whether [address] auto-qualifies for [autoAdminRoles]: it sits on a controlled domain and its local part
+     * carries no `+` tag.
+     *
+     * The domain half is [AddressRules.isControlledDomain], shared rather than repeated, so the set of domains
+     * this deployment treats as its own is written down once. That matters more than tidiness: the two rules
+     * read the same addresses for different purposes, and a deployment where a domain named a client but did
+     * not auto-admin (or the reverse) would be a difference nobody could see from either rule alone.
      */
-    fun isAutoAdminAddress(address: String, domain: String?): Boolean {
-        val d = domain ?: return false
-        val trimmed = address.trim().lowercase()
-        val at = trimmed.lastIndexOf(ADMR.atChar)
-        if (at <= 0 || at == trimmed.length - 1) {
-            return false // no domain part, or no local part
-        }
-        val local = trimmed.substring(0, at)
-        val addressDomain = trimmed.substring(at + 1)
-        if (local.contains(ADMR.plusAddressChar) || local.contains(ADMR.atChar)) {
+    fun isAutoAdminAddress(cxt: KdrCxt, address: String): Boolean {
+        if (!AddressRules.isControlledDomain(cxt, address)) {
             return false
         }
-        return addressDomain == d || addressDomain.endsWith(ADMR.domainSep + d)
+        // `isControlledDomain` established there is a local part, so the split below is safe.
+        val trimmed = address.trim().lowercase()
+        val local = trimmed.substring(0, trimmed.lastIndexOf(ADMR.atChar))
+        return !local.contains(ADMR.plusAddressChar)
     }
 
     /**
@@ -148,36 +155,44 @@ object AdminRules {
      */
     val autoAdminRoles: List<String> = listOf(ROLE.admin, ROLE.allClients)
 
-    /** The roles a newly provisioned user gets: [ROLE.user], plus [autoAdminRoles] when [primaryId] qualifies. */
-    fun initialRoles(cxt: KdrCxt, primaryId: String): List<String> =
-        if (isAutoAdminAddress(primaryId, adminEmailDomain(cxt.instanceConfig))) {
-            listOf(ROLE.user) + autoAdminRoles
-        } else {
-            listOf(ROLE.user)
+    /**
+     * The roles a newly provisioned user gets: [ROLE.user], plus whatever their address earns them.
+     *
+     * Two routes, and they cannot both apply: [autoAdminRoles] when the address carries no `+` tag and
+     * matches the configured domain, and otherwise whatever persona the tag names (issue #352). That is the
+     * whole of the inversion the design describes -- a `+` tag used to mean only *not an admin*, and now it
+     * says which client and, optionally, what within it.
+     */
+    fun initialRoles(cxt: KdrCxt, primaryId: String): List<String> {
+        if (isAutoAdminAddress(cxt, primaryId)) {
+            return listOf(ROLE.user) + autoAdminRoles
         }
+        return personaRoles(cxt, primaryId)
+    }
 
     /**
-     * Grants [autoAdminRoles] to an existing [row] that auto-qualifies but does not yet hold them, returning
-     * whether the row was changed (the caller persists it). Called on every login, so configuring the domain
-     * reaches accounts that already existed -- the ordinary case, since the operator usually registers before
-     * deciding to become an admin. Never revokes: see the class comment.
+     * What the persona in [primaryId] grants, or just [ROLE.user] when it names none (issue #352).
      *
-     * It tops up **each** missing role rather than checking only for [ROLE.admin], which is what carries an
-     * administrator from before #225 over the change: they already hold `admin`, and the next login is where
-     * they gain the `allClients` they now need to reach the surface they had yesterday.
+     * **A persona can never grant [ROLE.allClients], and that is structural rather than a check.**
+     * [RoleLadder.rolesAtLevel] composes a level out of the ladder plus the capabilities already held, and
+     * here nothing is held -- so a persona naming a capability, `allClients` included, produces the floor.
+     * The escalation ceiling of the whole email convention is therefore a property of how the roles are
+     * built, not a rule somebody has to remember to apply. **A client with no persona is an ordinary user**,
+     * which falls out of the same call.
+     *
+     * A persona that names nothing on the ladder is logged rather than refused. It can only ever
+     * *under*-grant, so the failure is safe, and a typo that silently produced an ordinary user with no word
+     * said is the thing worth avoiding.
      */
-    fun syncAdminRole(cxt: KdrCxt, row: AuthUserRow): Boolean {
-        val missing = autoAdminRoles.filter { it !in row.roles }
-        if (missing.isEmpty()) {
-            return false
+    fun personaRoles(cxt: KdrCxt, primaryId: String): List<String> {
+        val persona = AddressRules.tagsFor(cxt, primaryId).persona ?: return listOf(ROLE.user)
+        val roles = RoleLadder.rolesAtLevel(emptyList(), persona)
+        if (persona != ROLE.user && roles.size == 1) {
+            LogAuth.warn(cxt) {
+                "Address '$primaryId' names the persona '$persona', which is not one of " +
+                    "${RoleLadder.ordered.joinToString(", ")}; creating an ordinary user."
+            }
         }
-        if (!isAutoAdminAddress(row.primaryId, adminEmailDomain(cxt.instanceConfig))) {
-            return false
-        }
-        row.roles = row.roles + missing
-        LogAuth.info(cxt) {
-            "Granting ${missing.joinToString(", ")} to '${row.primaryId}' (matches the configured admin domain)."
-        }
-        return true
+        return roles
     }
 }

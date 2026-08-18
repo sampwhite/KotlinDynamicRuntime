@@ -9,6 +9,7 @@ import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.sql.cache.TCI
 import com.dynamicruntime.common.sql.cache.TCS
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.truncateToMs
 import com.dynamicruntime.common.user.AU
 import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.TestUser
@@ -118,7 +119,11 @@ class AuthUserCacheTest : StringSpec({
         // travels to (the furthest is a thirty-day session expiry), so the entry can only be this later date
         // if this request is what wrote it: `mergeState` never moves a date backwards.
         cxt.instanceConfig.clock.advanceBy(400.days)
-        val startedAt = cxt.instanceNow()
+        // Truncated, because the two sides do not carry the same precision: `instanceNow` is
+        // `Clock.System.now()` plus an offset, while `published` has been through a database timestamp. An
+        // untruncated `startedAt` is later than the publish it is compared against whenever its sub-millisecond
+        // remainder exceeds the time the request took -- which is most of the time, and intermittently.
+        val startedAt = cxt.instanceNow().truncateToMs()
 
         // Goes through the real request pipeline, so the dispatcher's begin/end bracket runs.
         TestUser.create(cxt, "ucache-published@example.com").userId shouldNotBe 0L
