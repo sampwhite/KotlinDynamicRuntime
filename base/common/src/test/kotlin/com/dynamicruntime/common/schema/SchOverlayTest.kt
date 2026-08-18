@@ -60,7 +60,7 @@ class SchOverlayTest : StringSpec({
         name[SCH.description] shouldBe "What to call it."
     }
 
-    // Rule three, and the one that shapes how schema gets authored: once an overlay defines a property, that
+    // Rule three, and the one that shapes how the schema gets authored: once an overlay defines a property, that
     // definition wins entire. Nothing below it merges -- so an interior structure worth narrowing is pulled
     // out as a named type and altered in its own right, since there is no way to address part of one here.
     "a property the overlay defines is replaced entirely, not merged" {
@@ -138,7 +138,7 @@ class SchOverlayTest : StringSpec({
             "core.Doc" to linkedMapOf(
                 SCH.type to SCT.kObject,
                 SCH.properties to linkedMapOf(
-                    "title" to linkedMapOf(SCH.dRef to "#/\$defs/core.Name"),
+                    "title" to linkedMapOf(SCH.dRef to $$"#/$defs/core.Name"),
                 ),
             ),
         )
@@ -187,7 +187,7 @@ class SchOverlayTest : StringSpec({
                 "core.Three" to mapOf(
                     SCH.properties to linkedMapOf(
                         "third" to emptyMap<String, Any?>(),
-                        "first" to emptyMap<String, Any?>(),
+                        "first" to emptyMap(),
                     ),
                 ),
             ),

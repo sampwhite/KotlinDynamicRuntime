@@ -92,7 +92,7 @@ class GedraDataService : ServiceInitializer {
      *
      * The scope is applied **per row** by [admitsRow], the way `UserService.queryAdministrableUser` already
      * does it, not by composing a predicate: composing one would be a second implementation of what
-     * `SqlScopeUtil` exists to be the only copy of. A row the scope refuses returns null here and the caller
+     * `SqlScopeUtil` exists to be the only copy of. A row the scope refuses returns null here, and the caller
      * re-asks SQL, which refuses it too -- one wasted query on a denied cross-scope probe, in exchange for the
      * cached path having no way to *widen* an answer. The refusal is tested on the raw row *before* extracting
      * it, so a denied probe does not pay for an extraction it will throw away.
@@ -603,7 +603,7 @@ class GedraDataService : ServiceInitializer {
      *
      * The variant is the **data's**, never the caller's, and the distinction only shows for a caller holding
      * `allClients`: a client narrows a type so that data living there is valid for that client's users, which
-     * is a fact about the destination rather than about who did the writing. For everybody else the two are
+     * is a fact about the destination rather than about whom did the writing. For everybody else the two are
      * the same client, since their scope confines them to it.
      */
     private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {

@@ -17,7 +17,7 @@ package com.dynamicruntime.common.gedra
  * nothing supports nothing, however much it can see.
  *
  * The computed set is the declared list with its groups expanded, **plus everything the client customized**:
- * a trait it altered, extended or defined is supported without a second mention. That is why the declared
+ * a trait it altered, extended, or defined is supported without a second mention. That is why the declared
  * attribute is called `includedTraits` and not `supportedTraits` -- an attribute claiming to list what a
  * client supports, which does not list all of it, is the kind of near-truth somebody eventually relies on.
  */

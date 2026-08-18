@@ -148,7 +148,7 @@ class SchemaService : ServiceInitializer {
      * and anonymous callers be served without a special case.
      */
     fun storeFor(client: String?): KdrSchemaStore {
-        val store = schemaStore ?: KdrSchemaStore()
+        val store = schemaStore
         return if (client == null) store else clientStores[client] ?: store
     }
 
