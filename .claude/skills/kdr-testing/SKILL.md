@@ -382,8 +382,8 @@ val c = KdrInstanceConfig("t", ENV.local, ENV.liveSource).apply { put(SomeObj.so
 SomeObj.resolves(c) shouldBe true
 ```
 
-See `ErrorObfuscationConfigTest` and `AllowTestEndpointsTest` (both in `base/common`) for the three-way
-(config option / env var / environment) resolution pattern.
+See `ErrorObfuscationConfigTest` (in `base/common`) for the three-way (config option / env var /
+environment) resolution pattern, and `KdrInstanceConfigTest` for the same shape on `isTestInstance`.
 
 ## Unit tests: authenticated tests with TestUser
 
@@ -406,6 +406,7 @@ opal.expectError(EXC.notAuthorized, ADEP.users)  // ...but not an admin one
 
 This works in unit tests because `env == unit` allows test endpoints. Test-only endpoints (marked
 `forTestingOnly` on the builder) are dropped from the store unless a deployment allows them
-(`SchemaService.allowTestEndpoints` = env var, `unit`, or `inMemoryOnly`), and a server that allows them
-outside `local`/`unit` fails startup — so they can never reach a real environment. Add convenience methods to
+(`KdrInstanceConfig.isTestInstance` — an explicit config entry decides it either way, otherwise inferred as
+the `KDR_TEST_INSTANCE` env var, or `ENV.unit`, or `inMemoryOnly`), and a server that claims to be a test
+instance outside `local`/`unit` fails startup in `SchemaService.checkInit` — so they can never reach a real environment. Add convenience methods to
 `TestUser` as more involved multi-user simulations need them.

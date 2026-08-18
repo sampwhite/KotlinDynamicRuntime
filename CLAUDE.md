@@ -8,6 +8,25 @@ machine-specific configuration belongs in your own non-versioned `CLAUDE.md` in 
 Coding conventions live in [`code-guide.md`](code-guide.md); environment variables in
 [`environment-variables.md`](environment-variables.md).
 
+## Skills: the house APIs, already written down
+
+`.claude/skills/` documents this codebase's own APIs. Read the relevant one **before** working an API out from
+its source or reaching for a library — that is what they are for, and each covers ground that is easy to get
+subtly wrong.
+
+| skill | covers |
+| --- | --- |
+| `kdr-core-utils` | `JsonUtil` (our own JSON), `DateUtil` (`Instant`-based), `ConvertUtil`/`StrUtil` coercion |
+| `kdr-schema-builder` | the `Sch*` JSON-Schema DSL, `$ref`, parsing, validate/coerce |
+| `kdr-endpoint-builder` | `schemaModule` + the endpoint builders, response envelopes, handler lambdas |
+| `kdr-table-cache` | in-memory table caches (`common/sql/cache`) — and which tables must *not* be cached |
+| `kdr-testing` | verifying anything here: booting a server, `mkTestBootCxt`, `TestHttpClient`, `kdr-probe` |
+
+**A skill's code examples are compiled as tests** (`*SkillExamplesTest`), so a signature change breaks the
+build rather than quietly staling the documentation. When you change an API, change its skill in the same
+edit — the test will tell you which one, and a skill is read *instead of* the source, so a wrong one is
+followed rather than noticed.
+
 ## The workspace directory is not yours
 
 The Gradle build root is the **workspace directory** — the directory that *contains* this repo, holding
