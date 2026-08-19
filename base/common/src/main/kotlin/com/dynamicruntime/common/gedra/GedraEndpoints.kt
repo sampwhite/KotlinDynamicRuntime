@@ -66,7 +66,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         "Creates a form document carrying the supplied entries, and answers with it as stored.",
         HttpMethod.POST,
         outputRef = docType,
-        inputRef = docType,
+        // The sent shape, not the stored one: they differ by `allowAdditionalTraits`, which is an instruction
+        // about this write and has no place in what a document *is* (issue #379).
+        inputRef = GU.inputName(formDoc),
     ) { c, request ->
         val entries = request[GDF.entries].toJsonListOfMaps()
         GedraDataService.require(c)

@@ -126,11 +126,38 @@ class GedraDataRow(
          * entries and nothing else, while the output carries the whole thing. Two types would be two places to
          * add a field to.
          */
+        /**
+         * The stored shape, and beside it the shape a caller **sends** (issue #379).
+         *
+         * Two types rather than one, because they are not the same thing. Everything a gedra *is* appears in
+         * both; `allowAdditionalTraits` is an instruction about a write, so it appears only in the second --
+         * it has no business in the answer to `GET /gedra/formDocs`, which describes documents rather than
+         * requests.
+         *
+         * They are declared together, from one body, so they cannot drift: a field added to a gedra reaches
+         * both without anybody remembering to. The stored type stays the one a caller may echo back whole --
+         * every field it does not own is `g-derived` and dropped by the input projection -- which is why the
+         * input type is the stored one *plus* a field, and not a smaller type of its own.
+         */
         fun defineType(builder: SchTypesBuilder, kind: GedraDataType) {
+            defineOneType(builder, kind, GU.gedraName(kind), forInput = false)
+            defineOneType(builder, kind, GU.inputName(kind), forInput = true)
+        }
+
+        private fun defineOneType(
+            builder: SchTypesBuilder,
+            kind: GedraDataType,
+            typeName: String,
+            forInput: Boolean,
+        ) {
             val entryRef = "${GCFG.globalNamespace}.${GU.unionName(kind)}"
-            builder.type(GU.gedraName(kind)) {
+            builder.type(typeName) {
                 type = SCT.kObject
-                description = "One stored ${kind.name} gedra and the entries it carries."
+                description = if (forInput) {
+                    "A ${kind.name} gedra as a caller sends one."
+                } else {
+                    "One stored ${kind.name} gedra and the entries it carries."
+                }
                 property(GDF.gedraId, "This gedra's id.", required = true) { derived = true }
                 property(GDF.gedraKind, "What this gedra is.", required = true) { derived = true }
                 property(GDF.client, "The owning client.", required = true) { derived = true }
@@ -145,11 +172,10 @@ class GedraDataRow(
                     type = SCT.array
                     items { ref(entryRef) }
                 }
-                // Supplied, never stored, never echoed (issue #379). It has to be declared here because the
-                // create endpoint takes this type as its input and a resolved input is closed to anything
-                // undeclared -- so an undeclared flag would be refused rather than read. Optional, so an
-                // answer that omits it (which every answer does) still matches the type.
-                property(GDF.allowAdditionalTraits, ADDITIONAL_TRAITS_HINT) { type = SCT.boolean }
+                // An instruction about the write, so it belongs to the sent shape and to nothing else.
+                if (forInput) {
+                    property(GDF.allowAdditionalTraits, ADDITIONAL_TRAITS_HINT) { type = SCT.boolean }
+                }
                 property(GDF.createdAt, "When the gedra was created.", required = true) {
                     dateTime()
                     derived = true

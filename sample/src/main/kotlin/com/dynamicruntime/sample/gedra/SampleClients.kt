@@ -15,7 +15,7 @@ import com.dynamicruntime.common.schema.SCT
 /** The sample clients' own names (issue #379). */
 @Suppress("ConstPropertyName")
 object SC {
-    /** A client that narrows what it took, and adds one thing of its own. */
+    /** A client that narrows what it took and adds one thing of its own. */
     const val acme = "acme"
 
     /** A client that takes everything global offers and builds beside it. */
@@ -43,7 +43,7 @@ object SC {
 /**
  * The clients the `sample` module defines (issue #379).
  *
- * Between them they exercise everything a client may do to schema, which is the point of having two rather
+ * Between them, they exercise everything a client may do to schema, which is the point of having two rather
  * than one: the interesting cases are the ones where two clients disagree about the same type, and a single
  * client cannot show that.
  *
