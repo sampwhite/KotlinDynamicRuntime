@@ -100,6 +100,53 @@ class ClientVariantTest : StringSpec({
         refused(acme, entry) shouldContainIgnoringCase ST.notes
     }
 
+    // --- the same narrowing, on a patch ------------------------------------------
+    //
+    // Create and patch are separate write paths, and #379 found they had drifted -- create was not
+    // validating against the variant at all. So the narrowing is proven on both rather than assumed to carry
+    // across, which is what #342 asked for in as many words.
+
+    /** A patch of one gedra: replace the entry of [traitId] with [data]. */
+    fun replace(id: String, traitId: String, data: Map<String, Any?>): Map<String, Any?> = mapOf(
+        GPF.targets to mapOf(
+            GedraDataType.formDoc.name to listOf(
+                mapOf(
+                    GDF.gedraId to id,
+                    GPF.edits to listOf(
+                        mapOf(
+                            GED.action to GedraEditAction.addOrReplace.name,
+                            GE.traitId to traitId,
+                            GE.data to data,
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    "a patch is held to the client's variant, exactly as a create is" {
+        // Each client edits a document of its own, so what is being compared is the rule and not the row.
+        val acmeDoc = create(acme, visit("gb"))
+        val globexDoc = create(globex, visit("gb"))
+        val toRemoved = mapOf(ST.address to mapOf(ST.country to "fr"))
+
+        // globex takes every global country, so the same edit lands.
+        globex.postItems(GEP.patch, replace(globexDoc, ST.siteVisit, toRemoved))
+        // acme narrowed `SiteAddress`, so the edit is refused -- and the stored entry is untouched, since a
+        // patch that fails validates before it writes.
+        acme.expectError(EXC.badInput, GEP.patch, replace(acmeDoc, ST.siteVisit, toRemoved))
+        val stored = acme.getItem(GEP.formDoc, mapOf(GDF.gedraId to acmeDoc))[GDF.entries]
+            .toJsonListOfMaps().single()
+        stored[GE.data].toJsonMapOrEmpty()[ST.address].toJsonMapOrEmpty()[ST.country] shouldBe "gb"
+    }
+
+    "a patch of a trait acme narrowed is refused on the narrowed field" {
+        val doc = create(acme, questionnaire(mapOf(ST.topic to SC.acmeTopics.first())))
+        acme.expectError(EXC.badInput, GEP.patch, replace(doc, ST.questionnaire, mapOf(ST.topic to "shipping")))
+        // ...and a value acme kept goes through, which is what shows the refusal was the value and not the call.
+        acme.postItems(GEP.patch, replace(doc, ST.questionnaire, mapOf(ST.topic to SC.acmeTopics.last())))
+    }
+
     // --- a trait the client does not support ------------------------------------
     //
     // Since the write path holds a call to the client's supported set by default (#379), omitting a trait is
