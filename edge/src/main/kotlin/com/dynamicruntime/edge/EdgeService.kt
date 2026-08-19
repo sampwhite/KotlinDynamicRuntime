@@ -100,12 +100,34 @@ class EdgeService : ServiceInitializer, ContentServer {
         if (handler.focus != ContextFocus.content) {
             return false
         }
+        val apiRoot = "/" + (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String ?: EdgeRoot.ea)
         return when (handler.appPath) {
             "/" -> {
-                handler.sendRedirect("/" + handler.contextRoot + EDGEP.loginPage)
+                // A signed-in caller gets a page rather than a redirect. Sending them to the sign-in page
+                // instead is a LOOP -- root to login, login back to root -- which is what an edge with no
+                // home page of its own does by default. Observed the first time somebody signed in from the
+                // bare root rather than from a deep link.
+                val email = cxt.envAuthEmail
+                if (email != null) {
+                    handler.sendStringResponse(
+                        EnvAuthPage.renderSignedIn(email, apiRoot + "/schema/endpoints"),
+                        EXC.ok, "text/html; charset=utf-8",
+                    )
+                } else {
+                    handler.sendRedirect("/" + handler.contextRoot + EDGEP.loginPage)
+                }
                 true
             }
             EDGEP.loginPage -> {
+                // Already signed in: go where they were headed rather than asking again. Without this, a
+                // signed-in caller who lands back on this page is offered a login they do not need, and the
+                // redirect after it starts the loop over.
+                if (cxt.envAuthEmail != null) {
+                    handler.sendRedirect(
+                        EnvAuthReturn.sanitize(handler.queryParams[EnvAuthReturn.param] as? String),
+                    )
+                    return true
+                }
                 val clientId = GoogleAuthConfig.clientId(cxt.instanceConfig)
                 if (clientId == null) {
                     // Saying so plainly beats a button that cannot work: without a client id there is no way
@@ -116,10 +138,9 @@ class EdgeService : ServiceInitializer, ContentServer {
                     return true
                 }
                 val returnTo = EnvAuthReturn.sanitize(handler.queryParams[EnvAuthReturn.param] as? String)
-                val loginPath = "/" + (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String ?: EdgeRoot.ea) +
-                    EAEP.login
                 handler.sendStringResponse(
-                    EnvAuthPage.render(clientId, returnTo, loginPath), EXC.ok, "text/html; charset=utf-8",
+                    EnvAuthPage.render(clientId, returnTo, apiRoot + EAEP.login),
+                    EXC.ok, "text/html; charset=utf-8",
                 )
                 true
             }
