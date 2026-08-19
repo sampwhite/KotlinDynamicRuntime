@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.util.isEmailAddress
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
@@ -66,6 +67,10 @@ val Users = FC<Props> {
     var draftIsEntity by useState(false)
     var draftName by useState("")
     var draftEnabled by useState(true)
+
+    // Whether the permanent-delete danger button has been armed -- a two-step confirm, since there is no
+    // Popconfirm wrapper and an irreversible delete is the one action here a stray click must not perform.
+    var confirmingDelete by useState(false)
 
     val generation = useRefreshGeneration()
     // Guards against out-of-order search responses: only the newest request may publish its results.
@@ -145,6 +150,7 @@ val Users = FC<Props> {
         draftIsEntity = user?.isEntity == true
         draftName = user?.name ?: ""
         draftEnabled = user?.enabled ?: true
+        confirmingDelete = false
         note = null
         error = null
     }
@@ -253,11 +259,18 @@ val Users = FC<Props> {
     fun save() = run {
         val target = editing
         if (target == null) {
+            // Caught here so a mistyped address is an immediate, local message rather than a round trip -- the
+            // backend runs this same check (base/kernel), so it is the authority; this only spares the trip.
+            val email = draftEmail.trim()
+            if (!email.isEmailAddress()) {
+                error = DisplayError.expected("\"$email\" is not a valid email address.")
+                return@run
+            }
             val created = AdminApi.createUser(
-                draftEmail, username = null, roles = draftRoles(emptyList()),
+                email, username = null, roles = draftRoles(emptyList()),
                 org = draftOrg.trim().ifEmpty { null },
                 isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
-                client = draftClient.trim().ifEmpty { null },
+                client = draftClient.trim().ifEmpty { null }, enabled = draftEnabled,
             )
             note = "Created ${created.primaryId}."
         } else {
@@ -291,6 +304,19 @@ val Users = FC<Props> {
         runSearch(search)
     }
 
+    /**
+     * Permanently deletes the user being edited: the email and identity are obfuscated irrecoverably. Armed
+     * by [confirmingDelete] so the danger button is a deliberate two-step, not a single stray click. The
+     * recoverable "delete" is the Enabled checkbox, not this.
+     */
+    fun performDelete() = run {
+        val target = editing ?: return@run
+        val result = AdminApi.deleteUser(target.userId, permanent = true)
+        note = "Permanently deleted ${target.primaryId}: ${result.primaryId}."
+        closeEditor()
+        runSearch(search)
+    }
+
     val denied = config?.canManageUsers == false
     val inEditor = creating || editing != null
 
@@ -318,6 +344,25 @@ val Users = FC<Props> {
 
             error?.let { errorText(it) }
 
+            if (editing?.deleted == true) {
+                // A permanently-deleted tombstone: nothing to edit, and re-enabling it is precisely the bug
+                // this read-only view exists to prevent. Show what survives and stop -- the backend refuses an
+                // edit either way (loadEditableUser), so this is a courtesy over an enforced rule. The login
+                // identity is obfuscated; the name and organization are kept so the record stays recognizable
+                // to somebody debugging what the account owned.
+                readOnlyField("Email address", draftEmail)
+                readOnlyField("Id", editing?.userId?.toString() ?: "")
+                readOnlyField(
+                    if (editing?.isEntity == true) "Business name" else "Full name",
+                    editing?.name?.takeIf { it.isNotBlank() } ?: "\u2014",
+                )
+                editing?.org?.takeIf { it.isNotBlank() }?.let { readOnlyField("Organization", it) }
+                p {
+                    className = ClassName("subtitle")
+                    +("This account was permanently deleted: its email was obfuscated and freed for reuse, and " +
+                        "it cannot be recovered, edited, or re-enabled. The name is kept for reference.")
+                }
+            } else {
             if (creating) {
                 textField("Email address", draftEmail, disabled = busy, autoComplete = AC.username) {
                     draftEmail = it
@@ -458,6 +503,19 @@ val Users = FC<Props> {
                     +"Enabled"
                 }
             }
+            p {
+                className = ClassName("type-hint")
+                // Names what unchecking this actually is. The two modes differ: creating disabled makes an
+                // account that exists but cannot yet sign in; unchecking on an existing user is the recoverable
+                // half of "deleting" one, as distinct from -- not a duplicate of -- the permanent delete below.
+                +(if (creating) {
+                    "Leave checked for an active account. Uncheck to create it already disabled: the user " +
+                        "exists but cannot sign in until you enable them here."
+                } else {
+                    "Unchecking disables the account — a recoverable delete: the user cannot sign in, but you " +
+                        "can re-enable them here. To remove the account for good, use Delete user below."
+                })
+            }
             if (self) {
                 p {
                     className = ClassName("type-hint")
@@ -480,6 +538,43 @@ val Users = FC<Props> {
                     onClick = { closeEditor() }
                     +"Cancel"
                 }
+            }
+
+            // ---- permanent delete (edit mode only, never your own account) ---
+            //
+            // Deliberately *only* the irreversible delete: the recoverable "delete" is the Enabled checkbox
+            // above, so offering it a second time here as a plain disable would be the same action twice.
+            if (editing != null && !self) {
+                p {
+                    className = ClassName("type-hint")
+                    +("Delete permanently: the email is obfuscated and freed for reuse, and the account cannot " +
+                        "be recovered. To only suspend the user, uncheck Enabled instead.")
+                }
+                div {
+                    className = ClassName("row")
+                    if (!confirmingDelete) {
+                        Button {
+                            danger = true
+                            disabled = busy
+                            onClick = { confirmingDelete = true }
+                            +"Delete user…"
+                        }
+                    } else {
+                        Button {
+                            danger = true
+                            loading = busy
+                            onClick = { performDelete() }
+                            +"Confirm permanent delete"
+                        }
+                        Button {
+                            type = "link"
+                            disabled = busy
+                            onClick = { confirmingDelete = false }
+                            +"Keep user"
+                        }
+                    }
+                }
+            }
             }
         } else {
             // ---- find -------------------------------------------------------

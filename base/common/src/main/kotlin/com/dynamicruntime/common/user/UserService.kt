@@ -279,6 +279,51 @@ class UserService : ServiceInitializer {
      * binds as a date) because the standard update already binds `updatedAt` to the *new* value in its SET
      * clause -- one name cannot carry both.
      */
+    /**
+     * Deletes a user, in the two senses of the word (issue #396).
+     *
+     *  - **Recoverable** ([permanent] false): the account is merely disabled. A disabled row cannot log in and
+     *    its live roles are empty (`AuthUserUtil.refreshActingRoles`), but every identifier and contact is kept,
+     *    so re-enabling it restores the user intact. This is what the `setEnabled(false)` toggle already does;
+     *    delete is the same operation under a name that says what it is for.
+     *  - **Permanent** ([permanent] true): the account is disabled **and de-identified** -- its email and
+     *    username obfuscated, its password and contacts cleared ([AuthUserRow.deletedTombstone]) -- and its
+     *    external logins and remembered devices are purged. The original email is unrecoverable and freed for
+     *    re-registration; the row survives only as a `deleted-<userId>` tombstone.
+     *
+     * Returns the resulting row, so a caller reports the outcome (the obfuscated identifiers included) without
+     * a re-read. The de-identifying write goes through [updateUser], so it keeps the optimistic-concurrency
+     * guard and announces itself to the user cache; the auxiliary-table purges run only after it succeeds, so
+     * a version conflict leaves nothing half-removed.
+     */
+    fun deleteUser(cxt: KdrCxt, row: AuthUserRow, permanent: Boolean): AuthUserRow {
+        val result = if (permanent) {
+            AuthUserRow.deletedTombstone(row, cxt.instanceNow(), cxt.userProfile.userId)
+        } else {
+            row.also { it.enabled = false }
+        }
+        updateUser(cxt, result)
+        if (permanent) {
+            deleteRowsForUser(cxt, UT.linkedUsers, row.userId)
+            deleteRowsForUser(cxt, UT.authUserDevices, row.userId)
+        }
+        return result
+    }
+
+    /** Hard-deletes every row of [tableName] owned by [userId] -- the auxiliary identity tables a permanent
+     *  user delete purges. A real delete, not a soft one: these rows are login paths and device memory, not
+     *  the audit record, which is the surviving (disabled, obfuscated) `AuthUsers` row. */
+    private fun deleteRowsForUser(cxt: KdrCxt, tableName: String, userId: Long) {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = cxt.getSchema().tables[tableName]
+            ?: throw KdrException("$tableName table is not registered in the schema store.")
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "dPurge$tableName", table.columns,
+            "delete from t:$tableName where c:${AU.userId} = :${AU.userId}",
+        )
+        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(AU.userId to userId)) }
+    }
+
     private fun mkGuardedUserUpdateStmt(sqlCxt: SqlCxt, table: KdrTable): SqlStatement {
         val setColumns = table.columns.filter { col ->
             col.name != PF.touchedAt && col.name != PF.createdAt && col.name != PF.createdBy && !col.autoIncrement
