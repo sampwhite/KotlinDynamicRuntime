@@ -79,7 +79,14 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         forTestingOnly = endpoint.forTestingOnly,
         // The path is the statement of which client this is for, so the handler is run bound to it and reads
         // `cxt.client` exactly as it does on the shared surface -- which is why the same lambda serves both.
-        handler = { c, request -> shared(c.mkSubContext("client:$client", client), request) },
+        handler = { c, request ->
+            val bound = c.mkSubContext("client:$client", client)
+            // The path already said which client this is for, so the request is confined to it: a gedra
+            // belonging to another is refused rather than reaching the shared handler. Set here because this
+            // is the only place that knows the client came from a path rather than from who is calling.
+            bound.clientFromPath = client
+            shared(bound, request)
+        },
         client = client,
     )
 }

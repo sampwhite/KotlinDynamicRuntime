@@ -167,6 +167,20 @@ class KdrCxt(
      */
     var request: KdrRequest? = null
 
+    /**
+     * The client named by the **path** of the endpoint being served, or null on the shared surface (issue
+     * #387).
+     *
+     * Distinct from [client], which says who owns the row being worked on and is rebound freely as a request
+     * proceeds. This says the request arrived somewhere that had already decided which client it was for, and
+     * so is a **confinement**: a gedra outside it is refused, whatever the caller's reach.
+     *
+     * That is what makes a client endpoint's promise legible rather than incidental. Without it, an
+     * `allClients` holder calling `/gedra/acme/...` with a `globex` id would be stopped only by scope --
+     * which is true today and stops being true the moment their scope is wide enough.
+     */
+    var clientFromPath: String? = null
+
     /** Cached read-only schema store; lazily populated via [getSchema]. */
     var schemaStore: KdrSchemaStore? = null
 
@@ -188,6 +202,7 @@ class KdrCxt(
         sub.org = if (client == this.client) org else null
         sub.locals.putAll(locals)
         sub.schemaStore = schemaStore
+        sub.clientFromPath = clientFromPath
         sub.forwardedFor = forwardedFor
         sub.debug = debug // debug tags travel with the request
         sub.appId = appId // request identity travels with the request...

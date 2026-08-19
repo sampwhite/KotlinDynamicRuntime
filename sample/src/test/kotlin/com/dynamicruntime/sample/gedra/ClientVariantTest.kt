@@ -360,6 +360,32 @@ class ClientVariantTest : StringSpec({
         countriesFor(SC.globex) shouldBe ST.countries
         countriesFor(SC.acme) shouldBe SC.acmeCountries
     }
+
+    // The promise a client endpoint makes: the path says which client, so a gedra belonging to another is
+    // refused there -- whatever the caller's reach. Scope stops most cross-client access already, but scope
+    // is about who is asking; this is about where the request was addressed, and the two stop agreeing
+    // exactly for the caller whose scope is wide enough not to be stopped.
+    "a client's endpoint refuses a gedra belonging to another client" {
+        val admin = TestUser.createFullAdmin(cxt, "confine-admin@example.com")
+        val elsewhere = create(globex, visit("gb"))
+
+        // The same admin reaches it on the shared surface, which is unchanged...
+        admin.getItem(GEP.formDoc, mapOf(GDF.gedraId to elsewhere))[GDF.gedraId].toOptStr() shouldBe elsewhere
+        // ...and is refused on acme's, because the path already said which client this is for.
+        val message = admin.expectError(
+            EXC.badInput,
+            clientPath(GEP.formDoc, SC.acme),
+            args = mapOf(GDF.gedraId to elsewhere),
+        )[EP.errorMessage].toOptStr().orEmpty()
+        message shouldContainIgnoringCase SC.globex
+        message shouldContainIgnoringCase SC.acme
+    }
+
+    "a client's endpoint reaches its own client's gedras" {
+        val mine = create(acme, visit("gb"))
+        acme.getItem(clientPath(GEP.formDoc, SC.acme), mapOf(GDF.gedraId to mine))[GDF.gedraId]
+            .toOptStr() shouldBe mine
+    }
 })
 
 /** Case-insensitive containment, so an assertion does not depend on how a message happens to be capitalized. */

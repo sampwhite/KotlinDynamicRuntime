@@ -292,6 +292,7 @@ class GedraDataService : ServiceInitializer {
      */
     fun queryGedra(cxt: KdrCxt, fullId: String, kind: GedraDataType, scope: ReadScope): GedraDataRow? {
         val gedraId = gedraService.readId(fullId)
+        checkPathClient(cxt, gedraId)
         if (gedraId.dataType != kind) {
             return null
         }
@@ -457,7 +458,30 @@ class GedraDataService : ServiceInitializer {
      * check and the existence check against every target, so naming a gedra in somebody else's client answers
      * 404 rather than borrowing that client's rules.
      */
+    /**
+     * Refuses a gedra outside the client the **path** named (issue #387).
+     *
+     * Only ever fires on a client endpoint: on the shared surface `cxt.clientFromPath` is null and this does
+     * nothing, so an `allClients` holder reaches across clients there exactly as before.
+     *
+     * It is what makes a client endpoint's guarantee structural rather than incidental. Scope already stops
+     * most cross-client reach, but scope is about who the caller is; this is about where the request was
+     * addressed, and the two stop agreeing precisely for the caller whose scope is wide enough not to be
+     * stopped. Refused as bad input rather than as "not found", because the request contradicts itself: the
+     * path said one client and the id says another, and either half could be the mistake.
+     */
+    private fun checkPathClient(cxt: KdrCxt, gedraId: GedraId) {
+        val confined = cxt.clientFromPath ?: return
+        if (gedraId.client != confined) {
+            throw KdrException.mkInput(
+                "'$gedraId' belongs to the client '${gedraId.client}', and this endpoint is the one for " +
+                    "'$confined'. Use that client's own endpoint, or the shared one.",
+            )
+        }
+    }
+
     private fun oneClient(cxt: KdrCxt, ordered: List<Pair<GedraDataType, List<GedraPatchTarget>>>): String {
+        ordered.forEach { (_, targets) -> targets.forEach { checkPathClient(cxt, it.gedraId) } }
         val clients = ordered.flatMap { (_, targets) -> targets.map { it.gedraId.client } }.distinct()
         if (clients.size > 1) {
             throw KdrException.mkInput(
