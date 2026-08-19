@@ -96,16 +96,22 @@ class ClientSchemaVariantTest : StringSpec({
     // The other half of a variant: which traits are *in* the union, as opposed to what those traits accept.
     // `offsite` declares no `includedTraits`, so it supports nothing -- an ordinary state for a client that
     // has not declared any yet, and one the union has to be able to express.
-    "a client supporting no traits gets a union that recognizes none" {
+    // Looped over **every** entry kind rather than written for `formDoc`, which is the guard the drift needed:
+    // the global pass and the per-client pass kept their own lists of kinds, and when `wfData` was added to
+    // one and not the other every client silently kept the global workflow-data union. One shared list now,
+    // and this fails if a kind is ever regenerated globally and not per client.
+    "a client supporting no traits gets a union that recognizes none, for every entry kind" {
         val service = schema(boot("variantTest"))
-        val unionName = "globalconfig." + GU.unionName(GedraDataType.formDoc)
-        // Global selects between its traits by branch...
-        service.storeFor(null).types.getValue(unionName).variants.shouldNotBeNull()
-        // ...and a client supporting none has nothing to select between, so every entry lands on the open
-        // shape as plain JSON rather than the boot refusing a `oneOf` with no branches in it.
-        val theirs = service.storeFor(VariantFixtureComponent.narrowClient).types.getValue(unionName)
-        theirs.variants shouldBe null
-        theirs.additionalProperties shouldBe true
+        GU.entryKinds.forEach { kind ->
+            val unionName = "globalconfig." + GU.unionName(kind)
+            // Global selects between its traits by branch...
+            service.storeFor(null).types.getValue(unionName).variants.shouldNotBeNull()
+            // ...and a client supporting none has nothing to select between, so every entry lands on the open
+            // shape as plain JSON rather than the boot refusing a `oneOf` with no branches in it.
+            val theirs = service.storeFor(VariantFixtureComponent.narrowClient).types.getValue(unionName)
+            theirs.variants shouldBe null
+            theirs.additionalProperties shouldBe true
+        }
     }
 })
 

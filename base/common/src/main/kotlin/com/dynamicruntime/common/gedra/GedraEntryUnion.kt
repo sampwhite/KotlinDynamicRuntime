@@ -22,6 +22,21 @@ object GU {
      */
     fun inputName(kind: GedraDataType): String = gedraName(kind) + "Input"
 
+    /**
+     * The kinds that carry **validated** entries, and therefore have manufactured unions.
+     *
+     * One list, read by everything that builds a union: the global pass in `SchemaService` and the per-client
+     * pass in `ClientSchemaVariants`. It used to be written in both, with a comment in each saying they had to
+     * agree -- and they stopped agreeing within days of `wfData` being added (issue #381), which left every
+     * client using the *global* workflow-data union no matter what its own definition said. A comment is not a
+     * mechanism; a shared list is.
+     *
+     * A kind **not** here is silently unvalidated: `checkStoredEntries` looks its union up with a `?: return`.
+     * So a kind whose entries any real path writes has to be in this list. `userData` and `fileRef` have no
+     * entry-writing path yet.
+     */
+    val entryKinds: List<GedraDataType> = listOf(GedraDataType.formDoc, GedraDataType.wfData)
+
     /** The union type of the entries one kind may carry: `formDoc` becomes `FormDocEntry`. */
     fun unionName(kind: GedraDataType): String = gedraName(kind) + "Entry"
 
