@@ -335,10 +335,15 @@ class ClientVariantTest : StringSpec({
     // The picker: an admin says which client they are looking at rather than having it inferred.
     "an allClients admin can ask for a named client's surface" {
         val admin = TestUser.createFullAdmin(cxt, "catalog-admin@example.com")
-        catalogPaths(admin, SC.acme).shouldContain(clientPath(GEP.formDocCreate, SC.acme))
+        val acmePaths = catalogPaths(admin, SC.acme)
+        acmePaths.shouldContain(clientPath(GEP.formDocCreate, SC.acme))
         catalogPaths(admin, SC.globex).shouldContain(clientPath(GEP.formDocCreate, SC.globex))
-        // ...and each answer is that client's alone.
-        catalogPaths(admin, SC.acme).shouldNotContain(clientPath(GEP.formDocCreate, SC.globex))
+        // Each answer is that client's alone...
+        acmePaths.shouldNotContain(clientPath(GEP.formDocCreate, SC.globex))
+        // ...and *only* that client's, so asking to see `acme` does not answer with the whole application
+        // beside it. Somebody who asked the narrow question should not need a regex to get back to it.
+        acmePaths.shouldNotContain("/auth/self/info")
+        acmePaths.all { it.contains("/${SC.acme}/") } shouldBe true
     }
 
     "naming somebody else's client takes the capability" {

@@ -450,19 +450,33 @@ class SchemaService : ServiceInitializer {
         /**
          * Whether an endpoint belongs on the surface being shown.
          *
-         * With no client, the shared surface and nothing else -- a client's endpoints are not advertised to
-         * somebody who cannot use them. With one, that client's endpoints **in place of** the shared ones they
-         * copy: the rest of the shared surface (`auth`, `profile`, everything with no client version) stays,
-         * because those are not client-shaped and a client's people need them exactly as anybody does.
+         * Three answers, and the middle one is the reason there are three:
          *
-         * Replacing rather than adding is what keeps one `$defs` bag honest. Showing both would need
-         * `gedra.FormDoc` to mean the global type for one endpoint and the client's for another, in one map,
-         * and whichever way it were filled one of the two would be advertised wrongly.
+         * - **No client** -- the shared surface and nothing else. A client's endpoints are not advertised to
+         *   somebody who cannot use them.
+         * - **A client, [named] explicitly** -- *only* that client's endpoints. Somebody who asks to see
+         *   `acme` is looking at what `acme` has of its own, and answering with the whole application beside
+         *   it means reaching for a regex to get back to the question. This is the picker's shape.
+         * - **A client, inferred from the caller** -- that client's endpoints **in place of** the shared ones
+         *   they copy, with the rest of the shared surface intact. `auth`, `profile` and everything with no
+         *   client version are not client-shaped, and a client's people need them exactly as anybody does.
+         *
+         * Replacing rather than adding, in that last case, is what keeps one `$defs` bag honest. Showing both
+         * would need `gedra.FormDoc` to mean the global type for one endpoint and the client's for another, in
+         * one map, and whichever way it were filled one of the two would be advertised wrongly.
          */
         @KdrPrivate
-        fun surfaceOf(endpoint: KdrEndpoint, forClient: String?, all: Collection<KdrEndpoint>): Boolean {
+        fun surfaceOf(
+            endpoint: KdrEndpoint,
+            forClient: String?,
+            named: Boolean,
+            all: Collection<KdrEndpoint>,
+        ): Boolean {
             if (forClient == null) {
                 return endpoint.client == null
+            }
+            if (named) {
+                return endpoint.client == forClient
             }
             if (endpoint.client == forClient) {
                 return true
@@ -491,14 +505,15 @@ class SchemaService : ServiceInitializer {
             // place of the shared ones they replace; an `allClients` holder may name another. The `$defs` bag
             // comes from the same client's store, so the advertised types are that client's too -- which is
             // the whole reason a client endpoint exists rather than a differently-named shared one.
-            val forClient = catalogClient(cxt, request[SS.client] as? String)
+            val named = (request[SS.client] as? String)?.trim()?.ifEmpty { null }
+            val forClient = catalogClient(cxt, named)
             val schema = forClient?.let { SchemaService.get(cxt)?.storeFor(it) } ?: cxt.getSchema()
             // One access decision per endpoint, consumed twice: what survives is rendered, what does not is
             // what `explainAccess` reports. Deriving the explanation from a second, independent pass is how an
             // explanation comes to disagree with the filter it claims to describe -- the same drift issue #211
             // closed between the catalog and the gate.
             val (visible, withheld) = schema.endpoints.values
-                .filter { surfaceOf(it, forClient, schema.endpoints.values) }
+                .filter { surfaceOf(it, forClient, named != null, schema.endpoints.values) }
                 .partition { ep -> isVisibleTo(cxt, ep.path) }
             explainAccess(cxt, withheld)
             val renderings = visible
@@ -531,7 +546,8 @@ class SchemaService : ServiceInitializer {
             // place of the shared ones they replace; an `allClients` holder may name another. The `$defs` bag
             // comes from the same client's store, so the advertised types are that client's too -- which is
             // the whole reason a client endpoint exists rather than a differently-named shared one.
-            val forClient = catalogClient(cxt, request[SS.client] as? String)
+            val named = (request[SS.client] as? String)?.trim()?.ifEmpty { null }
+            val forClient = catalogClient(cxt, named)
             val schema = forClient?.let { SchemaService.get(cxt)?.storeFor(it) } ?: cxt.getSchema()
             // Filtered exactly as the listing is: a lookup that answered for an endpoint the listing hides
             // would be a one-call way around the hiding, and this endpoint exists to return the same shape.
