@@ -10,6 +10,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.ReadScopeRules
+import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -65,10 +66,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         "Creates a form document carrying the supplied entries, and answers with it as stored.",
         HttpMethod.POST,
         outputRef = docType,
-        inputRef = docType,
+        // The sent shape, not the stored one: they differ by `allowAdditionalTraits`, which is an instruction
+        // about this write and has no place in what a document *is* (issue #379).
+        inputRef = GU.inputName(formDoc),
     ) { c, request ->
         val entries = request[GDF.entries].toJsonListOfMaps()
-        GedraDataService.require(c).createGedra(c, formDoc, entries).toJsonMap()
+        GedraDataService.require(c)
+            .createGedra(c, formDoc, entries, request.getOptBool(GDF.allowAdditionalTraits) == true)
+            .toJsonMap()
     }
 
     itemEndpoint(
@@ -194,6 +199,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
             field(GPF.targets, "The gedras to change, grouped by kind.", required = true) {
                 ref(GEP.patchTargets)
             }
+            field(GDF.allowAdditionalTraits, ADDITIONAL_TRAITS_HINT) { type = SCT.boolean }
         },
     ) { c, request ->
         val gedraService = GedraService.require(c)
@@ -209,7 +215,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
             throw KdrException.mkInput("A patch has to name at least one gedra to change.")
         }
         GedraDataService.require(c)
-            .patchGedras(c, byKind, ReadScopeRules.forCaller(c))
+            .patchGedras(
+                c, byKind, ReadScopeRules.forCaller(c),
+                request.getOptBool(GDF.allowAdditionalTraits) == true,
+            )
             .map { it.toJsonMap() }
     }
 }

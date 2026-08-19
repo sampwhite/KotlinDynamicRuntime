@@ -5,7 +5,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
-import com.dynamicruntime.common.util.deepClone
+import com.dynamicruntime.common.schema.typeRefPath
 import kotlin.time.Instant
 
 /**
@@ -97,7 +97,7 @@ object GSRC {
  * {"traitId": "name", "data": {"name": "My Expense Form"}}
  * ```
  *
- * [dataSchema] configures the `data` property, so both authoring styles go through one function — declare the
+ * *dataSchema* configures the `data` property, so both authoring styles go through one function — declare the
  * shape inline, or `ref("some.Type")` an existing one. What it may **not** do is make `data` anything but an
  * object: an entry's data is a map, and a trait declaring it a string or an array is refused here, where the
  * author is, rather than at the first payload that fails to validate.
@@ -109,11 +109,20 @@ object GSRC {
  * it. A trait whose fields are all optional still satisfies this with an empty map, which is the honest way
  * to say "nothing supplied yet".
  *
- * [appliesTo] is the set of gedra kinds that may carry this entry, emitted onto the type as [GE.appliesTo].
+ * *appliesTo* is the set of gedra kinds that may carry this entry, emitted onto the type as [GE.appliesTo].
  * A *set* rather than one kind, because a trait like `name` genuinely means the same thing on a form document
  * and on workflow data — and the alternative, a `name` beside a `wfDataName`, is two names for one concept.
  * Where two traits really are different concepts they get different ids, which is the right answer anyway.
  */
+/**
+ * The type holding a trait's own data, named from the entry type that carries it: `NameEntry` becomes
+ * `NameData` (issue #379).
+ *
+ * Derived by one rule rather than given a naming scheme of its own, so the pair reads as a pair -- and so
+ * that nothing has to be told the name twice. A type not ending in `Entry` simply gains the suffix.
+ */
+fun traitDataTypeName(entryTypeName: String): String = entryTypeName.removeSuffix("Entry") + "Data"
+
 fun SchTypesBuilder.traitEntry(
     name: String,
     traitId: String,
@@ -127,10 +136,33 @@ fun SchTypesBuilder.traitEntry(
                 "kinds it attaches to.",
         )
     }
-    // The trait's own data shape, handed back so a caller can hold it (issue #337). Captured at the point it
-    // is built rather than reconstructed afterward, so what a trait reports and what its entry type carries
-    // cannot describe different things -- and cloned, so neither can be mutated through the other.
-    var builtData: Map<String, Any?> = emptyMap()
+    // The trait's data is a **named type**, and its entry refers to it (issue #379). Three things follow,
+    // and the first is what forced it:
+    //
+    //  - **A client can narrow it.** An overlay reaches a type's own keys and its property set and stops, so
+    //    a client altering a trait would otherwise have to restate the generated envelope -- `traitId`,
+    //    `data`, and whatever `storedEntryFields` currently adds -- none of which the trait's author wrote,
+    //    and any later addition to which every client would silently drop. Naming the data makes it a type
+    //    somebody can target, which is the same reason any interior structure gets a name here.
+    //  - **One alteration reaches both unions.** The edit union builds its `data` from what this returns, so
+    //    a narrowed data type narrows what may be stored *and* what may be asked for, from one declaration.
+    //  - It exports more simply, which is prior art rather than a discovery: Cedar named these for the same
+    //    reason, partly to keep a Swagger export from inlining the same shape at every use.
+    val declared = SchTypeBuilder(cxt, namespace).apply {
+        dataSchema()
+        holdDataToAnObject(traitId)
+    }.data
+    // A trait whose data is **already** a named type keeps that name. Manufacturing a second one for the same
+    // shape would at best duplicate it and at worst collide: `NameEntry` derives `NameData`, which is exactly
+    // what an author naming their own data type would have called it -- and the generated wrapper would have
+    // replaced theirs with a reference to itself.
+    val builtData: Map<String, Any?> = if (SCH.dRef in declared) {
+        declared
+    } else {
+        val dataName = traitDataTypeName(name)
+        type(dataName) { data.putAll(declared) }
+        linkedMapOf(SCH.dRef to typeRefPath(dataName, namespace))
+    }
     // A branch, not a bare type: the discriminator has to stay top-level for the union to select on it, which
     // is exactly what `variantBranch` declares -- including the `const` that keeps the branch valid to a
     // reader that ignores the `discriminator` keyword entirely.
@@ -139,9 +171,7 @@ fun SchTypesBuilder.traitEntry(
         // settled vocabulary. Sorted so rebuilding the same trait produces the same bytes.
         data[GE.appliesTo] = appliesTo.map { it.name }.sorted()
         property(GE.data, "This entry's own data, as its trait defines it.", required = true) {
-            dataSchema()
-            holdDataToAnObject(traitId)
-            builtData = data.deepClone()
+            data.putAll(builtData)
         }
         storedEntryFields()
     }
@@ -198,7 +228,7 @@ fun SchTypeBuilder.storedEntryFields() {
  * to pick.
  *
  * It is a *temporary* rule with a known replacement: `g-primaryKey` is what will let several entries share a
- * trait, distinguished by a key drawn from their data. Until that exists there is nothing to tell them apart,
+ * trait, distinguished by a key drawn from their data. Until that exists, there is nothing to tell them apart,
  * so the honest thing is to refuse rather than to store a pair nothing can address. Enforced here — one guard
  * for every write path — rather than at each caller, since a path that forgot it would corrupt quietly.
  */

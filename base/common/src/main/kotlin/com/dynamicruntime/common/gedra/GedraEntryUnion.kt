@@ -14,6 +14,14 @@ object GU {
      */
     fun gedraName(kind: GedraDataType): String = kind.name.replaceFirstChar { it.uppercase() }
 
+    /**
+     * The shape a caller **sends** for one kind: `formDoc` becomes `FormDocInput` (issue #379).
+     *
+     * Everything the stored type has, plus the instructions that belong to a write rather than to a document
+     * -- so what `GET /gedra/formDocs` describes stays a description of documents.
+     */
+    fun inputName(kind: GedraDataType): String = gedraName(kind) + "Input"
+
     /** The union type of the entries one kind may carry: `formDoc` becomes `FormDocEntry`. */
     fun unionName(kind: GedraDataType): String = gedraName(kind) + "Entry"
 

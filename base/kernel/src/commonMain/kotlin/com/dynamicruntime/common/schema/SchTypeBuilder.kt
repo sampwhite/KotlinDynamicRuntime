@@ -210,6 +210,20 @@ open class SchTypeBuilder(
      * Adds a choice to the custom `options` construct: a [value] (the stored data)
      * and an optional display [label], which defaults to the value when redundant.
      */
+    /**
+     * Declares a property **as it already is** -- an empty body, which an overlay reads as "inherit".
+     *
+     * Only meaningful when a client alters a type. Mentioning keys is how the property set is reduced, so an
+     * alteration that changes one property still has to name every property it keeps; without this each of
+     * them would have to be restated in full, which is the restating this whole design exists to avoid --
+     * and a restatement drifts from what it copied the moment the original changes.
+     *
+     * There is deliberately no description: this says nothing about the property, which is the point.
+     */
+    fun keepProperty(name: String) {
+        propertiesMap()[name] = LinkedHashMap<String, Any?>()
+    }
+
     fun option(value: String, label: String = value) {
         optionsList().add(linkedMapOf(SCH.label to label, SCH.value to value))
     }

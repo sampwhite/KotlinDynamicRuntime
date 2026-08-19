@@ -218,11 +218,17 @@ class GedraDataService : ServiceInitializer {
      * union by the endpoint that took them. What is added here is the stored envelope: an id, a source, and
      * the timestamps. A caller supplies none of it, which is what `g-derived` on those fields says.
      */
-    fun createGedra(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>): GedraDataRow {
+    fun createGedra(
+        cxt: KdrCxt,
+        kind: GedraDataType,
+        entries: List<Map<String, Any?>>,
+        allowAdditionalTraits: Boolean = false,
+    ): GedraDataRow {
         // At most one entry per trait, refused before anything is minted (issue #337). This was not checked
         // when create was written, so a caller could store two entries of one trait and leave a gedra nothing
         // could address by trait alone -- which is how the patch, and the form, expect to address them.
         checkOneEntryPerTrait(entries)
+        checkTraitsSupported(cxt, kind, entries.mapNotNull { it[GE.traitId].toOptStr() }, allowAdditionalTraits)
         // Interned as it is minted, so every later reader of this gedra shares one instance. The cache does
         // not yet hold every extant id, so this buys identity and cheap keys and not existence -- see
         // GedraService.gedraIds.
@@ -243,6 +249,14 @@ class GedraDataService : ServiceInitializer {
                 createdBy = cxt.userProfile.userId,
             )
         }
+
+        // Against the schema of the client this is being stored **in** (issue #379), which the patch path
+        // already did and this one did not -- so a client's narrowing reached an edit and not a creation, and
+        // the same payload was kept or refused depending on which call made it.
+        //
+        // After the envelope is built, not before: what is checked is the entry as it will be stored, and the
+        // union requires the fields `asStoredEntry` adds.
+        checkStoredEntries(cxt, kind, stored)
 
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
@@ -353,7 +367,7 @@ class GedraDataService : ServiceInitializer {
             // Stamp updatedAt strictly past the row's *current* value, read here under the lock. A delete that
             // did not advance it would be permanently invisible to the gedra cache: the cache skips a row at or
             // before the version it holds, and a disabled gedra never gets a later write to correct that, so it
-            // would stay readable from cache forever. The `row` read before the transaction cannot be trusted
+            // would stay readable from the cache forever. The `row` read before the transaction cannot be trusted
             // for the bump -- it may have come from the cache, which is exactly what might be behind. A row
             // gone or already disabled here reads as null, and nextUpdatedAt falls back to now, which is
             // harmless: the enabled-only update then matches nothing and the delete reports nothing to do.
@@ -392,12 +406,21 @@ class GedraDataService : ServiceInitializer {
         cxt: KdrCxt,
         targetsByKind: Map<GedraDataType, List<GedraPatchTarget>>,
         scope: ReadScope,
+        allowAdditionalTraits: Boolean = false,
     ): List<GedraPatchResult> {
         val ordered = kindApplyOrder.mapNotNull { kind -> targetsByKind[kind]?.let { kind to it } }
         val patchCxt = cxt.mkSubContext("patch", oneClient(cxt, ordered))
         for ((kind, targets) in ordered) {
             for (target in targets) {
                 admit(patchCxt, kind, target, scope)
+                // Only what this call writes: a delete removes a trait rather than storing one, so it is
+                // always allowed -- which is what lets an unsupported entry be cleaned up without the flag.
+                checkTraitsSupported(
+                    patchCxt,
+                    kind,
+                    target.edits.filterNot { it.action == GedraEditAction.deleteOrNoOp }.map { it.traitId },
+                    allowAdditionalTraits,
+                )
             }
         }
         return ordered.flatMap { (kind, targets) -> targets.map { applyToOne(patchCxt, kind, it, scope) } }
@@ -650,10 +673,47 @@ class GedraDataService : ServiceInitializer {
      * is a fact about the destination rather than about who did the writing. For everybody else the two are
      * the same client, since their scope confines them to it.
      */
+    /**
+     * Refuses trait ids this client does not support, unless the caller asked to write outside its schema
+     * (issue #379).
+     *
+     * Which traits are supported is read off the client's own union rather than recomputed: every branch
+     * carries its trait id as a `const`, so `SchVariants.isKnown` is the same answer the validator selects
+     * with. Nothing new has to be carried to the request for this.
+     *
+     * Checked against **what this call writes**, never the whole gedra. A document holding an entry written
+     * before -- or under the flag -- stays editable without it, which it would not if the merged set were
+     * checked: one legacy entry would make the document permanently unpatchable.
+     */
+    private fun checkTraitsSupported(
+        cxt: KdrCxt,
+        kind: GedraDataType,
+        traitIds: List<String>,
+        allowAdditional: Boolean,
+    ) {
+        if (allowAdditional || traitIds.isEmpty()) {
+            return
+        }
+        val union = clientUnion(cxt, kind)?.variants ?: return
+        val unsupported = traitIds.filterNot { union.isKnown(it) }.distinct()
+        if (unsupported.isNotEmpty()) {
+            throw KdrException.mkInput(
+                "The client '${cxt.client}' does not support " +
+                    "${unsupported.joinToString(", ") { "'$it'" }}. Either the trait is misspelled or it " +
+                    "belongs to another client; to store it anyway, send " +
+                    "'${GDF.allowAdditionalTraits}'.",
+            )
+        }
+    }
+
+    /** The entry union as [cxt]'s client sees it, or null on a node with no compiled schema for it. */
+    private fun clientUnion(cxt: KdrCxt, kind: GedraDataType) =
+        (SchemaService.get(cxt)?.storeFor(cxt.client) ?: cxt.getSchema())
+            .types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]
+
     private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {
         checkOneEntryPerTrait(entries)
-        val store = SchemaService.get(cxt)?.storeFor(cxt.client) ?: cxt.getSchema()
-        val union = store.types["${GCFG.globalNamespace}.${GU.unionName(kind)}"] ?: return
+        val union = clientUnion(cxt, kind) ?: return
         val failures = entries.flatMap { validate(union, it) }
         if (failures.isNotEmpty()) {
             throw KdrException.mkInput(

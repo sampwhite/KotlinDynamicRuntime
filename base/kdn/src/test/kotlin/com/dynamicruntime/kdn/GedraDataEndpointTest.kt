@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GD
 import com.dynamicruntime.common.gedra.GDBG
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GDT
 import com.dynamicruntime.common.gedra.GE
@@ -154,10 +155,22 @@ class GedraDataEndpointTest : StringSpec({
     // A trait this node does not know falls through the union's default branch rather than taking the creation
     // down -- the property client separation depends on, now against stored data rather than against a fixture
     // that stores nothing.
-    "an entry whose trait this node does not know is stored rather than refused" {
+    // Since #379 this is opt-in: a trait the client does not support is refused by default, so a misspelled
+    // id is caught rather than stored as an unrecognized shape. The carrying behavior itself is unchanged --
+    // it is what the flag asks for, and what every *read* does regardless.
+    "an unknown trait is refused by default" {
+        alice.expectError(
+            EXC.badInput,
+            GEP.formDocCreate,
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to "notATraitThisNodeKnows", GE.data to mapOf("x" to 1)))),
+        )
+    }
+
+    "an entry whose trait this node does not know is stored rather than refused, when asked" {
         val created = alice.postItem(
             GEP.formDocCreate,
             mapOf(
+                GDF.allowAdditionalTraits to true,
                 GDF.entries to listOf(
                     nameEntry("Mixed"),
                     mapOf(GE.traitId to "notATraitThisNodeKnows", GE.data to mapOf("whatever" to 1)),

@@ -89,11 +89,13 @@ class GedraConfigTest : StringSpec({
 
         // The trait carries its own data shape (issue #337), so a second manufactured type -- the patch's edit
         // union -- is built from the trait rather than by finding its entry type in the built defs and reading
-        // a property off it. Both authoring styles reach it, and neither is normalized: a referenced shape
-        // stays a `$ref`, an inlined one stays inline.
+        // a property off it. Since #379 both authoring styles reach it **as a reference**: a trait's data is
+        // always a named type, so that a client can narrow it without restating the generated envelope around
+        // it. An author who named their own keeps that name; one who inlined gets the derived one.
         config.traits.getValue("name").dataSchema[SCH.dRef] shouldBe $$"#/$defs/globalconfig.NameData"
-        config.traits.getValue("note").dataSchema.toJsonMapOrEmpty()[SCH.properties]
-            .toJsonMapOrEmpty().keys.toList() shouldContainExactly listOf("text")
+        config.traits.getValue("note").dataSchema[SCH.dRef] shouldBe $$"#/$defs/globalconfig.NoteData"
+        // ...and the derived type carries the shape that was written inline.
+        types.getValue("globalconfig.NoteData").properties.keys.toList() shouldContainExactly listOf("text")
     }
 
     // The multi-kind case the set exists for. `name` means the same thing on a form document and on workflow
