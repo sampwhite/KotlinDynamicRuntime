@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import io.kotest.core.spec.style.StringSpec
@@ -189,6 +190,21 @@ class EnvAuthRulesTest : StringSpec({
         unit.isTestInstance shouldBe true // guard the premise: it is a test instance, and still does not assume
         EnvAuthRules.assumesEnvAuth(unit) shouldBe false
         resolve(unit, forwardedFor = null).email shouldBe null
+    }
+
+    /**
+     * The assumption means "behave as if an edge vouched for you", which is incoherent on the node that *is*
+     * the edge -- it leaves the perimeter never challenging anybody. Found by running an edge locally and
+     * being unable to reach its own sign-in page.
+     */
+    "an edge does not assume, because there is no edge in front of it" {
+        val edge = KdrInstanceConfig("edgeAssume", ENV.local, ENV.liveSource, BOOT.edge)
+            .apply { put(ACFG.isTestInstance, true) }
+        EnvAuthRules.assumesEnvAuth(edge) shouldBe false
+
+        // ...but it can still be asked for, which is what KDR_EDGE_ASSUME_ENV_AUTH does under the role prefix.
+        edge.put(ACFG.assumeEnvAuth, true)
+        EnvAuthRules.assumesEnvAuth(edge) shouldBe true
     }
 
     "the assumption is configurable in both directions, and independent of header trust" {
