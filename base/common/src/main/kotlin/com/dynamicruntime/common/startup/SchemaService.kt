@@ -15,7 +15,6 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GU
-import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.schema.collectDefs
@@ -445,7 +444,7 @@ class SchemaService : ServiceInitializer {
         }
 
         private fun hasEndpoints(cxt: KdrCxt, client: String): Boolean =
-            SchemaService.get(cxt)?.clientStores?.containsKey(client) == true
+            get(cxt)?.clientStores?.containsKey(client) == true
 
         /**
          * Whether an endpoint belongs on the surface being shown.
@@ -493,6 +492,7 @@ class SchemaService : ServiceInitializer {
          * `$ref`s intact, and pair the renderings with a shared `$defs` bag resolving every referenced type.
          * The client resolves the `$ref`s itself, so a type shared by many endpoints is returned once.
          */
+        @Suppress("DuplicatedCode")
         @KdrPrivate
         fun endpointCatalog(cxt: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
             // Input is flat: the filter fields and `limit` are top-level.
@@ -507,7 +507,7 @@ class SchemaService : ServiceInitializer {
             // the whole reason a client endpoint exists rather than a differently-named shared one.
             val named = (request[SS.client] as? String)?.trim()?.ifEmpty { null }
             val forClient = catalogClient(cxt, named)
-            val schema = forClient?.let { SchemaService.get(cxt)?.storeFor(it) } ?: cxt.getSchema()
+            val schema = forClient?.let { get(cxt)?.storeFor(it) } ?: cxt.getSchema()
             // One access decision per endpoint, consumed twice: what survives is rendered, what does not is
             // what `explainAccess` reports. Deriving the explanation from a second, independent pass is how an
             // explanation comes to disagree with the filter it claims to describe -- the same drift issue #211
@@ -537,6 +537,7 @@ class SchemaService : ServiceInitializer {
          * `path:method` collation key) and return it in the same shape as [endpointCatalog] -- a one-element
          * (or empty, when unmatched) `endpoints` list plus the shared `$defs`.
          */
+        @Suppress("DuplicatedCode")
         @KdrPrivate
         fun endpointLookup(cxt: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
             val method = (request[EI.method] as? String)?.uppercase()
@@ -548,7 +549,7 @@ class SchemaService : ServiceInitializer {
             // the whole reason a client endpoint exists rather than a differently-named shared one.
             val named = (request[SS.client] as? String)?.trim()?.ifEmpty { null }
             val forClient = catalogClient(cxt, named)
-            val schema = forClient?.let { SchemaService.get(cxt)?.storeFor(it) } ?: cxt.getSchema()
+            val schema = forClient?.let { get(cxt)?.storeFor(it) } ?: cxt.getSchema()
             // Filtered exactly as the listing is: a lookup that answered for an endpoint the listing hides
             // would be a one-call way around the hiding, and this endpoint exists to return the same shape.
             // Explained the same way too, so "it came back empty" can be told apart from "you may not see it",

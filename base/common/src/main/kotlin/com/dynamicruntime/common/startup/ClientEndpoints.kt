@@ -14,7 +14,7 @@ import com.dynamicruntime.common.schema.LogSchema
  * re-running that builder per client would re-declare `gedra.FormDoc` and its siblings once per client and
  * collide in the shared `$defs`. Copying avoids that, and is the stronger option on behavior besides: a copy
  * keeps **the same `handler` object**, so the two surfaces cannot come to behave differently. Two
- * separately-built lambdas are identical only until something in the builder becomes conditional.
+ * separately built lambdas are identical only until something in the builder becomes conditional.
  *
  * ### Why a copy advertises the client's schema
  *
