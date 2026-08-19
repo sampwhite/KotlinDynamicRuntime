@@ -14,10 +14,10 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
  * The runtime's schema-catalog endpoints, under the `kda` API context root. In dev the webpack server proxies
  * `/kda` to the runtime on :7070 (see build.gradle.kts), so the calls are same-origin and need no CORS.
  */
-private const val schemaBase = "/kda/schema"
+private val schemaBase: String get() = apiContextRoot + "/schema"
 
 /** The API context root every runtime endpoint is served under (proxied to :7070 in dev). */
-private const val apiRoot = "/kda"
+private val apiRoot: String get() = apiContextRoot
 
 /** Binding to the browser's global `fetch` (named to avoid clashing with any wrapper `fetch`). */
 @JsName("fetch")
