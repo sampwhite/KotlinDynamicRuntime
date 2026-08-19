@@ -102,6 +102,13 @@ object AD {
 
     /** List of contact addresses that have been verified. */
     const val validatedContacts = "validatedContacts"
+
+    /** When the account was permanently deleted (its identity obfuscated); absent for a live account. Its
+     *  presence is what marks a row as a tombstone. */
+    const val deletedAt = "deletedAt"
+
+    /** The userId of the administrator who permanently deleted the account -- the audit half of [deletedAt]. */
+    const val deletedBy = "deletedBy"
 }
 
 /** `AuthUserDevices` column names (dn's `AuthLoginSources`, renamed to Device terminology). */

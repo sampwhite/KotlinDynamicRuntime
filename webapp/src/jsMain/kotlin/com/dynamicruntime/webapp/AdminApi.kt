@@ -47,6 +47,8 @@ class AdminUser(
     val name: String?,
     val enabled: Boolean,
     val hasPassword: Boolean,
+    /** Whether the account was permanently deleted -- an obfuscated tombstone that can no longer be edited. */
+    val deleted: Boolean,
 ) {
     /**
      * This user's access level: the highest rung of [RoleLadder] they hold, which is what the Users page's
@@ -164,6 +166,17 @@ object AdminApi {
         Http.sendApi("POST", UADEP.userSetEnabled, mapOf(ADF.userId to userId, ADF.enabled to enabled))
             .results().toAdminUser()
 
+    /**
+     * Deletes a user: recoverable (merely disabled) by default, or -- when [permanent] -- disabled with the
+     * email and identity obfuscated so it cannot be undone. Returns the resulting (obfuscated, for a permanent
+     * delete) row.
+     */
+    suspend fun deleteUser(userId: Long, permanent: Boolean): AdminUser =
+        Http.sendApi("POST", UADEP.userDelete, buildMap {
+            put(ADF.userId, userId)
+            if (permanent) put(ADF.permanent, true)
+        }).results().toAdminUser()
+
     private fun Map<String, Any?>.results(): Map<String, Any?> = this[EP.results].toJsonMapOrEmpty()
 
     /** Percent-encodes a query value via the browser global (as [SchemaCatalogApi] does for its own links). */
@@ -180,5 +193,6 @@ object AdminApi {
         name = this[ADF.name] as? String,
         enabled = this[ADF.enabled] == true,
         hasPassword = this[ADF.hasPassword] == true,
+        deleted = this[ADF.deleted] == true,
     )
 }

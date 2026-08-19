@@ -51,7 +51,9 @@ val UserTable = FC<UserTableProps> { props ->
             row.client = user.client
             row.roles = user.roles.joinToString(", ")
             row.status = buildList {
-                add(if (user.enabled) "enabled" else "disabled")
+                // A permanently-deleted tombstone reads as "deleted", not "disabled" -- it is disabled, but
+                // saying only that would hide that it is the irreversible kind and cannot be re-enabled.
+                add(if (user.deleted) "deleted" else if (user.enabled) "enabled" else "disabled")
                 if (user.hasPassword) add("password set")
             }.joinToString(", ")
             row

@@ -22,6 +22,7 @@ object ADEP {
     const val userSetEnabled = "/admin/user/setEnabled"
     const val userSetOrg = "/admin/user/setOrg"
     const val userSetName = "/admin/user/setName"
+    const val userDelete = "/admin/user/delete"
 
     /**
      * The clients this deployment carries (issue #343).
@@ -54,6 +55,7 @@ object UADEP {
     const val userSetEnabled = "/userAdmin/user/setEnabled"
     const val userSetOrg = "/userAdmin/user/setOrg"
     const val userSetName = "/userAdmin/user/setName"
+    const val userDelete = "/userAdmin/user/delete"
 }
 
 /** Admin request/response field (JSON key) names. */
@@ -68,6 +70,9 @@ object ADF {
     const val name = "name"
     const val enabled = "enabled"
 
+    /** On the delete call: obfuscate the user's identity irrecoverably rather than merely disable them. */
+    const val permanent = "permanent"
+
     /**
      * The client the user belongs to (issue #352).
      *
@@ -77,6 +82,12 @@ object ADF {
      */
     const val client = "client"
     const val hasPassword = "hasPassword"
+
+    /** Whether the account was permanently deleted -- an obfuscated tombstone that can no longer be edited. */
+    const val deleted = "deleted"
+
+    /** When it was permanently deleted, for a deleted account. */
+    const val deletedAt = "deletedAt"
 
     /** Case-insensitive substring filter applied to `primaryId`, `username` and `name` by the list endpoint. */
     const val search = "search"

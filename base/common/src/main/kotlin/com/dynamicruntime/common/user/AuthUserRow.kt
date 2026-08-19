@@ -7,8 +7,10 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import kotlin.time.Instant
 
 /**
  * A user's authentication row, extracted from the `AuthUsers` table into typed fields. Ported from dn's
@@ -38,6 +40,17 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         }
 
     var enabled: Boolean = false
+
+    /**
+     * When this account was **permanently deleted** (its identity obfuscated), or null for a live one. Its
+     * presence is the tombstone marker: [isDeleted] reads it, and every administrative edit refuses a row for
+     * which it is set. Read from [AD.deletedAt] in the auth data.
+     */
+    var deletedAt: Instant? = null
+
+    /** Whether this is a permanently-deleted tombstone -- obfuscated, disabled, and not editable. */
+    val isDeleted: Boolean get() = deletedAt != null
+
     lateinit var username: String
     var roles: List<String> = listOf(ROLE.user)
 
@@ -94,6 +107,8 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         ADF.roles to roles,
         ADF.enabled to enabled,
         ADF.hasPassword to (encodedPassword != null),
+        ADF.deleted to isDeleted,
+        ADF.deletedAt to deletedAt,
     )
 
     /** Repackages the typed fields into a storage map (roles and password folded back into `authUserData`). */
@@ -125,6 +140,69 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         const val usernameTmpPrefix = "@"
 
         /**
+         * The domain a permanently deleted user's obfuscated email is moved to. `.invalid` is reserved by
+         * RFC 2606 and can never resolve, so the address is unmistakably dead; the `deleted-<userId>` local
+         * part ([deletedPrimaryId]) is the *indication* that this row was once a real user, and keeps the
+         * value unique so the DB's unique index on `primaryId` is never violated by two deletions.
+         */
+        const val deletedIdDomain = "deleted.invalid"
+
+        /** The obfuscated email a permanently deleted [userId] is given: `deleted-<userId>@deleted.invalid`. */
+        fun deletedPrimaryId(userId: Long): String = "deleted-$userId@$deletedIdDomain"
+
+        /** The obfuscated username a permanently deleted [userId] is given: `deleted-<userId>` (unique). */
+        fun deletedUsername(userId: Long): String = "deleted-$userId"
+
+        /**
+         * A **permanently deleted tombstone** of [original]: non-recoverable by construction, but a *retirement*
+         * rather than a privacy erasure. It obfuscates the **login and contact** identity while keeping the
+         * **descriptive** fields a human debugger needs to recognize the account later.
+         *
+         * Obfuscated or cleared: the email and username become the `deleted-<userId>` forms above (which also
+         * frees the originals for re-registration and marks the row as a former user); the password and the
+         * stored contacts -- where the email and phone also live -- are dropped; and the roles are cleared, so
+         * the row never reads as an administrator. `enabled` is false, which by itself already denies login and
+         * empties the user's live roles (`AuthUserUtil.refreshActingRoles`); the obfuscation is what makes it
+         * *permanent*.
+         *
+         * **Kept** (issue: revisit clearing): the display [name], [org] and [isEntity]. These identify the
+         * *account* to somebody investigating "did this user own anything?", where the join key is the
+         * surviving [userId] but the name is what makes a tombstone recognizable. This means the delete is
+         * **not** a right-to-be-forgotten erasure -- the name (PII) survives; a deployment that needs true
+         * erasure would clear these too.
+         *
+         * It carries [original]'s stored `data` (so `updateUser`'s optimistic-concurrency guard still fires on
+         * the version it was read at) with the obfuscated `primaryId` written in, so the returned row and the
+         * write agree -- no drift between the constructor val and the write map.
+         */
+        fun deletedTombstone(original: AuthUserRow, deletedAt: Instant, deletedBy: Long): AuthUserRow {
+            val row = AuthUserRow(original.userId, original.client, deletedPrimaryId(original.userId))
+            row.username = deletedUsername(original.userId)
+            row.enabled = false
+            // Roles are dropped too, not merely made inert by the disable: a tombstone must not read as an
+            // administrator, in the console or anywhere the row is loaded.
+            row.roles = emptyList()
+            row.org = original.org
+            row.isEntity = original.isEntity
+            // Kept for debugging/recognition: this is a retirement, not a privacy erasure (see the doc).
+            row.name = original.name
+            row.encodedPassword = null
+            row.deletedAt = deletedAt
+            // Drop the contacts (the email/phone live here too, so obfuscating only `primaryId` would leave
+            // the address behind), and stamp the deletion marker + its audit. Keep whatever else was held.
+            row.authUserData = original.authUserData.toMutableMap().also {
+                it.remove(AD.contacts)
+                it.remove(AD.validatedContacts)
+                it[AD.deletedAt] = deletedAt
+                it[AD.deletedBy] = deletedBy
+            }
+            // Keep the raw row for its version stamp, but with the obfuscated id -- the write reads primaryId
+            // from here (see [toMap]).
+            row.data = original.data.toMutableMap().also { it[AU.primaryId] = deletedPrimaryId(original.userId) }
+            return row
+        }
+
+        /**
          * The one rule for a display name: trimmed, and blank is no name at all. Applied by [name]'s setter,
          * and exposed for the one caller that has no row to assign to -- admin *create*, which assembles a raw
          * `authUserData` map before the row exists.
@@ -154,6 +232,10 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
                 property(ADF.hasPassword, "Whether the user has opted into a password.", required = true) {
                     type = SCT.boolean
                 }
+                property(ADF.deleted, "Whether the account was permanently deleted (an obfuscated tombstone).", required = true) {
+                    type = SCT.boolean
+                }
+                property(ADF.deletedAt, "When the account was permanently deleted, for a deleted account.") { dateTime() }
             }
         }
 
@@ -171,6 +253,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
             row.org = userData[AD.org].toOptStr()?.ifEmpty { null }
             row.isEntity = userData[AD.isEntity] == true
             row.name = userData[AD.name].toOptStr()
+            row.deletedAt = userData[AD.deletedAt].toOptInstant()
             row.encodedPassword = userData[AD.encodedPassword].toOptStr()
             userData.remove(AD.encodedPassword) // never let the password leak downstream via `data`
             row.authUserData = userData

@@ -21,7 +21,7 @@ class AccessLevelTest {
     private fun user(vararg roles: String) =
         AdminUser(
             userId = 1L, primaryId = "a@b.com", username = "a", roles = roles.toList(),
-            client = CL.public, org = null, isEntity = false, name = null, enabled = true, hasPassword = false,
+            client = CL.public, org = null, isEntity = false, name = null, enabled = true, hasPassword = false, deleted = false,
         )
 
     // --- reading a level off a role list -------------------------------------

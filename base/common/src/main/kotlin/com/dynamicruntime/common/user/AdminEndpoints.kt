@@ -42,12 +42,13 @@ class UserAdminPaths(
     val userSetEnabled: String,
     val userSetOrg: String,
     val userSetName: String,
+    val userDelete: String,
 )
 
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
 fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, "admin",
-    UserAdminPaths(ADEP.users, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetName),
+    UserAdminPaths(ADEP.users, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetName, ADEP.userDelete),
 )
 
 /**
@@ -61,7 +62,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, "userAdmin",
-    UserAdminPaths(UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetName),
+    UserAdminPaths(UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetName, UADEP.userDelete),
 )
 
 private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPaths): SchModule =
@@ -170,7 +171,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val roles = request[ADF.roles].toJsonListOfStrings()
         // Loaded before the role checks so a user outside the caller's scope is a 404 rather than a complaint
         // about roles -- the complaint would confirm the id belongs to somebody.
-        val row = loadUser(c, userId)
+        val row = loadEditableUser(c, userId)
         requireUsableRoles(c, roles, row.roles)
         // Nobody may change their **own** standing on the admin surface, in either direction.
         //
@@ -219,11 +220,39 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         if (userId == c.userProfile.userId && !enabled) {
             throw KdrException.mkInput("You cannot disable your own account.")
         }
-        val row = loadUser(c, userId)
+        val row = loadEditableUser(c, userId)
         row.enabled = enabled
         userService(c).updateUser(c, row)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId enabled=$enabled." }
         row.toAdminInfo()
+    }
+
+    generalEndpoint(
+        paths.userDelete,
+        "Deletes a user: recoverable (disabled) by default, or -- when permanent -- disabled with the user's " +
+            "email and identity obfuscated so the deletion cannot be undone.",
+        HttpMethod.POST,
+        outputRef = ADTY.adminUser,
+        inputFields = {
+            field(ADF.userId, "Id of the user to delete.", required = true) { type = SCT.integer }
+            field(
+                ADF.permanent,
+                "When true, obfuscate the user's email and clear their stored identity -- not recoverable. " +
+                    "Defaults to false, a recoverable disable.",
+            ) { type = SCT.boolean }
+        },
+    ) { c, request ->
+        val userId = requireUserId(request)
+        val permanent = request[ADF.permanent] == true
+        // The same self-protection the disable toggle has, and it matters more here: a permanent self-delete
+        // would obfuscate the acting administrator out of their own account irrecoverably.
+        if (userId == c.userProfile.userId) {
+            throw KdrException.mkInput("You cannot delete your own account.")
+        }
+        val row = loadEditableUser(c, userId)
+        val result = userService(c).deleteUser(c, row, permanent)
+        LogAuth.info(c) { "Admin ${c.userProfile.userId} deleted user $userId (permanent=$permanent)." }
+        result.toAdminInfo()
     }
 
     generalEndpoint(
@@ -239,7 +268,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val userId = requireUserId(request)
         val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null }
         requireAssignableOrg(c, org)
-        val row = loadUser(c, userId)
+        val row = loadEditableUser(c, userId)
         val previous = row.org
         row.org = org
         userService(c).updateUser(c, row)
@@ -260,7 +289,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
     ) { c, request ->
         val userId = requireUserId(request)
         val isEntity = request.getOptBool(ADF.isEntity) == true
-        val row = loadUser(c, userId)
+        val row = loadEditableUser(c, userId)
         row.isEntity = isEntity
         // The name is kept across a change of the flag rather than cleared with it: a personal account has a
         // full name just as a business has a business name, so clearing `isEntity` reclassifies the name
@@ -351,6 +380,20 @@ private fun userService(cxt: KdrCxt): UserService =
 private fun loadUser(cxt: KdrCxt, userId: Long): AuthUserRow =
     userService(cxt).queryAdministrableUser(cxt, userId, ReadScopeRules.forCaller(cxt))
         ?: throw KdrException("No user with id $userId.", code = EXC.notFound)
+
+/**
+ * Loads a user for an **edit**, refusing a permanently-deleted tombstone: its identity is obfuscated and there
+ * is nothing left to administer -- re-enabling, renaming or re-deleting one would either resurrect an account
+ * that was meant to be gone or write to a hollowed-out row. The single gate every mutating handler passes
+ * through, so the UI's read-only treatment is a convenience over an enforced rule, not the rule itself.
+ */
+private fun loadEditableUser(cxt: KdrCxt, userId: Long): AuthUserRow {
+    val row = loadUser(cxt, userId)
+    if (row.isDeleted) {
+        throw KdrException.mkInput("User $userId was permanently deleted and can no longer be edited.")
+    }
+    return row
+}
 
 /** Reads a required string field, rejecting a blank one (which validation alone would let through). */
 private fun requireField(request: Map<String, Any?>, field: String): String =
