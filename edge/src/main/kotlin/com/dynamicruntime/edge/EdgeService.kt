@@ -4,10 +4,14 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.http.request.ContentServer
+import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.user.GoogleAuthConfig
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.startup.ServiceInitializer
 
@@ -21,7 +25,7 @@ object LogEdge : KdrLogger("edge")
  * It will grow the route table and the upstream registry; today it is the boot-time guard and the place those
  * belong.
  */
-class EdgeService : ServiceInitializer {
+class EdgeService : ServiceInitializer, ContentServer {
     override val serviceName: String = EdgeService.serviceName
 
     /**
@@ -54,6 +58,21 @@ class EdgeService : ServiceInitializer {
                     "shared root makes a path ambiguous and the wrong server answers rather than failing.",
             )
         }
+        // Registered after the guard above, never before it: reaching RequestService must not be able to
+        // decide whether the boot refusal runs. An early return here for a missing service would skip the
+        // check silently, which is the failure the check exists to prevent.
+        //
+        // Registered here rather than in checkReady, and the timing decides a race: content servers are
+        // offered a request in registration order, and PortalService registers in ITS checkInit -- so anything
+        // registering later loses the bare content root to the application's portal. Observed: `/ec` redirected
+        // to `/ec/portal`. EdgeComponent's earlier load priority is what puts this first.
+        //
+        // Ordering is the fix available today. The real one is role profiling: an edge has no business loading
+        // the portal at all, and then there is nothing to race.
+        RequestService.get(cxt)?.let {
+            it.checkInit(cxt)
+            it.addContentServer(this)
+        }
         LogEdge.info(cxt) { "KdrEdge serving context roots ${configured.values.filterNotNull()}." }
     }
 
@@ -70,6 +89,42 @@ class EdgeService : ServiceInitializer {
      */
     override fun checkReady(cxt: KdrCxt) {
         RequestService.get(cxt)?.authExtractor = ::extractEnvAuth
+    }
+
+    /**
+     * Serves the sign-in page, and sends the bare content root to it.
+     *
+     * The page is the whole anonymous surface of an edge, so this is deliberately two paths and no more.
+     */
+    override fun serve(cxt: KdrCxt, handler: RequestHandler): Boolean {
+        if (handler.focus != ContextFocus.content) {
+            return false
+        }
+        return when (handler.appPath) {
+            "/" -> {
+                handler.sendRedirect("/" + handler.contextRoot + EDGEP.loginPage)
+                true
+            }
+            EDGEP.loginPage -> {
+                val clientId = GoogleAuthConfig.clientId(cxt.instanceConfig)
+                if (clientId == null) {
+                    // Saying so plainly beats a button that cannot work: without a client id there is no way
+                    // in at all, and that is an operator's problem rather than a visitor's mistake.
+                    handler.sendStringResponse(
+                        "Google sign-in is not configured on this node.", EXC.notFound, "text/plain",
+                    )
+                    return true
+                }
+                val returnTo = EnvAuthReturn.sanitize(handler.queryParams[EnvAuthReturn.param] as? String)
+                val loginPath = "/" + (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String ?: EdgeRoot.ea) +
+                    EAEP.login
+                handler.sendStringResponse(
+                    EnvAuthPage.render(clientId, returnTo, loginPath), EXC.ok, "text/html; charset=utf-8",
+                )
+                true
+            }
+            else -> false
+        }
     }
 
     /**

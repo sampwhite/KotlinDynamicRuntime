@@ -14,6 +14,13 @@ import com.dynamicruntime.common.user.GoogleAuthConfig
 import com.dynamicruntime.common.util.getOptStr
 import kotlin.time.Instant
 
+/** Paths the edge serves as content rather than as endpoints. */
+@Suppress("ConstPropertyName")
+object EDGEP {
+    /** The sign-in page, under the edge's content root -- the whole anonymous surface of an edge. */
+    const val loginPage = "/login"
+}
+
 /** Wire vocabulary for the Env Auth login. */
 @Suppress("ConstPropertyName")
 object EAEP {
