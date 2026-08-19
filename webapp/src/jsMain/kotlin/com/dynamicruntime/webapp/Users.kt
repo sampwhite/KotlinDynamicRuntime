@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.util.isEmailAddress
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
@@ -258,8 +259,15 @@ val Users = FC<Props> {
     fun save() = run {
         val target = editing
         if (target == null) {
+            // Caught here so a mistyped address is an immediate, local message rather than a round trip -- the
+            // backend runs this same check (base/kernel), so it is the authority; this only spares the trip.
+            val email = draftEmail.trim()
+            if (!email.isEmailAddress()) {
+                error = DisplayError.expected("\"$email\" is not a valid email address.")
+                return@run
+            }
             val created = AdminApi.createUser(
-                draftEmail, username = null, roles = draftRoles(emptyList()),
+                email, username = null, roles = draftRoles(emptyList()),
                 org = draftOrg.trim().ifEmpty { null },
                 isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
                 client = draftClient.trim().ifEmpty { null },

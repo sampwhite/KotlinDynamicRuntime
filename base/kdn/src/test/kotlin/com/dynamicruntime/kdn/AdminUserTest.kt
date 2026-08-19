@@ -14,6 +14,7 @@ import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.TestUser
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -184,6 +185,23 @@ class AdminUserTest : StringSpec({
         // And re-enabling round-trips just as durably.
         admin.postData(ADEP.userSetEnabled, mapOf(ADF.userId to newbieId, ADF.enabled to true))
         admin.getItems(ADEP.users, mapOf(ADF.search to "newbie")).single()[ADF.enabled] shouldBe true
+    }
+
+    "creating a user with a malformed email address is refused" {
+        val cxt = Startup.mkTestBootCxt("admin", "adminEmailValidationTest")
+        val admin = TestUser.createFullAdmin(cxt, "chief@emailval.com")
+
+        // The reported gap: a bare username (no '@') was accepted as an address, minting a permanent account
+        // that could never be reached by verification mail. It is now a plain input error, before any row.
+        val refused = admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "test_august"))
+        (refused[EP.errorMessage] as String) shouldContain "test_august"
+        admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "nope@localhost"))
+
+        // Nothing was created: the address is free, and a well-formed one goes through as before.
+        admin.getItems(ADEP.users, mapOf(ADF.search to "test_august")) shouldHaveSize 0
+        admin.postData(
+            ADEP.userCreate, mapOf(ADF.primaryId to "valid@emailval.com"),
+        )[ADF.primaryId] shouldBe "valid@emailval.com"
     }
 
     // --- revocation takes effect without waiting for the session to expire ----

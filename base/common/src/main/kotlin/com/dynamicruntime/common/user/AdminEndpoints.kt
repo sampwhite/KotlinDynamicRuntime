@@ -13,6 +13,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getOptBool
+import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
@@ -109,6 +110,13 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         },
     ) { c, request ->
         val primaryId = requireField(request, ADF.primaryId)
+        // The address is the login identity and a real destination for verification mail -- so it is checked
+        // for shape here rather than taken on faith. The self-service path proves the address by emailing a
+        // code; this path skips that, which makes a syntactic check the only thing standing between a typo and
+        // a permanent, unreachable account. Same validator the create form runs (base/kernel), so the two agree.
+        if (!primaryId.isEmailAddress()) {
+            throw KdrException.mkInput("'$primaryId' is not a valid email address.")
+        }
         val username = request[ADF.username].toOptStr()
         val roles = request[ADF.roles].toJsonListOfStrings().ifEmpty { listOf(ROLE.user) }
         requireUsableRoles(c, roles)
