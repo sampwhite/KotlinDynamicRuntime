@@ -367,7 +367,7 @@ class GedraDataService : ServiceInitializer {
             // Stamp updatedAt strictly past the row's *current* value, read here under the lock. A delete that
             // did not advance it would be permanently invisible to the gedra cache: the cache skips a row at or
             // before the version it holds, and a disabled gedra never gets a later write to correct that, so it
-            // would stay readable from cache forever. The `row` read before the transaction cannot be trusted
+            // would stay readable from the cache forever. The `row` read before the transaction cannot be trusted
             // for the bump -- it may have come from the cache, which is exactly what might be behind. A row
             // gone or already disabled here reads as null, and nextUpdatedAt falls back to now, which is
             // harmless: the enabled-only update then matches nothing and the delete reports nothing to do.

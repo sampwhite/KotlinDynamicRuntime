@@ -6,7 +6,6 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.schema.typeRefPath
-import com.dynamicruntime.common.util.deepClone
 import kotlin.time.Instant
 
 /**
@@ -98,7 +97,7 @@ object GSRC {
  * {"traitId": "name", "data": {"name": "My Expense Form"}}
  * ```
  *
- * [dataSchema] configures the `data` property, so both authoring styles go through one function — declare the
+ * *dataSchema* configures the `data` property, so both authoring styles go through one function — declare the
  * shape inline, or `ref("some.Type")` an existing one. What it may **not** do is make `data` anything but an
  * object: an entry's data is a map, and a trait declaring it a string or an array is refused here, where the
  * author is, rather than at the first payload that fails to validate.
@@ -110,7 +109,7 @@ object GSRC {
  * it. A trait whose fields are all optional still satisfies this with an empty map, which is the honest way
  * to say "nothing supplied yet".
  *
- * [appliesTo] is the set of gedra kinds that may carry this entry, emitted onto the type as [GE.appliesTo].
+ * *appliesTo* is the set of gedra kinds that may carry this entry, emitted onto the type as [GE.appliesTo].
  * A *set* rather than one kind, because a trait like `name` genuinely means the same thing on a form document
  * and on workflow data — and the alternative, a `name` beside a `wfDataName`, is two names for one concept.
  * Where two traits really are different concepts they get different ids, which is the right answer anyway.
@@ -229,7 +228,7 @@ fun SchTypeBuilder.storedEntryFields() {
  * to pick.
  *
  * It is a *temporary* rule with a known replacement: `g-primaryKey` is what will let several entries share a
- * trait, distinguished by a key drawn from their data. Until that exists there is nothing to tell them apart,
+ * trait, distinguished by a key drawn from their data. Until that exists, there is nothing to tell them apart,
  * so the honest thing is to refuse rather than to store a pair nothing can address. Enforced here — one guard
  * for every write path — rather than at each caller, since a path that forgot it would corrupt quietly.
  */

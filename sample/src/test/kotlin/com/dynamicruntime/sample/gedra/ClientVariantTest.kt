@@ -132,7 +132,7 @@ class ClientVariantTest : StringSpec({
         val bad = mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.findings to "no auditor named"))
         // Acme declared it, so acme is held to it: `auditor` is required.
         refused(acme, bad) shouldContainIgnoringCase SC.auditor
-        // Nobody else has heard of it, so for them it is an unsupported trait -- refused by default, and
+        // Nobody else has heard of it, so for them it is an unsupported trait -- refused by default and
         // carried untouched on the default branch when they say they mean it.
         refused(everyone, bad).shouldNotBeNull()
         everyone.postItem(
