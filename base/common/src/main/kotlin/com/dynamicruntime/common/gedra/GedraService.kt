@@ -53,10 +53,8 @@ class GedraService : ServiceInitializer {
     companion object {
         const val serviceName = "GedraService"
 
-        fun get(cxt: KdrCxt): GedraService? = cxt.instanceConfig.get(serviceName) as? GedraService
-
-        /** The service, or a fault naming it -- for a handler that cannot proceed without one. */
-        fun require(cxt: KdrCxt): GedraService = get(cxt)
+        /** The service; throws naming it on a node that does not run it. */
+        fun get(cxt: KdrCxt): GedraService = cxt.instanceConfig.get(serviceName) as? GedraService
             ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }

@@ -81,7 +81,6 @@ class GedraDataService : ServiceInitializer {
 
     override fun checkInit(cxt: KdrCxt) {
         gedraService = GedraService.get(cxt)
-            ?: throw KdrException("GedraService required for GedraDataService.")
         // Registered during this pass so the cache service's own checkReady -- which runs after every
         // service's checkInit -- performs the initial load at startup rather than in a request.
         dataCache = GedraDataCache.register(cxt)
@@ -732,7 +731,7 @@ class GedraDataService : ServiceInitializer {
 
     /** The entry union as [cxt]'s client sees it, or null on a node with no compiled schema for it. */
     private fun clientUnion(cxt: KdrCxt, kind: GedraDataType) =
-        (SchemaService.get(cxt)?.storeFor(cxt.client) ?: cxt.getSchema())
+        SchemaService.get(cxt).storeFor(cxt.client)
             .types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]
 
     private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {
@@ -866,10 +865,8 @@ class GedraDataService : ServiceInitializer {
         /** Name of the "patch" transaction; it prefixes the generated transaction id. */
         const val tranPatch = "patchGedra"
 
-        fun get(cxt: KdrCxt): GedraDataService? = cxt.instanceConfig.get(serviceName) as? GedraDataService
-
-        /** The service, or a fault naming it -- for a handler that cannot proceed without one. */
-        fun require(cxt: KdrCxt): GedraDataService = get(cxt)
+        /** The service; throws naming it on a node that does not run it. */
+        fun get(cxt: KdrCxt): GedraDataService = cxt.instanceConfig.get(serviceName) as? GedraDataService
             ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }

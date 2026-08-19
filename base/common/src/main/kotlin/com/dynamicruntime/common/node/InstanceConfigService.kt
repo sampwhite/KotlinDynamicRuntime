@@ -50,7 +50,7 @@ class InstanceConfigService : ServiceInitializer {
     var nodeService: NodeService? = null
 
     override fun onCreate(cxt: KdrCxt) {
-        val node = NodeService.get(cxt) ?: throw KdrException("NodeService is not available for InstanceConfigService.")
+        val node = NodeService.get(cxt)
         nodeService = node
         // Do the "database" work in onCreate (not "checkInit"), so the encryption key and config access are ready
         // for other services' "checkInit". SqlTopicService is a *startup* service (see CommonComponent), so it is
@@ -116,7 +116,8 @@ class InstanceConfigService : ServiceInitializer {
         /** Key, within an auth-config row's data map, that holds the encryption key. */
         const val encryptionKeyField = "encryptionKey"
 
-        fun get(cxt: KdrCxt): InstanceConfigService? = cxt.instanceConfig.get(serviceName) as? InstanceConfigService
+        fun get(cxt: KdrCxt): InstanceConfigService = cxt.instanceConfig.get(serviceName) as? InstanceConfigService
+            ?: throw KdrException("The $serviceName is not available on this node.")
 
         /** The InstanceConfig table definition, contributed to the schema store by the `common` component. */
         fun tables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "node", topic = topic) {

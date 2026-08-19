@@ -31,6 +31,6 @@ fun clientAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "clientAdmin")
         // paging it would be pretending it came from somewhere it did not.
         noLimit = true,
     ) { c, _ ->
-        ClientService.require(c).presentClients.map { it.toInfo() }
+        ClientService.get(c).presentClients.map { it.toInfo() }
     }
 }

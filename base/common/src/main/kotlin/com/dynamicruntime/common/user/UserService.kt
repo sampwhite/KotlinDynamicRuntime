@@ -42,8 +42,8 @@ class UserService : ServiceInitializer {
 
     override fun checkInit(cxt: KdrCxt) {
         if (::authFormHandler.isInitialized) return
-        val node = NodeService.get(cxt) ?: throw KdrException("NodeService required for UserService.")
-        val mail = MailService.get(cxt) ?: throw KdrException("MailService required for UserService.")
+        val node = NodeService.get(cxt)
+        val mail = MailService.get(cxt)
         // Null when the deployment configured no Google client id, which is what disables Google sign-in.
         val googleVerifier = GoogleAuthConfig.mkVerifier(cxt.instanceConfig)
         authFormHandler = AuthFormHandler(this, node, mail, googleVerifier)
@@ -261,7 +261,7 @@ class UserService : ServiceInitializer {
         if (count == 0) {
             // The guarded write matched nothing: the row moved under us. Mark the cache so the caller's
             // re-read is fresh rather than the same stale row that produced this conflict.
-            SqlTableCacheService.get(cxt)?.noteTableChanged(cxt, UT.authUsers)
+            SqlTableCacheService.get(cxt).noteTableChanged(cxt, UT.authUsers)
             throw KdrException(
                 "User ${row.userId} was modified concurrently; re-read the user and retry the change.",
                 code = EXC.conflict,
@@ -401,6 +401,7 @@ class UserService : ServiceInitializer {
         /** Bind-parameter name for the version guard in [updateUser]'s WHERE clause (name matches value). */
         const val priorUpdatedAtParam = "priorUpdatedAt"
 
-        fun get(cxt: KdrCxt): UserService? = cxt.instanceConfig.get(serviceName) as? UserService
+        fun get(cxt: KdrCxt): UserService = cxt.instanceConfig.get(serviceName) as? UserService
+            ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }

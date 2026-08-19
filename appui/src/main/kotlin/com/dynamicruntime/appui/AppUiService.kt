@@ -2,6 +2,7 @@ package com.dynamicruntime.appui
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ContentServer
 import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.LogRequest
@@ -172,7 +173,7 @@ class AppUiService : ServiceInitializer, ContentServer {
 
     /** Registers this content server with the dispatcher and resolves the branding set (idempotent). */
     override fun checkInit(cxt: KdrCxt) {
-        val requestService = RequestService.get(cxt) ?: return
+        val requestService = RequestService.get(cxt)
         requestService.checkInit(cxt)
         requestService.addContentServer(this)
         // Resolution is never empty once done (it always yields an entry per asset), so this runs once.
@@ -358,7 +359,7 @@ class AppUiService : ServiceInitializer, ContentServer {
      * knows its own hash and can compare it against the hash every response carries to notice a new deployment.
      */
     private fun bootstrapJson(cxt: KdrCxt): String {
-        val base = RequestService.get(cxt)?.frontendConfig() ?: emptyMap()
+        val base = RequestService.get(cxt).frontendConfig()
         val hash = cxt.instanceConfig.get(EP.webAppHash) as? String
         val cfg = if (hash.isNullOrEmpty()) base else base + (EP.webAppHash to hash)
         return cfg.toJsonStr()
@@ -368,6 +369,7 @@ class AppUiService : ServiceInitializer, ContentServer {
     companion object {
         const val serviceName = "AppUiService"
 
-        fun get(cxt: KdrCxt): AppUiService? = cxt.instanceConfig.get(serviceName) as? AppUiService
+        fun get(cxt: KdrCxt): AppUiService = cxt.instanceConfig.get(serviceName) as? AppUiService
+            ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }

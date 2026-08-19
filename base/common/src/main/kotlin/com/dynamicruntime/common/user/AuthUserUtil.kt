@@ -88,7 +88,7 @@ fun refreshActingRoles(cxt: KdrCxt) {
     if (!profile.isRowBacked || !profile.isLoggedIn) {
         return
     }
-    val row = UserService.get(cxt)?.queryByUserId(cxt, profile.userId) ?: return
+    val row = UserService.get(cxt).queryByUserId(cxt, profile.userId) ?: return
     val liveRoles = if (row.enabled) row.roles.toSet() else emptySet()
     if (liveRoles != profile.roles) {
         LogAuth.debug(cxt) { "Roles for user ${profile.userId} changed since login: $liveRoles." }

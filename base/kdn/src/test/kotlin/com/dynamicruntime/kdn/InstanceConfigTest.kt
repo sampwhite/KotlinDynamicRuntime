@@ -19,7 +19,7 @@ import io.kotest.matchers.shouldBe
 class InstanceConfigTest : StringSpec({
     "InstanceConfig upserts and reads back through the in-memory database" {
         val cxt = Startup.mkTestBootCxt("ic", "instanceConfigTest")
-        val service = InstanceConfigService.get(cxt).shouldNotBeNull()
+        val service = InstanceConfigService.get(cxt)
 
         service.setConfig(cxt, "system", "settings", mapOf("a" to 1L, "b" to "two"))
 
@@ -35,7 +35,7 @@ class InstanceConfigTest : StringSpec({
 
     "getConfig treats a disabled row as absent (issue #48)" {
         val cxt = Startup.mkTestBootCxt("icDisabled", "instanceConfigDisabledTest")
-        val service = InstanceConfigService.get(cxt).shouldNotBeNull()
+        val service = InstanceConfigService.get(cxt)
 
         service.setConfig(cxt, "system", "settings", mapOf("a" to 1L))
         service.getConfig(cxt, "settings").shouldNotBeNull()

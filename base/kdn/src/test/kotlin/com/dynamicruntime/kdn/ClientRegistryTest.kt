@@ -44,7 +44,7 @@ class ClientRegistryTest : StringSpec({
     }
 
     "the clients every deployment has are present, with what they declared" {
-        val service = ClientService.require(boot("clientRegistryTest"))
+        val service = ClientService.get(boot("clientRegistryTest"))
         service.presentClients.map { it.clientId } shouldContainExactly listOf(CL.hub, CL.public)
         val hub = service.present(CL.hub).shouldNotBeNull()
         hub.usageType shouldBe ClientUsageType.production
@@ -55,7 +55,7 @@ class ClientRegistryTest : StringSpec({
     // Known and not present are different questions, and the registry answers them separately: an
     // administrator asking why a client is not working has to be able to see a client that is not working.
     "a client enabled only in local is known here, and not present" {
-        val service = ClientService.require(boot("clientRegistryTest"))
+        val service = ClientService.get(boot("clientRegistryTest"))
         service.known(OffsiteClientComponent.clientId).shouldNotBeNull()
         service.isPresent(OffsiteClientComponent.clientId) shouldBe false
         service.present(OffsiteClientComponent.clientId) shouldBe null

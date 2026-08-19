@@ -69,7 +69,7 @@ class EdgeService : ServiceInitializer, ContentServer {
         //
         // Ordering is the fix available today. The real one is role profiling: an edge has no business loading
         // the portal at all, and then there is nothing to race.
-        RequestService.get(cxt)?.let {
+        RequestService.get(cxt).let {
             it.checkInit(cxt)
             it.addContentServer(this)
         }
@@ -88,7 +88,7 @@ class EdgeService : ServiceInitializer, ContentServer {
      * application session authority over the perimeter.
      */
     override fun checkReady(cxt: KdrCxt) {
-        RequestService.get(cxt)?.authExtractor = ::extractEnvAuth
+        RequestService.get(cxt).authExtractor = ::extractEnvAuth
     }
 
     /**
@@ -158,7 +158,7 @@ class EdgeService : ServiceInitializer, ContentServer {
      */
     fun extractEnvAuth(cxt: KdrCxt, handler: RequestHandler) {
         val raw = handler.getRequestCookies()[ENVAUTH.cookie] ?: return
-        val node = NodeService.get(cxt) ?: return
+        val node = NodeService.get(cxt)
         val decoded = EnvAuthCookie.decode(node, raw) ?: return
         if (cxt.now().toEpochMilliseconds() > decoded.expireEpochMs) {
             return
@@ -171,6 +171,7 @@ class EdgeService : ServiceInitializer, ContentServer {
     companion object {
         const val serviceName = "EdgeService"
 
-        fun get(cxt: KdrCxt): EdgeService? = cxt.instanceConfig.get(serviceName) as? EdgeService
+        fun get(cxt: KdrCxt): EdgeService = cxt.instanceConfig.get(serviceName) as? EdgeService
+            ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }

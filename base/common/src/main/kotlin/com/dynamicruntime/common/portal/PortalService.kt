@@ -2,6 +2,7 @@ package com.dynamicruntime.common.portal
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ContentServer
 import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.RequestHandler
@@ -42,7 +43,7 @@ class PortalService : ServiceInitializer, ContentServer {
 
     /** Registers this content server with the dispatcher (idempotent). */
     override fun checkInit(cxt: KdrCxt) {
-        val requestService = RequestService.get(cxt) ?: return
+        val requestService = RequestService.get(cxt)
         requestService.checkInit(cxt)
         requestService.addContentServer(this)
     }
@@ -72,12 +73,13 @@ class PortalService : ServiceInitializer, ContentServer {
 
     /** The frontend bootstrap config (context roots by focus) as JSON, for injection into the page. */
     private fun bootstrapJson(cxt: KdrCxt): String =
-        (RequestService.get(cxt)?.frontendConfig() ?: emptyMap()).toJsonStr()
+        RequestService.get(cxt).frontendConfig().toJsonStr()
 
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "PortalService"
 
-        fun get(cxt: KdrCxt): PortalService? = cxt.instanceConfig.get(serviceName) as? PortalService
+        fun get(cxt: KdrCxt): PortalService = cxt.instanceConfig.get(serviceName) as? PortalService
+            ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }

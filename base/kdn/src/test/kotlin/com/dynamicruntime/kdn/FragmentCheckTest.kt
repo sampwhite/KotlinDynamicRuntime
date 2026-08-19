@@ -30,7 +30,7 @@ import io.kotest.matchers.shouldBe
 class FragmentCheckTest : StringSpec({
 
     fun service(cxt: KdrCxt): MarkdownFragmentService =
-        MarkdownFragmentService.get(cxt) ?: error("MarkdownFragmentService is required by this test.")
+        MarkdownFragmentService.get(cxt)
 
     // --- what the mode resolves to ---------------------------------------------
 

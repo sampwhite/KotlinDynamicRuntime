@@ -210,8 +210,8 @@ class TableCacheSkillExamplesTest : StringSpec({
         val cache = service.register(params(table))
         write(cxt, table, "r1", owner = "acme", label = "T1")
 
-        // The skill's `SqlTableCacheService.get(cxt)?.refreshState(cxt)`, with the null case asserted away.
-        val state = SqlTableCacheService.get(cxt).shouldNotBeNull().refreshState(cxt)
+        // The skill's `SqlTableCacheService.get(cxt).refreshState(cxt)` -- get throws if the service is absent.
+        val state = SqlTableCacheService.get(cxt).refreshState(cxt)
         state.need shouldBe SqlCacheRefreshNeed.neverRefreshed
         state.isRefreshed shouldBe false
         state.needsRefresh shouldBe true

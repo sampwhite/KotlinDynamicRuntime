@@ -4,7 +4,6 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.user.authTopic
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
-import io.kotest.matchers.shouldNotBe
 
 /**
  * Every topic's tables must be created during **startup**, as the system user -- never lazily by whichever
@@ -28,14 +27,13 @@ class TopicStartupInitTest : StringSpec({
     "the auth topic and its tables are created during startup, before any request" {
         val cxt = Startup.mkTestBootCxt("topicInit", "topicInitTest")
         val service = SqlTopicService.get(cxt)
-        service shouldNotBe null
         // Populated by checkReady, so it is already there without a single request having been made.
-        service!!.topics.keys shouldContain authTopic
+        service.topics.keys shouldContain authTopic
     }
 
     "every topic the schema store declares is created, not just the one a test happens to use" {
         val cxt = Startup.mkTestBootCxt("topicInitAll", "topicInitAllTest")
-        val service = SqlTopicService.get(cxt)!!
+        val service = SqlTopicService.get(cxt)
         val declared = cxt.getSchema().tables.values.map { it.topic }.toSet()
         declared.forEach { service.topics.keys shouldContain it }
     }

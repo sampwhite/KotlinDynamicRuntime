@@ -44,7 +44,7 @@ class GedraDataCacheTest : StringSpec({
     val caraId = 90001L
     val cyrusId = 90002L
 
-    fun service(): GedraDataService = GedraDataService.get(cxt).shouldNotBeNull()
+    fun service(): GedraDataService = GedraDataService.get(cxt)
 
     /** A context acting as [userId] inside this spec's client. */
     fun asUser(userId: Long): KdrCxt = cxt.mkSubContext("gcache", client).also { it.userId = userId }
@@ -266,7 +266,7 @@ class GedraDataCacheTest : StringSpec({
 
             // Patch the name, with the clock still frozen at the create's millisecond.
             val target = GedraPatchTarget(
-                GedraService.require(cxt).readId(id),
+                GedraService.get(cxt).readId(id),
                 listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.name to "After patch"))),
             )
             svc.patchGedras(cxt, mapOf(kind to listOf(target)), scope)

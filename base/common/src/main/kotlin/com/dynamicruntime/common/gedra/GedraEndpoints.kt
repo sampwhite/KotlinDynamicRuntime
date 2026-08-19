@@ -92,7 +92,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         inputRef = GU.inputName(formDoc),
     ) { c, request ->
         val entries = request[GDF.entries].toJsonListOfMaps()
-        GedraDataService.require(c)
+        GedraDataService.get(c)
             .createGedra(c, formDoc, entries, request.getOptBool(GDF.allowAdditionalTraits) == true)
             .toJsonMap()
     }
@@ -108,7 +108,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
     ) { c, request ->
         val fullId = request[GDF.gedraId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.gedraId} is required.")
-        val row = GedraDataService.require(c).queryGedra(c, fullId, formDoc, ReadScopeRules.forCaller(c))
+        val row = GedraDataService.get(c).queryGedra(c, fullId, formDoc, ReadScopeRules.forCaller(c))
         // Absent, disabled, the wrong kind and out of scope all arrive here as null, and all leave as 404 --
         // see `GedraDataService.queryGedra` for why the last of those must not be distinguishable.
             ?: throw KdrException("No form document '$fullId'.", code = EXC.notFound)
@@ -141,7 +141,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         // the same four-into-one the read makes, so trying to delete something reveals no more than trying to
         // read it. A second delete is therefore a 404 rather than a quiet success, which says plainly that
         // there was nothing there rather than implying this call is what removed it.
-        if (!GedraDataService.require(c).deleteGedra(c, fullId, formDoc, ReadScopeRules.forCaller(c))) {
+        if (!GedraDataService.get(c).deleteGedra(c, fullId, formDoc, ReadScopeRules.forCaller(c))) {
             throw KdrException("No form document '$fullId'.", code = EXC.notFound)
         }
         mapOf(GDF.gedraId to fullId)
@@ -153,7 +153,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         outputRef = docType,
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
-        GedraDataService.require(c)
+        GedraDataService.get(c)
             .listGedras(c, formDoc, ReadScopeRules.forCaller(c), limit)
             .map { it.toJsonMap() }
     }
@@ -223,7 +223,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
             field(GDF.allowAdditionalTraits, ADDITIONAL_TRAITS_HINT) { type = SCT.boolean }
         },
     ) { c, request ->
-        val gedraService = GedraService.require(c)
+        val gedraService = GedraService.get(c)
         val byKind = LinkedHashMap<GedraDataType, List<GedraPatchTarget>>()
         for ((kindName, raw) in request[GPF.targets].toJsonMapOrEmpty()) {
             // A property the schema does not declare cannot arrive, so an unknown name here would mean the
@@ -235,7 +235,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         if (byKind.values.all { it.isEmpty() }) {
             throw KdrException.mkInput("A patch has to name at least one gedra to change.")
         }
-        GedraDataService.require(c)
+        GedraDataService.get(c)
             .patchGedras(
                 c, byKind, ReadScopeRules.forCaller(c),
                 request.getOptBool(GDF.allowAdditionalTraits) == true,

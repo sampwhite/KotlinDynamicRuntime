@@ -4,7 +4,6 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.formatDate
@@ -153,7 +152,7 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "operator") {
  * *after* it.
  */
 private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
-    val node = NodeService.get(cxt) ?: throw KdrException("NodeService is not available.")
+    val node = NodeService.get(cxt)
     val memoryBean = ManagementFactory.getMemoryMXBean()
 
     val gcReport: Map<String, Any?> = if (collect) {

@@ -149,7 +149,8 @@ class NodeService : ServiceInitializer {
         /** When this VM started, used to compute uptime. */
         val vmStartTime: Instant = Clock.System.now()
 
-        fun get(cxt: KdrCxt): NodeService? = cxt.instanceConfig.get(serviceName) as? NodeService
+        fun get(cxt: KdrCxt): NodeService = cxt.instanceConfig.get(serviceName) as? NodeService
+            ?: throw KdrException("The $serviceName is not available on this node.")
 
         /**
          * The node's endpoints (currently just `/health`), contributed by the `common` component. Defined
@@ -174,7 +175,7 @@ class NodeService : ServiceInitializer {
                 HttpMethod.GET,
                 outputRef = "Health",
             ) { c, _ ->
-                (get(c) ?: throw KdrException("NodeService is not available.")).getHealth(c)
+                get(c).getHealth(c)
             }
         }
     }

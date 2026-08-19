@@ -63,7 +63,7 @@ object GrantRole {
                     "Set KDR_IN_MEMORY_ONLY=false (and the KDR_DB_* variables) for the deployment you mean to edit.",
             )
         }
-        val service = UserService.get(cxt) ?: return fail("The user service is unavailable; cannot continue.")
+        val service = UserService.get(cxt)
 
         if (GRF.list in flags) {
             return listUsers(cxt, service, loginId)

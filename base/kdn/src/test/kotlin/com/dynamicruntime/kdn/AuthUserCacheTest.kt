@@ -37,7 +37,7 @@ import kotlin.time.Duration.Companion.days
 class AuthUserCacheTest : StringSpec({
 
     fun users(cxt: KdrCxt): UserService =
-        (UserService.get(cxt) ?: error("UserService is required by this test.")).also { it.checkInit(cxt) }
+        UserService.get(cxt).also { it.checkInit(cxt) }
 
     "a written user is cached, and each read gets its own row rather than the cached one" {
         val cxt = Startup.mkTestBootCxt("userCache", "userCacheTest")
@@ -110,7 +110,7 @@ class AuthUserCacheTest : StringSpec({
      */
     "a request that creates a user publishes the change to the shared cache-state row" {
         val cxt = Startup.mkTestBootCxt("userCacheState", "userCacheStateTest")
-        val caches = SqlTableCacheService.get(cxt).shouldNotBeNull()
+        val caches = SqlTableCacheService.get(cxt)
 
         // The state row is one row shared by the whole database, and every test in this run shares one
         // in-memory database -- so another spec's request has almost certainly written an `AuthUsers` entry

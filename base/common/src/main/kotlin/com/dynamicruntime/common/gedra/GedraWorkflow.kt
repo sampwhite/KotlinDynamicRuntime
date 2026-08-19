@@ -88,8 +88,8 @@ object GedraWorkflow {
         reopenTasks: List<String> = emptyList(),
         note: String? = null,
     ): WfTransitionOutcome {
-        val gedraService = GedraService.require(cxt)
-        val dataService = GedraDataService.require(cxt)
+        val gedraService = GedraService.get(cxt)
+        val dataService = GedraDataService.get(cxt)
         val gedraId = gedraService.readId(workflowFullId)
         if (gedraId.dataType != GedraDataType.wfData) {
             throw KdrException.mkInput("'$workflowFullId' is not a workflow (wfData) gedra.")
@@ -343,7 +343,7 @@ object GedraWorkflow {
             WfAssigneeKind.user -> {
                 val userId = assign.value.toLongOrNull()
                     ?: throw KdrException.mkInput("'${assign.value}' is not a user id.")
-                val user = UserService.get(cxt)?.queryByUserId(cxt, userId)
+                val user = UserService.get(cxt).queryByUserId(cxt, userId)
                 if (user == null || !user.enabled) {
                     throw KdrException.mkInput("There is no active user ${assign.value} to assign to.")
                 }

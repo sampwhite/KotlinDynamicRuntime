@@ -26,7 +26,7 @@ class SimulatedEmailEndpointTest : StringSpec({
     "a test instance captures sent mail and serves it from /test/simulatedEmails" {
         val cxt = Startup.mkTestBootCxt("simEmails", "simEmailsInst")
         // A unit instance simulates by default, so this is captured rather than transmitted.
-        MailService.get(cxt)!!.sendEmail(cxt, "carol@example.com", "Hi", "Your verification code is 424242.")
+        MailService.get(cxt).sendEmail(cxt, "carol@example.com", "Hi", "Your verification code is 424242.")
         val client = TestHttpClient(cxt.instanceConfig)
         val results = client.sendJsonGetRequest(TEP.simulatedEmails).getValue(EP.results)!!.toJsonMap()
         val emails = results.getValue(TSE.emails) as List<*>

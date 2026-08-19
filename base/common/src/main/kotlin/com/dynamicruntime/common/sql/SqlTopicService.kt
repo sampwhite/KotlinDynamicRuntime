@@ -120,13 +120,13 @@ class SqlTopicService : ServiceInitializer {
     companion object {
         const val serviceName = "SqlTopicService"
 
-        /** Retrieves the topic service from the instance config, or null if absent. */
-        fun get(cxt: KdrCxt): SqlTopicService? = cxt.instanceConfig.get(serviceName) as? SqlTopicService
+        /** The service; throws naming it on a node that does not run it. */
+        fun get(cxt: KdrCxt): SqlTopicService = cxt.instanceConfig.get(serviceName) as? SqlTopicService
+            ?: throw KdrException("The $serviceName is not available on this node.")
 
         /** Builds a [SqlCxt] bound to [topic], resolving (and initializing) the topic through the service. */
         fun mkSqlCxt(cxt: KdrCxt, topic: String): SqlCxt {
             val service = get(cxt)
-                ?: throw KdrException("Could not create SQL context for topic $topic: no SqlTopicService.")
             val sqlTopic = service.getOrCreateTopic(cxt, topic)
                 ?: throw KdrException("Could not create SQL context: no tables registered for topic $topic.")
             return SqlCxt(cxt, sqlTopic)

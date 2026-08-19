@@ -167,11 +167,11 @@ cache and so refreshes every cache before the handler runs. In process — a tes
 edit-and-check loop — ask the service instead:
 
 ```kotlin
-val state = SqlTableCacheService.get(cxt)?.refreshState(cxt)  // null when no cache service is running
-state?.need           // current | neverRefreshed | changed | reloadPending | aged | disabled
-state?.isRefreshed    // the next cached read sweeps nothing
-state?.needsRefresh   // it will sweep
-state?.pendingTables  // written on this node, not reloaded yet
+val state = SqlTableCacheService.get(cxt).refreshState(cxt)  // throws if no cache service is running
+state.need           // current | neverRefreshed | changed | reloadPending | aged | disabled
+state.isRefreshed    // the next cached read sweeps nothing
+state.needsRefresh   // it will sweep
+state.pendingTables  // written on this node, not reloaded yet
 ```
 
 - **Asking does not refresh.** It reads the memo `getAndRefresh` keeps in `cxt.locals` plus the caches'

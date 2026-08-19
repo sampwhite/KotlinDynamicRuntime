@@ -286,7 +286,9 @@ class SqlDatabase(
         if (rowsAffected <= 0 || stmt.tableNames.isEmpty()) {
             return
         }
-        val listeners = SqlTopicService.get(cxt)?.writeListeners ?: return
+        // Read optionally, not through the throwing get(): write-listener notification is best-effort, and the
+        // data layer runs below (and in tests without) the topic service -- a bare SqlDatabase must still write.
+        val listeners = (cxt.instanceConfig.get(SqlTopicService.serviceName) as? SqlTopicService)?.writeListeners ?: return
         for (listener in listeners) {
             try {
                 listener.onWrite(cxt, stmt.tableNames)

@@ -70,7 +70,7 @@ object AddressRules {
     fun clientForNewUser(cxt: KdrCxt, address: String): String {
         val named = tagsFor(cxt, address).clientId ?: return CL.public
         val clients = ClientService.get(cxt)
-        if (clients != null && clients.isPresent(named)) {
+        if (clients.isPresent(named)) {
             return named
         }
         LogAuth.warn(cxt) {

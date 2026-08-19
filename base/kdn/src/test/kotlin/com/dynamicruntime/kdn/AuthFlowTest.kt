@@ -81,11 +81,11 @@ class AuthFlowTest : StringSpec({
     // instance's NodeService, under its secret key. A white-box test holds the node it drives; the attacker,
     // who has only HTTP, cannot reach the key, which is the whole point of the code being an HMAC now.
     fun codeFor(token: String, contact: String): String =
-        NodeService.get(cxt)!!.computeVerifyCode(token, contact)
+        NodeService.get(cxt).computeVerifyCode(token, contact)
 
     /** The rendered auth.md copy for an error key, so assertions check the plumbing rather than the wording. */
     fun authMsg(key: String): String? =
-        MarkdownFragmentService.get(cxt)!!.resolveFragment(cxt, AFRAG.auth, AERR.ns, key)
+        MarkdownFragmentService.get(cxt).resolveFragment(cxt, AFRAG.auth, AERR.ns, key)
 
     // Registers a user and logs them in by verification code (which also makes the client's device familiar),
     // returning the new userId. The code is reused for the createInitial + setLoginData sequence, as the flow allows.
@@ -116,7 +116,7 @@ class AuthFlowTest : StringSpec({
             "/auth/user/sendVerify",
             mapOf("loginId" to name, "formAuthToken" to token, "addPassword" to true),
         )
-        MailService.get(cxt)!!.lastEmailTo(contact)!!.text.contains("password") shouldBe true
+        MailService.get(cxt).lastEmailTo(contact)!!.text.contains("password") shouldBe true
         val code = codeFor(token, contact)
         return client.sendJsonPutRequest(
             "/auth/user/setPassword",
@@ -146,7 +146,7 @@ class AuthFlowTest : StringSpec({
             "/auth/newContact/sendVerify",
             mapOf("contactAddress" to email, "contactType" to "email", "formAuthToken" to token1),
         )
-        MailService.get(cxt)!!.lastEmailTo(email).shouldNotBeNull()
+        MailService.get(cxt).lastEmailTo(email).shouldNotBeNull()
 
         // 3. Provision the initial user with the (deterministic) verification code.
         val code1 = codeFor(token1, email)
@@ -543,7 +543,7 @@ class AuthFlowTest : StringSpec({
         // again. (This test used the noAccount error until issue #275 removed it; the remaining sensitive
         // message carries the demonstration.) Codes are computed via this instance's own key.
         val taken = "taken-obf@example.com"
-        fun obfCode(t: String) = NodeService.get(obfCxt)!!.computeVerifyCode(t, taken)
+        fun obfCode(t: String) = NodeService.get(obfCxt).computeVerifyCode(t, taken)
         client.sendJsonPostRequest(
             "/auth/newContact/sendVerify", mapOf("contactAddress" to taken, "contactType" to "email", "formAuthToken" to token),
         )
@@ -560,11 +560,11 @@ class AuthFlowTest : StringSpec({
         // generic message from errors.md -- so the address never appears on the wire.
         val token2 = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
         val obf = RequestHandler.obfuscatedErrorMsg
-        val expected = MarkdownFragmentService.get(obfCxt)!!.resolveFragment(obfCxt, obf.fileId, obf.namespace, obf.key)
+        val expected = MarkdownFragmentService.get(obfCxt).resolveFragment(obfCxt, obf.fileId, obf.namespace, obf.key)
         val resp = client.sendJsonPutRequest(
             "/auth/user/createInitial",
             mapOf("contactAddress" to taken, "contactType" to "email", "formAuthToken" to token2,
-                "verifyCode" to NodeService.get(obfCxt)!!.computeVerifyCode(token2, taken)),
+                "verifyCode" to NodeService.get(obfCxt).computeVerifyCode(token2, taken)),
         )
         resp[EP.errorMessage] shouldBe expected
         resp[EP.errorFromFragment] shouldBe true // still designed copy
