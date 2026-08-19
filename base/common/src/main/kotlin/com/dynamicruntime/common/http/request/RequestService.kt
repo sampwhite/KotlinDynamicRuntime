@@ -514,11 +514,29 @@ class RequestService : ServiceInitializer {
     // --- auth touchpoints (issue #67) ---
 
     /**
+     * How this node decides **who a caller is** -- replaceable by a component that authenticates differently
+     * (issue #386). Defaults to [extractSessionAuth], the session-cookie path every ordinary node uses.
+     *
+     * **One, deliberately, and replacing rather than adding.** A registry of contributors would be the obvious
+     * generalization and is the wrong shape here: identity must have a single source. Once an edge proxies, a
+     * browser holds *both* cookies on one host -- `kdrAuth` for a proxied backend, which must pass through
+     * untouched, and the edge's own -- and an additive scheme would let a backend's application session confer
+     * identity on the **edge itself**. That is a privilege path nobody intended, and it would look like it
+     * worked. The same reason `canAccess` is the single answer to "may they": one question, one answer.
+     *
+     * Swapped during service init, the way `PortalService` registers itself as a content server.
+     */
+    var authExtractor: (KdrCxt, RequestHandler) -> Unit = ::extractSessionAuth
+
+    /** Applies the node's [authExtractor]. Called by the dispatcher before the section gate. */
+    fun extractAuth(cxt: KdrCxt, handler: RequestHandler) = authExtractor(cxt, handler)
+
+    /**
      * Restores the acting [KdrCxt.userProfile] from the session auth cookie: decrypt it (via the node key),
      * and if it is valid and unexpired, bind the user. Silently leaves the (system) profile in place otherwise
      * -- an absent/expired/forged cookie simply means "not logged in". Header-token auth is a follow-up.
      */
-    fun extractAuth(cxt: KdrCxt, handler: RequestHandler) {
+    fun extractSessionAuth(cxt: KdrCxt, handler: RequestHandler) {
         val cookie = handler.getRequestCookies()[AUTHC.authCookie] ?: return
         val node = NodeService.get(cxt) ?: return
         val decoded = UserAuthCookie.decode(node, cookie) ?: return

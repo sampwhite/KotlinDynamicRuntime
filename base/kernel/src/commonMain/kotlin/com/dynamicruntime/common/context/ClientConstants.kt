@@ -25,6 +25,21 @@ object CL {
     /** The client every self-registered user belongs to; also the anonymous profile's client. */
     const val public = "public"
 
+    /**
+     * The client an **env-authed** caller belongs to (issue #386): somebody who reached a node through an
+     * authenticating edge, acting on the business's own behalf rather than any customer's.
+     *
+     * Named for the *position* -- "the house", as distinct from its customers -- which is the rule that
+     * produced [hub]. [public] is guests, and `hub` suggests richer functionality than this. Preferred over
+     * `staff` because the admin email domain may grow to a list (a contractor's, a client's), at which point
+     * not everybody clearing the gate is staff, while they are all still acting for the house.
+     *
+     * **This client owns no rows.** An edge has no user store, so nothing is ever scoped to it, and a caller
+     * carrying it has no database row behind them (see `UserProfile.isRowBacked`). It is a label for who is
+     * acting, never a key to store anything under.
+     */
+    const val house = "house"
+
     // Placeholder id for the implicit system user.
     const val systemUserId = 0
 }

@@ -127,6 +127,12 @@ object EnvAuthRules {
      * claim** somebody made, this one decides whether to **make one up**. They are deliberately independent --
      * turning off header trust in a test should not silently disable a developer's local convenience.
      *
+     * **Off by default on a node running a boot role**, because the assumption means "behave as if an edge
+     * vouched for you" and that is incoherent where the node *is* the edge -- it leaves the perimeter never
+     * challenging anybody, so the gate being developed is unreachable. Only an unrolled application node, the
+     * kind that expects to sit behind an edge, assumes by default. Both overrides still apply, so
+     * `KDR_EDGE_ASSUME_ENV_AUTH=true` turns it back on for an edge specifically.
+     *
      * **Defaults on only in [ENV.local], not in [ENV.unit].** A test instance covers both, but `TestHttpClient`
      * sends no forwarded-for header, so defaulting on the test-instance flag alone would make *every request in
      * the suite* env-authed and quietly flip the baseline every test reasons from.
@@ -140,7 +146,7 @@ object EnvAuthRules {
     fun assumesEnvAuth(config: KdrInstanceConfig): Boolean =
         (config.get(ACFG.assumeEnvAuth) as? Boolean)
             ?: config.getEnvBool(ENVA.assumeEnvAuthEnvVar)
-            ?: (config.isTestInstance && config.env == ENV.local)
+            ?: (config.isTestInstance && config.env == ENV.local && config.bootRole == null)
 
     /**
      * Everything a request's env auth amounts to: who an edge vouched for, and whether the session is choosing

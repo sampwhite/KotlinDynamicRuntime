@@ -3,7 +3,15 @@ package com.dynamicruntime.edge
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.http.request.ContentServer
+import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.ContextRoot
+import com.dynamicruntime.common.http.request.RequestHandler
+import com.dynamicruntime.common.http.request.RequestService
+import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.user.GoogleAuthConfig
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.startup.ServiceInitializer
 
@@ -17,7 +25,7 @@ object LogEdge : KdrLogger("edge")
  * It will grow the route table and the upstream registry; today it is the boot-time guard and the place those
  * belong.
  */
-class EdgeService : ServiceInitializer {
+class EdgeService : ServiceInitializer, ContentServer {
     override val serviceName: String = EdgeService.serviceName
 
     /**
@@ -50,7 +58,113 @@ class EdgeService : ServiceInitializer {
                     "shared root makes a path ambiguous and the wrong server answers rather than failing.",
             )
         }
+        // Registered after the guard above, never before it: reaching RequestService must not be able to
+        // decide whether the boot refusal runs. An early return here for a missing service would skip the
+        // check silently, which is the failure the check exists to prevent.
+        //
+        // Registered here rather than in checkReady, and the timing decides a race: content servers are
+        // offered a request in registration order, and PortalService registers in ITS checkInit -- so anything
+        // registering later loses the bare content root to the application's portal. Observed: `/ec` redirected
+        // to `/ec/portal`. EdgeComponent's earlier load priority is what puts this first.
+        //
+        // Ordering is the fix available today. The real one is role profiling: an edge has no business loading
+        // the portal at all, and then there is nothing to race.
+        RequestService.get(cxt)?.let {
+            it.checkInit(cxt)
+            it.addContentServer(this)
+        }
         LogEdge.info(cxt) { "KdrEdge serving context roots ${configured.values.filterNotNull()}." }
+    }
+
+    /**
+     * Takes over how this node decides who a caller is (issue #386).
+     *
+     * In `checkInit` because `RequestService` must exist to be reached -- the same point and the same way
+     * `PortalService` registers itself as a content server.
+     *
+     * **A replacement, not an addition.** The session-cookie path it displaces must not also run here: once
+     * the edge proxies, a browser holds `kdrAuth` for some backend reached *through* this host, and that
+     * cookie has nothing to say about who may operate the edge. Letting it bind a profile here would hand an
+     * application session authority over the perimeter.
+     */
+    override fun checkReady(cxt: KdrCxt) {
+        RequestService.get(cxt)?.authExtractor = ::extractEnvAuth
+    }
+
+    /**
+     * Serves the sign-in page, and sends the bare content root to it.
+     *
+     * The page is the whole anonymous surface of an edge, so this is deliberately two paths and no more.
+     */
+    override fun serve(cxt: KdrCxt, handler: RequestHandler): Boolean {
+        if (handler.focus != ContextFocus.content) {
+            return false
+        }
+        val apiRoot = "/" + (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String ?: EdgeRoot.ea)
+        return when (handler.appPath) {
+            "/" -> {
+                // A signed-in caller gets a page rather than a redirect. Sending them to the sign-in page
+                // instead is a LOOP -- root to login, login back to root -- which is what an edge with no
+                // home page of its own does by default. Observed the first time somebody signed in from the
+                // bare root rather than from a deep link.
+                val email = cxt.envAuthEmail
+                if (email != null) {
+                    handler.sendStringResponse(
+                        EnvAuthPage.renderSignedIn(email, apiRoot + "/schema/endpoints"),
+                        EXC.ok, "text/html; charset=utf-8",
+                    )
+                } else {
+                    handler.sendRedirect("/" + handler.contextRoot + EDGEP.loginPage)
+                }
+                true
+            }
+            EDGEP.loginPage -> {
+                // Already signed in: go where they were headed rather than asking again. Without this, a
+                // signed-in caller who lands back on this page is offered a login they do not need, and the
+                // redirect after it starts the loop over.
+                if (cxt.envAuthEmail != null) {
+                    handler.sendRedirect(
+                        EnvAuthReturn.sanitize(handler.queryParams[EnvAuthReturn.param] as? String),
+                    )
+                    return true
+                }
+                val clientId = GoogleAuthConfig.clientId(cxt.instanceConfig)
+                if (clientId == null) {
+                    // Saying so plainly beats a button that cannot work: without a client id there is no way
+                    // in at all, and that is an operator's problem rather than a visitor's mistake.
+                    handler.sendStringResponse(
+                        "Google sign-in is not configured on this node.", EXC.notFound, "text/plain",
+                    )
+                    return true
+                }
+                val returnTo = EnvAuthReturn.sanitize(handler.queryParams[EnvAuthReturn.param] as? String)
+                handler.sendStringResponse(
+                    EnvAuthPage.render(clientId, returnTo, apiRoot + EAEP.login),
+                    EXC.ok, "text/html; charset=utf-8",
+                )
+                true
+            }
+            else -> false
+        }
+    }
+
+    /**
+     * Restores the acting profile from the Env Auth cookie: decrypt with the node key, check it has not
+     * expired, and bind the caller as an env-authed operator.
+     *
+     * Silent about every failure -- absent, forged, expired -- because all three mean the same thing to a
+     * request: nobody is logged in. The address also goes onto [KdrCxt.envAuthEmail], so the identity reaches
+     * the log line here exactly as it does on a backend that was told by header.
+     */
+    fun extractEnvAuth(cxt: KdrCxt, handler: RequestHandler) {
+        val raw = handler.getRequestCookies()[ENVAUTH.cookie] ?: return
+        val node = NodeService.get(cxt) ?: return
+        val decoded = EnvAuthCookie.decode(node, raw) ?: return
+        if (cxt.now().toEpochMilliseconds() > decoded.expireEpochMs) {
+            return
+        }
+        cxt.envAuthEmail = decoded.email
+        cxt.bindToUserProfile(UserProfile.envAuthed(decoded.email))
     }
 
     @Suppress("ConstPropertyName")

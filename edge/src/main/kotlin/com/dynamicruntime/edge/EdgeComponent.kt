@@ -4,6 +4,8 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.startup.PRI
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
@@ -43,6 +45,18 @@ class EdgeComponent : ComponentDefinition {
         config.put(ACFG.appContextRoot, config.get(ACFG.appContextRoot) ?: EdgeRoot.ew)
         config.put(ACFG.staticContextRoot, config.get(ACFG.staticContextRoot) ?: EdgeRoot.es)
         config.put(ACFG.defaultPort, config.get(ACFG.defaultPort) ?: EdgeRole.defaultPort)
+    }
+
+    /**
+     * Loaded ahead of `CommonComponent`, so `EdgeService` registers its content server before the portal
+     * does: content servers are offered a request in registration order, and the bare content root is claimed
+     * by whichever answers first. Without this, `/ec` reaches the application's portal instead of the sign-in
+     * page. A stopgap for as long as an edge loads the portal at all.
+     */
+    override fun loadPriority(): Int = PRI.early
+
+    override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
+        collector.addModule(envAuthSchema(cxt))
     }
 
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::EdgeService)

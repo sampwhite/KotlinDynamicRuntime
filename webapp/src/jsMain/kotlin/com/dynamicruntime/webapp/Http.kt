@@ -15,8 +15,30 @@ import kotlin.js.Promise
  * own `Long`/`Double`, matching the validator). In dev the webpack server proxies `/kda` and `/st` to the
  * runtime, so calls are same-origin.
  */
-private const val apiRoot = "/kda"
-private const val staticRoot = "/st"
+/**
+ * The context roots this deployment actually serves, read from the bootstrap config the shell injects as
+ * `window.kdrCfg` (see `AppUiPage` / `PortalPage`), falling back to the defaults.
+ *
+ * The roots are **configurable per instance** -- `ACFG.apiContextRoot` and friends -- and the server has always
+ * injected them for exactly this reason. Hardcoding them here quietly made that untrue: a deployment that
+ * chose different roots served a front end that called the wrong paths, got the terse 404's `Not Found` body,
+ * and reported it as "Unexpected character 'N' when parsing JSON". Found the first time anything configured
+ * them, which was an edge node serving under `ea`.
+ *
+ * The fallbacks matter and are not decoration: on the webpack dev server there is no injected config at all,
+ * and its proxy is written against these exact literals.
+ */
+private fun rootFor(focus: String, fallback: String): String {
+    val configured = js("(window.kdrCfg && window.kdrCfg.contextRoots && window.kdrCfg.contextRoots[focus])")
+    val root = configured as? String
+    return if (root.isNullOrEmpty()) fallback else "/" + root
+}
+
+private val apiRoot: String by lazy { rootFor("api", "/kda") }
+private val staticRoot: String by lazy { rootFor("static", "/st") }
+
+/** The API root, for code outside this file that builds its own paths. */
+val apiContextRoot: String get() = apiRoot
 
 @JsName("fetch")
 private external fun browserFetch(input: String, init: dynamic = definedExternally): Promise<dynamic>
