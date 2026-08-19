@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
@@ -108,21 +109,12 @@ private fun changedUnions(
 ): Map<String, Any?> {
     val traits = supportedTraits(collected.gedraConfigs, client, def, overlaidTypes)
     val built = LinkedHashMap<String, Any?>()
-    for (kind in unionKinds) {
+    for (kind in GU.entryKinds) {
         built.putAll(entryUnionDefs(cxt, GCFG.globalNamespace, kind, traits))
         built.putAll(entryEditUnionDefs(cxt, GCFG.globalNamespace, kind, traits))
     }
     return built.filter { (name, body) -> body != global.defs[name] }
 }
-
-/**
- * The kinds that have manufactured unions, which is `formDoc` today.
- *
- * Named here as well as in `SchemaService` because the two must agree: a kind given a union globally and not
- * per client would silently keep the global one for every client. Adding a kind means adding it in both
- * places, which is the right amount of friction for a decision that changes what can be stored.
- */
-private val unionKinds = listOf(GedraDataType.formDoc)
 
 /**
  * [declared] with any alteration that would widen a global type dropped.

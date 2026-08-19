@@ -12,6 +12,7 @@ import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
+import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
@@ -90,13 +91,8 @@ class SchemaService : ServiceInitializer {
         // every component has contributed, and by the time anything reads the store, it is an ordinary type.
         // Called once with the global scope; per-client views call the same function with a different one.
         val globalTraits = collected.gedraConfigs.traitsFor(GID.globalClient)
-        // The kinds that carry validated entries. The union is what `checkStoredEntries` validates against,
-        // and a kind WITHOUT one is silently unvalidated (its lookup is a `?: return`) -- so a kind whose
-        // entries are written by any real path must be in this list. `wfData` joined when the workflow
-        // engine started storing entries on workflow gedras (issue #381); `userData`/`fileRef` have no
-        // entry-writing path yet.
-        val entryKinds = listOf(GedraDataType.formDoc, GedraDataType.wfData)
-        for (kind in entryKinds) {
+        // The kinds that carry validated entries -- see `GU.entryKinds`, which the per-client pass reads too.
+        for (kind in GU.entryKinds) {
             collected.defs.putAll(entryUnionDefs(cxt, GCFG.globalNamespace, kind, globalTraits))
             // The edit union beside it, from the same traits (issue #337): one source, two renderings.
             collected.defs.putAll(entryEditUnionDefs(cxt, GCFG.globalNamespace, kind, globalTraits))

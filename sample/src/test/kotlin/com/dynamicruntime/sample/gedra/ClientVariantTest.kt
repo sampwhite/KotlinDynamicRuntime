@@ -1,5 +1,7 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
@@ -63,6 +65,28 @@ class ClientVariantTest : StringSpec({
         acme.selfClient() shouldBe SC.acme
         globex.selfClient() shouldBe SC.globex
         everyone.selfClient() shouldBe CL.public
+    }
+
+    // --- every kind that carries entries, not just form documents ------------------
+    //
+    // Schema-level, because nothing edits workflow data through an endpoint yet -- the workflow engine writes
+    // those entries itself. That is exactly why the per-client pass could miss the kind entirely (#390) and
+    // nothing complained: the global pass and the per-client pass kept separate lists of kinds, and only the
+    // shared one gained `wfData`.
+    //
+    // `name` is the trait that makes this observable: it binds to **both** kinds, and acme never included it.
+
+    "a client's narrowing reaches workflow data, not only form documents" {
+        val service = (SchemaService.get(cxt) ?: error("SchemaService required")).also { it.checkInit(cxt) }
+        GU.entryKinds.forEach { kind ->
+            val unionName = "globalconfig." + GU.unionName(kind)
+            // Global carries `name` on both kinds...
+            service.storeFor(null).types.getValue(unionName).variants
+                .shouldNotBeNull().isKnown(GT.name) shouldBe true
+            // ...and acme, which named its traits one at a time and left `name` out, carries it on neither.
+            val theirs = service.storeFor(SC.acme).types.getValue(unionName)
+            (theirs.variants?.isKnown(GT.name) ?: false) shouldBe false
+        }
     }
 
     // --- an interior type, narrowed --------------------------------------------
