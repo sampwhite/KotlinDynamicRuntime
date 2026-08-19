@@ -55,7 +55,11 @@ object AU {
     /** The user's unique preferred display/login name. */
     const val username = "username"
 
-    /** Auth data map: roles, the (optional) encoded password, and contacts. Keys are [AD]. */
+    /**
+     * Auth data map: roles, identity (org, name, isEntity), the optional encoded password, contacts, and
+     * lifecycle markers (e.g. deletion). The authoritative key list is [AD] -- this summary names the shape,
+     * not every key.
+     */
     const val authUserData = "authUserData"
 }
 
@@ -144,7 +148,7 @@ fun authTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "user
         column(AU.userId, "Numeric id of the user.", required = true, autoIncrement = true) { type = SCT.integer }
         column(AU.primaryId, "Primary identifier (default: the primary email address).", required = true)
         column(AU.username, "The user's unique preferred name.", required = true)
-        column(AU.authUserData, "Auth data: roles, optional encoded password, contacts.") { type = SCT.kObject }
+        column(AU.authUserData, "Auth data: roles, identity (org, name), optional encoded password, contacts, and deletion markers.") { type = SCT.kObject }
         primaryKey(AU.userId)
         forClient()
         index(AU.primaryId, unique = true)
