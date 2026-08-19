@@ -270,7 +270,7 @@ val Users = FC<Props> {
                 email, username = null, roles = draftRoles(emptyList()),
                 org = draftOrg.trim().ifEmpty { null },
                 isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
-                client = draftClient.trim().ifEmpty { null },
+                client = draftClient.trim().ifEmpty { null }, enabled = draftEnabled,
             )
             note = "Created ${created.primaryId}."
         } else {
@@ -505,10 +505,16 @@ val Users = FC<Props> {
             }
             p {
                 className = ClassName("type-hint")
-                // Names what unchecking this actually is, so it is not confused with -- or duplicated by --
-                // the permanent delete below. This is the recoverable half of "deleting" a user.
-                +("Unchecking disables the account — a recoverable delete: the user cannot sign in, but you " +
-                    "can re-enable them here. To remove the account for good, use Delete user below.")
+                // Names what unchecking this actually is. The two modes differ: creating disabled makes an
+                // account that exists but cannot yet sign in; unchecking on an existing user is the recoverable
+                // half of "deleting" one, as distinct from -- not a duplicate of -- the permanent delete below.
+                +(if (creating) {
+                    "Leave checked for an active account. Uncheck to create it already disabled: the user " +
+                        "exists but cannot sign in until you enable them here."
+                } else {
+                    "Unchecking disables the account — a recoverable delete: the user cannot sign in, but you " +
+                        "can re-enable them here. To remove the account for good, use Delete user below."
+                })
             }
             if (self) {
                 p {

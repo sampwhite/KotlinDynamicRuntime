@@ -107,6 +107,9 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             )
             field(ADF.isEntity, "Whether the new account belongs to a business rather than a person.") { type = SCT.boolean }
             field(ADF.name, "The new account's name: a person's full name, or the business's name.")
+            field(ADF.enabled, "Whether the account starts active; defaults to true. False creates it disabled.") {
+                type = SCT.boolean
+            }
         },
     ) { c, request ->
         val primaryId = requireField(request, ADF.primaryId)
@@ -156,7 +159,18 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         AuthUserRow.normalizeName(request[ADF.name].toOptStr())?.let { authUserData[AD.name] = it }
 
         val userId = service.insertUser(c, data)
-        LogAuth.info(c) { "Admin ${c.userProfile.userId} created user $userId ('$primaryId') with roles $roles." }
+        // Honor an explicit request to create the account disabled. insertUser always stamps `enabled = true`
+        // (prepForStdExecute does, to revive a disabled placeholder -- issue #48), so "create disabled" cannot
+        // ride the insert; it is a follow-up disable through the same durable path the Enabled toggle uses.
+        // Defaults to enabled, so a caller that omits the field (every existing one) is unaffected.
+        val enabled = request.getOptBool(ADF.enabled) ?: true
+        if (!enabled) {
+            loadUser(c, userId).let { it.enabled = false; service.updateUser(c, it) }
+        }
+        LogAuth.info(c) {
+            "Admin ${c.userProfile.userId} created user $userId ('$primaryId') with roles $roles" +
+                (if (!enabled) " (disabled)." else ".")
+        }
         loadUser(c, userId).toAdminInfo()
     }
 

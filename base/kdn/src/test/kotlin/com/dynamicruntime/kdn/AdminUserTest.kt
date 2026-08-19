@@ -204,6 +204,28 @@ class AdminUserTest : StringSpec({
         )[ADF.primaryId] shouldBe "valid@emailval.com"
     }
 
+    "a user is created enabled by default, or disabled when asked" {
+        val cxt = Startup.mkTestBootCxt("admin", "adminCreateEnabledTest")
+        val admin = TestUser.createFullAdmin(cxt, "chief@enabled.com")
+
+        // Default: no `enabled` field -> an active account, as every existing caller expects.
+        admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "active@enabled.com"))[ADF.enabled] shouldBe true
+
+        // Explicitly enabled=false -> a disabled account. Asserted by RE-READING the list, not by trusting the
+        // response: insertUser stamps enabled=true, so "create disabled" is a follow-up write that must land in
+        // the stored row, not just the returned one (the bug this covers created an enabled user regardless).
+        val created = admin.postData(
+            ADEP.userCreate, mapOf(ADF.primaryId to "dormant@enabled.com", ADF.enabled to false),
+        )
+        created[ADF.enabled] shouldBe false
+        admin.getItems(ADEP.users, mapOf(ADF.search to "dormant@enabled.com")).single()[ADF.enabled] shouldBe false
+
+        // And it is a real, re-enablable account -- not a tombstone: enabling it round-trips.
+        val userId = created[ADF.userId] as Long
+        admin.postData(ADEP.userSetEnabled, mapOf(ADF.userId to userId, ADF.enabled to true))
+        admin.getItems(ADEP.users, mapOf(ADF.search to "dormant@enabled.com")).single()[ADF.enabled] shouldBe true
+    }
+
     // --- revocation takes effect without waiting for the session to expire ----
 
     "granting and revoking admin take effect on an existing session's next request" {

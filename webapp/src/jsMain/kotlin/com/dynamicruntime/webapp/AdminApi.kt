@@ -113,7 +113,7 @@ object AdminApi {
     /** Creates a user directly (no email verification); [username], [roles], [org], and name data are optional. */
     suspend fun createUser(
         primaryId: String, username: String?, roles: List<String>?, org: String?,
-        isEntity: Boolean = false, name: String? = null, client: String? = null,
+        isEntity: Boolean = false, name: String? = null, client: String? = null, enabled: Boolean = true,
     ): AdminUser {
         val body = buildMap<String, Any?> {
             put(ADF.primaryId, primaryId.trim())
@@ -125,6 +125,9 @@ object AdminApi {
             client?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.client, it) }
             if (isEntity) put(ADF.isEntity, true)
             name?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.name, it) }
+            // Sent only to create a disabled account: the backend defaults to enabled, so the common case
+            // stays a shorter body and existing callers are unchanged.
+            if (!enabled) put(ADF.enabled, false)
         }
         return Http.sendApi("POST", UADEP.userCreate, body).results().toAdminUser()
     }
