@@ -1,5 +1,11 @@
 package com.dynamicruntime.sample.gedra
 
+import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.collections.shouldContain
+import com.dynamicruntime.common.startup.SS
+import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.context.CL
@@ -268,6 +274,122 @@ class ClientVariantTest : StringSpec({
         val entries = everyone.getItem(GEP.formDoc, mapOf(GDF.gedraId to id))[GDF.entries].toJsonListOfMaps()
         entries.single { it[GE.traitId] == "alsoInvented" }[GE.data]
             .toJsonMapOrEmpty()["shape"] shouldBe "unknown"
+    }
+
+    // --- a client's own endpoints (#387) -------------------------------------------
+    //
+    // The shared path must publish global types, so its form offers what global offers and the narrowing is
+    // enforced only once the entry reaches storage. A path that names one client has one answer to "whose
+    // schema?", so it can be strict at the edge -- advertised and enforced become the same thing.
+
+    "a client's endpoints exist at their own paths" {
+        val schema = cxt.getSchema()
+        schema.endpoints["${clientPath(GEP.formDocCreate, SC.acme)}:POST"].shouldNotBeNull()
+            .client shouldBe SC.acme
+        // The shared surface is untouched, which is what keeps anonymous and `public` callers working.
+        schema.endpoints["${GEP.formDocCreate}:POST"].shouldNotBeNull().client shouldBe null
+    }
+
+    "a client's endpoint refuses at the edge what its variant forbids" {
+        // The same payload the shared path accepts and only refuses at storage.
+        val body = mapOf(GDF.entries to listOf(visit("fr")))
+        acme.expectError(EXC.badInput, clientPath(GEP.formDocCreate, SC.acme), body)
+        // ...and a country acme kept goes through on its own path, so the refusal is the value not the path.
+        acme.postItem(clientPath(GEP.formDocCreate, SC.acme), mapOf(GDF.entries to listOf(visit("gb"))))[GDF.gedraId]
+            .toOptStr().shouldNotBeNull()
+    }
+
+    // The path is the statement of which client is meant, so the handler runs bound to it -- which is what
+    // turns #356's "the variant follows the data's client" from a resolution into a comparison.
+    "a client's endpoint stores into that client" {
+        val id = acme.postItem(
+            clientPath(GEP.formDocCreate, SC.acme),
+            mapOf(GDF.entries to listOf(visit("gb"))),
+        )[GDF.gedraId].toOptStr().shouldNotBeNull()
+        id.contains(".${SC.acme}.") shouldBe true
+    }
+
+    // --- the catalog, per client (#387) --------------------------------------------
+
+    /** The endpoint paths the catalog shows [user], optionally for a named [client]. */
+    fun catalogPaths(user: TestUser, client: String? = null): List<String> =
+        user.getData("/schema/endpoints", buildMap { client?.let { put(SS.client, it) } })[EI.endpoints]
+            .toJsonListOfMaps().mapNotNull { it[EI.path].toOptStr() }
+
+    "a client's people are shown their own surface in place of the shared one" {
+        val paths = catalogPaths(acme)
+        paths.shouldContain(clientPath(GEP.formDocCreate, SC.acme))
+        // Replaced, not added: one `$defs` bag cannot hold two meanings of `gedra.FormDoc`.
+        paths.shouldNotContain(GEP.formDocCreate)
+        // ...while everything with no client version stays, because those are not client-shaped.
+        paths.shouldContain("/auth/self/info")
+    }
+
+    "a caller with no client surface still sees the shared one" {
+        val paths = catalogPaths(everyone)
+        paths.shouldContain(GEP.formDocCreate)
+        // A client's endpoints are not advertised to somebody who cannot use them.
+        paths.shouldNotContain(clientPath(GEP.formDocCreate, SC.acme))
+    }
+
+    // The picker: an admin says which client they are looking at rather than having it inferred.
+    "an allClients admin can ask for a named client's surface" {
+        val admin = TestUser.createFullAdmin(cxt, "catalog-admin@example.com")
+        val acmePaths = catalogPaths(admin, SC.acme)
+        acmePaths.shouldContain(clientPath(GEP.formDocCreate, SC.acme))
+        catalogPaths(admin, SC.globex).shouldContain(clientPath(GEP.formDocCreate, SC.globex))
+        // Each answer is that client's alone...
+        acmePaths.shouldNotContain(clientPath(GEP.formDocCreate, SC.globex))
+        // ...and *only* that client's, so asking to see `acme` does not answer with the whole application
+        // beside it. Somebody who asked the narrow question should not need a regex to get back to it.
+        acmePaths.shouldNotContain("/auth/self/info")
+        acmePaths.all { it.contains("/${SC.acme}/") } shouldBe true
+    }
+
+    "naming somebody else's client takes the capability" {
+        acme.expectError(EXC.badInput, "/schema/endpoints", args = mapOf(SS.client to SC.globex))
+        // Naming your own is always allowed: it is what you would have been shown anyway.
+        catalogPaths(acme, SC.acme).shouldContain(clientPath(GEP.formDocCreate, SC.acme))
+    }
+
+    // The point of the whole exercise: what a form is built from is the client's schema, so a control cannot
+    // offer what the client removed -- rather than the shared surface's, which offers it and refuses later.
+    "the advertised schema is the client's own" {
+        val admin = TestUser.createFullAdmin(cxt, "catalog-schema@example.com")
+        fun countriesFor(client: String): List<String> {
+            val defs = admin.getData("/schema/endpoints", mapOf(SS.client to client))[SCH.dDefs].toJsonMapOrEmpty()
+            val address = defs["${ST.namespace}.${ST.siteAddress}"].toJsonMapOrEmpty()
+            return address[SCH.properties].toJsonMapOrEmpty()[ST.country].toJsonMapOrEmpty()[SCH.options]
+                .toJsonListOfMaps().mapNotNull { it[SCH.value].toOptStr() }
+        }
+        countriesFor(SC.globex) shouldBe ST.countries
+        countriesFor(SC.acme) shouldBe SC.acmeCountries
+    }
+
+    // The promise a client endpoint makes: the path says which client, so a gedra belonging to another is
+    // refused there -- whatever the caller's reach. Scope stops most cross-client access already, but scope
+    // is about who is asking; this is about where the request was addressed, and the two stop agreeing
+    // exactly for the caller whose scope is wide enough not to be stopped.
+    "a client's endpoint refuses a gedra belonging to another client" {
+        val admin = TestUser.createFullAdmin(cxt, "confine-admin@example.com")
+        val elsewhere = create(globex, visit("gb"))
+
+        // The same admin reaches it on the shared surface, which is unchanged...
+        admin.getItem(GEP.formDoc, mapOf(GDF.gedraId to elsewhere))[GDF.gedraId].toOptStr() shouldBe elsewhere
+        // ...and is refused on acme's, because the path already said which client this is for.
+        val message = admin.expectError(
+            EXC.badInput,
+            clientPath(GEP.formDoc, SC.acme),
+            args = mapOf(GDF.gedraId to elsewhere),
+        )[EP.errorMessage].toOptStr().orEmpty()
+        message shouldContainIgnoringCase SC.globex
+        message shouldContainIgnoringCase SC.acme
+    }
+
+    "a client's endpoint reaches its own client's gedras" {
+        val mine = create(acme, visit("gb"))
+        acme.getItem(clientPath(GEP.formDoc, SC.acme), mapOf(GDF.gedraId to mine))[GDF.gedraId]
+            .toOptStr() shouldBe mine
     }
 })
 

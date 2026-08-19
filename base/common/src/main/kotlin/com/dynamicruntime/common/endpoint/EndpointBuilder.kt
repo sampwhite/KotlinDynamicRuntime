@@ -70,6 +70,17 @@ class KdrEndpoint(
      */
     val forTestingOnly: Boolean = false,
     val handler: KdrEndpointHandler,
+    /**
+     * The client this endpoint belongs to, or null for the shared surface (issue #387).
+     *
+     * What it decides is where the endpoint's types **resolve**: a client endpoint resolves against that
+     * client's schema variant, which is sound precisely because the path names one client -- so the
+     * path-keyed type caches stay correct without the published type having to be global.
+     *
+     * Declared **after** `handler` so that a call ending in a trailing lambda still binds that lambda to the
+     * handler, which is how every builder here constructs one.
+     */
+    val client: String? = null,
 ) {
     init {
         if (inputFields != null && inputTypeRef != null) {

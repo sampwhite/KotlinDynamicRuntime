@@ -52,6 +52,27 @@ object GEP {
  * This is the endpoint `ReadScopeRules` has been waiting for. Its own note says the own-user width had no
  * surface reaching it and would arrive with "the first ordinary endpoint over an owned table". This is that
  * endpoint, and the width is now exercised by a caller rather than only by a test.
+ *
+ * ### These are the **shared** copies, and they publish global schema
+ *
+ * Every endpoint here also exists per client, at a path naming one -- `/gedra/acme/formDoc/create` beside
+ * `/gedra/formDoc/create` (issue #387). The difference is not cosmetic and matters most to whoever builds a
+ * form:
+ *
+ *  - **Here**, the published input type is **global**, because one path serves every client and
+ *    `RequestService` caches resolved types by path. A client's narrowing is enforced only where the entry is
+ *    *stored*, so a form built from this schema offers choices a client has removed and finds out on save.
+ *  - **On a client's own path**, the published type is that client's, so what is advertised is what is
+ *    enforced and a control cannot offer what the client removed.
+ *
+ * **So do not hardcode these paths in a UI.** `GET /schema/endpoints` already answers with the caller's own
+ * client's paths -- an `acme` user is shown `/gedra/acme/...` and *not* the shared one -- so a form should be
+ * built from the catalog entry and posted to the `path` it carries. Reaching for the constant instead works,
+ * which is exactly the problem: it silently selects the global schema, and the symptom looks like a backend
+ * fault rather than a wrong path. Note also that `GEP` is not visible to `webapp`, which sees only
+ * `base:kernel` -- there is no constant for a frontend to reach for, and the catalog is the source.
+ *
+ * An `allClients` holder can ask for one client's surface with the catalog's `client` filter.
  */
 fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
     val formDoc = GedraDataType.formDoc
