@@ -8,6 +8,27 @@ package com.dynamicruntime.common.endpoint
 
 /** Attribute keys for an endpoint's `EndpointInfo` rendering in the schema catalog, plus the catalog wrapper. */
 @Suppress("ConstPropertyName")
+/**
+ * The path a client's own copy of [path] is served under: `/gedra/formDoc/create` becomes
+ * `/gedra/acme/formDoc/create` (issue #387).
+ *
+ * **The client goes after the section, not before it**, and that is forced rather than chosen. A path's
+ * *section* is its first segment, it is what the access gate and the catalog filter both key on, and
+ * `RequestService` refuses to boot on a section with no declared rules. Putting the client first would make
+ * every client its own section, each needing rules written for it, and a new client would fail the boot until
+ * somebody remembered. After the section, `gedra` stays the section and a new client inherits the access
+ * policy by construction.
+ *
+ * In the kernel so that a frontend builds the path with the same rule the backend serves it under, rather
+ * than concatenating one at each call site -- which is the form that rots when the shape changes.
+ */
+fun clientPath(path: String, client: String): String {
+    val trimmed = path.removePrefix("/")
+    val section = trimmed.substringBefore('/')
+    val rest = trimmed.substringAfter('/', "")
+    return if (rest.isEmpty()) "/$section/$client" else "/$section/$client/$rest"
+}
+
 object EI {
     const val path = "path"
     const val method = "method"

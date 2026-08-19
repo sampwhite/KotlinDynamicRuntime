@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.context.CL
@@ -268,6 +269,39 @@ class ClientVariantTest : StringSpec({
         val entries = everyone.getItem(GEP.formDoc, mapOf(GDF.gedraId to id))[GDF.entries].toJsonListOfMaps()
         entries.single { it[GE.traitId] == "alsoInvented" }[GE.data]
             .toJsonMapOrEmpty()["shape"] shouldBe "unknown"
+    }
+
+    // --- a client's own endpoints (#387) -------------------------------------------
+    //
+    // The shared path must publish global types, so its form offers what global offers and the narrowing is
+    // enforced only once the entry reaches storage. A path that names one client has one answer to "whose
+    // schema?", so it can be strict at the edge -- advertised and enforced become the same thing.
+
+    "a client's endpoints exist at their own paths" {
+        val schema = cxt.getSchema()
+        schema.endpoints["${clientPath(GEP.formDocCreate, SC.acme)}:POST"].shouldNotBeNull()
+            .client shouldBe SC.acme
+        // The shared surface is untouched, which is what keeps anonymous and `public` callers working.
+        schema.endpoints["${GEP.formDocCreate}:POST"].shouldNotBeNull().client shouldBe null
+    }
+
+    "a client's endpoint refuses at the edge what its variant forbids" {
+        // The same payload the shared path accepts and only refuses at storage.
+        val body = mapOf(GDF.entries to listOf(visit("fr")))
+        acme.expectError(EXC.badInput, clientPath(GEP.formDocCreate, SC.acme), body)
+        // ...and a country acme kept goes through on its own path, so the refusal is the value not the path.
+        acme.postItem(clientPath(GEP.formDocCreate, SC.acme), mapOf(GDF.entries to listOf(visit("gb"))))[GDF.gedraId]
+            .toOptStr().shouldNotBeNull()
+    }
+
+    // The path is the statement of which client is meant, so the handler runs bound to it -- which is what
+    // turns #356's "the variant follows the data's client" from a resolution into a comparison.
+    "a client's endpoint stores into that client" {
+        val id = acme.postItem(
+            clientPath(GEP.formDocCreate, SC.acme),
+            mapOf(GDF.entries to listOf(visit("gb"))),
+        )[GDF.gedraId].toOptStr().shouldNotBeNull()
+        id.contains(".${SC.acme}.") shouldBe true
     }
 })
 

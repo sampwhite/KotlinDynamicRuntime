@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrRequest
 import com.dynamicruntime.common.context.KdrSchemaStore
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.user.AUTHC
@@ -366,9 +367,28 @@ class RequestService : ServiceInitializer {
         handler.logSuccess(cxt, EXC.ok)
     }
 
+    /**
+     * The store an endpoint's types resolve against: its **client's** variant when it has one, and the global
+     * store otherwise (issue #387).
+     *
+     * This is what makes a per-client endpoint mean the client's schema without touching the caches below.
+     * They stay keyed by **path**, and stay sound, because the path names exactly one client -- which is
+     * `client-definition.md`'s "path separation dissolves the type-cache problem rather than answering it",
+     * now literal rather than anticipated. A shared path still resolves globally, so nothing about the shared
+     * surface changes.
+     *
+     * Note it is the **endpoint's** client, never the caller's. Two callers of one path get one answer, which
+     * is the property a path-keyed cache needs; who may call it is the access gate's question and is settled
+     * before this runs.
+     */
+    private fun typesFor(cxt: KdrCxt, endpoint: KdrEndpoint): KdrSchemaStore {
+        val client = endpoint.client ?: return cxt.getSchema()
+        return SchemaService.get(cxt)?.storeFor(client) ?: cxt.getSchema()
+    }
+
     /** Validates the input, runs the handler, wraps the result, and sends the response. */
     fun executeEndpoint(cxt: KdrCxt, handler: RequestHandler, endpoint: KdrEndpoint) {
-        val schema = cxt.getSchema()
+        val schema = typesFor(cxt, endpoint)
         val inputType = inputTypeCache.getOrPut(endpoint.path) {
             resolveEndpointInputType(endpoint, schema.types)
                 ?: throw KdrException("Could not compile input schema for '${endpoint.path}'.")

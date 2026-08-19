@@ -80,7 +80,10 @@ class EndpointCatalogTest : StringSpec({
     "buildEndpointInputSchema closes a no-parameter endpoint's input" {
         // No input type and no fields -> a closed empty object (no `properties`).
         val input = buildEndpointInputSchema(
-            KdrEndpoint("/x", HttpMethod.GET, EndpointKind.general, "api", "X", null, null, false, emptyMap()) { _, _ -> null },
+            KdrEndpoint(
+                "/x", HttpMethod.GET, EndpointKind.general, "api", "X", null, null, false, emptyMap(),
+                handler = { _, _ -> null },
+            ),
             defs,
         )
         input shouldBe mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to false)

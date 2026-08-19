@@ -121,7 +121,27 @@ class SchemaService : ServiceInitializer {
         cxt.instanceConfig.put(KdrSchemaStore.key, store)
         // Built after the global store, from it (issue #356). A variant is the same document with one
         // client's overlays applied and re-parsed, so it cannot exist until the document is complete.
-        clientStores = buildClientVariants(cxt, collected, store)
+        val variants = buildClientVariants(cxt, collected, store)
+        // Each client that has a variant gets its own copy of the client-shaped endpoints (issue #387). After
+        // the variants, because a client with no variant needs none -- its endpoints would be the global ones
+        // under a longer name.
+        val clientEndpoints = buildClientEndpoints(cxt, availableEndpoints, variants.keys)
+        if (clientEndpoints.isEmpty()) {
+            clientStores = variants
+        } else {
+            // Every store carries the **same** endpoint map, the final one. A variant built before the copies
+            // existed would hold the map from before them, so anything resolving an endpoint through a
+            // variant would not find the very endpoints the variant is for. The types and defs are reused as
+            // parsed -- only the endpoint map changes -- so this costs a map merge and no re-parsing.
+            val allEndpoints = endpoints + clientEndpoints.associateBy { it.collationKey }
+            val withClients = KdrSchemaStore(types, allEndpoints, tables, collected.defs)
+            clientStores = variants.mapValues { (_, v) ->
+                KdrSchemaStore(v.types, allEndpoints, v.tables, v.defs)
+            }
+            schemaStore = withClients
+            cxt.instanceConfig.put(KdrSchemaStore.key, withClients)
+            cxt.schemaStore = withClients
+        }
         isInit = true
     }
 
