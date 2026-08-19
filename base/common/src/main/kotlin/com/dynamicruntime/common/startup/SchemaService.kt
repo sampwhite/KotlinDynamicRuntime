@@ -9,6 +9,8 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.KdrEndpoint
+import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
@@ -195,6 +197,11 @@ class SchemaService : ServiceInitializer {
                 property(EI.namespace, "Only endpoints declared in this namespace.")
                 property(EI.method, "Only endpoints using this HTTP method (GET/POST/PUT).")
                 property(SS.pathRegex, "Only endpoints whose path matches this regular expression.")
+                property(
+                    SS.client,
+                    "Show the surface of this client instead of your own -- its endpoints, and its schema. " +
+                        "Requires the '" + ROLE.allClients + "' capability unless it names your own client.",
+                )
                 property(EP.limit, "The maximum number of endpoints to return.") {
                     type = SCT.integer
                     default = defaultListLimit
@@ -416,6 +423,58 @@ class SchemaService : ServiceInitializer {
         }
 
         /**
+         * Whose surface the catalog answers with, or null for the shared one (issue #387).
+         *
+         * A caller whose client has endpoints of its own is shown those; naming a **different** client takes
+         * [ROLE.allClients], which is the picker this was designed around -- an admin says which client they
+         * are looking at rather than having it inferred from what they happened to ask for.
+         *
+         * Naming your own client is always allowed, since it is what you would have been shown anyway.
+         */
+        @KdrPrivate
+        fun catalogClient(cxt: KdrCxt, requested: String?): String? {
+            val own = cxt.userProfile.client
+            val client = requested?.trim()?.ifEmpty { null } ?: return own.takeIf { hasEndpoints(cxt, it) }
+            if (client != own && !cxt.userProfile.roles.contains(ROLE.allClients)) {
+                throw KdrException.mkInput(
+                    "Looking at another client's endpoints takes the '${ROLE.allClients}' capability. " +
+                        "Yours is '$own'.",
+                )
+            }
+            return client.takeIf { hasEndpoints(cxt, it) }
+        }
+
+        private fun hasEndpoints(cxt: KdrCxt, client: String): Boolean =
+            SchemaService.get(cxt)?.clientStores?.containsKey(client) == true
+
+        /**
+         * Whether an endpoint belongs on the surface being shown.
+         *
+         * With no client, the shared surface and nothing else -- a client's endpoints are not advertised to
+         * somebody who cannot use them. With one, that client's endpoints **in place of** the shared ones they
+         * copy: the rest of the shared surface (`auth`, `profile`, everything with no client version) stays,
+         * because those are not client-shaped and a client's people need them exactly as anybody does.
+         *
+         * Replacing rather than adding is what keeps one `$defs` bag honest. Showing both would need
+         * `gedra.FormDoc` to mean the global type for one endpoint and the client's for another, in one map,
+         * and whichever way it were filled one of the two would be advertised wrongly.
+         */
+        @KdrPrivate
+        fun surfaceOf(endpoint: KdrEndpoint, forClient: String?, all: Collection<KdrEndpoint>): Boolean {
+            if (forClient == null) {
+                return endpoint.client == null
+            }
+            if (endpoint.client == forClient) {
+                return true
+            }
+            if (endpoint.client != null) {
+                return false
+            }
+            val replacement = clientPath(endpoint.path, forClient)
+            return all.none { it.client == forClient && it.path == replacement }
+        }
+
+        /**
          * Handler for `/schema/endpoints`: filter/sort/limit the registered endpoints, render each with its
          * `$ref`s intact, and pair the renderings with a shared `$defs` bag resolving every referenced type.
          * The client resolves the `$ref`s itself, so a type shared by many endpoints is returned once.
@@ -427,13 +486,20 @@ class SchemaService : ServiceInitializer {
             val method = (request[EI.method] as? String)?.uppercase()
             val pathRegex = (request[SS.pathRegex] as? String)?.let { Regex(it) }
             val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
-            val schema = cxt.getSchema()
             refreshCallerRoles(cxt)
+            // Whose surface this answers with (issue #387). A caller sees their own client's endpoints in
+            // place of the shared ones they replace; an `allClients` holder may name another. The `$defs` bag
+            // comes from the same client's store, so the advertised types are that client's too -- which is
+            // the whole reason a client endpoint exists rather than a differently-named shared one.
+            val forClient = catalogClient(cxt, request[SS.client] as? String)
+            val schema = forClient?.let { SchemaService.get(cxt)?.storeFor(it) } ?: cxt.getSchema()
             // One access decision per endpoint, consumed twice: what survives is rendered, what does not is
             // what `explainAccess` reports. Deriving the explanation from a second, independent pass is how an
             // explanation comes to disagree with the filter it claims to describe -- the same drift issue #211
             // closed between the catalog and the gate.
-            val (visible, withheld) = schema.endpoints.values.partition { ep -> isVisibleTo(cxt, ep.path) }
+            val (visible, withheld) = schema.endpoints.values
+                .filter { surfaceOf(it, forClient, schema.endpoints.values) }
+                .partition { ep -> isVisibleTo(cxt, ep.path) }
             explainAccess(cxt, withheld)
             val renderings = visible
                 .asSequence()
@@ -460,8 +526,13 @@ class SchemaService : ServiceInitializer {
         fun endpointLookup(cxt: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
             val method = (request[EI.method] as? String)?.uppercase()
             val path = request[EI.path] as? String
-            val schema = cxt.getSchema()
             refreshCallerRoles(cxt)
+            // Whose surface this answers with (issue #387). A caller sees their own client's endpoints in
+            // place of the shared ones they replace; an `allClients` holder may name another. The `$defs` bag
+            // comes from the same client's store, so the advertised types are that client's too -- which is
+            // the whole reason a client endpoint exists rather than a differently-named shared one.
+            val forClient = catalogClient(cxt, request[SS.client] as? String)
+            val schema = forClient?.let { SchemaService.get(cxt)?.storeFor(it) } ?: cxt.getSchema()
             // Filtered exactly as the listing is: a lookup that answered for an endpoint the listing hides
             // would be a one-call way around the hiding, and this endpoint exists to return the same shape.
             // Explained the same way too, so "it came back empty" can be told apart from "you may not see it",
@@ -644,6 +715,9 @@ object SS {
     // Endpoint introspection: the path-regex query filter. The `endpoints` result key is now the shared
     // kernel EI.endpoints (the `$defs` result key is the JSON Schema keyword itself, SCH.dDefs).
     const val pathRegex = "pathRegex"
+
+    /** Catalog filter: whose surface to show, for a caller who may look at more than their own (issue #387). */
+    const val client = "client"
 
     // Debug behavior: the debug tag that triggers echoing input under _meta, and the key it is echoed under.
     const val explainInput = "explainInput"

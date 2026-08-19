@@ -1,5 +1,10 @@
 package com.dynamicruntime.sample.gedra
 
+import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.collections.shouldContain
+import com.dynamicruntime.common.startup.SS
+import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.gedra.GU
@@ -302,6 +307,58 @@ class ClientVariantTest : StringSpec({
             mapOf(GDF.entries to listOf(visit("gb"))),
         )[GDF.gedraId].toOptStr().shouldNotBeNull()
         id.contains(".${SC.acme}.") shouldBe true
+    }
+
+    // --- the catalog, per client (#387) --------------------------------------------
+
+    /** The endpoint paths the catalog shows [user], optionally for a named [client]. */
+    fun catalogPaths(user: TestUser, client: String? = null): List<String> =
+        user.getData("/schema/endpoints", buildMap { client?.let { put(SS.client, it) } })[EI.endpoints]
+            .toJsonListOfMaps().mapNotNull { it[EI.path].toOptStr() }
+
+    "a client's people are shown their own surface in place of the shared one" {
+        val paths = catalogPaths(acme)
+        paths.shouldContain(clientPath(GEP.formDocCreate, SC.acme))
+        // Replaced, not added: one `$defs` bag cannot hold two meanings of `gedra.FormDoc`.
+        paths.shouldNotContain(GEP.formDocCreate)
+        // ...while everything with no client version stays, because those are not client-shaped.
+        paths.shouldContain("/auth/self/info")
+    }
+
+    "a caller with no client surface still sees the shared one" {
+        val paths = catalogPaths(everyone)
+        paths.shouldContain(GEP.formDocCreate)
+        // A client's endpoints are not advertised to somebody who cannot use them.
+        paths.shouldNotContain(clientPath(GEP.formDocCreate, SC.acme))
+    }
+
+    // The picker: an admin says which client they are looking at rather than having it inferred.
+    "an allClients admin can ask for a named client's surface" {
+        val admin = TestUser.createFullAdmin(cxt, "catalog-admin@example.com")
+        catalogPaths(admin, SC.acme).shouldContain(clientPath(GEP.formDocCreate, SC.acme))
+        catalogPaths(admin, SC.globex).shouldContain(clientPath(GEP.formDocCreate, SC.globex))
+        // ...and each answer is that client's alone.
+        catalogPaths(admin, SC.acme).shouldNotContain(clientPath(GEP.formDocCreate, SC.globex))
+    }
+
+    "naming somebody else's client takes the capability" {
+        acme.expectError(EXC.badInput, "/schema/endpoints", args = mapOf(SS.client to SC.globex))
+        // Naming your own is always allowed: it is what you would have been shown anyway.
+        catalogPaths(acme, SC.acme).shouldContain(clientPath(GEP.formDocCreate, SC.acme))
+    }
+
+    // The point of the whole exercise: what a form is built from is the client's schema, so a control cannot
+    // offer what the client removed -- rather than the shared surface's, which offers it and refuses later.
+    "the advertised schema is the client's own" {
+        val admin = TestUser.createFullAdmin(cxt, "catalog-schema@example.com")
+        fun countriesFor(client: String): List<String> {
+            val defs = admin.getData("/schema/endpoints", mapOf(SS.client to client))[SCH.dDefs].toJsonMapOrEmpty()
+            val address = defs["${ST.namespace}.${ST.siteAddress}"].toJsonMapOrEmpty()
+            return address[SCH.properties].toJsonMapOrEmpty()[ST.country].toJsonMapOrEmpty()[SCH.options]
+                .toJsonListOfMaps().mapNotNull { it[SCH.value].toOptStr() }
+        }
+        countriesFor(SC.globex) shouldBe ST.countries
+        countriesFor(SC.acme) shouldBe SC.acmeCountries
     }
 })
 
