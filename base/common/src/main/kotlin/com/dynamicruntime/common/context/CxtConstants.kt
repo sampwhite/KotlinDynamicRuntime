@@ -31,8 +31,9 @@ object ACFG {
     const val isTestInstance = "isTestInstance"
 
     /**
-     * The **boot role** this process is running as (issue #377): `edge` for a `StartEdge` node, unset for an
-     * ordinary one. Set by the launcher, because the launcher *is* the role -- it has to be known before any
+     * The **boot role** this process is running as (issue #377): one of [BOOT]'s names, and unset for an
+     * ordinary application node -- see [BOOT.app] for why absence and `app` are the same thing seen from two
+     * directions. Set by the launcher, because the launcher *is* the role: it has to be known before any
      * application config exists, so it cannot come from one.
      *
      * Its effect is to give every environment variable a per-role override: with a role set, a lookup for
@@ -107,4 +108,48 @@ object ACFG {
      * [com.dynamicruntime.common.user.AdminRules].
      */
     const val adminEmailDomain = "adminEmailDomain"
+}
+
+/**
+ * The **boot roles** a node can run as (issues #377, #386) -- what kind of process this is, as opposed to which
+ * environment it runs in ([ENV]) or which deployment it belongs to.
+ *
+ * The names live in `base/common` rather than with the components that implement them, because endpoints,
+ * services, and schema will be *profiled* by role -- declaring which roles they load under -- and those
+ * declarations are spread across every module. They could not all depend on the module that owns the role.
+ *
+ * **Knowing the names is not knowing the implementations.** Common learns that `edge` is a role a node may run
+ * as; it never learns what a `KdrEdge` is, and nothing here may depend on that module. The same line
+ * [ACFG.bootRole] already draws.
+ */
+@Suppress("ConstPropertyName")
+object BOOT {
+    /**
+     * The ordinary application node -- the role a node has when it declares none.
+     *
+     * **Absence and `app` are the same thing seen from two directions**, and the difference matters at the
+     * boundary. A *running* node's `KdrInstanceConfig.bootRole` is **null** for an application, which is what
+     * keeps environment-variable prefixing off for every existing deployment (#377). A *declaration* -- an
+     * endpoint saying which roles it serves -- needs a name, because null cannot sit in a list. So whatever
+     * matches the two will read `bootRole ?: BOOT.app`, and that normalization belongs in one place when
+     * profiling lands rather than at each comparison.
+     */
+    const val app = "app"
+
+    /**
+     * An edge node: the perimeter that fronts other servers, booted by `StartEdge`. Also the
+     * environment-variable namespace, so a lookup for `KDR_PORT` on such a node tries `KDR_EDGE_PORT` first.
+     */
+    const val edge = "edge"
+
+    /**
+     * The `providerName` of the component that implements the [edge] role, so a launcher can **require** it
+     * without naming its class -- see `bootInstance`'s required-components check.
+     *
+     * A name here rather than a literal in the launcher for the ordinary reason: the component declares the
+     * same string, and two spellings of one fact drift. Common learning the name is not common learning the
+     * implementation, which is the line [ACFG.bootRole] already draws.
+     */
+    const val edgeComponent = "KdrEdge"
+
 }

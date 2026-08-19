@@ -29,6 +29,26 @@ interface ComponentDefinition : KdrProvider {
     /** Whether this component's services are active. Receives the startup [cxt] for the same config-driven reason. */
     fun isActive(cxt: KdrCxt): Boolean = true
 
+    /**
+     * Contributes **instance configuration** this component needs in place before anything reads it (issue
+     * #386) -- the code-is-config counterpart of the deployment's `AppConfigApplier`, for settings a component
+     * owns rather than a deployment chooses.
+     *
+     * Runs after every [isLoaded] decision and **before** schema collection and any service, which is what
+     * makes it usable for values the startup tier consumes: `NodeService` fixes the node's identity in its
+     * `onCreate`, so a port set any later leaves the server bound correctly while `/health` reports the
+     * default. (Observed, when this briefly lived in a regular service's `onCreate`.)
+     *
+     * **Contribute defaults, do not override.** A deployment's own config is already in place by now, so read
+     * before writing (`get(key) ?: default`) -- otherwise a component silently overrules a choice somebody
+     * made deliberately.
+     *
+     * Because it runs after the load decisions, a component cannot gate its own [isLoaded] on config another
+     * component contributes here. That is deliberate: whether a component loads should follow from the
+     * deployment, not from what its peers happened to set.
+     */
+    fun applyInstanceConfig(cxt: KdrCxt) {}
+
     /** Contributes schema modules (types + endpoints) into the collector. */
     fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {}
 
