@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
@@ -43,6 +44,10 @@ class EdgeComponent : ComponentDefinition {
         config.put(ACFG.appContextRoot, config.get(ACFG.appContextRoot) ?: EdgeRoot.ew)
         config.put(ACFG.staticContextRoot, config.get(ACFG.staticContextRoot) ?: EdgeRoot.es)
         config.put(ACFG.defaultPort, config.get(ACFG.defaultPort) ?: EdgeRole.defaultPort)
+    }
+
+    override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
+        collector.addModule(envAuthSchema(cxt))
     }
 
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::EdgeService)

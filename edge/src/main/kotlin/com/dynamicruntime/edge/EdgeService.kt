@@ -3,7 +3,11 @@ package com.dynamicruntime.edge
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.http.request.ContextRoot
+import com.dynamicruntime.common.http.request.RequestHandler
+import com.dynamicruntime.common.http.request.RequestService
+import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.startup.ServiceInitializer
 
@@ -51,6 +55,40 @@ class EdgeService : ServiceInitializer {
             )
         }
         LogEdge.info(cxt) { "KdrEdge serving context roots ${configured.values.filterNotNull()}." }
+    }
+
+    /**
+     * Takes over how this node decides who a caller is (issue #386).
+     *
+     * In `checkInit` because `RequestService` must exist to be reached -- the same point and the same way
+     * `PortalService` registers itself as a content server.
+     *
+     * **A replacement, not an addition.** The session-cookie path it displaces must not also run here: once
+     * the edge proxies, a browser holds `kdrAuth` for some backend reached *through* this host, and that
+     * cookie has nothing to say about who may operate the edge. Letting it bind a profile here would hand an
+     * application session authority over the perimeter.
+     */
+    override fun checkReady(cxt: KdrCxt) {
+        RequestService.get(cxt)?.authExtractor = ::extractEnvAuth
+    }
+
+    /**
+     * Restores the acting profile from the Env Auth cookie: decrypt with the node key, check it has not
+     * expired, and bind the caller as an env-authed operator.
+     *
+     * Silent about every failure -- absent, forged, expired -- because all three mean the same thing to a
+     * request: nobody is logged in. The address also goes onto [KdrCxt.envAuthEmail], so the identity reaches
+     * the log line here exactly as it does on a backend that was told by header.
+     */
+    fun extractEnvAuth(cxt: KdrCxt, handler: RequestHandler) {
+        val raw = handler.getRequestCookies()[ENVAUTH.cookie] ?: return
+        val node = NodeService.get(cxt) ?: return
+        val decoded = EnvAuthCookie.decode(node, raw) ?: return
+        if (cxt.now().toEpochMilliseconds() > decoded.expireEpochMs) {
+            return
+        }
+        cxt.envAuthEmail = decoded.email
+        cxt.bindToUserProfile(UserProfile.envAuthed(decoded.email))
     }
 
     @Suppress("ConstPropertyName")
