@@ -2,6 +2,7 @@ package com.dynamicruntime.common.content
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ContentServer
 import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.RequestHandler
@@ -30,7 +31,7 @@ class MarkdownDocService : ServiceInitializer, ContentServer {
 
     /** Registers this content server with the dispatcher (idempotent). */
     override fun checkInit(cxt: KdrCxt) {
-        val requestService = RequestService.get(cxt) ?: return
+        val requestService = RequestService.get(cxt)
         requestService.checkInit(cxt)
         requestService.addContentServer(this)
     }
@@ -73,8 +74,9 @@ class MarkdownDocService : ServiceInitializer, ContentServer {
         /** Returned as Markdown source; the caller renders it (the frontend with the kernel renderer). */
         const val contentType = "text/markdown; charset=utf-8"
 
-        fun get(cxt: KdrCxt): MarkdownDocService? =
+        fun get(cxt: KdrCxt): MarkdownDocService =
             cxt.instanceConfig.get(serviceName) as? MarkdownDocService
+                ?: throw KdrException("The $serviceName is not available on this node.")
 
         /**
          * The cache-busting build id for a document (see [ContentResources.buildId]): a memoized content hash,

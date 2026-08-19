@@ -48,8 +48,8 @@ class GedraWorkflowTest : StringSpec({
 
     val client = "gwfclient"
 
-    fun service(): GedraDataService = GedraDataService.get(cxt).shouldNotBeNull()
-    fun users(): UserService = UserService.get(cxt).shouldNotBeNull()
+    fun service(): GedraDataService = GedraDataService.get(cxt)
+    fun users(): UserService = UserService.get(cxt)
 
     /** Real users: the applicant (plain user) and two advisors (holding the advisor capability). */
     val applicantId = users().insertUser(

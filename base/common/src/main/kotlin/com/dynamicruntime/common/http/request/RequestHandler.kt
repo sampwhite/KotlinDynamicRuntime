@@ -192,7 +192,10 @@ class RequestHandler : WebRequest {
             cxt.envAuthEmail = envAuth.email
             cxt.envAuthSuppressed = envAuth.suppressed
             createdCxt = cxt
-            val service = RequestService.get(cxt)
+            // Read optionally, not through the throwing get(): "this node does not serve endpoints" is a
+            // protocol answer about the node (501), not an internal fault, and the accessor's generic throw
+            // would report it as a 500 indistinguishable from a crash.
+            val service = (cxt.instanceConfig.get(RequestService.serviceName) as? RequestService)
                 ?: throw KdrException("This node cannot handle endpoint requests.", code = EXC.notSupported)
             service.handleRequest(cxt, this)
         } catch (t: Throwable) {
@@ -354,7 +357,13 @@ class RequestHandler : WebRequest {
         // Resolve through the fragment service in the request's context (null cxt/service -> the contained
         // key-path fallback in renderMsg). A future service resolves per-context; the seam lives there.
         val resolve = { f: String, n: String, k: String ->
-            cxt?.let { c -> MarkdownFragmentService.get(c)?.resolveFragment(c, f, n, k) }
+            // Read the fragment service optionally -- not through the now-throwing get() -- because this runs
+            // inside error rendering, which must not raise a second exception. A null cxt or absent service
+            // falls back to the contained key-path in renderMsg.
+            cxt?.let { c ->
+                (c.instanceConfig.get(MarkdownFragmentService.serviceName) as? MarkdownFragmentService)
+                    ?.resolveFragment(c, f, n, k)
+            }
         }
         val warn = { s: String -> LogRequest.warn(cxt, s) }
 

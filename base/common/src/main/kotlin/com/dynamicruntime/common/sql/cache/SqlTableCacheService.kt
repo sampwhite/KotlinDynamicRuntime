@@ -104,7 +104,7 @@ class SqlTableCacheService : ServiceInitializer {
             LogSql.info(cxt, "Table caches are disabled by ${TCH.disabledEnv}; reads fall back to SQL.")
         }
         // SqlTopicService is a startup service, so it is fully initialized before this regular one runs.
-        SqlTopicService.get(cxt)?.addWriteListener(writeListener)
+        SqlTopicService.get(cxt).addWriteListener(writeListener)
     }
 
     /**
@@ -400,14 +400,18 @@ class SqlTableCacheService : ServiceInitializer {
     companion object {
         const val serviceName = "SqlTableCacheService"
 
-        fun get(cxt: KdrCxt): SqlTableCacheService? = cxt.instanceConfig.get(serviceName) as? SqlTableCacheService
+        fun get(cxt: KdrCxt): SqlTableCacheService = cxt.instanceConfig.get(serviceName) as? SqlTableCacheService
+            ?: throw KdrException("The $serviceName is not available on this node.")
 
         /**
          * Registers a cache with the running service, or returns null when there is none (caching is simply
          * absent then, and every consumer's SQL fallback carries the load).
          */
         fun <T : Any> registerCache(cxt: KdrCxt, params: SqlCacheParams<T>): SqlTableCache<T>? =
-            get(cxt)?.register(params)
+            // Read optionally, not through the throwing get(): the nullable result is this function's
+            // contract. Caching is optional by design, so a node running no cache service registers nothing
+            // and every consumer falls back to SQL -- it must not fail to boot.
+            (cxt.instanceConfig.get(serviceName) as? SqlTableCacheService)?.register(params)
 
         /**
          * Refreshes every cache at most **once per context per state of the world**, memoized in
@@ -424,7 +428,9 @@ class SqlTableCacheService : ServiceInitializer {
          * it describes -- one definition of "is this current", answering both the reader and the onlooker.
          */
         fun getAndRefresh(cxt: KdrCxt): SqlTableCacheService? {
-            val service = get(cxt) ?: return null
+            // Read optionally, not through the throwing get(): the nullable return is this function's
+            // contract -- a caller branches on it to take its SQL fallback.
+            val service = (cxt.instanceConfig.get(serviceName) as? SqlTableCacheService) ?: return null
             if (service.isDisabled) return service
             // Read before the sweep and stamped on the memo below: dating the memo from *after* a slow sweep
             // would hide that time inside the recheck window.
@@ -509,7 +515,7 @@ class SqlTableCacheService : ServiceInitializer {
 
         /** Handler for `/operator/cache/state`; see [schema]. */
         fun cacheReport(cxt: KdrCxt): Map<String, Any?> {
-            val service = get(cxt) ?: throw KdrException("The table-cache service is not available.")
+            val service = get(cxt)
             return linkedMapOf(
                 TCS.isDisabled to service.isDisabled,
                 TCS.minRecheckMs to service.minRecheckMs,

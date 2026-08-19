@@ -179,8 +179,9 @@ class SchemaService : ServiceInitializer {
         private val categoryOptions = listOf("alpha", "beta", "gamma")
         private val tagOptions = listOf("red", "green", "blue")
 
-        /** Retrieves the schema service from the instance config, or null if absent. */
-        fun get(cxt: KdrCxt): SchemaService? = cxt.instanceConfig.get(serviceName) as? SchemaService
+        /** The service; throws naming it on a node that does not run it. */
+        fun get(cxt: KdrCxt): SchemaService = cxt.instanceConfig.get(serviceName) as? SchemaService
+            ?: throw KdrException("The $serviceName is not available on this node.")
 
         /**
          * The schema-service endpoints (contributed by the `common` component): endpoint introspection
@@ -462,12 +463,21 @@ class SchemaService : ServiceInitializer {
             return CatalogSurface(
                 named = named != null,
                 client = client,
-                schema = client?.let { get(cxt)?.storeFor(it) } ?: cxt.getSchema(),
+                // Read optionally, not through the throwing get(): falling back to the shared store is the
+                // deliberate answer when there is no compiled client store to consult -- and this runs in the
+                // same handler as isVisibleTo below, which tolerates a missing RequestService for the same
+                // reason (a store built by hand, outside a running dispatcher).
+                schema = client?.let {
+                    (cxt.instanceConfig.get(serviceName) as? SchemaService)?.storeFor(it)
+                } ?: cxt.getSchema(),
             )
         }
 
         private fun hasEndpoints(cxt: KdrCxt, client: String): Boolean =
-            get(cxt)?.clientStores?.containsKey(client) == true
+            // Read optionally, not through the throwing get(): "this node advertises no endpoints for that
+            // client" is the right answer when no store has been compiled, and keeps catalogClient on the
+            // shared surface rather than faulting the catalog.
+            (cxt.instanceConfig.get(serviceName) as? SchemaService)?.clientStores?.containsKey(client) == true
 
         /**
          * Whether an endpoint belongs on the surface being shown.
@@ -597,7 +607,9 @@ class SchemaService : ServiceInitializer {
             if (!cxt.hasDebug(SS.explainAccess) || !cxt.instanceConfig.isTestInstance) {
                 return
             }
-            val service = RequestService.get(cxt)
+            // Read optionally, not through the throwing get(): explainAccess also runs while a store is built
+            // by hand in a unit test, where no dispatcher and so no RequestService exists.
+            val service = cxt.instanceConfig.get(RequestService.serviceName) as? RequestService
             val bySection = withheld.groupBy { sectionOf(it.path) }.entries.sortedBy { it.key }.map { (section, eps) ->
                 val rules = service?.sectionRulesMap?.get(section)
                 linkedMapOf(
@@ -642,7 +654,10 @@ class SchemaService : ServiceInitializer {
          */
         @KdrPrivate
         fun isVisibleTo(cxt: KdrCxt, appPath: String): Boolean =
-            RequestService.get(cxt)?.canAccess(cxt.userProfile, appPath) ?: true
+            // Read optionally, not through the throwing get(): absent only outside a running dispatcher (a unit
+            // test building a store by hand), where nothing is served and so nothing needs protecting.
+            (cxt.instanceConfig.get(RequestService.serviceName) as? RequestService)
+                ?.canAccess(cxt.userProfile, appPath) ?: true
 
         /** Handler for `/schema/sample`: generate an interesting, schema-conforming set of items. */
         @KdrPrivate

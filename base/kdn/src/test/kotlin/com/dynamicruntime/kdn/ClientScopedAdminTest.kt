@@ -43,7 +43,7 @@ class ClientScopedAdminTest : StringSpec({
     val otherClient = "acme"
 
     fun users(cxt: KdrCxt): UserService =
-        (UserService.get(cxt) ?: error("UserService is required by this test.")).also { it.checkInit(cxt) }
+        UserService.get(cxt).also { it.checkInit(cxt) }
 
     /** Inserts a user directly into [client], which no endpoint can currently do. */
     fun seedUserInClient(cxt: KdrCxt, email: String, client: String): Long =

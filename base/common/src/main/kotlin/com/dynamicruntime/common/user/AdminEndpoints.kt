@@ -362,7 +362,6 @@ private fun assignableClient(cxt: KdrCxt, named: String?): String {
         )
     }
     val clients = ClientService.get(cxt)
-        ?: throw KdrException("Cannot create a user in '$client': there is no client registry on this node.")
     if (!clients.isPresent(client)) {
         throw KdrException.mkInput(
             "There is no client '$client' on this node. The clients present here are " +
@@ -390,9 +389,7 @@ object AC2 {
     const val email = "email"
 }
 
-/** The user service, or a hard failure -- these endpoints cannot run without it. */
-private fun userService(cxt: KdrCxt): UserService =
-    UserService.get(cxt) ?: throw KdrException("UserService is required by the admin endpoints.")
+private fun userService(cxt: KdrCxt): UserService = UserService.get(cxt)
 
 /**
  * Loads a user by id, or a 404 -- **within the caller's administration scope** (issue #225). A user in

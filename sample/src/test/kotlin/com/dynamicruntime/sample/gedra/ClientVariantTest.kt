@@ -83,7 +83,7 @@ class ClientVariantTest : StringSpec({
     // `name` is the trait that makes this observable: it binds to **both** kinds, and acme never included it.
 
     "a client's narrowing reaches workflow data, not only form documents" {
-        val service = (SchemaService.get(cxt) ?: error("SchemaService required")).also { it.checkInit(cxt) }
+        val service = SchemaService.get(cxt).also { it.checkInit(cxt) }
         GU.entryKinds.forEach { kind ->
             val unionName = "globalconfig." + GU.unionName(kind)
             // Global carries `name` on both kinds...

@@ -281,11 +281,11 @@ class RequestService : ServiceInitializer {
         // Two calls in the one dispatcher, rather than a hook framework introduced to hold them: there is
         // exactly one dispatcher, and one subscriber.
         val tableCaches = SqlTableCacheService.get(cxt)
-        tableCaches?.beginRequest(cxt)
+        tableCaches.beginRequest(cxt)
         try {
             dispatch(cxt, handler, focus)
         } finally {
-            tableCaches?.endRequest(cxt)
+            tableCaches.endRequest(cxt)
         }
     }
 
@@ -383,7 +383,7 @@ class RequestService : ServiceInitializer {
      */
     private fun typesFor(cxt: KdrCxt, endpoint: KdrEndpoint): KdrSchemaStore {
         val client = endpoint.client ?: return cxt.getSchema()
-        return SchemaService.get(cxt)?.storeFor(client) ?: cxt.getSchema()
+        return SchemaService.get(cxt).storeFor(client)
     }
 
     /** Validates the input, runs the handler, wraps the result, and sends the response. */
@@ -538,7 +538,7 @@ class RequestService : ServiceInitializer {
      */
     fun extractSessionAuth(cxt: KdrCxt, handler: RequestHandler) {
         val cookie = handler.getRequestCookies()[AUTHC.authCookie] ?: return
-        val node = NodeService.get(cxt) ?: return
+        val node = NodeService.get(cxt)
         val decoded = UserAuthCookie.decode(node, cookie) ?: return
         if (cxt.now().toEpochMilliseconds() > decoded.expireEpochMs) return
         cxt.bindToUserProfile(
@@ -562,7 +562,7 @@ class RequestService : ServiceInitializer {
      */
     fun checkAddAuthCookies(cxt: KdrCxt, handler: RequestHandler) {
         val req = cxt.request ?: return
-        val node = NodeService.get(cxt) ?: return
+        val node = NodeService.get(cxt)
         if (req.clearAuth) {
             handler.addResponseCookie(AUTHC.authCookie, "", Instant.fromEpochMilliseconds(0))
             return
@@ -580,7 +580,7 @@ class RequestService : ServiceInitializer {
             deviceGuid = cxt.mkUniqueId()
             handler.addResponseCookie(AUTHC.deviceCookie, deviceGuid, Instant.fromEpochMilliseconds(expireMs + AUTHC.sessionMillis))
         }
-        UserService.get(cxt)?.recordDevice(
+        UserService.get(cxt).recordDevice(
             cxt, profile.userId, deviceGuid, handler.forwardedFor, handler.userAgent, markTrusted = req.trustDevice,
         )
     }
@@ -589,6 +589,7 @@ class RequestService : ServiceInitializer {
     companion object {
         const val serviceName = "RequestService"
 
-        fun get(cxt: KdrCxt): RequestService? = cxt.instanceConfig.get(serviceName) as? RequestService
+        fun get(cxt: KdrCxt): RequestService = cxt.instanceConfig.get(serviceName) as? RequestService
+            ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }

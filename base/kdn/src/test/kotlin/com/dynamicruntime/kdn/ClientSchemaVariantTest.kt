@@ -40,7 +40,7 @@ class ClientSchemaVariantTest : StringSpec({
     }
 
     fun schema(cxt: KdrCxt): SchemaService =
-        (SchemaService.get(cxt) ?: error("SchemaService is required by this test.")).also { it.checkInit(cxt) }
+        SchemaService.get(cxt).also { it.checkInit(cxt) }
 
     "a client's alteration applies to that client and to nobody else" {
         val service = schema(boot("variantTest"))

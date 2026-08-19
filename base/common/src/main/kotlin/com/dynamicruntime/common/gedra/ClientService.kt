@@ -91,11 +91,8 @@ class ClientService : ServiceInitializer {
     companion object {
         const val serviceName = "ClientService"
 
-        /** The service, or null on a node that does not run it. */
-        fun get(cxt: KdrCxt): ClientService? = cxt.instanceConfig.get(serviceName) as? ClientService
-
-        /** The service, or a fault naming it -- for a caller that cannot proceed without one. */
-        fun require(cxt: KdrCxt): ClientService = get(cxt)
+        /** The service; throws naming it on a node that does not run it. */
+        fun get(cxt: KdrCxt): ClientService = cxt.instanceConfig.get(serviceName) as? ClientService
             ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }

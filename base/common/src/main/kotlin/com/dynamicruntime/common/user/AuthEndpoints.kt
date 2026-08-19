@@ -180,7 +180,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             UIC.features to mapOf(
                 AFEAT.registration to true, AFEAT.codeLogin to true, AFEAT.passwordLogin to true,
                 AFEAT.googleLogin to authHandler(c).googleLoginEnabled,
-                AFEAT.simulatedEmail to (MailService.get(c)?.useSimulatedEmail == true),
+                AFEAT.simulatedEmail to MailService.get(c).useSimulatedEmail,
             ),
             UIC.state to mapOf(
                 AFLD.userInfo to currentUserInfo(c),
@@ -207,7 +207,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
 
 /** Resolves the [AuthFormHandler] (ensuring it is built). Shared with the profile endpoints (same package). */
 internal fun authHandler(cxt: KdrCxt): AuthFormHandler {
-    val service = UserService.get(cxt) ?: throw KdrException("UserService is not available.")
+    val service = UserService.get(cxt)
     service.checkInit(cxt) // idempotent; ensures the handler is built
     return service.authFormHandler
 }
@@ -219,6 +219,6 @@ internal fun authHandler(cxt: KdrCxt): AuthFormHandler {
  */
 internal fun currentUserInfo(cxt: KdrCxt): Map<String, Any?> {
     val profile = cxt.userProfile
-    val loaded = if (profile.authId != null) UserService.get(cxt)?.queryByUserId(cxt, profile.userId)?.toUserProfile() else null
+    val loaded = if (profile.authId != null) UserService.get(cxt).queryByUserId(cxt, profile.userId)?.toUserProfile() else null
     return (loaded ?: UserProfile.anonymous()).toUserInfo()
 }

@@ -5,7 +5,6 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.maps.shouldContainKey
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 
 /**
@@ -26,7 +25,6 @@ class StartupTest : StringSpec({
 
         // The startup service ran and is published under its name.
         val service = SchemaService.get(cxt)
-        service.shouldNotBeNull()
 
         val schema = cxt.getSchema()
         // Types contributed by BOTH the common (via NodeService) and kdn components are present.

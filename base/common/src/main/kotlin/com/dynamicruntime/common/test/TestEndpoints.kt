@@ -68,7 +68,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             )
         },
     ) { c, request ->
-        val service = UserService.get(c) ?: throw KdrException("UserService is not available.")
+        val service = UserService.get(c)
         service.checkInit(c) // idempotent; ensures the handler is built
         service.authFormHandler.becomeUserByEmail(
             c,
@@ -102,7 +102,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         HttpMethod.GET, outputRef = TSE.emailsType, forTestingOnly = true,
         inputFields = { field(TSE.to, "Only include emails addressed to this recipient.") },
     ) { c, req ->
-        val mail = MailService.get(c) ?: throw KdrException("MailService is not available.")
+        val mail = MailService.get(c)
         if (!mail.useSimulatedEmail) {
             throw KdrException("Recent emails are only available when email is simulated.", code = EXC.notFound)
         }

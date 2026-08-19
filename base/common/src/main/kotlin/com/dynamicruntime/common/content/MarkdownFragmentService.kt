@@ -44,7 +44,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
 
     /** Registers this content server with the dispatcher (idempotent), then checks the fragment files. */
     override fun checkInit(cxt: KdrCxt) {
-        val requestService = RequestService.get(cxt) ?: return
+        val requestService = RequestService.get(cxt)
         requestService.checkInit(cxt)
         requestService.addContentServer(this)
         checkFragmentsAtStartup(cxt)
@@ -173,8 +173,9 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         /** Permanent, shared cache: safe because the `buildId` in the URL changes whenever content changes. */
         const val cacheControl = "public, max-age=31536000, immutable"
 
-        fun get(cxt: KdrCxt): MarkdownFragmentService? =
+        fun get(cxt: KdrCxt): MarkdownFragmentService =
             cxt.instanceConfig.get(serviceName) as? MarkdownFragmentService
+                ?: throw KdrException("The $serviceName is not available on this node.")
 
         /**
          * The cache-busting build id for a fragment file (see [ContentResources.buildId]): a memoized content
@@ -277,7 +278,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                     )
                 },
             ) { c, request ->
-                val service = get(c) ?: throw KdrException("MarkdownFragmentService is not available.")
+                val service = get(c)
                 // Taken as a JSON string rather than a nested object: this is a GET, and the shape being
                 // checked is by definition free-form -- it is whatever a caller's data map happens to be.
                 val data = request[FCHK.data].toOptStr()?.trim()?.ifEmpty { null }?.let { text ->

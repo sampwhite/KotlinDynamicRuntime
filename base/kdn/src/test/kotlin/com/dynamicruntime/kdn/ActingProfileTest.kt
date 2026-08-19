@@ -30,7 +30,7 @@ import io.kotest.matchers.shouldBe
 class ActingProfileTest : StringSpec({
 
     fun users(cxt: KdrCxt): UserService =
-        (UserService.get(cxt) ?: error("UserService is required by this test.")).also { it.checkInit(cxt) }
+        UserService.get(cxt).also { it.checkInit(cxt) }
 
     "refreshing the acting roles keeps every other field of the live profile" {
         val cxt = Startup.mkTestBootCxt("actingProfile", "actingProfileTest")

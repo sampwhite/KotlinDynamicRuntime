@@ -84,7 +84,7 @@ fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "auth") {
             throw KdrException(refusal, code = EXC.notAuthorized, sensitive = true)
         }
 
-        val node = NodeService.get(c) ?: throw KdrException("The node service is not available.")
+        val node = NodeService.get(c)
         val expireMs = c.now().toEpochMilliseconds() + ENVAUTH.sessionMillis(c.instanceConfig)
         // Written through the request's WebRequest -- the transport-neutral seam -- so it behaves identically
         // under a browser and the in-process test client. Safe here because a handler runs before the response

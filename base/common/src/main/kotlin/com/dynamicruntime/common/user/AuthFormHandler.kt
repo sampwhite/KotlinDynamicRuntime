@@ -466,7 +466,6 @@ class AuthFormHandler(
     private fun fixtureClient(cxt: KdrCxt, email: String, named: String?): String {
         val client = named ?: return AddressRules.clientForNewUser(cxt, email)
         val clients = ClientService.get(cxt)
-            ?: throw KdrException("Cannot create a user in '$client': there is no client registry on this node.")
         if (!clients.isPresent(client)) {
             val why = if (clients.known(client) != null) {
                 "it is declared but not enabled in '${cxt.instanceConfig.env}'"

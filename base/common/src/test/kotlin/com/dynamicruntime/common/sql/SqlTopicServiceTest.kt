@@ -55,7 +55,7 @@ class SqlTopicServiceTest : StringSpec({
         sqlCxt.tranData[PF.lastTranId] shouldNotBe SqlTopicUtil.initialInsertTranId
 
         // And it is genuinely persisted: re-query the lock row.
-        val sqlTopic = SqlTopicService.get(cxt).shouldNotBeNull().getOrCreateTopic(cxt, "acct").shouldNotBeNull()
+        val sqlTopic = SqlTopicService.get(cxt).getOrCreateTopic(cxt, "acct").shouldNotBeNull()
         val db = sqlTopic.sqlDb
         db.withSession(cxt) {
             val row = db.queryOneStatement(cxt, sqlTopic.qTranLockQuery!!, mapOf("stateKey" to "s1")).shouldNotBeNull()
@@ -82,7 +82,7 @@ class SqlTopicServiceTest : StringSpec({
             }
         }
         val cxt = bootCxt("notifyTest", tables)
-        val service = SqlTopicService.get(cxt).shouldNotBeNull()
+        val service = SqlTopicService.get(cxt)
 
         val seen = mutableListOf<List<String>>()
         val listener = SqlWriteListener { _, tableNames -> seen.add(tableNames) }

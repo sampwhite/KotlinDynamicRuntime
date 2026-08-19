@@ -63,7 +63,7 @@ class SqlTopic(
     }
 
     companion object {
-        /** Resolves a topic through the [SqlTopicService], or null if the service or topic is absent. */
-        fun get(cxt: KdrCxt, topic: String): SqlTopic? = SqlTopicService.get(cxt)?.getOrCreateTopic(cxt, topic)
+        /** Resolves a topic through the [SqlTopicService] (which throws if absent), or null if the topic is. */
+        fun get(cxt: KdrCxt, topic: String): SqlTopic? = SqlTopicService.get(cxt).getOrCreateTopic(cxt, topic)
     }
 }

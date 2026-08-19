@@ -49,7 +49,7 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "profile") {
     // a real user; it loads that user's row for the password status and info.
     generalEndpoint(AEP.profileUiConfig, "Returns the config for constructing the profile page.",
         HttpMethod.GET, outputRef = ATYPE.profileUiConfig) { c, _ ->
-        val row = UserService.get(c)?.queryByUserId(c, c.userProfile.userId)
+        val row = UserService.get(c).queryByUserId(c, c.userProfile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
         mapOf(
             UIC.fragments to fragmentRefs(AFRAG.profile),
@@ -57,7 +57,7 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "profile") {
                 AFEAT.hasPassword to (row.encodedPassword != null), AFEAT.canSetPassword to true,
                 // Carried here too (the auth config has it as well): the page enters a code, so it wants the
                 // same dev autofill, and a group's config should carry what that group needs.
-                AFEAT.simulatedEmail to (MailService.get(c)?.useSimulatedEmail == true),
+                AFEAT.simulatedEmail to MailService.get(c).useSimulatedEmail,
             ),
             // The page needs a login id for the (code-verified) password calls. It is served explicitly rather
             // than reused from the user info's publicName: that is a display name, and only resolves as a login

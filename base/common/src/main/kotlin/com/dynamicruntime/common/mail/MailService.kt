@@ -182,6 +182,7 @@ class MailService : ServiceInitializer {
         /** How many recent emails to retain for inspection. */
         const val maxRetained = 200
 
-        fun get(cxt: KdrCxt): MailService? = cxt.instanceConfig.get(serviceName) as? MailService
+        fun get(cxt: KdrCxt): MailService = cxt.instanceConfig.get(serviceName) as? MailService
+            ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }

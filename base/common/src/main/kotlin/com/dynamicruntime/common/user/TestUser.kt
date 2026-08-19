@@ -151,7 +151,7 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
             // Computed the way the server does -- via the instance's own NodeService key -- because a
             // white-box test runs in-process and legitimately holds the node it is driving. An external
             // caller, which is the threat, has only HTTP and cannot reach the key.
-            val node = NodeService.get(cxt) ?: error("NodeService is required to compute a verify code.")
+            val node = NodeService.get(cxt)
             val code = node.computeVerifyCode(token, email)
             val userId = client.sendJsonPutRequest(
                 AEP.createInitial,
