@@ -30,10 +30,16 @@ private external fun browserFetch(input: String, init: dynamic = definedExternal
  * of JS doubles.
  */
 object SchemaCatalogApi {
-    /** GET the whole catalog: every registered endpoint's rendering plus the shared `$defs`. An optional
-     *  [namespace] narrows the results. */
-    suspend fun fetchCatalog(namespace: String? = null): Catalog {
-        val query = if (namespace != null) "?${EI.namespace}=$namespace" else ""
+    /**
+     * GET the whole catalog: every registered endpoint's rendering plus the shared `$defs`. An optional
+     * [namespace] narrows the results; an optional [client] shows *that* client's surface -- its endpoints and
+     * its `$defs` (issues #387, #394), for a caller who holds `allClients`. Null [client] is the caller's own.
+     */
+    suspend fun fetchCatalog(namespace: String? = null, client: String? = null): Catalog {
+        val query = queryString(buildMap {
+            namespace?.let { put(EI.namespace, it) }
+            client?.let { put(EI.client, it) }
+        })
         val results = getJson("$schemaBase/endpoints$query")[EP.results].toJsonMapOrEmpty()
         val endpoints = results[EI.endpoints].toJsonListOfMaps().map { toEndpointInfo(it) }
         return Catalog(endpoints, results[SCH.dDefs].toJsonMapOrEmpty())

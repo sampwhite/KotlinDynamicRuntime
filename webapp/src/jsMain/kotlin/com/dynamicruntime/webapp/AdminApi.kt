@@ -29,6 +29,18 @@ fun clientChoiceLabel(choice: ClientChoice): String =
     if (choice.name.isEmpty()) choice.clientId else "${choice.name} (${choice.clientId})"
 
 /**
+ * A client list as antd `Select` `{ label, value }` options, built per render from what the backend served
+ * rather than a fixed list -- the clients a deployment carries are configuration. Shared by the user-create
+ * selector and the endpoint catalog's client selector (issue #394), the same clients endpoint feeding both.
+ */
+fun clientOptions(choices: List<ClientChoice>): Array<dynamic> = choices.map { choice ->
+    val obj: dynamic = js("({})")
+    obj.label = clientChoiceLabel(choice)
+    obj.value = choice.clientId
+    obj
+}.toTypedArray()
+
+/**
  * One administered user, as the `admin` endpoints describe them ([ADF]). Deliberately not [UserProfile]: that
  * is who *you* are, while this is a row in a list of other people, and the two are free to diverge.
  */

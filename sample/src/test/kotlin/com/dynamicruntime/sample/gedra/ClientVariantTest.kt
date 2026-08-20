@@ -2,7 +2,6 @@ package com.dynamicruntime.sample.gedra
 
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.collections.shouldContain
-import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.clientPath
@@ -313,7 +312,7 @@ class ClientVariantTest : StringSpec({
 
     /** The endpoint paths the catalog shows [user], optionally for a named [client]. */
     fun catalogPaths(user: TestUser, client: String? = null): List<String> =
-        user.getData("/schema/endpoints", buildMap { client?.let { put(SS.client, it) } })[EI.endpoints]
+        user.getData("/schema/endpoints", buildMap { client?.let { put(EI.client, it) } })[EI.endpoints]
             .toJsonListOfMaps().mapNotNull { it[EI.path].toOptStr() }
 
     "a client's people are shown their own surface in place of the shared one" {
@@ -347,7 +346,7 @@ class ClientVariantTest : StringSpec({
     }
 
     "naming somebody else's client takes the capability" {
-        acme.expectError(EXC.badInput, "/schema/endpoints", args = mapOf(SS.client to SC.globex))
+        acme.expectError(EXC.badInput, "/schema/endpoints", args = mapOf(EI.client to SC.globex))
         // Naming your own is always allowed: it is what you would have been shown anyway.
         catalogPaths(acme, SC.acme).shouldContain(clientPath(GEP.formDocCreate, SC.acme))
     }
@@ -357,7 +356,7 @@ class ClientVariantTest : StringSpec({
     "the advertised schema is the client's own" {
         val admin = TestUser.createFullAdmin(cxt, "catalog-schema@example.com")
         fun countriesFor(client: String): List<String> {
-            val defs = admin.getData("/schema/endpoints", mapOf(SS.client to client))[SCH.dDefs].toJsonMapOrEmpty()
+            val defs = admin.getData("/schema/endpoints", mapOf(EI.client to client))[SCH.dDefs].toJsonMapOrEmpty()
             val address = defs["${ST.namespace}.${ST.siteAddress}"].toJsonMapOrEmpty()
             return address[SCH.properties].toJsonMapOrEmpty()[ST.country].toJsonMapOrEmpty()[SCH.options]
                 .toJsonListOfMaps().mapNotNull { it[SCH.value].toOptStr() }

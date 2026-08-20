@@ -198,7 +198,7 @@ class SchemaService : ServiceInitializer {
                 property(EI.method, "Only endpoints using this HTTP method (GET/POST/PUT).")
                 property(SS.pathRegex, "Only endpoints whose path matches this regular expression.")
                 property(
-                    SS.client,
+                    EI.client,
                     "Show the surface of this client instead of your own -- its endpoints, and its schema. " +
                         "Requires the '" + ROLE.allClients + "' capability unless it names your own client.",
                 )
@@ -458,7 +458,7 @@ class SchemaService : ServiceInitializer {
             // `allClients` holder may name another. The `$defs` bag comes from the same client's store, so the
             // advertised types are that client's too -- which is the whole reason a client endpoint exists
             // rather than a differently-named shared one.
-            val named = (request[SS.client] as? String)?.trim()?.ifEmpty { null }
+            val named = (request[EI.client] as? String)?.trim()?.ifEmpty { null }
             val client = catalogClient(cxt, named)
             return CatalogSurface(
                 named = named != null,
@@ -767,8 +767,6 @@ object SS {
     // kernel EI.endpoints (the `$defs` result key is the JSON Schema keyword itself, SCH.dDefs).
     const val pathRegex = "pathRegex"
 
-    /** Catalog filter: whose surface to show, for a caller who may look at more than their own (issue #387). */
-    const val client = "client"
 
     // Debug behavior: the debug tag that triggers echoing input under _meta, and the key it is echoed under.
     const val explainInput = "explainInput"
