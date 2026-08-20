@@ -34,6 +34,14 @@ object EI {
     const val method = "method"
     const val kind = "kind"
     const val namespace = "namespace"
+
+    /**
+     * Catalog filter query param: whose surface to show, for a caller who may look at more than their own
+     * (issues #387, #394). In the kernel beside [namespace] so a frontend selector can drive
+     * `/schema/endpoints?client=<id>` from the same string the backend reads it under, rather than
+     * hardcoding it -- the same reason the gedra paths moved in #393.
+     */
+    const val client = "client"
     const val description = "description"
     const val inputSchema = "inputSchema"
     const val outputSchema = "outputSchema"

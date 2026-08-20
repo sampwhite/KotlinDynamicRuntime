@@ -673,17 +673,6 @@ private val accessLevelOptions: Array<dynamic> = RoleLadder.ordered.map { role -
     obj
 }.toTypedArray()
 
-/**
- * The selector's options, built per render from what the backend served rather than from a fixed list -- the
- * clients a deployment carries are configuration, and this page has no business having an opinion about them.
- */
-private fun clientOptions(choices: List<ClientChoice>): Array<dynamic> = choices.map { choice ->
-    val obj: dynamic = js("({})")
-    obj.label = clientChoiceLabel(choice)
-    obj.value = choice.clientId
-    obj
-}.toTypedArray()
-
 /** Says why the choice is offered here and nowhere else. */
 private const val clientHint =
     "Which client the new user belongs to. It cannot be changed afterward: their content carries the " +

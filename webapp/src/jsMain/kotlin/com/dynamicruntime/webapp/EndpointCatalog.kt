@@ -4,6 +4,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
@@ -75,6 +76,14 @@ val EndpointCatalog = FC<Props> {
     // mount-time sync effect can't clobber a hash we are about to read).
     var restored by useState(false)
 
+    // The client selector (issue #394). A caller holding `allClients` can point the catalog at one client, so
+    // the listing and every form built from it are that client's -- a field then offers only what that
+    // client's schema allows, which is where the per-client narrowing first becomes visible without a test.
+    // Null is the caller's own surface, which is what everyone else always sees. `clientChoices` is empty for
+    // anyone who cannot pick, so the control simply is not drawn.
+    var selectedClient by useState<String?>(null)
+    var clientChoices by useState<List<ClientChoice>>(emptyList())
+
     // The request-JSON textarea, so a parse failure can put the caret on the offending character.
     val rawRef = useRef<HTMLTextAreaElement>(null)
 
@@ -112,6 +121,34 @@ val EndpointCatalog = FC<Props> {
                 error = "Catalog fetch failed — is `./gradlew :launch:run` running? (${e.message})"
             } finally {
                 restored = true
+            }
+        }
+    }
+
+    // Offer the client selector only to a caller holding `allClients` -- reading the client list is itself a
+    // cross-client question only they can ask (the same rule the Users page follows; see webapp/CLAUDE.md). A
+    // failure leaves it hidden rather than erroring: the client is not why anyone came to the catalog.
+    useEffectOnce {
+        catalogScope.launch {
+            val cfg = runCatching { HomeApi.fetchConfig() }.getOrNull()
+            if (cfg?.user?.roles?.contains(ROLE.allClients) == true) {
+                clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
+            }
+        }
+    }
+
+    // Re-fetch the catalog for the chosen client -- its endpoints and its `$defs` -- and return to the listing,
+    // since a different client's surface may not carry the endpoint that was open. Skipped until the first load
+    // has run (`restored`), so it does not double-fetch on mount, where `selectedClient` is already null.
+    useEffect(selectedClient) {
+        if (restored) {
+            catalogScope.launch {
+                runCatching { SchemaCatalogApi.fetchCatalog(client = selectedClient) }.getOrNull()?.let { fetched ->
+                    catalog = fetched
+                    selected = null
+                    values = emptyMap()
+                    error = null
+                }
             }
         }
     }
@@ -172,6 +209,29 @@ val EndpointCatalog = FC<Props> {
             p {
                 className = ClassName("subtitle")
                 +"Every registered endpoint, discovered from the runtime's /schema/endpoints catalog. Select one to view and run it."
+            }
+            // Drawn only for a caller who can pick (clientChoices is empty otherwise). Clearing it (allowClear)
+            // returns to the caller's own surface -- the null the placeholder describes.
+            if (clientChoices.isNotEmpty()) {
+                div {
+                    className = ClassName("row")
+                    span {
+                        className = ClassName("field-label")
+                        +"Client"
+                    }
+                    Select {
+                        value = selectedClient
+                        options = clientOptions(clientChoices)
+                        placeholder = "Your own surface"
+                        allowClear = true
+                        style = js("({ minWidth: 220 })")
+                        onChange = { v -> selectedClient = v as? String }
+                    }
+                }
+                p {
+                    className = ClassName("type-hint")
+                    +"Show a client's endpoints, each form built from that client's schema. Clear to return to your own surface."
+                }
             }
             when {
                 error != null -> p {
