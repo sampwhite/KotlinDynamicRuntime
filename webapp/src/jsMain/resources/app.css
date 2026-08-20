@@ -135,20 +135,30 @@ body {
     border-bottom-color: var(--border-admin);
 }
 
+/* The shared chip look for the app bar's session-status badges (env, admin): one size, radius, spacing and
+   uppercase treatment, so two of them side by side read as one vocabulary rather than two stray stickers.
+   Colour and border are the per-badge modifier's job, and they are spaced by the container's gap, not a
+   margin, now that they cluster on the right beside the identity rather than floating apart. */
+.bar-badge {
+    padding: 2px 8px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
 /* The env-auth badge (issue #360), which is also the toggle. Styled as a control rather than a label because
    it is one -- but quiet, since it reports a standing condition rather than inviting an action. The `.off`
    variant deliberately stays visible and legible: it is the only route back from a suppressed session, so
    fading it out would hide the affordance exactly when it is needed. */
 .env-badge {
-    margin-left: 10px;
-    padding: 2px 8px;
-    border: 1px solid var(--border-admin);
-    border-radius: 10px;
+    border-color: var(--border-admin);
     background: var(--surface-admin);
     color: var(--text);
-    font: inherit;
-    font-size: 11px;
-    letter-spacing: .02em;
     cursor: pointer;
 }
 
@@ -159,11 +169,16 @@ body {
     color: var(--text-dim);
 }
 
-/* The readable-build marker (issue #230). Deliberately quieter than .admin-badge: that one says something
-   about your privileges right now, this one only says which bundle is loaded. Never seen on a real
-   deployment, which ships the minified build. */
+/* The elevated-privilege chip: an outline against the admin-tinted bar, where a fill would blend into it. */
+.admin-badge {
+    border-color: var(--border-admin);
+    color: var(--text);
+}
+
+/* The readable-build marker (issue #230). Deliberately NOT a .bar-badge chip and quieter than the badges: it
+   says which bundle is loaded, not a fact about your session. Never seen on a real deployment, which ships
+   the minified build. */
 .build-badge {
-    margin-left: 10px;
     padding: 2px 8px;
     border: 1px dashed var(--border);
     border-radius: 10px;
@@ -171,19 +186,7 @@ body {
     color: var(--text-dim);
     letter-spacing: .02em;
 }
-
-.admin-badge {
-    margin-left: 10px;
-    padding: 2px 8px;
-    border: 1px solid var(--border-admin);
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text);
-}
-.app-bar-right { position: relative; display: flex; align-items: center; gap: 4px; }
+.app-bar-right { position: relative; display: flex; align-items: center; gap: 8px; }
 
 /* Who is signed in, in the bar rather than only inside the menu (issue #276). Quiet by default -- it is
    context, not a call to action -- and set apart when signed out, because that is the state a reader is

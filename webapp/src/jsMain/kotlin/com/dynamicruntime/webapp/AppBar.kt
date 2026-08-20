@@ -127,50 +127,57 @@ val AppBar = FC<AppBarProps> { props ->
             }
             +"KDR"
         }
-        if (elevated) {
-            // Spelled out, not just colored: a hue on its own tells a colourblind user nothing, and this is
-            // the cue that says "the actions available to you right now are privileged".
-            span {
-                className = ClassName("admin-badge")
-                +"Admin"
-            }
-        }
-        // The env-auth badge, which is also the control that turns it off (issue #360). Shown whenever env
-        // auth is AVAILABLE, never on the effective state -- suppress it and this is the one affordance that
-        // must survive, or there is no way back.
-        //
-        // A button rather than a span, unlike the badges around it: this one does something, and something a
-        // keyboard user must be able to reach. Spelled out for the same reason .admin-badge is -- a hue alone
-        // tells a colorblind user nothing -- and it names the *state*, not the action, so the bar reads as a
-        // description of where you are rather than a row of commands.
-        if (props.envAuthAvailable) {
-            button {
-                className = ClassName(if (props.envAuthActing) "env-badge" else "env-badge off")
-                title = if (props.envAuthActing) {
-                    "You reached this deployment through an authenticated environment. Click to browse as an ordinary user."
-                } else {
-                    "Environment access is suppressed for this session. Click to restore it."
-                }
-                onClick = {
-                    appBarScope.launch {
-                        setEnvAuthSuppressed(props.envAuthActing)
-                        bump()
-                    }
-                }
-                +(if (props.envAuthActing) "env" else "env off")
-            }
-        }
-        // A quiet marker that this is the readable build (issue #230). It can never appear on a real
-        // deployment: that ships the minified bundle, where the check below is false by construction.
-        if (isReadableBuild) {
-            span {
-                className = ClassName("build-badge")
-                title = "Readable (development) web-app bundle — larger, but crashes name the Kotlin that failed."
-                +"readable build"
-            }
-        }
         div {
             className = ClassName("app-bar-right")
+
+            // Session status sits together on the right, beside the identity it qualifies, rather than
+            // floating between the brand and the menu: the bar is `space-between`, so a loose badge in the
+            // middle drifts with the window width. Read left to right, the cluster is the session's
+            // attributes (env, admin) and then who it belongs to.
+
+            // The env-auth badge, which is also the control that turns it off (issue #360). Shown whenever env
+            // auth is AVAILABLE, never on the effective state -- suppress it and this is the one affordance
+            // that must survive, or there is no way back.
+            //
+            // A button rather than a span, unlike the badges around it: this one does something, and something
+            // a keyboard user must be able to reach. It names the *state*, not the action, so the bar reads as
+            // a description of where you are rather than a row of commands.
+            if (props.envAuthAvailable) {
+                button {
+                    className = ClassName(if (props.envAuthActing) "bar-badge env-badge" else "bar-badge env-badge off")
+                    title = if (props.envAuthActing) {
+                        "You reached this deployment through an authenticated environment. Click to browse as an ordinary user."
+                    } else {
+                        "Environment access is suppressed for this session. Click to restore it."
+                    }
+                    onClick = {
+                        appBarScope.launch {
+                            setEnvAuthSuppressed(props.envAuthActing)
+                            bump()
+                        }
+                    }
+                    +(if (props.envAuthActing) "Env" else "Env off")
+                }
+            }
+            // Spelled out, not just colored: a hue on its own tells a colourblind user nothing, and this is
+            // the cue that says "the actions available to you right now are privileged". Shares the .bar-badge
+            // chip look with the env badge so the two read as siblings rather than two unrelated stickers.
+            if (elevated) {
+                span {
+                    className = ClassName("bar-badge admin-badge")
+                    +"Admin"
+                }
+            }
+            // A quiet marker that this is the readable build (issue #230), deliberately NOT a .bar-badge chip:
+            // it reports which bundle is loaded, not a fact about the session. Can never appear on a real
+            // deployment, which ships the minified bundle where the check below is false by construction.
+            if (isReadableBuild) {
+                span {
+                    className = ClassName("build-badge")
+                    title = "Readable (development) web-app bundle — larger, but crashes name the Kotlin that failed."
+                    +"readable build"
+                }
+            }
             // Identity in the bar itself, not only inside the menu (issue #276). Being signed out is a fact
             // worth stating: rendering nothing for it reads exactly like a config that has not arrived, so a
             // user cannot tell "I am signed out" from "this has not loaded". Null while genuinely unknown.
