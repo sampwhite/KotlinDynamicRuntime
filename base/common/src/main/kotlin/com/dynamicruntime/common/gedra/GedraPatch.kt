@@ -5,21 +5,9 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
-/** Field names for a patch's request and its answer (issue #337). Each name matches its value. */
-@Suppress("ConstPropertyName")
-object GPF {
-    /** The request's targets, keyed by gedra kind. */
-    const val targets = "targets"
-
-    /** Within a target: the edits asked of that one gedra. */
-    const val edits = "edits"
-
-    /** In the answer: what became of each edit, keyed by the trait it named. */
-    const val outcomes = "outcomes"
-
-    /** In an outcome: whether the edit changed anything. */
-    const val applied = "applied"
-}
+// `GPF` (the field-names for a patch's request and answer) now lives in `base/kernel` (GedraConstants.kt) so a
+// front end can build a patch call and read its outcomes by name too (issue #393). References here resolve
+// unchanged, same package.
 
 /**
  * One thing a patch asks of one entry (issue #337).

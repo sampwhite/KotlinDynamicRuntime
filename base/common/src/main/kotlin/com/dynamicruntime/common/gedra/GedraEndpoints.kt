@@ -15,27 +15,8 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
-/** Endpoint paths for stored gedra data. */
-@Suppress("ConstPropertyName")
-object GEP {
-    const val formDocCreate = "/gedra/formDoc/create"
-    const val formDoc = "/gedra/formDoc"
-    const val formDocs = "/gedra/formDocs"
-
-    const val patch = "/gedra/patch"
-
-    /** The type naming what a "delete" removed. */
-    const val deletedGedra = "DeletedGedra"
-
-    /** The type of one target in a patch: a gedra, and what is asked of it. */
-    const val patchTarget = "PatchTarget"
-
-    /** The type of a patch's targets, grouped by gedra kind. */
-    const val patchTargets = "PatchTargets"
-
-    /** The type of what a patch did to one gedra. */
-    const val patchedGedra = "PatchedGedra"
-}
+// `GEP` (the endpoint paths and response type-names) now lives in `base/kernel` (GedraConstants.kt) so the
+// front end can name them too (issue #393); this file's references resolve unchanged, same package.
 
 /**
  * The endpoints over stored gedra data -- create a form document, read one, list them (issue #310), delete
@@ -64,12 +45,13 @@ object GEP {
  *  - **On a client's own path**, the published type is that client's, so what is advertised is what is
  *    enforced and a control cannot offer what the client removed.
  *
- * **So do not hardcode these paths in a UI.** `GET /schema/endpoints` already answers with the caller's own
- * client's paths -- an `acme` user is shown `/gedra/acme/...` and *not* the shared one -- so a form should be
- * built from the catalog entry and posted to the `path` it carries. Reaching for the constant instead works,
- * which is exactly the problem: it silently selects the global schema, and the symptom looks like a backend
- * fault rather than a wrong path. Note also that `GEP` is not visible to `webapp`, which sees only
- * `base:kernel` -- there is no constant for a frontend to reach for, and the catalog is the source.
+ * **So a UI must reach the *client's* path, not the bare shared one.** `GET /schema/endpoints` already answers
+ * with the caller's own client's paths -- an `acme` user is shown `/gedra/acme/...` and *not* the shared one --
+ * so a form built from a catalog entry and posted to the `path` it carries is client-scoped by construction.
+ * `GEP` now lives in `base/kernel` (issue #393), so a frontend *can* name these paths; the safe way to use one
+ * is `clientPath(GEP.formDoc, client)`, which builds that client's surface. Posting the bare `GEP.formDoc` is
+ * the mistake this warns about -- it silently selects the global schema, and the symptom looks like a backend
+ * fault rather than a wrong path.
  *
  * An `allClients` holder can ask for one client's surface with the catalog's `client` filter.
  */

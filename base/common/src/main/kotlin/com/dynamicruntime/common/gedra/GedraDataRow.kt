@@ -11,44 +11,18 @@ import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
 
-/** Field names for a gedra's wire shape (see [GedraDataRow.toJsonMap]). Each name matches its value. */
-@Suppress("ConstPropertyName")
+// `GDF` (the wire field-names for a gedra) now lives in `base/kernel` (GedraConstants.kt) so a front end can
+// read `entries`/`gedraId` off a response by name too (issue #393). References here resolve unchanged.
+
 /**
  * What the `allowAdditionalTraits` field says, written once so the type and the patch endpoint cannot come to
  * describe the same flag differently.
  */
+@Suppress("ConstPropertyName")
 const val ADDITIONAL_TRAITS_HINT =
     "Whether this call may write traits the client does not support. Defaults to false, so a misspelled " +
         "trait id -- or one belonging to another client -- is refused rather than stored as an unrecognized " +
         "shape. Reads are unaffected."
-
-object GDF {
-    /**
-     * Whether this call may write traits the client does not support. **Defaults to false** (issue #379).
-     *
-     * A client's `includedTraits` says which traits its people work with, and by default that is what a write
-     * is held to -- so a typo in a `traitId`, or a trait belonging to somebody else's client, is refused
-     * rather than quietly stored as an unrecognized shape. Set true to write outside the client's schema
-     * deliberately: importing another client's export, or storing a trait this node has not loaded a
-     * definition for.
-     *
-     * It governs **what this call writes**, not what the gedra already holds. A document carrying an entry
-     * from before is still editable without the flag, as long as this call is not itself writing an
-     * unsupported trait -- otherwise one legacy entry would make a document permanently unpatchable.
-     *
-     * Reads are unaffected. An unrecognized entry is always carried on the way out, which is what the
-     * union's open default branch is for (#301) and what lets one client read another's export at all.
-     */
-    const val allowAdditionalTraits = "allowAdditionalTraits"
-    const val gedraId = "gedraId"
-    const val gedraKind = "gedraKind"
-    const val client = "client"
-    const val userId = "userId"
-    const val org = "org"
-    const val entries = "entries"
-    const val createdAt = "createdAt"
-    const val updatedAt = "updatedAt"
-}
 
 /**
  * One row of [GDT.gedraData], extracted into typed fields (issue #310) -- the richer aggregate the vocabulary
