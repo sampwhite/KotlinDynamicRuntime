@@ -106,7 +106,8 @@ object AdminApi {
     /** GET the user list, newest first; a blank [search] lists everyone (up to the endpoint's limit). */
     suspend fun listUsers(search: String): List<AdminUser> {
         val term = search.trim()
-        val path = if (term.isEmpty()) UADEP.users else "${UADEP.users}?${ADF.search}=${encodeUriComponent(term)}"
+        // Non-empty only: an empty term lists everyone, and appending `?search=` (empty) is a different call.
+        val path = if (term.isEmpty()) UADEP.users else UADEP.users + queryString(mapOf(ADF.search to term))
         return Http.getApi(path)[EP.items].toJsonListOfMaps().map { it.toAdminUser() }
     }
 
@@ -182,8 +183,6 @@ object AdminApi {
 
     private fun Map<String, Any?>.results(): Map<String, Any?> = this[EP.results].toJsonMapOrEmpty()
 
-    /** Percent-encodes a query value via the browser global (as [SchemaCatalogApi] does for its own links). */
-    private fun encodeUriComponent(s: String): String = js("encodeURIComponent(s)") as String
 
     private fun Map<String, Any?>.toAdminUser(): AdminUser = AdminUser(
         userId = this[ADF.userId].toOptLong() ?: -1L,

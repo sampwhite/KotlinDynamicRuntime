@@ -149,7 +149,7 @@ private fun hashUrl(params: List<Pair<String, String>>): String {
     return if (params.isEmpty()) {
         base
     } else {
-        base + "#" + params.joinToString("&") { (k, v) -> "$k=${encodeUri(v)}" }
+        base + "#" + params.joinToString("&") { (k, v) -> "$k=${encodeUriComponent(v)}" }
     }
 }
 
@@ -194,5 +194,4 @@ private fun pushUrl(url: String) {
     js("window.history.pushState(null, '', url)")
 }
 
-private fun encodeUri(s: String): String = js("encodeURIComponent(s)") as String
 private fun decodeUri(s: String): String = js("decodeURIComponent(s)") as String
