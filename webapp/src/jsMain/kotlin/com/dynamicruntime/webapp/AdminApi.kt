@@ -174,11 +174,16 @@ object AdminApi {
      * email and identity obfuscated so it cannot be undone. Returns the resulting (obfuscated, for a permanent
      * delete) row.
      */
-    suspend fun deleteUser(userId: Long, permanent: Boolean): AdminUser =
-        Http.sendApi("POST", UADEP.userDelete, buildMap {
-            put(ADF.userId, userId)
-            if (permanent) put(ADF.permanent, true)
-        }).results().toAdminUser()
+    suspend fun deleteUser(userId: Long, permanent: Boolean): AdminUser {
+        // A DELETE, so the input is a query string rather than a body (issue #335). Both values are written
+        // straight in: a user id is a Long and `permanent` a literal, so neither can carry a character that
+        // would need escaping -- unlike the search term in [listUsers], which is encoded.
+        val query = buildString {
+            append('?').append(ADF.userId).append('=').append(userId)
+            if (permanent) append('&').append(ADF.permanent).append("=true")
+        }
+        return Http.deleteApi(UADEP.userDelete + query).results().toAdminUser()
+    }
 
     private fun Map<String, Any?>.results(): Map<String, Any?> = this[EP.results].toJsonMapOrEmpty()
 

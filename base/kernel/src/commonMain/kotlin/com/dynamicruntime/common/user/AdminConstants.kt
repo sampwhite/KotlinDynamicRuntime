@@ -22,7 +22,11 @@ object ADEP {
     const val userSetEnabled = "/admin/user/setEnabled"
     const val userSetOrg = "/admin/user/setOrg"
     const val userSetName = "/admin/user/setName"
-    const val userDelete = "/admin/user/delete"
+    /**
+     * The verb says what happens; the path names the resource (issue #335). Its input rides in the query
+     * string, since a DELETE carries no body -- see [com.dynamicruntime.common.endpoint.HttpMethod.DELETE].
+     */
+    const val userDelete = "/admin/user"
 
     /**
      * The clients this deployment carries (issue #343).
@@ -55,7 +59,8 @@ object UADEP {
     const val userSetEnabled = "/userAdmin/user/setEnabled"
     const val userSetOrg = "/userAdmin/user/setOrg"
     const val userSetName = "/userAdmin/user/setName"
-    const val userDelete = "/userAdmin/user/delete"
+    /** `DELETE`, like [ADEP.userDelete], and scoped to the caller's own client. */
+    const val userDelete = "/userAdmin/user"
 }
 
 /** Admin request/response field (JSON key) names. */

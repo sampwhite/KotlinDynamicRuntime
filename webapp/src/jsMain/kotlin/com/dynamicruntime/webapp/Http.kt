@@ -64,6 +64,13 @@ object Http {
     suspend fun sendApi(method: String, path: String, body: Map<String, Any?>): Map<String, Any?> =
         requestJson(method, apiRoot + path, body)
 
+    /**
+     * DELETE an API endpoint. Its input rides in [path]'s query string, exactly as [getApi]'s does, because
+     * this codebase sends no DELETE body -- see `HttpMethod.DELETE`. Passing no body here is what keeps that
+     * true: [requestJson] sets a `Content-Type` and a body only when one is given.
+     */
+    suspend fun deleteApi(path: String): Map<String, Any?> = requestJson("DELETE", apiRoot + path, null)
+
     /** GET a Markdown *fragment* file (`/st/<appId>/md/<fileId:buildId>`) as its `namespace -> key -> value` map. */
     suspend fun getFragments(fileId: String, buildId: String): Map<String, Any?> =
         requestJson("GET", "$staticRoot/$appId/${CMK.md}/$fileId:$buildId", null)

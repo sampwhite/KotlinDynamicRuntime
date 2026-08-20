@@ -249,11 +249,14 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         row.toAdminInfo()
     }
 
+    // A DELETE on the user resource rather than a POST to a `/delete` path (issue #335): the verb carries the
+    // action, so the path does not have to say it twice. Both fields arrive as query params -- a DELETE sends
+    // no body -- and are coerced from their string forms by the same input validation every endpoint runs.
     generalEndpoint(
         paths.userDelete,
         "Deletes a user: recoverable (disabled) by default, or -- when permanent -- disabled with the user's " +
             "email and identity obfuscated so the deletion cannot be undone.",
-        HttpMethod.POST,
+        HttpMethod.DELETE,
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.userId, "Id of the user to delete.", required = true) { type = SCT.integer }
@@ -261,7 +264,15 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 ADF.permanent,
                 "When true, obfuscate the user's email and clear their stored identity -- not recoverable. " +
                     "Defaults to false, a recoverable disable.",
-            ) { type = SCT.boolean }
+            ) {
+                type = SCT.boolean
+                // Required because this is a DELETE: a query string carries "true", not a JSON boolean, and
+                // allowCoerce defaults on only for numeric types and date formats (SchParser). Without it,
+                // `?permanent=true` fails validation as a wrongType -- and would fail *safe*, refusing the
+                // call rather than quietly performing a recoverable delete, but refusing it all the same.
+                // `userId` needs nothing here: it is an integer, so it coerces by default.
+                allowCoerce = true
+            }
         },
     ) { c, request ->
         val userId = requireUserId(request)
