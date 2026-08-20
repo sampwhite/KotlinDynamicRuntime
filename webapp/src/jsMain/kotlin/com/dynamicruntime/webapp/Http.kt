@@ -65,11 +65,13 @@ object Http {
         requestJson(method, apiRoot + path, body)
 
     /**
-     * DELETE an API endpoint. Its input rides in [path]'s query string, exactly as [getApi]'s does, because
-     * this codebase sends no DELETE body -- see `HttpMethod.DELETE`. Passing no body here is what keeps that
-     * true: [requestJson] sets a `Content-Type` and a body only when one is given.
+     * DELETE an API endpoint. Its input is [args], appended as an encoded query string, because this codebase
+     * sends no DELETE body -- see `HttpMethod.DELETE`. Passing no body is what keeps that true: [requestJson]
+     * sets a `Content-Type` and a body only when one is given. Encoding happens once here, through the shared
+     * [queryString], so no caller has to reason about which of its values are safe to concatenate raw.
      */
-    suspend fun deleteApi(path: String): Map<String, Any?> = requestJson("DELETE", apiRoot + path, null)
+    suspend fun deleteApi(path: String, args: Map<String, Any?> = emptyMap()): Map<String, Any?> =
+        requestJson("DELETE", apiRoot + path + queryString(args), null)
 
     /** GET a Markdown *fragment* file (`/st/<appId>/md/<fileId:buildId>`) as its `namespace -> key -> value` map. */
     suspend fun getFragments(fileId: String, buildId: String): Map<String, Any?> =
