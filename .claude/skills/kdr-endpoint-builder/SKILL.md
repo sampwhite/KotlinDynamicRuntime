@@ -80,6 +80,21 @@ A list endpoint appends a **`limit`** field (default 100) as a plain sibling, un
 input type is always closed to undeclared properties (`additionalProperties = false`); off-contract `_`/`$`
 keys stay exempt.
 
+**Query-verb gotcha.** On a GET or DELETE the input arrives as query-string *text*, and the schema layer only
+coerces numeric and date-format types by default (`allowCoerce`, see `kdr-schema-builder`). So a non-numeric
+field on such an endpoint — a `boolean`, an `array` — needs `allowCoerce = true` set on it, or `?flag=true`
+fails validation as a `wrongType`. It fails **safe** (a refused call, and a unit test through `TestHttpClient`
+catches it, since that stringifies args too), but it fails. Set it on the field:
+
+```kotlin
+field("permanent", "…") { type = SCT.boolean; allowCoerce = true }   // GET/DELETE only
+```
+
+Whether the *builder* should default this on by verb, or coercion should instead happen at the dispatch
+boundary (which already knows a query param is a string) — rather than being hand-set per field — is an open
+design question (issue #335 review), deliberately left until the pattern or the frontend-shares-the-schema
+constraint forces the call. Until then it is per-field, above.
+
 ## Files
 
 An upload's request is `multipart/form-data`; a download's response **is** the file, with no envelope. Both are
