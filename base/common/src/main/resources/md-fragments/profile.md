@@ -4,6 +4,7 @@
 # @profile
 # +title Your profile
 # +signedInAs Signed in as **${user.publicName}**
+# +emailLine Email: `${user.email}`
 # +logout Log out
 
 # @password
