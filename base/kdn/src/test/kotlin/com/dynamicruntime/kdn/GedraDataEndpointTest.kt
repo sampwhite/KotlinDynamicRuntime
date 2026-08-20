@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GD
 import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.exception.EXC
@@ -219,9 +220,10 @@ class GedraDataEndpointTest : StringSpec({
 
     // Delete, and what it means: the document stops being readable and stops being listed. This used to reach
     // past the service and flip `enabled` with handwritten SQL, because nothing disabled a document through an
-    // endpoint; #326 gave it one, so the flag is now exercised the way a caller reaches it.
+    // endpoint; #326 gave it one, so the flag is now exercised the way a caller reaches it. #335 moved it onto
+    // the DELETE verb, sharing the URL with the GET and differing only by method.
     "a deleted document is not there, by id or in a listing" {
-        val deleted = bob.postData(GEP.formDocDelete, mapOf(GDF.gedraId to bobDocId))
+        val deleted = bob.deleteData(GEP.formDoc, mapOf(GDF.gedraId to bobDocId))
         deleted[GDF.gedraId] shouldBe bobDocId
 
         bob.expectError(404, GEP.formDoc, args = mapOf(GDF.gedraId to bobDocId))
@@ -234,13 +236,13 @@ class GedraDataEndpointTest : StringSpec({
     // Deleting twice is a 404 rather than a quiet success. The second call did not remove anything, and saying
     // otherwise would let a caller believe they had just deleted something that went days ago.
     "deleting the same document again says there is nothing there" {
-        bob.expectError(404, GEP.formDocDelete, mapOf(GDF.gedraId to bobDocId))
+        bob.expectError(404, GEP.formDoc, args = mapOf(GDF.gedraId to bobDocId), method = HttpMethod.DELETE)
     }
 
     // The same non-disclosure the read makes: a caller who may not see a document cannot learn it exists by
     // trying to delete it, and cannot delete it either.
     "one user cannot delete another's document" {
-        bob.expectError(404, GEP.formDocDelete, mapOf(GDF.gedraId to aliceDocId))
+        bob.expectError(404, GEP.formDoc, args = mapOf(GDF.gedraId to aliceDocId), method = HttpMethod.DELETE)
         // Still there, and still alice's -- the refused "delete" changed nothing.
         alice.getItem(GEP.formDoc, mapOf(GDF.gedraId to aliceDocId))[GDF.gedraId] shouldBe aliceDocId
     }
@@ -248,7 +250,7 @@ class GedraDataEndpointTest : StringSpec({
     // An administrator's reach is the same for deleting as for reading, which is what one scope rule for both
     // buys: nothing had to decide separately who may delete.
     "a client-scoped administrator can delete a document they do not own" {
-        ada.postData(GEP.formDocDelete, mapOf(GDF.gedraId to aliceDocId))
+        ada.deleteData(GEP.formDoc, mapOf(GDF.gedraId to aliceDocId))
         alice.expectError(404, GEP.formDoc, args = mapOf(GDF.gedraId to aliceDocId))
     }
 

@@ -19,7 +19,6 @@ import com.dynamicruntime.common.util.toOptStr
 @Suppress("ConstPropertyName")
 object GEP {
     const val formDocCreate = "/gedra/formDoc/create"
-    const val formDocDelete = "/gedra/formDoc/delete"
     const val formDoc = "/gedra/formDoc"
     const val formDocs = "/gedra/formDocs"
 
@@ -123,13 +122,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         property(GDF.gedraId, "Id of the gedra that was deleted.", required = true)
     }
 
-    // A POST rather than an HTTP DELETE, because `HttpMethod` has no DELETE -- adding one reaches the
-    // dispatcher, the catalog and the form engine, which is a change worth making on its own account rather
-    // than in passing here. The path says the verb in the meantime, as `create` does.
+    // Shares a URL with `GET /gedra/formDoc` and differs only by verb, which is what the method is for
+    // (issue #335). `KdrEndpoint.collationKey` is already `path:method`, so two endpoints on one path is
+    // routine. The input travels as query params rather than a body, like the GET's -- see [HttpMethod.DELETE]
+    // for why nothing here sends a DELETE body.
     generalEndpoint(
-        GEP.formDocDelete,
+        GEP.formDoc,
         "Deletes a form document, so that it is no longer readable or listed.",
-        HttpMethod.POST,
+        HttpMethod.DELETE,
         outputRef = GEP.deletedGedra,
         inputFields = {
             field(GDF.gedraId, "Id of the form document to delete.", required = true)

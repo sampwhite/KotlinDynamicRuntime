@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
@@ -107,7 +108,7 @@ class EnvAuthLoginTest : StringSpec({
         val cxt = bootEdge("envLoginWrongDomain")
         val client = TestHttpClient(cxt.instanceConfig)
         client.sendEditRequest(
-            EAEP.login, null, mapOf(EAEP.googleCredential to credential("someone@example.org")), isPut = false,
+            EAEP.login, null, mapOf(EAEP.googleCredential to credential("someone@example.org")), HttpMethod.POST,
         ).rptStatusCode shouldBe EXC.notAuthorized
     }
 
@@ -118,7 +119,7 @@ class EnvAuthLoginTest : StringSpec({
         client.sendEditRequest(
             EAEP.login, null,
             mapOf(EAEP.googleCredential to credential("sam@gyassa.com", emailVerified = false)),
-            isPut = false,
+            HttpMethod.POST,
         ).rptStatusCode shouldBe EXC.notAuthorized
     }
 
@@ -132,7 +133,7 @@ class EnvAuthLoginTest : StringSpec({
         client.sendEditRequest(
             EAEP.login, null,
             mapOf(EAEP.googleCredential to credential("sam@gyassa.com", aud = "someone-else.apps.googleusercontent.com")),
-            isPut = false,
+            HttpMethod.POST,
         ).rptStatusCode shouldNotBe EXC.ok
     }
 

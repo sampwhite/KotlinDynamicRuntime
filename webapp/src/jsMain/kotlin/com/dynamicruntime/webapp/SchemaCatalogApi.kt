@@ -58,9 +58,12 @@ object SchemaCatalogApi {
 
     /**
      * Executes [endpoint] with the (already coerced) [body] and returns its parsed response envelope. A GET
-     * carries the fields in the query string (a nested value is JSON-encoded, which the runtime's coercion
-     * reparses); a POST/PUT sends them as a JSON body, serialized with the shared kernel's [toJsonStr]. A
-     * non-2xx response raises the runtime's error `message`.
+     * or DELETE carries the fields in the query string (a nested value is JSON-encoded, which the runtime's
+     * coercion reparses); a POST/PUT sends them as a JSON body, serialized with the shared kernel's
+     * [toJsonStr]. A non-2xx response raises the runtime's error `message`.
+     *
+     * DELETE joins the query-string side rather than the body side deliberately: DELETE bodies are legal but
+     * poorly handled by intermediaries, so nothing here sends one (issue #335).
      */
     suspend fun invoke(
         endpoint: EndpointInfo,
@@ -68,8 +71,12 @@ object SchemaCatalogApi {
         multipart: Boolean = false,
     ): Map<String, Any?> {
         val url = apiRoot + endpoint.path
-        val response = if (endpoint.method == "GET") {
-            browserFetch(url + queryString(body)).await()
+        val response = if (endpoint.method == "GET" || endpoint.method == "DELETE") {
+            // The method is set explicitly rather than left to fetch's GET default, since DELETE takes the
+            // same query-string treatment but is not the default.
+            val init: dynamic = js("({})")
+            init.method = endpoint.method
+            browserFetch(url + queryString(body), init).await()
         } else {
             val init: dynamic = js("({})")
             init.method = endpoint.method

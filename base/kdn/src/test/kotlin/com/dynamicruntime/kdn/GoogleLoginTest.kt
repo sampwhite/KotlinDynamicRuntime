@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.user.AEP
@@ -129,7 +130,7 @@ class GoogleLoginTest : StringSpec({
         val handler = client.sendEditRequest(
             AEP.loginByGoogle, null,
             mapOf(AFLD.googleCredential to mkCredential("sub-evil", "victim@example.com", emailVerified = false)),
-            isPut = false,
+            HttpMethod.POST,
         )
         handler.rptStatusCode shouldBe 400 // mkMsg's default: bad input, with the auth fragment's copy
         // Nothing was created or linked: the address is still free to register normally.
@@ -163,7 +164,7 @@ class GoogleLoginTest : StringSpec({
         // Comfortably past the allowance, the same token is refused -- and refused during verification, before
         // the linked-identity lookup, so the link the login above established does not quietly rescue it.
         clock.advanceBy((outsideMs - insideMs).milliseconds)
-        client.sendEditRequest(AEP.loginByGoogle, null, mapOf(AFLD.googleCredential to credential), isPut = false)
+        client.sendEditRequest(AEP.loginByGoogle, null, mapOf(AFLD.googleCredential to credential), HttpMethod.POST)
             .rptStatusCode shouldBe 400
     }
 
@@ -173,7 +174,7 @@ class GoogleLoginTest : StringSpec({
         val handler = client.sendEditRequest(
             AEP.loginByGoogle, null,
             mapOf(AFLD.googleCredential to mkCredential("sub-x", "x@example.com", aud = "other-app.apps.googleusercontent.com")),
-            isPut = false,
+            HttpMethod.POST,
         )
         handler.rptStatusCode shouldNotBe 200
     }

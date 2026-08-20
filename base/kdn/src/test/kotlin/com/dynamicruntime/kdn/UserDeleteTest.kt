@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
@@ -29,7 +30,7 @@ class UserDeleteTest : StringSpec({
         val userId = created[ADF.userId] as Long
 
         // Delete recoverably (permanent defaults to false): disabled, identifiers untouched.
-        val deleted = admin.postData(ADEP.userDelete, mapOf(ADF.userId to userId))
+        val deleted = admin.deleteData(ADEP.userDelete, mapOf(ADF.userId to userId))
         deleted[ADF.enabled] shouldBe false
         deleted[ADF.primaryId] shouldBe "recover@del.com"
 
@@ -52,7 +53,7 @@ class UserDeleteTest : StringSpec({
         )
         val userId = created[ADF.userId] as Long
 
-        val deleted = admin.postData(ADEP.userDelete, mapOf(ADF.userId to userId, ADF.permanent to true))
+        val deleted = admin.deleteData(ADEP.userDelete, mapOf(ADF.userId to userId, ADF.permanent to true))
         // The email and username are obfuscated to their deleted-<userId> forms -- the indication that this
         // was once a real user -- and the account is disabled with no password.
         deleted[ADF.enabled] shouldBe false
@@ -74,7 +75,8 @@ class UserDeleteTest : StringSpec({
         admin.expectError(
             EXC.badInput, ADEP.userSetRoles, mapOf(ADF.userId to userId, ADF.roles to listOf("user", "admin")),
         )
-        admin.expectError(EXC.badInput, ADEP.userDelete, mapOf(ADF.userId to userId, ADF.permanent to true))
+        admin.expectError(EXC.badInput, ADEP.userDelete, args = mapOf(ADF.userId to userId, ADF.permanent to true),
+            method = HttpMethod.DELETE)
 
         // The original email no longer resolves to anyone...
         admin.getItems(ADEP.users, mapOf(ADF.search to "gone@perm.com")) shouldHaveSize 0
@@ -92,7 +94,9 @@ class UserDeleteTest : StringSpec({
     "you cannot delete your own account, permanently or otherwise" {
         val cxt = Startup.mkTestBootCxt("userDelete", "userDeleteSelfTest")
         val admin = TestUser.createFullAdmin(cxt, "chief@self.com")
-        admin.expectError(EXC.badInput, ADEP.userDelete, mapOf(ADF.userId to admin.userId))
-        admin.expectError(EXC.badInput, ADEP.userDelete, mapOf(ADF.userId to admin.userId, ADF.permanent to true))
+        admin.expectError(EXC.badInput, ADEP.userDelete, args = mapOf(ADF.userId to admin.userId),
+            method = HttpMethod.DELETE)
+        admin.expectError(EXC.badInput, ADEP.userDelete, args = mapOf(ADF.userId to admin.userId, ADF.permanent to true),
+            method = HttpMethod.DELETE)
     }
 })

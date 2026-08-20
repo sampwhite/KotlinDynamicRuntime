@@ -190,4 +190,43 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         val available = asserted != null || c.envAuthEmail != null
         mapOf(APP.isEnvAuthed to (available && !c.envAuthSuppressed), APP.envAuthAvailable to available)
     }
+
+    // Two endpoints on ONE path, differing only by verb -- the shape issue #335 introduced for real at
+    // `/gedra/formDoc`. Kept here as a fixture because the hazard is in the dispatcher's compiled-type memo
+    // rather than in gedra: see [TVB] for what goes wrong when that memo is keyed by path alone.
+    type(TVB.getType) {
+        type = SCT.kObject
+        description = "What the GET half of the verb fixture answers with."
+        property(TVB.verb, "The verb that ran.", required = true)
+        property(TVB.getOnly, "Echo of the GET-only input field.", required = true)
+    }
+
+    type(TVB.deleteType) {
+        type = SCT.kObject
+        description = "What the DELETE half of the verb fixture answers with."
+        property(TVB.verb, "The verb that ran.", required = true)
+        property(TVB.deleteOnly, "Echo of the DELETE-only input field.", required = true)
+    }
+
+    generalEndpoint(
+        TVB.path,
+        "Test-only: the GET half of a two-verbs-one-path fixture.",
+        HttpMethod.GET, outputRef = TVB.getType, forTestingOnly = true,
+        inputFields = {
+            field(TVB.getOnly, "A field only the GET accepts.", required = true)
+        },
+    ) { _, req ->
+        mapOf(TVB.verb to HttpMethod.GET.name, TVB.getOnly to req[TVB.getOnly])
+    }
+
+    generalEndpoint(
+        TVB.path,
+        "Test-only: the DELETE half of a two-verbs-one-path fixture.",
+        HttpMethod.DELETE, outputRef = TVB.deleteType, forTestingOnly = true,
+        inputFields = {
+            field(TVB.deleteOnly, "A field only the DELETE accepts.", required = true)
+        },
+    ) { _, req ->
+        mapOf(TVB.verb to HttpMethod.DELETE.name, TVB.deleteOnly to req[TVB.deleteOnly])
+    }
 }

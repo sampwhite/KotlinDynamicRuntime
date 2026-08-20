@@ -2,6 +2,7 @@
 
 package com.dynamicruntime.script
 
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.util.toJsonStr
@@ -149,8 +150,8 @@ fun main(args: Array<String>) {
 }
 
 /**
- * `call [--as level] METHOD /path [k=v ...]` -- one request, printed. A GET's `k=v` pairs become query
- * parameters; any other method sends them as a JSON body.
+ * `call [--as level] METHOD /path [k=v ...]` -- one request, printed. A GET's or DELETE's `k=v` pairs become
+ * query parameters (this codebase sends no DELETE body); a POST's or PUT's travel as a JSON body.
  */
 private fun oneShotCall(cxt: ProbeContext) {
     val args = cxt.args.toMutableList()
@@ -163,7 +164,12 @@ private fun oneShotCall(cxt: ProbeContext) {
     if (args.size < 2) {
         usage("call needs a method and a path, e.g. call GET /schema/endpoints")
     }
-    val method = args.removeAt(0).uppercase()
+    // Resolved against the enum rather than passed through as a string: the old string form printed whatever
+    // was typed while ALWAYS sending GET or POST, so `call PUT`/`call DELETE` reported the wrong verb's answer
+    // as if it were the right one -- the exact confident-wrong-diagnosis a probe exists to prevent.
+    val methodName = args.removeAt(0).uppercase()
+    val method = HttpMethod.entries.firstOrNull { it.name == methodName }
+        ?: usage("Unknown method '$methodName'. One of: ${HttpMethod.entries.joinToString(", ") { it.name }}.")
     val path = args.removeAt(0)
     val params = args.mapNotNull { pair ->
         val at = pair.indexOf('=')
@@ -171,12 +177,13 @@ private fun oneShotCall(cxt: ProbeContext) {
     }.toMap()
 
     val session = cxt.sessionAt(level)
-    val response = if (method == "GET") {
-        session.sendGetRequest(path, params)
-    } else {
-        session.sendPostRequest(path, params)
+    // Exhaustive on the enum, so a future verb fails to compile here instead of falling into a wrong branch.
+    val response = when (method) {
+        HttpMethod.GET -> session.sendGetRequest(path, params)
+        HttpMethod.DELETE -> session.sendDeleteRequest(path, params)
+        HttpMethod.POST, HttpMethod.PUT -> session.sendEditRequest(method, path, params)
     }
-    println("$method $path as ${session.label} -> HTTP ${response.statusCode}")
+    println("${method.name} $path as ${session.label} -> HTTP ${response.statusCode}")
     println(response.body.toJsonStr())
 }
 

@@ -1,6 +1,7 @@
 package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
@@ -83,7 +84,7 @@ class GedraEntryFixtureTest : StringSpec({
             fillOut,
             emptyMap(),
             mapOf<String, Any?>(GFX.entries to listOf(entry("x".repeat(GT.nameMaxLength + 1)))),
-            isPut = false,
+            HttpMethod.POST,
         )
         handler.rptStatusCode shouldBe 400
     }
@@ -121,7 +122,7 @@ class GedraEntryFixtureTest : StringSpec({
                     mapOf(GE.traitId to "unknownHere", GE.data to emptyMap<String, Any?>()),
                 ),
             ),
-            isPut = false,
+            HttpMethod.POST,
         ).rptResponseData?.jsonMap() ?: emptyMap()
         val explained = response.getValue(EP.meta).toJsonMapOrEmpty()
             .getValue(GFX.entriesExplained).toJsonMapOrEmpty()
@@ -172,7 +173,7 @@ class GedraEntryFixtureTest : StringSpec({
                     mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 1999)),
                 ),
             ),
-            isPut = false,
+            HttpMethod.POST,
         )
         handler.rptStatusCode shouldBe 400
         val body = handler.rptResponseData?.jsonMap() ?: emptyMap()
@@ -214,7 +215,7 @@ class GedraEntryFixtureTest : StringSpec({
             fillOut,
             emptyMap(),
             mapOf<String, Any?>(GFX.entries to listOf(mapOf(GE.traitId to ST.managerApproval, GE.data to data))),
-            isPut = false,
+            HttpMethod.POST,
         )
 
         // Rejected, so a reason is required.

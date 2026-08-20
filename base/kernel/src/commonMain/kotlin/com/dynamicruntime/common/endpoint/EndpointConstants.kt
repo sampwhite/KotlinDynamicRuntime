@@ -42,8 +42,15 @@ object EI {
     const val endpoints = "endpoints"
 }
 
-/** The HTTP methods an endpoint may use. A closed, stable set, so an enum fits. */
-enum class HttpMethod { GET, POST, PUT }
+/**
+ * The HTTP methods an endpoint may use. A closed, stable set, so an enum fits.
+ *
+ * [DELETE] carries its input as **query parameters**, like a [GET] rather than a [POST]: DELETE bodies are
+ * legal but poorly handled by intermediaries, so nothing here sends one. `PATCH` is deliberately absent --
+ * the gedra patch endpoint is a POST because it targets an arbitrary set of rows rather than the resource the
+ * URI names, and PATCH advertises body formats (RFC 6902, RFC 7386) this design does not use.
+ */
+enum class HttpMethod { GET, POST, PUT, DELETE }
 
 /**
  * The shape of an endpoint's result, which determines how the executor wraps it in the protocol envelope: a
