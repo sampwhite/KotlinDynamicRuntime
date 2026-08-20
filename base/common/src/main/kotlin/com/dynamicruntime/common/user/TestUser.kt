@@ -7,6 +7,7 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.test.TEP
+import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
@@ -81,11 +82,13 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
      *
      * The verb defaults to a GET when [data] is null and a POST otherwise. Name [method] when that inference
      * does not reach the endpoint being tested -- a DELETE takes no body, so it looks exactly like the GET
-     * case and cannot be told apart from one (issue #335).
+     * case and cannot be told apart from one (issue #335), and a PUT looks exactly like the POST case. An
+     * explicit [method] always wins; it is never silently overridden by the inference.
      *
-     * [args] carries the query string for the GET and DELETE forms. It has to be separate from the path,
-     * because a `?` written into [path] is part of the path here and matches no endpoint -- so the call would
-     * fail with a 404 that looks like the failure being tested.
+     * [args] carries the query string. For a GET or DELETE that is the whole input; for a POST or PUT it rides
+     * alongside [data] (rarely needed, but no longer dropped as it once was). It has to be separate from the
+     * path, because a `?` written into [path] is part of the path here and matches no endpoint -- so the call
+     * would fail with a 404 that looks like the failure being tested.
      */
     fun expectError(
         status: Int,
@@ -94,10 +97,13 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
         args: Map<String, Any?>? = null,
         method: HttpMethod? = null,
     ): Map<String, Any?> {
-        val env = when {
-            method == HttpMethod.DELETE -> client.sendJsonDeleteRequest(path, args)
-            data == null -> client.sendJsonGetRequest(path, args)
-            else -> client.sendJsonPostRequest(path, data)
+        val resolved = method ?: if (data == null) HttpMethod.GET else HttpMethod.POST
+        // Exhaustive, so a future verb fails to compile here rather than falling into a wrong branch.
+        val env = when (resolved) {
+            HttpMethod.GET -> client.sendJsonGetRequest(path, args)
+            HttpMethod.DELETE -> client.sendJsonDeleteRequest(path, args)
+            HttpMethod.POST, HttpMethod.PUT ->
+                client.sendEditRequest(path, args, data, resolved).rptResponseData?.jsonMap() ?: emptyMap()
         }
         val actual = (env[EP.status] as? Number)?.toInt()
         if (actual != status) {

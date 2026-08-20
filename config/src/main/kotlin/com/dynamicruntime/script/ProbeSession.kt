@@ -1,6 +1,7 @@
 package com.dynamicruntime.script
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.test.TEP
@@ -101,19 +102,39 @@ class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) {
         sendPostRequest(path, data).body
 
     /** A GET, returning status as well as body -- the form to use when a refusal is a possible outcome. */
-    fun sendGetRequest(path: String, args: Map<String, Any?>? = null): ProbeResponse {
-        val query = args?.takeIf { it.isNotEmpty() }?.let { params ->
-            "?" + params.entries.joinToString("&") { (k, v) -> "${encode(k)}=${encode(v?.toString() ?: "")}" }
-        } ?: ""
-        return send(HttpRequest.newBuilder(URI("$baseUrl$apiRoot$path$query")).GET())
-    }
+    fun sendGetRequest(path: String, args: Map<String, Any?>? = null): ProbeResponse =
+        send(HttpRequest.newBuilder(URI("$baseUrl$apiRoot$path${query(args)}")).GET())
+
+    /**
+     * A DELETE, returning status as well as body. Like a GET, its input is [args] in the query string --
+     * this codebase sends no DELETE body (see `HttpMethod.DELETE`), and neither does its probe.
+     */
+    fun sendDeleteRequest(path: String, args: Map<String, Any?>? = null): ProbeResponse =
+        send(HttpRequest.newBuilder(URI("$baseUrl$apiRoot$path${query(args)}")).DELETE())
 
     /** A POST, returning status as well as body. */
-    fun sendPostRequest(path: String, data: Map<String, Any?>): ProbeResponse = send(
-        HttpRequest.newBuilder(URI("$baseUrl$apiRoot$path"))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(data.toJsonStr())),
-    )
+    fun sendPostRequest(path: String, data: Map<String, Any?>): ProbeResponse =
+        sendEditRequest(HttpMethod.POST, path, data)
+
+    /**
+     * A body-carrying request under [method] -- POST or PUT. The verb actually reaches the wire: `call PUT`
+     * used to send a POST while printing "PUT", which is the failure mode a probe exists to prevent.
+     */
+    fun sendEditRequest(method: HttpMethod, path: String, data: Map<String, Any?>): ProbeResponse {
+        if (method != HttpMethod.POST && method != HttpMethod.PUT) {
+            throw KdrException("sendEditRequest sends a JSON body, so its method must be POST or PUT, not ${method.name}.")
+        }
+        return send(
+            HttpRequest.newBuilder(URI("$baseUrl$apiRoot$path"))
+                .header("Content-Type", "application/json")
+                .method(method.name, HttpRequest.BodyPublishers.ofString(data.toJsonStr())),
+        )
+    }
+
+    private fun query(args: Map<String, Any?>?): String =
+        args?.takeIf { it.isNotEmpty() }?.let { params ->
+            "?" + params.entries.joinToString("&") { (k, v) -> "${encode(k)}=${encode(v?.toString() ?: "")}" }
+        } ?: ""
 
     private fun send(builder: HttpRequest.Builder): ProbeResponse {
         val response = try {
