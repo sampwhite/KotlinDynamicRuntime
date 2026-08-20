@@ -170,6 +170,21 @@ val Profile = FC<Props> {
             }
         }
 
+        // The account's email address -- the identity the display name sits on top of, and the one thing not
+        // otherwise visible on this page once a name is set. It is the login id (`loginId` = the primary
+        // contact), rendered in a code span like the "we emailed a code to ..." line uses, so it reads as an
+        // address rather than prose. Absent only for an account with no primary contact, which the page has
+        // no other business showing.
+        config?.loginId?.takeIf { it.isNotBlank() }?.let { email ->
+            p {
+                className = ClassName("subtitle")
+                MarkdownInline {
+                    source = t("profile", "emailLine", $$"Email: `${user.email}`")
+                        .evalTemplate(mapOf("user" to mapOf("email" to email)))
+                }
+            }
+        }
+
         // Sits with the identity line, not among the password controls: what you are called is not a
         // credential, which is also why saving it needs no emailed code.
         h2 { +t("profile", "nameTitle", "Your name") }
