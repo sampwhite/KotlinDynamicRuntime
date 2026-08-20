@@ -101,3 +101,32 @@ object TENV {
  */
 @Suppress("EnumEntryName")
 enum class EnvAuthFixtureOp { assert, clear }
+
+/**
+ * Two `forTestingOnly` endpoints sharing **one path** and differing only by verb (issue #335), each with its
+ * own input field and its own output type.
+ *
+ * They exist to hold a defect down. Compiled endpoint input/output types are memoized, and that memo was keyed
+ * by path alone -- so the first endpoint on a path to be called compiled its schemas, and every other endpoint
+ * on that same path was then validated against *them*. Nothing noticed while no two endpoints shared a URL.
+ *
+ * The fields are deliberately **disjoint**: input types are closed to undeclared properties, so if the memo
+ * ever collides again each verb starts rejecting the other's field and the test says so. The output types
+ * differ for the same reason, on the response side.
+ */
+@Suppress("ConstPropertyName")
+object TVB {
+    const val path = "/fixture/verb"
+
+    /** Request: the only field `GET /fixture/verb` accepts. */
+    const val getOnly = "getOnly"
+
+    /** Request: the only field `DELETE /fixture/verb` accepts. */
+    const val deleteOnly = "deleteOnly"
+
+    /** Response: which verb actually ran, so a test can tell the two apart. */
+    const val verb = "verb"
+
+    const val getType = "VerbFixtureGet"
+    const val deleteType = "VerbFixtureDelete"
+}

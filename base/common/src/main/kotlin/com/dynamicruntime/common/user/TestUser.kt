@@ -3,6 +3,7 @@ package com.dynamicruntime.common.user
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.test.TEP
@@ -56,6 +57,13 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
     fun postItems(path: String, data: Map<String, Any?>): List<Map<String, Any?>> =
         client.sendJsonPostRequest(path, data)[EP.items].toJsonListOfMaps()
 
+    /**
+     * DELETEs [path] as this user; returns the response's `results` map. The input rides in [args] rather
+     * than a body, which is how this codebase sends a DELETE -- see [HttpMethod.DELETE].
+     */
+    fun deleteData(path: String, args: Map<String, Any?>? = null): Map<String, Any?> =
+        client.sendJsonDeleteRequest(path, args)[EP.results].toJsonMapOrEmpty()
+
     /** This user's *current* roles, read live from `/auth/self/info` (not the possibly-stale [userInfo]). */
     fun selfRoles(): List<String> = rolesOf(getData(AEP.selfInfo))
 
@@ -67,21 +75,30 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
 
     /**
      * Sends to [path] as this user and asserts the call **failed** with [status] (the error envelope's status
-     * field, issue #103), returning the envelope for any further checks. A GET when [data] is null, otherwise a
-     * POST. Throws [AssertionError] -- reported as a test failure -- on a mismatch or an unexpected success;
-     * [TestUser] is core, so it cannot reach for a test-framework matcher.
+     * field, issue #103), returning the envelope for any further checks. Throws [AssertionError] -- reported
+     * as a test failure -- on a mismatch or an unexpected success; [TestUser] is core, so it cannot reach for
+     * a test-framework matcher.
      *
-     * [args] carries the query string for the GET form. It has to be separate from the path, because a `?`
-     * written into [path] is part of the path here and matches no endpoint -- so the call would fail with a
-     * 404 that looks like the failure being tested.
+     * The verb defaults to a GET when [data] is null and a POST otherwise. Name [method] when that inference
+     * does not reach the endpoint being tested -- a DELETE takes no body, so it looks exactly like the GET
+     * case and cannot be told apart from one (issue #335).
+     *
+     * [args] carries the query string for the GET and DELETE forms. It has to be separate from the path,
+     * because a `?` written into [path] is part of the path here and matches no endpoint -- so the call would
+     * fail with a 404 that looks like the failure being tested.
      */
     fun expectError(
         status: Int,
         path: String,
         data: Map<String, Any?>? = null,
         args: Map<String, Any?>? = null,
+        method: HttpMethod? = null,
     ): Map<String, Any?> {
-        val env = if (data == null) client.sendJsonGetRequest(path, args) else client.sendJsonPostRequest(path, data)
+        val env = when {
+            method == HttpMethod.DELETE -> client.sendJsonDeleteRequest(path, args)
+            data == null -> client.sendJsonGetRequest(path, args)
+            else -> client.sendJsonPostRequest(path, data)
+        }
         val actual = (env[EP.status] as? Number)?.toInt()
         if (actual != status) {
             throw AssertionError("Expected '$path' to fail with status $status but got ${actual ?: "a success response"}.")

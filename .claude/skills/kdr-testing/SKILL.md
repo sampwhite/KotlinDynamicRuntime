@@ -356,10 +356,13 @@ sharing is the instance config. Boot it separately, in the same spec if it reads
 `TestHttpClient(cxt.instanceConfig)` (in `base/common`, main source — usable from any module's tests) drives
 the in-process pipeline. It **carries cookies across calls**, so a login on one call authenticates the next.
 
-- `sendJsonGetRequest(path, args?)`, `sendJsonPostRequest(path, body)`, `sendJsonPutRequest(path, body)` →
-  the parsed response envelope map. Paths are the endpoint's own (`/auth/self/info`); the client prepends `/kda`.
-- `sendGetRequest`/`sendEditRequest(path, args, data, isPut)` → the `RequestHandler`, whose `rptStatusCode`
-  lets you assert an error status (a validation failure is 400, a missing resource 404).
+- `sendJsonGetRequest(path, args?)`, `sendJsonPostRequest(path, body)`, `sendJsonPutRequest(path, body)`,
+  `sendJsonDeleteRequest(path, args?)` → the parsed response envelope map. Paths are the endpoint's own
+  (`/auth/self/info`); the client prepends `/kda`.
+- `sendGetRequest`/`sendEditRequest(path, args, data, method)`/`sendDeleteRequest(path, args?)` → the
+  `RequestHandler`, whose `rptStatusCode` lets you assert an error status (a validation failure is 400, a
+  missing resource 404). `method` is an `HttpMethod` (`POST`/`PUT`); a DELETE has its own call because its
+  input rides in the query string rather than a body.
 - Pull the payload out of the envelope with the shared conversion helpers, exactly as the existing tests do:
 
   ```kotlin

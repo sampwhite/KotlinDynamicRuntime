@@ -4,6 +4,7 @@ import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.app.EnvAuthOp
 import com.dynamicruntime.common.exception.EXC
@@ -178,7 +179,7 @@ class EnvAuthHeaderTest : StringSpec({
 
         // And the fixture endpoint itself is not in the store on a node like this.
         client.sendEditRequest(
-            TENV.path, null, mapOf(TENV.op to EnvAuthFixtureOp.clear.name), isPut = false,
+            TENV.path, null, mapOf(TENV.op to EnvAuthFixtureOp.clear.name), HttpMethod.POST,
         ).rptStatusCode shouldBe EXC.notFound
     }
 })

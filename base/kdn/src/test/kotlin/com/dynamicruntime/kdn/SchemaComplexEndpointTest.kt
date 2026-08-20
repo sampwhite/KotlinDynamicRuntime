@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -76,7 +77,7 @@ class SchemaComplexEndpointTest : StringSpec({
     )
 
     fun putStatus(cxtName: String, body: Map<String, Any?>): Int =
-        client(cxtName).sendEditRequest("/fixture/schema/complex", null, body, isPut = true).rptStatusCode
+        client(cxtName).sendEditRequest("/fixture/schema/complex", null, body, HttpMethod.PUT).rptStatusCode
 
     "PUT /schema/complex validates a deep, recursive input and expands the parent chain into items" {
         val resp = client("complexOk").sendJsonPutRequest("/fixture/schema/complex", validQuery())

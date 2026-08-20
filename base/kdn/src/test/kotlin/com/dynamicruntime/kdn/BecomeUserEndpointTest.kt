@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
@@ -80,7 +81,7 @@ class BecomeUserEndpointTest : StringSpec({
             TEP.becomeUser,
             null,
             mapOf(TEP.email to "become-badlevel@example.com", TEP.level to "wizard"),
-            isPut = false,
+            HttpMethod.POST,
         )
         handler.rptStatusCode shouldBe EXC.badInput
     }
@@ -91,7 +92,7 @@ class BecomeUserEndpointTest : StringSpec({
         client.sendJsonPostRequest(TEP.becomeUser, mapOf(TEP.email to "become-dave@example.com"))
         val handler = client.sendEditRequest(
             TEP.becomeUser, null,
-            mapOf(TEP.email to "become-dave@example.com", TEP.failIfUserAlreadyExists to true), isPut = false,
+            mapOf(TEP.email to "become-dave@example.com", TEP.failIfUserAlreadyExists to true), HttpMethod.POST,
         )
         handler.rptStatusCode shouldBe 400
     }

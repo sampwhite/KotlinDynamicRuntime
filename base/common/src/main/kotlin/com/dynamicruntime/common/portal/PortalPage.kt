@@ -64,6 +64,7 @@ object PortalPage {
   .badge-get { background: #2563eb; }
   .badge-post { background: #16a34a; }
   .badge-put { background: #d97706; }
+  .badge-delete { background: #dc2626; }
   .path { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
   .kind { margin-left: auto; font-size: 11px; color: #9aa4af; text-transform: uppercase; letter-spacing: .5px; }
   .endpoint-desc { margin: 0; padding: 10px 16px 0; font-size: 13px; color: #4b5563; }
@@ -343,7 +344,9 @@ async function send(ep, form, out) {
 
   var opts = { method: ep.method, headers: { 'Accept': 'application/json' } };
   var url = API_ROOT + ep.path;
-  if (ep.method === 'GET') {
+  // GET and DELETE both carry their input in the query string; only POST/PUT send a JSON body. A DELETE
+  // body is legal but poorly handled by intermediaries, so this never sends one.
+  if (ep.method === 'GET' || ep.method === 'DELETE') {
     var keys = Object.keys(flat);
     var pairs = [];
     for (var i = 0; i < keys.length; i++) {

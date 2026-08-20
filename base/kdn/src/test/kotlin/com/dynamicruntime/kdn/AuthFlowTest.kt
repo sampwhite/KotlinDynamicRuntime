@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.TestHttpClient
@@ -127,7 +128,7 @@ class AuthFlowTest : StringSpec({
     /** Logs in by password, returning the raw handler so a caller can assert either success or a status. */
     fun pwLogin(client: TestHttpClient, loginId: String, password: String): RequestHandler =
         client.sendEditRequest(
-            "/auth/login/byPassword", null, mapOf("loginId" to loginId, "password" to password), isPut = false,
+            "/auth/login/byPassword", null, mapOf("loginId" to loginId, "password" to password), HttpMethod.POST,
         )
 
     // Two browsers outlive their own block, because later blocks act on the sessions and devices they leave
@@ -251,17 +252,17 @@ class AuthFlowTest : StringSpec({
         val token = tokenOf(client)
         val wrong = mapOf("loginId" to "nina", "formAuthToken" to token, "verifyCode" to "WRONGCODE")
         repeat(RL.verifyMax) {
-            client.sendEditRequest("/auth/login/byCode", null, wrong, isPut = false).rptStatusCode shouldBe EXC.badInput
+            client.sendEditRequest("/auth/login/byCode", null, wrong, HttpMethod.POST).rptStatusCode shouldBe EXC.badInput
         }
         // One past it and the throttle answers instead of the code check -- the point of running it first.
-        client.sendEditRequest("/auth/login/byCode", null, wrong, isPut = false)
+        client.sendEditRequest("/auth/login/byCode", null, wrong, HttpMethod.POST)
             .rptStatusCode shouldBe EXC.tooManyRequests
 
         // The counter is a fixed window, so traveling past it reopens attempts. The form token lives on the
         // same fifteen-minute scale (the previous block), so this necessarily needs a fresh one.
         travel((RL.verifyWindowMs + 1000).milliseconds)
         val afterWindow = mapOf("loginId" to "nina", "formAuthToken" to tokenOf(client), "verifyCode" to "WRONGCODE")
-        client.sendEditRequest("/auth/login/byCode", null, afterWindow, isPut = false)
+        client.sendEditRequest("/auth/login/byCode", null, afterWindow, HttpMethod.POST)
             .rptStatusCode shouldBe EXC.badInput
     }
 
@@ -276,7 +277,7 @@ class AuthFlowTest : StringSpec({
 
         // Stop one short of the limit, then succeed -- which resets the counter for this contact.
         repeat(RL.verifyMax - 1) {
-            client.sendEditRequest("/auth/login/byCode", null, wrong, isPut = false).rptStatusCode shouldBe EXC.badInput
+            client.sendEditRequest("/auth/login/byCode", null, wrong, HttpMethod.POST).rptStatusCode shouldBe EXC.badInput
         }
         val good = mapOf("loginId" to "omar", "formAuthToken" to token, "verifyCode" to codeFor(token, contact))
         results(client.sendJsonPostRequest("/auth/login/byCode", good))["publicName"] shouldBe "omar"
@@ -284,7 +285,7 @@ class AuthFlowTest : StringSpec({
         // Proof that the reset happened: a further full run of failures still never trips. Had the counter carried
         // over, it would already stand at verifyMax - 1, and these would start returning 429 partway through.
         repeat(RL.verifyMax) {
-            client.sendEditRequest("/auth/login/byCode", null, wrong, isPut = false).rptStatusCode shouldBe EXC.badInput
+            client.sendEditRequest("/auth/login/byCode", null, wrong, HttpMethod.POST).rptStatusCode shouldBe EXC.badInput
         }
     }
 

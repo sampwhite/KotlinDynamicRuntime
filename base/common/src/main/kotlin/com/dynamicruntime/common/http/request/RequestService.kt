@@ -143,7 +143,10 @@ class RequestService : ServiceInitializer {
     @KdrPrivate
     var isInit: Boolean = false
 
-    // Caches of compiled endpoint input/output types (parsed against the compiled schema store).
+    // Caches of compiled endpoint input/output types (parsed against the compiled schema store), keyed by
+    // KdrEndpoint.collationKey -- "path:method", which is what the endpoint store itself is keyed by and so
+    // the one value that identifies an endpoint uniquely. Keyed by path alone, two endpoints sharing a URL
+    // and differing only by verb (issue #335) would each be validated against whichever compiled first.
     private val inputTypeCache = ConcurrentHashMap<String, SchType>()
     private val outputTypeCache = ConcurrentHashMap<String, SchType>()
 
@@ -389,9 +392,9 @@ class RequestService : ServiceInitializer {
     /** Validates the input, runs the handler, wraps the result, and sends the response. */
     fun executeEndpoint(cxt: KdrCxt, handler: RequestHandler, endpoint: KdrEndpoint) {
         val schema = typesFor(cxt, endpoint)
-        val inputType = inputTypeCache.getOrPut(endpoint.path) {
+        val inputType = inputTypeCache.getOrPut(endpoint.collationKey) {
             resolveEndpointInputType(endpoint, schema.types)
-                ?: throw KdrException("Could not compile input schema for '${endpoint.path}'.")
+                ?: throw KdrException("Could not compile input schema for '${endpoint.collationKey}'.")
         }
 
         val data = LinkedHashMap<String, Any?>(handler.queryParams)
@@ -447,14 +450,14 @@ class RequestService : ServiceInitializer {
         if (cxt.instanceConfig.get(ACFG.validateResponseSchema) != true || endpoint.outputSchema.isEmpty()) {
             return
         }
-        val outputType = outputTypeCache.getOrPut(endpoint.path) {
-            val name = "${endpoint.path}#output"
+        val outputType = outputTypeCache.getOrPut(endpoint.collationKey) {
+            val name = "${endpoint.collationKey}#output"
             parseSchemaTypes(mapOf(name to endpoint.outputSchema), schema.types)[name]
-                ?: throw KdrException("Could not compile output schema for '${endpoint.path}'.")
+                ?: throw KdrException("Could not compile output schema for '${endpoint.collationKey}'.")
         }
         val failures = validate(outputType, envelope)
         if (failures.isNotEmpty()) {
-            throw KdrException("Response for '${endpoint.path}' failed output-schema validation: $failures.")
+            throw KdrException("Response for '${endpoint.collationKey}' failed output-schema validation: $failures.")
         }
     }
 

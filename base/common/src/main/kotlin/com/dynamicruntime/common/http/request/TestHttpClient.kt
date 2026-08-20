@@ -2,6 +2,7 @@ package com.dynamicruntime.common.http.request
 
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
 
@@ -50,15 +51,33 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
     fun sendJsonGetRequest(endpoint: String, args: Map<String, Any?>? = null): Map<String, Any?> =
         sendGetRequest(endpoint, args).rptResponseData?.jsonMap() ?: emptyMap()
 
+    /**
+     * Sends a body-carrying edit request under [method] -- [HttpMethod.POST] or [HttpMethod.PUT].
+     *
+     * The verb is named rather than encoded as a flag: this took an `isPut: Boolean` until a third verb
+     * arrived (issue #335), which is the point at which a two-valued flag stops being able to say what is
+     * meant. [HttpMethod.DELETE] has [sendDeleteRequest] instead, because its input travels as query params.
+     */
     fun sendEditRequest(
         endpoint: String,
         args: Map<String, Any?>?,
         data: Map<String, Any?>?,
-        isPut: Boolean,
+        method: HttpMethod,
     ): RequestHandler {
-        val handler = RequestHandler(instanceConfig.instanceName, if (isPut) "PUT" else "POST", routed(endpoint), curHeaders, cookies)
+        val handler = RequestHandler(instanceConfig.instanceName, method.name, routed(endpoint), curHeaders, cookies)
         handler.queryStr = if (args != null) HttpUtil.encodeArgs(args) else ""
         handler.testPostData = data?.toJsonStr() ?: ""
+        execute(handler)
+        return handler
+    }
+
+    /**
+     * Sends a DELETE. Its input travels as **query params**, like a GET's, because DELETE bodies are legal
+     * but poorly handled by intermediaries -- so there is no `data` here to pass.
+     */
+    fun sendDeleteRequest(endpoint: String, args: Map<String, Any?>? = null): RequestHandler {
+        val handler = RequestHandler(instanceConfig.instanceName, HttpMethod.DELETE.name, routed(endpoint), curHeaders, cookies)
+        handler.queryStr = if (args != null) HttpUtil.encodeArgs(args) else ""
         execute(handler)
         return handler
     }
@@ -72,10 +91,14 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
      * validation and handler as a browser would, but *not* Jetty's multipart parsing — for which see the real
      * HTTP checks rather than a test client.
      */
-    fun sendUploadRequest(endpoint: String, parts: Map<String, Any?>, isPut: Boolean = false): RequestHandler {
+    fun sendUploadRequest(
+        endpoint: String,
+        parts: Map<String, Any?>,
+        method: HttpMethod = HttpMethod.POST,
+    ): RequestHandler {
         val handler = RequestHandler(
             instanceConfig.instanceName,
-            if (isPut) "PUT" else "POST",
+            method.name,
             routed(endpoint),
             curHeaders + mapOf("content-type" to listOf(RequestHandler.multipartFormData)),
             cookies,
@@ -87,10 +110,13 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
     }
 
     fun sendJsonPostRequest(endpoint: String, data: Map<String, Any?>): Map<String, Any?> =
-        sendEditRequest(endpoint, null, data, isPut = false).rptResponseData?.jsonMap() ?: emptyMap()
+        sendEditRequest(endpoint, null, data, HttpMethod.POST).rptResponseData?.jsonMap() ?: emptyMap()
 
     fun sendJsonPutRequest(endpoint: String, data: Map<String, Any?>): Map<String, Any?> =
-        sendEditRequest(endpoint, null, data, isPut = true).rptResponseData?.jsonMap() ?: emptyMap()
+        sendEditRequest(endpoint, null, data, HttpMethod.PUT).rptResponseData?.jsonMap() ?: emptyMap()
+
+    fun sendJsonDeleteRequest(endpoint: String, args: Map<String, Any?>? = null): Map<String, Any?> =
+        sendDeleteRequest(endpoint, args).rptResponseData?.jsonMap() ?: emptyMap()
 
     private fun execute(handler: RequestHandler) {
         handler.handleRequest()
