@@ -41,7 +41,7 @@ object SchemaCatalogApi {
 
     /** GET a single endpoint by exact method + path, in the same shape as the full catalog. */
     suspend fun fetchEndpoint(method: String, path: String): Catalog {
-        val results = getJson("$schemaBase/endpoint?${EI.method}=$method&${EI.path}=${encode(path)}")[EP.results].toJsonMapOrEmpty()
+        val results = getJson("$schemaBase/endpoint?${EI.method}=$method&${EI.path}=${encodeUriComponent(path)}")[EP.results].toJsonMapOrEmpty()
         val endpoints = results[EI.endpoints].toJsonListOfMaps().map { toEndpointInfo(it) }
         return Catalog(endpoints, results[SCH.dDefs].toJsonMapOrEmpty())
     }
@@ -132,20 +132,6 @@ object SchemaCatalogApi {
         return text.jsonMap() ?: emptyMap()
     }
 
-    /** Serializes [body] as a query string; scalars are stringified, a nested map/list is JSON-encoded. */
-    private fun queryString(body: Map<String, Any?>): String {
-        if (body.isEmpty()) {
-            return ""
-        }
-        return "?" + body.entries.joinToString("&") { (k, v) ->
-            val s = when (v) {
-                null -> ""
-                is Map<*, *>, is List<*> -> v.toJsonStr(compact = true)
-                else -> v.toString()
-            }
-            "${encode(k)}=${encode(s)}"
-        }
-    }
 }
 
 /** A new, empty browser `FormData`. */
@@ -205,11 +191,5 @@ fun startDownload(url: String) {
     )
 }
 
-/** Percent-encodes a query value via the browser's global `encodeURIComponent`. */
-private fun encode(s: String): String = encodeURIComponent(s)
-
-/** The browser's global `encodeURIComponent`, declared so [encode] actually passes its argument (rather than
- *  relying on a `js(...)` string capturing the local by name). */
-private external fun encodeURIComponent(s: String): String
 
 
