@@ -327,6 +327,7 @@ fun parseNode(
         // constrains nothing -- is left alone.
         emptyIsAbsent = (map[SCH.emptyIsAbsent] as? Boolean) ?: isScalarType(jsonType),
         format = format,
+        title = map[SCH.title].toOptStr(),
         description = map[SCH.description].toOptStr(),
         properties = properties,
         required = parseRequired(map[SCH.required]),

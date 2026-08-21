@@ -96,6 +96,7 @@ object HMENU {
     // Item ids.
     const val catalog = "catalog"
     const val users = "users"
+    const val newForm = "newForm"
     const val profile = "profile"
     const val login = "login"
     const val register = "register"
@@ -104,6 +105,7 @@ object HMENU {
     // Frontend page ids ([HFLD.page]); the frontend maps these onto its own routing.
     const val pageCatalog = "catalog"
     const val pageUsers = "users"
+    const val pageNewForm = "newForm"
     const val pageProfile = "profile"
     const val pageLogin = "login"
     const val pageRegister = "register"

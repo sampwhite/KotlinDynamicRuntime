@@ -47,6 +47,47 @@ import com.dynamicruntime.common.util.toJsonListOrEmpty
  * [editable] true, they call back through [onChange], which threads an immutable value update up to the top.
  * The kernel validator ([EndpointCatalog]) checks the assembled values with the exact backend logic.
  */
+/**
+ * How the form renders, beyond the schema itself (issue #408): whether it is a **friendly** data-entry form or
+ * the wire-documenting catalog view, and any root fields to omit. The defaults reproduce the catalog's
+ * behavior exactly, so a caller that passes nothing is unchanged.
+ */
+class FormOpts(
+    /**
+     * Friendly mode: label a field with its schema `title`, or a humanized key when it declares none, and
+     * **hide** derived fields entirely rather than showing them read-only. The catalog wants the opposite --
+     * it documents the wire, so it keeps the key and shows the derived field it is documenting.
+     */
+    val friendly: Boolean = false,
+    /**
+     * Root-level field names to leave out of the form entirely -- an advanced flag an end-user form should not
+     * offer. Applies only at the top level, so a same-named field deeper in the tree is untouched.
+     */
+    val omit: Set<String> = emptySet(),
+)
+
+/**
+ * A short, readable label from a wire key: `expenseReport` -> `Expense report`, `perItemAmount` -> `Per item
+ * amount`. A space goes in before each capital and the result reads as one sentence-cased phrase.
+ *
+ * The fallback when a field declares no `title`. Deliberately simple -- a nicety over the key, not a
+ * translation -- so a run of capitals (an acronym) spaces out oddly; a field that cares declares a title.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun humanizeFieldName(name: String): String {
+    if (name.isEmpty()) return name
+    val sb = StringBuilder()
+    name.forEachIndexed { i, c ->
+        if (i > 0 && c.isUpperCase()) sb.append(' ')
+        sb.append(c.lowercaseChar())
+    }
+    return sb.toString().replaceFirstChar { it.uppercaseChar() }
+}
+
+/** The label a field shows: its schema title (or a humanized key) in friendly mode, else the raw wire key. */
+private fun fieldLabel(name: String, vt: SchType, opts: FormOpts): String =
+    if (opts.friendly) vt.title ?: humanizeFieldName(name) else name
+
 external interface SchemaFormProps : Props {
     /** The object type whose properties to render. */
     var type: SchType
@@ -54,6 +95,13 @@ external interface SchemaFormProps : Props {
     var values: Map<String, Any?>
     /** When true, widgets are editable and call [onChange]; when false, they render disabled. */
     var editable: Boolean
+    /**
+     * Friendly data-entry presentation (issue #408): fields labeled by title/humanized key, derived system
+     * fields hidden. Optional and read as false when absent -- the catalog does not set it and is unchanged.
+     */
+    var friendly: Boolean?
+    /** Root-level field names to omit from the form (see [FormOpts.omit]); absent means omit nothing. */
+    var omit: List<String>?
     /**
      * Validation failures to show against the fields that caused them. Their paths are the ones the kernel
      * validator reported, and the form rebuilds the same paths as it walks — see [FieldErrors].
@@ -128,11 +176,14 @@ fun focusField(path: String) {
 
 val SchemaForm = FC<SchemaFormProps> { props ->
     val errors = FieldErrors(props.failures ?: emptyList(), props.onFieldEdit ?: {})
+    // An external-interface Boolean arrives as `undefined` when a caller omits it, so read it as `== true`
+    // rather than trusting the declared type; the catalog omits both and gets the plain wire view.
+    val opts = FormOpts(friendly = props.friendly == true, omit = props.omit?.toSet() ?: emptySet())
     div {
         className = ClassName("schema-form")
         // The root path is empty, which is what the validator starts from too, so `childPath` composes the
         // identical strings on both sides (see SchValidator's note on why these are shared).
-        renderObject(props.type, props.values, emptySet(), props.editable, "", errors, props.onChange)
+        renderObject(props.type, props.values, emptySet(), props.editable, "", errors, props.onChange, opts)
     }
 }
 
@@ -145,9 +196,10 @@ private fun ChildrenBuilder.renderObject(
     path: String,
     errors: FieldErrors,
     onChange: (Map<String, Any?>) -> Unit,
+    opts: FormOpts,
 ) {
     type.variants?.let { variants ->
-        renderVariant(type, variants, values, seen, editable, path, errors, onChange)
+        renderVariant(type, variants, values, seen, editable, path, errors, onChange, opts)
         return
     }
     if (type.properties.isEmpty()) {
@@ -157,7 +209,7 @@ private fun ChildrenBuilder.renderObject(
         }
         return
     }
-    renderProperties(type, values, seen, editable, path, errors, onChange)
+    renderProperties(type, values, seen, editable, path, errors, onChange, opts)
     // Then anything reported against a key this object does not declare. Nothing above draws these -- there is
     // no property to render -- so without this they exist only in the listing at the foot of the page, which
     // is precisely the "named somewhere you cannot go" problem this issue is about.
@@ -186,6 +238,7 @@ private fun ChildrenBuilder.renderProperties(
     path: String,
     errors: FieldErrors,
     onChange: (Map<String, Any?>) -> Unit,
+    opts: FormOpts,
     skip: String? = null,
 ) {
     // A conditional-presence rule decides, from what the watched field currently holds, which properties are
@@ -203,6 +256,17 @@ private fun ChildrenBuilder.renderProperties(
 
     type.properties.forEach { (name, prop) ->
         if (name == skip) {
+            return@forEach
+        }
+        // A field the form was told to omit, only at the root: an advanced flag an end-user form should not
+        // offer (issue #408). A same-named field deeper in the tree is a different field and stays.
+        if (path.isEmpty() && name in opts.omit) {
+            return@forEach
+        }
+        // In friendly mode a derived value is not shown at all -- it is produced by something other than the
+        // person at the form (an id, the source, the audit stamps), so it has no place on a data-entry screen.
+        // The catalog does the opposite and shows it read-only, because that surface documents the wire.
+        if (opts.friendly && prop.valueType.derived) {
             return@forEach
         }
         // A forbidden field is hidden -- unless it still holds something, in which case hiding it would hide
@@ -233,6 +297,7 @@ private fun ChildrenBuilder.renderProperties(
             // type check (they do not coerce), so "removed" would read as "present but wrong".
             emit = { newValue -> onChange(settle(values + (name to newValue), name)) },
             omit = { onChange(settle(values - name, name)) },
+            opts = opts,
         )
     }
 }
@@ -268,6 +333,7 @@ private fun ChildrenBuilder.renderVariant(
     path: String,
     errors: FieldErrors,
     onChange: (Map<String, Any?>) -> Unit,
+    opts: FormOpts,
 ) {
     val name = variants.discriminator
     val chosen = values[name].toOptStr()
@@ -277,14 +343,21 @@ private fun ChildrenBuilder.renderVariant(
     // Captured under its own name: inside the Select builder `onChange` is the widget's own prop, and `values`
     // and `options` are likewise taken.
     val emitAll = onChange
-    val choices = optionsToJs(variants.values.map { SchOption(it, it) })
+    // In friendly mode each choice reads by its branch's title (or a humanized value); the value sent stays the
+    // wire discriminator, so only the label changes. The catalog shows the value itself, documenting the wire.
+    val choices = optionsToJs(
+        variants.values.map { value ->
+            val label = if (opts.friendly) variants.byValue[value]?.title ?: humanizeFieldName(value) else value
+            SchOption(value, label)
+        },
+    )
     val describedBy = messages.ifEmpty { null }?.let { fieldErrorsId(discriminatorPath) }
 
     div {
         id = ElementId(fieldRowId(discriminatorPath))
         tabIndex = -1
         className = ClassName(rowClass(messages))
-        labelSpan(name, required = true)
+        labelSpan(if (opts.friendly) humanizeFieldName(name) else name, required = true)
         if (editable) {
             Select {
                 this.options = choices
@@ -307,7 +380,7 @@ private fun ChildrenBuilder.renderVariant(
             chosen?.let {
                 span {
                     className = ClassName("field-value")
-                    +it
+                    +if (opts.friendly) variants.byValue[it]?.title ?: humanizeFieldName(it) else it
                 }
             }
             span {
@@ -328,7 +401,7 @@ private fun ChildrenBuilder.renderVariant(
     // The branch's own fields, minus the discriminator it declares -- already drawn above, and as a choice
     // rather than as the fixed value the branch states. Through the shared loop, so a rule declared on the
     // branch (a conditional, say) applies exactly as it would on any other type.
-    renderProperties(branch, values, seen, editable, path, errors, onChange, skip = name)
+    renderProperties(branch, values, seen, editable, path, errors, onChange, opts, skip = name)
     errors.undeclaredBelow(path, branch.properties.keys).forEach { (at, messages2) ->
         undeclaredField(childKeyOf(at, path) ?: at, at, messages2)
     }
@@ -371,27 +444,28 @@ private fun ChildrenBuilder.renderField(
     errors: FieldErrors,
     emit: (Any?) -> Unit,
     omit: () -> Unit,
+    opts: FormOpts,
 ) {
     val vt = prop.valueType
     val elementType = objectElementType(vt)
     if (elementType != null) {
-        renderObjectList(name, prop, required, value, elementType, seen, editable, path, errors, emit, omit)
+        renderObjectList(name, prop, required, value, elementType, seen, editable, path, errors, emit, omit, opts)
         return
     }
     // A list of scalars, edited: one widget per element. Not the multi-select case (an item type with options
     // is a fixed set of choices, which the Select already emits as a real list), and not the read-only view,
     // where a comma-joined line reads better than a column of single values.
     if (editable && vt.jsonType == SCT.array && vt.itemType?.options == null) {
-        renderScalarList(name, prop, required, value, vt.itemType, path, errors, emit, omit)
+        renderScalarList(name, prop, required, value, vt.itemType, path, errors, emit, omit, opts)
         return
     }
     if (isStructuredObject(vt)) {
-        renderNestedObject(name, prop, required, value, vt, seen, editable, path, errors, emit, omit)
+        renderNestedObject(name, prop, required, value, vt, seen, editable, path, errors, emit, omit, opts)
         return
     }
 
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages) {
+    fieldFrame(name, prop, required, path, messages, opts) {
         widget(vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) }) { newValue ->
             errors.noteEdit(path)
             emit(newValue)
@@ -414,6 +488,7 @@ private fun ChildrenBuilder.fieldFrame(
     required: Boolean,
     path: String,
     messages: List<SchFailure>,
+    opts: FormOpts,
     rowContent: ChildrenBuilder.() -> Unit = {},
 ) {
     div {
@@ -422,7 +497,7 @@ private fun ChildrenBuilder.fieldFrame(
         // to be able to land on a row that carries no control of its own.
         tabIndex = -1
         className = ClassName(rowClass(messages))
-        labelSpan(name, required)
+        labelSpan(fieldLabel(name, prop.valueType, opts), required)
         rowContent()
     }
     prop.description?.let { desc(it) }
@@ -529,6 +604,7 @@ private fun ChildrenBuilder.renderNestedObject(
     errors: FieldErrors,
     emit: (Any?) -> Unit,
     omit: () -> Unit,
+    opts: FormOpts,
 ) {
     val typeName = vt.name
     val recursive = typeName != null && typeName in seen
@@ -536,7 +612,7 @@ private fun ChildrenBuilder.renderNestedObject(
     val dataDriven = recursive || !required
     val messages = errors.messagesAt(path)
 
-    fieldFrame(name, prop, required, path, messages) {
+    fieldFrame(name, prop, required, path, messages, opts) {
         if (dataDriven && editable) {
             // Adding or removing the whole branch invalidates anything reported inside it, which is why the
             // edit is noted against this field rather than against whatever it contained.
@@ -562,7 +638,7 @@ private fun ChildrenBuilder.renderNestedObject(
     div {
         className = ClassName("nested")
         val childSeen = if (typeName != null) seen + typeName else seen
-        renderObject(vt, value.toJsonMapOrEmpty(), childSeen, editable, path, errors) { newSub -> emit(newSub) }
+        renderObject(vt, value.toJsonMapOrEmpty(), childSeen, editable, path, errors, { newSub -> emit(newSub) }, opts)
     }
 }
 
@@ -584,10 +660,11 @@ private fun ChildrenBuilder.renderObjectList(
     errors: FieldErrors,
     emit: (Any?) -> Unit,
     omit: () -> Unit,
+    opts: FormOpts,
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages)
+    fieldFrame(name, prop, required, path, messages, opts)
 
     val typeName = elementType.name
     val childSeen = if (typeName != null) seen + typeName else seen
@@ -618,9 +695,9 @@ private fun ChildrenBuilder.renderObjectList(
                 }
             }
             fieldErrors(elementPath, elementMessages)
-            renderObject(elementType, element.toJsonMapOrEmpty(), childSeen, editable, elementPath, errors) { newElement ->
+            renderObject(elementType, element.toJsonMapOrEmpty(), childSeen, editable, elementPath, errors, { newElement ->
                 emit(elements.mapIndexed { j, old -> if (j == i) newElement else old })
-            }
+            }, opts)
         }
     }
     if (editable) {
@@ -657,10 +734,11 @@ private fun ChildrenBuilder.renderScalarList(
     errors: FieldErrors,
     emit: (Any?) -> Unit,
     omit: () -> Unit,
+    opts: FormOpts,
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages)
+    fieldFrame(name, prop, required, path, messages, opts)
 
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)

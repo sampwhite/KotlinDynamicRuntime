@@ -38,6 +38,15 @@ class SchType(
      * A recognized date format makes a string field validate as a date and default [allowCoerce] to true.
      */
     val format: String?,
+    /**
+     * Standard JSON Schema `title`: a short human label for this type or field, as against [description]'s
+     * longer explanation (issue #408). Null when none is declared.
+     *
+     * Carried so a data-entry surface can label a field with words rather than its wire key -- the distinction
+     * `SchemaConstants` reserves the keyword for. A surface that documents the wire (the endpoint catalog)
+     * ignores it and keeps showing the key; the two read the same schema and choose differently.
+     */
+    val title: String?,
     @Suppress("unused")
     val description: String?,
     /** Fields, for an object type (empty otherwise). */

@@ -130,6 +130,9 @@ private fun menuItems(cxt: KdrCxt): List<Map<String, Any?>> = buildList {
         add(item(HMENU.users, "Users", page = HMENU.pageUsers))
     }
     if (cxt.userProfile.isLoggedIn) {
+        // Creating a form is login-gated only (the `gedra` section), so every signed-in caller is offered it;
+        // how far its reads reach is a scope question the endpoints answer, not a menu one (issue #408).
+        add(item(HMENU.newForm, "New form", page = HMENU.pageNewForm))
         add(item(HMENU.profile, "Profile", page = HMENU.pageProfile))
         add(item(HMENU.logout, "Log out", action = HACT.logout))
     } else {
