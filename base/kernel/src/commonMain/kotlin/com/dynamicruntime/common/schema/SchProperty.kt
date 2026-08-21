@@ -11,6 +11,12 @@ class SchProperty(
     val description: String?,
     /** Fully-qualified target type name if this field is a `$ref`, else null. */
     val refName: String?,
+    /**
+     * The **field's** own `title` -- a short human label, against [description]'s longer explanation; null when
+     * none is declared. On the property, not read off [valueType], because a `$ref` field's [valueType] is the
+     * *shared* target instance: a title from there would label every field referencing that type identically.
+     */
+    val title: String? = null,
 ) {
     /** Resolved value schema. Set once during parsing (see class doc). */
     lateinit var valueType: SchType

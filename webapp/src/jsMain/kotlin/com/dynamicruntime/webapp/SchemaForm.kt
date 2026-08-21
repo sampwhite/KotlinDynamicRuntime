@@ -84,9 +84,13 @@ fun humanizeFieldName(name: String): String {
     return sb.toString().replaceFirstChar { it.uppercaseChar() }
 }
 
-/** The label a field shows: its schema title (or a humanized key) in friendly mode, else the raw wire key. */
-private fun fieldLabel(name: String, vt: SchType, opts: FormOpts): String =
-    if (opts.friendly) vt.title ?: humanizeFieldName(name) else name
+/**
+ * The label a field shows: its schema title (or a humanized key) in friendly mode, else the raw wire key. The
+ * title is the **property's**, never its value type's -- a `$ref` field's value type is shared, so a title from
+ * there would label every field referencing that type alike (see [SchProperty.title]).
+ */
+private fun fieldLabel(name: String, prop: SchProperty, opts: FormOpts): String =
+    if (opts.friendly) prop.title ?: humanizeFieldName(name) else name
 
 external interface SchemaFormProps : Props {
     /** The object type whose properties to render. */
@@ -497,7 +501,7 @@ private fun ChildrenBuilder.fieldFrame(
         // to be able to land on a row that carries no control of its own.
         tabIndex = -1
         className = ClassName(rowClass(messages))
-        labelSpan(fieldLabel(name, prop.valueType, opts), required)
+        labelSpan(fieldLabel(name, prop, opts), required)
         rowContent()
     }
     prop.description?.let { desc(it) }

@@ -469,13 +469,15 @@ fun parseProperty(
     depth: Int,
 ): SchProperty {
     val description = map[SCH.description].toOptStr()
+    // On the property, not only its value type -- see [SchProperty.title] for why a `$ref` field needs its own.
+    val title = map[SCH.title].toOptStr()
     val ref = map[SCH.dRef].toOptStr()
     if (ref != null) {
-        val prop = SchProperty(name, description, refTargetName(ref))
+        val prop = SchProperty(name, description, refTargetName(ref), title)
         pendingRefs.add(prop) // valueType bound in the resolution pass
         return prop
     }
-    val prop = SchProperty(name, description, refName = null)
+    val prop = SchProperty(name, description, refName = null, title = title)
     prop.valueType = parseNode(null, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1)
     return prop
 }

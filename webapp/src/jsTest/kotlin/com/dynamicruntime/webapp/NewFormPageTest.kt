@@ -46,6 +46,21 @@ class NewFormPageTest {
         assertEquals(GEP.formDocCreate, findFormCreateEndpoint(endpoints)?.path)
     }
 
+    /**
+     * The section is dropped by position, so the shared and client-scoped forms of a path share a suffix --
+     * and go on doing so under a **renamed section**, which is the property the derivation exists for. Cutting
+     * a hardcoded "/gedra" would pass the first two of these and fail the rest.
+     */
+    @Test
+    fun dropsTheSectionByPosition() {
+        assertEquals("/formDoc/create", pathAfterSection("/gedra/formDoc/create"))
+        assertEquals("/acme/formDoc/create", pathAfterSection("/gedra/acme/formDoc/create"))
+        // A renamed section: the suffix still matches what a client-scoped path under it ends with.
+        val renamed = pathAfterSection("/forms/formDoc/create")
+        assertEquals("/formDoc/create", renamed)
+        assertTrue("/forms/acme/formDoc/create".endsWith(renamed))
+    }
+
     /** A surface with no create endpoint returns null, which the page reports rather than crashing on. */
     @Test
     fun noCreateEndpointIsNull() {
@@ -91,6 +106,35 @@ class NewFormPageTest {
         // "name" has no title so it humanizes; "expenseReport"'s branch declares one.
         assertEquals(listOf("Name", "Expense report"), info.traitLabels)
         assertEquals("2026-08-21 19:49 UTC", info.createdAt)
+    }
+
+    /**
+     * The title comes from the `name` **trait**, not from any entry that happens to carry a `name` field.
+     * Here an expense entry has its own vendor `name` and is added first; the document's title is still the
+     * one somebody actually chose, and does not depend on the order entries were added in.
+     */
+    @Test
+    fun aFieldLevelNameIsNotTheDocumentTitle() {
+        val item = mapOf(
+            GDF.gedraId to "gd.fd.acme.u7",
+            GDF.entries to listOf(
+                mapOf(GE.traitId to "expenseReport", GE.data to mapOf("name" to "Acme Supplies Ltd")),
+                mapOf(GE.traitId to "name", GE.data to mapOf("name" to "Q3 expenses")),
+            ),
+        )
+        assertEquals("Q3 expenses", summarizeCreatedForm(item, entriesUnion()).title)
+    }
+
+    /** An entry carrying a `name` field under some other trait does not title the document at all. */
+    @Test
+    fun aNameFieldOnAnotherTraitTitlesNothing() {
+        val item = mapOf(
+            GDF.gedraId to "gd.fd.acme.u8",
+            GDF.entries to listOf(
+                mapOf(GE.traitId to "siteVisit", GE.data to mapOf("name" to "North depot")),
+            ),
+        )
+        assertNull(summarizeCreatedForm(item, entriesUnion()).title)
     }
 
     /** A form with no name-bearing trait has no title -- a legitimate state, not a fake one. */

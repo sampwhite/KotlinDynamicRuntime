@@ -29,18 +29,25 @@ import web.cssom.ClassName
 private val formScope = MainScope()
 
 /**
- * The trait suffix a form-document create path always ends with, whichever client it names:
- * `/gedra/formDoc/create` and `/gedra/acme/formDoc/create` share `/formDoc/create` (the client goes after the
- * section, see `clientPath`). Derived from the shared constant rather than written out, so a rename of the path
- * moves this with it.
+ * [path] with its leading **section** segment removed: `/gedra/formDoc/create` -> `/formDoc/create`. This is
+ * the part a client-scoped path shares with the shared one, since a client is inserted *after* the section
+ * (`/gedra/acme/formDoc/create`; see the kernel's `clientPath`).
+ *
+ * The section is dropped by **position, not by name** -- cutting a literal `"/gedra"` would silently break the
+ * day the section is renamed (`substringAfter` returns the whole string when its delimiter is absent). Pure,
+ * and covered under `jsNodeTest` against a renamed section.
  */
-private val formCreateSuffix: String = GEP.formDocCreate.substringAfter("/gedra")
+fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substringAfter('/')
+
+/** The suffix any form-document create path ends with, whichever client it names. */
+private val formCreateSuffix: String = pathAfterSection(GEP.formDocCreate)
 
 /**
- * The data field the global `name` trait carries its value in -- a document's title when it has one. The
- * backend names it `GT.name` (`base/common`, so not reachable here as a constant); it matches its own value,
- * like every other schema key, which is what lets this stay a plain literal safely.
+ * The global `name` trait -- "what somebody chose to call this document" -- and the one field it carries. Both
+ * are `GT.name` on the backend (`base/common`, not reachable here); each matches its own value like any schema
+ * key, so the literals are safe. The two share the word because the trait is *about* the name.
  */
+private const val nameTraitId = "name"
 private const val nameTraitField = "name"
 
 /**
@@ -77,9 +84,9 @@ class CreatedFormInfo(
  *
  * A `formDoc` has **no dedicated name field** -- it is a generic bag of trait entries -- so a document's human
  * title, when it has one, comes from the global `name` trait, which exists precisely to hold "what somebody
- * chose to call this document" (see `CoreTraits.GT.name`). It is detected here by an entry carrying a `name`
- * string in its data rather than by a hardcoded trait id, so it also catches a client's own name-bearing trait;
- * a client that supports no such trait simply has an untitled form, which is a legitimate state.
+ * chose to call this document" (see `CoreTraits.GT.name`). It is read from the entry carrying that trait id;
+ * a form with no such entry -- because the client does not support the trait, or nobody filled it in -- is
+ * untitled, which is a legitimate state and is shown as one rather than filled with a guess.
  *
  * [entriesUnion] is the form's entry union, used to label each trait the same way its picker did (title, or a
  * humanized id). Pure, and covered under `jsNodeTest`.
@@ -91,9 +98,11 @@ fun summarizeCreatedForm(item: Map<String, Any?>, entriesUnion: SchType?): Creat
             entriesUnion?.variants?.byValue?.get(traitId)?.title ?: humanizeFieldName(traitId)
         }
     }
-    val title = entries.firstNotNullOfOrNull { entry ->
-        (entry[GE.data] as? Map<*, *>)?.get(nameTraitField) as? String
-    }?.takeIf { it.isNotBlank() }
+    // The title is the `name` trait's, matched by trait id -- not any entry that happens to carry a `name`
+    // field (a site's, a vendor's), which is a field-level name and would otherwise depend on entry order.
+    val title = entries.firstOrNull { it[GE.traitId] == nameTraitId }
+        ?.let { (it[GE.data] as? Map<*, *>)?.get(nameTraitField) as? String }
+        ?.takeIf { it.isNotBlank() }
     return CreatedFormInfo(
         gedraId = item[GDF.gedraId] as? String ?: "(created)",
         title = title,
