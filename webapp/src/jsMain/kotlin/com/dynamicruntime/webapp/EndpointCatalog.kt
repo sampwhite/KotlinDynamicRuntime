@@ -108,12 +108,9 @@ val EndpointCatalog = FC<Props> {
                         // Otherwise, a payload carried in the URL -- including a bad key someone is midway
                         // through fixing -- is invisible until a button is pressed.
                         if (hs.values.isNotEmpty()) {
-                            val restoredResult = coerceAndValidate(
-                                fetched.inputType(ep), hs.values,
-                                SchOpts(keepAdditionalProperties = true, forInput = true),
-                            )
-                            failures = restoredResult.failures
-                            coerced = payloadText(restoredResult.value)
+                            val restored = checkInput(fetched.inputType(ep), hs.values)
+                            failures = restored.failures
+                            coerced = payloadText(restored.coerced)
                         }
                     }
                 }
@@ -270,27 +267,19 @@ val EndpointCatalog = FC<Props> {
         // so applying an edit and validating it can happen in one pass -- a `values = x` set earlier in the
         // same handler is not visible until the next render.
         fun validateOn(vals: Map<String, Any?>): Map<String, Any?>? {
-            // keepAdditionalProperties: an undeclared key is a failure either way, but the editor has to keep
-            // showing it. Dropped, the panel would be rewritten without the key while the error still named it
-            // -- a complaint about something no longer on screen and nothing to act on. It never reaches the
-            // wire because a failure stops the "send".
-            // forInput, everywhere this form validates: it is composing a REQUEST, so a `g-derived` field is
-            // neither demanded of the person filling it in nor taken from them (issue #254). The same kernel
-            // validates responses elsewhere, where those fields are ordinary values -- which is exactly why
-            // the direction has to be passed rather than inferred. Miss it here, and the form reports fields
-            // missing that it does not even draw.
-            val result = coerceAndValidate(
-                inputType, vals, SchOpts(keepAdditionalProperties = true, forInput = true),
-            )
-            failures = result.failures
+            // The coerce-and-validate rule (keepAdditionalProperties, forInput) lives in the shared [checkInput],
+            // so this page and the new-form page hold input to the identical contract; see its doc for why each
+            // option is set. This adds only the panel's own concerns: the request-JSON text, and focus.
+            val check = checkInput(inputType, vals)
+            failures = check.failures
             revalidate = false
             // Asking to be validated and being told "somewhere below, something is wrong" is the case this
             // whole issue is about, so the answer goes to the first problem rather than making it be hunted.
-            if (result.failures.isNotEmpty()) focusRequest += 1
-            coerced = payloadText(result.value)
+            if (!check.isValid) focusRequest += 1
+            coerced = payloadText(check.coerced)
             rawEdited = false
             rawError = null
-            return if (result.failures.isEmpty()) result.value.toJsonMapOrEmpty() else null
+            return check.payload
         }
 
         fun validate(): Map<String, Any?>? = validateOn(values)

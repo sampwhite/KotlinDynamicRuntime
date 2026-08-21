@@ -428,6 +428,7 @@ fun inputObjectType(name: String, properties: Map<String, SchProperty>, required
         allowCoerce = false,
         emptyIsAbsent = false, // the object default: an endpoint's input envelope is never "absent"
         format = null,
+        title = null,
         description = null,
         properties = properties,
         required = required,
@@ -463,6 +464,7 @@ val limitInputProperty: SchProperty =
             // 400 and now reads as no limit given.
             emptyIsAbsent = true,
             format = null,
+            title = null,
             description = "The maximum number of items to return.",
             properties = emptyMap(),
             required = emptySet(),
