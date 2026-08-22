@@ -134,11 +134,11 @@ class GedraDataCacheTest : StringSpec({
      */
     fun listIds(kind: GedraDataType, scope: ReadScope, limit: Int, viaSql: Boolean = false): List<String> {
         val svc = service()
-        if (!viaSql) return svc.listGedras(cxt, kind, scope, limit).map { it.gedraId.fullId }
+        if (!viaSql) return svc.listGedras(cxt, kind, scope, limit).rows.map { it.gedraId.fullId }
         val held = svc.dataCache
         svc.dataCache = null
         return try {
-            svc.listGedras(cxt, kind, scope, limit).map { it.gedraId.fullId }
+            svc.listGedras(cxt, kind, scope, limit).rows.map { it.gedraId.fullId }
         } finally {
             svc.dataCache = held
         }
@@ -162,7 +162,7 @@ class GedraDataCacheTest : StringSpec({
 
         // Independently of SQL: the order really is newest-first, id breaking a tie. Proven against the rows'
         // own dates rather than trusting the reference, since "match SQL" and "be right" should both hold.
-        val rows = service().listGedras(cxt, kind, scope, 100)
+        val rows = service().listGedras(cxt, kind, scope, 100).rows
         val resorted = rows.sortedWith(
             compareByDescending<com.dynamicruntime.common.gedra.GedraDataRow> { it.createdAt }
                 .thenByDescending { it.gedraId.fullId },
@@ -193,7 +193,7 @@ class GedraDataCacheTest : StringSpec({
 
         // The Cara-scoped newest two are therefore both Cara's only if the userId filter runs before the cap.
         val caraScope = ReadScope(client = client, userId = caraId)
-        val caraNewest2 = service().listGedras(cxt, kind, caraScope, 2)
+        val caraNewest2 = service().listGedras(cxt, kind, caraScope, 2).rows
         caraNewest2.size shouldBe 2
         caraNewest2.map { it.userId }.toSet() shouldBe setOf(caraId)
 
@@ -236,11 +236,11 @@ class GedraDataCacheTest : StringSpec({
         val kind = GedraDataType.formDoc
 
         // Unrestricted: every client, so this client's rows are a subset of what comes back.
-        service().listGedras(cxt, kind, ReadScope.unrestricted, 500).map { it.gedraId.fullId } shouldContainAll
+        service().listGedras(cxt, kind, ReadScope.unrestricted, 500).rows.map { it.gedraId.fullId } shouldContainAll
             listOf(caraDocId, cyrusDocId)
 
         // Own-user, client-less: only Cara's rows, and never Cyrus's.
-        val caraOnly = service().listGedras(cxt, kind, ReadScope.ofUser(caraId), 500)
+        val caraOnly = service().listGedras(cxt, kind, ReadScope.ofUser(caraId), 500).rows
         caraOnly.map { it.userId }.toSet() shouldBe setOf(caraId)
         caraOnly.map { it.gedraId.fullId } shouldNotContain cyrusDocId
     }
@@ -302,6 +302,45 @@ class GedraDataCacheTest : StringSpec({
             svc.queryGedra(cxt, id, kind, scope).shouldBeNull()
         } finally {
             clock.unfreeze()
+        }
+    }
+
+    /**
+     * `listGedras` pages by limit + offset and reports the total the scope admits (issue #408), the same from
+     * the cache (a client scope) and from SQL (a client-less own-user scope). Its own user so the exact page
+     * assertions do not depend on the other blocks' documents; the clock advances between creates so the order
+     * is unambiguous newest-first (pen3, pen2, pen1).
+     */
+    "listGedras pages with limit + offset and reports the total available" {
+        val kind = GedraDataType.formDoc
+        val clock = cxt.instanceConfig.clock
+        val penId = 90009L
+        val pen1 = createDoc(penId, "Pen one"); clock.advanceBy(1.seconds)
+        val pen2 = createDoc(penId, "Pen two"); clock.advanceBy(1.seconds)
+        val pen3 = createDoc(penId, "Pen three")
+        service().dataCache.shouldNotBeNull().checkRefresh(cxt)
+
+        // Cache path: a client scope keys the clientKind index. First page of two, then the remainder; the
+        // total is 3 both times, and hasMore is the caller's `offset + page < numAvailable`.
+        val penScope = ReadScope(client = client, userId = penId)
+        val p1 = service().listGedras(cxt, kind, penScope, 2, 0)
+        p1.rows.map { it.gedraId.fullId } shouldBe listOf(pen3, pen2)
+        p1.numAvailable shouldBe 3
+        val p2 = service().listGedras(cxt, kind, penScope, 2, 2)
+        p2.rows.map { it.gedraId.fullId } shouldBe listOf(pen1)
+        p2.numAvailable shouldBe 3
+
+        // SQL path: a client-less own-user scope cannot key the index, so it falls back -- and pages the same.
+        val ownScope = ReadScope.ofUser(penId)
+        val held = service().dataCache
+        service().dataCache = null
+        try {
+            val s1 = service().listGedras(cxt, kind, ownScope, 2, 0)
+            s1.rows.map { it.gedraId.fullId } shouldBe listOf(pen3, pen2)
+            s1.numAvailable shouldBe 3
+            service().listGedras(cxt, kind, ownScope, 2, 2).rows.map { it.gedraId.fullId } shouldBe listOf(pen1)
+        } finally {
+            service().dataCache = held
         }
     }
 })

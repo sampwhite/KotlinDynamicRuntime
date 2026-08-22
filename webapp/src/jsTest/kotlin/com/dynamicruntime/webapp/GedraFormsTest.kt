@@ -58,6 +58,21 @@ class GedraFormsTest {
         assertEquals("/gedra/acme/formDocs", findFormsListEndpoint(endpoints)?.path)
     }
 
+    /**
+     * The single-form GET is `/formDoc` (no trailing `s`) by the GET method -- not the list (`/formDocs`), and
+     * not the DELETE that shares its path. This is what lets the view resolve a form past the loaded page.
+     */
+    @Test
+    fun findsTheScopedSingleGet() {
+        val endpoints = listOf(
+            ep(HttpMethod.GET.name, "/gedra/acme/formDocs"),
+            ep(HttpMethod.DELETE.name, "/gedra/acme/formDoc"),
+            ep(HttpMethod.GET.name, "/gedra/acme/formDoc"),
+        )
+        assertEquals("/gedra/acme/formDoc", findFormGetEndpoint(endpoints)?.path)
+        assertEquals("/gedra/acme/formDocs", findFormsListEndpoint(endpoints)?.path)
+    }
+
     /** A surface with no such endpoint returns null, which the pages report rather than crashing on. */
     @Test
     fun missingEndpointsAreNull() {

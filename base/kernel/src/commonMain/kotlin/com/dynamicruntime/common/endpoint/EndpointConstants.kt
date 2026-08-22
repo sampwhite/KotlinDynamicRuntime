@@ -146,6 +146,9 @@ object EP {
     // Input, list endpoints.
     const val limit = "limit"
 
+    /** Input, list endpoints: how many items to skip before the page (paging). Defaults to 0. */
+    const val offset = "offset"
+
     // Off-contract keys (underscore-prefixed): allowed regardless of additionalProperties, kept in data.
     const val debug = "_debug" // request: comma-separated debug tags -> KdrCxt.debug
     const val meta = "_meta" // response: handler-injected extra structure (KdrRequest.responseMeta)

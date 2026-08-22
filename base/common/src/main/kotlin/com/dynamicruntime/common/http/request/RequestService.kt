@@ -20,6 +20,7 @@ import kotlin.time.Instant
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.KdrEndpoint
+import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -487,14 +488,27 @@ class RequestService : ServiceInitializer {
                 inner.also { env[EP.item] = it }
             }
             EndpointKind.list -> {
-                val list = (inner as? List<*>) ?: emptyList<Any?>()
-                val limit = (requestData[EP.limit] as? Number)?.toInt()
-                val limited = if (limit != null && list.size > limit) list.subList(0, limit) else list
+                // A handler that paged itself returns a ListPage: its items are the page as-is (already limited),
+                // and it carries the hasMore / numAvailable its output type declared. A plain List is the
+                // unpaged case, capped here at `limit` as a backstop for a handler that returned more.
+                val page = inner as? ListPage
+                val limited: List<*> = if (page != null) {
+                    page.items
+                } else {
+                    val list = (inner as? List<*>) ?: emptyList<Any?>()
+                    val limit = (requestData[EP.limit] as? Number)?.toInt()
+                    if (limit != null && list.size > limit) list.subList(0, limit) else list
+                }
                 env[EP.numItems] = limited.size
                 env[EP.requestUri] = handler.logRequestUri
                 env[EP.duration] = cxt.durationMs()
                 env[EP.items] = limited
-                // TODO: hasMore / numAvailable paging metadata once list handlers can report them.
+                // Paging metadata only when the handler reported it; an endpoint that declared these fields is
+                // held to supplying them by the response validator, and one that did not must not carry them.
+                if (page != null) {
+                    env[EP.hasMore] = page.hasMore
+                    env[EP.numAvailable] = page.numAvailable
+                }
                 limited
             }
         }

@@ -176,10 +176,15 @@ fun onHashChange(handler: () -> Unit) {
 /**
  * Navigates by setting `window.location.hash` from [params] -- unlike [replaceHash], this **does** fire
  * `hashchange`, so the [App] router switches pages and the [AppBar] re-reads its auth state. Empty [params]
- * clears the hash (home). The keys/values here are page names, so no percent-encoding is needed.
+ * clears the hash (home).
+ *
+ * Values are percent-encoded, exactly as [hashUrl] does, so a value carrying data (a gedra id, say) round-trips
+ * through the [hashParams] `decodeURIComponent` unharmed rather than corrupting the hash -- and so an id with a
+ * stray `%` cannot reach the decode as a malformed escape. A page-name value encodes to itself, so the callers
+ * that pass only those are unchanged.
  */
 fun navigateHash(params: List<Pair<String, String>>) {
-    val hash = params.joinToString("&") { (k, v) -> "$k=$v" }
+    val hash = params.joinToString("&") { (k, v) -> "$k=${encodeUriComponent(v)}" }
     setHash(hash)
 }
 

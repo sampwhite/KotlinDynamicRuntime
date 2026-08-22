@@ -26,6 +26,7 @@ fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substr
 
 private val formCreateSuffix: String = pathAfterSection(GEP.formDocCreate)
 private val formsListSuffix: String = pathAfterSection(GEP.formDocs)
+private val formGetSuffix: String = pathAfterSection(GEP.formDoc)
 
 /**
  * The endpoint that creates a form document, from the caller's own catalog.
@@ -41,6 +42,14 @@ fun findFormCreateEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
 /** The endpoint that lists the caller's form documents, matched the same client-scoped way as the create one. */
 fun findFormsListEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
     endpoints.firstOrNull { it.method == HttpMethod.GET.name && it.path.endsWith(formsListSuffix) }
+
+/**
+ * The endpoint that fetches **one** form document by id (`GET /gedra/<client>/formDoc`). Distinct from the list
+ * by its suffix (`/formDoc`, no trailing `s`) and from the same path's DELETE by method. Lets the view resolve
+ * a form the loaded list page does not hold -- a bookmark, or a link to a form now past the first page.
+ */
+fun findFormGetEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
+    endpoints.firstOrNull { it.method == HttpMethod.GET.name && it.path.endsWith(formGetSuffix) }
 
 /**
  * The trait entry union inside a form-document type -- the `entries` array's element -- or null when [type] is
