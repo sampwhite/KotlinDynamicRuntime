@@ -42,18 +42,24 @@ object SqlScopeUtil {
         data: MutableMap<String, Any?>,
         filteredAfterQuery: Set<String> = emptySet(),
     ): List<String> {
+        // The bind parameter for each dimension is named for its **column**, not a distinct `scope*` name. The
+        // binder types a parameter from the column it matches by name (SqlStmtUtil.getColumn), and a name that
+        // matches nothing falls back to a string column -- which silently binds the bigint `userId` as text, so
+        // Postgres refuses `userId = <varchar>` (H2 coerces and hides it). Naming the param for the column is
+        // how every other query here types correctly, and an ownership column is never also in a SET, so it
+        // cannot collide with another bind of the same name.
         val conditions = mutableListOf<String>()
         if (scope.client != null && table.demandsScopeColumn(PF.client, filteredAfterQuery)) {
-            conditions.add("c:${PF.client} = :${SCP.scopeClient}")
-            data[SCP.scopeClient] = scope.client
+            conditions.add("c:${PF.client} = :${PF.client}")
+            data[PF.client] = scope.client
         }
         if (scope.org != null && table.demandsScopeColumn(PF.org, filteredAfterQuery)) {
-            conditions.add("(c:${PF.org} is null or c:${PF.org} = :${SCP.scopeOrg})")
-            data[SCP.scopeOrg] = scope.org
+            conditions.add("(c:${PF.org} is null or c:${PF.org} = :${PF.org})")
+            data[PF.org] = scope.org
         }
         if (scope.userId != null && table.demandsScopeColumn(PF.userId, filteredAfterQuery)) {
-            conditions.add("c:${PF.userId} = :${SCP.scopeUserId}")
-            data[SCP.scopeUserId] = scope.userId
+            conditions.add("c:${PF.userId} = :${PF.userId}")
+            data[PF.userId] = scope.userId
         }
         return conditions
     }

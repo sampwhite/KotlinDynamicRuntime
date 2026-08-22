@@ -770,7 +770,8 @@ class GedraDataService : ServiceInitializer {
         kind: GedraDataType,
         scope: ReadScope,
         limit: Int,
-    ): List<GedraDataRow>? {
+        offset: Int,
+    ): GedraListPage? {
         val cache = dataCache ?: return null
         val client = scope.client ?: return null
         cache.checkRefresh(cxt)
@@ -782,7 +783,11 @@ class GedraDataService : ServiceInitializer {
         // Reported before the cap, so `rowsMatched` means the same thing the SQL path's does: how many rows
         // the scope admitted, not how many the page returned.
         explainScope(cxt, scope, "cache:${GDX.clientKind}", matched.size)
-        return matched.take(limit).map { GedraDataRow.extract(gedraService, it) }
+        // Extraction after the page window, so only the rows actually returned are built -- and the page is the
+        // same slice the SQL path returns because both order identically. `numAvailable` is the whole matched
+        // set, so the caller can say "of N" and know whether more remain past this page.
+        val page = matched.asSequence().drop(offset).take(limit).map { GedraDataRow.extract(gedraService, it) }.toList()
+        return GedraListPage(page, matched.size)
     }
 
     /**
@@ -800,8 +805,8 @@ class GedraDataService : ServiceInitializer {
      * Statements are cached by name, so two shapes sharing one name would serve whichever query ran first --
      * and the failure would be a listing quietly scoped to somebody else's width.
      */
-    fun listGedras(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope, limit: Int): List<GedraDataRow> {
-        cachedListGedras(cxt, kind, scope, limit)?.let { return it }
+    fun listGedras(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope, limit: Int, offset: Int = 0): GedraListPage {
+        cachedListGedras(cxt, kind, scope, limit, offset)?.let { return it }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
         val data = mutableMapOf<String, Any?>(GD.gedraKind to kind.name)
@@ -824,11 +829,19 @@ class GedraDataService : ServiceInitializer {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
         }
         explainScope(cxt, scope, stmt.name, rows.size)
-        return rows.asSequence()
-            .map { GedraDataRow.extract(gedraService, it) }
+        // `rows` is the whole scoped, ordered set (the SQL carries no limit); the page window is applied here,
+        // the same place `limit` always was, now with an offset. Extraction is after the window, so only the
+        // returned rows are built. `numAvailable` is the whole set, matching the cache path.
+        val page = rows.asSequence()
+            .drop(offset)
             .take(limit)
+            .map { GedraDataRow.extract(gedraService, it) }
             .toList()
+        return GedraListPage(page, rows.size)
     }
+
+    /** One page of a gedra listing: the [rows] returned, and [numAvailable] -- how many the scope admits in all. */
+    class GedraListPage(val rows: List<GedraDataRow>, val numAvailable: Int)
 
     /**
      * Reports, under `_meta`, which scope the listing actually ran with -- the fact the response cannot show,

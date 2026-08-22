@@ -95,6 +95,17 @@ class GedraDataEndpointTest : StringSpec({
         entry[GE.updatedBy] shouldBe alice.userId
     }
 
+    // Creates nothing, so it cannot disturb the client-wide counts other blocks assert: it reads alice's own
+    // single document and checks the paging metadata the envelope now carries (issue #408). The offset/total
+    // paging *logic* over several documents is covered at the service level in GedraDataCacheTest, where the
+    // client is isolated.
+    "the listing envelope carries paging metadata" {
+        val resp = alice.client.sendJsonGetRequest(GEP.formDocs, mapOf(EP.limit to 1, EP.offset to 0))
+        (resp[EP.numItems] as? Number)?.toInt() shouldBe 1
+        (resp[EP.numAvailable] as? Number)?.toInt() shouldBe 1
+        resp[EP.hasMore] shouldBe false
+    }
+
     "both tiers were written, keyed by the same id" {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val topic = sqlCxt.sqlTopic.shouldNotBeNull()
@@ -258,4 +269,5 @@ class GedraDataEndpointTest : StringSpec({
         val anon = TestHttpClient(cxt.instanceConfig)
         (anon.sendJsonGetRequest(GEP.formDocs)[EP.status] as? Number)?.toInt() shouldBe 401
     }
+
 })

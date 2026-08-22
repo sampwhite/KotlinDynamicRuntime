@@ -142,6 +142,7 @@ val App = FC<Props> {
                             pageProfile -> Profile {}
                             pageUsers -> Users {}
                             pageNewForm -> NewFormPage {}
+                            pageForms -> FormsPage {}
                             // Resolved here rather than in `currentPage()` because the answer depends on the
                             // app config, which arrives asynchronously -- see `debugAllowed` above. Where the
                             // flag is off, this falls through to Home, so the route does not exist rather than
@@ -169,6 +170,9 @@ private const val pageUsers = HMENU.pageUsers
 // unconditionally like the others -- the menu, built server-side, is what decides whether it is offered.
 private const val pageNewForm = HMENU.pageNewForm
 
+// The list/view page for the caller's form documents (issue #408); same login gating and route policy.
+private const val pageForms = HMENU.pageForms
+
 // The debug area (issue #227). Present in the router unconditionally; whether it *renders* is gated on the
 // deployment's `allowDebugPages`, checked at render time where the config is known.
 private const val pageDebug = "debug"
@@ -186,6 +190,7 @@ private fun currentPage(): String {
         params[HP.page] == pageProfile -> pageProfile
         params[HP.page] == pageUsers -> pageUsers
         params[HP.page] == pageNewForm -> pageNewForm
+        params[HP.page] == pageForms -> pageForms
         params[HP.page] == pageDebug -> pageDebug
         else -> "home"
     }
