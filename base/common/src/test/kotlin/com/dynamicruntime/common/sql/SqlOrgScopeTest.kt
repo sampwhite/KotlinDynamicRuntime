@@ -110,6 +110,37 @@ class SqlOrgScopeTest : StringSpec({
         }
     }
 
+    "a userId scope binds under the bigint column, so Postgres does not see bigint = varchar" {
+        // The bug this pins: a scope param named apart from its column (`scopeUserId`) matched no column, so
+        // the binder fell back to a string column and bound the bigint `userId` as text. H2 coerces and hides
+        // it; Postgres refuses `userId = <varchar>`. Naming the param for the column is the fix, and this
+        // asserts the type the binder will actually use -- catchable without a Postgres to hand.
+        val cxt = cxtFor("acme", null)
+        val db = SqlDatabase.mkInMemoryH2("test_userid_scope")
+        val topic = "app"
+        val table = tableModule(cxt, topic) {
+            table("Owned", "A user-owned row") {
+                column("k", "Key.")
+                primaryKey("k")
+                forUsers()
+            }
+        }.single()
+        val sqlCxt = SqlCxt(cxt, db, topic)
+
+        val data = mutableMapOf<String, Any?>()
+        val conditions = SqlScopeUtil.scopeConditions(ReadScope.ofUser(5L), table, data)
+        conditions.single() shouldBe "c:${PF.userId} = :${PF.userId}"
+        data[PF.userId] shouldBe 5L
+
+        // The parameter resolves to the *integer* column, so the binder calls setLong -- not the string
+        // fallback that produced the varchar bind.
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qOwned${ReadScope.ofUser(5L).shapeKey}", table.columns,
+            "select * from t:Owned where ${conditions.single()}",
+        )
+        SqlStmtUtil.getColumn(stmt, db.getAliases(topic), PF.userId).storeType shouldBe StoreType.integer
+    }
+
     "a constrained dimension the table cannot express is an error rather than a wider answer" {
         val cxt = KdrCxt.mkSimpleCxt("test")
         // Client-scoped but with no organization column: the table opted into forClient() alone.
@@ -137,7 +168,7 @@ class SqlOrgScopeTest : StringSpec({
         SqlScopeUtil.scopeConditions(
             ReadScope.ofOrg("acme", "eng"), table, declared, filteredAfterQuery = setOf(PF.org),
         ).size shouldBe 1
-        declared.containsKey(SCP.scopeOrg) shouldBe false
+        declared.containsKey(PF.org) shouldBe false
     }
 
     "a sub context bound to a different client drops the organization" {

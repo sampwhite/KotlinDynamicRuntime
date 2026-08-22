@@ -64,18 +64,6 @@ object PF {
 }
 
 /**
- * Bind-parameter names for the `ReadScope` predicates [SqlScopeUtil] composes (issue #225). Named apart from
- * the column names they constrain so a query can mention both without the two colliding, and shared rather
- * than per-caller so a hand-written extra condition can bind the same value.
- */
-@Suppress("ConstPropertyName")
-object SCP {
-    const val scopeClient = "scopeClient"
-    const val scopeOrg = "scopeOrg"
-    const val scopeUserId = "scopeUserId"
-}
-
-/**
  * Database-configuration keys. The [db] entry names the top-level application-config key under which a
  * database configuration map is stored; the rest are keys within that map. Each name matches its value.
  */
