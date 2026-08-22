@@ -54,6 +54,9 @@ object HP {
 
     /** [user]'s value when the editor is open on a user who does not exist yet. */
     const val newRecord = "new"
+
+    /** Forms page: the gedra id of the form document open in the read-only view, or absent in the list view. */
+    const val gedra = "g"
 }
 
 /** The current hash parsed into `key=value` params, values percent-decoded. */
