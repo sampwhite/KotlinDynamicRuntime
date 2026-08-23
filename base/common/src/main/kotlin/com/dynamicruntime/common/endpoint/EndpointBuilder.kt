@@ -27,6 +27,19 @@ import com.dynamicruntime.common.schema.qualifyTypeName
 typealias KdrEndpointHandler = (cxt: KdrCxt, request: Map<String, Any?>) -> Any?
 
 /**
+ * What a **list** handler returns when it pages the answer itself: the page's [items], the total [numAvailable]
+ * across the whole scoped set, and whether more remain past this page ([hasMore]) (issue #408).
+ *
+ * A list handler may instead return a plain `List`, which the executor caps at `limit` and reports only
+ * `numItems` for -- the ordinary, unpaged case. Returning this is how a handler that applied its own
+ * `limit`/`offset` fills the `hasMore` / `numAvailable` fields its `listEndpoint(hasMore = true, ...)`
+ * declared; the executor takes [items] as the page **without re-capping** (the handler already did), and sets
+ * the two paging fields from here. An endpoint returning this must declare both fields, and one returning a
+ * plain list must declare neither -- the response validator holds it to exactly what its output type says.
+ */
+class ListPage(val items: List<Any?>, val numAvailable: Int, val hasMore: Boolean)
+
+/**
  * One declared input field of an endpoint -- the explicit-fields alternative to referencing a named input
  * type. Carries a [name], whether it is [required], and its JSON-schema node [schema] (type / description /
  * format / options / `$ref` / ... exactly as the `property` DSL builds it). Collected by [InputFieldsBuilder],

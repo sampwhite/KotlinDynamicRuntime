@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -131,13 +132,32 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
 
     listEndpoint(
         GEP.formDocs,
-        "Lists the form documents the caller may see, newest first.",
+        "Lists the form documents the caller may see, newest first, a page at a time.",
         outputRef = docType,
+        // Paging (issue #408): the answer carries whether more remain and the total the scope admits, so a UI
+        // can page past the default limit rather than silently seeing only the first page.
+        hasMore = true,
+        hasNumAvailable = true,
+        inputFields = {
+            field(EP.offset, "How many documents to skip before this page; 0 for the first page.") {
+                type = SCT.integer
+                // A query param arrives as text, so coercion is on (as it is for `limit`); empty means the
+                // default rather than a 400, and a page never starts before the beginning.
+                allowCoerce = true
+                emptyIsAbsent = true
+                minimum = 0
+                default = 0
+            }
+        },
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
-        GedraDataService.get(c)
-            .listGedras(c, formDoc, ReadScopeRules.forCaller(c), limit)
-            .map { it.toJsonMap() }
+        val offset = (request[EP.offset] as? Number)?.toInt() ?: 0
+        val page = GedraDataService.get(c).listGedras(c, formDoc, ReadScopeRules.forCaller(c), limit, offset)
+        ListPage(
+            page.rows.map { it.toJsonMap() },
+            page.numAvailable,
+            hasMore = offset + page.rows.size < page.numAvailable,
+        )
     }
     // --- the patch (issue #337) ---------------------------------------------------------------------------
 
