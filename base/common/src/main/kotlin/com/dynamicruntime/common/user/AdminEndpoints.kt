@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -15,6 +16,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
@@ -38,6 +40,7 @@ import com.dynamicruntime.common.util.toOptStr
 /** The paths one user-administration surface is served under. */
 class UserAdminPaths(
     val users: String,
+    val userSearch: String,
     val userCreate: String,
     val userSetRoles: String,
     val userSetEnabled: String,
@@ -49,7 +52,7 @@ class UserAdminPaths(
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
 fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, "admin",
-    UserAdminPaths(ADEP.users, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetName, ADEP.userDelete),
+    UserAdminPaths(ADEP.users, ADEP.userSearch, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetName, ADEP.userDelete),
 )
 
 /**
@@ -63,7 +66,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, "userAdmin",
-    UserAdminPaths(UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetName, UADEP.userDelete),
+    UserAdminPaths(UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetName, UADEP.userDelete),
 )
 
 private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPaths): SchModule =
@@ -83,6 +86,59 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
         userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, ReadScopeRules.forCaller(c))
             .map { it.toAdminInfo() }
+    }
+
+    // A richer search than the plain listing above: brute force over the user cache (issue #411), with a
+    // per-field filter, a sort, and a fairly large default cap. Active users only -- the cache holds enabled
+    // rows -- so the newest-first listing above stays the way to reach a disabled or deleted account.
+    listEndpoint(
+        paths.userSearch,
+        "Searches active users over the in-memory cache -- email/name substring, client, and update-time " +
+            "range -- sorted by any of those fields (default: newest first). Returns up to '${USF.defaultLimit}'.",
+        outputRef = ADTY.adminUser,
+        hasMore = true,
+        hasNumAvailable = true,
+        // The list builder's auto-appended `limit` defaults to ${defaultListLimit}; this search wants a far
+        // larger default, so it is declared here and the auto one suppressed.
+        noLimit = true,
+        inputFields = {
+            field(USF.email, "Case-insensitive substring to match against the email address.")
+            field(USF.name, "Case-insensitive substring to match against the account's real-world name or its username.")
+            field(USF.publicName, "Case-insensitive substring to match against the public name (username or email).")
+            field(
+                USF.client,
+                "Exact client id to confine to. Only meaningful to an '${ROLE.allClients}' caller; anyone " +
+                    "else is already confined to their own client.",
+            )
+            field(USF.updatedAfter, "Only users updated at or after this time (ISO-8601).") { dateTime() }
+            field(USF.updatedBefore, "Only users updated at or before this time (ISO-8601).") { dateTime() }
+            field(
+                USF.sortBy,
+                "Which attribute to sort by: ${userSearchFields.joinToString(", ") { "'${it.name}'" }}. " +
+                    "Defaults to '${USF.updatedAt}'.",
+            )
+            field(USF.descending, "Sort descending (newest / Z-A first). Defaults to true.") {
+                type = SCT.boolean
+                // A GET carries this in the query string as "true"/"false"; a boolean does not coerce from a
+                // string by default, so `?descending=false` would 400 without this (as `permanent` learned).
+                allowCoerce = true
+            }
+            field(EP.limit, "The maximum number of users to return; defaults to '${USF.defaultLimit}'.") {
+                type = SCT.integer
+                default = USF.defaultLimit
+                allowCoerce = true
+                // `?limit=` (empty) reads as no limit given rather than a 400, matching the auto-appended one.
+                emptyIsAbsent = true
+            }
+        },
+    ) { c, request ->
+        val criteria = parseUserSearch(request)
+        val page = userService(c).searchUsers(c, criteria, ReadScopeRules.forCaller(c))
+        ListPage(
+            page.rows.map { it.toAdminInfo() },
+            numAvailable = page.numAvailable,
+            hasMore = page.rows.size < page.numAvailable,
+        )
     }
 
     // --- create -------------------------------------------------------------
@@ -433,6 +489,40 @@ private fun requireField(request: Map<String, Any?>, field: String): String =
 /** Reads the required numeric user id. */
 private fun requireUserId(request: Map<String, Any?>): Long =
     request[ADF.userId].toOptLong() ?: throw KdrException.mkInput("A numeric '${ADF.userId}' is required.")
+
+/**
+ * Builds a [UserSearchCriteria] from the cache-search request (issue #411). The text terms are collected only
+ * when non-blank -- a blank one is "no filter", not "match everything" -- and an unknown [USF.sortBy] is
+ * rejected outright rather than silently falling back, so a typo in the sort field is a clear 400 instead of a
+ * list ordered by something other than what was asked for.
+ */
+private fun parseUserSearch(request: Map<String, Any?>): UserSearchCriteria {
+    // Only the text-searchable fields, keyed by their own names so `searchUserRows` can resolve each back to
+    // its field. A field with no term is simply absent.
+    val textTerms = buildMap {
+        for (field in userSearchFields) {
+            if (field.textsOf == null) continue
+            request[field.name].toOptStr()?.trim()?.ifEmpty { null }?.let { put(field.name, it) }
+        }
+    }
+    val sortBy = request[USF.sortBy].toOptStr()?.trim()?.ifEmpty { null }
+    if (sortBy != null && !userSearchFieldsByName.containsKey(sortBy)) {
+        throw KdrException.mkInput(
+            "Unknown sort field '$sortBy'; expected one of ${userSearchFields.joinToString(", ") { "'${it.name}'" }}.",
+        )
+    }
+    return UserSearchCriteria(
+        textTerms = textTerms,
+        updatedAfter = request[USF.updatedAfter].toOptInstant(),
+        updatedBefore = request[USF.updatedBefore].toOptInstant(),
+        sortBy = sortBy ?: USF.updatedAt,
+        descending = request.getOptBool(USF.descending) ?: true,
+        // Floored at 0: a negative limit would otherwise reach `List.take`, which throws -- surfacing as a 500
+        // rather than the harmless empty page a nonsensical `?limit=-1` should get. Zero is left as a valid
+        // "just tell me the count" request (the matched total still comes back in numAvailable).
+        limit = ((request[EP.limit] as? Number)?.toInt() ?: USF.defaultLimit).coerceAtLeast(0),
+    )
+}
 
 /**
  * Guards a supplied role set: no blanks, and [ROLE.user] must be present. Role *names* are deliberately not

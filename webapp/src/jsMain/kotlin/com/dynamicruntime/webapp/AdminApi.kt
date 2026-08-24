@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADF
+import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -61,6 +62,11 @@ class AdminUser(
     val hasPassword: Boolean,
     /** Whether the account was permanently deleted -- an obfuscated tombstone that can no longer be edited. */
     val deleted: Boolean,
+    /**
+     * When the row was last updated, as the wire ISO-8601 string, or null when the row carried none (issue
+     * #411). The default sort key of the search, and a column the console can order on.
+     */
+    val updatedAt: String? = null,
 ) {
     /**
      * This user's access level: the highest rung of [RoleLadder] they hold, which is what the Users page's
@@ -121,6 +127,30 @@ object AdminApi {
         // Non-empty only: an empty term lists everyone, and appending `?search=` (empty) is a different call.
         val path = if (term.isEmpty()) UADEP.users else UADEP.users + queryString(mapOf(ADF.search to term))
         return Http.getApi(path)[EP.items].toJsonListOfMaps().map { it.toAdminUser() }
+    }
+
+    /**
+     * The brute-force cache search (issue #411): filters and sorts *active* users, returning the matched total
+     * beside the capped page. Only non-blank terms are sent -- a blank one is no filter, and the endpoint reads
+     * an absent field and an empty one differently. The sort is always sent, so the server orders the whole
+     * matched set before capping (client-side sorting would only reorder the page, misleading past the cap).
+     */
+    suspend fun searchUsers(query: UserSearchQuery): UserSearchResult {
+        val args = buildMap<String, Any?> {
+            query.email.trim().takeIf { it.isNotEmpty() }?.let { put(USF.email, it) }
+            query.name.trim().takeIf { it.isNotEmpty() }?.let { put(USF.name, it) }
+            query.client.trim().takeIf { it.isNotEmpty() }?.let { put(USF.client, it) }
+            query.updatedAfter?.let { put(USF.updatedAfter, it) }
+            query.updatedBefore?.let { put(USF.updatedBefore, it) }
+            put(USF.sortBy, query.sortBy)
+            put(USF.descending, query.descending)
+        }
+        val env = Http.getApi(UADEP.userSearch + queryString(args))
+        return UserSearchResult(
+            users = env[EP.items].toJsonListOfMaps().map { it.toAdminUser() },
+            numAvailable = (env[EP.numAvailable] as? Number)?.toInt() ?: 0,
+            hasMore = env[EP.hasMore] == true,
+        )
     }
 
     /** Creates a user directly (no email verification); [username], [roles], [org], and name data are optional. */
@@ -209,5 +239,34 @@ object AdminApi {
         enabled = this[ADF.enabled] == true,
         hasPassword = this[ADF.hasPassword] == true,
         deleted = this[ADF.deleted] == true,
+        updatedAt = this[ADF.updatedAt] as? String,
     )
 }
+
+/**
+ * What the console asked the user search for (issue #411): the filter terms, the update-time range, and how to
+ * sort. A value object so the page holds one piece of state and `AdminApi.searchUsers` reads it, rather than a
+ * long argument list threaded through the debounce.
+ *
+ * The console filters on [email] and [name] (the real-world name the "Name" column shows); the endpoint also
+ * accepts a `publicName` term, which the console does not surface because it hides the username. [client] is
+ * meaningful only to an `allClients` caller -- for anyone else the scope already confines it.
+ */
+class UserSearchQuery(
+    val email: String = "",
+    val name: String = "",
+    val client: String = "",
+    /** ISO-8601 lower bound on the update time, or null. */
+    val updatedAfter: String? = null,
+    /** ISO-8601 upper bound on the update time, or null. */
+    val updatedBefore: String? = null,
+    val sortBy: String = USF.updatedAt,
+    val descending: Boolean = true,
+)
+
+/**
+ * One page of a user search: the [users] returned, [numAvailable] (how many matched before the cap), and
+ * [hasMore] (whether the cap hid some). The console shows the two counts so an over-broad search reads as
+ * "showing 500 of 4000" rather than looking like the whole population.
+ */
+class UserSearchResult(val users: List<AdminUser>, val numAvailable: Int, val hasMore: Boolean)

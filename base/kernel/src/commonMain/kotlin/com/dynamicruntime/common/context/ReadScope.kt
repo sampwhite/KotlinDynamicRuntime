@@ -61,6 +61,23 @@ class ReadScope(
     fun admitsOrg(rowOrg: String?): Boolean = org == null || rowOrg == null || rowOrg == org
 
     /**
+     * Whether a *user* row with this owner triple falls within the scope -- the per-row admission an
+     * administrator's user reads apply (issues #225, #411).
+     *
+     * The one predicate `UserService.queryAdministrableUser` (a by-id read) and the brute-force cache search
+     * (a listing) both use, so the two cannot come to disagree about what a scope admits. A user is the case
+     * the caching skill's "a by-id read may check scope per row" rule was written for: unlike content, a user
+     * carries no `org` column, so [org] cannot be an SQL predicate anyway (see the class doc) -- the scope is
+     * only ever checked a row at a time.
+     */
+    fun admitsUserRow(rowClient: String, rowOrg: String?, rowUserId: Long): Boolean {
+        if (client != null && rowClient != client) return false
+        if (!admitsOrg(rowOrg)) return false
+        if (userId != null && rowUserId != userId) return false
+        return true
+    }
+
+    /**
      * A short, stable token naming this scope's *shape* (not its values), for composing prepared-statement
      * names. Statements are cached by name, so two shapes must not share one -- and two callers with the same
      * shape and different values must share, or the cache grows a statement per client.

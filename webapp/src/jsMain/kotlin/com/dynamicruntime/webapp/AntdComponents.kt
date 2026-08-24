@@ -141,6 +141,12 @@ external interface TableProps : Props {
     var rowKey: String?
     /** "large" | "middle" | "small". */
     var size: String?
+    /**
+     * Fires on a table change -- here, a column-header sort. antd calls it with (pagination, filters, sorter);
+     * the sorter carries `{ field, order }`, `order` being "ascend" | "descend" | undefined (undefined when a
+     * header is toggled back to unsorted). Used to drive a **server-side** re-fetch (issue #411).
+     */
+    var onChange: ((pagination: dynamic, filters: dynamic, sorter: dynamic) -> Unit)?
 }
 
 external val Table: ComponentType<TableProps>

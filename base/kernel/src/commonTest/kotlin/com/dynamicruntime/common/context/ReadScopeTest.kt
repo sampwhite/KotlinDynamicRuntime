@@ -46,6 +46,31 @@ class ReadScopeTest {
     }
 
     /**
+     * The per-row user admission (issue #411): the brute-force user search checks each row against the scope
+     * with this, rather than composing an SQL predicate. It is the three constraints together -- client, the
+     * lenient org, and owner -- so it must agree with the widths above.
+     */
+    @Test
+    fun admitsUserRowAppliesEveryConstraint() {
+        // Unrestricted admits anyone.
+        assertTrue(ReadScope.unrestricted.admitsUserRow("acme", "eng", 1L))
+        // Client-confined: own client yes, another no; the lenient org still applies within it.
+        val client = ReadScope.ofClient("acme")
+        assertTrue(client.admitsUserRow("acme", "eng", 1L))
+        assertTrue(client.admitsUserRow("acme", null, 2L))
+        assertFalse(client.admitsUserRow("globex", "eng", 3L))
+        // Org-confined: own org, and the client's org-less rows, but not another org.
+        val org = ReadScope.ofOrg("acme", "eng")
+        assertTrue(org.admitsUserRow("acme", "eng", 1L))
+        assertTrue(org.admitsUserRow("acme", null, 2L))
+        assertFalse(org.admitsUserRow("acme", "sales", 3L))
+        // Own-user: only that user's own row.
+        val self = ReadScope.ofUser(7L)
+        assertTrue(self.admitsUserRow("acme", "eng", 7L))
+        assertFalse(self.admitsUserRow("acme", "eng", 8L))
+    }
+
+    /**
      * Statements are cached by name, so the shape key must separate the shapes and merge the values -- two
      * different organizations share one prepared statement, an org scope and a client scope do not.
      */
