@@ -127,9 +127,9 @@ class CommonComponent : ComponentDefinition {
      */
     override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
         listOf(
-            // First, so its own `checkInit` has read the caching environment before any service's `checkInit`
-            // registers a cache with it. Its `checkReady` then performs every cache's initial load, by which
-            // point the whole set is registered.
+            // Its `checkReady` performs every cache's initial load, by which point the whole set is
+            // registered. Its position here is no longer load-bearing: it reads the caching environment in
+            // `onCreate`, which the whole tier completes before any `checkInit` registers a cache.
             ::SqlTableCacheService,
             ::RequestService, ::PortalService, ::MarkdownFragmentService, ::MarkdownDocService,
             ::InstanceConfigService, ::MailService, ::UserService,
