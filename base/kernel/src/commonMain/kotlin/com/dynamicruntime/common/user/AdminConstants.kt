@@ -17,6 +17,13 @@ package com.dynamicruntime.common.user
 @Suppress("ConstPropertyName")
 object ADEP {
     const val users = "/admin/users"
+
+    /**
+     * The brute-force search over the user cache (issue #411): richer than [users], which is a
+     * newest-first SQL listing. This one searches and sorts *active* users in memory (email/name substring,
+     * client, update-time range) and is the surface the console's search should call.
+     */
+    const val userSearch = "/admin/userSearch"
     const val userCreate = "/admin/user/create"
     const val userSetRoles = "/admin/user/setRoles"
     const val userSetEnabled = "/admin/user/setEnabled"
@@ -54,6 +61,8 @@ object ADEP {
 @Suppress("ConstPropertyName")
 object UADEP {
     const val users = "/userAdmin/users"
+    /** The scoped counterpart to [ADEP.userSearch] -- the brute-force cache search (issue #411). */
+    const val userSearch = "/userAdmin/userSearch"
     const val userCreate = "/userAdmin/user/create"
     const val userSetRoles = "/userAdmin/user/setRoles"
     const val userSetEnabled = "/userAdmin/user/setEnabled"
@@ -94,8 +103,58 @@ object ADF {
     /** When it was permanently deleted, for a deleted account. */
     const val deletedAt = "deletedAt"
 
+    /**
+     * When the row was last updated (the `updatedAt` protocol column, surfaced on the admin projection for
+     * issue #411): the default sort key of the cache search, and a column the console can order on.
+     */
+    const val updatedAt = "updatedAt"
+
     /** Case-insensitive substring filter applied to `primaryId`, `username` and `name` by the list endpoint. */
     const val search = "search"
+}
+
+/**
+ * The **user-search** request fields and sort keys (issue #411) -- the brute-force search/sort over the user
+ * cache, distinct from [ADF.search]'s single one-term-many-fields filter on the plain listing.
+ *
+ * Shared with the frontend, like the rest of this file, so the console builds its query from the same strings
+ * the endpoint reads and a rename breaks compilation rather than a request. The four sort-key names
+ * ([email], [publicName], [client], [updatedAt]) double as the values [sortBy] accepts and as the columns the
+ * console offers to order on; adding a searchable/sortable attribute later is one entry here and one in the
+ * backend `userSearchFields` registry.
+ */
+@Suppress("ConstPropertyName")
+object USF {
+    /** Case-insensitive **substring** of the email address. */
+    const val email = "email"
+
+    /** Case-insensitive **substring** of the public name (the username, or the email while still a placeholder). */
+    const val publicName = "publicName"
+
+    /**
+     * **Exact** client id to confine the search to. Only an `allClients` caller can widen past their own
+     * client, so for anyone else this narrows within a client they are already confined to (or, naming
+     * another, returns nothing) -- the scope does the enforcing, this only picks among what it allows.
+     */
+    const val client = "client"
+
+    /** The `updatedAt` sort key, and the field carrying the update time on each returned row. */
+    const val updatedAt = "updatedAt"
+
+    /** Only users updated **at or after** this instant (ISO-8601); the low end of the date range. */
+    const val updatedAfter = "updatedAfter"
+
+    /** Only users updated **at or before** this instant (ISO-8601); the high end of the date range. */
+    const val updatedBefore = "updatedBefore"
+
+    /** Which attribute to sort by -- one of [email], [publicName], [client], [updatedAt]. Defaults to [updatedAt]. */
+    const val sortBy = "sortBy"
+
+    /** Sort descending rather than ascending. Defaults to true (newest / Z-A first). */
+    const val descending = "descending"
+
+    /** The default (and fairly large) cap on how many users the search returns when the caller names no limit. */
+    const val defaultLimit = 500
 }
 
 /** Admin schema type names. */

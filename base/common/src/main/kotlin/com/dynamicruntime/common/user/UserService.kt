@@ -118,10 +118,9 @@ class UserService : ServiceInitializer {
      */
     fun queryAdministrableUser(cxt: KdrCxt, userId: Long, scope: ReadScope): AuthUserRow? {
         val row = queryByUserId(cxt, userId) ?: return null
-        if (scope.client != null && row.client != scope.client) return null
-        if (!scope.admitsOrg(row.org)) return null
-        if (scope.userId != null && row.userId != scope.userId) return null
-        return row
+        // The one per-row admission predicate, shared with the brute-force search (issue #411), so a by-id
+        // read and a listing cannot disagree about what a scope admits.
+        return if (scope.admitsUserRow(row.client, row.org, row.userId)) row else null
     }
 
     /** Selects a single `AuthUsers` row by an indexed [field], or null. Returns the row even if disabled. */
@@ -208,6 +207,51 @@ class UserService : ServiceInitializer {
             .filter { term == null || it.matchesSearch(term) }
             .take(limit)
             .toList()
+    }
+
+    /**
+     * The brute-force search/sort over the user cache (issue #411): scans the **active** users the caller may
+     * see, applies [criteria]'s filters, sorts, and caps -- reporting the matched total before the cap.
+     *
+     * Deliberately a memory scan, not an SQL query: it searches and sorts on things that are not database
+     * columns (the public name, and -- because the org is not a column -- the whole scope), which is what the
+     * user cache makes cheap. The population is `enabledUsers` below, so this covers active users only; the
+     * SQL [listUsers] remains the way to reach a disabled or deleted one. [scope] is applied as a per-row
+     * predicate (`ReadScope.admitsUserRow`, the same one [queryAdministrableUser] uses), which is the caching
+     * skill's "a by-id read may check scope per row" rule -- sound here because a user's scope cannot be an
+     * SQL predicate in the first place.
+     *
+     * [scope] is required and without a default, for the fail-closed reason [listUsers] is: forgetting it must
+     * not quietly search every client.
+     */
+    fun searchUsers(cxt: KdrCxt, criteria: UserSearchCriteria, scope: ReadScope): UserSearchPage {
+        val visible = enabledUsers(cxt).filter { scope.admitsUserRow(it.client, it.org, it.userId) }
+        return searchUserRows(visible, criteria)
+    }
+
+    /**
+     * The active (enabled) users to search: the cache's live rows when it is present, extracted fresh per call
+     * exactly as `cachedUser` does (the cache holds raw maps -- see [AuthUserCache]). Falls back to an SQL scan
+     * of enabled rows when there is no cache (absent service, or `KDR_TABLE_CACHE_DISABLED`), so the search
+     * still answers -- just without the in-memory speed the feature exists for.
+     */
+    private fun enabledUsers(cxt: KdrCxt): List<AuthUserRow> {
+        val cache = userCache
+        if (cache != null) {
+            cache.checkRefresh(cxt)
+            return cache.snapshot.byId.values.map { AuthUserRow.extract(it.value) }
+        }
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = authUsersTable(cxt)
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qAuthUsersAllEnabled", table.columns,
+            "select * from t:${UT.authUsers} where c:${PF.enabled} = :${PF.enabled}",
+        )
+        var rows: List<Map<String, Any?>> = emptyList()
+        sqlCxt.sqlDb.withSession(cxt) {
+            rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(PF.enabled to true))
+        }
+        return rows.map { AuthUserRow.extract(it) }
     }
 
     /** Inserts a new `AuthUsers` row (protocol columns stamped), returning the generated `userId`. */
