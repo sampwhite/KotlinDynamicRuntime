@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -60,17 +61,24 @@ class ClientOptionsTest : StringSpec({
         offered(user, "/schema/endpoints", EI.client) shouldBe listOf(CL.public)
     }
 
-    "an anonymous caller is offered exactly the one client they may name" {
+    "an anonymous caller is offered the public client" {
         val anon = TestUser(TestHttpClient(cxt.instanceConfig), cxt, emptyMap())
         // `/schema` is an anonymous section, so this is a real caller rather than a hypothetical one.
         //
-        // The answer is `hub` rather than `public`, which reads oddly and is nonetheless the *correct* list:
-        // an unauthenticated request binds no profile, so it keeps `UserProfile`'s constructor default, and
-        // `catalogClient` compares a named client against that same value -- so `hub` is precisely what this
-        // caller may name and be accepted. Asserted as it is rather than as it ought to read, because the
-        // list agreeing with the fence is the property that matters here; whether an anonymous caller should
-        // sit in `hub` at all is a question about `UserProfile`, not about choice lists.
-        offered(anon, "/schema/endpoints", EI.client) shouldBe listOf(CL.hub)
+        // `public` because the dispatcher now binds the anonymous profile, which is what `/auth/self/info`
+        // had always reported for such a caller while every other reader on the same request saw the system
+        // profile's `hub`. Worth an assertion of its own: this is the one list served to somebody who never
+        // authenticated, so it is where that disagreement showed up first.
+        offered(anon, "/schema/endpoints", EI.client) shouldBe listOf(CL.public)
+    }
+
+    "and the endpoint that reports who they are agrees with it" {
+        val anon = TestUser(TestHttpClient(cxt.instanceConfig), cxt, emptyMap())
+        // The pair that makes the previous assertion mean something: one caller, two endpoints, one answer.
+        // Read separately from the list because they reach the client by different routes -- the profile dump
+        // through `currentUserInfo`, the list through the provider's read of `cxt.userProfile` -- and it was
+        // exactly those two routes that disagreed.
+        anon.getData("/auth/self/info")[UPF.client] shouldBe CL.public
     }
 
     "the same list reaches an inline field on another endpoint" {

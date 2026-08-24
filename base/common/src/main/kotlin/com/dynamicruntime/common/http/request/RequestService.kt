@@ -305,7 +305,14 @@ class RequestService : ServiceInitializer {
         // The request's client identity (appId, traceId -- issue #105) is already on cxt: it was resolved from
         // the headers / query params and set when the context was created, before dispatch.
 
-        // Auth is stubbed until the auth subsystem is ported.
+        // A request starts out **anonymous**, and now says so. The context's default profile is the *system*
+        // user -- an internal acting identity for work nobody requested -- whose client is `hub`, and leaving
+        // it in place made an unauthenticated caller look like an internal one to everything that asked. It
+        // was already wrong and merely invisible: `/auth/self/info` substituted the anonymous profile at the
+        // point of display, so that endpoint answered `public` while the catalog's client filter, sitting on
+        // the same request, compared against `hub`. Binding it here means every reader agrees rather than each
+        // deciding (issue #413).
+        cxt.bindToUserProfile(UserProfile.anonymous())
         extractAuth(cxt, handler)
 
         // Enforce the section's required role against the acting profile (restored by extractAuth). The test
