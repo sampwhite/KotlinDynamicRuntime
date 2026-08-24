@@ -29,10 +29,13 @@ class UserSearchField(
     /** The field's wire name -- one of the [USF] sort keys, and the key a text term arrives under. */
     val name: String,
     /**
-     * The field's text for matching, or null for a field that is not text-searchable (the update time). A row
-     * whose value is null never matches a term on this field.
+     * The field's searchable texts, or null for a field that is not text-searchable (the update time). A term
+     * matches the field when it matches **any** of them (OR) -- most fields return one, but [USF.name] returns
+     * the real-world name *and* the public name (username), so the console's Name box finds an account by the
+     * handle somebody logs in with as well as by the name it is shown under (restoring the pre-#411 behavior
+     * the old single search box had; see `webapp/CLAUDE.md`).
      */
-    val textOf: ((AuthUserRow) -> String?)?,
+    val textsOf: ((AuthUserRow) -> List<String>)?,
     /** True: a case-insensitive **substring** match. False: a case-insensitive **exact** match (the client). */
     val substring: Boolean,
     /**
@@ -48,16 +51,20 @@ class UserSearchField(
  * on. Text fields sort on a lower-cased value so the order matches the case-insensitive match.
  */
 val userSearchFields: List<UserSearchField> = listOf(
-    UserSearchField(USF.email, textOf = { it.primaryId }, substring = true, sortOf = { it.primaryId.lowercase() }),
+    UserSearchField(USF.email, textsOf = { listOf(it.primaryId) }, substring = true, sortOf = { it.primaryId.lowercase() }),
     UserSearchField(
-        USF.publicName, textOf = { it.publicName() }, substring = true, sortOf = { it.publicName().lowercase() },
+        USF.publicName, textsOf = { listOf(it.publicName()) }, substring = true, sortOf = { it.publicName().lowercase() },
     ),
-    // The account's real-world name (nullable). A null name never matches a term and sorts last.
-    UserSearchField(USF.name, textOf = { it.name }, substring = true, sortOf = { it.name?.lowercase() }),
+    // Matches the real-world name OR the public name (username), so the console's Name box still finds an
+    // account by its login handle -- the behavior the old single search box had. A row with no real name still
+    // matches on its username, though it sorts last (nameless rows sort by the null real name).
+    UserSearchField(
+        USF.name, textsOf = { listOfNotNull(it.name, it.publicName()) }, substring = true, sortOf = { it.name?.lowercase() },
+    ),
     // Exact, not substring: the client is a picked id, not a fragment someone types.
-    UserSearchField(USF.client, textOf = { it.client }, substring = false, sortOf = { it.client.lowercase() }),
-    // Sortable (the default) but filtered by a date range rather than a text term, so it declares no textOf.
-    UserSearchField(USF.updatedAt, textOf = null, substring = false, sortOf = { it.updatedAt }),
+    UserSearchField(USF.client, textsOf = { listOf(it.client) }, substring = false, sortOf = { it.client.lowercase() }),
+    // Sortable (the default) but filtered by a date range rather than a text term, so it declares no textsOf.
+    UserSearchField(USF.updatedAt, textsOf = null, substring = false, sortOf = { it.updatedAt }),
 )
 
 /** [userSearchFields] by name, for resolving a text term's field and the requested sort key. */
@@ -106,14 +113,18 @@ fun searchUserRows(rows: List<AuthUserRow>, criteria: UserSearchCriteria): UserS
     var matched = rows.asSequence()
 
     for ((fieldName, term) in criteria.textTerms) {
-        val field = userSearchFieldsByName[fieldName]?.takeIf { it.textOf != null } ?: continue
+        val field = userSearchFieldsByName[fieldName]?.takeIf { it.textsOf != null } ?: continue
         val lower = term.trim().lowercase()
         if (lower.isEmpty()) continue
-        val textOf = field.textOf!!
+        val textsOf = field.textsOf!!
         val substring = field.substring
         matched = matched.filter { row ->
-            val value = textOf(row)?.lowercase() ?: return@filter false
-            if (substring) value.contains(lower) else value == lower
+            // A field's texts are OR'd: the term matching any one of them (its name or its username, say)
+            // matches the field.
+            textsOf(row).any { text ->
+                val value = text.lowercase()
+                if (substring) value.contains(lower) else value == lower
+            }
         }
     }
     criteria.updatedAfter?.let { after ->

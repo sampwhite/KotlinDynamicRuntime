@@ -45,13 +45,26 @@ class UserSearchTest : StringSpec({
         ids(page) shouldBe listOf(2L)
     }
 
-    "a name substring matches the real-world name, and a nameless row never matches" {
-        val named = user(10, "e@x.com", "e", updatedAt = t1, name = "Édith Piaf")
-        val nameless = user(11, "f@x.com", "f", updatedAt = t1)
+    "a name substring matches the real-world name" {
+        val named = user(10, "e@x.com", "e_dith", updatedAt = t1, name = "Édith Piaf")
+        val nameless = user(11, "f@x.com", "f_user", updatedAt = t1)
         val page = searchUserRows(
             listOf(named, nameless), UserSearchCriteria(textTerms = mapOf(USF.name to "piaf")),
         )
         ids(page) shouldBe listOf(10L)
+    }
+
+    "the name filter also matches the username -- even for an account with no real name" {
+        // The name field ORs the real-world name and the public name (username), so pasting a login handle into
+        // the console's Name box finds the account, the pre-#411 behavior the old search box had.
+        val named = user(12, "gh@x.com", "grace_hopper", updatedAt = t2, name = "Grace")
+        val nameless = user(13, "z@x.com", "zeta_user", updatedAt = t1) // no real name
+        // "hopper" is only in the username, not the real name "Grace".
+        ids(searchUserRows(listOf(named, nameless), UserSearchCriteria(textTerms = mapOf(USF.name to "hopper")))) shouldBe
+            listOf(12L)
+        // A nameless account is still found by its handle.
+        ids(searchUserRows(listOf(named, nameless), UserSearchCriteria(textTerms = mapOf(USF.name to "zeta")))) shouldBe
+            listOf(13L)
     }
 
     "a placeholder username matches on the email as its public name" {

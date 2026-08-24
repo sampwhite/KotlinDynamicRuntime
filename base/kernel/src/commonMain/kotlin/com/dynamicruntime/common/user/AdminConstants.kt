@@ -132,9 +132,10 @@ object USF {
     const val publicName = "publicName"
 
     /**
-     * Case-insensitive **substring** of the account's real-world name (a person's full name or a business's).
-     * The same string as [ADF.name] -- it filters on the field the console shows as "Name", which is what an
-     * administrator types when searching for someone. Distinct from [publicName], which is the login id.
+     * Case-insensitive **substring** of the account's real-world name (a person's full name or a business's)
+     * **or its username** -- the field matches either, so pasting a known username into the console's Name box
+     * finds the account, the behavior the old single search box had. The same string as [ADF.name]; it filters
+     * on the field the console shows as "Name", which is what an administrator types when searching for someone.
      */
     const val name = "name"
 

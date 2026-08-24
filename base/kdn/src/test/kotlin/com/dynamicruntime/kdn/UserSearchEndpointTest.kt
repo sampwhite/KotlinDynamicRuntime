@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -88,5 +89,40 @@ class UserSearchEndpointTest : StringSpec({
         // none -- which also proves the ISO string coerces to an instant on the wire.
         emails(search(mapOf(USF.email to "usrch.test", USF.updatedAfter to "2000-01-01T00:00:00Z"))).size shouldBe 3
         emails(search(mapOf(USF.email to "usrch.test", USF.updatedBefore to "2000-01-01T00:00:00Z"))) shouldHaveSize 0
+    }
+
+    "the name filter matches the username, not just the real-world name" {
+        // usrch_alice has no real name set, so this only matches via the username -- the pre-#411 behavior.
+        emails(search(mapOf(USF.name to "usrch_alice"))) shouldContainExactly listOf("alice@usrch.test")
+    }
+
+    "a negative limit is a harmless empty page, not a 500" {
+        // Without the floor, `List.take(-1)` would throw and surface as a 500; it should be an empty page whose
+        // numAvailable still reports the full match.
+        val env = search(mapOf(USF.email to "usrch.test", EP.limit to -1))
+        env[EP.numItems] shouldBe 0
+        env[EP.numAvailable] shouldBe 3
+    }
+
+    "a mutation response reports the post-write update time, not the stale one" {
+        // A separate `ustamp.test` domain so this extra account never drifts into the `usrch.test` counts above.
+        val created = admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to "stamp@ustamp.test", ADF.username to "ustamp_1"))
+        val id = created[ADF.userId] as Long
+        // Set the name -- a real write -- and confirm the returned row's updatedAt matches what a fresh search
+        // reports, rather than the (older) value the row was read at before the write.
+        val afterWrite = admin.postData(UADEP.userSetName, mapOf(ADF.userId to id, ADF.name to "Stamped"))[ADF.updatedAt]
+        val fromSearch = search(mapOf(USF.email to "stamp@ustamp.test"))[EP.items].toJsonListOfMaps().single()[ADF.updatedAt]
+        (afterWrite != null) shouldBe true
+        afterWrite shouldBe fromSearch
+    }
+
+    "a client-scoped administrator sees their client's users through the client index" {
+        // A scoped admin (admin level, no allClients) is confined to their own client, so searchUsers serves
+        // from the cache's client index rather than the whole table. They see the same-client users the full
+        // admin created (all default to the same client), isolated here by the unique marker. Its own email is
+        // on a separate domain so this admin account never drifts into the `usrch.test` counts above.
+        val scoped = TestUser.create(cxt, "scopedadmin@uscope.test", level = ROLE.admin)
+        val env = scoped.client.sendJsonGetRequest(UADEP.userSearch, mapOf(USF.email to "usrch.test"))
+        emails(env).sorted() shouldContainExactly listOf("alice@usrch.test", "bob@usrch.test", "carol@usrch.test")
     }
 })

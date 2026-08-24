@@ -103,7 +103,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         noLimit = true,
         inputFields = {
             field(USF.email, "Case-insensitive substring to match against the email address.")
-            field(USF.name, "Case-insensitive substring to match against the account's real-world name.")
+            field(USF.name, "Case-insensitive substring to match against the account's real-world name or its username.")
             field(USF.publicName, "Case-insensitive substring to match against the public name (username or email).")
             field(
                 USF.client,
@@ -501,7 +501,7 @@ private fun parseUserSearch(request: Map<String, Any?>): UserSearchCriteria {
     // its field. A field with no term is simply absent.
     val textTerms = buildMap {
         for (field in userSearchFields) {
-            if (field.textOf == null) continue
+            if (field.textsOf == null) continue
             request[field.name].toOptStr()?.trim()?.ifEmpty { null }?.let { put(field.name, it) }
         }
     }
@@ -517,7 +517,10 @@ private fun parseUserSearch(request: Map<String, Any?>): UserSearchCriteria {
         updatedBefore = request[USF.updatedBefore].toOptInstant(),
         sortBy = sortBy ?: USF.updatedAt,
         descending = request.getOptBool(USF.descending) ?: true,
-        limit = (request[EP.limit] as? Number)?.toInt() ?: USF.defaultLimit,
+        // Floored at 0: a negative limit would otherwise reach `List.take`, which throws -- surfacing as a 500
+        // rather than the harmless empty page a nonsensical `?limit=-1` should get. Zero is left as a valid
+        // "just tell me the count" request (the matched total still comes back in numAvailable).
+        limit = ((request[EP.limit] as? Number)?.toInt() ?: USF.defaultLimit).coerceAtLeast(0),
     )
 }
 

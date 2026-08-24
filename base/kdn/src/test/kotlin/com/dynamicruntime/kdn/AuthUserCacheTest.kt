@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.sql.cache.TCI
 import com.dynamicruntime.common.sql.cache.TCS
@@ -152,8 +153,9 @@ class AuthUserCacheTest : StringSpec({
         val authUsers = caches.single { it[TCI.tableName] == UT.authUsers }
         authUsers[TCI.isLoaded] shouldBe true
         authUsers[TCI.topic] shouldBe "auth"
-        // The two unique indexes AuthUserCache declares; a lookup by either is what the cache is for.
-        authUsers[TCI.indexes] shouldBe listOf(AU.username, AU.primaryId)
+        // The indexes AuthUserCache declares: the two unique lookups the cache exists for, plus the non-unique
+        // `client` index the brute-force user search scopes a client-scoped listing through (issue #411).
+        authUsers[TCI.indexes] shouldBe listOf(AU.username, AU.primaryId, PF.client)
         authUsers[TCI.queryFromDate].shouldNotBeNull() // a completed load is what sets it
 
         report.getValue(TCS.sharedState).toJsonMapOrEmpty()[UT.authUsers].shouldNotBeNull()

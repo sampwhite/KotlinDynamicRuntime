@@ -225,31 +225,49 @@ class UserService : ServiceInitializer {
      * not quietly search every client.
      */
     fun searchUsers(cxt: KdrCxt, criteria: UserSearchCriteria, scope: ReadScope): UserSearchPage {
-        val visible = enabledUsers(cxt).filter { scope.admitsUserRow(it.client, it.org, it.userId) }
+        val visible = visibleEnabledUsers(cxt, scope).filter { scope.admitsUserRow(it.client, it.org, it.userId) }
         return searchUserRows(visible, criteria)
     }
 
     /**
-     * The active (enabled) users to search: the cache's live rows when it is present, extracted fresh per call
-     * exactly as `cachedUser` does (the cache holds raw maps -- see [AuthUserCache]). Falls back to an SQL scan
-     * of enabled rows when there is no cache (absent service, or `KDR_TABLE_CACHE_DISABLED`), so the search
-     * still answers -- just without the in-memory speed the feature exists for.
+     * The active (enabled) users [scope] may see, extracted from the cache when it is present (the cache holds
+     * raw maps -- see [AuthUserCache] -- so each is extracted fresh, as `cachedUser` does).
+     *
+     * When [scope] names a client the rows come from the cache's `client` index rather than the whole table:
+     * a client-scoped administrator pays only for their own client, not for every other client's rows they
+     * cannot see. That is the caching skill's rule for scoping a listing -- serve it from an index that *is*
+     * the scope. An `allClients` administrator (no client in the scope) legitimately searches everyone, so
+     * they take the whole live set. The per-row [ReadScope.admitsUserRow] in [searchUsers] still applies the
+     * organization narrowing on top, which no index expresses.
+     *
+     * Falls back to an SQL scan when there is no cache (absent service, or `KDR_TABLE_CACHE_DISABLED`),
+     * narrowing to the client in SQL when the scope names one, so the search still answers -- just without the
+     * in-memory speed the feature exists for.
      */
-    private fun enabledUsers(cxt: KdrCxt): List<AuthUserRow> {
+    private fun visibleEnabledUsers(cxt: KdrCxt, scope: ReadScope): List<AuthUserRow> {
+        // Captured to a local: `scope.client` is a kernel property, so the compiler will not smart-cast it.
+        val scopeClient = scope.client
         val cache = userCache
         if (cache != null) {
             cache.checkRefresh(cxt)
-            return cache.snapshot.byId.values.map { AuthUserRow.extract(it.value) }
+            val snapshot = cache.snapshot
+            val rows = if (scopeClient != null) snapshot.allByIndex(PF.client, scopeClient) else snapshot.byId.values
+            return rows.map { AuthUserRow.extract(it.value) }
         }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUsersTable(cxt)
-        val stmt = SqlStmtUtil.prepareSql(
-            sqlCxt, "qAuthUsersAllEnabled", table.columns,
-            "select * from t:${UT.authUsers} where c:${PF.enabled} = :${PF.enabled}",
-        )
+        val data = mutableMapOf<String, Any?>(PF.enabled to true)
+        var where = "where c:${PF.enabled} = :${PF.enabled}"
+        if (scopeClient != null) {
+            where += " and c:${PF.client} = :${PF.client}"
+            data[PF.client] = scopeClient
+        }
+        // The name carries the query's shape: with or without the client predicate, so the two do not collide.
+        val stmtName = "qAuthUsersEnabled" + if (scopeClient != null) "ByClient" else ""
+        val stmt = SqlStmtUtil.prepareSql(sqlCxt, stmtName, table.columns, "select * from t:${UT.authUsers} $where")
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) {
-            rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(PF.enabled to true))
+            rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
         }
         return rows.map { AuthUserRow.extract(it) }
     }
@@ -313,8 +331,12 @@ class UserService : ServiceInitializer {
         }
         // Success: advance the version the row object carries, so a flow that updates the same row twice
         // (login does: the update, then completeLogin's auto-admin sync) guards its second write against the
-        // row it just wrote rather than the original read.
-        row.data = row.data.toMutableMap().also { it[PF.updatedAt] = data[PF.updatedAt] }
+        // row it just wrote rather than the original read. The typed `updatedAt` is advanced alongside the raw
+        // map, or a handler that returns `row.toAdminInfo()` after the write would report the pre-write time
+        // (the search surfaces updatedAt -- issue #411).
+        val newUpdatedAt = data[PF.updatedAt]
+        row.data = row.data.toMutableMap().also { it[PF.updatedAt] = newUpdatedAt }
+        row.updatedAt = newUpdatedAt.toOptInstant()
     }
 
     /**

@@ -169,13 +169,6 @@ val Users = FC<Props> {
         descending = q.descending
     }
 
-    /** Reads the search out of the hash, reflects it in the controls, and runs it -- the shareable-link path. */
-    fun restoreSearchFromHash() {
-        val q = searchQueryFromHash(hashParams())
-        seedFilters(q)
-        runSearch(q)
-    }
-
     /** Resets every filter and the sort to their defaults and re-runs; the hash sync then clears the URL. */
     fun clearFilters() {
         val q = UserSearchQuery()
@@ -274,14 +267,15 @@ val Users = FC<Props> {
     }
 
     useEffectOnce {
-        // A hash change from OUTSIDE this component (Back/Forward, the address bar, a menu link) restores both
-        // halves the URL carries: which record is open, and the search. The generation effect already ran the
-        // initial search from the hash, so the loaded effect below restores only the editor -- keeping this the
-        // one place a *later* hash change re-runs the search.
-        onHashChange {
-            applyEditorHash()
-            restoreSearchFromHash()
-        }
+        // Only the editor is restored on a hash change (Back/Forward, a menu link). The search is deliberately
+        // NOT re-run here: `onHashChange` registers a listener that is never removed (see HashRoute), so one
+        // survives per past visit to this page -- harmless while it only calls setState on an unmounted
+        // component (React ignores that), but a search re-run would fire a real request from every stale
+        // listener on every later hash change. The search reaches the URL only two ways, both safe: a fresh
+        // mount restores it in the generation effect below (a reload or a pasted/bookmarked link), and within
+        // the page it is written with `replace`, so there are no search history entries for Back to return to
+        // anyway -- the only in-page history is the editor, which `applyEditorHash` handles.
+        onHashChange { applyEditorHash() }
     }
 
     // Open whatever the hash named once the rows are in -- a reload inside the editor, or a link. Until then
