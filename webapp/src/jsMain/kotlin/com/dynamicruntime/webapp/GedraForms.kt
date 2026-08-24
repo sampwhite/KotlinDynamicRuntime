@@ -52,6 +52,14 @@ fun findFormGetEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
     endpoints.firstOrNull { it.method == HttpMethod.GET.name && it.path.endsWith(formGetSuffix) }
 
 /**
+ * The endpoint that deletes one form document (`DELETE /gedra/<client>/formDoc`, issue #408). Shares its path
+ * with the single-form GET and is told apart by the DELETE method -- the same `path:method` split the backend
+ * uses (issue #335). Null when the caller's surface carries no delete.
+ */
+fun findFormDeleteEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
+    endpoints.firstOrNull { it.method == HttpMethod.DELETE.name && it.path.endsWith(formGetSuffix) }
+
+/**
  * The trait entry union inside a form-document type -- the `entries` array's element -- or null when [type] is
  * absent or not shaped that way. Both a `FormDocInput` (create) and a `FormDoc` (stored) carry it, so the two
  * pages reach it identically to label each entry's trait.

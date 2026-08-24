@@ -73,6 +73,23 @@ class GedraFormsTest {
         assertEquals("/gedra/acme/formDocs", findFormsListEndpoint(endpoints)?.path)
     }
 
+    /**
+     * The delete shares the single-form path and is told apart by the DELETE method -- so on a surface that
+     * carries GET and DELETE for `/formDoc`, each finder picks its own without cross-matching.
+     */
+    @Test
+    fun findsTheScopedDelete() {
+        val endpoints = listOf(
+            ep(HttpMethod.GET.name, "/gedra/acme/formDoc"),
+            ep(HttpMethod.DELETE.name, "/gedra/acme/formDoc"),
+        )
+        assertEquals("/gedra/acme/formDoc", findFormDeleteEndpoint(endpoints)?.path)
+        assertEquals(HttpMethod.DELETE.name, findFormDeleteEndpoint(endpoints)?.method)
+        // The GET finder does not pick the DELETE, and vice versa.
+        assertEquals(HttpMethod.GET.name, findFormGetEndpoint(endpoints)?.method)
+        assertNull(findFormDeleteEndpoint(listOf(ep(HttpMethod.GET.name, "/gedra/acme/formDoc"))))
+    }
+
     /** A surface with no such endpoint returns null, which the pages report rather than crashing on. */
     @Test
     fun missingEndpointsAreNull() {

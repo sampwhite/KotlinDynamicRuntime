@@ -31,10 +31,11 @@ private val formsIdentity = setOf(HP.gedra)
 private const val formsPageSize = 25
 
 /**
- * The read side of the form documents (slice 2 of issue #408): a paged list of the caller's forms, and a
- * read-only view of one. Both are driven by the same catalog the create page uses -- the client-scoped
- * `formDocs` list and `formDoc` fetch endpoints -- so what is shown is exactly what that caller may see,
- * narrowed by the endpoints' own scope rules rather than by anything decided here.
+ * The read side of the form documents (issue #408): a paged list of the caller's forms, a read-only view of
+ * one, and a delete from that view (slice 3). All are driven by the same catalog the create page uses -- the
+ * client-scoped `formDocs` list, `formDoc` fetch, and `formDoc` DELETE endpoints -- so what is shown and what
+ * can be deleted is exactly what that caller may reach, narrowed by the endpoints' own scope rules rather than
+ * by anything decided here.
  *
  * The list pages through `limit`/`offset` and shows the total the scope admits, so a caller with more forms
  * than a page can reach all of them rather than silently seeing only the first (issue #408). The open form
@@ -47,12 +48,13 @@ val FormsPage = FC<Props> {
     var catalog by useState<Catalog?>(null)
     var listEndpoint by useState<EndpointInfo?>(null)
     var getEndpoint by useState<EndpointInfo?>(null)
+    var deleteEndpoint by useState<EndpointInfo?>(null)
     var rows by useState<List<Map<String, Any?>>>(emptyList())
     // How many forms the scope admits in all, for "showing X–Y of N" and to know when a next page exists.
     var numAvailable by useState(0)
     // The first index of the page on screen; paging moves it by [formsPageSize].
     var offset by useState(0)
-    var loading by useState(true)
+    var listLoading by useState(true)
     var error by useState<String?>(null)
     // True once the initial hash restore has run; until then the sync effect stays quiet so it cannot overwrite
     // a `g=` we are about to read (the same gate the Users page uses).
@@ -67,9 +69,14 @@ val FormsPage = FC<Props> {
     // Set when the open id names no form the caller may see -- an old link, or one belonging to someone else.
     var viewMissing by useState(false)
 
-    /** Loads the page at [off] from [ep], replacing the rows and the total. Flips [loading] off when done. */
+    // Delete of the open form: a two-step confirm, then the call and back to the list (issue #408).
+    var confirmingDelete by useState(false)
+    var deleting by useState(false)
+    var deleteError by useState<String?>(null)
+
+    /** Loads the page at [off] from [ep], replacing the rows and the total. Flips [listLoading] off when done. */
     fun loadPage(ep: EndpointInfo, off: Int) {
-        loading = true
+        listLoading = true
         formsScope.launch {
             try {
                 val resp = SchemaCatalogApi.invoke(ep, mapOf(EP.limit to formsPageSize, EP.offset to off))
@@ -79,7 +86,7 @@ val FormsPage = FC<Props> {
             } catch (e: Throwable) {
                 error = "Could not load your forms — is `./gradlew :launch:run` running? (${e.message})"
             } finally {
-                loading = false
+                listLoading = false
             }
         }
     }
@@ -95,6 +102,7 @@ val FormsPage = FC<Props> {
                 val cat = SchemaCatalogApi.fetchCatalog()
                 catalog = cat
                 getEndpoint = findFormGetEndpoint(cat.endpoints)
+                deleteEndpoint = findFormDeleteEndpoint(cat.endpoints)
                 val ep = findFormsListEndpoint(cat.endpoints)
                 listEndpoint = ep
                 if (ep != null) {
@@ -106,15 +114,15 @@ val FormsPage = FC<Props> {
             } catch (e: Throwable) {
                 error = "Could not load your forms — is `./gradlew :launch:run` running? (${e.message})"
             } finally {
-                loading = false
+                listLoading = false
             }
         }
     }
 
     // Open whatever the hash named once the first load has run -- a reload in the view, or a link from the
     // create page. Gated behind the load so it does not race the initial fetch.
-    useEffect(loading) {
-        if (!loading && !restored) {
+    useEffect(listLoading) {
+        if (!listLoading && !restored) {
             viewingId = hashParams()[HP.gedra]
             restored = true
         }
@@ -126,6 +134,9 @@ val FormsPage = FC<Props> {
     useEffect(viewingId, restored) {
         val id = viewingId
         viewMissing = false
+        // A confirm belongs to the form it was opened on; moving to another form (or the list) drops it.
+        confirmingDelete = false
+        deleteError = null
         if (id == null || !restored) {
             viewRow = null
             return@useEffect
@@ -180,7 +191,7 @@ val FormsPage = FC<Props> {
         val cat = catalog
         val ep = listEndpoint
         when {
-            loading -> p {
+            listLoading -> p {
                 className = ClassName("subtitle")
                 +"Loading…"
             }
@@ -205,7 +216,64 @@ val FormsPage = FC<Props> {
                         className = ClassName("subtitle")
                         +(if (viewMissing) "That form is not in your list." else "Loading…")
                     }
-                    else -> renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType)
+                    else -> {
+                        renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType)
+                        // Delete, offered only when the caller's surface carries the endpoint. A two-step
+                        // confirm; on success the view closes and the list reloads from the top, where the now
+                        // one-fewer forms are.
+                        deleteEndpoint?.let { de ->
+                            div {
+                                className = ClassName("row")
+                                if (!confirmingDelete) {
+                                    Button {
+                                        danger = true
+                                        onClick = { confirmingDelete = true; deleteError = null }
+                                        +"Delete form"
+                                    }
+                                } else {
+                                    span {
+                                        className = ClassName("subtitle")
+                                        +"Delete this form?"
+                                    }
+                                    Button {
+                                        danger = true
+                                        loading = deleting
+                                        onClick = {
+                                            val id = viewingId
+                                            if (id != null) {
+                                                deleting = true
+                                                deleteError = null
+                                                formsScope.launch {
+                                                    try {
+                                                        SchemaCatalogApi.invoke(de, mapOf(GDF.gedraId to id))
+                                                        confirmingDelete = false
+                                                        viewingId = null
+                                                        offset = 0
+                                                        loadPage(ep, 0)
+                                                    } catch (e: Throwable) {
+                                                        deleteError = "Could not delete the form: ${e.message}"
+                                                    } finally {
+                                                        deleting = false
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        +"Delete"
+                                    }
+                                    Button {
+                                        onClick = { confirmingDelete = false }
+                                        +"Cancel"
+                                    }
+                                }
+                            }
+                            deleteError?.let {
+                                p {
+                                    className = ClassName("error-text")
+                                    +it
+                                }
+                            }
+                        }
+                    }
                 }
             }
             // The list.
