@@ -8,6 +8,8 @@ import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.USF
+import com.dynamicruntime.common.user.UserFilterKind
+import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -136,16 +138,7 @@ object AdminApi {
      * matched set before capping (client-side sorting would only reorder the page, misleading past the cap).
      */
     suspend fun searchUsers(query: UserSearchQuery): UserSearchResult {
-        val args = buildMap<String, Any?> {
-            query.email.trim().takeIf { it.isNotEmpty() }?.let { put(USF.email, it) }
-            query.name.trim().takeIf { it.isNotEmpty() }?.let { put(USF.name, it) }
-            query.client.trim().takeIf { it.isNotEmpty() }?.let { put(USF.client, it) }
-            query.updatedAfter?.let { put(USF.updatedAfter, it) }
-            query.updatedBefore?.let { put(USF.updatedBefore, it) }
-            put(USF.sortBy, query.sortBy)
-            put(USF.descending, query.descending)
-        }
-        val env = Http.getApi(UADEP.userSearch + queryString(args))
+        val env = Http.getApi(UADEP.userSearch + queryString(userSearchArgs(query)))
         return UserSearchResult(
             users = env[EP.items].toJsonListOfMaps().map { it.toAdminUser() },
             numAvailable = (env[EP.numAvailable] as? Number)?.toInt() ?: 0,
@@ -243,26 +236,42 @@ object AdminApi {
     )
 }
 
+/** A from/to bound over an instant (ISO-8601 strings), for a [UserFilterKind.dateRange] field. */
+class DateRange(val after: String? = null, val before: String? = null) {
+    val isEmpty: Boolean get() = after == null && before == null
+}
+
 /**
- * What the console asked the user search for (issue #411): the filter terms, the update-time range, and how to
- * sort. A value object so the page holds one piece of state and `AdminApi.searchUsers` reads it, rather than a
- * long argument list threaded through the debounce.
+ * What the console asked the user search for (issue #411) -- held **generically, keyed by field name**, so the
+ * console builds it by iterating [userSearchFieldSpecs] rather than naming each field, and a field added to the
+ * shared spec flows through here with no change (the SDUI extra credit).
  *
- * The console filters on [email] and [name] (the real-world name the "Name" column shows); the endpoint also
- * accepts a `publicName` term, which the console does not surface because it hides the username. [client] is
- * meaningful only to an `allClients` caller -- for anyone else the scope already confines it.
+ * [textTerms] holds the substring/exact filters (email, name, client) by field name; [ranges] holds the
+ * date-range filters (update time) by field name. A blank or absent entry is simply no filter.
  */
 class UserSearchQuery(
-    val email: String = "",
-    val name: String = "",
-    val client: String = "",
-    /** ISO-8601 lower bound on the update time, or null. */
-    val updatedAfter: String? = null,
-    /** ISO-8601 upper bound on the update time, or null. */
-    val updatedBefore: String? = null,
+    val textTerms: Map<String, String> = emptyMap(),
+    val ranges: Map<String, DateRange> = emptyMap(),
     val sortBy: String = USF.updatedAt,
     val descending: Boolean = true,
 )
+
+/**
+ * The user-search endpoint's query args for [query] (issue #411), built by iterating the shared spec: each
+ * non-blank text term travels under its field name (which is its wire param), each range under the two param
+ * names the spec declares, plus the sort. Shared by [AdminApi.searchUsers] and the page's shareable-URL
+ * encoding, so the wire and the hash carry the same keys -- and adding a spec field needs no edit here.
+ */
+fun userSearchArgs(query: UserSearchQuery): Map<String, Any?> = buildMap {
+    query.textTerms.forEach { (field, term) -> term.trim().takeIf { it.isNotEmpty() }?.let { put(field, it) } }
+    query.ranges.forEach { (field, range) ->
+        val keys = userSearchFieldSpecsByName[field]?.rangeKeys ?: return@forEach
+        range.after?.let { put(keys.first, it) }
+        range.before?.let { put(keys.second, it) }
+    }
+    put(USF.sortBy, query.sortBy)
+    put(USF.descending, query.descending)
+}
 
 /**
  * One page of a user search: the [users] returned, [numAvailable] (how many matched before the cap), and

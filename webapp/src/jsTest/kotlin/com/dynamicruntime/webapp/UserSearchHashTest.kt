@@ -8,7 +8,8 @@ import kotlin.test.assertTrue
 /**
  * The shareable user-search URL (issue #411): the search encodes to hash params and reads back to the same
  * query, only the non-default parts appear (so a plain search is a clean URL), and a hand-edited or stale link
- * cannot ask for a sort field the endpoint would reject. Pure -- no React, no location.
+ * cannot ask for a sort field the endpoint would reject. The hash keys are the endpoint's own arg names (from
+ * the shared spec), so this exercises the spec-driven encoding too. Pure -- no React, no location.
  */
 class UserSearchHashTest {
 
@@ -21,31 +22,30 @@ class UserSearchHashTest {
     }
 
     @Test
-    fun onlyNonDefaultPartsAreEmitted() {
+    fun onlyNonDefaultPartsAreEmittedUnderTheWireKeys() {
         val params = searchHashParams(
-            UserSearchQuery(email = "ada", sortBy = USF.name, descending = false),
+            UserSearchQuery(textTerms = mapOf(USF.email to "ada"), sortBy = USF.name, descending = false),
         ).toMap()
-        assertEquals("ada", params[HP.qEmail])
-        assertEquals(USF.name, params[HP.qSort])
-        assertEquals("0", params[HP.qDesc])
+        assertEquals("ada", params[USF.email])
+        assertEquals(USF.name, params[USF.sortBy])
+        assertEquals("false", params[USF.descending])
         // Untouched fields carry nothing.
-        assertEquals(null, params[HP.qName])
-        assertEquals(null, params[HP.qClient])
+        assertEquals(null, params[USF.client])
     }
 
     @Test
     fun aFullSearchRoundTrips() {
         val q = UserSearchQuery(
-            email = "a@b", name = "Ada", client = "acme",
-            updatedAfter = "2026-01-01T00:00:00.000Z", updatedBefore = "2026-06-01T00:00:00.000Z",
+            textTerms = mapOf(USF.email to "a@b", USF.name to "Ada", USF.client to "acme"),
+            ranges = mapOf(USF.updatedAt to DateRange("2026-01-01T00:00:00.000Z", "2026-06-01T00:00:00.000Z")),
             sortBy = USF.client, descending = false,
         )
         val back = roundTrip(q)
-        assertEquals("a@b", back.email)
-        assertEquals("Ada", back.name)
-        assertEquals("acme", back.client)
-        assertEquals("2026-01-01T00:00:00.000Z", back.updatedAfter)
-        assertEquals("2026-06-01T00:00:00.000Z", back.updatedBefore)
+        assertEquals("a@b", back.textTerms[USF.email])
+        assertEquals("Ada", back.textTerms[USF.name])
+        assertEquals("acme", back.textTerms[USF.client])
+        assertEquals("2026-01-01T00:00:00.000Z", back.ranges[USF.updatedAt]?.after)
+        assertEquals("2026-06-01T00:00:00.000Z", back.ranges[USF.updatedAt]?.before)
         assertEquals(USF.client, back.sortBy)
         assertEquals(false, back.descending)
     }
@@ -53,7 +53,8 @@ class UserSearchHashTest {
     @Test
     fun anEmptyHashIsTheDefaultSearch() {
         val q = searchQueryFromHash(emptyMap())
-        assertEquals("", q.email)
+        assertTrue(q.textTerms.isEmpty())
+        assertTrue(q.ranges.isEmpty())
         assertEquals(USF.updatedAt, q.sortBy)
         assertEquals(true, q.descending)
     }
@@ -61,9 +62,8 @@ class UserSearchHashTest {
     @Test
     fun anUnknownSortKeyFallsBackToTheDefault() {
         // A hand-edited or stale link must not send a sort the endpoint would 400 on.
-        val q = searchQueryFromHash(mapOf(HP.qSort to "bogusField"))
-        assertEquals(USF.updatedAt, q.sortBy)
+        assertEquals(USF.updatedAt, searchQueryFromHash(mapOf(USF.sortBy to "bogusField")).sortBy)
         // publicName is a backend axis but not a console column, so it is not an accepted hash sort either.
-        assertEquals(USF.updatedAt, searchQueryFromHash(mapOf(HP.qSort to USF.publicName)).sortBy)
+        assertEquals(USF.updatedAt, searchQueryFromHash(mapOf(USF.sortBy to USF.publicName)).sortBy)
     }
 }

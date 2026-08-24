@@ -4,6 +4,9 @@ import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.user.USF
+import com.dynamicruntime.common.user.UserFilterKind
+import com.dynamicruntime.common.user.userSearchFieldSpecs
+import com.dynamicruntime.common.user.userSortKeys
 import com.dynamicruntime.common.util.isEmailAddress
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -45,14 +48,11 @@ private val userIdentity = setOf(HP.user)
 val Users = FC<Props> {
     var config by useState<HomeConfig?>(null)
     var users by useState<List<AdminUser>>(emptyList())
-    // The search filters (issue #411): the console filters on email and the real-world name; `publicName` is a
-    // backend axis it does not surface (it hides the username). The client filter is offered only to a caller
-    // who can see more than one. The two update-time bounds are ISO strings, null when unset.
-    var emailFilter by useState("")
-    var nameFilter by useState("")
-    var clientFilter by useState("")
-    var afterFilter by useState<String?>(null)
-    var beforeFilter by useState<String?>(null)
+    // The search filters (issue #411), held generically by field name so the panel renders from the shared spec
+    // (the SDUI extra credit): `textFilters` holds the substring/exact terms (email, name, client), `rangeFilters`
+    // the date-range bounds (update time). A field added to `userSearchFieldSpecs` flows through here untouched.
+    var textFilters by useState<Map<String, String>>(emptyMap())
+    var rangeFilters by useState<Map<String, DateRange>>(emptyMap())
     // The sort, driven by the table's column headers. Default: newest first, as the issue specifies.
     var sortBy by useState(USF.updatedAt)
     var descending by useState(true)
@@ -112,15 +112,14 @@ val Users = FC<Props> {
     }
 
     /**
-     * A [UserSearchQuery] from the current filter and sort state, with any field overridable. Handlers pass the
-     * value they are changing explicitly (`query(email = v)`) rather than relying on the just-set state, which
-     * has not landed yet inside the same event -- the classic React stale-closure trap.
+     * A [UserSearchQuery] from the current filter and sort state, with any part overridable. Handlers pass the
+     * value they are changing explicitly (`query(texts = next)`) rather than relying on the just-set state,
+     * which has not landed yet inside the same event -- the classic React stale-closure trap.
      */
     fun query(
-        email: String = emailFilter, name: String = nameFilter, client: String = clientFilter,
-        after: String? = afterFilter, before: String? = beforeFilter,
+        texts: Map<String, String> = textFilters, ranges: Map<String, DateRange> = rangeFilters,
         sort: String = sortBy, desc: Boolean = descending,
-    ): UserSearchQuery = UserSearchQuery(email, name, client, after, before, sort, desc)
+    ): UserSearchQuery = UserSearchQuery(texts, ranges, sort, desc)
 
     /**
      * Runs a search. Deliberately *not* through [run]: that sets `busy`, which disables the controls -- and
@@ -160,13 +159,26 @@ val Users = FC<Props> {
 
     /** Sets the visible filter/sort controls from [q] -- used to reflect a URL (a shared link, Back/Forward). */
     fun seedFilters(q: UserSearchQuery) {
-        emailFilter = q.email
-        nameFilter = q.name
-        clientFilter = q.client
-        afterFilter = q.updatedAfter
-        beforeFilter = q.updatedBefore
+        textFilters = q.textTerms
+        rangeFilters = q.ranges
         sortBy = q.sortBy
         descending = q.descending
+    }
+
+    /** Updates one text filter (email/name/client) and runs; [immediate] fires at once (a select) or debounces
+     *  (a text box). Dropping a blank term removes the entry, so `textFilters` holds only real filters. */
+    fun setText(field: String, value: String, immediate: Boolean) {
+        val next = if (value.isBlank()) textFilters - field else textFilters + (field to value)
+        textFilters = next
+        val q = query(texts = next)
+        if (immediate) runSearch(q) else scheduleSearch(q)
+    }
+
+    /** Updates one date-range filter and runs at once (a picker is a deliberate choice). An empty range is dropped. */
+    fun setRange(field: String, range: DateRange) {
+        val next = if (range.isEmpty) rangeFilters - field else rangeFilters + (field to range)
+        rangeFilters = next
+        runSearch(query(ranges = next))
     }
 
     /** Resets every filter and the sort to their defaults and re-runs; the hash sync then clears the URL. */
@@ -295,7 +307,7 @@ val Users = FC<Props> {
     // the open record is in [userIdentity], so a filter change never pushes.
     useEffect(
         editing, creating, restored,
-        emailFilter, nameFilter, clientFilter, afterFilter, beforeFilter, sortBy, descending,
+        textFilters, rangeFilters, sortBy, descending,
     ) {
         if (!restored) {
             return@useEffect
@@ -670,93 +682,71 @@ val Users = FC<Props> {
             // follows, since the client is a distinction only to somebody who can see more than one.
             val showClient = config?.user?.roles?.contains(ROLE.allClients) == true
 
-            // Text filters are debounced (a keystroke must not blur the field it is typed into); the select and
-            // the date pickers fire at once, since each change there is a deliberate, discrete choice.
-            div {
-                className = ClassName("row")
-                span {
-                    className = ClassName("field-label")
-                    +"Email"
-                }
-                Input {
-                    value = emailFilter
-                    placeholder = "Email contains…"
-                    onChange = { event ->
-                        val v = event.target.value as String
-                        emailFilter = v
-                        scheduleSearch(query(email = v))
-                    }
-                }
-            }
-            div {
-                className = ClassName("row")
-                span {
-                    className = ClassName("field-label")
-                    +"Name"
-                }
-                Input {
-                    value = nameFilter
-                    placeholder = "Name contains…"
-                    onChange = { event ->
-                        val v = event.target.value as String
-                        nameFilter = v
-                        scheduleSearch(query(name = v))
-                    }
-                }
-            }
-            if (showClient) {
-                div {
-                    className = ClassName("row")
-                    span {
-                        className = ClassName("field-label")
-                        +"Client"
-                    }
-                    Select {
-                        value = clientFilter.ifEmpty { null }
-                        options = clientOptions(clientChoices)
-                        placeholder = "Any client"
-                        allowClear = true
-                        style = js("({ minWidth: 180 })")
-                        onChange = { v ->
-                            val c = v as? String ?: ""
-                            clientFilter = c
-                            runSearch(query(client = c))
+            // The filter panel is rendered from the shared spec (issue #411, the SDUI extra credit): a field
+            // added to `userSearchFieldSpecs` becomes a filter here with no further change. A substring field is
+            // a text box (debounced, so a keystroke does not blur it); an exact field is a picker; a date-range
+            // field is a pair of date-time pickers -- each firing at once, since a pick is a deliberate choice.
+            for (spec in userSearchFieldSpecs) {
+                if (spec.allClientsOnly && !showClient) continue
+                when (spec.filterKind) {
+                    UserFilterKind.substring -> div {
+                        className = ClassName("row")
+                        span {
+                            className = ClassName("field-label")
+                            +spec.label
+                        }
+                        Input {
+                            value = textFilters[spec.name] ?: ""
+                            placeholder = "${spec.label} contains…"
+                            onChange = { event -> setText(spec.name, event.target.value as String, immediate = false) }
                         }
                     }
-                }
-            }
-            div {
-                className = ClassName("row")
-                span {
-                    className = ClassName("field-label")
-                    +"Updated"
-                }
-                DatePicker {
-                    value = afterFilter?.let { dayjs(it) }?.takeIf { it.isValid() }
-                    showTime = true
-                    onChange = { date, _ ->
-                        val iso = date?.toISOString()
-                        afterFilter = iso
-                        runSearch(query(after = iso))
+                    UserFilterKind.exact -> div {
+                        className = ClassName("row")
+                        span {
+                            className = ClassName("field-label")
+                            +spec.label
+                        }
+                        Select {
+                            // Exact fields render as a picker; today only the client, whose options are the
+                            // clients this caller may choose among.
+                            value = (textFilters[spec.name] ?: "").ifEmpty { null }
+                            options = clientOptions(clientChoices)
+                            placeholder = "Any ${spec.label.lowercase()}"
+                            allowClear = true
+                            style = js("({ minWidth: 180 })")
+                            onChange = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
+                        }
                     }
-                }
-                DatePicker {
-                    value = beforeFilter?.let { dayjs(it) }?.takeIf { it.isValid() }
-                    showTime = true
-                    onChange = { date, _ ->
-                        val iso = date?.toISOString()
-                        beforeFilter = iso
-                        runSearch(query(before = iso))
+                    UserFilterKind.dateRange -> {
+                        val range = rangeFilters[spec.name] ?: DateRange()
+                        div {
+                            className = ClassName("row")
+                            span {
+                                className = ClassName("field-label")
+                                +spec.label
+                            }
+                            DatePicker {
+                                value = range.after?.let { dayjs(it) }?.takeIf { it.isValid() }
+                                showTime = true
+                                onChange = { date, _ -> setRange(spec.name, DateRange(date?.toISOString(), range.before)) }
+                            }
+                            DatePicker {
+                                value = range.before?.let { dayjs(it) }?.takeIf { it.isValid() }
+                                showTime = true
+                                onChange = { date, _ -> setRange(spec.name, DateRange(range.after, date?.toISOString())) }
+                            }
+                        }
+                        p {
+                            className = ClassName("type-hint")
+                            +"The earliest and latest ${spec.label.lowercase()} time; leave either bound empty for open-ended."
+                        }
                     }
+                    null -> {}
                 }
-            }
-            p {
-                className = ClassName("type-hint")
-                +"The earliest and latest update time; leave either bound empty for open-ended."
             }
 
-            val anyFilter = emailFilter.isNotBlank() || nameFilter.isNotBlank() || clientFilter.isNotBlank() ||
-                afterFilter != null || beforeFilter != null
+            val anyFilter = textFilters.isNotEmpty() || rangeFilters.values.any { !it.isEmpty }
             // The sort counts as something to reset too, so Clear returns the whole view to its default.
             val canReset = anyFilter || sortBy != USF.updatedAt || !descending
 
@@ -818,42 +808,51 @@ private fun react.ChildrenBuilder.readOnlyField(label: String, value: String) {
 }
 
 /**
- * The sort keys the console offers as columns (issue #411) -- the subset of the backend's search fields that
- * are shown as columns. A hash carrying anything else (a hand-edited or stale link) falls back to the default
- * rather than sending the backend a sort field that would 400.
+ * The [UserSearchQuery] a shared/bookmarked URL encodes (issue #411), read generically from the shared spec:
+ * the hash carries the **same keys as the wire** (a field's own name for a text filter, the spec's range keys
+ * for a date range, plus sort), so this and [searchHashParams] mirror `AdminApi.userSearchArgs`. An absent key
+ * is its default; an unrecognized sort key (a hand-edited or stale link) drops to the default so a pasted link
+ * can never ask the endpoint for a field it would reject. Pure, and covered under `jsNodeTest`.
  */
-private val userSortKeys = setOf(USF.email, USF.name, USF.client, USF.updatedAt)
-
-/**
- * The [UserSearchQuery] a shared/bookmarked URL encodes (issue #411): each hash key ([HP.qEmail] and friends)
- * read back, with an absent one meaning its default. An unrecognized sort key is dropped to the default so a
- * pasted link can never ask for a field the endpoint rejects. Pure, and covered under `jsNodeTest`.
- */
-fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery = UserSearchQuery(
-    email = hp[HP.qEmail] ?: "",
-    name = hp[HP.qName] ?: "",
-    client = hp[HP.qClient] ?: "",
-    updatedAfter = hp[HP.qAfter],
-    updatedBefore = hp[HP.qBefore],
-    sortBy = hp[HP.qSort]?.takeIf { userSortKeys.contains(it) } ?: USF.updatedAt,
-    // Descending is the default; only an explicit "0" means ascending.
-    descending = hp[HP.qDesc] != "0",
-)
-
-/**
- * The hash params for a search [query] (issue #411): the inverse of [searchQueryFromHash], emitting only the
- * values that differ from their default so a plain search stays a bare `page=users`. Pure, and covered under
- * `jsNodeTest` -- the two round-trip.
- */
-fun searchHashParams(query: UserSearchQuery): List<Pair<String, String>> = buildList {
-    if (query.email.isNotBlank()) add(HP.qEmail to query.email)
-    if (query.name.isNotBlank()) add(HP.qName to query.name)
-    if (query.client.isNotBlank()) add(HP.qClient to query.client)
-    query.updatedAfter?.let { add(HP.qAfter to it) }
-    query.updatedBefore?.let { add(HP.qBefore to it) }
-    if (query.sortBy != USF.updatedAt) add(HP.qSort to query.sortBy)
-    if (!query.descending) add(HP.qDesc to "0")
+fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery {
+    val texts = buildMap {
+        for (spec in userSearchFieldSpecs) {
+            if (spec.filterKind == UserFilterKind.substring || spec.filterKind == UserFilterKind.exact) {
+                hp[spec.name]?.takeIf { it.isNotBlank() }?.let { put(spec.name, it) }
+            }
+        }
+    }
+    val ranges = buildMap {
+        for (spec in userSearchFieldSpecs) {
+            val keys = spec.rangeKeys ?: continue
+            val range = DateRange(hp[keys.first], hp[keys.second])
+            if (!range.isEmpty) put(spec.name, range)
+        }
+    }
+    return UserSearchQuery(
+        textTerms = texts,
+        ranges = ranges,
+        sortBy = hp[USF.sortBy]?.takeIf { userSortKeys.contains(it) } ?: USF.updatedAt,
+        // Descending is the default; only an explicit "false" means ascending.
+        descending = hp[USF.descending] != "false",
+    )
 }
+
+/**
+ * The hash params for a search [query] (issue #411): the same key/value pairs `AdminApi.userSearchArgs` puts
+ * on the wire (minus the limit), emitting only what differs from the default so a plain search stays a bare
+ * `page=users`. Pure, and covered under `jsNodeTest` -- it round-trips with [searchQueryFromHash].
+ */
+fun searchHashParams(query: UserSearchQuery): List<Pair<String, String>> =
+    userSearchArgs(query).mapNotNull { (k, v) ->
+        when {
+            // The sort defaults are omitted so an untouched search carries no params.
+            k == USF.sortBy && v == USF.updatedAt -> null
+            k == USF.descending && v == true -> null
+            k == USF.descending -> k to "false"
+            else -> k to v.toString()
+        }
+    }
 
 /**
  * The count line above the results (issue #411): how many are shown against how many matched, so an over-broad
