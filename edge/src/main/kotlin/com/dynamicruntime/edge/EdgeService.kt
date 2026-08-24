@@ -123,6 +123,10 @@ class EdgeService : ServiceInitializer, ContentServer {
             return false
         }
         val apiRoot = "/" + (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String ?: EdgeRoot.ea)
+        // This edge's own front end, and the application's reached through it -- the latter being a path that
+        // only resolves because this node forwards it (issue #419).
+        val edgeAppRoot = "/" + (cxt.instanceConfig.get(ACFG.appContextRoot) as? String ?: EdgeRoot.ew)
+        val backendAppRoot = "/" + ContextRoot.wa
         return when (handler.appPath) {
             "/" -> {
                 // A signed-in caller gets a page rather than a redirect. Sending them to the sign-in page
@@ -132,7 +136,7 @@ class EdgeService : ServiceInitializer, ContentServer {
                 val email = cxt.envAuthEmail
                 if (email != null) {
                     handler.sendStringResponse(
-                        EnvAuthPage.renderSignedIn(email, apiRoot + "/schema/endpoints"),
+                        EnvAuthPage.renderSignedIn(email, edgeAppRoot, backendAppRoot),
                         EXC.ok, "text/html; charset=utf-8",
                     )
                 } else {

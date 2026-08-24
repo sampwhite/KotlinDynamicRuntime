@@ -102,10 +102,16 @@ object EnvAuthPage {
      * edge with no home page of its own does by default, and it was found the first time somebody signed in
      * from the bare root rather than from a deep link. When the edge grows a real front end, this becomes its
      * landing.
+     *
+     * The two links are the two front ends a signed-in operator can now reach: the edge's own, and the
+     * application's *through* this edge -- which is only reachable at all because forwarding exists (issue
+     * #419), so the second link is a live demonstration that the perimeter works, not just a convenience. It
+     * replaced a link to the edge's endpoint catalog, which was a debugging aid rather than somewhere to go.
      */
-    fun renderSignedIn(email: String, catalogPath: String): String {
+    fun renderSignedIn(email: String, edgeAppPath: String, backendAppPath: String): String {
         val who = htmlText(email)
-        val cat = htmlText(catalogPath)
+        val edgeApp = htmlText(edgeAppPath)
+        val backendApp = htmlText(backendAppPath)
         return $$"""
 <!doctype html>
 <html lang="en">
@@ -128,7 +134,7 @@ object EnvAuthPage {
 <main>
   <h1>Signed in</h1>
   <p>You are signed in to this environment as <code>$$who</code>.</p>
-  <p><a href="$$cat">Endpoint catalog</a></p>
+  <p><a href="$$edgeApp">Edge web app</a> &middot; <a href="$$backendApp">Application web app</a></p>
 </main>
 </body>
 </html>
