@@ -43,10 +43,7 @@ class EdgeService : ServiceInitializer, ContentServer {
         // Before anything that can fail for an unrelated reason: reaching RequestService must not be able to
         // decide whether the boot refusal runs.
         val configured = checkContextRoots(cxt)
-        RequestService.get(cxt).let {
-            it.checkInit(cxt)
-            it.addContentServer(this)
-        }
+        RequestService.get(cxt).addContentServer(this)
         LogEdge.info(cxt) { "KdrEdge serving context roots ${configured.values.filterNotNull()}." }
     }
 

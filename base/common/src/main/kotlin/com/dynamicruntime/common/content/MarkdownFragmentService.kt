@@ -45,7 +45,6 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     /** Registers this content server with the dispatcher (idempotent), then checks the fragment files. */
     override fun checkInit(cxt: KdrCxt) {
         val requestService = RequestService.get(cxt)
-        requestService.checkInit(cxt)
         requestService.addContentServer(this)
         checkFragmentsAtStartup(cxt)
     }

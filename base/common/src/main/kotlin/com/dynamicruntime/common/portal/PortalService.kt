@@ -44,7 +44,6 @@ class PortalService : ServiceInitializer, ContentServer {
     /** Registers this content server with the dispatcher (idempotent). */
     override fun checkInit(cxt: KdrCxt) {
         val requestService = RequestService.get(cxt)
-        requestService.checkInit(cxt)
         requestService.addContentServer(this)
     }
 

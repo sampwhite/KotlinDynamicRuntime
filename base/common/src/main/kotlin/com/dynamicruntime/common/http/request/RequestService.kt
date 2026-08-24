@@ -195,7 +195,17 @@ class RequestService : ServiceInitializer {
     fun frontendConfig(): Map<String, Any?> =
         mapOf("contextRoots" to contextRootFocus.entries.associate { (root, focus) -> focus.name to root })
 
-    override fun checkInit(cxt: KdrCxt) {
+    /**
+     * Binds everything this dispatcher needs from the instance config, and refuses the boot if an endpoint
+     * section has no access rules.
+     *
+     * In `onCreate` rather than `checkInit` because none of it touches another service -- it reads the
+     * instance config and the schema store, both of which are in hand before any regular service starts. That
+     * placement is what lets the content servers stop forcing this service to initialize: `onCreate` runs
+     * across every service of the tier before any `checkInit` does, so a service registering itself in its own
+     * `checkInit` finds the dispatcher already configured, by the lifecycle rather than by asking.
+     */
+    override fun onCreate(cxt: KdrCxt) {
         if (isInit) {
             return
         }
@@ -240,8 +250,12 @@ class RequestService : ServiceInitializer {
         // It lives here rather than beside the store it reads, because `SchemaService` is a *startup* service
         // and this is a regular one: during its init the dispatcher does not exist yet, so a check written
         // there could only find a null request service and skip -- failing open, silently, in the exact shape
-        // it exists to prevent. This tier runs after all startup services, so the store is built, and the rules
-        // are populated (immediately above), which is the one point where both halves are in hand.
+        // it exists to prevent. The *tier* is what makes this the right place, not the pass within it: every
+        // startup service has finished before any regular one is created, so the store is built here, and the
+        // rules are populated immediately above -- the one point where both halves are in hand.
+        //
+        // Nothing contributes endpoints after that: schema is collected from components, before any service
+        // runs, and compiled by the startup tier. So reading it in the first pass sees the whole set.
         val unruled = cxt.getSchema().endpoints.values
             .map { sectionOf(it.path) }.distinct().sorted()
             .filter { it !in sectionRulesMap }
