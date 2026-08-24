@@ -51,6 +51,13 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
     /** Whether this is a permanently-deleted tombstone -- obfuscated, disabled, and not editable. */
     val isDeleted: Boolean get() = deletedAt != null
 
+    /**
+     * When the row was last written (`updatedAt` protocol column), or null for a row never persisted. Surfaced
+     * for the cache search (issue #411): its default sort key and a column the console can order on. Read from
+     * [data], not from [authUserData] -- it is a real column, unlike [org] and [name].
+     */
+    var updatedAt: Instant? = null
+
     lateinit var username: String
     var roles: List<String> = listOf(ROLE.user)
 
@@ -109,6 +116,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         ADF.hasPassword to (encodedPassword != null),
         ADF.deleted to isDeleted,
         ADF.deletedAt to deletedAt,
+        ADF.updatedAt to updatedAt,
     )
 
     /** Repackages the typed fields into a storage map (roles and password folded back into `authUserData`). */
@@ -236,6 +244,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
                     type = SCT.boolean
                 }
                 property(ADF.deletedAt, "When the account was permanently deleted, for a deleted account.") { dateTime() }
+                property(ADF.updatedAt, "When the row was last updated (the default sort key of the cache search).") { dateTime() }
             }
         }
 
@@ -254,6 +263,8 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
             row.isEntity = userData[AD.isEntity] == true
             row.name = userData[AD.name].toOptStr()
             row.deletedAt = userData[AD.deletedAt].toOptInstant()
+            // A real column, read from the row rather than the auth-data blob (unlike org/name/deletedAt).
+            row.updatedAt = data[PF.updatedAt].toOptInstant()
             row.encodedPassword = userData[AD.encodedPassword].toOptStr()
             userData.remove(AD.encodedPassword) // never let the password leak downstream via `data`
             row.authUserData = userData

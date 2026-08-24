@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.cache.SqlCacheIndex
 import com.dynamicruntime.common.sql.cache.SqlCacheParams
 import com.dynamicruntime.common.sql.cache.SqlTableCache
@@ -41,6 +42,11 @@ object AuthUserCache {
             // which the cache logs as an error rather than quietly answering with one of the two.
             SqlCacheIndex(AU.username, unique = true) { it[AU.username].toOptStr() },
             SqlCacheIndex(AU.primaryId, unique = true) { it[AU.primaryId].toOptStr() },
+            // Non-unique: the client an account belongs to, so the brute-force user search (issue #411) can
+            // pull just one client's rows for a client-scoped administrator rather than extracting the whole
+            // table. Serving a listing from an index that *is* the scope is the caching skill's sanctioned way
+            // to scope a listing (as gedra's `clientKind` does).
+            SqlCacheIndex(PF.client, unique = false) { it[PF.client].toOptStr() },
         ),
     )
 
