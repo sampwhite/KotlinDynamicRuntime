@@ -113,7 +113,7 @@ class EdgeService : ServiceInitializer, ContentServer {
     }
 
     /**
-     * Serves the sign-in page, and sends the bare content root to it.
+     * Serves the sign-in page and sends the bare content root to it.
      *
      * The page is the whole anonymous surface of an edge, so this is deliberately two paths and no more.
      */

@@ -50,11 +50,11 @@ object EDGEUP {
      * Only the idle timer applies otherwise, and it resets on every byte, so an upstream that trickles a
      * response is never cut off. This is the one to revisit per route rather than globally: a total timeout is
      * right for an application request and exactly wrong for a streamed or long-polled one, so when route
-     * entries become real this belongs on them.
+     * entries become real, this belongs on them.
      */
     const val requestTimeoutMs = 60_000L
 
-    /** Jetty's default is 64. Explicit so the number is a choice about this deployment, not an inheritance. */
+    /** Jetty's default is 64. Explicit, so the number is a choice about this deployment, not an inheritance. */
     const val maxConnectionsPerUpstream = 64
 
     /** Carries the resolved address from the wrapper to the header copy, so the cookie is decrypted once. */
@@ -129,7 +129,7 @@ class EdgeProxyHandler(
      * from the one place that sees a request before the dispatcher does.
      *
      * The fallback goes through `EnvAuthRules.assumesEnvAuth` rather than re-deciding locally, and that is the
-     * point of routing it through the rule at all. A developer's edge running with the assume switch on can
+     * point of routing it through the rule at all. A developer's edge running with the "assume" switch on can
      * reach its own UI without Google, because the dispatcher resolves the same way; if this path judged
      * independently, forwarded traffic alone would still be challenged and the two halves of the same node
      * would disagree about who is signed in.
