@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.EnvAuthRules
 import org.eclipse.jetty.client.HttpClient
@@ -84,7 +85,6 @@ object EDGEUP {
  */
 class EdgeProxyHandler(
     private val config: KdrInstanceConfig,
-    private val node: NodeService,
     private val contentRoot: String,
     upstream: String,
 ) : Handler.Wrapper(UpstreamProxy(upstream)) {
@@ -94,8 +94,20 @@ class EdgeProxyHandler(
         if (root in EdgeRoot.all || root !in EDGEUP.proxiedRoots) {
             return false
         }
-        val email = envAuthEmail(request)
+        // Created only AFTER the decline branch, and that ordering is what keeps it honest. A forwarded
+        // request never reaches the dispatcher, so `RequestHandler` never builds one -- this is the only
+        // KdrCxt the request will ever have on this node, rather than a second one shadowing the real thing.
+        // A declined request gets no context from here at all, and the dispatcher builds its own as usual.
+        //
+        // It is a context for *this node's* work on the request -- reading config, timing, logging, and
+        // later the node registry, which is database-backed and so cannot be reached without one. It carries
+        // nothing inward: the only thing the upstream learns is the header, and the upstream builds its own
+        // context from that. So nothing set here is expected to survive the hop, because nothing here is
+        // meant to.
+        val cxt = InstanceRegistry.createCxt("edgeProxy", config)
+        val email = envAuthEmail(cxt, request)
         if (email == null) {
+            LogEdge.debug(cxt, "Challenging an unauthenticated request for /$root.")
             // Challenged here rather than forwarded-and-refused: the application behind this edge has its own
             // idea of who is logged in, and would answer an anonymous request perfectly happily. The perimeter
             // is the only place that can insist.
@@ -103,6 +115,9 @@ class EdgeProxyHandler(
             return true
         }
         request.setAttribute(EDGEUP.emailAttribute, email)
+        // The one record this node keeps of a forwarded request. The dispatcher's request log never sees
+        // proxied traffic, so without this an edge is silent about the majority of what passes through it.
+        LogEdge.debug(cxt) { "Forwarding ${request.method} ${Request.getPathInContext(request)} for $email." }
         return super.handle(request, response, callback)
     }
 
@@ -119,11 +134,12 @@ class EdgeProxyHandler(
      * independently, forwarded traffic alone would still be challenged and the two halves of the same node
      * would disagree about who is signed in.
      */
-    private fun envAuthEmail(request: Request): String? {
+    private fun envAuthEmail(cxt: KdrCxt, request: Request): String? {
         val raw = Request.getCookies(request).firstOrNull { it.name == ENVAUTH.cookie }?.value
-        val decoded = raw?.let { EnvAuthCookie.decode(node, it) }
-        // No cxt here, so no cxt.now(); the comparison is the same one extractEnvAuth makes.
-        if (decoded != null && System.currentTimeMillis() <= decoded.expireEpochMs) {
+        val decoded = raw?.let { EnvAuthCookie.decode(NodeService.get(cxt), it) }
+        // cxt.now(), not the wall clock: it carries the test time offset, so an expiry can be driven forward
+        // in a test exactly as it can on the dispatcher's path. The comparison is extractEnvAuth's.
+        if (decoded != null && cxt.now().toEpochMilliseconds() <= decoded.expireEpochMs) {
             return decoded.email
         }
         return if (EnvAuthRules.assumesEnvAuth(config)) ENVA.assumedAddress else null

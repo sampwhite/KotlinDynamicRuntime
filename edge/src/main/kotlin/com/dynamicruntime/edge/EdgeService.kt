@@ -52,7 +52,6 @@ class EdgeService : ServiceInitializer, ContentServer {
         requestService.addFrontHandler(
             EdgeProxyHandler(
                 config = cxt.instanceConfig,
-                node = NodeService.get(cxt),
                 contentRoot = cxt.instanceConfig.get(ACFG.contentContextRoot) as? String ?: EdgeRoot.ec,
                 upstream = upstream,
             ),
