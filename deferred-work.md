@@ -239,3 +239,25 @@ each still running on every later hash change.
   `awaitCancellation()` rather than a `cleanup { }` block, and nothing in `webapp` uses that idiom yet.
   Introducing it for a leak with no symptom would make three working effects the place it gets learned.
   `App`'s listener is deliberately exempt either way — the root never unmounts.
+
+## When an edge fronts a backend that allows anonymous access
+
+Today an edge challenges **every** proxied request (#419), which is right while it fronts internal
+deployments: everything behind it is for operators, and a caller who is not signed in has no business there.
+That stops being right the moment a public-facing application sits behind one — a visitor who is *supposed* to
+be anonymous is redirected to a Google sign-in they cannot complete and will not want.
+
+The trigger is observable: the first route added for a backend whose application serves the public.
+
+- **Per-route anonymous access.** `EdgeProxyHandler` decides to challenge from the context root alone, so the
+  answer is the same for every backend. The route entry of `kd2-design/thoughts-edge-server.md` §7 already
+  anticipates this with an `allowNoEnvAuth` flag — a root not carrying it is challenged, one carrying it is
+  forwarded as-is. Needs the route table, so it lands with that rather than before it.
+
+- **Static assets should not be challenged at all** *(Sam, during the #419 discussion).* A page's CSS, JS and
+  icons are not a place to make a login decision: an unauthenticated asset request either belongs to a page the
+  caller was already allowed to load, or to one they were not, and the page itself is where that was decided.
+  Challenging them means a signed-out visitor gets a sign-in page where a stylesheet belonged. This is
+  *survivable* today rather than fixed — since #419 a background request is refused with a 401 the frontend
+  acts on, instead of a redirect it tried to parse as JSON — so the symptom is a clean refusal rather than a
+  broken page, and that is the whole of why it can wait.
