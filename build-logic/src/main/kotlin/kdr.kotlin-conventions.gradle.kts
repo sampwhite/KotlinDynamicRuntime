@@ -6,6 +6,7 @@
 // like in a normal build script -- which is why this is preferred over the
 // older `apply(from = ...)` script approach.
 
+import com.dynamicruntime.buildlogic.Versions
 import org.gradle.api.tasks.testing.Test
 
 plugins {
@@ -21,6 +22,13 @@ kotlin {
 }
 
 dependencies {
+    // Dependency-family BOMs (see `Versions`). These add nothing to any classpath -- a platform only
+    // *constrains* versions -- so every module can carry them harmlessly, and the module that uses one of
+    // these families names its artifacts without a version. Declared here rather than per-module so a new
+    // module cannot acquire a jetty or log4j artifact at some other version by forgetting to opt in.
+    add("implementation", platform("org.eclipse.jetty:jetty-bom:${Versions.jetty}"))
+    add("implementation", platform("org.apache.logging.log4j:log4j-bom:${Versions.log4j}"))
+
     // KMP-friendly date/time (the Instant type itself comes from the kotlin.time stdlib).
     add("implementation", "org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
 
