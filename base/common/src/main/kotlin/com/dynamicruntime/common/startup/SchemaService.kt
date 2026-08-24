@@ -832,12 +832,6 @@ class SchemaService : ServiceInitializer {
 }
 
 /**
- * Field-name keys owned by the schema-service endpoints. The endpoint-dump attribute names live on
- * [com.dynamicruntime.common.endpoint.EI] (with [KdrEndpoint]); the `namespace`/`method` query filters
- * reuse those, so only `pathRegex` and the sample-endpoint fields are defined here.
- */
-
-/**
  * Whose endpoints and whose schema a catalog call answers with (issue #387).
  *
  * [named] is kept apart from [client] because the two are different questions: whether the caller *asked* for
@@ -847,6 +841,11 @@ class SchemaService : ServiceInitializer {
 @KdrPrivate
 class CatalogSurface(val named: Boolean, val client: String?, val schema: KdrSchemaStore)
 
+/**
+ * Field-name keys owned by the schema-service endpoints. The endpoint-dump attribute names live on
+ * [com.dynamicruntime.common.endpoint.EI] (with [KdrEndpoint]); the `namespace`/`method` query filters
+ * reuse those, so only `pathRegex` and the sample-endpoint fields are defined here.
+ */
 @Suppress("ConstPropertyName")
 object SS {
     // Endpoint introspection: the path-regex query filter. The `endpoints` result key is now the shared
