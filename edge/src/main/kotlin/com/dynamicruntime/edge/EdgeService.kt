@@ -29,6 +29,28 @@ class EdgeService : ServiceInitializer, ContentServer {
     override val serviceName: String = EdgeService.serviceName
 
     /**
+     * Binds this node as a content server, after refusing the boot if its roots are an application's.
+     *
+     * Registered here rather than in `checkReady`, and the timing decides a race: content servers are offered
+     * a request in registration order, and `PortalService` registers in ITS `checkInit` -- so anything
+     * registering later loses the bare content root to the application's portal. Observed: `/ec` redirected
+     * to `/ec/portal`. EdgeComponent's earlier load priority is what puts this first.
+     *
+     * Ordering is the fix available today. The real one is role profiling: an edge has no business loading
+     * the portal at all, and then there is nothing to race.
+     */
+    override fun checkInit(cxt: KdrCxt) {
+        // Before anything that can fail for an unrelated reason: reaching RequestService must not be able to
+        // decide whether the boot refusal runs.
+        val configured = checkContextRoots(cxt)
+        RequestService.get(cxt).let {
+            it.checkInit(cxt)
+            it.addContentServer(this)
+        }
+        LogEdge.info(cxt) { "KdrEdge serving context roots ${configured.values.filterNotNull()}." }
+    }
+
+    /**
      * Refuses to start when an edge root equals one of the application's well-known roots.
      *
      * An edge and the backends it fronts are reachable on the same host, so a shared root makes a path
@@ -40,8 +62,12 @@ class EdgeService : ServiceInitializer, ContentServer {
      * It compares against the application **defaults** rather than a live list of what the backends use, which
      * is route configuration and does not exist yet. That catches the mistake anybody would actually make --
      * configuring an edge with `kda` -- and tightens when the route table arrives.
+     *
+     * Separate from [checkInit] because it is a pure function of the instance config while [checkInit] is not:
+     * since issue #383 a missing service is a loud error, so a caller that wants only this guard -- a test,
+     * or any later pre-boot validation -- cannot go through [checkInit] to reach it.
      */
-    override fun checkInit(cxt: KdrCxt) {
+    fun checkContextRoots(cxt: KdrCxt): Map<String, String?> {
         val config = cxt.instanceConfig
         val configured = linkedMapOf(
             ACFG.apiContextRoot to (config.get(ACFG.apiContextRoot) as? String),
@@ -58,22 +84,7 @@ class EdgeService : ServiceInitializer, ContentServer {
                     "shared root makes a path ambiguous and the wrong server answers rather than failing.",
             )
         }
-        // Registered after the guard above, never before it: reaching RequestService must not be able to
-        // decide whether the boot refusal runs. An early return here for a missing service would skip the
-        // check silently, which is the failure the check exists to prevent.
-        //
-        // Registered here rather than in checkReady, and the timing decides a race: content servers are
-        // offered a request in registration order, and PortalService registers in ITS checkInit -- so anything
-        // registering later loses the bare content root to the application's portal. Observed: `/ec` redirected
-        // to `/ec/portal`. EdgeComponent's earlier load priority is what puts this first.
-        //
-        // Ordering is the fix available today. The real one is role profiling: an edge has no business loading
-        // the portal at all, and then there is nothing to race.
-        RequestService.get(cxt).let {
-            it.checkInit(cxt)
-            it.addContentServer(this)
-        }
-        LogEdge.info(cxt) { "KdrEdge serving context roots ${configured.values.filterNotNull()}." }
+        return configured
     }
 
     /**

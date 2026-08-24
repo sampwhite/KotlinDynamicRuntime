@@ -15,9 +15,13 @@ import io.kotest.matchers.string.shouldContain
 /**
  * Coverage for the edge's context roots (issue #386): the values it binds, and the boot it refuses.
  *
- * Exercised against `EdgeService.checkInit` and `EdgeComponent.isLoaded` directly rather than through a boot --
- * both are pure functions of the instance config, and a full boot would register the component into the
- * process-wide `InstanceRegistry` for every later test in the module.
+ * Exercised against `EdgeService.checkContextRoots` and `EdgeComponent.isLoaded` directly rather than through
+ * a boot -- both are pure functions of the instance config, and a full boot would register the component into
+ * the process-wide `InstanceRegistry` for every later test in the module.
+ *
+ * The guard is reached through `checkContextRoots` rather than `checkInit`, which also binds the node as a
+ * content server: since issue #383 a missing service throws, so `checkInit` needs a booted node and is no
+ * longer a pure function of the config.
  */
 class EdgeRootsTest : StringSpec({
 
@@ -62,7 +66,7 @@ class EdgeRootsTest : StringSpec({
         val c = config().apply { put(ACFG.apiContextRoot, ContextRoot.kda) }
         val cxt = KdrCxt.mkSimpleCxt("t", c)
         EdgeComponent().applyInstanceConfig(cxt)
-        val e = shouldThrow<KdrException> { EdgeService().checkInit(cxt) }
+        val e = shouldThrow<KdrException> { EdgeService().checkContextRoots(cxt) }
         e.fullMessage() shouldContain ContextRoot.kda
         e.fullMessage() shouldContain "ambiguous"
     }
@@ -72,7 +76,7 @@ class EdgeRootsTest : StringSpec({
             val c = config().apply { put(ACFG.contentContextRoot, clash) }
             val cxt = KdrCxt.mkSimpleCxt("t", c)
             EdgeComponent().applyInstanceConfig(cxt)
-            shouldThrow<KdrException> { EdgeService().checkInit(cxt) }
+            shouldThrow<KdrException> { EdgeService().checkContextRoots(cxt) }
         }
     }
 
@@ -80,6 +84,6 @@ class EdgeRootsTest : StringSpec({
         val c = config()
         val cxt = KdrCxt.mkSimpleCxt("t", c)
         EdgeComponent().applyInstanceConfig(cxt)
-        EdgeService().checkInit(cxt) // does not throw
+        EdgeService().checkContextRoots(cxt) // does not throw
     }
 })
