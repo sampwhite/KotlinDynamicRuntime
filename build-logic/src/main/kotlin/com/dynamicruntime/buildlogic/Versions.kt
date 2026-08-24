@@ -27,6 +27,7 @@ package com.dynamicruntime.buildlogic
  * Only families belong here. A lone artifact keeps its version inline, where it is read next to the comment
  * explaining why it is a dependency at all.
  */
+@Suppress("ConstPropertyName")
 object Versions {
     /** Jetty 12: the core HTTP server (`base/common`), the HTTP client, and the reverse proxy (`edge`). */
     const val jetty = "12.1.10"

@@ -134,6 +134,33 @@ kdr-backend` is the same boot from any directory if `bin/` is on your `PATH`.
   touching code: `KDR_IN_MEMORY_ONLY`, `KDR_PORT`, `KDR_OBFUSCATE_ERRORS` (obfuscate sensitive errors),
   `KDR_TEST_INSTANCE` (mark a test instance: expose `forTestingOnly` endpoints, simulate email). See `environment-variables.md` for the full
   list.
+- **A variable the Gradle daemon has not already seen will not reach the server.** `:launch:run` forks the
+  node from the **daemon**, and it inherits the daemon's environment rather than your command's — so a
+  variable you add on a later invocation, when a daemon is already up, silently never arrives. Nothing
+  reports this: the node boots and behaves as though you had not set it, so you read a *result* that is
+  really a missing input. Add `--no-daemon` when a boot depends on a variable you have not used before in
+  this shell, or confirm what actually arrived:
+
+  ```bash
+  ps eww $(lsof -ti :$PORT | head -1) | tr ' ' '\n' | grep '^KDR_'
+  ```
+
+  The same applies to `kdr-backend` and `kdr-edge`, which are `:launch:run` underneath. It does **not** apply
+  to `kdr-run`, which ends in `exec java -cp <pathing jar>` and therefore runs with your shell's environment
+  exactly — one more reason to prefer it for anything scripted.
+- **The node is a child of the daemon, not of whoever started it** — the same fact, wearing a more alarming
+  face. A node launched from IntelliJ through a Gradle run configuration comes up under the `GradleDaemon`,
+  so IntelliJ's stop button has nothing to stop and the run outlives the IDE that appears to own it. It still
+  carries `-agentlib:jdwp`, so it still *looks* like an IntelliJ run. Seen as: an edge on 8010 serving a page
+  from before a change, which IntelliJ denied owning. A plain `kill` of the listener is enough:
+
+  ```bash
+  lsof -nP -i :$PORT -sTCP:LISTEN          # confirm the pid first
+  lsof -ti :$PORT -sTCP:LISTEN | while read -r p; do kill "$p"; done
+  ```
+
+  Check the **listener** specifically. A browser holding `CLOSE_WAIT` sockets on the same port can come back
+  ahead of the server in a bare `lsof -ti`, which hides it behind an unrelated process.
 - **A config value with no env var** (a UI tuning value like a refresh interval, or any `AppConfigBuilder`
   property) — set it in your *own* config object and select it with `KDR_CUSTOM_CONFIG=ClaudeConfig`, so you
   never edit the developer's `KdrConfig` (their run's config can't break yours, and vice versa). Full recipe,

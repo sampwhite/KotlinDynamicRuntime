@@ -70,6 +70,17 @@ object ACFG {
     const val assumeEnvAuth = "assumeEnvAuth"
 
     /**
+     * Where an edge forwards application traffic (issue #419). Unset defaults from `KDR_EDGE_UPSTREAM`, and
+     * failing that from the ordinary development application.
+     *
+     * A single upstream, which is the shape of the first forwarding slice and not the intended end state: a
+     * route table keyed on more than the context root, backed by a registry of live nodes, replaces it. The
+     * key lives here beside the other edge-facing config rather than in the edge module, for the same reason
+     * [bootRole] does -- common may know that edges exist, it just may not depend on the component.
+     */
+    const val edgeUpstream = "edgeUpstream"
+
+    /**
      * When true, an error flagged `sensitive` (e.g., one that would reveal whether an account exists) has its
      * message replaced with a generic one before it goes to the client; the real message is still logged
      * (issue #108). Set directly by tests. When unset, defaults from the `KDR_OBFUSCATE_ERRORS` env var, which

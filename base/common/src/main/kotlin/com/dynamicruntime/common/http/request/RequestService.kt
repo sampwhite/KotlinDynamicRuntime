@@ -24,6 +24,7 @@ import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import org.eclipse.jetty.server.Handler
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.coerceAndValidate
@@ -162,6 +163,29 @@ class RequestService : ServiceInitializer {
     fun addContentServer(server: ContentServer) {
         if (contentServers.none { it === server }) {
             contentServers.add(server)
+        }
+    }
+
+    /**
+     * Jetty handlers offered each request **before** this dispatcher, in registration order (issue #419).
+     *
+     * This is a different seam from [contentServers], and the difference is the point. A content server runs
+     * *inside* the request pipeline: a `KdrCxt` exists, auth has been extracted, the context-root gate has
+     * already accepted the request. A front handler runs *before* any of that, so it can take a request this
+     * node will not otherwise recognize -- which is what a reverse proxy needs, since traffic it forwards is
+     * addressed to somebody else and must never be measured against this node's own roots.
+     *
+     * A front handler that returns `false` declines, and the request falls through to the next one and finally
+     * to the dispatcher, which answers exactly as it does when no front handler is installed. That is what
+     * keeps this additive: a node with none behaves identically, and the dispatcher needs no notion that
+     * proxying exists.
+     */
+    val frontHandlers = CopyOnWriteArrayList<Handler>()
+
+    /** Registers a front handler (idempotent by identity). */
+    fun addFrontHandler(handler: Handler) {
+        if (frontHandlers.none { it === handler }) {
+            frontHandlers.add(handler)
         }
     }
 

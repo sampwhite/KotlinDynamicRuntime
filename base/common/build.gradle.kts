@@ -28,6 +28,12 @@ dependencies {
     // Jetty artifact we need (it brings jetty-http/io/util transitively).
     // Version comes from the jetty-bom applied in `kdr.kotlin-conventions`.
     implementation("org.eclipse.jetty:jetty-server")
+    // Jetty's HTTP client. Declared here rather than in `edge`, which is where the first use is (the reverse
+    // proxy's data plane, issue #419), because it is intended to become the one outbound client for the whole
+    // codebase behind a convenience layer of ours -- replacing the direct `java.net.http` use in MailService
+    // and GoogleJwksKeySource (issue #420). It belongs to common on those merits, whether or not an edge
+    // exists, and putting it here now means #420 does not have to move it.
+    implementation("org.eclipse.jetty:jetty-client")
     // Jetty logs through slf4j; this binding routes that into our log4j2 config
     // (and brings slf4j-api transitively).
     implementation("org.apache.logging.log4j:log4j-slf4j2-impl")
