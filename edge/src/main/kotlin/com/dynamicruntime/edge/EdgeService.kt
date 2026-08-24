@@ -43,7 +43,21 @@ class EdgeService : ServiceInitializer, ContentServer {
         // Before anything that can fail for an unrelated reason: reaching RequestService must not be able to
         // decide whether the boot refusal runs.
         val configured = checkContextRoots(cxt)
-        RequestService.get(cxt).addContentServer(this)
+        val requestService = RequestService.get(cxt)
+        requestService.addContentServer(this)
+        // The forwarding front door (issue #419). Registered before the dispatcher sees anything, which is the
+        // whole point: traffic bound for a backend is addressed to somebody else, and must never be measured
+        // against this node's own context roots.
+        val upstream = upstreamFor(cxt)
+        requestService.addFrontHandler(
+            EdgeProxyHandler(
+                config = cxt.instanceConfig,
+                node = NodeService.get(cxt),
+                contentRoot = cxt.instanceConfig.get(ACFG.contentContextRoot) as? String ?: EdgeRoot.ec,
+                upstream = upstream,
+            ),
+        )
+        LogEdge.info(cxt) { "KdrEdge forwarding ${EDGEUP.proxiedRoots.sorted()} to $upstream." }
         LogEdge.info(cxt) { "KdrEdge serving context roots ${configured.values.filterNotNull()}." }
     }
 
