@@ -132,6 +132,13 @@ object USF {
     const val publicName = "publicName"
 
     /**
+     * Case-insensitive **substring** of the account's real-world name (a person's full name or a business's).
+     * The same string as [ADF.name] -- it filters on the field the console shows as "Name", which is what an
+     * administrator types when searching for someone. Distinct from [publicName], which is the login id.
+     */
+    const val name = "name"
+
+    /**
      * **Exact** client id to confine the search to. Only an `allClients` caller can widen past their own
      * client, so for anyone else this narrows within a client they are already confined to (or, naming
      * another, returns nothing) -- the scope does the enforcing, this only picks among what it allows.
@@ -147,7 +154,7 @@ object USF {
     /** Only users updated **at or before** this instant (ISO-8601); the high end of the date range. */
     const val updatedBefore = "updatedBefore"
 
-    /** Which attribute to sort by -- one of [email], [publicName], [client], [updatedAt]. Defaults to [updatedAt]. */
+    /** Which attribute to sort by -- one of [email], [name], [publicName], [client], [updatedAt]. Defaults to [updatedAt]. */
     const val sortBy = "sortBy"
 
     /** Sort descending rather than ascending. Defaults to true (newest / Z-A first). */

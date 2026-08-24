@@ -13,10 +13,12 @@ class UserSearchTest : StringSpec({
 
     fun user(
         id: Long, email: String, username: String, client: String = "acme", updatedAt: Instant? = null,
+        name: String? = null,
     ): AuthUserRow {
         val row = AuthUserRow(id, client, email)
         row.username = username
         row.updatedAt = updatedAt
+        row.name = name
         row.enabled = true
         return row
     }
@@ -41,6 +43,15 @@ class UserSearchTest : StringSpec({
     "a public-name substring matches the username" {
         val page = searchUserRows(all, UserSearchCriteria(textTerms = mapOf(USF.publicName to "grace")))
         ids(page) shouldBe listOf(2L)
+    }
+
+    "a name substring matches the real-world name, and a nameless row never matches" {
+        val named = user(10, "e@x.com", "e", updatedAt = t1, name = "Édith Piaf")
+        val nameless = user(11, "f@x.com", "f", updatedAt = t1)
+        val page = searchUserRows(
+            listOf(named, nameless), UserSearchCriteria(textTerms = mapOf(USF.name to "piaf")),
+        )
+        ids(page) shouldBe listOf(10L)
     }
 
     "a placeholder username matches on the email as its public name" {

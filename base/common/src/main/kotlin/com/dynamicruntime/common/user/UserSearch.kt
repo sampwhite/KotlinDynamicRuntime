@@ -52,6 +52,8 @@ val userSearchFields: List<UserSearchField> = listOf(
     UserSearchField(
         USF.publicName, textOf = { it.publicName() }, substring = true, sortOf = { it.publicName().lowercase() },
     ),
+    // The account's real-world name (nullable). A null name never matches a term and sorts last.
+    UserSearchField(USF.name, textOf = { it.name }, substring = true, sortOf = { it.name?.lowercase() }),
     // Exact, not substring: the client is a picked id, not a fragment someone types.
     UserSearchField(USF.client, textOf = { it.client }, substring = false, sortOf = { it.client.lowercase() }),
     // Sortable (the default) but filtered by a date range rather than a text term, so it declares no textOf.

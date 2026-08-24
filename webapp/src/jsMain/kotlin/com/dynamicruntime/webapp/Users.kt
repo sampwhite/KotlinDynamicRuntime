@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.util.isEmailAddress
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -44,7 +45,20 @@ private val userIdentity = setOf(HP.user)
 val Users = FC<Props> {
     var config by useState<HomeConfig?>(null)
     var users by useState<List<AdminUser>>(emptyList())
-    var search by useState("")
+    // The search filters (issue #411): the console filters on email and the real-world name; `publicName` is a
+    // backend axis it does not surface (it hides the username). The client filter is offered only to a caller
+    // who can see more than one. The two update-time bounds are ISO strings, null when unset.
+    var emailFilter by useState("")
+    var nameFilter by useState("")
+    var clientFilter by useState("")
+    var afterFilter by useState<String?>(null)
+    var beforeFilter by useState<String?>(null)
+    // The sort, driven by the table's column headers. Default: newest first, as the issue specifies.
+    var sortBy by useState(USF.updatedAt)
+    var descending by useState(true)
+    // What the last search reported: how many matched in all, and whether the cap hid some.
+    var numAvailable by useState(0)
+    var hasMore by useState(false)
     var loaded by useState(false)
     var busy by useState(false)
     var error by useState<DisplayError?>(null)
@@ -77,6 +91,10 @@ val Users = FC<Props> {
     val searchSeq = useRef(0)
     // Pending debounce timer id, so a fast typist makes one request rather than one per keystroke.
     val searchTimer = useRef<Int>(0)
+    // The latest query intended, updated on every change. A debounced text search must fire with *this* rather
+    // than the query captured when it was scheduled: a sort click landing during the debounce updates it, and
+    // firing the stale capture would re-fetch the old sort and clobber the sort the user just chose.
+    val queryRef = useRef(UserSearchQuery())
 
     /** Runs a backend [block] with busy/error bookkeeping. Used by the actions, never by the search field. */
     fun run(block: suspend () -> Unit) {
@@ -94,18 +112,32 @@ val Users = FC<Props> {
     }
 
     /**
+     * A [UserSearchQuery] from the current filter and sort state, with any field overridable. Handlers pass the
+     * value they are changing explicitly (`query(email = v)`) rather than relying on the just-set state, which
+     * has not landed yet inside the same event -- the classic React stale-closure trap.
+     */
+    fun query(
+        email: String = emailFilter, name: String = nameFilter, client: String = clientFilter,
+        after: String? = afterFilter, before: String? = beforeFilter,
+        sort: String = sortBy, desc: Boolean = descending,
+    ): UserSearchQuery = UserSearchQuery(email, name, client, after, before, sort, desc)
+
+    /**
      * Runs a search. Deliberately *not* through [run]: that sets `busy`, which disables the controls -- and
      * disabling the very input being typed into blurs it, so every keystroke cost the field its focus.
      */
-    fun runSearch(term: String) {
+    fun runSearch(q: UserSearchQuery) {
+        queryRef.current = q
         searchSeq.current = (searchSeq.current ?: 0) + 1
         val seq = searchSeq.current
         usersScope.launch {
             try {
-                val found = AdminApi.listUsers(term)
+                val result = AdminApi.searchUsers(q)
                 // A slower earlier request must not overwrite a newer one's results.
                 if (seq == searchSeq.current) {
-                    users = found
+                    users = result.users
+                    numAvailable = result.numAvailable
+                    hasMore = result.hasMore
                     loaded = true
                     error = null
                 }
@@ -115,10 +147,15 @@ val Users = FC<Props> {
         }
     }
 
-    /** Debounces [runSearch] so typing does not fire a request per character. */
-    fun scheduleSearch(term: String) {
+    /**
+     * Debounces [runSearch] so typing does not fire a request per character. Records [q] as the latest intent
+     * and, when the timer fires, runs whatever the latest intent is by then -- so a sort click during the
+     * debounce is honoured rather than overwritten by this text change's stale snapshot.
+     */
+    fun scheduleSearch(q: UserSearchQuery) {
+        queryRef.current = q
         searchTimer.current?.let { clearTimer(it) }
-        searchTimer.current = setTimer({ runSearch(term) }, searchDebounceMs)
+        searchTimer.current = setTimer({ queryRef.current?.let { runSearch(it) } }, searchDebounceMs)
     }
 
     useEffect(generation) {
@@ -126,7 +163,7 @@ val Users = FC<Props> {
             val c = runCatching { HomeApi.fetchConfig() }.getOrNull()
             config = c
             if (c?.canManageUsers == true) {
-                runSearch(search)
+                runSearch(query())
                 // Only a full-scope administrator is offered a choice of client, and only they can ask for the
                 // list -- it is a cross-client question. A failure leaves the list empty, which falls back to
                 // the read-only field rather than an error: the client is not the reason they came here.
@@ -301,7 +338,7 @@ val Users = FC<Props> {
             note = if (changed) "Saved ${target.primaryId}." else "No changes to ${target.primaryId}."
         }
         closeEditor()
-        runSearch(search)
+        runSearch(query())
     }
 
     /**
@@ -314,7 +351,7 @@ val Users = FC<Props> {
         val result = AdminApi.deleteUser(target.userId, permanent = true)
         note = "Permanently deleted ${target.primaryId}: ${result.primaryId}."
         closeEditor()
-        runSearch(search)
+        runSearch(query())
     }
 
     val denied = config?.canManageUsers == false
@@ -581,7 +618,7 @@ val Users = FC<Props> {
             h1 { +"Users" }
             p {
                 className = ClassName("subtitle")
-                +"Search for a user and select them to edit, or create a new one."
+                +"Filter and sort active users, then select one to edit — or create a new user."
             }
 
             error?.let { errorText(it) }
@@ -592,40 +629,128 @@ val Users = FC<Props> {
                 }
             }
 
+            // Only a full-scope caller sees the client filter and column -- the same rule the create selector
+            // follows, since the client is a distinction only to somebody who can see more than one.
+            val showClient = config?.user?.roles?.contains(ROLE.allClients) == true
+
+            // Text filters are debounced (a keystroke must not blur the field it is typed into); the select and
+            // the date pickers fire at once, since each change there is a deliberate, discrete choice.
             div {
                 className = ClassName("row")
                 span {
                     className = ClassName("field-label")
-                    +"Search"
+                    +"Email"
                 }
                 Input {
-                    value = search
-                    // Names what the console actually shows. The backend still matches a username too, so
-                    // pasting a known one finds the account -- but this page displays none, so advertising it
-                    // would point at something you cannot see here.
-                    placeholder = "Email or name"
-                    // Never disabled: this field must keep focus while its own results are loading.
+                    value = emailFilter
+                    placeholder = "Email contains…"
                     onChange = { event ->
-                        val term = event.target.value as String
-                        search = term
-                        scheduleSearch(term)
+                        val v = event.target.value as String
+                        emailFilter = v
+                        scheduleSearch(query(email = v))
                     }
                 }
+            }
+            div {
+                className = ClassName("row")
+                span {
+                    className = ClassName("field-label")
+                    +"Name"
+                }
+                Input {
+                    value = nameFilter
+                    placeholder = "Name contains…"
+                    onChange = { event ->
+                        val v = event.target.value as String
+                        nameFilter = v
+                        scheduleSearch(query(name = v))
+                    }
+                }
+            }
+            if (showClient) {
+                div {
+                    className = ClassName("row")
+                    span {
+                        className = ClassName("field-label")
+                        +"Client"
+                    }
+                    Select {
+                        value = clientFilter.ifEmpty { null }
+                        options = clientOptions(clientChoices)
+                        placeholder = "Any client"
+                        allowClear = true
+                        style = js("({ minWidth: 180 })")
+                        onChange = { v ->
+                            val c = v as? String ?: ""
+                            clientFilter = c
+                            runSearch(query(client = c))
+                        }
+                    }
+                }
+            }
+            div {
+                className = ClassName("row")
+                span {
+                    className = ClassName("field-label")
+                    +"Updated"
+                }
+                DatePicker {
+                    value = afterFilter?.let { dayjs(it) }?.takeIf { it.isValid() }
+                    showTime = true
+                    onChange = { date, _ ->
+                        val iso = date?.toISOString()
+                        afterFilter = iso
+                        runSearch(query(after = iso))
+                    }
+                }
+                DatePicker {
+                    value = beforeFilter?.let { dayjs(it) }?.takeIf { it.isValid() }
+                    showTime = true
+                    onChange = { date, _ ->
+                        val iso = date?.toISOString()
+                        beforeFilter = iso
+                        runSearch(query(before = iso))
+                    }
+                }
+            }
+            p {
+                className = ClassName("type-hint")
+                +"The earliest and latest update time; leave either bound empty for open-ended."
+            }
+
+            div {
+                className = ClassName("row")
                 Button {
                     onClick = { startCreate() }
                     +"Create user"
                 }
             }
 
+            val anyFilter = emailFilter.isNotBlank() || nameFilter.isNotBlank() || clientFilter.isNotBlank() ||
+                afterFilter != null || beforeFilter != null
+
             if (loaded && users.isEmpty()) {
                 p {
                     className = ClassName("subtitle")
-                    +if (search.isBlank()) "No users yet." else "No users match \"$search\"."
+                    +if (anyFilter) "No users match your filters." else "No users yet."
                 }
             } else {
+                if (loaded) {
+                    p {
+                        className = ClassName("subtitle")
+                        +userCountLabel(users.size, numAvailable, hasMore)
+                    }
+                }
                 UserTable {
-                    showClient = config?.user?.roles?.contains(ROLE.allClients) == true
+                    this.showClient = showClient
                     this.users = users
+                    this.sortBy = sortBy
+                    this.descending = descending
+                    onSort = { field, desc ->
+                        sortBy = field
+                        descending = desc
+                        runSearch(query(sort = field, desc = desc))
+                    }
                     onSelect = { startEdit(it) }
                 }
             }
@@ -643,6 +768,17 @@ private fun react.ChildrenBuilder.readOnlyField(label: String, value: String) {
         }
         span { +value }
     }
+}
+
+/**
+ * The count line above the results (issue #411): how many are shown against how many matched, so an over-broad
+ * search reads as "showing 500 of 4000" rather than looking like the whole population. When the cap hid none,
+ * one plain count is clearer than repeating it. Pure, and covered under `jsNodeTest`.
+ */
+fun userCountLabel(shown: Int, available: Int, hasMore: Boolean): String = when {
+    hasMore -> "Showing $shown of $available matching users — narrow your search to see the rest."
+    available == 1 -> "1 matching user."
+    else -> "$available matching users."
 }
 
 /** How long to wait after the last keystroke before searching. */

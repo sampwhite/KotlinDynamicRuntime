@@ -103,6 +103,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         noLimit = true,
         inputFields = {
             field(USF.email, "Case-insensitive substring to match against the email address.")
+            field(USF.name, "Case-insensitive substring to match against the account's real-world name.")
             field(USF.publicName, "Case-insensitive substring to match against the public name (username or email).")
             field(
                 USF.client,
