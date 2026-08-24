@@ -93,7 +93,13 @@ class SqlTableCacheService : ServiceInitializer {
         }
     }
 
-    override fun checkInit(cxt: KdrCxt) {
+    /**
+     * Reads the caching environment. In `onCreate` because it touches no other service, and that is what
+     * makes it safe for a peer to register a cache in its own `checkInit`: `onCreate` runs across the whole
+     * tier first, so these settings are in hand before any registration, wherever this service happens to sit
+     * in its component's list.
+     */
+    override fun onCreate(cxt: KdrCxt) {
         isDisabled = cxt.getEnvBool(TCH.disabledEnv) ?: false
         // toOptLong (not toLongOrNull): a malformed value THROWS, per the house rule for numeric env vars
         // (KDR_PORT does the same). This variable is sold as the 3am staleness lever, and a silent fall-back
@@ -103,7 +109,17 @@ class SqlTableCacheService : ServiceInitializer {
         if (isDisabled) {
             LogSql.info(cxt, "Table caches are disabled by ${TCH.disabledEnv}; reads fall back to SQL.")
         }
-        // SqlTopicService is a startup service, so it is fully initialized before this regular one runs.
+    }
+
+    /**
+     * Subscribes to the data layer's write announcements.
+     *
+     * Stays in `checkInit`, unlike the settings above, because it reaches another service -- and a service
+     * that reaches a peer belongs in a pass that runs after every peer has been created and had its own
+     * `onCreate`. That `SqlTopicService` is a startup service, and so fully initialized before any of this,
+     * is what makes the reach safe rather than merely ordered.
+     */
+    override fun checkInit(cxt: KdrCxt) {
         SqlTopicService.get(cxt).addWriteListener(writeListener)
     }
 
