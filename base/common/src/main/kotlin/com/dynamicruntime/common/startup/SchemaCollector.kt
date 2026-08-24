@@ -6,6 +6,8 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GID
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.schema.SchOptionsProvider
 import com.dynamicruntime.common.sql.KdrTable
 
 /**
@@ -39,10 +41,40 @@ class SchemaCollector {
      */
     val gedraConfigs: GedraConfigCollector = GedraConfigCollector()
 
-    /** Folds a module's types and endpoints into the collector. */
+    /**
+     * Callbacks that produce a choice list when the schema is rendered, keyed by the id a
+     * `g-optionsSource` names (issue #413).
+     *
+     * Accumulated here beside [defs] and [endpoints] because a provider is contributed the same way and at
+     * the same moment they are, and because [SchemaService] then holds the compiled document and the full
+     * registration set together -- which is the only point at which "every id names a provider" can be
+     * asked at all.
+     */
+    val optionsProviders: MutableMap<String, SchOptionsProvider> = LinkedHashMap()
+
+    /**
+     * Registers an options provider under [id], refusing a second one.
+     *
+     * The issue leaves uniqueness to the registrant, and this is what makes that hold: last-write-wins would
+     * mean one component silently answering for another's attribute, visible only as a wrong list on a page
+     * nobody connected to the component that took the id.
+     */
+    fun addOptionsProvider(id: String, provider: SchOptionsProvider) {
+        if (optionsProviders.containsKey(id)) {
+            throw KdrException(
+                "Two options providers are registered under '$id'. The id has to be unique across every " +
+                    "component on this node -- rename one of them.",
+            )
+        }
+        optionsProviders[id] = provider
+    }
+
+    /** Folds a module's types, endpoints and options providers into the collector. */
     fun addModule(module: SchModule) {
         defs.putAll(module.defs)
         endpoints.addAll(module.endpoints)
+        // Through the checked add, so a duplicate is refused whichever route a provider arrives by.
+        module.optionsProviders.forEach { (id, provider) -> addOptionsProvider(id, provider) }
     }
 
     /**

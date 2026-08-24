@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.user.ADEP
 
 /**
@@ -31,6 +32,37 @@ fun clientAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "clientAdmin")
         // paging it would be pretending it came from somewhere it did not.
         noLimit = true,
     ) { c, _ ->
-        ClientService.get(c).presentClients.map { it.toInfo() }
+        namableClients(c).map { it.toInfo() }
     }
+
+    // The choice list behind every attribute marked `clientAttribute()` (issue #413). Declared in the same
+    // block as the listing it agrees with, so the two cannot answer differently about who may name what.
+    optionsProvider(CLD.clientOptions) { c, _ ->
+        namableClients(c).map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+    }
+}
+
+/**
+ * The clients this caller may name: every one this node carries for an [ROLE.allClients] holder, and their own
+ * alone for everybody else (issue #413).
+ *
+ * **One rule, read by two surfaces.** The listing above is fenced to `allClients` by its section, so it could
+ * as well have said `presentClients` and been right today -- but a sourced choice list is served to *any*
+ * caller with a client attribute in front of them, including a client-scoped administrator, and that one
+ * cannot. Written twice, the two would agree until somebody changed the fence on one of them. #390 was
+ * exactly that shape, and its lesson was that a comment saying two lists must match is not a mechanism.
+ *
+ * It restates no policy of its own: `catalogClient` and `assignableClient` already refuse a foreign client
+ * without the capability, and they keep doing the refusing. This decides what to *offer*, which is a weaker
+ * question -- an attribute may be offered a list and still have its value checked by the handler that
+ * receives it, and a client attribute always is.
+ */
+fun namableClients(cxt: KdrCxt): List<ClientDef> {
+    val service = ClientService.get(cxt)
+    if (cxt.userProfile.roles.contains(ROLE.allClients)) {
+        return service.presentClients
+    }
+    // Their own, when this node carries it. A caller whose client is absent is offered nothing rather than a
+    // list they cannot use -- the same answer `hasEndpoints` gives for the same reason.
+    return listOfNotNull(service.present(cxt.userProfile.client))
 }

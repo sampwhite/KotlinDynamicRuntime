@@ -15,6 +15,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GU
+import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.schema.collectDefs
@@ -30,6 +31,9 @@ import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.schema.SchOptionsProvider
+import com.dynamicruntime.common.schema.optionsSourceProblems
+import com.dynamicruntime.common.schema.resolveOptionsSources
 import com.dynamicruntime.common.util.addDays
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toJsonMap
@@ -57,6 +61,14 @@ class SchemaService : ServiceInitializer {
 
     /** The compiled schema store; empty until [checkInit] runs. */
     var schemaStore: KdrSchemaStore = KdrSchemaStore()
+        private set
+
+    /**
+     * The options providers components contributed, keyed by the id a `g-optionsSource` names (issue #413).
+     * Empty until [checkInit] runs, after which it never changes -- a provider is startup wiring, and the
+     * per-caller part of it is the callback's own answer rather than the set of callbacks.
+     */
+    var optionsProviders: Map<String, SchOptionsProvider> = emptyMap()
         private set
 
     override fun onCreate(cxt: KdrCxt) {
@@ -143,7 +155,50 @@ class SchemaService : ServiceInitializer {
             cxt.instanceConfig.put(KdrSchemaStore.key, withClients)
             cxt.schemaStore = withClients
         }
+        optionsProviders = collected.optionsProviders.toMap()
+        checkOptionsSources(optionsProviders)
         isInit = true
+    }
+
+    /**
+     * Refuses the boot when a `g-optionsSource` names no registered provider, or sits beside a declared
+     * options list (issue #413).
+     *
+     * Here because this is the one moment holding both halves: the compiled document (global and every
+     * client's) and the complete registration set. Deferring either check to request time would turn a typo
+     * into an empty choice list on a page -- silent, and possibly only for one client, which is the hardest
+     * shape of all to notice.
+     *
+     * The endpoints carry schema of their own (inline input fields, and the realized output envelope) that
+     * lives in no `$defs`, so they are walked as well. A client's endpoint copies share those very objects
+     * with the shared endpoint they were copied from, so checking the shared map covers them.
+     *
+     * Takes [providers] rather than reading [optionsProviders], so a test can ask what this node's real,
+     * compiled document would say when checked against a registry that is missing something -- which is the
+     * only way to see that the scan reaches the document at all rather than quietly finding nothing.
+     */
+    @KdrPrivate
+    fun checkOptionsSources(providers: Map<String, SchOptionsProvider>) {
+        // A set: the same shared def is reachable from the global document and from every client variant
+        // that did not alter it, and one problem reported once is the useful form of it.
+        val problems = LinkedHashSet<String>()
+        fun check(where: String, node: Any?) {
+            problems.addAll(optionsSourceProblems(where, node, providers))
+        }
+        for ((name, body) in schemaStore.defs) check("Type '$name'", body)
+        for ((client, store) in clientStores) {
+            for ((name, body) in store.defs) check("Type '$name' (client '$client')", body)
+        }
+        for (endpoint in schemaStore.endpoints.values) {
+            endpoint.inputFields?.forEach { check("Endpoint '${endpoint.collationKey}' field '${it.name}'", it.schema) }
+            check("Endpoint '${endpoint.collationKey}' output", endpoint.outputSchema)
+        }
+        if (problems.isNotEmpty()) {
+            throw KdrException(
+                "Refusing to start: ${problems.size} problem(s) with sourced choice lists.\n" +
+                    problems.joinToString("\n"),
+            )
+        }
     }
 
     /**
@@ -201,7 +256,7 @@ class SchemaService : ServiceInitializer {
                     EI.client,
                     "Show the surface of this client instead of your own -- its endpoints, and its schema. " +
                         "Requires the '" + ROLE.allClients + "' capability unless it names your own client.",
-                )
+                ) { clientAttribute() }
                 property(EP.limit, "The maximum number of endpoints to return.") {
                     type = SCT.integer
                     default = defaultListLimit
@@ -555,7 +610,7 @@ class SchemaService : ServiceInitializer {
                 .take(limit)
                 .map { renderEndpoint(it, surface.schema.defs) }
                 .toList()
-            return linkedMapOf(EI.endpoints to renderings, SCH.dDefs to collectDefs(renderings, surface.schema.defs))
+            return catalogResult(cxt, renderings, surface)
         }
 
         /**
@@ -577,7 +632,37 @@ class SchemaService : ServiceInitializer {
             val endpoint = found?.takeIf { isVisibleTo(cxt, it.path) }
             explainAccess(cxt, if (found != null && endpoint == null) listOf(found) else emptyList())
             val renderings = listOfNotNull(endpoint).map { renderEndpoint(it, surface.schema.defs) }
-            return linkedMapOf(EI.endpoints to renderings, SCH.dDefs to collectDefs(renderings, surface.schema.defs))
+            return catalogResult(cxt, renderings, surface)
+        }
+
+        /**
+         * The catalog's answer: the [renderings] paired with a `$defs` bag closed over what they reference,
+         * with every sourced choice list resolved for this caller (issue #413).
+         *
+         * Resolved **once over the assembled result**, rather than per endpoint as each is rendered. A type
+         * shared by twenty endpoints appears once in the closed bag, so it is resolved once; doing it inside
+         * `renderEndpoint` would call the same provider twenty times to produce twenty equal answers.
+         *
+         * Shared by the listing and the single lookup for the reason [catalogSurface] is: the two return the
+         * same shape by contract, and a client consuming either feed with identical code is entitled to have
+         * them stay identical.
+         */
+        private fun catalogResult(
+            cxt: KdrCxt,
+            renderings: List<Map<String, Any?>>,
+            surface: CatalogSurface,
+        ): Map<String, Any?> {
+            val result = linkedMapOf(
+                EI.endpoints to renderings,
+                SCH.dDefs to collectDefs(renderings, surface.schema.defs),
+            )
+            // Read optionally, like the surface -- a store built by hand, outside a running dispatcher, has
+            // no service to consult. But an absent service resolves against an **empty** registry rather than
+            // skipping resolution: a document with nothing sourced comes back untouched either way, and one
+            // with a sourced list faults instead of quietly shipping the id to a client that has no idea what
+            // to do with it.
+            val providers = (cxt.instanceConfig.get(serviceName) as? SchemaService)?.optionsProviders.orEmpty()
+            return resolveOptionsSources(cxt, result, providers)
         }
 
         /**

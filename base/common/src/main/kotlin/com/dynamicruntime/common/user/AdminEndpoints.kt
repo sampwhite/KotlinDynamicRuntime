@@ -10,6 +10,7 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getOptBool
@@ -104,7 +105,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 ADF.client,
                 "Client for the new user; defaults to the creator's own. Naming a different one requires the " +
                     "'${ROLE.allClients}' capability, and it cannot be changed afterward.",
-            )
+            ) { clientAttribute() }
             field(ADF.isEntity, "Whether the new account belongs to a business rather than a person.") { type = SCT.boolean }
             field(ADF.name, "The new account's name: a person's full name, or the business's name.")
             field(ADF.enabled, "Whether the account starts active; defaults to true. False creates it disabled.") {

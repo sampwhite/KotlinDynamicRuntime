@@ -172,6 +172,27 @@ object SCH {
     const val options = "g-options"
 
     /**
+     * Names a registered callback that produces this property's [options] when the schema is rendered, in
+     * place of a list written into the document (issue #413).
+     *
+     * **It never reaches a reader.** The rendering pass consumes it: the resolved choices are written into
+     * [options] on a copy of the node and this key is dropped, so a frontend sees an ordinary choice list and
+     * neither knows nor cares that it was assembled per caller. That is what keeps every schema consumer --
+     * the form engine, the outline, a future export -- free of a second way to have options.
+     *
+     * **It takes no part in validation**, which is the property that makes a per-caller list safe at all. The
+     * callback's answer is never parsed into a [SchType], so there is no code path by which one caller's list
+     * can reject another caller's value; a field that must actually be bounded is enforced by its handler,
+     * which can say why. The design notes' own test for this puts it on the presentation side of the line:
+     * two use-sites may legitimately disagree about the list and the server does not care which they see.
+     *
+     * Mutually exclusive with a declared [options] list -- both together would need a merge rule and an
+     * answer to whether the declared half is binding, and neither has a use yet. Refused at boot, along with
+     * an id no callback was registered under.
+     */
+    const val optionsSource = "g-optionsSource"
+
+    /**
      * Per-field error copy: a map from an error key to the message to show when that failure is reported against
      * this field. The keys are [SchFailCode] names plus [errorDefault]; anything else fails at boot.
      *

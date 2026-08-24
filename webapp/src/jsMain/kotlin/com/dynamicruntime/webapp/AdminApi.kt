@@ -4,6 +4,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADF
@@ -18,15 +19,12 @@ class ClientChoice(val clientId: String, val name: String)
 /**
  * How a client reads in the create form's selector.
  *
- * Both halves, because neither alone is enough: the **id** is what gets stored and what appears inside every
- * one of that user's gedra ids, so it is the thing an administrator will later recognize in a log or a URL,
- * while the **name** is what a person actually calls the client. A client that has not been given a name shows
- * its id alone rather than an empty pair of brackets.
- *
- * Pure, and covered under `jsNodeTest`, like the other two helpers here.
+ * The rule itself moved to the kernel, onto [clientLabel], once the backend needed it too: a sourced choice
+ * list of clients (issue #413) renders the same clients into the same kind of dropdown, and two copies of
+ * "how a client reads" could disagree about one. This stays as the adapter from the frontend's own
+ * [ClientChoice], and is still covered under `jsNodeTest`.
  */
-fun clientChoiceLabel(choice: ClientChoice): String =
-    if (choice.name.isEmpty()) choice.clientId else "${choice.name} (${choice.clientId})"
+fun clientChoiceLabel(choice: ClientChoice): String = clientLabel(choice.clientId, choice.name)
 
 /**
  * A client list as antd `Select` `{ label, value }` options, built per render from what the backend served
