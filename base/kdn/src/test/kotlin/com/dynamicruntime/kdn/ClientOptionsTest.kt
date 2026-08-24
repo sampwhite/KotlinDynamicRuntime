@@ -5,7 +5,6 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CLD
-import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchOption
@@ -31,7 +30,7 @@ import io.kotest.matchers.string.shouldContain
  * Every assertion is a **pair** -- the same field of the same endpoint, read by two callers against one
  * running instance -- for the reason `ClientVariantTest` states: a list on its own proves nothing about what
  * produced it. Here it does a second job as well. The callers run in order against a single instance, so an
- * administrator's answer reaching the ordinary user afterwards would be a resolution that wrote into the
+ * administrator's answer reaching the ordinary user afterward would be a resolution that wrote into the
  * compiled store rather than a copy of it, which is the defect this design exists to make impossible and the
  * one that would otherwise look exactly like a working page.
  */

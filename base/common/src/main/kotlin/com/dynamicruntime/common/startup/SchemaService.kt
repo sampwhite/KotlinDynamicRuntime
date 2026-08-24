@@ -836,7 +836,7 @@ class SchemaService : ServiceInitializer {
  * [com.dynamicruntime.common.endpoint.EI] (with [KdrEndpoint]); the `namespace`/`method` query filters
  * reuse those, so only `pathRegex` and the sample-endpoint fields are defined here.
  */
-@Suppress("ConstPropertyName")
+
 /**
  * Whose endpoints and whose schema a catalog call answers with (issue #387).
  *
@@ -847,6 +847,7 @@ class SchemaService : ServiceInitializer {
 @KdrPrivate
 class CatalogSurface(val named: Boolean, val client: String?, val schema: KdrSchemaStore)
 
+@Suppress("ConstPropertyName")
 object SS {
     // Endpoint introspection: the path-regex query filter. The `endpoints` result key is now the shared
     // kernel EI.endpoints (the `$defs` result key is the JSON Schema keyword itself, SCH.dDefs).

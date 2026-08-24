@@ -5,7 +5,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.toJsonMap
 
 /**
- * Choice lists assembled when the schema is rendered, rather than written into the document (issue #413).
+ * Choice lists assembled when the schema is rendered rather than written into the document (issue #413).
  *
  * A property declares [SCH.optionsSource] naming a callback registered at startup; the callback is handed the
  * request's [KdrCxt] and the property's name, and answers with the choices *this caller* should see. The
@@ -32,7 +32,7 @@ typealias SchOptionsProvider = (cxt: KdrCxt, propertyName: String) -> List<SchOp
  * **Copy-on-write, and that is the whole safety argument.** The catalog's renderings and its `$defs` bag share
  * node objects with the compiled store -- `renderEndpoint` hands back `endpoint.outputSchema` itself, and
  * `collectDefs` inserts the store's own def maps -- so resolving by mutation would write one caller's answer
- * into the schema every later caller is served, across clients. Instead each node that changes is copied,
+ * into the schema every later caller is served, across clients. Instead, each node that changes is copied,
  * along with its ancestors on the path to it, and everything else is shared by reference. A document with no
  * sourced options comes back as the identical object.
  *
@@ -53,14 +53,14 @@ private fun resolveNode(cxt: KdrCxt, node: Any?, providers: Map<String, SchOptio
         else -> node
     }
 
-private fun resolveList(cxt: KdrCxt, list: List<*>, providers: Map<String, SchOptionsProvider>, name: String): Any? {
+private fun resolveList(cxt: KdrCxt, list: List<*>, providers: Map<String, SchOptionsProvider>, name: String): Any {
     var out: MutableList<Any?>? = null
     for ((index, element) in list.withIndex()) {
         val resolved = resolveNode(cxt, element, providers, name)
         if (resolved === element) {
             continue
         }
-        val copy = out ?: ArrayList<Any?>(list).also { out = it }
+        val copy = out ?: ArrayList(list).also { out = it }
         copy[index] = resolved
     }
     return out ?: list

@@ -69,7 +69,7 @@ class SchemaCollector {
         optionsProviders[id] = provider
     }
 
-    /** Folds a module's types, endpoints and options providers into the collector. */
+    /** Folds a module's types, endpoints, and options providers into the collector. */
     fun addModule(module: SchModule) {
         defs.putAll(module.defs)
         endpoints.addAll(module.endpoints)

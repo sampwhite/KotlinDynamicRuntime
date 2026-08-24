@@ -151,7 +151,7 @@ fun SchTypeBuilder.clientAttribute() {
  * for the reasoning behind each attribute.
  *
  * **Nothing here decides how a request is served.** This slice declares, validates, and finds a client; the
- * per-client schema, the absent-client gate and domain routing are later work.
+ * per-client schema, the absent-client gate, and domain routing are later work.
  */
 class ClientDef(
     /**

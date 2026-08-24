@@ -39,7 +39,7 @@ fun clientOptions(choices: List<ClientChoice>): Array<dynamic> = choices.map { c
 }.toTypedArray()
 
 /**
- * One administered user, as the `admin` endpoints describe them ([ADF]). Deliberately not [UserProfile]: that
+ * One administered user, as the `admin` endpoints describe them ([ADF]). Deliberately not "UserProfile": that
  * is who *you* are, while this is a row in a list of other people, and the two are free to diverge.
  */
 class AdminUser(

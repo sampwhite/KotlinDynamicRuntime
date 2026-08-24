@@ -184,7 +184,7 @@ object SCH {
      * callback's answer is never parsed into a [SchType], so there is no code path by which one caller's list
      * can reject another caller's value; a field that must actually be bounded is enforced by its handler,
      * which can say why. The design notes' own test for this puts it on the presentation side of the line:
-     * two use-sites may legitimately disagree about the list and the server does not care which they see.
+     * two use-sites may legitimately disagree about the list, and the server does not care which they see.
      *
      * Mutually exclusive with a declared [options] list -- both together would need a merge rule and an
      * answer to whether the declared half is binding, and neither has a use yet. Refused at boot, along with
