@@ -58,32 +58,12 @@ object HP {
     /** Forms page: the gedra id of the form document open in the read-only view, or absent in the list view. */
     const val gedra = "g"
 
-    // Users page: the user *search* — filters, range, and sort — kept in the hash so a search is shareable, a
-    // pasted link reproduces it, and Back/Forward step through it (issue #411). Unlike the catalog's [values]
-    // and the editor draft (deliberately *out* of the URL), these carry no unsaved edits to anyone's account:
-    // they say what you searched for, which is exactly the thing worth sending someone. Each is omitted when it
-    // is at its default, so a bare `page=users` is the clean "no filters" URL. Short keys keep a shared link
-    // legible.
-    /** Users search: email substring filter. */
-    const val qEmail = "qe"
-
-    /** Users search: name substring filter. */
-    const val qName = "qn"
-
-    /** Users search: exact client filter (only an all-clients caller sees the control). */
-    const val qClient = "qc"
-
-    /** Users search: update-time lower bound (ISO-8601). */
-    const val qAfter = "qa"
-
-    /** Users search: update-time upper bound (ISO-8601). */
-    const val qBefore = "qb"
-
-    /** Users search: sort field; absent means the default (`updatedAt`). */
-    const val qSort = "qs"
-
-    /** Users search: `"0"` for ascending; absent means the default (descending). */
-    const val qDesc = "qd"
+    // The Users page's *search* (filters, range, sort) is also kept in the hash so a search is shareable, a
+    // pasted link reproduces it, and Back/Forward step through it (issue #411). It has no constants here on
+    // purpose: those keys ARE the endpoint's own arg names (`email`, `updatedAfter`, `sortBy`, … from `USF`),
+    // so the hash and the wire carry the same keys and one spec-driven encoding serves both. Unlike the
+    // catalog's [values] and the editor draft (deliberately *out* of the URL), the search carries no unsaved
+    // edits to anyone's account -- it says what you searched for, which is the thing worth sending someone.
 }
 
 /** The current hash parsed into `key=value` params, values percent-decoded. */

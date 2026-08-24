@@ -26,8 +26,11 @@ Three questions, in order. A "no" to any of them means do not cache it.
      the scope, so the "filter" is an index-key lookup, not a predicate. `gedraData`'s listing is served from
      the `clientKind` index and **only when the scope names a client**; a scope the index cannot key on (an
      `allClients` admin over every client, an ordinary user whose scope is client-less) falls back to SQL.
-   `AuthUsers` sidesteps all of this: its reads are identity resolution — one row by a unique key, deliberately
-   unscoped — so it has no scope to honor.
+   `AuthUsers` shows **both halves** (issue #411): its *identity* reads stay one row by a unique key,
+   deliberately unscoped — a login has to find a user in whatever client they belong to — while its admin
+   *search* is a scoped listing, served from a non-unique `client` index when the scope names a client and
+   falling back to SQL otherwise, with `ReadScope.admitsUserRow` (shared with `queryAdministrableUser`, the
+   counterpart to gedra's `admitsRow`) as the per-row check. So neither rule above is gedra-only.
 3. **Do its writers round-trip `updatedAt`?** The reload walks `updatedAt` forward and **skips a row stamped
    at or before the version it already holds**. `SqlTopicUtil.prepDates` guarantees the advance only when the
    write carries the prior `updatedAt` through — which a read-modify-write does, and a write assembled from a
@@ -51,6 +54,9 @@ val params = SqlCacheParams(
     indexes = listOf(
         SqlCacheIndex(AU.username, unique = true) { it[AU.username].toOptStr() },
         SqlCacheIndex(AU.primaryId, unique = true) { it[AU.primaryId].toOptStr() },
+        // A non-unique index groups every row sharing a key -- here the client, so the admin search can pull
+        // one client's rows (issue #411). `keyOf` returning null leaves a row out of just this index.
+        SqlCacheIndex(PF.client, unique = false) { it[PF.client].toOptStr() },
     ),
 )
 ```

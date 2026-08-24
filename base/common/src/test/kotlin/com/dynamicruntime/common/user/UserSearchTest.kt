@@ -136,4 +136,42 @@ class UserSearchTest : StringSpec({
     "a blank term is no filter rather than a match-nothing" {
         searchUserRows(all, UserSearchCriteria(textTerms = mapOf(USF.email to "   "))).rows.size shouldBe 3
     }
+
+    // --- the shared spec agrees with the backend registry (issue #411, SDUI) ---------------------------
+    //
+    // The console renders from `userSearchFieldSpecs` (base/kernel) while the actual filtering/sorting runs off
+    // `userSearchFields` (here). They are two halves of one description -- what a field is vs how to read it off
+    // a row -- so this pins that they cannot drift: a spec field with no accessor, or a filter kind that
+    // disagrees with the accessor, would render a control the backend cannot honor.
+
+    "every console spec field has a backing registry entry, and the two agree on how it filters" {
+        for (spec in userSearchFieldSpecs) {
+            val field = userSearchFieldsByName[spec.name]
+                ?: throw AssertionError("Spec field '${spec.name}' has no accessor in userSearchFields.")
+            when (spec.filterKind) {
+                // A text filter (substring/exact) needs texts to match against; the exact/substring flag must agree.
+                UserFilterKind.substring -> {
+                    (field.textsOf != null) shouldBe true
+                    field.substring shouldBe true
+                }
+                UserFilterKind.exact -> {
+                    (field.textsOf != null) shouldBe true
+                    field.substring shouldBe false
+                }
+                // A date-range field is not text-searchable and must name the two bound params the endpoint reads.
+                UserFilterKind.dateRange -> {
+                    (field.textsOf == null) shouldBe true
+                    (spec.rangeKeys != null) shouldBe true
+                }
+                // A sort-only field would carry no filter input; none exist today, but the mapping stays total.
+                null -> (field.textsOf == null) shouldBe true
+            }
+        }
+    }
+
+    "the shared sort keys are exactly the sortable spec fields" {
+        userSortKeys shouldBe userSearchFieldSpecs.filter { it.sortable }.map { it.name }.toSet()
+        // And each is a real registry entry the endpoint will accept as a sort field.
+        userSortKeys.all { userSearchFieldsByName.containsKey(it) } shouldBe true
+    }
 })
