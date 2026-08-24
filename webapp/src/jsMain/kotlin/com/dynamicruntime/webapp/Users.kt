@@ -158,12 +158,41 @@ val Users = FC<Props> {
         searchTimer.current = setTimer({ queryRef.current?.let { runSearch(it) } }, searchDebounceMs)
     }
 
+    /** Sets the visible filter/sort controls from [q] -- used to reflect a URL (a shared link, Back/Forward). */
+    fun seedFilters(q: UserSearchQuery) {
+        emailFilter = q.email
+        nameFilter = q.name
+        clientFilter = q.client
+        afterFilter = q.updatedAfter
+        beforeFilter = q.updatedBefore
+        sortBy = q.sortBy
+        descending = q.descending
+    }
+
+    /** Reads the search out of the hash, reflects it in the controls, and runs it -- the shareable-link path. */
+    fun restoreSearchFromHash() {
+        val q = searchQueryFromHash(hashParams())
+        seedFilters(q)
+        runSearch(q)
+    }
+
+    /** Resets every filter and the sort to their defaults and re-runs; the hash sync then clears the URL. */
+    fun clearFilters() {
+        val q = UserSearchQuery()
+        seedFilters(q)
+        runSearch(q)
+    }
+
     useEffect(generation) {
         usersScope.launch {
             val c = runCatching { HomeApi.fetchConfig() }.getOrNull()
             config = c
             if (c?.canManageUsers == true) {
-                runSearch(query())
+                // Seed the controls from the URL and run *that* search, so a shared/bookmarked link reproduces
+                // the sender's filters and sort rather than the default view (issue #411).
+                val q = searchQueryFromHash(hashParams())
+                seedFilters(q)
+                runSearch(q)
                 // Only a full-scope administrator is offered a choice of client, and only they can ask for the
                 // list -- it is a cross-client question. A failure leaves the list empty, which falls back to
                 // the read-only field rather than an error: the client is not the reason they came here.
@@ -229,7 +258,7 @@ val Users = FC<Props> {
     usersRef.current = users
 
     /** Opens the editor on what the hash names, or closes it. Used by the hashchange listener below. */
-    fun applyHash() {
+    fun applyEditorHash() {
         val open = hashParams()[HP.user]
         when {
             open == null -> closeEditor()
@@ -245,28 +274,42 @@ val Users = FC<Props> {
     }
 
     useEffectOnce {
-        onHashChange { applyHash() }
+        // A hash change from OUTSIDE this component (Back/Forward, the address bar, a menu link) restores both
+        // halves the URL carries: which record is open, and the search. The generation effect already ran the
+        // initial search from the hash, so the loaded effect below restores only the editor -- keeping this the
+        // one place a *later* hash change re-runs the search.
+        onHashChange {
+            applyEditorHash()
+            restoreSearchFromHash()
+        }
     }
 
     // Open whatever the hash named once the rows are in -- a reload inside the editor, or a link. Until then
     // the hash cannot be honoured, so `restored` also holds the sync effect below: without that gate it would
-    // run first with an empty editor and push the record out of the URL before anything could read it.
+    // run first with an empty editor and push the record out of the URL before anything could read it. Only the
+    // editor here: the initial search already ran from the hash in the generation effect.
     useEffect(loaded) {
         if (loaded && !restored) {
-            applyHash()
+            applyEditorHash()
             restored = true
         }
     }
 
-    // Keep the hash in step with the editor -- the same arrangement the endpoint catalog uses, and for the
-    // same reason: opening a record is a navigation, so it earns a history entry to come back from.
-    useEffect(editing, creating, restored) {
+    // Keep the hash in step with the editor *and the search* (issue #411) -- the same arrangement the endpoint
+    // catalog uses, and for the same reason: opening a record is a navigation (a pushed history entry), while
+    // the search merely refines where you are (replaced in place), so typing a filter does not spam Back. Only
+    // the open record is in [userIdentity], so a filter change never pushes.
+    useEffect(
+        editing, creating, restored,
+        emailFilter, nameFilter, clientFilter, afterFilter, beforeFilter, sortBy, descending,
+    ) {
         if (!restored) {
             return@useEffect
         }
         val params = buildList {
             add(HP.page to HMENU.pageUsers)
             openRecord()?.let { add(HP.user to it) }
+            addAll(searchHashParams(query()))
         }
         // Reachable means the hash as it stands names something this page could show. A `u=` naming a row we
         // do not hold is a URL to correct in place -- otherwise Back onto it would push again and never move.
@@ -718,16 +761,26 @@ val Users = FC<Props> {
                 +"The earliest and latest update time; leave either bound empty for open-ended."
             }
 
+            val anyFilter = emailFilter.isNotBlank() || nameFilter.isNotBlank() || clientFilter.isNotBlank() ||
+                afterFilter != null || beforeFilter != null
+            // The sort counts as something to reset too, so Clear returns the whole view to its default.
+            val canReset = anyFilter || sortBy != USF.updatedAt || !descending
+
             div {
                 className = ClassName("row")
                 Button {
                     onClick = { startCreate() }
                     +"Create user"
                 }
+                // Offered only when there is something to undo, so it is not a permanent no-op button.
+                if (canReset) {
+                    Button {
+                        type = "link"
+                        onClick = { clearFilters() }
+                        +"Clear filters"
+                    }
+                }
             }
-
-            val anyFilter = emailFilter.isNotBlank() || nameFilter.isNotBlank() || clientFilter.isNotBlank() ||
-                afterFilter != null || beforeFilter != null
 
             if (loaded && users.isEmpty()) {
                 p {
@@ -768,6 +821,44 @@ private fun react.ChildrenBuilder.readOnlyField(label: String, value: String) {
         }
         span { +value }
     }
+}
+
+/**
+ * The sort keys the console offers as columns (issue #411) -- the subset of the backend's search fields that
+ * are shown as columns. A hash carrying anything else (a hand-edited or stale link) falls back to the default
+ * rather than sending the backend a sort field that would 400.
+ */
+private val userSortKeys = setOf(USF.email, USF.name, USF.client, USF.updatedAt)
+
+/**
+ * The [UserSearchQuery] a shared/bookmarked URL encodes (issue #411): each hash key ([HP.qEmail] and friends)
+ * read back, with an absent one meaning its default. An unrecognized sort key is dropped to the default so a
+ * pasted link can never ask for a field the endpoint rejects. Pure, and covered under `jsNodeTest`.
+ */
+fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery = UserSearchQuery(
+    email = hp[HP.qEmail] ?: "",
+    name = hp[HP.qName] ?: "",
+    client = hp[HP.qClient] ?: "",
+    updatedAfter = hp[HP.qAfter],
+    updatedBefore = hp[HP.qBefore],
+    sortBy = hp[HP.qSort]?.takeIf { userSortKeys.contains(it) } ?: USF.updatedAt,
+    // Descending is the default; only an explicit "0" means ascending.
+    descending = hp[HP.qDesc] != "0",
+)
+
+/**
+ * The hash params for a search [query] (issue #411): the inverse of [searchQueryFromHash], emitting only the
+ * values that differ from their default so a plain search stays a bare `page=users`. Pure, and covered under
+ * `jsNodeTest` -- the two round-trip.
+ */
+fun searchHashParams(query: UserSearchQuery): List<Pair<String, String>> = buildList {
+    if (query.email.isNotBlank()) add(HP.qEmail to query.email)
+    if (query.name.isNotBlank()) add(HP.qName to query.name)
+    if (query.client.isNotBlank()) add(HP.qClient to query.client)
+    query.updatedAfter?.let { add(HP.qAfter to it) }
+    query.updatedBefore?.let { add(HP.qBefore to it) }
+    if (query.sortBy != USF.updatedAt) add(HP.qSort to query.sortBy)
+    if (!query.descending) add(HP.qDesc to "0")
 }
 
 /**
