@@ -36,7 +36,11 @@ enum class UserFilterKind {
  * One user-search field, described once for both sides (issue #411).
  */
 class UserSearchFieldSpec(
-    /** The wire/hash key and sort key; matches the backend registry entry and a [USF] constant. */
+    /**
+     * The wire/hash key and sort key; matches the backend registry entry and a [USF] constant. It is also the
+     * key this field takes in the console's shareable URL, which shares one flat hash namespace with the app's
+     * routing keys (`page`, `u`, `g`, `doc`, `tool`, `fault`) -- so do not name a field one of those.
+     */
     val name: String,
     /** The human label shown as the filter's label and the results column header. */
     val label: String,

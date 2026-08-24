@@ -166,9 +166,10 @@ val Users = FC<Props> {
     }
 
     /** Updates one text filter (email/name/client) and runs; [immediate] fires at once (a select) or debounces
-     *  (a text box). Dropping a blank term removes the entry, so `textFilters` holds only real filters. */
+     *  (a text box). Only a truly *empty* value removes the entry -- a whitespace one is kept so the box does
+     *  not erase a space as it is typed; the query serialization trims it away, so it filters nothing. */
     fun setText(field: String, value: String, immediate: Boolean) {
-        val next = if (value.isBlank()) textFilters - field else textFilters + (field to value)
+        val next = if (value.isEmpty()) textFilters - field else textFilters + (field to value)
         textFilters = next
         val q = query(texts = next)
         if (immediate) runSearch(q) else scheduleSearch(q)
@@ -746,7 +747,9 @@ val Users = FC<Props> {
                 }
             }
 
-            val anyFilter = textFilters.isNotEmpty() || rangeFilters.values.any { !it.isEmpty }
+            // A whitespace-only term is kept in the map (so it can be typed) but filters nothing, so it does not
+            // count as an active filter here -- matching what the query serialization actually sends.
+            val anyFilter = textFilters.values.any { it.isNotBlank() } || rangeFilters.values.any { !it.isEmpty }
             // The sort counts as something to reset too, so Clear returns the whole view to its default.
             val canReset = anyFilter || sortBy != USF.updatedAt || !descending
 

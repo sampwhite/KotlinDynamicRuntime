@@ -103,15 +103,22 @@ val UserTable = FC<UserTableProps> { props ->
  * A search column's display value for [user] -- the frontend's reading of the row, the counterpart to the
  * backend registry's `AuthUserRow` accessors. The one per-field front-end touch a new column needs, beside its
  * width; everything else (the column itself, its label, its sortability) comes from the shared spec.
+ *
+ * The `else` returns a marker rather than an empty string, and `UserCellValueTest` asserts every spec field is
+ * mapped, so a field added to the spec without a branch here fails the build (a blank column) instead of
+ * shipping an empty column silently. Not `private`, so that test can reach it.
  */
-private fun cellValue(field: String, user: AdminUser): String = when (field) {
+fun cellValue(field: String, user: AdminUser): String = when (field) {
     USF.email -> user.primaryId
     // The account's own name; an unnamed account shows the placeholder rather than the username standing in.
     USF.name -> user.name?.takeIf { it.isNotBlank() } ?: "—"
     USF.client -> user.client
     USF.updatedAt -> user.updatedAt?.let { formatTimestamp(it) } ?: "—"
-    else -> ""
+    else -> unmappedCell
 }
+
+/** What [cellValue] returns for a spec field with no display branch -- the tell `UserCellValueTest` catches. */
+const val unmappedCell = "(?)"
 
 /** Column widths (a presentation detail, so front-end only) keyed by the spec field name; absent = auto. */
 private val columnWidths: Map<String, Int> = mapOf(
