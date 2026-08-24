@@ -54,6 +54,20 @@ API, so there is no unlabelled endpoint.
 extraction**: `/user/{id}` would be a literal path, not a template. An id travels in the query string or the
 body, as in the `/user/get` example above.
 
+A module may also register an **options provider** — the callback behind a property's `optionsSource(id)`,
+which produces a choice list per caller when the catalog is rendered (issue #413):
+
+```kotlin
+optionsProvider(CLD.clientOptions) { c, _ ->
+    namableClients(c).map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+}
+```
+
+Declared in the same block as the schema that names the id, so a rename that misses one end fails the boot
+rather than emptying a dropdown. It is `optionsProvider` here and `optionsSource` inside a property block
+because one *registers* an id and the other *consumes* one. See `kdr-schema-builder` for what a sourced list
+means for validation.
+
 ## The kinds (differ by where the payload sits)
 
 Every JSON output also carries `requestUri` (String) and `duration` (number, ms).

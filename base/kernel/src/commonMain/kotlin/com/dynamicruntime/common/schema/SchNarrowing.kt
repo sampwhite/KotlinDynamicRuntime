@@ -53,6 +53,11 @@ fun narrowingProblems(typeName: String, base: Map<String, Any?>, overlay: Map<St
  */
 private val presentationKeys = setOf(
     SCH.title, SCH.description, SCH.examples, SCH.deprecated, SCH.errors, SCH.dComment,
+    // A sourced choice list (issue #413) is here because it never reaches validation: the callback's answer
+    // is rendered for a reader and is not parsed into a type, so a client pointing an attribute at a
+    // different source cannot change what this node accepts. A client swapping a *declared* list is a
+    // different matter and stays under the narrowing rule below.
+    SCH.optionsSource,
 )
 
 /** The three keys that may differ by narrowing; every other validating key must match the base exactly. */

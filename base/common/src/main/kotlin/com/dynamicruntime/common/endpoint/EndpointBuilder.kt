@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SchOptionsProvider
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
@@ -141,7 +142,12 @@ class KdrEndpoint(
 }
 
 /** The types (`$defs` contents) and endpoints declared together for one namespace. */
-class SchModule(val defs: Map<String, Any?>, val endpoints: List<KdrEndpoint>)
+class SchModule(
+    val defs: Map<String, Any?>,
+    val endpoints: List<KdrEndpoint>,
+    /** Options providers declared in the same block, keyed by id (issue #413). Usually empty. */
+    val optionsProviders: Map<String, SchOptionsProvider> = emptyMap(),
+)
 
 /**
  * Collects an endpoint's explicit input fields. [field] mirrors [SchTypeBuilder.property] (a description is
@@ -169,6 +175,25 @@ class InputFieldsBuilder(private val cxt: KdrCxtBase, private val namespace: Str
  */
 class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, namespace) {
     val endpoints: MutableList<KdrEndpoint> = mutableListOf()
+
+    /** Options providers declared in this block, keyed by id (issue #413). */
+    val optionsProviders: MutableMap<String, SchOptionsProvider> = LinkedHashMap()
+
+    /**
+     * Registers the callback that answers for `optionsSource(`[id]`)`, in the same block as the schema naming
+     * it (issue #413).
+     *
+     * Here rather than in a registration list elsewhere so that the id has one obvious home: an attribute
+     * pointing at a provider and the provider itself are read together, and a rename that misses one of them
+     * fails the boot rather than emptying a choice list.
+     *
+     * Named `optionsProvider` and not `optionsSource` on purpose -- the identically named call inside a
+     * property block *consumes* an id, and two DSL calls a line apart that differ only in what they take
+     * would be a poor thing to read.
+     */
+    fun optionsProvider(id: String, provider: SchOptionsProvider) {
+        optionsProviders[id] = provider
+    }
 
     /**
      * A general endpoint: the result is returned under `results`, always a map object. Input is declared
@@ -386,7 +411,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
 /** Builds a namespace's types and endpoints together, realizing every endpoint schema immediately. */
 fun schemaModule(cxt: KdrCxt, namespace: String, build: SchModuleBuilder.() -> Unit): SchModule {
     val b = SchModuleBuilder(cxt, namespace).apply(build)
-    return SchModule(b.defs, b.endpoints)
+    return SchModule(b.defs, b.endpoints, b.optionsProviders)
 }
 
 /**

@@ -3,7 +3,11 @@ package com.dynamicruntime.common.endpoint
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ContentData
+import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.clientLabel
+import com.dynamicruntime.common.gedra.namableClients
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.parseSchemaTypes
@@ -180,5 +184,15 @@ class EndpointSkillExamplesTest : StringSpec({
     "the file endpoints' methods default as documented" {
         endpoint(fileExample(), "/file/upload").method shouldBe HttpMethod.POST
         endpoint(fileExample(), "/file/download").method shouldBe HttpMethod.GET
+    }
+
+    // Transcribed from the skill's options-provider example.
+    "a module carries the options providers declared in it" {
+        val module = schemaModule(cxt, "clientAdmin") {
+            optionsProvider(CLD.clientOptions) { c, _ ->
+                namableClients(c).map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+            }
+        }
+        module.optionsProviders.keys shouldContain CLD.clientOptions
     }
 })

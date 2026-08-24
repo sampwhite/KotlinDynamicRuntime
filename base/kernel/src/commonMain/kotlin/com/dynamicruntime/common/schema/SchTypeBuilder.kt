@@ -207,10 +207,6 @@ open class SchTypeBuilder(
     }
 
     /**
-     * Adds a choice to the custom `options` construct: a [value] (the stored data)
-     * and an optional display [label], which defaults to the value when redundant.
-     */
-    /**
      * Declares a property **as it already is** -- an empty body, which an overlay reads as "inherit".
      *
      * Only meaningful when a client alters a type. Mentioning keys is how the property set is reduced, so an
@@ -224,8 +220,25 @@ open class SchTypeBuilder(
         propertiesMap()[name] = LinkedHashMap<String, Any?>()
     }
 
+    /**
+     * Adds a choice to the custom `options` construct: a [value] (the stored data)
+     * and an optional display [label], which defaults to the value when redundant.
+     */
     fun option(value: String, label: String = value) {
         optionsList().add(linkedMapOf(SCH.label to label, SCH.value to value))
+    }
+
+    /**
+     * Sources this attribute's choices from the callback registered under [id], instead of writing them into
+     * the document (issue #413). See [SCH.optionsSource] for what that means for validation and for what a
+     * reader ends up seeing.
+     *
+     * Declaring both this and [option] choices fails the boot rather than here, because the two calls may
+     * arrive in either order: a check in this method would catch `option(...)` then `optionsSource(...)` and
+     * miss the reverse, which is the sort of half-check that reads as coverage and is not.
+     */
+    fun optionsSource(id: String) {
+        data[SCH.optionsSource] = id
     }
 
     /**

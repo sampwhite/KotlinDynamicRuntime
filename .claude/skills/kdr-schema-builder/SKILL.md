@@ -86,6 +86,36 @@ format means adding a helper and a predicate — not special-casing at each call
   content's shape is the MIME type's business, not JSON Schema's). See `kdr-endpoint-builder` for the file
   endpoints built on it.
 
+## Choice lists: written down, or sourced at render time
+
+`option(value, label)` writes the choices into the document, and they then **bind**: the validator rejects
+anything else with `invalidOption`.
+
+`optionsSource(id)` instead names a callback registered at startup, which is handed the request context and
+the property's name and answers with the choices *this caller* should see (issue #413):
+
+```kotlin
+property(EI.client, "Which client to look at.") { optionsSource(CLD.clientOptions) }
+```
+
+Two things follow, and both are deliberate:
+
+- **The id never leaves the server.** The catalog resolves it as it renders, writing the answer into
+  `g-options` and dropping `g-optionsSource`, so every schema consumer — the form engine, the read-only
+  outline, a future export — sees an ordinary choice list and needs no second way to have options.
+- **A sourced list takes no part in validation.** The callback's answer is never parsed into a `SchType`, so
+  there is no path by which one caller's list rejects another caller's value. That is what makes a per-caller
+  list safe; a field that must actually be bounded is enforced by its handler, which can say *why*.
+
+Declaring both an `option` and an `optionsSource` fails the boot, as does an id no component registered. Both
+checks run in `SchemaService.checkInit`, which is the one moment holding the compiled document and the full
+registry together. Register the callback with `optionsProvider(id) { … }` — see `kdr-endpoint-builder`.
+
+**Sharing an attribute across surfaces.** Where several endpoints ask for the same thing, put the shared part
+in an extension on the builder, beside the Kotlin class that owns the concept — `clientAttribute()` lives with
+`ClientDef` and is called from every field naming a client. The *name* and the *description* stay at each
+site: those objects are the key sets of different surfaces, and the descriptions genuinely differ.
+
 ## Validation & coercion
 
 Parse the built `$defs` map into resolved types, then validate/coerce data:

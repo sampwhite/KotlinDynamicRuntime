@@ -219,6 +219,11 @@ internal fun authHandler(cxt: KdrCxt): AuthFormHandler {
  */
 internal fun currentUserInfo(cxt: KdrCxt): Map<String, Any?> {
     val profile = cxt.userProfile
-    val loaded = if (profile.authId != null) UserService.get(cxt).queryByUserId(cxt, profile.userId)?.toUserProfile() else null
+    // Guarded on `isRowBacked` rather than on a non-null `authId`, which is the same distinction
+    // `refreshActingRoles` already draws and for the reason its note gives: the question is whether there is a
+    // row to read, and the anonymous profile has an `authId` while having no row. Testing the id was harmless
+    // only while an unauthenticated request still carried the *system* profile; now that it carries the
+    // anonymous one, it would send a query after `CL.systemUserId` on every logged-out call.
+    val loaded = if (profile.isRowBacked) UserService.get(cxt).queryByUserId(cxt, profile.userId)?.toUserProfile() else null
     return (loaded ?: UserProfile.anonymous()).toUserInfo()
 }

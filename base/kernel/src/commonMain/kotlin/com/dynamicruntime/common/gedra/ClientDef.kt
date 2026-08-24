@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
 
 /**
@@ -95,6 +96,50 @@ object CLD {
 
     /** Schema type name for the [ClientDef.toInfo] dump. */
     const val infoTypeName = "ClientInfo"
+
+    /**
+     * The id under which the clients-a-caller-may-name choice list is registered (issue #413).
+     *
+     * Here rather than beside the callback because both ends need it and only one of them can own it: the
+     * attribute declaring `optionsSource(CLD.clientOptions)` lives wherever a client is asked for, while the
+     * callback lives with the client endpoints. A literal at either end is a rename waiting to empty a list.
+     */
+    const val clientOptions = "clientOptions"
+}
+
+/**
+ * How a client reads in a choice list: its name with its id in brackets, or the id alone when it has no name.
+ *
+ * Both halves, because neither alone is enough. The **id** is what gets stored and what appears inside every
+ * one of that client's gedra ids, so it is what an administrator will later recognize in a log or a URL, while
+ * the **name** is what a person actually calls the client.
+ *
+ * In the kernel because both sides render this list: the backend when it answers a sourced choice list
+ * (issue #413), and the admin console when it builds a selector from the clients endpoint. The same client
+ * reading two ways in two dropdowns is the sort of difference nobody reports and everybody notices.
+ */
+fun clientLabel(clientId: String, name: String): String =
+    if (name.isEmpty()) clientId else "$name ($clientId)"
+
+/**
+ * Marks an attribute as **naming a client**: it offers the clients this caller may name (issue #413).
+ *
+ * The shared half of a client field, and only the shared half. The **name** stays at each declaration --
+ * `EI.client`, `ADF.client` and the rest are the key sets of different surfaces that happen to agree on a
+ * spelling, and folding them into one constant would couple a SQL column to a query parameter. The
+ * **description** stays too, and more deliberately: "whose surface am I looking at" and "where does this new
+ * user go" are different sentences, and the mandatory-description rule exists so that nobody writes one
+ * generic one for both.
+ *
+ * What is left is the thing that must not drift -- which list a client field draws on -- and it is declared
+ * once, next to the class that defines what a client is. That placement is the point, and generalizes: an
+ * attribute owned by a Kotlin class exports its schema fragment from that class's file, the way `toInfo`'s
+ * shape is defined by `defineInfoType` a few lines below rather than by whoever serves it.
+ *
+ * It composes -- a site may make the field required, or add anything else, after calling this.
+ */
+fun SchTypeBuilder.clientAttribute() {
+    optionsSource(CLD.clientOptions)
 }
 
 /**
@@ -106,7 +151,7 @@ object CLD {
  * for the reasoning behind each attribute.
  *
  * **Nothing here decides how a request is served.** This slice declares, validates, and finds a client; the
- * per-client schema, the absent-client gate and domain routing are later work.
+ * per-client schema, the absent-client gate, and domain routing are later work.
  */
 class ClientDef(
     /**

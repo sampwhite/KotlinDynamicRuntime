@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -120,5 +122,21 @@ class SchemaSkillExamplesTest : StringSpec({
         val result = coerceAndValidate(type, mapOf("file" to content))
         result.failures.size shouldBe 0
         result.value.toJsonMapOrEmpty()["file"] shouldBe content
+    }
+
+    // Transcribed from the skill's "Choice lists: written down, or sourced at render time" section.
+    "a sourced choice list declares an id and nothing else" {
+        val defs = schemaDefs(cxt, "cat") {
+            type("Query") {
+                type = SCT.kObject
+                property(EI.client, "Which client to look at.") { optionsSource(CLD.clientOptions) }
+            }
+        }
+        val field = defs["cat.Query"].toJsonMapOrEmpty()[SCH.properties]
+            .toJsonMapOrEmpty()[EI.client].toJsonMapOrEmpty()
+        field[SCH.optionsSource] shouldBe CLD.clientOptions
+        // "A sourced list takes no part in validation": the parser leaves the field unbounded, so nothing
+        // here can produce an `invalidOption`.
+        parseSchemaTypes(defs)["cat.Query"]!!.properties.getValue(EI.client).valueType.options shouldBe null
     }
 })
