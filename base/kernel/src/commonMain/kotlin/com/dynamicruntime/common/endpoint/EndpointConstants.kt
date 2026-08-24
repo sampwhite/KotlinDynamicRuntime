@@ -125,6 +125,40 @@ object EP {
     const val errorFromFragment = "errorFromFragment"
     const val extraData = "extraData"
 
+    /**
+     * The `errorCode` an **edge server** returns when a request carried no environment session, and the
+     * `extraData` key naming where to sign in (issue #419).
+     *
+     * Here rather than in the edge's own module because it is a contract between a server and a browser, and
+     * the browser's half is the web app -- which is served by the *application*, cannot depend on the edge,
+     * and does not otherwise know an edge exists. Which is also why the address has to travel: only the edge
+     * knows where its sign-in page is.
+     *
+     * The code is what distinguishes this from the application's own 401s. Those mean "log in to this app";
+     * this one means "the perimeter no longer knows you", and only the second is answered by leaving the app.
+     * The URL is nested under [extraData] like every other area-specific field, so it cannot shadow a
+     * protocol one.
+     */
+    const val envAuthRequiredCode = "envAuthRequired"
+
+    /**
+     * Where to sign in, under [extraData], when [errorCode] is [envAuthRequiredCode].
+     *
+     * Deliberately **bare** -- no return path attached. The edge builds one for a navigation, where the
+     * request it refused *is* the page the caller wanted; on a background call the refused request is an API
+     * path, and returning somebody there after sign-in lands them on raw JSON. Only the browser knows which
+     * page it is on, so the browser supplies [envAuthNextParam].
+     */
+    const val envAuthLoginUrl = "envAuthLoginUrl"
+
+    /**
+     * Query parameter naming where to go after an environment sign-in.
+     *
+     * Shared because both ends write it: an edge when it redirects a navigation, and the web app when it
+     * follows [envAuthLoginUrl] -- the only party that can see the fragment it needs to include.
+     */
+    const val envAuthNextParam = "next"
+
     // Schema validation failures, under `extraData` when a request fails validation (issue #198). A list of
     // objects rather than a sentence, so a client can say which field was wrong instead of parsing English:
     //

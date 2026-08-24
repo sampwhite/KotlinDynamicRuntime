@@ -1,5 +1,7 @@
 package com.dynamicruntime.edge
 
+import com.dynamicruntime.common.endpoint.EP
+
 /**
  * Where a caller is sent after signing in (issue #386).
  *
@@ -12,8 +14,13 @@ package com.dynamicruntime.edge
  * that lands somewhere else afterwards is exactly the shape of a credible phishing link.
  */
 object EnvAuthReturn {
-    /** Query parameter naming where to go after signing in. */
-    const val param = "next"
+    /**
+     * Query parameter naming where to go after signing in.
+     *
+     * The name is `EP.envAuthNextParam`, not a second copy: the web app writes this parameter too, when it
+     * follows an edge's 401 to the sign-in page, and the two spellings must not be able to drift apart.
+     */
+    const val param = EP.envAuthNextParam
 
     /** Where a caller goes when nothing valid was asked for. */
     const val default = "/"
