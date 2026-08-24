@@ -52,6 +52,17 @@ object EnvAuthPage {
 <script>
   var returnTo = $$rt;
   var loginPath = $$lp;
+  // The fragment the caller was on, which the SERVER never saw: a browser does not send anything after '#'.
+  // It reaches this page only because a browser re-applies the original fragment when it follows a redirect
+  // whose Location carries none of its own -- so `/wa#/users/42` challenged to `/ec/login?next=%2Fwa` lands
+  // here as `/ec/login?next=%2Fwa#/users/42`. The webapp routes on the fragment, so without this the caller
+  // comes back signed in but at the top of the app instead of where they were.
+  //
+  // Appending it cannot widen where returnTo goes: a fragment cannot change scheme, host or path, so the
+  // server's sanitized same-site path still decides the destination.
+  if (window.location.hash && returnTo.indexOf('#') < 0) {
+    returnTo = returnTo + window.location.hash;
+  }
   if (returnTo !== '/') {
     document.getElementById('where').textContent = 'You will be returned to ' + returnTo;
   }
