@@ -83,3 +83,41 @@ class EdgeProxyTest : StringSpec({
         upstreamFor(KdrCxt.mkSimpleCxt("t", c)) shouldBe "http://elsewhere:9999"
     }
 })
+
+/**
+ * How an edge refuses, which depends on who is asking (issue #419).
+ *
+ * Both answers complete the request, so getting this backwards is not visible as a failure: it surfaces as a
+ * page reporting it cannot parse JSON, or as a person looking at an error envelope instead of a sign-in
+ * button. Neither points back here, which is why it is asserted rather than left to a live check.
+ */
+class ChallengeShapeTest : StringSpec({
+
+    "a browser navigating gets a redirect" {
+        ChallengeShape.isNavigation("navigate", "text/html") shouldBe true
+    }
+
+    // The case that sent the frontend a login page with status 200 and had it parse HTML as JSON.
+    "a page fetching in the background does not" {
+        ChallengeShape.isNavigation("cors", "application/json") shouldBe false
+        ChallengeShape.isNavigation("same-origin", null) shouldBe false
+        ChallengeShape.isNavigation("no-cors", null) shouldBe false
+    }
+
+    "Sec-Fetch-Mode decides even when Accept disagrees" {
+        // A fetch is free to ask for HTML; the mode is the header a page cannot forge, so it wins.
+        ChallengeShape.isNavigation("cors", "text/html") shouldBe false
+        ChallengeShape.isNavigation("navigate", "application/json") shouldBe true
+    }
+
+    /**
+     * With no `Sec-Fetch-Mode` the guess must fall towards navigation: a redirect a caller did not need is a
+     * tidiness problem, while JSON where a sign-in page belonged strands somebody who could have logged in.
+     */
+    "an older client falls back to Accept, and to navigation when it says nothing" {
+        ChallengeShape.isNavigation(null, "text/html,application/xhtml+xml") shouldBe true
+        ChallengeShape.isNavigation(null, "application/json") shouldBe false
+        ChallengeShape.isNavigation(null, null) shouldBe true
+        ChallengeShape.isNavigation("", null) shouldBe true
+    }
+})

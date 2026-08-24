@@ -3,6 +3,9 @@ package com.dynamicruntime.edge
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.node.NodeService
@@ -107,11 +110,23 @@ class EdgeProxyHandler(
         val cxt = InstanceRegistry.createCxt("edgeProxy", config)
         val email = envAuthEmail(cxt, request)
         if (email == null) {
-            LogEdge.debug(cxt, "Challenging an unauthenticated request for /$root.")
             // Challenged here rather than forwarded-and-refused: the application behind this edge has its own
             // idea of who is logged in, and would answer an anonymous request perfectly happily. The perimeter
             // is the only place that can insist.
-            Response.sendRedirect(request, response, callback, loginUrl(request))
+            //
+            // HOW it insists depends on who is asking, and getting that wrong breaks a running page. A
+            // redirect answers a navigation; to a `fetch` it is invisible -- the browser follows it and hands
+            // the caller the sign-in page with status 200, so `response.ok` is true and a JSON parse fails on
+            // HTML. The frontend reported exactly that: "cannot parse the JSON in the response" from a
+            // ui-config call whose session had expired. A 401 says the same thing in a form the caller can act
+            // on.
+            if (isNavigation(request)) {
+                LogEdge.debug(cxt, "Challenging a navigation to /$root.")
+                Response.sendRedirect(request, response, callback, loginUrl(request))
+            } else {
+                LogEdge.debug(cxt, "Refusing an unauthenticated background call to /$root.")
+                sendAuthRequired(request, response, callback)
+            }
             return true
         }
         request.setAttribute(EDGEUP.emailAttribute, email)
@@ -143,6 +158,43 @@ class EdgeProxyHandler(
             return decoded.email
         }
         return if (EnvAuthRules.assumesEnvAuth(config)) ENVA.assumedAddress else null
+    }
+
+    /**
+     * Whether this request is a browser navigating, as opposed to a page fetching in the background.
+     *
+     * `Sec-Fetch-Mode` is the honest answer and every current browser sends it: `navigate` for a top-level
+     * navigation, `cors` or `same-origin` for a `fetch`. It is a forbidden header name, so a page cannot
+     * forge it.
+     *
+     * The `Accept` fallback covers a client that sends neither -- an old browser, a curl, a probe. Guessing
+     * *navigation* there is the safer error: the worst case is a redirect where a 401 would have been
+     * tidier, whereas guessing wrong the other way hands a browser a JSON body instead of a sign-in page and
+     * strands somebody who could otherwise log in.
+     */
+    private fun isNavigation(request: Request): Boolean =
+        ChallengeShape.isNavigation(request.headers.get("Sec-Fetch-Mode"), request.headers.get("Accept"))
+
+    /**
+     * Refuses a background call in the runtime's own error envelope, so the frontend's existing error path
+     * reads it as an error rather than as data.
+     *
+     * `EP.envAuthRequiredCode` is what a caller matches on, and the login URL travels with it because only
+     * this node knows where its sign-in page lives -- the frontend is served by the application and has no
+     * idea it is behind an edge, let alone which one.
+     */
+    private fun sendAuthRequired(request: Request, response: Response, callback: Callback) {
+        val body = mapOf(
+            EP.status to EXC.authNeeded,
+            EP.errorMessage to "Environment sign-in is required, or has expired.",
+            EP.errorCode to EP.envAuthRequiredCode,
+            // Bare: see EP.envAuthLoginUrl. The request being refused here is an API path, so a return
+            // path built from it would send the caller back to JSON rather than to their page.
+            EP.extraData to mapOf(EP.envAuthLoginUrl to "/$contentRoot${EDGEP.loginPage}"),
+        ).toJsonStr(compact = true)
+        response.status = EXC.authNeeded
+        response.headers.put(HttpHeader.CONTENT_TYPE, "application/json")
+        response.write(true, java.nio.ByteBuffer.wrap(body.toByteArray(Charsets.UTF_8)), callback)
     }
 
     /** The edge's own sign-in page, carrying where the caller was going. */
@@ -245,5 +297,35 @@ object EnvAuthForwarding {
             cookie = if (kept.isEmpty()) null else kept.joinToString("; ") { (n, v) -> "$n=$v" },
             envEmail = email,
         )
+    }
+}
+
+
+/**
+ * Whether a challenge should be a redirect or a 401 (issue #419).
+ *
+ * Split out to be tested directly, for the same reason [EnvAuthForwarding] is: both answers *work* -- the
+ * request completes either way -- so getting it backwards is not visible as a failure. It shows up as a page
+ * reporting that it cannot parse JSON, or as a person staring at an error envelope instead of a sign-in
+ * button, and neither points back here.
+ */
+object ChallengeShape {
+    /**
+     * True when this looks like a browser navigating rather than a page fetching in the background.
+     *
+     * `Sec-Fetch-Mode` is the honest answer and every current browser sends it: `navigate` for a top-level
+     * navigation, `cors` or `same-origin` for a `fetch`. It is a forbidden header name, so a page cannot
+     * forge it.
+     *
+     * The `Accept` fallback covers a client sending neither -- an older browser, a curl, a probe. Defaulting
+     * to *navigation* is the safer error: the worst case is a redirect where a 401 would have been tidier,
+     * whereas the other way hands a browser a JSON body instead of a sign-in page and strands somebody who
+     * could otherwise have logged in.
+     */
+    fun isNavigation(secFetchMode: String?, accept: String?): Boolean {
+        if (!secFetchMode.isNullOrEmpty()) {
+            return secFetchMode.equals("navigate", ignoreCase = true)
+        }
+        return accept?.contains("text/html", ignoreCase = true) ?: true
     }
 }

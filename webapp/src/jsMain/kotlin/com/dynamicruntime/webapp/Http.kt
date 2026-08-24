@@ -46,6 +46,22 @@ private external fun browserFetch(input: String, init: dynamic = definedExternal
 /** The browser's `navigator.language` (e.g. `en-US`), or empty when unavailable. */
 private fun navigatorLanguage(): String = js("(navigator && navigator.language) || ''") as String
 
+/**
+ * The whole of where the browser currently is -- path, query **and fragment**.
+ *
+ * The fragment is the part that matters and the part a server can never supply: browsers do not send anything
+ * after `#`, and this app routes on it. A sign-in round trip that drops it returns the caller to the top of
+ * the app instead of the page they were reading.
+ */
+private fun currentLocationWithFragment(): String =
+    js("(window.location.pathname + window.location.search + window.location.hash)") as String
+
+/** Navigates the whole window, leaving this app. */
+private fun assignLocation(url: String) {
+    js("window.location.assign(url)")
+}
+
+
 object Http {
     /**
      * The static-content app id: a backend-owned base (`kdr`) plus a client-known suffix -- the browser's
@@ -90,6 +106,35 @@ object Http {
         return map
     }
 
+    /**
+     * Sends the browser to an edge's sign-in page when [envelope] is that edge's "no environment session"
+     * refusal, and returns the error to raise so the in-flight call still unwinds.
+     *
+     * **Carries the whole current location, fragment included.** The app routes on the fragment, and a
+     * fragment is never sent to a server -- so a caller returned to the bare path lands at the top of the app
+     * rather than where they were. The one moment it is knowable is here, in the browser, before navigating.
+     *
+     * Returns null when this is any other error, which is every ordinary failure: only an edge sends this
+     * code, and only when the perimeter -- not the application -- stopped recognizing the caller.
+     */
+    private fun redirectToEnvAuthLogin(envelope: Map<String, Any?>?): ApiError? {
+        if (envelope?.get(EP.errorCode) != EP.envAuthRequiredCode) {
+            return null
+        }
+        val extra = envelope[EP.extraData] as? Map<*, *>
+        val loginUrl = extra?.get(EP.envAuthLoginUrl) as? String ?: return null
+        val here = currentLocationWithFragment()
+        val sep = if (loginUrl.contains('?')) "&" else "?"
+        assignLocation("$loginUrl$sep${EP.envAuthNextParam}=${encodeUriComponent(here)}")
+        return ApiError(
+            message = envelope[EP.errorMessage] as? String ?: "Environment sign-in is required.",
+            fromFragment = false,
+            status = (envelope[EP.status] as? Number)?.toInt(),
+            errorCode = EP.envAuthRequiredCode,
+            traceId = null,
+        )
+    }
+
     private suspend fun requestText(method: String, url: String, body: Map<String, Any?>?): String {
         val init: dynamic = js("({})")
         init.method = method
@@ -110,6 +155,13 @@ object Http {
         val response = browserFetch(url, init).await()
         val text = (response.text() as Promise<String>).await()
         if (!(response.ok as Boolean)) {
+            // An edge in front of this deployment saying nobody is signed in any more (issue #419). It is not
+            // an error this app can show its way out of: every later call will fail the same way, and the only
+            // way back is out of the app entirely, to a sign-in page this app does not host and cannot render.
+            //
+            // Handled here rather than at each call site because it can arrive on ANY of them -- a session
+            // expires between two background refreshes, not at a moment a screen chose.
+            redirectToEnvAuthLogin(text.jsonMap())?.let { throw it }
             // Carry the whole error envelope up as a structured error (issue #111), so a display site can decide
             // how to present it -- designed fragment copy vs. a raw/internal message -- rather than seeing only a
             // string. A non-JSON error body (e.g., the terse context-root 404) yields a null map and a fallback.
