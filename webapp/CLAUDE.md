@@ -171,6 +171,7 @@ rather than at runtime.
 | `g-options` | antd `Select` | pick one of these, and nothing else validates |
 | `g-options` + `g-openOptions` | antd `AutoComplete` (`OpenChoiceField`) | pick one, **or type your own** |
 | `g-options` on an array's items | `Select mode="multiple"` | pick several |
+| both, on an array's items | `Select mode="tags"` | pick several, **or add your own** |
 
 **A free-entry ("non-strict") list is antd's `AutoComplete`, and needs no new dependency.** antd renders it as
 `<Select mode={SECRET_COMBOBOX_MODE_DO_NOT_USE} suffixIcon={null}>` — the same `@rc-component/select` engine
@@ -196,6 +197,13 @@ Four things about it were expensive to learn, and none is guessable from the doc
   keeps in `useState` is at the mercy of what the parent does between renders. Two versions of this widget
   held a "has the user typed?" flag and neither survived. Prefer a rule computed from what the control already
   passes you.
+
+**The array case behaves differently from the single one, and less well.** `tags` mode commits a typed value
+on **blur** rather than on Enter, and while a non-matching value is being typed the popup shows only the
+"create this" entry — the other suggestions disappear, which is the very thing `filterOption = false` fixes for
+the single-choice field. It does not fix it here (tried; no observable difference, so the line was removed
+rather than left in looking load-bearing). Standard tags-mode behavior, and acceptable, but if an open
+multi-select ever becomes a surface people use a lot, this is what to improve.
 
 **Testing note, and it is the good news:** an `AutoComplete` **can** be driven by the browser tools — typing
 and clicking an option both work — because its control is a real `<input>`. A plain antd `Select` cannot be

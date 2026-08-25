@@ -342,6 +342,12 @@ class SchemaService : ServiceInitializer {
                     labelOptions.forEach { option(it) }
                     openOptions()
                 }
+                // The array counterpart, so both shapes of an open list have somewhere to be driven: this one
+                // renders as a multi-select that also accepts a value nobody offered.
+                property(SS.labels, "Any number of labels; the suggestions are not the whole list.") {
+                    type = SCT.array
+                    items { type = SCT.string; labelOptions.forEach { option(it) }; openOptions() }
+                }
             }
             type("SampleDetails") {
                 type = SCT.kObject
@@ -923,6 +929,7 @@ object SS {
     const val categories = "categories"
     const val sinceDate = "sinceDate"
     const val label = "label"
+    const val labels = "labels"
     const val id = "id"
     const val createdOn = "createdOn"
     const val active = "active"

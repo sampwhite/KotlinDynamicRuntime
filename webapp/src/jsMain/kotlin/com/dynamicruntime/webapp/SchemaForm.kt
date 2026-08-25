@@ -900,9 +900,13 @@ private fun ChildrenBuilder.widget(
     val arrayOptions = if (vt.jsonType == SCT.array) vt.itemType?.options else null
     val singleOptions = vt.options
     when {
-        // Multi-select: an array of choices.
+        // Multi-select: an array of choices. An **open** element type takes antd's `tags` mode, which is the
+        // same control plus the ability to enter a value that is not offered (issue #418) -- without it the
+        // widget would refuse what the endpoint accepts, which is the advertise-versus-serve drift in
+        // miniature. Unlike the single-choice case this needs no separate component: a multi-select is
+        // already a list of values, so accepting one more is a mode rather than a different control.
         arrayOptions != null -> Select {
-            mode = "multiple"
+            mode = if (vt.itemType?.openOptions == true) "tags" else "multiple"
             options = optionsToJs(arrayOptions)
             this.value = value.toJsonListOfStrings().toTypedArray()
             placeholder = "(choose)"
@@ -1244,6 +1248,7 @@ private fun typeWord(vt: SchType): String = when {
     // allowed, or the outline documents a constraint the endpoint does not have.
     vt.options != null && vt.openOptions -> "open choice"
     vt.options != null -> "choice"
+    vt.jsonType == SCT.array && vt.itemType?.options != null && vt.itemType?.openOptions == true -> "open choices"
     vt.jsonType == SCT.array && vt.itemType?.options != null -> "choices"
     vt.jsonType == SCT.array -> "list"
     vt.jsonType == SCT.string && isDateFormat(vt.format) -> vt.format ?: SCT.string
