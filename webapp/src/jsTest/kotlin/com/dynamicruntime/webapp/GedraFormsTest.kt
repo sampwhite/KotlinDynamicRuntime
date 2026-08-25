@@ -3,7 +3,11 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GPF
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
@@ -213,5 +217,99 @@ class GedraFormsTest {
     fun formatsTimestamps() {
         assertEquals("2026-08-21 19:49 UTC", formatTimestamp("2026-08-21T19:49:51.568Z"))
         assertEquals("whenever", formatTimestamp("whenever"))
+    }
+
+    // --- edit / patch (issue #417) ----------------------------------------------------------------------
+
+    /** The patch endpoint is the POST whose path ends with `/patch` -- told apart from the create POST and
+     *  from the same-suffix nothing-else by method and suffix. */
+    @Test
+    fun findsTheScopedPatchPost() {
+        val endpoints = listOf(
+            ep(HttpMethod.POST.name, "/gedra/acme/formDoc/create"),
+            ep(HttpMethod.GET.name, "/gedra/acme/patch"), // wrong method, must be passed over
+            ep(HttpMethod.POST.name, "/gedra/acme/patch"),
+        )
+        assertEquals("/gedra/acme/patch", findFormPatchEndpoint(endpoints)?.path)
+        assertNull(findFormPatchEndpoint(listOf(ep(HttpMethod.POST.name, "/gedra/acme/formDoc/create"))))
+    }
+
+    /** [seededEdits] turns a stored form's entries into addOrReplace edits carrying trait, id, and data, so the
+     *  edit form opens on what the form currently holds. */
+    @Test
+    fun seedsEditsFromStoredEntries() {
+        val form = mapOf(
+            GDF.gedraId to "gd.fd.acme.u1",
+            GDF.entries to listOf(
+                mapOf(GE.traitId to "name", GE.entryId to "e1", GE.data to mapOf("name" to "Q3")),
+                mapOf(GE.traitId to "expenseReport", GE.data to mapOf("year" to 2026)), // no entryId
+            ),
+        )
+        val edits = seededEdits(form)
+        assertEquals(2, edits.size)
+        assertEquals(GedraEditAction.addOrReplace.name, edits[0][GED.action])
+        assertEquals("name", edits[0][GE.traitId])
+        assertEquals("e1", edits[0][GE.entryId])
+        assertEquals(mapOf("name" to "Q3"), edits[0][GE.data])
+        // The second entry carried no id, so the edit targets the trait's own entry (id absent, not blank).
+        assertEquals(false, edits[1].containsKey(GE.entryId))
+    }
+
+    /** [formDocPatchBody] wraps one edited target back into the `targets`-grouped-by-kind body the endpoint reads. */
+    @Test
+    fun wrapsATargetIntoThePatchBody() {
+        val target = mapOf(GDF.gedraId to "gd.fd.acme.u1", GPF.edits to listOf<Map<String, Any?>>())
+        val body = formDocPatchBody(target)
+        @Suppress("UNCHECKED_CAST")
+        val group = (body[GPF.targets] as Map<String, Any?>)[GedraDataType.formDoc.name] as List<Map<String, Any?>>
+        assertEquals(listOf(target), group)
+    }
+
+    /** [formDocPatchTargetType] reaches the one-target `PatchTarget` shape inside the patch input type. */
+    @Test
+    fun reachesThePatchTargetType() {
+        val defs = mapOf(
+            "t.PatchTarget" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    GDF.gedraId to mapOf(SCH.type to SCT.string),
+                    GPF.edits to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to SCT.kObject)),
+                ),
+            ),
+            "t.PatchTargets" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    GedraDataType.formDoc.name to
+                        mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to "t.PatchTarget")),
+                ),
+            ),
+            "t.PatchInput" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(GPF.targets to mapOf(SCH.dRef to "t.PatchTargets")),
+            ),
+        )
+        val target = formDocPatchTargetType(parseSchemaTypes(defs).getValue("t.PatchInput"))
+        assertTrue(target?.properties?.containsKey(GDF.gedraId) == true)
+        assertTrue(target?.properties?.containsKey(GPF.edits) == true)
+        assertNull(formDocPatchTargetType(null))
+    }
+
+    /** [appliedTraitLabels] names the traits a patch actually changed, by their friendly labels; an all-noop
+     *  patch names none, which the page reports as "no changes". */
+    @Test
+    fun namesTheTraitsAPatchApplied() {
+        val patched = listOf(
+            mapOf(
+                GDF.gedraId to "gd.fd.acme.u1",
+                GPF.outcomes to listOf(
+                    mapOf(GE.traitId to "expenseReport", GPF.applied to true),
+                    mapOf(GE.traitId to "name", GPF.applied to false), // unchanged, excluded
+                ),
+            ),
+        )
+        assertEquals(listOf("Expense report"), appliedTraitLabels(patched, entriesUnion()))
+        // Nothing applied -> no labels.
+        val noop = listOf(mapOf(GPF.outcomes to listOf(mapOf(GE.traitId to "name", GPF.applied to false))))
+        assertTrue(appliedTraitLabels(noop, entriesUnion()).isEmpty())
     }
 }

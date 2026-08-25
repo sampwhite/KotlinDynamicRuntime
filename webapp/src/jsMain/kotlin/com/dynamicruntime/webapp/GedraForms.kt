@@ -3,7 +3,11 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GPF
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.util.toJsonListOfMaps
 
@@ -27,6 +31,7 @@ fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substr
 private val formCreateSuffix: String = pathAfterSection(GEP.formDocCreate)
 private val formsListSuffix: String = pathAfterSection(GEP.formDocs)
 private val formGetSuffix: String = pathAfterSection(GEP.formDoc)
+private val patchSuffix: String = pathAfterSection(GEP.patch)
 
 /**
  * The endpoint that creates a form document, from the caller's own catalog.
@@ -58,6 +63,66 @@ fun findFormGetEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
  */
 fun findFormDeleteEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
     endpoints.firstOrNull { it.method == HttpMethod.DELETE.name && it.path.endsWith(formGetSuffix) }
+
+/**
+ * The endpoint that **patches** gedras (`POST /gedra/<client>/patch`, issue #337) -- what an edit sends. Found
+ * the same client-scoped way as the others; its `/patch` suffix is unique on the surface. Null when the
+ * caller's surface carries no patch. Pure, and covered under `jsNodeTest`.
+ */
+fun findFormPatchEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
+    endpoints.firstOrNull { it.method == HttpMethod.POST.name && it.path.endsWith(patchSuffix) }
+
+/**
+ * The **one-target** shape inside the patch input -- `PatchTarget` (`{ gedraId, edits: [<edit union>] }`) for
+ * the form-document kind -- reached from the patch endpoint's input type (issue #417).
+ *
+ * The edit page renders *this* rather than the whole patch envelope: a person editing one form should fill in
+ * that form's edits, not assemble the `targets`-grouped-by-kind wrapper, which [formDocPatchBody] adds back on
+ * submit. Navigated structurally (`targets` -> the form-document group -> its element) so it follows a rename
+ * of the wrapper's own field names. Null when the type is absent or not shaped this way.
+ */
+fun formDocPatchTargetType(patchInput: SchType?): SchType? {
+    val targets = patchInput?.properties?.get(GPF.targets)?.valueType ?: return null
+    val group = targets.properties[GedraDataType.formDoc.name]?.valueType ?: return null
+    return group.itemType
+}
+
+/**
+ * The edits that reproduce a stored form's current entries as a starting point for editing (issue #417): each
+ * entry becomes an [GedraEditAction.addOrReplace] carrying its trait, its id, and its data. So the edit form
+ * opens showing what the form holds now; the user changes a field, adds an entry, or switches one to
+ * [GedraEditAction.deleteOrNoOp] to remove it. Pure, and covered under `jsNodeTest`.
+ */
+fun seededEdits(form: Map<String, Any?>): List<Map<String, Any?>> =
+    form[GDF.entries].toJsonListOfMaps().mapNotNull { entry ->
+        val traitId = entry[GE.traitId] as? String ?: return@mapNotNull null
+        buildMap {
+            put(GED.action, GedraEditAction.addOrReplace.name)
+            put(GE.traitId, traitId)
+            (entry[GE.entryId] as? String)?.let { put(GE.entryId, it) }
+            (entry[GE.data] as? Map<*, *>)?.let { put(GE.data, it) }
+        }
+    }
+
+/**
+ * Wraps one edited [target] (`{ gedraId, edits }`) back into the patch endpoint's `targets`-grouped-by-kind
+ * body (issue #417) -- the inverse of [formDocPatchTargetType]. The edit page edits a single form, so this is
+ * always one target under the form-document kind. Pure, and covered under `jsNodeTest`.
+ */
+fun formDocPatchBody(target: Map<String, Any?>): Map<String, Any?> =
+    mapOf(GPF.targets to mapOf(GedraDataType.formDoc.name to listOf(target)))
+
+/**
+ * The trait labels a patch response reports as **applied** (`outcomes` with `applied = true`), across the
+ * patched gedras, by the same friendly label the form's trait picker showed (issue #417). Empty when a patch
+ * changed nothing -- which the edit page reports as "no changes" rather than a false success. Pure, and covered
+ * under `jsNodeTest`.
+ */
+fun appliedTraitLabels(patched: List<Map<String, Any?>>, entriesUnion: SchType?): List<String> =
+    patched.flatMap { it[GPF.outcomes].toJsonListOfMaps() }
+        .filter { it[GPF.applied] == true }
+        .mapNotNull { it[GE.traitId] as? String }
+        .map { traitId -> entriesUnion?.variants?.byValue?.get(traitId)?.title ?: humanizeFieldName(traitId) }
 
 /**
  * The trait entry union inside a form-document type -- the `entries` array's element -- or null when [type] is

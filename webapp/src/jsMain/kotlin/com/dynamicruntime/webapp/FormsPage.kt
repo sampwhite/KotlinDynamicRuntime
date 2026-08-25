@@ -49,6 +49,9 @@ val FormsPage = FC<Props> {
     var listEndpoint by useState<EndpointInfo?>(null)
     var getEndpoint by useState<EndpointInfo?>(null)
     var deleteEndpoint by useState<EndpointInfo?>(null)
+    // The patch endpoint (issue #417): its presence is what lets the view offer Edit, on the same "do not show
+    // a control that cannot work" rule the delete button follows.
+    var patchEndpoint by useState<EndpointInfo?>(null)
     var rows by useState<List<Map<String, Any?>>>(emptyList())
     // How many forms the scope admits in all, for "showing X–Y of N" and to know when a next page exists.
     var numAvailable by useState(0)
@@ -103,6 +106,7 @@ val FormsPage = FC<Props> {
                 catalog = cat
                 getEndpoint = findFormGetEndpoint(cat.endpoints)
                 deleteEndpoint = findFormDeleteEndpoint(cat.endpoints)
+                patchEndpoint = findFormPatchEndpoint(cat.endpoints)
                 val ep = findFormsListEndpoint(cat.endpoints)
                 listEndpoint = ep
                 if (ep != null) {
@@ -218,6 +222,21 @@ val FormsPage = FC<Props> {
                     }
                     else -> {
                         renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType)
+                        // Edit, offered only when the caller's surface carries the patch endpoint (issue #417).
+                        // Its own route off the view for now; a later slice folds it into a list-centric hub.
+                        patchEndpoint?.let {
+                            div {
+                                className = ClassName("row")
+                                Button {
+                                    onClick = {
+                                        viewingId?.let { id ->
+                                            navigateHash(listOf(HP.page to pageEditForm, HP.gedra to id))
+                                        }
+                                    }
+                                    +"Edit form"
+                                }
+                            }
+                        }
                         // Delete, offered only when the caller's surface carries the endpoint. A two-step
                         // confirm; on success the view closes and the list reloads from the top, where the now
                         // one-fewer forms are.

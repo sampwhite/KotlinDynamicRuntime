@@ -143,6 +143,7 @@ val App = FC<Props> {
                             pageUsers -> Users {}
                             pageNewForm -> NewFormPage {}
                             pageForms -> FormsPage {}
+                            pageEditForm -> EditFormPage {}
                             // Resolved here rather than in `currentPage()` because the answer depends on the
                             // app config, which arrives asynchronously -- see `debugAllowed` above. Where the
                             // flag is off, this falls through to Home, so the route does not exist rather than
@@ -172,6 +173,8 @@ private const val pageNewForm = HMENU.pageNewForm
 
 // The list/view page for the caller's form documents (issue #408); same login gating and route policy.
 private const val pageForms = HMENU.pageForms
+// The edit-a-form page (issue #417); its id (`pageEditForm`) lives with the page in EditFormPage.kt, since the
+// view's Edit button names the same route. Reached from the view rather than the top nav; the section gates it.
 
 // The debug area (issue #227). Present in the router unconditionally; whether it *renders* is gated on the
 // deployment's `allowDebugPages`, checked at render time where the config is known.
@@ -191,6 +194,7 @@ private fun currentPage(): String {
         params[HP.page] == pageUsers -> pageUsers
         params[HP.page] == pageNewForm -> pageNewForm
         params[HP.page] == pageForms -> pageForms
+        params[HP.page] == pageEditForm -> pageEditForm
         params[HP.page] == pageDebug -> pageDebug
         else -> "home"
     }
