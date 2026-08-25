@@ -46,6 +46,6 @@ class DbTablesEndpointTest : StringSpec({
 
         val items = operator.getItems(path)
         items.map { it[TI.tableName] } shouldContain "InstanceConfig"
-        items.first { it[TI.tableName] == "InstanceConfig" }[TI.topic] shouldBe "node"
+        items.first { it[TI.tableName] == "InstanceConfig" }[TI.topic] shouldBe "instance"
     }
 })

@@ -19,7 +19,7 @@ class SqlDatabaseTest : StringSpec({
     "InstanceConfig table: build, create, insert, and query round-trips including audit columns" {
         val cxt = KdrCxt.mkSimpleCxt("test")
         val db = SqlDatabase.mkInMemoryH2("test_sqldb_instanceconfig")
-        val topic = "node"
+        val topic = TOPIC.instance
 
         val tables = tableModule(cxt, topic) {
             table("InstanceConfig", "Stores private instance data") {

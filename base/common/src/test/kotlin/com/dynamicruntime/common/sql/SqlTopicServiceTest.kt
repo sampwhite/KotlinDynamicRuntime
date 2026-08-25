@@ -4,6 +4,9 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.exception.KdrException
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.string.shouldContain
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldNotBeEmpty
@@ -58,7 +61,7 @@ class SqlTopicServiceTest : StringSpec({
         val sqlTopic = SqlTopicService.get(cxt).getOrCreateTopic(cxt, "acct").shouldNotBeNull()
         val db = sqlTopic.sqlDb
         db.withSession(cxt) {
-            val row = db.queryOneStatement(cxt, sqlTopic.qTranLockQuery!!, mapOf("stateKey" to "s1")).shouldNotBeNull()
+            val row = db.queryOneStatement(cxt, sqlTopic.tranFor(null, "reread").queryLock, mapOf("stateKey" to "s1")).shouldNotBeNull()
             row["counter"] shouldBe 1L
             row[PF.client] shouldBe CL.hub
             row[PF.lastTranId] shouldNotBe SqlTopicUtil.initialInsertTranId
@@ -99,7 +102,7 @@ class SqlTopicServiceTest : StringSpec({
         // Reads publish nothing: queryStatement never calls publishWrite.
         val countAfterWrite = seen.size
         sqlCxt.sqlDb.withSession(cxt) {
-            sqlCxt.sqlDb.queryOneStatement(cxt, sqlCxt.sqlTopic!!.qTranLockQuery!!, mapOf("stateKey" to "n1"))
+            sqlCxt.sqlDb.queryOneStatement(cxt, sqlCxt.sqlTopic!!.tranFor(null, "reread").queryLock, mapOf("stateKey" to "n1"))
         }
         seen.size shouldBe countAfterWrite
     }
@@ -145,5 +148,140 @@ class SqlTopicServiceTest : StringSpec({
         SqlTopicUtil.nextUpdatedAt(cxt, ahead) shouldBe Instant.fromEpochMilliseconds(nowMs + 5001)
         // Prior safely behind: the clock wins, no artificial bump.
         SqlTopicUtil.nextUpdatedAt(cxt, Instant.fromEpochMilliseconds(nowMs - 5000)) shouldBe now
+    }
+})
+
+/**
+ * Several transactional tables in one topic (issue #435).
+ *
+ * The property that matters is that a transaction locks the table it named **and no other**. A lock taken on
+ * the wrong table still produces correct results -- the work runs, the data is right -- it merely serializes
+ * transactions that have nothing to do with each other. So the failure is slow rather than broken, which is
+ * exactly the kind that survives a test suite unless something asserts the row it must not have touched.
+ */
+class SqlTopicMultiTranTest : StringSpec({
+
+    fun twoTranTables() = tableModule(cxt = KdrCxt.mkSimpleCxt("def"), namespace = "twoNs", topic = "two") {
+        table("AlphaState", "First transactional table.") {
+            column("stateKey", "Key of the state row.")
+            column("counter", "A counter value.") { type = SCT.integer }
+            primaryKey("stateKey")
+            withTransactions()
+        }
+        table("BetaState", "Second transactional table, unrelated to the first.") {
+            column("stateKey", "Key of the state row.")
+            column("counter", "A counter value.") { type = SCT.integer }
+            primaryKey("stateKey")
+            withTransactions()
+        }
+    }
+
+    fun bootCxt(name: String): KdrCxt {
+        val cxt = KdrCxt.mkSimpleCxt(name)
+        val tables = twoTranTables()
+        cxt.instanceConfig.put(KdrSchemaStore.key, KdrSchemaStore(tables = tables.associateBy { it.tableName }))
+        val service = SqlTopicService()
+        cxt.instanceConfig.put(SqlTopicService.serviceName, service)
+        service.checkInit(cxt)
+        return cxt
+    }
+
+    // The limit this issue removed: a second transactional table used to fail the topic's construction, so a
+    // second transactional concern needed a topic of its own -- and a topic is also the unit of database
+    // assignment, which forced two unrelated decisions together.
+    "a topic accepts more than one transactional table" {
+        val topic = SqlTopicService.get(bootCxt("multiInit")).getOrCreateTopic(bootCxt("multiInit"), "two")
+        topic.shouldNotBeNull().tranTables.map { it.tableName }.sorted() shouldBe listOf("AlphaState", "BetaState")
+    }
+
+    "each transactional table gets its own lock queries" {
+        val cxt = bootCxt("multiQueries")
+        val topic = SqlTopicService.get(cxt).getOrCreateTopic(cxt, "two").shouldNotBeNull()
+        val alpha = topic.tranFor("AlphaState", "t").queryLock
+        val beta = topic.tranFor("BetaState", "t").queryLock
+        alpha shouldNotBe beta
+        topic.tranFor("AlphaState", "t").table.tableName shouldBe "AlphaState"
+        topic.tranOrNull("NoSuchState") shouldBe null
+    }
+
+    /**
+     * The heart of it. A transaction on Alpha must leave Beta's lock row alone -- if it did not, the two
+     * would contend, and nothing about the result would look wrong.
+     */
+    "a transaction locks only the table it named" {
+        val cxt = bootCxt("multiIsolation")
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, "two")
+        val topic = sqlCxt.sqlTopic.shouldNotBeNull()
+
+        SqlTopicTranProvider.executeTopicTran(
+            sqlCxt, "bumpAlpha", null, mapOf("stateKey" to "k1"), tranTableName = "AlphaState",
+        ) {
+            sqlCxt.tranData["counter"] = 7L
+        }
+
+        sqlCxt.sqlDb.withSession(cxt) {
+            val alphaRow = sqlCxt.sqlDb
+                .queryOneStatement(cxt, topic.tranFor("AlphaState", "t").queryLock, mapOf("stateKey" to "k1"))
+            alphaRow.shouldNotBeNull()["counter"] shouldBe 7L
+
+            // Beta was never touched: no lock row was inserted there at all.
+            val betaRow = sqlCxt.sqlDb
+                .queryOneStatement(cxt, topic.tranFor("BetaState", "t").queryLock, mapOf("stateKey" to "k1"))
+            betaRow shouldBe null
+        }
+    }
+
+    "the two tables' transactions do not disturb each other" {
+        val cxt = bootCxt("multiBoth")
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, "two")
+        val topic = sqlCxt.sqlTopic.shouldNotBeNull()
+
+        SqlTopicTranProvider.executeTopicTran(
+            sqlCxt, "bumpAlpha", null, mapOf("stateKey" to "k1"), tranTableName = "AlphaState",
+        ) { sqlCxt.tranData["counter"] = 1L }
+        val alphaTranId = sqlCxt.tranData[PF.lastTranId]
+
+        SqlTopicTranProvider.executeTopicTran(
+            sqlCxt, "bumpBeta", null, mapOf("stateKey" to "k1"), tranTableName = "BetaState",
+        ) { sqlCxt.tranData["counter"] = 2L }
+
+        sqlCxt.sqlDb.withSession(cxt) {
+            val alphaRow = sqlCxt.sqlDb
+                .queryOneStatement(cxt, topic.tranFor("AlphaState", "t").queryLock, mapOf("stateKey" to "k1"))
+            // Alpha still carries its own transaction's id and value -- Beta's run did not write over it.
+            alphaRow.shouldNotBeNull()["counter"] shouldBe 1L
+            alphaRow[PF.lastTranId] shouldBe alphaTranId
+
+            val betaRow = sqlCxt.sqlDb
+                .queryOneStatement(cxt, topic.tranFor("BetaState", "t").queryLock, mapOf("stateKey" to "k1"))
+            betaRow.shouldNotBeNull()["counter"] shouldBe 2L
+            betaRow[PF.lastTranId] shouldNotBe alphaTranId
+        }
+    }
+
+    /**
+     * Naming no table where several exist is refused rather than guessed. Picking the first would be a
+     * working transaction against the wrong lock -- see the class comment for why that is the bad outcome.
+     */
+    "a transaction that names no table on a multi-table topic is refused" {
+        val cxt = bootCxt("multiAmbiguous")
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, "two")
+        val e = shouldThrow<KdrException> {
+            SqlTopicTranProvider.executeTopicTran(sqlCxt, "nameless", null, mapOf("stateKey" to "k1")) {}
+        }
+        e.fullMessage() shouldContain "must name the one it locks"
+        e.fullMessage() shouldContain "AlphaState"
+    }
+
+    "naming a table the topic does not have is refused, and says what it does have" {
+        val cxt = bootCxt("multiWrongName")
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, "two")
+        val e = shouldThrow<KdrException> {
+            SqlTopicTranProvider.executeTopicTran(
+                sqlCxt, "wrong", null, mapOf("stateKey" to "k1"), tranTableName = "GammaState",
+            ) {}
+        }
+        e.fullMessage() shouldContain "GammaState"
+        e.fullMessage() shouldContain "AlphaState"
     }
 })

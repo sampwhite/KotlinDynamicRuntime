@@ -1,11 +1,5 @@
 package com.dynamicruntime.common.sql.cache
 
-/**
- * The SQL topic holding the cross-node cache-state row. Its own topic (rather than sharing one with a
- * cached table's) because every cache writes to it: a topic is a grouping of tables, and this one belongs to
- * the caching machinery, not to whichever subsystem happens to have adopted a cache first.
- */
-const val cacheTopic = "cache"
 
 /** `KdrCacheState` table and column names. Each name matches its value. */
 @Suppress("ConstPropertyName")

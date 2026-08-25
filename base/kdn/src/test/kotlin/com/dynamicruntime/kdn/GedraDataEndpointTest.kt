@@ -111,10 +111,10 @@ class GedraDataEndpointTest : StringSpec({
         val topic = sqlCxt.sqlTopic.shouldNotBeNull()
         // The root is the topic's lock table, and a row of it exists under the content row's own id. That is
         // the whole of the two-tier arrangement, and it is what a "write" reaching a file store will lock on.
-        topic.tranTable.shouldNotBeNull().tableName shouldBe GDT.gedraDataTran
+        topic.tranTables.map { it.tableName } shouldBe listOf(GDT.gedraDataTran)
         sqlCxt.sqlDb.withSession(cxt) {
             val root = sqlCxt.sqlDb
-                .queryOneStatement(cxt, topic.qTranLockQuery.shouldNotBeNull(), mapOf(GD.gedraId to aliceDocId))
+                .queryOneStatement(cxt, topic.tranFor(null, "readRoot").queryLock, mapOf(GD.gedraId to aliceDocId))
             root.shouldNotBeNull()[GD.gedraId] shouldBe aliceDocId
             // Ownership recorded at the root too, from the context rather than from anything the caller sent.
             root[PF.userId] shouldBe alice.userId
