@@ -131,7 +131,8 @@ val EditFormPage = FC<Props> {
                 +"No form was named to edit."
             }
             notFound -> {
-                backToForm(id)
+                // The form is not viewable either, so only the list link is offered here.
+                editNav(id, toForm = false)
                 p {
                     className = ClassName("subtitle")
                     +"That form is not one you can edit."
@@ -142,8 +143,9 @@ val EditFormPage = FC<Props> {
                 +"This account's surface has no way to edit forms."
             }
             appliedLabels != null -> {
-                // A save confirms in place with what changed, and offers to return to the (now updated) form.
-                backToForm(id)
+                // A save confirms in place with what changed, and offers to return to the (now updated) form to
+                // keep editing or to go back to the listing (issue #417).
+                editNav(id)
                 val labels = appliedLabels!!
                 p {
                     className = ClassName("form-ok")
@@ -157,7 +159,7 @@ val EditFormPage = FC<Props> {
                 }
             }
             else -> {
-                backToForm(id)
+                editNav(id)
                 p {
                     className = ClassName("subtitle")
                     +("Change an entry's fields, add a section for a new trait, or switch a section to delete. " +
@@ -254,19 +256,26 @@ val EditFormPage = FC<Props> {
     }
 }
 
-/** A "back to the form" link row, returning to the read-only view of the form being edited. */
-private fun react.ChildrenBuilder.backToForm(id: String?) {
+/**
+ * The edit page's navigation row. It always offers a link back to **My forms** (the listing) -- the way out that
+ * was missing after a save (issue #417) -- and, when [toForm] and the form is viewable, a link back to that
+ * form's read-only view to keep editing it. On the not-found branch the form cannot be viewed, so only the list
+ * link is shown.
+ */
+private fun react.ChildrenBuilder.editNav(id: String?, toForm: Boolean = true) {
     div {
         className = ClassName("row")
+        if (toForm && id != null) {
+            Button {
+                type = "link"
+                onClick = { navigateHash(listOf(HP.page to HMENU.pageForms, HP.gedra to id)) }
+                +"← Back to the form"
+            }
+        }
         Button {
             type = "link"
-            onClick = {
-                navigateHash(buildList {
-                    add(HP.page to HMENU.pageForms)
-                    id?.let { add(HP.gedra to it) }
-                })
-            }
-            +"← Back to the form"
+            onClick = { navigateHash(listOf(HP.page to HMENU.pageForms)) }
+            +"← Back to my forms"
         }
     }
 }
