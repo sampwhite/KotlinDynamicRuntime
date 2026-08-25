@@ -130,11 +130,11 @@ private fun menuItems(cxt: KdrCxt): List<Map<String, Any?>> = buildList {
         add(item(HMENU.users, "Users", page = HMENU.pageUsers))
     }
     if (cxt.userProfile.isLoggedIn) {
-        // Creating and listing forms are login-gated only (the `gedra` section), so every signed-in caller is
-        // offered them; how far a listing reaches is a scope question the endpoints answer, not a menu one
-        // (issue #408).
+        // Forms are login-gated only (the `gedra` section), so every signed-in caller is offered the list; how
+        // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"
+        // is a menu entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
+        // "New form" button rather than a second, redundant nav item (issue #417).
         add(item(HMENU.forms, "My forms", page = HMENU.pageForms))
-        add(item(HMENU.newForm, "New form", page = HMENU.pageNewForm))
         add(item(HMENU.profile, "Profile", page = HMENU.pageProfile))
         add(item(HMENU.logout, "Log out", action = HACT.logout))
     } else {
