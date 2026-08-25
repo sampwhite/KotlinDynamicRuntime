@@ -90,13 +90,26 @@ class SchOpenOptionsTest : StringSpec({
             .single() shouldContain "audit"
     }
 
-    "a client may not close an open list, nor open a closed one" {
-        // Where validity *does* change, and in both directions: closing narrows, opening widens, and neither
-        // is among the three ways an alteration may narrow. Refused by the ordinary must-match rule rather
-        // than by anything written for this keyword.
+    "a client may close an open list but may not open a closed one" {
+        // The asymmetry, and the pair is the point: both directions read alike and only one of them widens.
+        //
+        // **Closing is allowed** -- an open list accepts anything, so a client that bounds it accepts a
+        // subset. That is narrowing rule 2 said in the other keyword, and no more dangerous than trimming a
+        // closed list's choices, which the rule has always permitted.
         narrowingProblems("t.Visit", body(open = true, "inspection"), body(open = false, "inspection"))
-            .single() shouldContain SCH.openOptions
+            .shouldBeEmpty()
+
+        // **Opening is refused** -- values the base rejects would become storable here and invalid to
+        // everybody else, which is the cross-client breakage the whole rule exists to prevent.
         narrowingProblems("t.Visit", body(open = false, "inspection"), body(open = true, "inspection"))
             .single() shouldContain SCH.openOptions
+    }
+
+    "closing an open list may bound it to choices the base never listed" {
+        // Follows from the same reasoning and is worth its own assertion, because it looks wrong: the
+        // variant's choices are not a subset of the base's. They do not need to be -- the base accepted every
+        // string, so any finite list is a narrowing of it, whatever is in it.
+        narrowingProblems("t.Visit", body(open = true, "inspection"), body(open = false, "audit"))
+            .shouldBeEmpty()
     }
 })

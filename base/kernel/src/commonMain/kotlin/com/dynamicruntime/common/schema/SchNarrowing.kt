@@ -22,7 +22,9 @@ import com.dynamicruntime.common.util.toOptStr
  *
  *  1. **Fewer properties** -- mention only the keys wanted (see `mergeProperties`).
  *  2. **Fewer choices**, or a choice list where there was none: [SCH.options] whose values are a subset, or
- *     an options list applied to an attribute that had none.
+ *     an options list applied to an attribute that had none -- including **closing an open list**
+ *     ([SCH.openOptions]), which is the same act said in the other keyword: a list that bounded nothing
+ *     starts bounding. Opening a closed one is its opposite and is refused with the widenings.
  *  3. **More required**: [SCH.required] as a superset of the base's.
  *
  * Anything else that affects validation is refused, naming the alternative.
@@ -60,20 +62,19 @@ private val presentationKeys = setOf(
     SCH.optionsSource,
 )
 
-/** The three keys that may differ by narrowing; every other validating key must match the base exactly. */
-private val narrowingKeys = setOf(SCH.properties, SCH.options, SCH.required)
+/** The keys that may differ by narrowing; every other validating key must match the base exactly. */
+private val narrowingKeys = setOf(SCH.properties, SCH.options, SCH.required, SCH.openOptions)
 
 private fun compare(path: String, base: Map<String, Any?>, variant: Map<String, Any?>, out: MutableList<String>) {
     checkProperties(path, base, variant, out)
-    // An **open** list bounds nothing (issue #418), so its contents cannot narrow or widen what the type
-    // accepts and a client may offer whatever suggestions suit them. Which is more than a convenience: a
-    // per-client suggestion list is the obvious thing to want, and the subset rule would refuse it while
-    // protecting nothing. The keyword *itself* is not skipped -- it falls to the loop below, so flipping a
-    // list between open and closed is refused in both directions, which is where the validity actually
-    // changes.
+    // An **open** list bounds nothing (issue #418), so no list of choices the variant declares can widen what
+    // is accepted -- everything already was. So neither the contents nor the subset rule apply while the base
+    // is open: a per-client suggestion list is the obvious thing to want, and refusing it would protect
+    // nothing.
     if (base[SCH.openOptions] != true) {
         checkOptions(path, base[SCH.options], variant[SCH.options], out)
     }
+    checkOpenOptions(path, base, variant, out)
     checkRequired(path, base, variant, out)
     for (key in base.keys + variant.keys) {
         if (key in presentationKeys || key in narrowingKeys) {
@@ -91,6 +92,36 @@ private fun compare(path: String, base: Map<String, Any?>, variant: Map<String, 
 }
 
 private fun show(value: Any?): String = if (value == null) "absent" else "'$value'"
+
+/**
+ * A client may **close** an open list and may not **open** a closed one (issue #418).
+ *
+ * The asymmetry is the same one the whole file is about, wearing a different keyword. An open list accepts
+ * anything, so a client that closes it accepts a subset of what the base did -- which is narrowing rule 2
+ * said the other way round, and no more dangerous than trimming a closed list's choices. Opening a closed one
+ * is the reverse: values the base rejects become storable here and are then wrong for everybody else, which
+ * is the cross-client breakage the rule exists to prevent.
+ *
+ * **Note what this rule does not address.** Closing a list, like trimming one, can leave data already stored
+ * under the looser version failing validation against the tighter one. That is a real problem and a different
+ * one: it is about a definition changing over *time*, where everything here is about two definitions
+ * coexisting. Nothing in this file would catch it, and permitting rule 2 at all already accepts it.
+ */
+private fun checkOpenOptions(
+    path: String,
+    base: Map<String, Any?>,
+    variant: Map<String, Any?>,
+    out: MutableList<String>,
+) {
+    if (base[SCH.openOptions] != true && variant[SCH.openOptions] == true) {
+        out.add(
+            "'$path' opens a choice list the type closes ('${SCH.openOptions}'), which widens what it " +
+                "accepts: values the type rejects would be storable for this client and invalid to " +
+                "everybody else. Closing an open list is allowed; opening a closed one is not. Extend the " +
+                "type instead, which creates a name of its own and may do as it likes.",
+        )
+    }
+}
 
 /** Fewer properties, each still narrowing; never more, and never one the base requires. */
 private fun checkProperties(
