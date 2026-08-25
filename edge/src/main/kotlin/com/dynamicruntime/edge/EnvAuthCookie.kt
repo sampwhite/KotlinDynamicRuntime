@@ -56,7 +56,10 @@ object ENVAUTH {
 
 /**
  * The contents of the Env Auth session cookie: **who** got through the perimeter, and when that stops being
- * true. Serialized compactly and encrypted with the node key, so a browser can neither read nor forge it.
+ * true. Serialized compactly and encrypted with the instance key, so a browser can neither read nor forge it.
+ *
+ * The key being the *instance's* rather than a node's is what lets an edge be load-balanced: a session opened
+ * against one edge node is honored by its siblings.
  *
  * Not a `UserAuthCookie`, and it cannot be: that type requires a `userId` and refuses to decode without one,
  * while an env-authed caller has no user row anywhere. The address *is* the identity here -- it is what
@@ -67,7 +70,7 @@ object ENVAUTH {
  * for an old cookie to disagree with the current rule.
  */
 class EnvAuthCookie(val email: String, val expireEpochMs: Long) {
-    /** Encrypts this cookie to its wire string using the node key. */
+    /** Encrypts this cookie to its wire string using the instance key (shared by every node). */
     fun encode(node: NodeService): String =
         node.encryptString(mapOf(K_EMAIL to email, K_EXPIRE to expireEpochMs).toJsonStr(compact = true))
 

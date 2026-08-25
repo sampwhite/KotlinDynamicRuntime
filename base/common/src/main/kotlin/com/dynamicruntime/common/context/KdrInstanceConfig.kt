@@ -16,9 +16,14 @@ import kotlin.time.Instant
  * behaves differently. A `forTestingOnly` endpoint (`/test/clock`) mutates it to advance or freeze time, which
  * is what makes expiry / rate-limit behavior testable without real waits.
  *
+ * **"Instance-scoped" here means one per [KdrInstanceConfig], which is one per process** -- not shared across
+ * the nodes of a deployment the way the encryption key is. Advancing it moves time for the node that advanced
+ * it and no other, so a test spanning two nodes has to advance both. The name follows `instanceNow()` and the
+ * config object it lives on; it is the narrower sense of the word.
+ *
  * Held as a plain field on [KdrInstanceConfig] rather than a registered service, deliberately: every `now()`
- * reads it, it must exist on every instance, and a plain field is the easiest thing to find in the code and to
- * read in a debugger. Every mutator and the read are `synchronized(this)` -- production never mutates it (the
+ * reads it, it must exist wherever a context does, and a plain field is the easiest thing to find in the code
+ * and to read in a debugger. Every mutator and the read are `synchronized(this)` -- production never mutates it (the
  * endpoint that does is absent outside a test instance), so the lock is uncontended there; a test mutates from
  * a request thread while `now()` reads from others, which the lock makes coherent.
  */

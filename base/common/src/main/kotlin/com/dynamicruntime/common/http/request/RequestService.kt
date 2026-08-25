@@ -594,7 +594,7 @@ class RequestService : ServiceInitializer {
     fun extractAuth(cxt: KdrCxt, handler: RequestHandler) = authExtractor(cxt, handler)
 
     /**
-     * Restores the acting [KdrCxt.userProfile] from the session auth cookie: decrypt it (via the node key),
+     * Restores the acting [KdrCxt.userProfile] from the session auth cookie: decrypt it (via the instance key),
      * and if it is valid and unexpired, bind the user. Silently leaves the (system) profile in place otherwise
      * -- an absent/expired/forged cookie simply means "not logged in". Header-token auth is a follow-up.
      */

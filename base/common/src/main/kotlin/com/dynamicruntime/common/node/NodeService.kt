@@ -29,11 +29,18 @@ import kotlin.time.Instant
  * Following the newer convention, this service also *defines its own endpoints* ([schema]) rather than
  * a separate `NodeEndpoints`, because the service file is small. The `common` component wires them in.
  *
- * Node-level encryption lives here: the shared encryption key(s) are held in [authKeys] and used by
- * [encryptString] / [decryptString]. The key itself is loaded (or created) at startup and pushed in by
- * `InstanceConfigService`, mirroring the CRDR split where the core node service holds only the key and the
- * instance-config service owns loading it from the database. NodeService deliberately knows nothing more
- * about instance config than the encryption key.
+ * Encryption lives here, and the key is **instance-scoped, not node-scoped**: every node of an instance
+ * loads the same key from the same `InstanceConfig` row, which is why `InstanceConfigService` logs it as "a
+ * new *shared* encryption key for instance ...". That is what makes a load-balanced deployment work at all --
+ * a cookie issued by one node decrypts on any other, and a verification code computed on one is accepted by
+ * the next. Held in [authKeys] and used by [encryptString] / [decryptString].
+ *
+ * The key is loaded (or created) at startup and pushed in by `InstanceConfigService`, mirroring the CRDR
+ * split where the core node service holds only the key and the instance-config service owns loading it from
+ * the database. NodeService deliberately knows nothing more about instance config than the encryption key.
+ *
+ * The service is otherwise genuinely node-level -- [nodeId], the address filter, cluster membership all
+ * describe *this process*. The key is the exception, and [instanceAuthConfigKey] is named for what it is.
  */
 class NodeService : ServiceInitializer {
     override val serviceName: String = NodeService.serviceName
@@ -106,8 +113,12 @@ class NodeService : ServiceInitializer {
         "$instanceAuthConfigKey|${plainText.encrypt(activeKey())}"
 
     /**
-     * The verification code for a (form token, contact) pair -- an **HMAC** of the two under this node's
-     * secret key, rendered as human-readable characters.
+     * The verification code for a (form token, contact) pair -- an **HMAC** of the two under the
+     * *instance's* secret key, rendered as human-readable characters.
+     *
+     * Instance-scoped matters here rather than being a nicety: a code is emailed by whichever node handled
+     * the request and redeemed by whichever node handles the click. Were the key per-node, a load-balanced
+     * deployment would reject its own codes whenever the two differed.
      *
      * It lives here, on the holder of the key, deliberately. The code is checked by *recomputing* it rather
      * than storing it, so both the send and the verify go through this one method under the same key -- and

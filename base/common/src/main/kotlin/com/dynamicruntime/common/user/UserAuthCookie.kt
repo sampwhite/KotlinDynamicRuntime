@@ -31,7 +31,7 @@ object AUTHC {
 
 /**
  * The contents of the session auth cookie: who the user is and when the session expires. Serialized as a
- * compact JSON map and encrypted with the node's key (via [NodeService]), so the client cannot read or forge
+ * compact JSON map and encrypted with the instance's key (via [NodeService]), so the client cannot read or forge
  * it. A per-request check of [expireEpochMs] bounds the session; the actual roles/client are trusted from the
  * (encrypted) cookie for the fast path -- no database hit on every request.
  *
@@ -56,7 +56,7 @@ class UserAuthCookie(
     val roles: List<String>,
     val expireEpochMs: Long,
 ) {
-    /** Encrypts this cookie to its wire string using the node key. */
+    /** Encrypts this cookie to its wire string using the instance key (shared by every node). */
     fun encode(node: NodeService): String =
         node.encryptString(
             mapOf(K_USER to userId, K_CLIENT to client, K_ROLES to roles, K_EXPIRE to expireEpochMs)
