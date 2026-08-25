@@ -51,7 +51,8 @@ class HomeMenuTest : StringSpec({
         val plain = TestUser.create(cxt, "plain@example.com")
         val resp = plain.client.sendJsonGetRequest(HEP.homeUiConfig)
 
-        menuIds(resp) shouldBe listOf(HMENU.catalog, HMENU.forms, HMENU.newForm, HMENU.profile, HMENU.logout)
+        // Only "My forms" -- creating a form is reached from that list, not a separate menu item (issue #417).
+        menuIds(resp) shouldBe listOf(HMENU.catalog, HMENU.forms, HMENU.profile, HMENU.logout)
         menuIds(resp) shouldNotContain HMENU.users
         canManageUsers(resp) shouldBe false
     }

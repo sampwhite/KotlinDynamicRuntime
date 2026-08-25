@@ -49,8 +49,11 @@ val FormsPage = FC<Props> {
     var listEndpoint by useState<EndpointInfo?>(null)
     var getEndpoint by useState<EndpointInfo?>(null)
     var deleteEndpoint by useState<EndpointInfo?>(null)
-    // The patch endpoint (issue #417): its presence is what lets the view offer Edit, on the same "do not show
-    // a control that cannot work" rule the delete button follows.
+    // The create endpoint (issue #417): its presence is what lets the list offer "New form", so the list is the
+    // hub for the whole lifecycle rather than only its read side.
+    var createEndpoint by useState<EndpointInfo?>(null)
+    // The patch endpoint (issue #417): its presence is what lets the view and each list row offer Edit, on the
+    // same "do not show a control that cannot work" rule the delete button follows.
     var patchEndpoint by useState<EndpointInfo?>(null)
     var rows by useState<List<Map<String, Any?>>>(emptyList())
     // How many forms the scope admits in all, for "showing X–Y of N" and to know when a next page exists.
@@ -76,6 +79,12 @@ val FormsPage = FC<Props> {
     var confirmingDelete by useState(false)
     var deleting by useState(false)
     var deleteError by useState<String?>(null)
+
+    // Delete from the list itself (issue #417): the row whose inline confirm is armed, the one whose delete is
+    // in flight, and any error from it. Per-id rather than a single flag so the confirm belongs to its own row.
+    var rowConfirmDeleteId by useState<String?>(null)
+    var rowDeletingId by useState<String?>(null)
+    var rowDeleteError by useState<String?>(null)
 
     /** Loads the page at [off] from [ep], replacing the rows and the total. Flips [listLoading] off when done. */
     fun loadPage(ep: EndpointInfo, off: Int) {
@@ -106,6 +115,7 @@ val FormsPage = FC<Props> {
                 catalog = cat
                 getEndpoint = findFormGetEndpoint(cat.endpoints)
                 deleteEndpoint = findFormDeleteEndpoint(cat.endpoints)
+                createEndpoint = findFormCreateEndpoint(cat.endpoints)
                 patchEndpoint = findFormPatchEndpoint(cat.endpoints)
                 val ep = findFormsListEndpoint(cat.endpoints)
                 listEndpoint = ep
@@ -301,24 +311,77 @@ val FormsPage = FC<Props> {
                     className = ClassName("subtitle")
                     +"You haven't created any forms yet."
                 }
-                div {
-                    className = ClassName("row")
-                    Button {
-                        type = "primary"
-                        onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm)) }
-                        +"Create a form"
+                // Offered only when the caller's surface can create -- the same rule the edit/delete controls
+                // follow, so the empty state never dangles a button that would 404.
+                createEndpoint?.let {
+                    div {
+                        className = ClassName("row")
+                        Button {
+                            type = "primary"
+                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm)) }
+                            +"Create a form"
+                        }
                     }
                 }
             }
             else -> {
                 val union = entriesUnionOf(cat.payloadType(ep))
+                // The list is the hub: "New form" leads it, so add sits beside the per-row edit/delete rather
+                // than only in the top nav (issue #417). Present only when the surface can create.
+                createEndpoint?.let {
+                    div {
+                        className = ClassName("row")
+                        Button {
+                            type = "primary"
+                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm)) }
+                            +"New form"
+                        }
+                    }
+                }
                 pagingBar(offset, rows.size, numAvailable) { newOffset ->
                     offset = newOffset
                     loadPage(ep, newOffset)
                 }
                 FormsTable {
                     forms = rows.map { (it[GDF.gedraId] as? String ?: "") to summarizeForm(it, union) }
-                    onSelect = { id -> viewingId = id }
+                    onView = { id -> viewingId = id }
+                    canEdit = patchEndpoint != null
+                    canDelete = deleteEndpoint != null
+                    onEdit = { id -> navigateHash(listOf(HP.page to pageEditForm, HP.gedra to id)) }
+                    confirmingDeleteId = rowConfirmDeleteId
+                    deletingId = rowDeletingId
+                    onArmDelete = { id -> rowConfirmDeleteId = id; rowDeleteError = null }
+                    onCancelDelete = { rowConfirmDeleteId = null }
+                    onConfirmDelete = { id ->
+                        deleteEndpoint?.let { de ->
+                            rowDeletingId = id
+                            rowDeleteError = null
+                            formsScope.launch {
+                                try {
+                                    SchemaCatalogApi.invoke(de, mapOf(GDF.gedraId to id))
+                                    rowConfirmDeleteId = null
+                                    rowDeletingId = null
+                                    // Reload the current page so the now one-fewer forms show. If it held the
+                                    // last row of a later page, step back one so the caller does not land on a
+                                    // blank page.
+                                    val newOffset =
+                                        if (rows.size == 1 && offset >= formsPageSize) offset - formsPageSize
+                                        else offset
+                                    offset = newOffset
+                                    loadPage(ep, newOffset)
+                                } catch (e: Throwable) {
+                                    rowDeleteError = "Could not delete the form: ${e.message}"
+                                    rowDeletingId = null
+                                }
+                            }
+                        }
+                    }
+                }
+                rowDeleteError?.let {
+                    p {
+                        className = ClassName("error-text")
+                        +it
+                    }
                 }
             }
         }
