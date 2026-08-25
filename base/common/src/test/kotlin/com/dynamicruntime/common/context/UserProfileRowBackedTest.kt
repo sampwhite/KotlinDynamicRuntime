@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.context
 
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
@@ -39,11 +40,20 @@ class UserProfileRowBackedTest : StringSpec({
         p.authId shouldBe "sam@gyassa.com"
     }
 
-    // Operator, because the admin surface is user administration and an edge has no users to administer.
-    "an env-authed caller acts for the house, at operator level" {
+    /**
+     * Admin, the top of the ladder. Whoever reached an edge already cleared its Google gate on a permitted
+     * domain, which is the check that mattered; withholding the top rung after it buys nothing.
+     *
+     * The ladder does the rest -- operator and user are implied rather than listed. What is *not* granted is
+     * `allClients`, a capability rather than a rung, which the full-scope admin sections require on top of
+     * the level.
+     */
+    "an env-authed caller acts for the house, at admin level" {
         val p = UserProfile.envAuthed("sam@gyassa.com")
         p.client shouldBe CL.house
-        p.roles shouldBe setOf(ROLE.operator)
+        p.roles shouldBe setOf(ROLE.admin)
+        RoleLadder.satisfies(p.roles, ROLE.operator) shouldBe true
+        p.roles.contains(ROLE.allClients) shouldBe false
         // The id is left at its default rather than invented; nothing may query by it.
         p.userId shouldBe CL.systemUserId.toLong()
     }

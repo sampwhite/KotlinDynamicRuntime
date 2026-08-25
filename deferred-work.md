@@ -261,3 +261,24 @@ The trigger is observable: the first route added for a backend whose application
   *survivable* today rather than fixed — since #419 a background request is refused with a 401 the frontend
   acts on, instead of a redirect it tried to parse as JSON — so the symptom is a clean refusal rather than a
   broken page, and that is the whole of why it can wait.
+
+## When the people who can reach an edge stop being a small trusted group
+
+A diverse employee and consulting base, with active customers behind the deployment. Today everyone who can
+clear an edge's Google gate is staff, and the gate is the whole of the decision.
+
+- **Restrict what env auth grants** *(Sam, during the #434 review).* `UserProfile.envAuthed` grants
+  `ROLE.admin`, so anyone who signs in at the perimeter on a permitted domain is an admin of it, with
+  `operator` and `user` implied by the ladder. That is right while the permitted domain means "us": the Google
+  gate already established who they are, and withholding the top rung after it buys nothing.
+
+  It stops being right when the domain admits contractors, or when customer data sits behind the deployment
+  and "reached the perimeter" no longer implies "may do anything at it". The likely shape is that env auth
+  establishes *identity and channel* while the level comes from somewhere that can differ per person -- which
+  is a user store, and an edge deliberately has none, so this is a real design question rather than a
+  narrowing of one constant.
+
+  Deliberately not pre-solved. Guessing at it now would build a mechanism against an imagined threat, and the
+  cost of waiting is one line plus whatever the answer turns out to need. Note that `allClients` is already
+  withheld — it is a capability rather than a rung, so the full-scope admin sections stay closed to an
+  env-authed caller, which is the natural first thing to revisit rather than the last.
