@@ -258,11 +258,18 @@ class SchemaService : ServiceInitializer {
                         "Requires the '" + ROLE.allClients + "' capability unless it names your own client.",
                 ) { clientAttribute() }
                 property(EI.tags, "Only endpoints carrying this tag.")
-                // No `publicApi` filter here, deliberately. The flag IS reported on every rendering, so a
-                // client can slice on it; a query parameter for it would need a boolean to survive a GET query
-                // string, and string-to-boolean is not among the coercions the schema layer performs today.
-                // That is a schema-layer question rather than this axis's, and worth answering on its own
-                // rather than worked around here.
+                property(
+                    EI.publicApi,
+                    "Only endpoints in the published API -- the documented, supported set. This filters what " +
+                        "is *listed*; it grants nothing, and omitting it lists everything you may already see.",
+                ) {
+                    type = SCT.boolean
+                    // Explicit because the default is off for booleans, unlike numbers and dates. A GET
+                    // carries its input in a query string, where every value is a string -- so a boolean
+                    // parameter that does not coerce cannot be supplied at all, and `?publicApi=true` fails
+                    // as `wrongType` while `?limit=5` beside it works.
+                    allowCoerce = true
+                }
                 property(EP.limit, "The maximum number of endpoints to return.") {
                     type = SCT.integer
                     default = defaultListLimit
@@ -601,6 +608,7 @@ class SchemaService : ServiceInitializer {
             // access decision below is unchanged, so a filter can only ever hide endpoints the caller could
             // already have seen.
             val tag = (request[EI.tags] as? String)?.trim()?.ifEmpty { null }
+            val publishedOnly = request[EI.publicApi] as? Boolean
             val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
             refreshCallerRoles(cxt)
             val surface = catalogSurface(cxt, request)
@@ -618,7 +626,8 @@ class SchemaService : ServiceInitializer {
                     (namespace == null || ep.namespace == namespace) &&
                             (method == null || ep.method.name == method) &&
                             (pathRegex == null || pathRegex.containsMatchIn(ep.path)) &&
-                            (tag == null || tag in ep.tags)
+                            (tag == null || tag in ep.tags) &&
+                            (publishedOnly == null || ep.publicApi == publishedOnly)
                 }
                 // collationKey is "path:method", so this sorts by path then method (the same path may be
                 // registered under two HTTP methods).

@@ -283,8 +283,14 @@ class SchemaEndpointsTest : StringSpec({
         val unknown = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.tags to "noSuchTag")))
         unknown.shouldBeEmpty()
 
-        // Publication is reported on every rendering even though there is no query filter for it yet, so a
-        // client can already slice on it. Nothing is published today.
+        // Publication is reported on every rendering, and filterable. Nothing is published today, so asking
+        // for the published set is empty while asking for its complement is everything.
         all.count { it[EI.publicApi] == true } shouldBe 0
+        catalogEndpoints(
+            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.publicApi to true)),
+        ).shouldBeEmpty()
+        catalogEndpoints(
+            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.publicApi to false, EP.limit to 200)),
+        ).size shouldBe all.size
     }
 })
