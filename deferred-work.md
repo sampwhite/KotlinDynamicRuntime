@@ -261,3 +261,24 @@ The trigger is observable: the first route added for a backend whose application
   *survivable* today rather than fixed — since #419 a background request is refused with a 401 the frontend
   acts on, instead of a redirect it tried to parse as JSON — so the symptom is a clean refusal rather than a
   broken page, and that is the whole of why it can wait.
+
+- **A caller without env auth sees only the published API** *(Sam, during the #433 review).* The endpoint
+  catalog is curated by the section model today: an anonymous caller sees every anonymous section, which is 30
+  endpoints and correct, since a login page needs `/auth/...` and a shell needs `/app/ui/config`. The intended
+  end state is narrower — no env auth means the catalog shows only endpoints marked `publicApi`, so an
+  outsider is shown the surface we document and support rather than everything they happen to be allowed to
+  reach.
+
+  Env auth is the right discriminator because it already means "arrived through our perimeter", so it
+  separates the people who operate a deployment from the people who use it, without either becoming a role.
+  The mechanism is in place after #433: the tag exists, the catalog carries it, and it already filters on it.
+
+  **The precondition is what makes this deferred rather than a small change.** Nothing is marked `publicApi`
+  yet, so switching the default over today would show an outsider an *empty* catalog — worse than the current
+  behaviour, and precisely for the people it is meant to serve. It needs the published set curated first,
+  which is a product decision about what we will support rather than a code task. Note also that the anonymous
+  sections are anonymous for a reason: whatever the rule becomes, an unauthenticated client still has to be
+  able to find the endpoints that let it log in.
+
+  The acceptance test already exists: the env-auth toggle from #360 was built partly so this filter could be
+  exercised by hand.
