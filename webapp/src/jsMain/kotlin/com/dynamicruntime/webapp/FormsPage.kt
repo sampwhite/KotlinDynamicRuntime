@@ -49,6 +49,12 @@ val FormsPage = FC<Props> {
     var listEndpoint by useState<EndpointInfo?>(null)
     var getEndpoint by useState<EndpointInfo?>(null)
     var deleteEndpoint by useState<EndpointInfo?>(null)
+    // The create endpoint (issue #417): its presence is what lets the list offer "New form", so the list is the
+    // hub for the whole lifecycle rather than only its read side.
+    var createEndpoint by useState<EndpointInfo?>(null)
+    // The patch endpoint (issue #417): its presence is what lets the view and each list row offer Edit, on the
+    // same "do not show a control that cannot work" rule the delete button follows.
+    var patchEndpoint by useState<EndpointInfo?>(null)
     var rows by useState<List<Map<String, Any?>>>(emptyList())
     // How many forms the scope admits in all, for "showing X–Y of N" and to know when a next page exists.
     var numAvailable by useState(0)
@@ -74,8 +80,18 @@ val FormsPage = FC<Props> {
     var deleting by useState(false)
     var deleteError by useState<String?>(null)
 
+    // Delete from the list itself (issue #417): the row whose inline confirm is armed, the one whose delete is
+    // in flight, and any error from it. Per-id rather than a single flag so the confirm belongs to its own row.
+    var rowConfirmDeleteId by useState<String?>(null)
+    var rowDeletingId by useState<String?>(null)
+    var rowDeleteError by useState<String?>(null)
+
     /** Loads the page at [off] from [ep], replacing the rows and the total. Flips [listLoading] off when done. */
     fun loadPage(ep: EndpointInfo, off: Int) {
+        // A row's armed delete confirm belongs to the page it was armed on; paging away (or reloading after a
+        // delete) drops it, so a primed "Yes" never lingers on a row the user has navigated past (issue #417).
+        rowConfirmDeleteId = null
+        rowDeleteError = null
         listLoading = true
         formsScope.launch {
             try {
@@ -103,6 +119,8 @@ val FormsPage = FC<Props> {
                 catalog = cat
                 getEndpoint = findFormGetEndpoint(cat.endpoints)
                 deleteEndpoint = findFormDeleteEndpoint(cat.endpoints)
+                createEndpoint = findFormCreateEndpoint(cat.endpoints)
+                patchEndpoint = findFormPatchEndpoint(cat.endpoints)
                 val ep = findFormsListEndpoint(cat.endpoints)
                 listEndpoint = ep
                 if (ep != null) {
@@ -134,9 +152,13 @@ val FormsPage = FC<Props> {
     useEffect(viewingId, restored) {
         val id = viewingId
         viewMissing = false
-        // A confirm belongs to the form it was opened on; moving to another form (or the list) drops it.
+        // A confirm belongs to the form it was opened on; moving to another form (or the list) drops it. Both
+        // the view's own confirm and any armed row confirm in the list -- opening a form must not leave a primed
+        // "Yes" behind on the list under it (issue #417).
         confirmingDelete = false
         deleteError = null
+        rowConfirmDeleteId = null
+        rowDeleteError = null
         if (id == null || !restored) {
             viewRow = null
             return@useEffect
@@ -218,6 +240,21 @@ val FormsPage = FC<Props> {
                     }
                     else -> {
                         renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType)
+                        // Edit, offered only when the caller's surface carries the patch endpoint (issue #417).
+                        // Its own route off the view for now; a later slice folds it into a list-centric hub.
+                        patchEndpoint?.let {
+                            div {
+                                className = ClassName("row")
+                                Button {
+                                    onClick = {
+                                        viewingId?.let { id ->
+                                            navigateHash(listOf(HP.page to pageEditForm, HP.gedra to id))
+                                        }
+                                    }
+                                    +"Edit form"
+                                }
+                            }
+                        }
                         // Delete, offered only when the caller's surface carries the endpoint. A two-step
                         // confirm; on success the view closes and the list reloads from the top, where the now
                         // one-fewer forms are.
@@ -282,24 +319,77 @@ val FormsPage = FC<Props> {
                     className = ClassName("subtitle")
                     +"You haven't created any forms yet."
                 }
-                div {
-                    className = ClassName("row")
-                    Button {
-                        type = "primary"
-                        onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm)) }
-                        +"Create a form"
+                // Offered only when the caller's surface can create -- the same rule the edit/delete controls
+                // follow, so the empty state never dangles a button that would 404.
+                createEndpoint?.let {
+                    div {
+                        className = ClassName("row")
+                        Button {
+                            type = "primary"
+                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm)) }
+                            +"Create a form"
+                        }
                     }
                 }
             }
             else -> {
                 val union = entriesUnionOf(cat.payloadType(ep))
+                // The list is the hub: "New form" leads it, so add sits beside the per-row edit/delete rather
+                // than only in the top nav (issue #417). Present only when the surface can create.
+                createEndpoint?.let {
+                    div {
+                        className = ClassName("row")
+                        Button {
+                            type = "primary"
+                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm)) }
+                            +"New form"
+                        }
+                    }
+                }
                 pagingBar(offset, rows.size, numAvailable) { newOffset ->
                     offset = newOffset
                     loadPage(ep, newOffset)
                 }
                 FormsTable {
                     forms = rows.map { (it[GDF.gedraId] as? String ?: "") to summarizeForm(it, union) }
-                    onSelect = { id -> viewingId = id }
+                    onView = { id -> viewingId = id }
+                    canEdit = patchEndpoint != null
+                    canDelete = deleteEndpoint != null
+                    onEdit = { id -> navigateHash(listOf(HP.page to pageEditForm, HP.gedra to id)) }
+                    confirmingDeleteId = rowConfirmDeleteId
+                    deletingId = rowDeletingId
+                    onArmDelete = { id -> rowConfirmDeleteId = id; rowDeleteError = null }
+                    onCancelDelete = { rowConfirmDeleteId = null }
+                    onConfirmDelete = { id ->
+                        deleteEndpoint?.let { de ->
+                            rowDeletingId = id
+                            rowDeleteError = null
+                            formsScope.launch {
+                                try {
+                                    SchemaCatalogApi.invoke(de, mapOf(GDF.gedraId to id))
+                                    rowConfirmDeleteId = null
+                                    rowDeletingId = null
+                                    // Reload the current page so the now one-fewer forms show. If it held the
+                                    // last row of a later page, step back one so the caller does not land on a
+                                    // blank page.
+                                    val newOffset =
+                                        if (rows.size == 1 && offset >= formsPageSize) offset - formsPageSize
+                                        else offset
+                                    offset = newOffset
+                                    loadPage(ep, newOffset)
+                                } catch (e: Throwable) {
+                                    rowDeleteError = "Could not delete the form: ${e.message}"
+                                    rowDeletingId = null
+                                }
+                            }
+                        }
+                    }
+                }
+                rowDeleteError?.let {
+                    p {
+                        className = ClassName("error-text")
+                        +it
+                    }
                 }
             }
         }

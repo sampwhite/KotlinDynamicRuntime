@@ -96,7 +96,8 @@ object HMENU {
     // Item ids.
     const val catalog = "catalog"
     const val users = "users"
-    const val newForm = "newForm"
+    // No `newForm` item id: creating a form is reached from the "My forms" list, not a menu entry (issue #417).
+    // The `pageNewForm` route below still exists -- the list's "New form" button navigates to it.
     const val forms = "forms"
     const val profile = "profile"
     const val login = "login"
