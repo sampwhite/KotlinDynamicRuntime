@@ -6,6 +6,9 @@ import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.PRI
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.startup.Presence
+import com.dynamicruntime.common.startup.ServiceEntry
+import com.dynamicruntime.common.startup.service
 import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
@@ -20,16 +23,17 @@ class EdgeComponent : ComponentDefinition {
     override val providerName: String = name
 
     /**
-     * Loaded only on a node booted in the [BOOT.edge] role.
+     * Present only on a node booted in the [BOOT.edge] role.
      *
      * This is what lets the component be **discovered** rather than referenced: `ServiceLoader` finds it in
-     * every launcher, including the ordinary one, and it declines there. `InstanceRegistry` gates both schema
-     * and services on this, so declining keeps the whole component out rather than half of it.
+     * every launcher, including the ordinary one, and it is absent there. `InstanceRegistry` gates both schema
+     * and services on this, so being absent keeps the whole component out rather than half of it.
      *
-     * A pure predicate, deliberately -- it is called more than once per boot (schema, then services), so
-     * anything with an effect belongs in [EdgeService], not here.
+     * Declared rather than decided in [isLoaded] (issue #433): the answer is a plain fact about which nodes
+     * carry this, and a declaration can be read by anything asking what an edge contains. It was a predicate
+     * only because there was nothing else to be.
      */
-    override fun isLoaded(cxt: KdrCxt): Boolean = isEdge(cxt)
+    override fun presence(cxt: KdrCxt): Presence = Presence(roles = setOf(BOOT.edge))
 
     /**
      * The instance config that makes this node an edge: its context roots, and the port its role binds.
@@ -59,19 +63,12 @@ class EdgeComponent : ComponentDefinition {
         collector.addModule(envAuthSchema(cxt))
     }
 
-    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::EdgeService)
+    override fun services(cxt: KdrCxt): List<ServiceEntry> = listOf(service(::EdgeService))
 
     @Suppress("ConstPropertyName")
     companion object {
         /** The name this component announces itself under, in logs and provider selection. */
         const val name = BOOT.edgeComponent
 
-        /**
-         * Whether [cxt] is running as an edge -- i.e., this component is loaded.
-         *
-         * Asked of the *instance config*, never of a compile-time reference, because nothing outside this
-         * module may depend on it.
-         */
-        fun isEdge(cxt: KdrCxt): Boolean = cxt.instanceConfig.bootRole == BOOT.edge
     }
 }

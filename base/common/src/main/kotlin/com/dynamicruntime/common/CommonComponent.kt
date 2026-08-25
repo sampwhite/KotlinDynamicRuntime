@@ -36,6 +36,8 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.startup.ServiceEntry
+import com.dynamicruntime.common.startup.service
 import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
@@ -116,8 +118,11 @@ class CommonComponent : ComponentDefinition {
      * resolved *and* every topic's tables exist (issue #162). Regular services (and future startup services)
      * may need all of them during their init.
      */
-    override fun startupServices(cxt: KdrCxt): List<() -> ServiceInitializer> =
-        listOf(::ClientService, ::SchemaService, ::NodeService, ::SqlTopicService)
+    override fun startupServices(cxt: KdrCxt): List<ServiceEntry> =
+        listOf(
+            service(::ClientService), service(::SchemaService),
+            service(::NodeService), service(::SqlTopicService),
+        )
 
     /**
      * The request dispatcher, the portal (which registers itself with the dispatcher as a content server),
@@ -125,17 +130,18 @@ class CommonComponent : ComponentDefinition {
      * database, relying on the startup-tier [SqlTopicService] having already resolved the database and
      * created the topic's tables).
      */
-    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
+    override fun services(cxt: KdrCxt): List<ServiceEntry> =
         listOf(
             // Its `checkReady` performs every cache's initial load, by which point the whole set is
             // registered. Its position here is no longer load-bearing: it reads the caching environment in
             // `onCreate`, which the whole tier completes before any `checkInit` registers a cache.
-            ::SqlTableCacheService,
-            ::RequestService, ::PortalService, ::MarkdownFragmentService, ::MarkdownDocService,
-            ::InstanceConfigService, ::MailService, ::UserService,
+            service(::SqlTableCacheService),
+            service(::RequestService), service(::PortalService),
+            service(::MarkdownFragmentService), service(::MarkdownDocService),
+            service(::InstanceConfigService), service(::MailService), service(::UserService),
             // GedraService before the data service that reads it, though the ordering is a courtesy rather
             // than a requirement: every service is published into the config before any `checkInit` runs.
-            ::GedraService, ::GedraDataService,
+            service(::GedraService), service(::GedraDataService),
         )
 
     /** Load just ahead of the standard components (demonstrates relative priority). */
