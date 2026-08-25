@@ -66,14 +66,16 @@ object InstanceRegistry {
             val cxt = KdrCxt("startup", config)
             LogStartup.info(cxt, "Initializing instance '$instanceName'.")
 
+            // What this node is, read once and threaded through every presence decision below (issue #433) --
+            // the component gate, the service entries, and the schema the collector accepts.
+            val node = NodeProfile.of(config)
+            LogStartup.info(cxt, "Boot profile: $node.")
+
             // Components contribute schema into the collector; a startup service later compiles it.
-            val collector = SchemaCollector()
+            val collector = SchemaCollector(node)
             config.put(SchemaCollector.key, collector)
 
             val components = componentDefinitions.values.sortedBy { it.loadPriority() }
-            // What this node is, read once and threaded through every presence decision below (issue #433).
-            val node = NodeProfile.of(config)
-            LogStartup.info(cxt, "Boot profile: $node.")
             // Decided once, then reused: `isLoaded` is a predicate and was being asked twice, which quietly
             // made it a place where an effect would run twice too.
             //

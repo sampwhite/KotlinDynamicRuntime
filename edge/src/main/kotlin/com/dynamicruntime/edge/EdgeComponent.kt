@@ -51,13 +51,16 @@ class EdgeComponent : ComponentDefinition {
         config.put(ACFG.defaultPort, config.get(ACFG.defaultPort) ?: EdgeRole.defaultPort)
     }
 
-    /**
-     * Loaded ahead of `CommonComponent`, so `EdgeService` registers its content server before the portal
-     * does: content servers are offered a request in registration order, and the bare content root is claimed
-     * by whichever answers first. Without this, `/ec` reaches the application's portal instead of the sign-in
-     * page. A stopgap for as long as an edge loads the portal at all.
+    /*
+     * No load-priority override any more (issue #433).
+     *
+     * This used to return `PRI.early` so `EdgeService` registered its content server before `PortalService`
+     * did -- content servers answer in registration order, and without it `/ec` reached the application's
+     * portal instead of the sign-in page. Its own comment called it "a stopgap for as long as an edge loads
+     * the portal at all", and an edge no longer does: `PortalService` is declared application-only, so there
+     * is nothing to lose the race to. The stopgap retiring is what shows the declaration did the real work
+     * rather than merely moving the ordering around.
      */
-    override fun loadPriority(): Int = PRI.early
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         collector.addModule(envAuthSchema(cxt))

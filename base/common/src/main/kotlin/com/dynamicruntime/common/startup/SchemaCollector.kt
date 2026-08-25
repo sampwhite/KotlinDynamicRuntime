@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.startup
 
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
@@ -22,7 +23,14 @@ import com.dynamicruntime.common.sql.KdrTable
  * take on dn's `DnRawSchemaStore`; named for its job (collecting contributions)
  * rather than for the "raw" state of the data it holds.
  */
-class SchemaCollector {
+class SchemaCollector(
+    /**
+     * What this node is, so a contribution can be declared for some nodes and skipped on the rest
+     * (issue #433). Defaults to an ordinary application carrying no tags, which is what a test building a
+     * collector by hand wants and what every node was before presence existed.
+     */
+    val node: NodeProfile = NodeProfile(BOOT.app, emptySet()),
+) {
     /** Merged `$defs` contents across all contributed modules, keyed by qualified type name. */
     val defs: MutableMap<String, Any?> = LinkedHashMap()
 
@@ -70,6 +78,31 @@ class SchemaCollector {
     }
 
     /** Folds a module's types, endpoints, and options providers into the collector. */
+    /**
+     * Contributes [module] only when this node is admitted by [presence] (issue #433).
+     *
+     * The filter is here rather than at the call site so that "which nodes get this?" stays a **declaration**
+     * next to the contribution, readable without executing it. An `if` around the call would work identically
+     * and answer nothing: the point of the axis is that a reviewer can ask what a consumer node contains
+     * without running a boot for every profile.
+     *
+     * Dropping a module drops its endpoints *and* its types, together, which is what makes this the right
+     * granularity for a surface an edge should not have. A node without the auth module has no `/auth`
+     * endpoints to serve and no auth types advertised in its catalog.
+     */
+    fun addModule(module: SchModule, presence: Presence) {
+        if (presence.admits(node)) {
+            addModule(module)
+        }
+    }
+
+    /** Contributes [tables] only when this node is admitted by [presence] (issue #433). */
+    fun addTables(tables: List<KdrTable>, presence: Presence) {
+        if (presence.admits(node)) {
+            addTables(tables)
+        }
+    }
+
     fun addModule(module: SchModule) {
         defs.putAll(module.defs)
         endpoints.addAll(module.endpoints)
