@@ -65,7 +65,15 @@ private val narrowingKeys = setOf(SCH.properties, SCH.options, SCH.required)
 
 private fun compare(path: String, base: Map<String, Any?>, variant: Map<String, Any?>, out: MutableList<String>) {
     checkProperties(path, base, variant, out)
-    checkOptions(path, base[SCH.options], variant[SCH.options], out)
+    // An **open** list bounds nothing (issue #418), so its contents cannot narrow or widen what the type
+    // accepts and a client may offer whatever suggestions suit them. Which is more than a convenience: a
+    // per-client suggestion list is the obvious thing to want, and the subset rule would refuse it while
+    // protecting nothing. The keyword *itself* is not skipped -- it falls to the loop below, so flipping a
+    // list between open and closed is refused in both directions, which is where the validity actually
+    // changes.
+    if (base[SCH.openOptions] != true) {
+        checkOptions(path, base[SCH.options], variant[SCH.options], out)
+    }
     checkRequired(path, base, variant, out)
     for (key in base.keys + variant.keys) {
         if (key in presentationKeys || key in narrowingKeys) {

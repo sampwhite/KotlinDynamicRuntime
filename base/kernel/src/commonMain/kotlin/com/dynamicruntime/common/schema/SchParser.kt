@@ -335,6 +335,7 @@ fun parseNode(
         additionalProperties = (map[SCH.additionalProperties] as? Boolean) ?: properties.isEmpty(),
         itemType = itemType,
         options = parseOptions(map[SCH.options]),
+        openOptions = map[SCH.openOptions] == true,
         constValue = map[SCH.const],
         // `true` or an object; either says the value is produced elsewhere, and only that much is read today.
         // An object's content is deliberately not kept: there is nothing to consume it, and a ride-along raw

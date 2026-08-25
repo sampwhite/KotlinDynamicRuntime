@@ -69,6 +69,15 @@ class SchType(
     /** Choice list for the custom `options` construct; null if not an options field. */
     val options: List<SchOption>?,
     /**
+     * Custom `g-openOptions` keyword (resolved): whether [options] are suggestions rather than a bound
+     * (issue #418). False, and meaningless, when there are no options.
+     *
+     * Beside [options] rather than folded into them, because it says something about the list as a whole that
+     * no entry could carry -- and because the two readers that act on it, the validator and a form, ask the
+     * question in that shape: *may a value outside this list be sent?*
+     */
+    val openOptions: Boolean,
+    /**
      * JSON Schema `const`: the single value this type admits, or null when it admits any.
      *
      * Its own field rather than sugar for a one-entry [options] list, because the two say different things to

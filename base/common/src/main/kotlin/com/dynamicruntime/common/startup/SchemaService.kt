@@ -234,6 +234,9 @@ class SchemaService : ServiceInitializer {
         private val categoryOptions = listOf("alpha", "beta", "gamma")
         private val tagOptions = listOf("red", "green", "blue")
 
+        /** Suggested query labels -- an **open** list, so anything else is accepted too (issue #418). */
+        private val labelOptions = listOf("daily", "weekly", "ad hoc")
+
         /** The service; throws naming it on a node that does not run it. */
         fun get(cxt: KdrCxt): SchemaService = cxt.instanceConfig.get(serviceName) as? SchemaService
             ?: throw KdrException("The $serviceName is not available on this node.")
@@ -331,6 +334,14 @@ class SchemaService : ServiceInitializer {
                     items { type = SCT.string; categoryOptions.forEach { option(it) } }
                 }
                 property(SS.sinceDate, "Only items on or after this day.") { dayOnlyDate() }
+                // An **open** choice list (issue #418), beside the closed `categories` above it. The two
+                // together are what this endpoint is for: it declares more input than its handler reads
+                // precisely so that every construct the schema layer supports has somewhere to be seen and
+                // driven, and a list that suggests rather than bounds is now one of them.
+                property(SS.label, "A label for this query; the suggestions are not the whole list.") {
+                    labelOptions.forEach { option(it) }
+                    openOptions()
+                }
             }
             type("SampleDetails") {
                 type = SCT.kObject
@@ -911,6 +922,7 @@ object SS {
     const val activeOnly = "activeOnly"
     const val categories = "categories"
     const val sinceDate = "sinceDate"
+    const val label = "label"
     const val id = "id"
     const val createdOn = "createdOn"
     const val active = "active"

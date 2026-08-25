@@ -172,6 +172,26 @@ object SCH {
     const val options = "g-options"
 
     /**
+     * Whether this property's [options] are **suggestions rather than a bound** -- the value may be one of
+     * them or anything else the field's other constraints admit (issue #418).
+     *
+     * A fact about the **list**, not about where it came from, which is why it is its own keyword rather than
+     * something [optionsSource] implies. A written-down list can be open, and a sourced one could in
+     * principle be closed; they arrive together in practice because a list assembled per caller reflects what
+     * *this* caller has seen rather than the universe of legal values.
+     *
+     * Two readers act on it, and they are the whole of its meaning. The validator stops reporting
+     * `invalidOption`, so an off-list value is accepted. A data-entry surface draws a combobox rather than a
+     * closed dropdown, so an off-list value can be entered at all -- a control that refuses what the server
+     * accepts is the same advertise-versus-serve drift as one that offers what the server refuses.
+     *
+     * **It is not a way for a client to differ**, unlike [optionsSource]. Turning it off narrows a type and
+     * turning it on widens one, and neither is among the three ways an alteration may narrow -- so it has to
+     * match the base, and `SchNarrowing` refuses it in either direction by saying nothing about it at all.
+     */
+    const val openOptions = "g-openOptions"
+
+    /**
      * Names a registered callback that produces this property's [options] when the schema is rendered, in
      * place of a list written into the document (issue #413).
      *
