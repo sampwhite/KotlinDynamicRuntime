@@ -43,6 +43,16 @@ object EI {
      */
     const val client = "client"
     const val description = "description"
+
+    /**
+     * Whether the endpoint is part of the published API (issue #433) -- what we document externally and take
+     * support calls on. **Advertisement, not access**: an endpoint's absence from the published set protects
+     * nothing, since the section gate is what refuses a caller.
+     */
+    const val publicApi = "publicApi"
+
+    /** Free-form tags for slicing the catalog (issue #433). No runtime effect; navigation only. */
+    const val tags = "tags"
     const val inputSchema = "inputSchema"
     const val outputSchema = "outputSchema"
 

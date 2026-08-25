@@ -261,4 +261,30 @@ class SchemaEndpointsTest : StringSpec({
         val evaluated = resp[EP.meta]!!.toJsonMap()[SS.paramsEvaluated]!!.toJsonMap()
         evaluated.keys shouldContainAll listOf(SS.filter)
     }
+
+    /**
+     * The catalog carries the publication and search axes (issue #433), so a client can slice it. Cedar
+     * reached close to a thousand endpoints, at which point a catalog stops being a list anybody reads.
+     */
+    "the catalog reports publication and tags, and can be sliced by either" {
+        val client = client("schemaTags")
+
+        val all = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints"))
+        val sample = all.first { it[EI.path] == "/demo/schema/sample" }
+        sample[EI.tags].toJsonListOfStrings() shouldContainAll listOf(SS.demoTag, SS.schemaTag)
+        // Advertisement, not access: nothing is published yet, and everything is still reachable.
+        sample[EI.publicApi] shouldBe false
+
+        val tagged = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.tags to SS.demoTag)))
+        tagged.map { it[EI.path] } shouldContain "/demo/schema/sample"
+        // A filter narrows the listing and grants nothing, so an untagged endpoint simply drops out.
+        tagged.map { it[EI.path] } shouldNotContain "/health"
+
+        val unknown = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.tags to "noSuchTag")))
+        unknown.shouldBeEmpty()
+
+        // Publication is reported on every rendering even though there is no query filter for it yet, so a
+        // client can already slice on it. Nothing is published today.
+        all.count { it[EI.publicApi] == true } shouldBe 0
+    }
 })

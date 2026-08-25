@@ -290,6 +290,25 @@ class RequestService : ServiceInitializer {
                     "operatorSections or adminSections in RequestService.",
             )
         }
+        // Publication is restricted to the user sections (issue #433), and refused at boot rather than
+        // documented, for the same reason the check above is: a rule everyone must remember is not a rule.
+        //
+        // Note what this is *not* protecting. `publicApi` decides advertisement, not access, so a stray tag
+        // cannot expose anything -- the section gate still refuses an anonymous caller at an admin endpoint.
+        // What it protects is the **answerability of a promise**: "what did we commit to supporting?" has to
+        // be checkable by reading one rule, and overrides scattered across sections turn it into a survey.
+        // An endpoint that genuinely belongs in the published set gets a twin under a user section, which is
+        // also the honest thing to do -- a path documented to outside developers as `/admin/...` tells them
+        // something false about what it is for.
+        val published = cxt.getSchema().endpoints.values.filter { it.publicApi }
+        val misplaced = published.filter { sectionOf(it.path) !in userSections }.map { it.path }.sorted()
+        if (misplaced.isNotEmpty()) {
+            throw KdrException(
+                "Refusing to start: ${misplaced.joinToString(", ") { "'$it'" }} " +
+                    "${if (misplaced.size == 1) "is" else "are"} marked publicApi but sit outside the user " +
+                    "sections ($userSections). Publish a twin under a user section instead, or drop the mark.",
+            )
+        }
         isInit = true
     }
 
