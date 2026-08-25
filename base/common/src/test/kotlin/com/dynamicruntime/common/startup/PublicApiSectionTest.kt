@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.startup
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -31,11 +33,11 @@ class PublicApiSectionTest : StringSpec({
         outputSchema = emptyMap(), handler = { _, _ -> emptyMap<String, Any?>() }, publicApi = publicApi,
     )
 
-    /** Boots a bare RequestService against a store holding exactly [eps]. */
-    fun initWith(vararg eps: KdrEndpoint) {
-        val cxt = KdrCxt.mkSimpleCxt("publicApiCheck")
-        cxt.instanceConfig.put(KdrSchemaStore.key, KdrSchemaStore(endpoints = eps.associateBy { it.collationKey }))
-        RequestService().onCreate(cxt)
+    /** Boots a bare RequestService against a store holding exactly [eps], in [env]. */
+    fun initWith(vararg eps: KdrEndpoint, env: String = ENV.unit) {
+        val config = KdrInstanceConfig("publicApiCheck", env, ENV.liveSource, null)
+        config.put(KdrSchemaStore.key, KdrSchemaStore(endpoints = eps.associateBy { it.collationKey }))
+        RequestService().onCreate(KdrCxt("publicApiCheck", config))
     }
 
     "a published endpoint in a user section is accepted" {
@@ -71,5 +73,29 @@ class PublicApiSectionTest : StringSpec({
         e.fullMessage() shouldContain "/operator/two"
         // The legitimate one is not reported as a problem.
         e.fullMessage().contains("/user/fine") shouldBe false
+    }
+
+    /**
+     * Production warns instead of refusing -- the house rule for a defect a running deployment survives
+     * (`MarkdownFragmentService.fragmentCheckMode`, `GedraConfigCollector`).
+     *
+     * It applies here precisely because this axis is not an access control: a node advertising an endpoint it
+     * should not is answering every request correctly and mis-describing one of them. Taking a deployment
+     * down to fix a documentation error would be the larger outage.
+     */
+    "production warns rather than refusing, since the deployment is still viable" {
+        initWith(endpoint("/admin/thing", publicApi = true), env = ENV.prod)
+    }
+
+    /**
+     * The distinction, asserted so it cannot quietly become "boot checks warn in prod". The unruled-section
+     * check guards *access* -- a node that boots past it serves a section to anyone -- so it stays fatal
+     * everywhere, production included.
+     */
+    "an unruled section still refuses the boot in production" {
+        val e = shouldThrow<KdrException> {
+            initWith(endpoint("/noSuchSection/thing", publicApi = false), env = ENV.prod)
+        }
+        e.fullMessage() shouldContain "access rules"
     }
 })
