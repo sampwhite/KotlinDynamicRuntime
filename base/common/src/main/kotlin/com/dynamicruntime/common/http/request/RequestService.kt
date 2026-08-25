@@ -220,7 +220,7 @@ class RequestService : ServiceInitializer {
         mapOf("contextRoots" to contextRootFocus.entries.associate { (root, focus) -> focus.name to root })
 
     /**
-     * Binds everything this dispatcher needs from the instance config, and refuses the boot if an endpoint
+     * Binds everything this dispatcher needs from the instance config and refuses the boot if an endpoint
      * section has no access rules.
      *
      * In `onCreate` rather than `checkInit` because none of it touches another service -- it reads the
@@ -290,7 +290,7 @@ class RequestService : ServiceInitializer {
                     "operatorSections or adminSections in RequestService.",
             )
         }
-        // Publication is restricted to the user sections (issue #433), and refused at boot rather than
+        // Publication is restricted to the user sections (issue #433) and refused at boot rather than
         // documented, for the same reason the check above is: a rule everyone must remember is not a rule.
         //
         // Note what this is *not* protecting. `publicApi` decides advertisement, not access, so a stray tag

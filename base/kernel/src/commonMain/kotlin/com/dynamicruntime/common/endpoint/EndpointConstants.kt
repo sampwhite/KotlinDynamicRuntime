@@ -6,8 +6,6 @@ package com.dynamicruntime.common.endpoint
 // instead of re-hardcoding a mirror (issue #70 kernel dedup). The endpoint *builders* and `KdrEndpoint` stay
 // backend-side; only the shared vocabulary lives here.
 
-/** Attribute keys for an endpoint's `EndpointInfo` rendering in the schema catalog, plus the catalog wrapper. */
-@Suppress("ConstPropertyName")
 /**
  * The path a client's own copy of [path] is served under: `/gedra/formDoc/create` becomes
  * `/gedra/acme/formDoc/create` (issue #387).
@@ -29,6 +27,8 @@ fun clientPath(path: String, client: String): String {
     return if (rest.isEmpty()) "/$section/$client" else "/$section/$client/$rest"
 }
 
+/** Attribute keys for an endpoint's `EndpointInfo` rendering in the schema catalog, plus the catalog wrapper. */
+@Suppress("ConstPropertyName")
 object EI {
     const val path = "path"
     const val method = "method"

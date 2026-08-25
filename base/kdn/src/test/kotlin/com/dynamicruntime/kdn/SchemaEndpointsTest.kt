@@ -200,7 +200,7 @@ class SchemaEndpointsTest : StringSpec({
         val withheld = explained[SS.withheld].toJsonListOfMaps()
         val bySection = withheld.associateBy { it[SS.section] }
         bySection.keys shouldContainAll listOf("admin", "operator")
-        // The full-scope surface withholds itself on two counts, and reports both: the level, and the
+        // The full-scope surface withholds itself on two counts and reports both: the level and the
         // capability that qualifies it. Reporting only one would explain half a refusal.
         bySection["admin"]!![SS.requiredRole] shouldBe ROLE.admin
         bySection["admin"]!![SS.requiredCapability] shouldBe ROLE.allClients
