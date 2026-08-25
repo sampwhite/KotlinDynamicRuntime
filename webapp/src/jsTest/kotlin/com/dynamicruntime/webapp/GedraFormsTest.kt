@@ -234,7 +234,7 @@ class GedraFormsTest {
         assertNull(findFormPatchEndpoint(listOf(ep(HttpMethod.POST.name, "/gedra/acme/formDoc/create"))))
     }
 
-    /** [seededEdits] turns a stored form's entries into addOrReplace edits carrying trait, id, and data, so the
+    /** [seededEdits] turns a stored form's entries into addOrReplace edits carrying trait and data, so the
      *  edit form opens on what the form currently holds. */
     @Test
     fun seedsEditsFromStoredEntries() {
@@ -242,16 +242,17 @@ class GedraFormsTest {
             GDF.gedraId to "gd.fd.acme.u1",
             GDF.entries to listOf(
                 mapOf(GE.traitId to "name", GE.entryId to "e1", GE.data to mapOf("name" to "Q3")),
-                mapOf(GE.traitId to "expenseReport", GE.data to mapOf("year" to 2026)), // no entryId
+                mapOf(GE.traitId to "expenseReport", GE.data to mapOf("year" to 2026)),
             ),
         )
         val edits = seededEdits(form)
         assertEquals(2, edits.size)
         assertEquals(GedraEditAction.addOrReplace.name, edits[0][GED.action])
         assertEquals("name", edits[0][GE.traitId])
-        assertEquals("e1", edits[0][GE.entryId])
         assertEquals(mapOf("name" to "Q3"), edits[0][GE.data])
-        // The second entry carried no id, so the edit targets the trait's own entry (id absent, not blank).
+        // The stored entryId is deliberately not seeded, even when the entry has one: a gedra holds one entry
+        // per trait, so an absent id already names it, and seeding it broke switching a section's trait.
+        assertEquals(false, edits[0].containsKey(GE.entryId))
         assertEquals(false, edits[1].containsKey(GE.entryId))
     }
 

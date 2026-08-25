@@ -323,10 +323,13 @@ private fun isBlankValue(value: Any?): Boolean = value == null || (value is Stri
  * choice — so left to the branch it would render as a text box that cannot change the shape it belongs to.
  * Drawn here it is a select over the declared values, which is the one control that makes a union editable.
  *
- * **Switching branches drops the old branch's fields.** Branches are closed objects, so carrying them over
- * would turn every switch into a payload full of undeclared-property failures against fields the form is no
- * longer even showing — invisible and unfixable. Values whose names the new branch also declares are kept,
- * since re-typing a shared field to change one next to it is the kind of thing that makes a form tiring.
+ * **Switching branches drops what the new branch would not accept.** Branches are closed objects, so a field
+ * the new branch does not declare, or declares with a *different shape*, would turn the switch into a payload
+ * full of undeclared-property failures against fields the form is no longer even showing — invisible and
+ * unfixable. A field the new branch declares with the **same** type is kept, since re-typing a shared field to
+ * change one next to it is the kind of thing that makes a form tiring — but a same-*named* field of a different
+ * shape is not, or the old branch's sub-fields ride along inside it (the edit union's per-trait `data` is
+ * exactly this, issue #417). [valuesAfterBranchSwitch] is the rule.
  */
 private fun ChildrenBuilder.renderVariant(
     type: SchType,
@@ -371,10 +374,15 @@ private fun ChildrenBuilder.renderVariant(
                 this.onChange = { v ->
                     errors.noteEdit(discriminatorPath)
                     val picked = v as? String
-                    val next = variants.select(picked)
-                    // Keep only what the branch being switched to actually declares (see the note above).
-                    val kept = if (next == null) emptyMap() else values.filterKeys { it in next.properties }
-                    emitAll(kept + (name to picked))
+                    // Re-picking the same branch changes nothing; keep the values untouched rather than run them
+                    // through the switch logic, which would treat a branch-specific field as one to drop.
+                    if (picked == chosen) {
+                        emitAll(values)
+                    } else {
+                        // Carry what the new branch would still accept, and drop the rest (see the note above and
+                        // [valuesAfterBranchSwitch]); `branch` here is the branch selected *before* the switch.
+                        emitAll(valuesAfterBranchSwitch(values, name, branch, variants.select(picked), picked))
+                    }
                 }
                 markInvalid(asDynamic(), describedBy)
             }
@@ -409,6 +417,56 @@ private fun ChildrenBuilder.renderVariant(
     errors.undeclaredBelow(path, branch.properties.keys).forEach { (at, messages2) ->
         undeclaredField(childKeyOf(at, path) ?: at, at, messages2)
     }
+}
+
+/**
+ * Whether a field's current value may be carried across a switch of a union's branch (issue #417) — kept when
+ * [to] declares the field with a type that would still accept the value, dropped otherwise.
+ *
+ * A shared **scalar** field carries over on a matching JSON type: the edit union declares `action` and
+ * `entryId` identically on every branch, so switching a trait keeps the verb beside it rather than blanking it.
+ * A **structured** field (an object, a union, or an array) carries over only when both branches name the *same*
+ * type. A branch-specific object like the edit union's `data` is a different type per trait, so keeping it would
+ * leave the old trait's sub-fields on the wire against a new branch that forbids them — and, since the form now
+ * draws the new branch, with no field on screen to clear them from. That is the "Additional property … is not
+ * allowed" report this fixes. Pure, and covered under `jsNodeTest`.
+ */
+fun fieldCarriesAcrossBranches(from: SchType, to: SchType): Boolean =
+    if (isStructuredObject(from) || isStructuredObject(to) || from.jsonType == SCT.array || to.jsonType == SCT.array) {
+        // A structured shape carries only as the *same named type*: a differently-named or inline object is
+        // treated as different, so its stale contents are dropped rather than left to fail the new branch.
+        from.name != null && from.name == to.name
+    } else {
+        from.jsonType == to.jsonType
+    }
+
+/**
+ * The values that remain after a discriminated union switches from the [from] branch to the [to] branch, with
+ * [picked] the newly chosen discriminator value (issue #417).
+ *
+ * The discriminator ([discriminator]) is set to [picked]; every other field is kept only when both branches
+ * declare it and [fieldCarriesAcrossBranches] says the new branch would still accept it. A [to] of null (the
+ * choice was cleared, or names no branch) keeps nothing but the discriminator. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun valuesAfterBranchSwitch(
+    values: Map<String, Any?>,
+    discriminator: String,
+    from: SchType?,
+    to: SchType?,
+    picked: String?,
+): Map<String, Any?> {
+    val kept = if (to == null) {
+        emptyMap()
+    } else {
+        values.filterKeys { key ->
+            if (key == discriminator) return@filterKeys false
+            val toProp = to.properties[key] ?: return@filterKeys false
+            val fromProp = from?.properties?.get(key) ?: return@filterKeys false
+            fieldCarriesAcrossBranches(fromProp.valueType, toProp.valueType)
+        }
+    }
+    return kept + (discriminator to picked)
 }
 
 /**

@@ -89,9 +89,16 @@ fun formDocPatchTargetType(patchInput: SchType?): SchType? {
 
 /**
  * The edits that reproduce a stored form's current entries as a starting point for editing (issue #417): each
- * entry becomes an [GedraEditAction.addOrReplace] carrying its trait, its id, and its data. So the edit form
- * opens showing what the form holds now; the user changes a field, adds an entry, or switches one to
+ * entry becomes an [GedraEditAction.addOrReplace] carrying its trait and its data. So the edit form opens
+ * showing what the form holds now; the user changes a field, adds an entry, or switches one to
  * [GedraEditAction.deleteOrNoOp] to remove it. Pure, and covered under `jsNodeTest`.
+ *
+ * **The stored `entryId` is deliberately not seeded.** A gedra holds at most one entry per trait
+ * (`checkOneEntryPerTrait`), so an absent `entryId` already means "the entry this trait names, or a new one"
+ * (see [GE.entryId] / `GedraEdit`) — seeding it is redundant, and it actively broke switching a section's trait:
+ * the id names an entry *of the old trait*, and carrying it onto the new one made the patch fail ("names entry
+ * '…', but the gedra holds no entry of that trait"). Leaving it absent lets both a plain edit and a trait switch
+ * resolve to the right entry.
  */
 fun seededEdits(form: Map<String, Any?>): List<Map<String, Any?>> =
     form[GDF.entries].toJsonListOfMaps().mapNotNull { entry ->
@@ -99,7 +106,6 @@ fun seededEdits(form: Map<String, Any?>): List<Map<String, Any?>> =
         buildMap {
             put(GED.action, GedraEditAction.addOrReplace.name)
             put(GE.traitId, traitId)
-            (entry[GE.entryId] as? String)?.let { put(GE.entryId, it) }
             (entry[GE.data] as? Map<*, *>)?.let { put(GE.data, it) }
         }
     }
