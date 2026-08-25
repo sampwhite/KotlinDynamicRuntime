@@ -174,7 +174,7 @@ class EdgeService : ServiceInitializer, ContentServer {
     }
 
     /**
-     * Restores the acting profile from the Env Auth cookie: decrypt with the node key, check it has not
+     * Restores the acting profile from the Env Auth cookie: decrypt with the instance key, check it has not
      * expired, and bind the caller as an env-authed operator.
      *
      * Silent about every failure -- absent, forged, expired -- because all three mean the same thing to a

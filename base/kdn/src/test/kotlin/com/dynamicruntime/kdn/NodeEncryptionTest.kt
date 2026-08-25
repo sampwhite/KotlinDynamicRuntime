@@ -97,10 +97,10 @@ class NodeEncryptionTest : StringSpec({
     }
 
     /**
-     * The same code, computed under two different node keys, differs -- so the secret is load-bearing, not
-     * decoration. If HMAC were dropped for a plain hash again, this fails.
+     * The same code, computed under two different instance keys, differs -- so the secret is load-bearing,
+     * not decoration. If HMAC were dropped for a plain hash again, this fails.
      */
-    "the code depends on the node key, so a different key yields a different code" {
+    "the code depends on the instance key, so a different key yields a different code" {
         val node = node("vcKeyed")
         val real = node.computeVerifyCode("token-abc", "victim@example.com")
 
