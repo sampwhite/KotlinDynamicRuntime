@@ -448,6 +448,12 @@ fun fieldCarriesAcrossBranches(from: SchType, to: SchType): Boolean =
  * declare it and [fieldCarriesAcrossBranches] says the new branch would still accept it. A [to] of null (the
  * choice was cleared, or names no branch) keeps nothing but the discriminator. Pure, and covered under
  * `jsNodeTest`.
+ *
+ * **When [from] is null there is no old branch to compare against** — nothing was selected before, so there is
+ * no stale branch shape that could contaminate the payload — and the field-by-field type check would drop
+ * *everything*. There it falls back to the plain rule (keep whatever the new branch declares), which is what
+ * the switch did before per-field type comparison existed: applying values with a missing or unknown
+ * discriminator and then choosing a branch must not silently discard the fields that branch accepts.
  */
 fun valuesAfterBranchSwitch(
     values: Map<String, Any?>,
@@ -456,13 +462,15 @@ fun valuesAfterBranchSwitch(
     to: SchType?,
     picked: String?,
 ): Map<String, Any?> {
-    val kept = if (to == null) {
-        emptyMap()
-    } else {
-        values.filterKeys { key ->
+    val kept = when {
+        to == null -> emptyMap()
+        // No old branch: keep what the new branch declares (see the note above) -- there is no old shape to
+        // decide a same-named field is incompatible, so the type comparison has nothing to run against.
+        from == null -> values.filterKeys { it != discriminator && it in to.properties }
+        else -> values.filterKeys { key ->
             if (key == discriminator) return@filterKeys false
             val toProp = to.properties[key] ?: return@filterKeys false
-            val fromProp = from?.properties?.get(key) ?: return@filterKeys false
+            val fromProp = from.properties[key] ?: return@filterKeys false
             fieldCarriesAcrossBranches(fromProp.valueType, toProp.valueType)
         }
     }

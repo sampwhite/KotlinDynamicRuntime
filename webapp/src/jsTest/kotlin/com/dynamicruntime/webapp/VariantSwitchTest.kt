@@ -113,6 +113,27 @@ class VariantSwitchTest {
         assertEquals(null, result["kind"])
     }
 
+    /**
+     * With no branch selected before the switch (from == null) there is no old shape to compare against, so the
+     * fields the *new* branch declares are kept rather than all dropped. This is the case that reaches the form
+     * when values are applied with a missing/unknown discriminator (e.g. the catalog's "Apply to form") and a
+     * branch is then chosen: the type-by-type rule alone would silently discard everything the branch accepts.
+     */
+    @Test
+    fun withNoOldBranchTheNewBranchsFieldsAreKept() {
+        val variants = unionType().variants!!
+        val to = variants.select("beta")
+        // Fields carried in without a prior branch: `year` belongs to beta's data (kept via the plain rule),
+        // while `topic` belongs to no beta field and is dropped.
+        val values = mapOf("data" to mapOf("year" to 2025), "stray" to "x")
+
+        val result = valuesAfterBranchSwitch(values, "kind", from = null, to = to, picked = "beta")
+
+        assertEquals("beta", result["kind"])
+        assertEquals(mapOf("year" to 2025), result["data"], "a field the new branch declares is kept")
+        assertEquals(false, result.containsKey("stray"), "a field the new branch does not declare is dropped")
+    }
+
     /** [fieldCarriesAcrossBranches] directly: a scalar carries on matching JSON type; two data shapes do not. */
     @Test
     fun theCarryRuleSeparatesScalarsFromDifferingObjects() {

@@ -88,6 +88,10 @@ val FormsPage = FC<Props> {
 
     /** Loads the page at [off] from [ep], replacing the rows and the total. Flips [listLoading] off when done. */
     fun loadPage(ep: EndpointInfo, off: Int) {
+        // A row's armed delete confirm belongs to the page it was armed on; paging away (or reloading after a
+        // delete) drops it, so a primed "Yes" never lingers on a row the user has navigated past (issue #417).
+        rowConfirmDeleteId = null
+        rowDeleteError = null
         listLoading = true
         formsScope.launch {
             try {
@@ -148,9 +152,13 @@ val FormsPage = FC<Props> {
     useEffect(viewingId, restored) {
         val id = viewingId
         viewMissing = false
-        // A confirm belongs to the form it was opened on; moving to another form (or the list) drops it.
+        // A confirm belongs to the form it was opened on; moving to another form (or the list) drops it. Both
+        // the view's own confirm and any armed row confirm in the list -- opening a form must not leave a primed
+        // "Yes" behind on the list under it (issue #417).
         confirmingDelete = false
         deleteError = null
+        rowConfirmDeleteId = null
+        rowDeleteError = null
         if (id == null || !restored) {
             viewRow = null
             return@useEffect

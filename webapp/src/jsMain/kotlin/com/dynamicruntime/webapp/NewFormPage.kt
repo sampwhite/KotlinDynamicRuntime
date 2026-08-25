@@ -152,6 +152,13 @@ val NewFormPage = FC<Props> {
                         }
                         +"Create another"
                     }
+                    // The list is the hub, and it is the only way here (the nav item is gone since #417), so the
+                    // success screen offers a link straight back to it rather than only into the new form.
+                    Button {
+                        type = "link"
+                        onClick = { navigateHash(listOf(HP.page to HMENU.pageForms)) }
+                        +"← Back to my forms"
+                    }
                 }
             }
             else -> {
