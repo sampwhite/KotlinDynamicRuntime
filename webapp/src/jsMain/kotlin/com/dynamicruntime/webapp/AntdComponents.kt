@@ -107,6 +107,41 @@ external interface SelectProps : PropsWithChildren {
 
 external val Select: ComponentType<SelectProps>
 
+/**
+ * antd's combobox: a text input with a suggestion popup, for a choice list that does not bound the value
+ * (issue #418).
+ *
+ * Internally it *is* [Select] -- antd renders `<Select mode={SECRET_COMBOBOX_MODE_DO_NOT_USE} suffixIcon=
+ * {null}>` -- so it costs no new dependency, inherits the same theme tokens, and behaves the same way about
+ * keyboard and popup placement. What differs is that the control is a real `<input>`, which is also why it is
+ * the one choice widget here that browser automation can drive.
+ */
+external interface AutoCompleteProps : PropsWithChildren {
+    /** The text in the box, which for a free-entry field **is** the value. */
+    var value: String?
+    /** The suggestions, as antd `{ label, value }` objects (build with [optionsToJs]). */
+    var options: Array<dynamic>?
+    var disabled: Boolean?
+    var placeholder: String?
+    var allowClear: Boolean?
+    /** React style object; see [SelectProps.style] for why one is needed at all. */
+    var style: dynamic
+    /** antd passes the text -- typed or the picked option's **value**, never its label. */
+    var onChange: ((value: dynamic) -> Unit)?
+    /**
+     * Whether the popup narrows to what has been typed. `false` shows every option always, which is what a
+     * short suggestion list wants (see `OpenChoiceField`).
+     *
+     * **Only the boolean form works here.** In antd 6 a custom filter *function* for `AutoComplete` lives
+     * under `showSearch` (`showSearch = { filterOption: … }`), not at the top level; one passed here is
+     * ignored without complaint. Left as `dynamic` rather than `Boolean?` so the function form stays
+     * reachable when a long list eventually needs it -- but read that note before reaching for it.
+     */
+    var filterOption: dynamic
+}
+
+external val AutoComplete: ComponentType<AutoCompleteProps>
+
 external interface DatePickerProps : PropsWithChildren {
     /**
      * The selected date, as a `Dayjs` (or null for empty) — antd's own date type, not a string. Without this

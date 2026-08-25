@@ -307,8 +307,12 @@ fun validateValue(
         return value
     }
 
+    // An **open** list is suggestions rather than a bound (issue #418), so there is nothing here to check: the
+    // value falls through to the ordinary type and bound checks below, exactly as an optionless field does.
+    // This is the single branch that makes a per-caller list safe to vary -- one caller's suggestions can
+    // never reject another caller's value, because no list of suggestions rejects anything.
     val options = type.options
-    if (options != null) {
+    if (options != null && !type.openOptions) {
         val choice = value as? String
         if (choice == null || options.none { it.value == choice }) {
             failures.add(type.failure(path, SchFailCode.invalidOption, "'$value' is not a valid option.", options))

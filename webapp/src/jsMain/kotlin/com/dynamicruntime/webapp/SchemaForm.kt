@@ -900,15 +900,28 @@ private fun ChildrenBuilder.widget(
     val arrayOptions = if (vt.jsonType == SCT.array) vt.itemType?.options else null
     val singleOptions = vt.options
     when {
-        // Multi-select: an array of choices.
+        // Multi-select: an array of choices. An **open** element type takes antd's `tags` mode, which is the
+        // same control plus the ability to enter a value that is not offered (issue #418) -- without it the
+        // widget would refuse what the endpoint accepts, which is the advertise-versus-serve drift in
+        // miniature. Unlike the single-choice case this needs no separate component: a multi-select is
+        // already a list of values, so accepting one more is a mode rather than a different control.
         arrayOptions != null -> Select {
-            mode = "multiple"
+            mode = if (vt.itemType?.openOptions == true) "tags" else "multiple"
             options = optionsToJs(arrayOptions)
             this.value = value.toJsonListOfStrings().toTypedArray()
             placeholder = "(choose)"
             style = js("({ minWidth: 200 })")
             onChange = { v -> emit(jsToList(v)) }
             markInvalid(asDynamic(), describedBy)
+        }
+        // Single choice, open: the list suggests, and anything else is accepted too.
+        singleOptions != null && vt.openOptions -> OpenChoiceField {
+            // Qualified, because the enclosing function's own `value` / `describedBy` parameters shadow the
+            // props of the same name inside this block.
+            this.options = singleOptions
+            this.value = value?.toString()
+            this.describedBy = describedBy
+            this.onEmit = { v -> emit(v) }
         }
         // Single choice.
         singleOptions != null -> Select {
@@ -1064,6 +1077,57 @@ fun checkboxDraw(vt: SchType, value: Any?): CheckDraw = when {
 enum class CheckDraw { on, off, unanswered }
 
 /** What a free-form map field needs: the value it holds, where to point a screen reader, and how to emit. */
+external interface OpenChoiceFieldProps : Props {
+    var options: List<SchOption>
+    var value: String?
+    var describedBy: String?
+    var onEmit: (String?) -> Unit
+}
+
+/**
+ * A choice field whose list does not bound the value (issue #418): pick a suggestion, or type something else.
+ *
+ * The control is antd's `AutoComplete`, which is `Select` in combobox mode -- so the difference from the
+ * closed dropdown beside it is real but small, and costs no new dependency.
+ *
+ * **`filterOption = false` is the load-bearing line, and it is deliberate rather than a default.** A combobox
+ * normally filters its popup by what is in the box -- which for a *short* list is the wrong behavior twice
+ * over. Once a value is chosen, what is in the box *is* that value, so reopening would offer only the option
+ * already showing and the rest of a five-item list would be unreachable without clearing the field first. And
+ * while free text is being typed, the suggestions vanish one keystroke in, exactly when a reminder of what is
+ * on offer is most useful. Turning filtering off means the whole list is visible whenever the popup is,
+ * which is what somebody who does not yet know what is there needs.
+ *
+ * It is not the permanent answer for a **long** list, where narrowing is the only way to find anything. When
+ * one appears, note that in antd 6 `filterOption` is no longer a top-level `AutoComplete` prop -- it moved
+ * under `showSearch`, and a function passed at the top level is silently ignored rather than rejected. That
+ * cost an afternoon: several filtering rules were written, and the reason none of them appeared to work was
+ * that none of them was ever called.
+ *
+ * Filtering matches the **label**, so a friendly label stays searchable while a terser value is stored. What
+ * lands in the box on selection is antd's decision and is the option's *value* -- deliberately accepted
+ * rather than worked around: a free-entry value has to be something a person could plausibly have typed, so a
+ * list whose labels stray far from its values is the thing to reconsider, not the widget.
+ */
+val OpenChoiceField = FC<OpenChoiceFieldProps> { props ->
+    AutoComplete {
+        options = optionsToJs(props.options)
+        value = props.value
+        placeholder = "(choose or type)"
+        allowClear = true
+        style = js("({ minWidth: 200 })")
+        // Show every suggestion whatever is typed; see the class note.
+        filterOption = false
+        onChange = { v ->
+            // Cleared emits null rather than "", so `emptyIsAbsent` reads it as absent and the coerced
+            // payload drops the key -- the same contract the closed dropdown's `allowClear` has.
+            props.onEmit((v as? String)?.ifEmpty { null })
+        }
+        markInvalid(asDynamic(), props.describedBy)
+    }
+}
+
+
 external interface JsonObjectFieldProps : Props {
     var value: Any?
     var describedBy: String?
@@ -1180,7 +1244,11 @@ private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
 /** The field's type named in words, e.g. "string", "boolean", "date", "choice", "list". */
 private fun typeWord(vt: SchType): String = when {
     vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> "file"
+    // "open choice" rather than "choice": the word has to carry that the list is not the whole of what is
+    // allowed, or the outline documents a constraint the endpoint does not have.
+    vt.options != null && vt.openOptions -> "open choice"
     vt.options != null -> "choice"
+    vt.jsonType == SCT.array && vt.itemType?.options != null && vt.itemType?.openOptions == true -> "open choices"
     vt.jsonType == SCT.array && vt.itemType?.options != null -> "choices"
     vt.jsonType == SCT.array -> "list"
     vt.jsonType == SCT.string && isDateFormat(vt.format) -> vt.format ?: SCT.string

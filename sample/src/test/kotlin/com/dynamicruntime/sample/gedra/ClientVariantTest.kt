@@ -59,9 +59,12 @@ class ClientVariantTest : StringSpec({
         user.expectError(EXC.badInput, GEP.formDocCreate, mapOf(GDF.entries to entries.toList()))[EP.errorMessage]
             .toOptStr().orEmpty()
 
-    fun visit(country: String) = mapOf(
+    fun visit(country: String, purpose: String? = null) = mapOf(
         GE.traitId to ST.siteVisit,
-        GE.data to mapOf(ST.address to mapOf(ST.country to country)),
+        GE.data to buildMap {
+            put(ST.address, mapOf(ST.country to country))
+            purpose?.let { put(ST.purpose, it) }
+        },
     )
 
     fun questionnaire(data: Map<String, Any?>) = mapOf(GE.traitId to ST.questionnaire, GE.data to data)
@@ -108,6 +111,31 @@ class ClientVariantTest : StringSpec({
 
     "a country acme kept is accepted for acme too" {
         create(acme, visit("gb")).shouldNotBeNull()
+    }
+
+    // --- an open list, on the same trait as the closed one (issue #418) ----------
+    //
+    // The pair the keyword exists for, and deliberately on one entry: `country` bounds the value while
+    // `purpose` only suggests, so a single create shows a field refusing what it does not list beside a field
+    // accepting it. Written together because either alone is consistent with the validator having stopped
+    // checking options at all.
+
+    "a purpose outside the suggestions is accepted, while a country outside the list is not" {
+        create(everyone, visit("gb", purpose = "something nobody listed")).shouldNotBeNull()
+        create(everyone, visit("gb", purpose = ST.purposes.first())).shouldNotBeNull()
+        // The refusal names the closed field and only it -- so the same payload that was rejected for its
+        // country was not also rejected for a purpose nobody listed.
+        val complaint = refused(everyone, visit("zz", purpose = "something nobody listed"))
+        complaint shouldContainIgnoringCase ST.country
+        complaint shouldNotContainIgnoringCase ST.purpose
+    }
+
+    "an open list stays open inside a client's variant" {
+        // acme narrows `SiteAddress` and says nothing about `purpose`, so the overlay carries the open list
+        // through untouched. Worth asserting because the variant is rebuilt by re-parsing overlaid `$defs`,
+        // and a keyword that failed to survive that would show up only as a client refusing what everybody
+        // else accepts.
+        create(acme, visit("gb", purpose = "acme's own kind of visit")).shouldNotBeNull()
     }
 
     // --- a trait, narrowed -----------------------------------------------------
@@ -396,6 +424,14 @@ class ClientVariantTest : StringSpec({
 private infix fun String.shouldContainIgnoringCase(part: String): String {
     if (!contains(part, ignoreCase = true)) {
         throw AssertionError("Expected the message to mention '$part', but it was: $this")
+    }
+    return this
+}
+
+/** Its counterpart, for asserting that a refusal is about one field and *not* another. */
+private infix fun String.shouldNotContainIgnoringCase(part: String): String {
+    if (contains(part, ignoreCase = true)) {
+        throw AssertionError("Expected the message NOT to mention '$part', but it was: $this")
     }
     return this
 }

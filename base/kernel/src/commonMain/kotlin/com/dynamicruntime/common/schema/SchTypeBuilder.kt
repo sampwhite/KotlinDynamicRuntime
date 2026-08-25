@@ -229,6 +229,18 @@ open class SchTypeBuilder(
     }
 
     /**
+     * Declares this attribute's choices to be **suggestions rather than a bound** (issue #418): the value may
+     * be one of them or anything else the field's other constraints admit.
+     *
+     * Reach for it whenever the list cannot claim to be complete -- one drawn from a table, or from what this
+     * caller has permission to name. A closed list is a promise that nothing else is valid, and a list that
+     * varies is in no position to make it. See [SCH.openOptions].
+     */
+    fun openOptions() {
+        data[SCH.openOptions] = true
+    }
+
+    /**
      * Sources this attribute's choices from the callback registered under [id], instead of writing them into
      * the document (issue #413). See [SCH.optionsSource] for what that means for validation and for what a
      * reader ends up seeing.
