@@ -47,8 +47,10 @@ const val pageEditForm = "editForm"
  * round-trip. Adding a section adds a trait; switching one to delete removes it.
  */
 val EditFormPage = FC<Props> {
-    // The form being edited, from the hash (`g=<id>`), read once on mount.
-    var gedraId by useState<String?>(null)
+    // The form being edited, from the hash (`g=<id>`): initialized from the hash and kept in step with it, so
+    // navigating to another edit URL reloads and re-seeds rather than leaving the previous form on screen --
+    // where Save would patch the stale gedra (issue #417).
+    var gedraId by useState<String?>(hashParams()[HP.gedra])
     var patchEndpoint by useState<EndpointInfo?>(null)
     var getEndpoint by useState<EndpointInfo?>(null)
     var catalog by useState<Catalog?>(null)
@@ -66,9 +68,27 @@ val EditFormPage = FC<Props> {
     // Named to avoid the `Button { loading = running }` collision that loops the render (issues #408, #417).
     var loadingSchema by useState(true)
 
+    // Keep the open id in step with the hash, so a navigation to another edit URL re-runs the load below. App is
+    // the router; a hash-only editForm->editForm move does not remount this page, so without this the first form
+    // would stay loaded under the new URL (issue #417).
     useEffectOnce {
-        val id = hashParams()[HP.gedra]
-        gedraId = id
+        onHashChange { gedraId = hashParams()[HP.gedra] }
+    }
+
+    // Load the catalog and the named form, re-running whenever the id changes. Re-fetching the catalog on a
+    // reload is a rare, cheap cost (edit->edit happens only by a hand-edited URL); what matters is that the
+    // form is re-seeded from the id now in the hash, never left as the previous one.
+    useEffect(gedraId) {
+        // A new form to edit: drop the previous load's seed, validation, and any success screen so none of it
+        // bleeds across the reload.
+        values = emptyMap()
+        failures = null
+        revalidate = false
+        runError = null
+        appliedLabels = null
+        notFound = false
+        loadingSchema = true
+        val id = gedraId
         editScope.launch {
             try {
                 // The caller's own client-scoped surface, so the patch schema is already narrowed to what this
