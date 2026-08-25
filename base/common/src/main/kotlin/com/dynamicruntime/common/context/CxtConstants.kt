@@ -81,6 +81,16 @@ object ACFG {
     const val edgeUpstream = "edgeUpstream"
 
     /**
+     * This node's capability tags (issue #433), as a collection of strings. Unset defaults from
+     * `BOOT.bootTagsEnvVar`, and failing that to none.
+     *
+     * Distinct from [bootRole]: the role says what kind of node this is and is singular; tags say what
+     * surfaces it serves and are a set. A node carrying no tags is admitted by every declaration that names
+     * none, which is all of them until something declares otherwise.
+     */
+    const val bootTags = "bootTags"
+
+    /**
      * When true, an error flagged `sensitive` (e.g., one that would reveal whether an account exists) has its
      * message replaced with a generic one before it goes to the client; the real message is still logged
      * (issue #108). Set directly by tests. When unset, defaults from the `KDR_OBFUSCATE_ERRORS` env var, which
@@ -162,5 +172,14 @@ object BOOT {
      * implementation, which is the line [ACFG.bootRole] already draws.
      */
     const val edgeComponent = "KdrEdge"
+
+    /**
+     * Environment variable naming this node's capability tags, comma separated (issue #433).
+     *
+     * Role-prefixed like the rest, so an edge reads `KDR_EDGE_TAGS` before `KDR_TAGS`. A deployment running
+     * both backend surfaces lists both tags rather than naming a combined role -- see `NodeProfile` for why
+     * the combination never appears in a declaration.
+     */
+    const val bootTagsEnvVar = "KDR_TAGS"
 
 }

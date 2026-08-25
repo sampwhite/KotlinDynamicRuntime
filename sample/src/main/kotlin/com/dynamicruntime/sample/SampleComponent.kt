@@ -9,6 +9,8 @@ import com.dynamicruntime.sample.gedra.sampleTraits
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.startup.ServiceEntry
+import com.dynamicruntime.common.startup.service
 import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
@@ -50,6 +52,6 @@ class SampleComponent : ComponentDefinition {
      */
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(sampleTraits(cxt)) + sampleClients(cxt)
 
-    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
-        listOf(::SampleFileService)
+    override fun services(cxt: KdrCxt): List<ServiceEntry> =
+        listOf(service(::SampleFileService))
 }

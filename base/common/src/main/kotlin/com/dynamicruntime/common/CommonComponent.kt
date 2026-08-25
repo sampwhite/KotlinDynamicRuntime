@@ -1,5 +1,6 @@
 package com.dynamicruntime.common
 
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.node.InstanceConfigService
@@ -36,6 +37,9 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.startup.Presence
+import com.dynamicruntime.common.startup.ServiceEntry
+import com.dynamicruntime.common.startup.service
 import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
@@ -51,6 +55,11 @@ class CommonComponent : ComponentDefinition {
     override val providerName: String = "common"
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
+        // The surface that belongs to an application and not to a perimeter (issues #432, #433). An edge is
+        // deliberately exposed to the internet, and every one of these is a way in that has nothing to do with
+        // its job: it has no user store, so serving the application's account endpoints from its own database
+        // is an account-creation surface on the one node that should have none.
+        val appOnly = Presence(roles = setOf(BOOT.app))
         // Endpoints/types live with the services that own them; the component just wires them in.
         collector.addModule(NodeService.schema(cxt))
         collector.addModule(SchemaService.schema(cxt))
@@ -63,16 +72,27 @@ class CommonComponent : ComponentDefinition {
         collector.addTables(SqlTableCacheService.tables(cxt))
         collector.addModule(SqlTableCacheService.schema(cxt))
         // Auth (issue #67): the user/auth endpoints and the AuthUsers/AuthUserDevices tables.
-        collector.addModule(authSchema(cxt))
-        collector.addTables(authTables(cxt))
+        collector.addModule(authSchema(cxt), appOnly)
+        collector.addTables(authTables(cxt), appOnly)
         // Profile (issue #70): the login-gated profile page endpoints (its own widget-group namespace).
-        collector.addModule(profileSchema(cxt))
+        collector.addModule(profileSchema(cxt), appOnly)
         // Admin: the user-management endpoints, gated on ROLE.admin by their `admin` section.
-        collector.addModule(adminSchema(cxt))
+        collector.addModule(adminSchema(cxt), appOnly)
         // Admin: the clients this deployment carries (issue #343), in the same full-scope section.
+        // NOT app-only, deliberately. It registers the `clientOptions` choice list, which `schema.EndpointQuery`
+        // sources -- and that type belongs to the endpoint catalog, which every node serves. Marking this
+        // app-only makes an edge refuse to boot: "property 'client' sources its options from 'clientOptions',
+        // which no component registered."
+        //
+        // The provider could be split out and contributed everywhere, but it is co-located with the listing it
+        // agrees with on purpose (see ClientEndpoints, and #390, whose lesson was that a comment saying two
+        // lists must match is not a mechanism). Its listing is `/admin/clients` -- read-only, fenced by the
+        // admin section, and no part of the account surface #432 is about -- so carrying it costs an edge
+        // little. Worth revisiting when the endpoint axis lands and the two can be declared apart without
+        // being written apart.
         collector.addModule(clientAdminSchema(cxt))
         // The same user-administration operations, scoped to the caller's client (issue #225).
-        collector.addModule(scopedUserAdminSchema(cxt))
+        collector.addModule(scopedUserAdminSchema(cxt), appOnly)
         // Operator: running-the-deployment diagnostics, gated on ROLE.operator by their `operator` section.
         collector.addModule(operatorSchema(cxt))
         // Home/shell: the UI-config endpoint that tells the frontend which layout to build and which
@@ -85,8 +105,8 @@ class CommonComponent : ComponentDefinition {
         // Fragment checking: the operator endpoint that validates this instance's Markdown fragment files.
         collector.addModule(MarkdownFragmentService.schema(cxt))
         // Gedra data (issue #310): the form-document endpoints and the two tables under them.
-        collector.addModule(gedraSchema(cxt))
-        collector.addTables(gedraDataTables(cxt))
+        collector.addModule(gedraSchema(cxt), appOnly)
+        collector.addTables(gedraDataTables(cxt), appOnly)
     }
 
     /**
@@ -116,8 +136,11 @@ class CommonComponent : ComponentDefinition {
      * resolved *and* every topic's tables exist (issue #162). Regular services (and future startup services)
      * may need all of them during their init.
      */
-    override fun startupServices(cxt: KdrCxt): List<() -> ServiceInitializer> =
-        listOf(::ClientService, ::SchemaService, ::NodeService, ::SqlTopicService)
+    override fun startupServices(cxt: KdrCxt): List<ServiceEntry> =
+        listOf(
+            service(::ClientService), service(::SchemaService),
+            service(::NodeService), service(::SqlTopicService),
+        )
 
     /**
      * The request dispatcher, the portal (which registers itself with the dispatcher as a content server),
@@ -125,17 +148,32 @@ class CommonComponent : ComponentDefinition {
      * database, relying on the startup-tier [SqlTopicService] having already resolved the database and
      * created the topic's tables).
      */
-    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> =
+    override fun services(cxt: KdrCxt): List<ServiceEntry> =
         listOf(
             // Its `checkReady` performs every cache's initial load, by which point the whole set is
             // registered. Its position here is no longer load-bearing: it reads the caching environment in
             // `onCreate`, which the whole tier completes before any `checkInit` registers a cache.
-            ::SqlTableCacheService,
-            ::RequestService, ::PortalService, ::MarkdownFragmentService, ::MarkdownDocService,
-            ::InstanceConfigService, ::MailService, ::UserService,
+            service(::SqlTableCacheService),
+            service(::RequestService),
+            // The application's landing page, and the reason EdgeComponent had to load early: content servers
+            // answer in registration order, so a portal on an edge claimed the bare content root before the
+            // sign-in page could. Absent here, that race cannot happen (issues #432, #433).
+            service(::PortalService, roles = setOf(BOOT.app)),
+            service(::MarkdownFragmentService), service(::MarkdownDocService),
+            service(::InstanceConfigService),
+            // Application-only, matching the schema they serve (issues #432, #433). An edge keeps the
+            // dispatcher, the content servers and the instance config -- everything it needs to answer for
+            // itself -- and none of the account machinery.
+            //
+            // Removing UserService is safe on the per-request path because `refreshActingRoles` returns before
+            // reaching it: no profile an edge can hold is row-backed, which is the distinction `isRowBacked`
+            // was added for (#386). Every other caller lives in the endpoints removed alongside it.
+            service(::MailService, roles = setOf(BOOT.app)),
+            service(::UserService, roles = setOf(BOOT.app)),
             // GedraService before the data service that reads it, though the ordering is a courtesy rather
             // than a requirement: every service is published into the config before any `checkInit` runs.
-            ::GedraService, ::GedraDataService,
+            service(::GedraService, roles = setOf(BOOT.app)),
+            service(::GedraDataService, roles = setOf(BOOT.app)),
         )
 
     /** Load just ahead of the standard components (demonstrates relative priority). */

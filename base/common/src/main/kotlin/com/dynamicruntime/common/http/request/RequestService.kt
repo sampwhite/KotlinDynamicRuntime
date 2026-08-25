@@ -2,6 +2,7 @@ package com.dynamicruntime.common.http.request
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrRequest
 import com.dynamicruntime.common.context.KdrSchemaStore
@@ -220,7 +221,7 @@ class RequestService : ServiceInitializer {
         mapOf("contextRoots" to contextRootFocus.entries.associate { (root, focus) -> focus.name to root })
 
     /**
-     * Binds everything this dispatcher needs from the instance config, and refuses the boot if an endpoint
+     * Binds everything this dispatcher needs from the instance config and refuses the boot if an endpoint
      * section has no access rules.
      *
      * In `onCreate` rather than `checkInit` because none of it touches another service -- it reads the
@@ -289,6 +290,41 @@ class RequestService : ServiceInitializer {
                     "access rules, so they would be served to anyone. Add each to anonSections, userSections, " +
                     "operatorSections or adminSections in RequestService.",
             )
+        }
+        // Publication is restricted to the user sections (issue #433).
+        //
+        // Note what this is *not* protecting. `publicApi` decides advertisement, not access, so a stray tag
+        // cannot expose anything -- the section gate still refuses an anonymous caller at an admin endpoint.
+        // What it protects is the **answerability of a promise**: "what did we commit to supporting?" has to
+        // be checkable by reading one rule, and overrides scattered across sections turn it into a survey.
+        // An endpoint that genuinely belongs in the published set gets a twin under a user section, which is
+        // also the honest thing to do -- a path documented to outside developers as `/admin/...` tells them
+        // something false about what it is for.
+        //
+        // **Production warns; everywhere else refuses** -- the house rule for a defect a running deployment
+        // survives (`MarkdownFragmentService.fragmentCheckMode`, `GedraConfigCollector`). It applies here
+        // because of the paragraph above: a node that advertises an endpoint it should not is serving every
+        // request correctly and mis-describing one of them. Refusing to start over that would take a
+        // deployment down to fix a documentation error, which is the larger outage.
+        //
+        // Deliberately NOT the same for the unruled-section check above, which stays fatal everywhere: that
+        // one guards *access*, and a node that boots past it is serving a section to anyone. The distinction
+        // is whether production is still viable, not whether the check is a boot check.
+        //
+        // A third hand-rolled instance of this rule, which is exactly what #303 exists to absorb into a
+        // registry plus an operator endpoint -- so a warning nobody was watching for can still be asked about
+        // on a running node. Kept minimal here (no mode override of its own) to leave that less to unpick.
+        val published = cxt.getSchema().endpoints.values.filter { it.publicApi }
+        val misplaced = published.filter { sectionOf(it.path) !in userSections }.map { it.path }.sorted()
+        if (misplaced.isNotEmpty()) {
+            val problem = "${misplaced.joinToString(", ") { "'$it'" }} " +
+                "${if (misplaced.size == 1) "is" else "are"} marked publicApi but sit outside the user " +
+                "sections ($userSections). Publish a twin under a user section instead, or drop the mark."
+            if (cxt.instanceConfig.env == ENV.prod) {
+                LogRequest.warn(cxt, "Published endpoints are misplaced, and the catalog will say so: $problem")
+            } else {
+                throw KdrException("Refusing to start: $problem")
+            }
         }
         isInit = true
     }

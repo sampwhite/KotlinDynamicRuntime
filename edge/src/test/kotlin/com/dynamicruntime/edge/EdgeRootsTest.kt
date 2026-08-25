@@ -7,6 +7,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ContextRoot
+import com.dynamicruntime.common.startup.NodeProfile
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -33,10 +34,19 @@ class EdgeRootsTest : StringSpec({
      * every launcher, including the ordinary one, and it declines there. `InstanceRegistry` gates both schema
      * and services on this, so declining keeps the whole component out rather than half of it.
      */
-    "the component loads only in the edge role" {
-        EdgeComponent().isLoaded(KdrCxt.mkSimpleCxt("t", config())) shouldBe true
-        EdgeComponent().isLoaded(KdrCxt.mkSimpleCxt("t", config(role = null))) shouldBe false
-        EdgeComponent().isLoaded(KdrCxt.mkSimpleCxt("t", config(role = "somethingElse"))) shouldBe false
+    "the component is present only in the edge role" {
+        val presence = EdgeComponent().presence(KdrCxt.mkSimpleCxt("t", config()))
+        presence.admits(NodeProfile(BOOT.edge, emptySet())) shouldBe true
+        // BOOT.app is what a node with no declared role normalizes to, which is the case that matters: an
+        // ordinary launcher finds this component through ServiceLoader and must not load it.
+        presence.admits(NodeProfile(BOOT.app, emptySet())) shouldBe false
+        presence.admits(NodeProfile("somethingElse", emptySet())) shouldBe false
+    }
+
+    // The normalization BOOT.app asks for, exercised where it actually happens.
+    "a node that declares no role reads as the application role" {
+        NodeProfile.of(KdrInstanceConfig("t", ENV.unit, ENV.liveSource, null)).role shouldBe BOOT.app
+        NodeProfile.of(KdrInstanceConfig("t", ENV.unit, ENV.liveSource, BOOT.edge)).role shouldBe BOOT.edge
     }
 
     "the component contributes its roots and its port" {

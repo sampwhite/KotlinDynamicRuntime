@@ -24,6 +24,29 @@ interface ComponentDefinition : KdrProvider {
      * decision can read instance config and environment (e.g., a demo component that loads only in developer
      * environments, as the `sample` module's `SampleComponent` does).
      */
+    /**
+     * Where this component belongs (issue #433): the boot roles and capability tags whose nodes carry it.
+     *
+     * The **declarative** half of the load decision, and the one worth preferring: it can be *read*. A
+     * reviewer answering "does a consumer node carry the admin surface?" checks declarations rather than
+     * executing [isLoaded] under each profile, and that auditability is the whole reason a declaration exists
+     * where an `if` would also work.
+     *
+     * Defaults to [Presence.anywhere], so a component that says nothing loads everywhere, as every component
+     * did before this existed.
+     */
+    fun presence(cxt: KdrCxt): Presence = Presence.anywhere
+
+    /**
+     * Whether this component contributes its schema to the application. Receives the startup [cxt] so the
+     * decision can read instance config and environment (e.g., a demo component that loads only in developer
+     * environments, as the `sample` module's `SampleComponent` does).
+     *
+     * **The escape hatch, not the main road.** [presence] covers role and tag gating declaratively; this is
+     * for decisions that genuinely cannot be declared, such as the sample component's dependence on the
+     * environment. It **narrows** rather than widens: a component loads only when its presence admits the node
+     * *and* this returns true, so it cannot resurrect a component the declaration excluded.
+     */
     fun isLoaded(cxt: KdrCxt): Boolean = true
 
     /** Whether this component's services are active. Receives the startup [cxt] for the same config-driven reason. */
@@ -71,11 +94,18 @@ interface ComponentDefinition : KdrProvider {
 
     /**
      * Services that must be fully initialized before regular [services]. Returned as
-     * factories (typically `::Ctor` references) so nothing is instantiated until the
-     * registry binds it.
+     * entries wrapping factories (typically `::Ctor` references) so nothing is instantiated
+     * until the registry binds it -- and so a service excluded by role or tag is never
+     * constructed at all.
      */
-    fun startupServices(cxt: KdrCxt): List<() -> ServiceInitializer> = emptyList()
+    fun startupServices(cxt: KdrCxt): List<ServiceEntry> = emptyList()
 
-    /** Regular services, initialized after all [startupServices]. */
-    fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = emptyList()
+    /**
+     * Regular services, initialized after all [startupServices].
+     *
+     * Entries rather than bare factories (issue #433) so a service can be narrowed to some roles or tags
+     * without the registry having to construct it to find out -- see [ServiceEntry]. Use [service] to build
+     * one; `service(::Foo)` is a service that goes wherever its component does.
+     */
+    fun services(cxt: KdrCxt): List<ServiceEntry> = emptyList()
 }

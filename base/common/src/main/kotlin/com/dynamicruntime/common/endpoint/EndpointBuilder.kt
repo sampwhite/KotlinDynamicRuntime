@@ -95,6 +95,35 @@ class KdrEndpoint(
      * handler, which is how every builder here constructs one.
      */
     val client: String? = null,
+    /**
+     * Whether this endpoint is part of the **published API** (issue #433): the set we document for people
+     * outside the team and take support calls on.
+     *
+     * **This is not a security control, and must never be used as one.** It decides what the catalog
+     * *advertises*, never what may be invoked. Anyone watching a browser talk to this server can find
+     * endpoints that are not published and call them, and a penetration tester is handed the full catalog
+     * anyway -- so absence from the published set buys no protection whatsoever. What enforces access is the
+     * section model ([com.dynamicruntime.common.http.request.RequestService]), which runs on every request
+     * regardless of what any catalog says.
+     *
+     * A consequence worth knowing, because it is what makes this axis cheap: an over-broad `publicApi` cannot
+     * expose anything. Publish an admin endpoint by mistake and an anonymous caller still meets the section
+     * gate. The failure is a documentation lie, not a breach.
+     *
+     * Restricted to sections in `RequestService.userSections`, refused at boot. See that check for why.
+     */
+    val publicApi: Boolean = false,
+    /**
+     * Free-form tags for slicing the endpoint catalog (issue #433) -- navigation, with no runtime effect at
+     * all.
+     *
+     * **Open vocabulary, deliberately**, unlike the axes that decide something. A typo here yields a slightly
+     * wrong filter that somebody notices and fixes; forcing these through a closed set of constants would
+     * make people stop adding them, and being cheap to add is their entire value. Cedar reached close to a
+     * thousand endpoints, at which point a catalog stops being a list anybody reads and becomes something you
+     * query.
+     */
+    val tags: Set<String> = emptySet(),
 ) {
     init {
         if (inputFields != null && inputTypeRef != null) {
@@ -135,6 +164,16 @@ class KdrEndpoint(
                 }
                 property(EI.outputSchema, $$"The endpoint's output JSON schema (with `$ref`s intact).", required = true) {
                     type = SCT.kObject
+                }
+                property(
+                    EI.publicApi,
+                    "Whether this endpoint is part of the published API -- documented externally and " +
+                        "supported. Advertisement only: it is not an access control.",
+                    required = true,
+                ) { type = SCT.boolean }
+                property(EI.tags, "Free-form tags for slicing the catalog.", required = true) {
+                    type = SCT.array
+                    items { type = SCT.string }
                 }
             }
         }
@@ -208,13 +247,17 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         inputRef: String? = null,
         inputFields: (InputFieldsBuilder.() -> Unit)? = null,
         forTestingOnly: Boolean = false,
+        /** Part of the published API (issue #433). Advertisement, never access -- see [KdrEndpoint.publicApi]. */
+        publicApi: Boolean = false,
+        /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
+        tags: Set<String> = emptySet(),
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output,
-                forTestingOnly, handler),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags),
         )
     }
 
@@ -231,13 +274,17 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         inputRef: String? = null,
         inputFields: (InputFieldsBuilder.() -> Unit)? = null,
         forTestingOnly: Boolean = false,
+        /** Part of the published API (issue #433). Advertisement, never access -- see [KdrEndpoint.publicApi]. */
+        publicApi: Boolean = false,
+        /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
+        tags: Set<String> = emptySet(),
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.item, "The single resource item returned by the endpoint.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.item, namespace, description, fields, typeRef, false, output,
-                forTestingOnly, handler),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags),
         )
     }
 
@@ -257,13 +304,17 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         hasNumAvailable: Boolean = false,
         noLimit: Boolean = false,
         forTestingOnly: Boolean = false,
+        /** Part of the published API (issue #433). Advertisement, never access -- see [KdrEndpoint.publicApi]. */
+        publicApi: Boolean = false,
+        /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
+        tags: Set<String> = emptySet(),
         handler: KdrEndpointHandler,
     ) {
         val output = listOutput(outputRef, hasMore, hasNumAvailable)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output,
-                forTestingOnly, handler),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags),
         )
     }
 
@@ -286,6 +337,10 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         inputRef: String? = null,
         inputFields: (InputFieldsBuilder.() -> Unit)? = null,
         forTestingOnly: Boolean = false,
+        /** Part of the published API (issue #433). Advertisement, never access -- see [KdrEndpoint.publicApi]. */
+        publicApi: Boolean = false,
+        /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
+        tags: Set<String> = emptySet(),
         handler: KdrEndpointHandler,
     ) {
         val output = SchTypeBuilder(cxt, namespace).also {
@@ -295,7 +350,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.file, namespace, description, fields, typeRef, false, output,
-                forTestingOnly, handler),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags),
         )
     }
 
@@ -324,13 +379,17 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         inputRef: String? = null,
         inputFields: (InputFieldsBuilder.() -> Unit)? = null,
         forTestingOnly: Boolean = false,
+        /** Part of the published API (issue #433). Advertisement, never access -- see [KdrEndpoint.publicApi]. */
+        publicApi: Boolean = false,
+        /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
+        tags: Set<String> = emptySet(),
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) describing the uploaded file.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.file, namespace, description, fields, typeRef, false, output,
-                forTestingOnly, handler),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags),
         )
     }
 
@@ -538,6 +597,9 @@ fun renderEndpoint(endpoint: KdrEndpoint, defs: Map<String, Any?>): Map<String, 
     EI.description to endpoint.description,
     EI.inputSchema to buildEndpointInputSchema(endpoint, defs),
     EI.outputSchema to endpoint.outputSchema,
+    EI.publicApi to endpoint.publicApi,
+    // Sorted so a catalog rendering is stable between boots; a Set has no order of its own to promise.
+    EI.tags to endpoint.tags.sorted(),
 )
 
 /**

@@ -2,6 +2,8 @@ package com.dynamicruntime.appui
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.startup.ServiceEntry
+import com.dynamicruntime.common.startup.service
 import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
@@ -14,5 +16,5 @@ class AppUiComponent : ComponentDefinition {
     override val providerName: String = "appui"
 
     /** The webapp host, which registers itself with the dispatcher as a content server during init. */
-    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::AppUiService)
+    override fun services(cxt: KdrCxt): List<ServiceEntry> = listOf(service(::AppUiService))
 }

@@ -200,7 +200,7 @@ class SchemaEndpointsTest : StringSpec({
         val withheld = explained[SS.withheld].toJsonListOfMaps()
         val bySection = withheld.associateBy { it[SS.section] }
         bySection.keys shouldContainAll listOf("admin", "operator")
-        // The full-scope surface withholds itself on two counts, and reports both: the level, and the
+        // The full-scope surface withholds itself on two counts and reports both: the level and the
         // capability that qualifies it. Reporting only one would explain half a refusal.
         bySection["admin"]!![SS.requiredRole] shouldBe ROLE.admin
         bySection["admin"]!![SS.requiredCapability] shouldBe ROLE.allClients
@@ -260,5 +260,37 @@ class SchemaEndpointsTest : StringSpec({
         // The _meta echo only appears because _debug rode onto the context; the echoed params show $note is gone.
         val evaluated = resp[EP.meta]!!.toJsonMap()[SS.paramsEvaluated]!!.toJsonMap()
         evaluated.keys shouldContainAll listOf(SS.filter)
+    }
+
+    /**
+     * The catalog carries the publication and search axes (issue #433), so a client can slice it. Cedar
+     * reached close to a thousand endpoints, at which point a catalog stops being a list anybody reads.
+     */
+    "the catalog reports publication and tags, and can be sliced by either" {
+        val client = client("schemaTags")
+
+        val all = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints"))
+        val sample = all.first { it[EI.path] == "/demo/schema/sample" }
+        sample[EI.tags].toJsonListOfStrings() shouldContainAll listOf(SS.demoTag, SS.schemaTag)
+        // Advertisement, not access: nothing is published yet, and everything is still reachable.
+        sample[EI.publicApi] shouldBe false
+
+        val tagged = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.tags to SS.demoTag)))
+        tagged.map { it[EI.path] } shouldContain "/demo/schema/sample"
+        // A filter narrows the listing and grants nothing, so an untagged endpoint simply drops out.
+        tagged.map { it[EI.path] } shouldNotContain "/health"
+
+        val unknown = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.tags to "noSuchTag")))
+        unknown.shouldBeEmpty()
+
+        // Publication is reported on every rendering, and filterable. Nothing is published today, so asking
+        // for the published set is empty while asking for its complement is everything.
+        all.count { it[EI.publicApi] == true } shouldBe 0
+        catalogEndpoints(
+            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.publicApi to true)),
+        ).shouldBeEmpty()
+        catalogEndpoints(
+            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.publicApi to false, EP.limit to 200)),
+        ).size shouldBe all.size
     }
 })

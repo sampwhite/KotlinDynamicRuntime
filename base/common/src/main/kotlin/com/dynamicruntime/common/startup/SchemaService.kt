@@ -257,6 +257,19 @@ class SchemaService : ServiceInitializer {
                     "Show the surface of this client instead of your own -- its endpoints, and its schema. " +
                         "Requires the '" + ROLE.allClients + "' capability unless it names your own client.",
                 ) { clientAttribute() }
+                property(EI.tags, "Only endpoints carrying this tag.")
+                property(
+                    EI.publicApi,
+                    "Only endpoints in the published API -- the documented, supported set. This filters what " +
+                        "is *listed*; it grants nothing, and omitting it lists everything you may already see.",
+                ) {
+                    type = SCT.boolean
+                    // Explicit because the default is off for booleans, unlike numbers and dates. A GET
+                    // carries its input in a query string, where every value is a string -- so a boolean
+                    // parameter that does not coerce cannot be supplied at all, and `?publicApi=true` fails
+                    // as `wrongType` while `?limit=5` beside it works.
+                    allowCoerce = true
+                }
                 property(EP.limit, "The maximum number of endpoints to return.") {
                     type = SCT.integer
                     default = defaultListLimit
@@ -341,6 +354,11 @@ class SchemaService : ServiceInitializer {
                 outputRef = "SampleItem",
                 method = HttpMethod.POST,
                 inputRef = "SampleQuery",
+                // The worked example of search tags (issue #433). This endpoint already exists to demonstrate
+                // the schema layer, so it demonstrates this too -- rather than tagging a production endpoint,
+                // which would be guessing at a vocabulary nobody has designed yet. Tags are an open set with
+                // no runtime effect: a wrong one yields a slightly wrong filter, not a wrong decision.
+                tags = setOf(SS.demoTag, SS.schemaTag),
             ) { c, request -> sampleItems(c, request) }
 
             // ---- PUT /schema/complex: a deliberately complex input that exercises, all at once, deep `$ref`
@@ -586,6 +604,11 @@ class SchemaService : ServiceInitializer {
             val namespace = request[EI.namespace] as? String
             val method = (request[EI.method] as? String)?.uppercase()
             val pathRegex = (request[SS.pathRegex] as? String)?.let { Regex(it) }
+            // Catalog slicing (issue #433). Both narrow what is *listed* and neither grants anything: the
+            // access decision below is unchanged, so a filter can only ever hide endpoints the caller could
+            // already have seen.
+            val tag = (request[EI.tags] as? String)?.trim()?.ifEmpty { null }
+            val publishedOnly = request[EI.publicApi] as? Boolean
             val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
             refreshCallerRoles(cxt)
             val surface = catalogSurface(cxt, request)
@@ -602,7 +625,9 @@ class SchemaService : ServiceInitializer {
                 .filter { ep ->
                     (namespace == null || ep.namespace == namespace) &&
                             (method == null || ep.method.name == method) &&
-                            (pathRegex == null || pathRegex.containsMatchIn(ep.path))
+                            (pathRegex == null || pathRegex.containsMatchIn(ep.path)) &&
+                            (tag == null || tag in ep.tags) &&
+                            (publishedOnly == null || ep.publicApi == publishedOnly)
                 }
                 // collationKey is "path:method", so this sorts by path then method (the same path may be
                 // registered under two HTTP methods).
@@ -848,6 +873,19 @@ class CatalogSurface(val named: Boolean, val client: String?, val schema: KdrSch
  */
 @Suppress("ConstPropertyName")
 object SS {
+    /**
+     * Catalog search tags used by the demonstration endpoints (issue #433).
+     *
+     * Constants here only because these two are referenced from a test; the axis itself is deliberately an
+     * **open vocabulary** and a tag is just a string. Nothing requires a declaration to use a constant, and
+     * requiring one would defeat the point -- these are for finding things in a catalog that will one day
+     * have hundreds of entries, and cheapness is what makes them get written.
+     */
+    const val demoTag = "demo"
+
+    /** Companion to [demoTag]; see it for why these are constants at all. */
+    const val schemaTag = "schema"
+
     // Endpoint introspection: the path-regex query filter. The `endpoints` result key is now the shared
     // kernel EI.endpoints (the `$defs` result key is the JSON Schema keyword itself, SCH.dDefs).
     const val pathRegex = "pathRegex"

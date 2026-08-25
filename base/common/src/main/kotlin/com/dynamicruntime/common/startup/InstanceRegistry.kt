@@ -66,14 +66,23 @@ object InstanceRegistry {
             val cxt = KdrCxt("startup", config)
             LogStartup.info(cxt, "Initializing instance '$instanceName'.")
 
+            // What this node is, read once and threaded through every presence decision below (issue #433) --
+            // the component gate, the service entries, and the schema the collector accepts.
+            val node = NodeProfile.of(config)
+            LogStartup.info(cxt, "Boot profile: $node.")
+
             // Components contribute schema into the collector; a startup service later compiles it.
-            val collector = SchemaCollector()
+            val collector = SchemaCollector(node)
             config.put(SchemaCollector.key, collector)
 
             val components = componentDefinitions.values.sortedBy { it.loadPriority() }
             // Decided once, then reused: `isLoaded` is a predicate and was being asked twice, which quietly
             // made it a place where an effect would run twice too.
-            val loaded = components.filter { it.isLoaded(cxt) }
+            //
+            // Presence first, then isLoaded: the declaration decides, and the predicate may only narrow
+            // further. A component excluded by role or tag is never asked, so its `isLoaded` cannot resurrect
+            // it -- which is what makes the declarations answerable by reading them.
+            val loaded = components.filter { it.presence(cxt).admits(node) && it.isLoaded(cxt) }
 
             // Components contribute their own instance config before anything reads it (issue #386) -- ahead
             // of schema collection and of every service, including the startup tier that fixes node identity.
@@ -94,15 +103,15 @@ object InstanceRegistry {
             }
             config.put(FRAG.registryKey, fragmentFiles.distinct())
 
-            val startupFactories = mutableListOf<() -> ServiceInitializer>()
-            val serviceFactories = mutableListOf<() -> ServiceInitializer>()
+            val startupEntries = mutableListOf<ServiceEntry>()
+            val serviceEntries = mutableListOf<ServiceEntry>()
             for (component in loaded.filter { it.isActive(cxt) }) {
-                startupFactories.addAll(component.startupServices(cxt))
-                serviceFactories.addAll(component.services(cxt))
+                startupEntries.addAll(component.startupServices(cxt))
+                serviceEntries.addAll(component.services(cxt))
             }
 
-            bindAndInitServices(cxt, startupFactories)
-            bindAndInitServices(cxt, serviceFactories)
+            bindAndInitServices(cxt, node, startupEntries)
+            bindAndInitServices(cxt, node, serviceEntries)
 
             instanceConfigs[instanceName] = config
             return config
@@ -115,11 +124,17 @@ object InstanceRegistry {
      * replaces an earlier one -- useful for tests), then runs the three idempotent
      * lifecycle passes across the registered set.
      */
-    fun bindAndInitServices(cxt: KdrCxt, factories: List<() -> ServiceInitializer>) {
+    fun bindAndInitServices(cxt: KdrCxt, node: NodeProfile, entries: List<ServiceEntry>) {
         val config = cxt.instanceConfig
         val names = mutableListOf<String>()
-        for (factory in factories) {
-            val service = factory()
+        for (entry in entries) {
+            // Filtered before the factory runs, which is the reason presence is an entry rather than data on
+            // the service: the registry has to construct one to read its `serviceName`, so a service excluded
+            // here is never built at all rather than built and discarded.
+            if (!entry.presence.admits(node)) {
+                continue
+            }
+            val service = entry.factory()
             val name = service.serviceName
             if (config.get(name) == null) {
                 names.add(name)

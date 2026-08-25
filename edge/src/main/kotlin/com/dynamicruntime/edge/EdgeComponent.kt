@@ -6,6 +6,9 @@ import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.PRI
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.startup.Presence
+import com.dynamicruntime.common.startup.ServiceEntry
+import com.dynamicruntime.common.startup.service
 import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
@@ -20,16 +23,17 @@ class EdgeComponent : ComponentDefinition {
     override val providerName: String = name
 
     /**
-     * Loaded only on a node booted in the [BOOT.edge] role.
+     * Present only on a node booted in the [BOOT.edge] role.
      *
      * This is what lets the component be **discovered** rather than referenced: `ServiceLoader` finds it in
-     * every launcher, including the ordinary one, and it declines there. `InstanceRegistry` gates both schema
-     * and services on this, so declining keeps the whole component out rather than half of it.
+     * every launcher, including the ordinary one, and it is absent there. `InstanceRegistry` gates both schema
+     * and services on this, so being absent keeps the whole component out rather than half of it.
      *
-     * A pure predicate, deliberately -- it is called more than once per boot (schema, then services), so
-     * anything with an effect belongs in [EdgeService], not here.
+     * Declared rather than decided in [isLoaded] (issue #433): the answer is a plain fact about which nodes
+     * carry this, and a declaration can be read by anything asking what an edge contains. It was a predicate
+     * only because there was nothing else to be.
      */
-    override fun isLoaded(cxt: KdrCxt): Boolean = isEdge(cxt)
+    override fun presence(cxt: KdrCxt): Presence = Presence(roles = setOf(BOOT.edge))
 
     /**
      * The instance config that makes this node an edge: its context roots, and the port its role binds.
@@ -47,31 +51,27 @@ class EdgeComponent : ComponentDefinition {
         config.put(ACFG.defaultPort, config.get(ACFG.defaultPort) ?: EdgeRole.defaultPort)
     }
 
-    /**
-     * Loaded ahead of `CommonComponent`, so `EdgeService` registers its content server before the portal
-     * does: content servers are offered a request in registration order, and the bare content root is claimed
-     * by whichever answers first. Without this, `/ec` reaches the application's portal instead of the sign-in
-     * page. A stopgap for as long as an edge loads the portal at all.
+    /*
+     * No load-priority override any more (issue #433).
+     *
+     * This used to return `PRI.early` so `EdgeService` registered its content server before `PortalService`
+     * did -- content servers answer in registration order, and without it `/ec` reached the application's
+     * portal instead of the sign-in page. Its own comment called it "a stopgap for as long as an edge loads
+     * the portal at all", and an edge no longer does: `PortalService` is declared application-only, so there
+     * is nothing to lose the race to. The stopgap retiring is what shows the declaration did the real work
+     * rather than merely moving the ordering around.
      */
-    override fun loadPriority(): Int = PRI.early
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         collector.addModule(envAuthSchema(cxt))
     }
 
-    override fun services(cxt: KdrCxt): List<() -> ServiceInitializer> = listOf(::EdgeService)
+    override fun services(cxt: KdrCxt): List<ServiceEntry> = listOf(service(::EdgeService))
 
     @Suppress("ConstPropertyName")
     companion object {
         /** The name this component announces itself under, in logs and provider selection. */
         const val name = BOOT.edgeComponent
 
-        /**
-         * Whether [cxt] is running as an edge -- i.e., this component is loaded.
-         *
-         * Asked of the *instance config*, never of a compile-time reference, because nothing outside this
-         * module may depend on it.
-         */
-        fun isEdge(cxt: KdrCxt): Boolean = cxt.instanceConfig.bootRole == BOOT.edge
     }
 }
