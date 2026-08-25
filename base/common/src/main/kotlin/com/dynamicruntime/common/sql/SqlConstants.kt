@@ -96,3 +96,34 @@ object DBC {
     /** Size of the connection pool. */
     const val numConnections = "numConnections"
 }
+
+/**
+ * Topic names shared by more than one subsystem.
+ *
+ * A topic is normally declared beside the tables that belong to it -- `authTopic` in `UserTables`,
+ * `gedraDataTopic` in `GedraTables`. This object is for the exception: a topic whose tables are contributed by
+ * several places, where declaring it next to any one of them would make the others look like they were
+ * borrowing it.
+ */
+@Suppress("ConstPropertyName")
+object TOPIC {
+    /**
+     * Instance-scoped coordination: the configuration a deployment keeps for itself (including the key its
+     * cookies are encrypted with) and the cache state its nodes publish so the others learn what changed.
+     *
+     * **Named for the instance rather than the node, because that is whose data it is.** A topic is the unit
+     * of database assignment and of transaction scope, and both belong to the instance -- a node has no
+     * database of its own, it shares the instance's. Some of these rows *describe* nodes, and a registry of
+     * live ones will join them, but rows about nodes are still the instance's rows: it is the instance's
+     * registry of its nodes.
+     *
+     * This is also the topic an **edge** server uses, and the only one it needs -- which is why the cache
+     * state lives here rather than in a topic of its own (issue #435). Both are the same kind of thing: rows
+     * written so a deployment stays coherent, rather than application data.
+     *
+     * Distinct from the `node` endpoint *namespace* (which `/health` uses) and from `NodeService`, both of
+     * which really are about this process. The line is: this names the scope of the data, those name the
+     * identity of the node.
+     */
+    const val instance = "instance"
+}

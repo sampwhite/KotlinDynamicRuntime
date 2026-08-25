@@ -17,28 +17,24 @@ class SqlTopicTranProvider(
     val sqlCxt: SqlCxt,
     val tranName: String,
     tranId: String?,
+    /** Which lock table to take; null means the topic's only one (see [SqlTopic.tranFor]). */
+    tranTableName: String?,
     val tranExecute: () -> Unit,
 ) : SqlTranExecProvider {
     val cxt = sqlCxt.cxt
     val sqlDb = sqlCxt.sqlDb
     val sqlTopic = sqlCxt.sqlTopic
         ?: throw KdrException("SqlCxt must provide a SqlTopic to run topic transaction $tranName.")
-    val tranTable = sqlTopic.tranTable
-        ?: throw KdrException("Topic ${sqlTopic.name} has no transactional table for transaction $tranName.")
 
-    // SqlTopic.init must have built the lock queries.
-    private val iTranLockQuery = requireQuery(sqlTopic.iTranLockQuery, "insert")
-    private val qTranLockQuery = requireQuery(sqlTopic.qTranLockQuery, "select")
-    private val uTranLockQuery = requireQuery(sqlTopic.uTranLockQuery, "update")
-    private val uTakeLockQuery = requireQuery(sqlTopic.uTakeLockQuery, "take-lock")
+    // SqlTopic.init must have built these; resolving the set as a unit is what keeps a topic with several
+    // transactional tables from mixing one table's statements with another's (issue #435).
+    private val tran = sqlTopic.tranFor(tranTableName, tranName)
+    val tranTable = tran.table
 
     val tranId: String = tranId ?: (tranName + cxt.mkUniqueId())
 
-    private fun requireQuery(stmt: SqlStatement?, which: String): SqlStatement =
-        stmt ?: throw KdrException("Topic ${sqlTopic.name} has no $which lock query; was it initialized?")
-
     override fun insert() {
-        if (iTranLockQuery.returnGeneratedKeys) {
+        if (tran.insertLock.returnGeneratedKeys) {
             throw KdrException(
                 "Cannot insert in transaction logic because the insert auto-increments a column for " +
                     "transaction $tranName.",
@@ -46,18 +42,18 @@ class SqlTopicTranProvider(
         }
         SqlTopicUtil.prepForStdExecute(cxt, tranTable, sqlCxt.tranData)
         SqlTopicUtil.prepForTranInsert(cxt, sqlCxt.tranData)
-        sqlDb.executeStatement(cxt, iTranLockQuery, sqlCxt.tranData)
+        sqlDb.executeStatement(cxt, tran.insertLock, sqlCxt.tranData)
     }
 
     override fun lock(): Boolean {
         sqlCxt.tranAlreadyDone = false
         sqlCxt.tranData[PF.touchedAt] = cxt.instanceNow() // a persisted queuing date (issue #160)
-        return sqlDb.executeStatement(cxt, uTakeLockQuery, sqlCxt.tranData) > 0
+        return sqlDb.executeStatement(cxt, tran.takeLock, sqlCxt.tranData) > 0
     }
 
     override fun execute() {
-        val curRow = sqlDb.queryOneStatement(cxt, qTranLockQuery, sqlCxt.tranData)
-            ?: throw KdrException("Data not present for ${qTranLockQuery.name} after initiating transaction.")
+        val curRow = sqlDb.queryOneStatement(cxt, tran.queryLock, sqlCxt.tranData)
+            ?: throw KdrException("Data not present for ${tran.queryLock.name} after initiating transaction.")
 
         // Absorb the persisted row into tranData, but keep our own touchedAt/lastTranId bookkeeping.
         for ((k, v) in curRow) {
@@ -71,7 +67,7 @@ class SqlTopicTranProvider(
         if (!sqlCxt.tranAlreadyDone) {
             sqlCxt.tranData[PF.lastTranId] = tranId
             SqlTopicUtil.prepForStdExecute(cxt, tranTable, sqlCxt.tranData)
-            sqlDb.executeStatement(cxt, uTranLockQuery, sqlCxt.tranData)
+            sqlDb.executeStatement(cxt, tran.updateLock, sqlCxt.tranData)
         }
     }
 
@@ -86,10 +82,16 @@ class SqlTopicTranProvider(
             tranName: String,
             tranId: String?,
             tranData: Map<String, Any?>,
+            /**
+             * Which lock table to take. Null means the topic's only transactional table, so every
+             * single-table topic calls this exactly as before; a topic with several refuses rather than
+             * picking one (issue #435).
+             */
+            tranTableName: String? = null,
             tranExecute: () -> Unit,
         ) {
             sqlCxt.tranData = LinkedHashMap(tranData)
-            val provider = SqlTopicTranProvider(sqlCxt, tranName, tranId, tranExecute)
+            val provider = SqlTopicTranProvider(sqlCxt, tranName, tranId, tranTableName, tranExecute)
             SqlTranUtil.doTran(sqlCxt, tranName, provider)
         }
     }

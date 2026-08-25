@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.sql.TOPIC
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlTopicService
@@ -78,7 +79,11 @@ class InstanceConfigService : ServiceInitializer {
             IC.instanceName to cxt.instanceConfig.instanceName,
             IC.configName to configName,
         )
-        SqlTopicTranProvider.executeTopicTran(sqlCxt, "setInstanceConfig", null, tranData) {
+        // Names its lock table: TOPIC.instance also carries the cache-state table, and this transaction has no
+        // business serializing against cache announcements (issue #435).
+        SqlTopicTranProvider.executeTopicTran(
+            sqlCxt, "setInstanceConfig", null, tranData, tranTableName = tableName,
+        ) {
             sqlCxt.tranData[IC.configType] = configType
             sqlCxt.tranData[IC.configData] = data
         }
@@ -107,7 +112,7 @@ class InstanceConfigService : ServiceInitializer {
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "InstanceConfigService"
-        const val topic = "node"
+        const val topic = TOPIC.instance
         const val tableName = "InstanceConfig"
 
         /** Config type of the row that stores the instance's encryption/auth key. */

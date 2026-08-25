@@ -8,6 +8,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.LogSql
+import com.dynamicruntime.common.sql.TOPIC
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlWriteListener
@@ -303,8 +304,10 @@ class SqlTableCacheService : ServiceInitializer {
 
     /** Reads the cache-state row: cached table name -> when it was last changed. Empty when there is no row. */
     fun dbQueryState(cxt: KdrCxt): Map<String, Instant> {
-        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, cacheTopic)
-        val query = sqlCxt.sqlTopic?.qTranLockQuery ?: return emptyMap()
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, TOPIC.instance)
+        // tranOrNull, not tranFor: a topic that has not been initialized yet is an ordinary "nothing to read"
+        // here, and was before this table shared a topic with another transactional one.
+        val query = sqlCxt.sqlTopic?.tranOrNull(CST.kdrCacheState)?.queryLock ?: return emptyMap()
         var row: Map<String, Any?>? = null
         sqlCxt.sqlDb.withSession(cxt) {
             row = sqlCxt.sqlDb.queryOneStatement(cxt, query, mapOf(CST.cacheId to CST.defaultCacheId))
@@ -324,10 +327,14 @@ class SqlTableCacheService : ServiceInitializer {
      * announcement means "the table changed *again*", which is an ordering fact, not a clock reading.
      */
     fun dbMergeState(cxt: KdrCxt, state: Map<String, Instant>): Map<String, Instant> {
-        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, cacheTopic)
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, TOPIC.instance)
         sqlCxt.sqlDb.withSession(cxt) {
+            // Names its lock table: TOPIC.instance also holds the instance-config table, and locking that one
+            // would serialize cache announcements against unrelated configuration writes -- correct, and
+            // silently slow, which is why naming it is required rather than optional (issue #435).
             SqlTopicTranProvider.executeTopicTran(
                 sqlCxt, "cacheStateMerge", null, mapOf(CST.cacheId to CST.defaultCacheId),
+                tranTableName = CST.kdrCacheState,
             ) {
                 val merged = readState(sqlCxt.tranData).toMutableMap()
                 for ((table, date) in state) {
@@ -466,7 +473,7 @@ class SqlTableCacheService : ServiceInitializer {
          * The cache-state table, contributed by the `common` component. It carries the transaction-lock
          * columns because the merge is a read-modify-write shared by every node.
          */
-        fun tables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "cache", topic = cacheTopic) {
+        fun tables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "cache", topic = TOPIC.instance) {
             table(CST.kdrCacheState, "Records when each cached table was last changed, by any node.") {
                 column(CST.cacheId, "Id of the collection of caches this row describes.", required = true)
                 column(CST.cacheState, "Cached table name -> the date it was last changed.") { type = SCT.kObject }
