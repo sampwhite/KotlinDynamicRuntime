@@ -5,7 +5,6 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.sql.TI
 import com.dynamicruntime.common.user.TestUser
-import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe

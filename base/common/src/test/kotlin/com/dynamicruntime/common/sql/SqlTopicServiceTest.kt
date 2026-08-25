@@ -13,7 +13,6 @@ import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 /**
