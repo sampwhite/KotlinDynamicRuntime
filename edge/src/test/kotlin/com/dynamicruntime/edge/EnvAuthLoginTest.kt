@@ -55,7 +55,7 @@ class EnvAuthLoginTest : StringSpec({
             put(ACFG.bootRole, BOOT.edge)
             put(GOOG.googleClientId, clientId)
             put(GOOG.googleKeySource, keySource)
-            if (adminDomain != null) put(ADMR.adminEmailDomainEnvVar, adminDomain)
+            if (adminDomain != null) put(ADMR.adminEmailDomainEnvVar.name, adminDomain)
         },
     )
 

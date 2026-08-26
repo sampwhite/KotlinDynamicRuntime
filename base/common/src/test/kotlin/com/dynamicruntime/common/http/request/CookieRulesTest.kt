@@ -29,7 +29,7 @@ class CookieRulesTest : StringSpec({
 
     "the env var is the default when the option is unset, and the option still wins over it" {
         // A config entry under the env-var key is read by getEnvBool as if it were the process env var.
-        val c = config(ENV.local).apply { put(CKI.cookieSecureEnvVar, "true") }
+        val c = config(ENV.local).apply { put(CKI.cookieSecureEnvVar.name, "true") }
         CookieRules.isSecure(c) shouldBe true
 
         c.put(ACFG.cookieSecure, false)

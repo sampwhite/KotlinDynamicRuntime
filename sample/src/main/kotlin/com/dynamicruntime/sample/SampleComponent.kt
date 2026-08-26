@@ -1,6 +1,8 @@
 package com.dynamicruntime.sample
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.sample.file.SampleFileService
 import com.dynamicruntime.sample.gedra.GedraFixtureEndpoints
@@ -36,9 +38,18 @@ class SampleComponent : ComponentDefinition {
      * regardless of environment). Formerly `shouldLoadSample` in the launcher's `Start.kt`.
      */
     override fun isLoaded(cxt: KdrCxt): Boolean {
-        cxt.getEnvBool("KDR_LOAD_SAMPLE")?.let { return it }
+        cxt.getEnvBool(loadSampleEnvVar)?.let { return it }
         val env = cxt.instanceConfig.env
         return env == ENV.local || env == ENV.dev
+    }
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        val loadSampleEnvVar = EnvVarDef(
+            "KDR_LOAD_SAMPLE", group = ENVGRP.application, defaultDoc = "on for `local`/`dev`, off otherwise",
+            description = "Force-loads (`true`) or skips (`false`) the `sample` module's demo file " +
+                "upload/download endpoints, overriding the default (developer environments only).",
+        )
     }
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {

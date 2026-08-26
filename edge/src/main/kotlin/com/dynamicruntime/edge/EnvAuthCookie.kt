@@ -1,6 +1,8 @@
 package com.dynamicruntime.edge
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.util.jsonMap
@@ -26,7 +28,11 @@ object ENVAUTH {
     const val sessionMillisKey = "envAuthSessionMillis"
 
     /** Env var that defaults [sessionMillisKey] when the config option is unset. */
-    const val sessionMillisEnvVar = "KDR_ENV_AUTH_SESSION_MILLIS"
+    val sessionMillisEnvVar = EnvVarDef(
+        "KDR_ENV_AUTH_SESSION_MILLIS", group = ENVGRP.edge, defaultDoc = "2 days (12 hours in `prod`)",
+        description = "How long an edge env-auth session cookie lasts, in milliseconds. The `envAuthSessionMillis` " +
+            "config option wins over this.",
+    )
 
     /** Twelve hours, the production default. */
     const val prodSessionMillis = 12L * 3600 * 1000

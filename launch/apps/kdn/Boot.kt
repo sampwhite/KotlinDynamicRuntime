@@ -2,6 +2,8 @@ package kdn
 
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
@@ -15,6 +17,18 @@ import com.dynamicruntime.config.AppConfigApplier
 import com.dynamicruntime.config.AppConfigBuilder
 import com.dynamicruntime.kdn.Startup
 import java.util.ServiceLoader
+
+/** Constants for the launcher's boot sequence. */
+@Suppress("ConstPropertyName")
+object LNCH {
+    /** Names the deployment configuration object to discover and apply at startup (issue #371). */
+    val customConfigEnvVar = EnvVarDef(
+        "KDR_CUSTOM_CONFIG", group = ENVGRP.application, defaultDoc = "`KdrConfig`",
+        description = "The `providerName` of the deployment configuration object (an `AppConfigApplier`) to " +
+            "discover and apply at startup. Full profiles are selected, not composed, so this names the one to " +
+            "apply -- defaulting to `KdrConfig`.",
+    )
+}
 
 /**
  * The boot sequence every KDR launcher runs: pre-boot configuration, provider discovery, component
@@ -100,7 +114,7 @@ fun bootInstance(
     // App config appliers run pre-boot so they can shape how the instance starts. They are SELECTED, not
     // composed: competing full profiles (e.g., the developer's KdrConfig and Claude's ClaudeConfig) would
     // conflict, so KDR_CUSTOM_CONFIG names the one to apply by its providerName, defaulting to "KdrConfig".
-    val selector = preBootCxt.getEnvVar("KDR_CUSTOM_CONFIG") ?: "KdrConfig"
+    val selector = preBootCxt.getEnvVar(LNCH.customConfigEnvVar) ?: "KdrConfig"
     val appConfig = AppConfigBuilder(preBootCxt, LinkedHashMap())
     val appliers = providers.filterIsInstance<AppConfigApplier>()
         .filter { it.providerName == selector }

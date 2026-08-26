@@ -3,6 +3,8 @@ package com.dynamicruntime.common.http.request
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.endpoint.EP
@@ -600,7 +602,12 @@ class RequestHandler : WebRequest {
         const val explainError = "explainError"
 
         /** The env var that defaults [ACFG.obfuscateSensitiveErrors] when the config option is unset (issue #108). */
-        const val obfuscateErrorsEnvVar = "KDR_OBFUSCATE_ERRORS"
+        val obfuscateErrorsEnvVar = EnvVarDef(
+            "KDR_OBFUSCATE_ERRORS", group = ENVGRP.application, defaultDoc = "on when `KDR_ENV=prod`, off otherwise",
+            description = "Replaces the message of an error flagged `sensitive` -- one that would reveal, say, " +
+                "whether an account exists -- with a generic sentence before it reaches the client. The real " +
+                "message is still logged. The `obfuscateSensitiveErrors` config option wins over this.",
+        )
 
         /** The generic message shown for a `sensitive` error when a deployment obfuscates; copy in errors.md. */
         val obfuscatedErrorMsg = KdrMsg("errors", "general", "obfuscated")

@@ -2,13 +2,23 @@ package com.dynamicruntime.common.http.request
 
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrInstanceConfig
 
 /** Cookie attribute constants (issue #431). */
 @Suppress("ConstPropertyName")
 object CKI {
-    /** Env var that defaults [ACFG.cookieSecure] when the config option is unset. */
-    const val cookieSecureEnvVar = "KDR_COOKIE_SECURE"
+    /** Env var that defaults [ACFG.cookieSecure] when the config option is unset (issue #371 declaration). */
+    val cookieSecureEnvVar = EnvVarDef(
+        "KDR_COOKIE_SECURE", group = ENVGRP.application, defaultDoc = "secure everywhere but `local`/`unit`",
+        description = "Whether the `Set-Cookie`s this node issues carry the `Secure` attribute -- session " +
+            "cookies (`kdrAuth`, and the edge's `kdrEnvAuth`) included. Set explicitly rather than derived " +
+            "from `X-Forwarded-For`: a cookie's `Secure` flag should be a property of how the node is served, " +
+            "not read off a request header. The `cookieSecure` config option wins over this. Unset, it " +
+            "defaults from the environment -- `Secure` everywhere except `local`/`unit`, so a plain-HTTP " +
+            "`localhost` keeps getting a cookie the browser will return. See [CookieRules].",
+    )
 
     // `SameSite` attribute values (the wire spelling). `Lax` is the default a session cookie wants -- it still
     // rides a top-level GET navigation, which is what a redirect back from Google is. `Strict` is for a

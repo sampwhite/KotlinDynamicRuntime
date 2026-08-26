@@ -184,16 +184,26 @@ class KdrInstanceConfig(
     /** Returns a process-unique, increasing suffix for a context's logging id. */
     fun nextLoggingId(): Long = loggingIdCounter.incrementAndGet()
 
-    fun getEnvVar(key: String): String? {
-        // Instance-config entries win over the real process environment, so configuration (and tests) can
-        // inject or override an "environment variable" without touching the process environment.
-        //
-        // Under a boot role, the role-prefixed name is tried first and the plain one is the fallback, so an
-        // edge and an application can run side by side on one machine wanting different values for the same
-        // variable. The MORE SPECIFIC name wins outright -- both its config entry and its process variable --
-        // before the plain name is considered at all, because a value naming this role was written for this
-        // role and a general one was not.
-        for (k in envVarNamesFor(key, bootRole)) {
+    /** The value of [def], resolved for this instance, or null when it is unset. See [resolveEnvVarByName]. */
+    fun getEnvVar(def: EnvVarDef): String? = resolveEnvVarByName(def.name)
+
+    /**
+     * The raw-name resolution behind [getEnvVar]. **Private on purpose** (issue #371): ordinary reads take an
+     * [EnvVarDef], so a variable nobody declared cannot be read. Only the bootstrap paths that run before a
+     * declaration is convenient (`KDR_ENV` in [preBootLoadConfig], `KDR_WORKSPACE_DIR` in `AppPaths`) name a
+     * variable as a string, and they read it through a declared def's [EnvVarDef.name] and `System.getenv`.
+     *
+     * Instance-config entries win over the real process environment, so configuration (and tests) can inject
+     * or override an "environment variable" without touching the process environment.
+     *
+     * Under a boot role, the role-prefixed name is tried first and the plain one is the fallback, so an edge
+     * and an application can run side by side on one machine wanting different values for the same variable.
+     * The MORE SPECIFIC name wins outright -- both its config entry and its process variable -- before the
+     * plain name is considered at all, because a value naming this role was written for this role and a
+     * general one was not.
+     */
+    private fun resolveEnvVarByName(name: String): String? {
+        for (k in envVarNamesFor(name, bootRole)) {
             ((get(k) as? String) ?: System.getenv(k))?.let { return it }
         }
         return null
@@ -210,7 +220,7 @@ class KdrInstanceConfig(
      * a loose `toOptBool`, and an `equals("true")` that quietly read *every* other spelling, `yes` included,
      * as false. An operator cannot be expected to know which variable got which.
      */
-    fun getEnvBool(key: String): Boolean? = getEnvVar(key)?.toOptBool()
+    fun getEnvBool(def: EnvVarDef): Boolean? = getEnvVar(def)?.toOptBool()
 
     /**
      * Whether this is a **test instance** -- a node where test-only affordances are on: `forTestingOnly`
@@ -259,7 +269,13 @@ class KdrInstanceConfig(
     @Suppress("ConstPropertyName")
     companion object {
         /** Env var that forces this to be a test instance regardless of environment (see [isTestInstance]). */
-        const val testInstanceEnvVar = "KDR_TEST_INSTANCE"
+        val testInstanceEnvVar = EnvVarDef(
+            "KDR_TEST_INSTANCE", group = ENVGRP.application, defaultDoc = "unset (derived)",
+            description = "Forces this to be a test instance, independent of environment -- exposing " +
+                "`forTestingOnly` endpoints and simulating/capturing email by default. Also true implicitly " +
+                "when `KDR_ENV=unit` or `inMemoryOnly` is on. A test instance outside `local`/`unit` refuses " +
+                "to start, so test affordances cannot reach a real deployment.",
+        )
 
         /**
          * Optional properties file, in the working directory, supplying default environment-variable values
@@ -288,7 +304,7 @@ class KdrInstanceConfig(
             val fileDefaults = readDefaultEnvVars(AppPaths.resolve(defaultEnvVarsFileName), System::getenv)
             // Role-aware from the very first read: an edge may want its own KDR_EDGE_ENV, and the environment
             // name decides everything downstream, so it cannot be the one variable the role does not reach.
-            val env = envVarNamesFor(envName, bootRole)
+            val env = envVarNamesFor(envName.name, bootRole)
                 .firstNotNullOfOrNull { System.getenv(it) ?: fileDefaults[it] }
                 ?: ENV.local
             val config = KdrInstanceConfig(env, env, ENV.liveSource, bootRole)
@@ -298,8 +314,13 @@ class KdrInstanceConfig(
             return config
         }
 
-        /** The environment variable naming the environment. */
-        const val envName = "KDR_ENV"
+        /** The environment variable naming the environment. Read at pre-boot, so via [EnvVarDef.name]. */
+        val envName = EnvVarDef(
+            "KDR_ENV", group = ENVGRP.application, defaultDoc = "`local`",
+            description = "The environment name -- `local`, `unit`, `prod`. Drives environment-specific " +
+                "behavior (whether the sample app loads, whether a database host is defaulted, and much more). " +
+                "Read before the instance exists, so it is resolved at pre-boot rather than through an instance.",
+        )
 
         /** The prefix every application environment variable carries. */
         const val envVarPrefix = "KDR_"

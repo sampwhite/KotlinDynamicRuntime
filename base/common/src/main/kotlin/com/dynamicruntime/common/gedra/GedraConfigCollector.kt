@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckMode
@@ -24,7 +26,11 @@ object GCFG {
     const val globalNamespace = "globalconfig"
 
     /** Overrides what a config problem does at startup; see [gedraConfigCheckMode]. */
-    const val checkEnvVar = "KDR_GEDRA_CONFIG_CHECK"
+    val checkEnvVar = EnvVarDef(
+        "KDR_GEDRA_CONFIG_CHECK", group = ENVGRP.gedra, defaultDoc = "strict (`warn` in `prod`)",
+        description = "What a Gedra config problem does at startup: `strict` (refuse to boot), `warn`, or " +
+            "`off`. Unset means strict everywhere except `prod`, which warns.",
+    )
 
     // The mode words live on `BootCheckMode` (issue #303), shared with every other boot check rather than
     // spelled out a third time here.
@@ -92,7 +98,7 @@ fun reportConfigProblem(
     // Also recorded for the operator report (issue #303): what a production node dropped is precisely what
     // somebody arriving later needs, and the error log said it once while nobody was watching.
     BootCheckRegistry.get(cxt).record(
-        BCHK.gedraConfig, GCFG.checkEnvVar, mode, listOf("${problem.message} ${problem.degradedTo}"),
+        BCHK.gedraConfig, GCFG.checkEnvVar.name, mode, listOf("${problem.message} ${problem.degradedTo}"),
     )
 }
 
@@ -165,7 +171,7 @@ class GedraConfigCollector {
     fun add(cxt: KdrCxt, config: GedraConfig): Boolean {
         val mode = gedraConfigCheckMode(cxt)
         // Registered on the way past, findings or not, so the report can say the check ran (issue #303).
-        BootCheckRegistry.get(cxt).record(BCHK.gedraConfig, GCFG.checkEnvVar, mode)
+        BootCheckRegistry.get(cxt).record(BCHK.gedraConfig, GCFG.checkEnvVar.name, mode)
         if (mode == BootCheckMode.off) {
             keep(config)
             return true

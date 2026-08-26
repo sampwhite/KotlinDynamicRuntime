@@ -51,7 +51,7 @@ class EnvAuthRulesTest : StringSpec({
 
     "the env var is the default when the config option is unset, and the option still wins over it" {
         // A config entry under the env-var key is read by getEnvBool as if it were the process env var.
-        val c = config(ENV.local).apply { put(ENVA.trustEnvAuthHeaderEnvVar, "true") }
+        val c = config(ENV.local).apply { put(ENVA.trustEnvAuthHeaderEnvVar.name, "true") }
         EnvAuthRules.isTrusted(c) shouldBe true
 
         c.put(ACFG.trustEnvAuthHeader, false)
@@ -222,7 +222,7 @@ class EnvAuthRulesTest : StringSpec({
         }
         resolve(untrusting, forwardedFor = null).email shouldBe ENVA.assumedAddress
 
-        val viaEnvVar = config(ENV.unit).apply { put(ENVA.assumeEnvAuthEnvVar, "true") }
+        val viaEnvVar = config(ENV.unit).apply { put(ENVA.assumeEnvAuthEnvVar.name, "true") }
         resolve(viaEnvVar, forwardedFor = null).email shouldBe ENVA.assumedAddress
     }
 

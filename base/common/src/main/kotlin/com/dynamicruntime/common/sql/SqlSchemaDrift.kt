@@ -60,7 +60,7 @@ object SqlSchemaDrift {
         // even when every table is clean (issue #303). Recording only on a finding would make a healthy node
         // and a node where this never executed look identical, which is the confusion the registry exists to
         // remove. Findings accumulate under the one name, so the per-table calls build a single entry.
-        registry.record(BCHK.schemaDrift, DbEnv.allowSchemaDrift, mode)
+        registry.record(BCHK.schemaDrift, DbEnv.allowSchemaDrift.name, mode)
         val blocking = strandedBlockingColumns(tableDef, existing, aliases)
         val unbackfilled = unbackfilledColumns(tableDef, existing, aliases)
 
@@ -76,7 +76,7 @@ object SqlSchemaDrift {
             // Reported as a finding as well as logged. It is transient by nature, which is an argument for
             // not *failing* on it and none at all for hiding it: "if it persists" is a judgment somebody has
             // to be able to make, and a log line from boot is not where they will make it.
-            registry.record(BCHK.schemaDrift, DbEnv.allowSchemaDrift, mode, listOf(note))
+            registry.record(BCHK.schemaDrift, DbEnv.allowSchemaDrift.name, mode, listOf(note))
         }
         if (blocking.isEmpty()) {
             return
@@ -92,7 +92,7 @@ object SqlSchemaDrift {
             "boot anyway (writes will still fail) while a migration is in progress."
 
         if (mode != BootCheckMode.strict) {
-            registry.record(BCHK.schemaDrift, DbEnv.allowSchemaDrift, mode, listOf(message))
+            registry.record(BCHK.schemaDrift, DbEnv.allowSchemaDrift.name, mode, listOf(message))
             // Logged at error rather than warn: this is not a caveat, it is a broken deployment that somebody
             // has asked to start regardless.
             LogSql.error(cxt, message)

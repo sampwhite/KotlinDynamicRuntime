@@ -84,7 +84,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         // Recorded before the refusal below, and unconditionally -- including when there is nothing to say.
         // A clean run is a fact the report needs (issue #303): "ran and found nothing" and "never ran" are
         // different states of a node and look identical in a report that lists only problems.
-        BootCheckRegistry.get(cxt).record(BCHK.fragments, FRAG.checkEnvVar, mode, findings)
+        BootCheckRegistry.get(cxt).record(BCHK.fragments, FRAG.checkEnvVar.name, mode, findings)
         if (findings.isEmpty()) return
         val detail = findings.joinToString("; ")
         if (mode == BootCheckMode.strict) {

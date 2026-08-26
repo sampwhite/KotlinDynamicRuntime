@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.content
 
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.startup.BootCheckMode
 
 /**
@@ -26,7 +28,12 @@ object FRAG {
      * can demand [BootCheckMode.strict] and a developer chasing something else can drop to
      * [BootCheckMode.warn].
      */
-    const val checkEnvVar = "KDR_FRAGMENT_CHECK"
+    val checkEnvVar = EnvVarDef(
+        "KDR_FRAGMENT_CHECK", group = ENVGRP.content, defaultDoc = "strict (`warn` in `prod`)",
+        description = "What a fragment problem does at startup: `strict`, `warn` or `off`. Unset means strict " +
+            "everywhere except `prod` -- a developer or test should be stopped by a broken fragment; a " +
+            "production node should not refuse to serve everything else over a defect in one piece of copy.",
+    )
 
     // The mode words themselves live on `BootCheckMode` (issue #303): they are the same three for every boot
     // check, and a per-check copy of them is how two checks come to disagree about what "off" means.

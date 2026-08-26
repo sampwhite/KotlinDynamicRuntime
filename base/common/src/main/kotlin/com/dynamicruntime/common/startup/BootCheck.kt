@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
@@ -197,7 +198,7 @@ private fun strictOutsideProd(cxt: KdrCxt, prodMode: BootCheckMode): BootCheckMo
  * A mode named outright: `strict`, `warn` or `off`. Null when [envVar] is unset or spells none of them, which
  * leaves the environment default in place rather than guessing at what was meant.
  */
-fun modeOverride(cxt: KdrCxt, envVar: String): BootCheckMode? =
+fun modeOverride(cxt: KdrCxt, envVar: EnvVarDef): BootCheckMode? =
     cxt.getEnvVar(envVar)?.trim()?.lowercase()?.toOptEnum<BootCheckMode>()
 
 /**
@@ -210,5 +211,5 @@ fun modeOverride(cxt: KdrCxt, envVar: String): BootCheckMode? =
  * a mode variable, and giving an allow-flag a third state would make `true` ambiguous between "let it through"
  * and "do not look".
  */
-fun allowOverride(cxt: KdrCxt, envVar: String): BootCheckMode? =
+fun allowOverride(cxt: KdrCxt, envVar: EnvVarDef): BootCheckMode? =
     cxt.getEnvVar(envVar)?.toOptBool()?.let { if (it) BootCheckMode.warn else BootCheckMode.strict }

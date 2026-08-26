@@ -187,6 +187,11 @@ object BOOT {
      * both backend surfaces lists both tags rather than naming a combined role -- see `NodeProfile` for why
      * the combination never appears in a declaration.
      */
-    const val bootTagsEnvVar = "KDR_TAGS"
+    val bootTagsEnvVar = EnvVarDef(
+        "KDR_TAGS", group = ENVGRP.application, defaultDoc = "none",
+        description = "This node's capability tags (issue #433), comma-separated -- what surfaces it serves, " +
+            "as opposed to the singular boot role. Role-prefixed like the rest, so an edge reads `KDR_EDGE_TAGS` " +
+            "first. A node carrying no tags is admitted by every declaration that names none.",
+    )
 
 }

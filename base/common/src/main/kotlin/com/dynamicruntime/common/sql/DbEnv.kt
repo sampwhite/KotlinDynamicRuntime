@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.sql
 
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 
 /**
@@ -15,37 +17,41 @@ import com.dynamicruntime.common.context.KdrCxt
  */
 @Suppress("ConstPropertyName")
 object DbEnv {
-    /** Boolean default for `inMemoryOnly` when it is not explicitly configured (default true). */
-    const val inMemoryOnly = "KDR_IN_MEMORY_ONLY"
+    val inMemoryOnly = EnvVarDef(
+        "KDR_IN_MEMORY_ONLY", group = ENVGRP.database, defaultDoc = "true",
+        description = "Default for `inMemoryOnly` mode (parsed loosely as a boolean). When true, the runtime " +
+            "uses in-memory state and the database type is forced to in-memory H2.",
+    )
 
     /** Selects the [DbType]; ignored when in-memory mode forces in-memory H2. */
-    const val dbType = "KDR_DB_TYPE"
+    val dbType = EnvVarDef(
+        "KDR_DB_TYPE", group = ENVGRP.database, defaultDoc = "in-memory H2",
+        description = "Selects the database type; ignored when in-memory mode forces in-memory H2.",
+    )
 
-    /**
-     * PostgreSQL host, with an optional `:port` suffix (else the default port). Defaulted to
-     * [SqlDbBuilder.defaultLocalDbHost] only in the local environment; other environments must set it.
-     */
-    const val dbHost = "KDR_DB_HOST"
+    val dbHost = EnvVarDef(
+        "KDR_DB_HOST", group = ENVGRP.database, defaultDoc = "localhost in `local`, else required",
+        description = "PostgreSQL host, with an optional `:port` suffix (else the default port). Defaulted to " +
+            "localhost only in the local environment; other environments must set it.",
+    )
 
-    /** Database name (file-backed H2 and PostgreSQL); defaults to [SqlDbBuilder.defaultDbName] (`kdr`). */
-    const val dbName = "KDR_DB_NAME"
+    val dbName = EnvVarDef(
+        "KDR_DB_NAME", group = ENVGRP.database, defaultDoc = "`kdr`",
+        description = "Database name, used by file-backed H2 and PostgreSQL.",
+    )
 
-    /**
-     * PostgreSQL username. Postgres only (the H2 variants use a hardcoded user); defaults to
-     * [SqlDbBuilder.defaultDbUser] (`kdr`) and is rarely, if ever, set.
-     */
-    const val dbUser = "KDR_DB_USER"
+    val dbUser = EnvVarDef(
+        "KDR_DB_USER", group = ENVGRP.database, defaultDoc = "`kdr`",
+        description = "PostgreSQL username. Postgres only (the H2 variants use a hardcoded user); rarely set.",
+    )
 
-    /**
-     * Boots despite **blocking** schema drift -- a column the database has, the code does not declare, that is
-     * `NOT NULL` with no default (issue #216). Off by default, so such a deployment refuses to start: it
-     * cannot write, and finding that out at boot beats finding out when a user registers.
-     *
-     * The escape hatch exists because an operator mid-migration has a legitimate reason to start a node that
-     * is in this state, and a check with no way past it is a check that gets deleted. It does not make the
-     * deployment work -- writes still fail -- it only downgrades the refusal to a logged error.
-     */
-    const val allowSchemaDrift = "KDR_ALLOW_SCHEMA_DRIFT"
+    val allowSchemaDrift = EnvVarDef(
+        "KDR_ALLOW_SCHEMA_DRIFT", group = ENVGRP.database, defaultDoc = "off",
+        description = "Boots despite **blocking** schema drift -- a `NOT NULL` column with no default that the " +
+            "database has and the code does not declare (issue #216). Off by default, so such a deployment " +
+            "refuses to start (it cannot write). The escape hatch only downgrades the refusal to a logged " +
+            "error; writes still fail. For an operator mid-migration who has a legitimate reason to start.",
+    )
 
     /** Resolves the default for `inMemoryOnly`: the [inMemoryOnly] env var if set (parsed loosely), else true. */
     fun resolveInMemoryOnly(cxt: KdrCxt): Boolean = cxt.getEnvBool(inMemoryOnly) ?: true

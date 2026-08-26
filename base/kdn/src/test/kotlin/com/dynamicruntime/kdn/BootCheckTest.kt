@@ -53,17 +53,17 @@ class BootCheckTest : StringSpec({
 
     "a mode word overrides the environment, in either direction" {
         val prod = cxtIn(ENV.prod, "bootCheckWord")
-        prod.instanceConfig.put(FRAG.checkEnvVar, BootCheckMode.strict.name)
+        prod.instanceConfig.put(FRAG.checkEnvVar.name, BootCheckMode.strict.name)
         bootCheckMode(prod, modeOverride(prod, FRAG.checkEnvVar), BootCheckMode.warn) shouldBe BootCheckMode.strict
 
         val dev = cxtIn(ENV.dev, "bootCheckWordDev")
-        dev.instanceConfig.put(FRAG.checkEnvVar, BootCheckMode.off.name)
+        dev.instanceConfig.put(FRAG.checkEnvVar.name, BootCheckMode.off.name)
         bootCheckMode(dev, modeOverride(dev, FRAG.checkEnvVar), BootCheckMode.warn) shouldBe BootCheckMode.off
     }
 
     "an unrecognized mode word leaves the environment default rather than guessing" {
         val dev = cxtIn(ENV.dev, "bootCheckJunk")
-        dev.instanceConfig.put(FRAG.checkEnvVar, "sometimes")
+        dev.instanceConfig.put(FRAG.checkEnvVar.name, "sometimes")
         modeOverride(dev, FRAG.checkEnvVar).shouldBeNull()
         bootCheckMode(dev, modeOverride(dev, FRAG.checkEnvVar), BootCheckMode.warn) shouldBe BootCheckMode.strict
     }
@@ -72,10 +72,10 @@ class BootCheckTest : StringSpec({
         // `KDR_ALLOW_SCHEMA_DRIFT=true` says *allow*, which is `warn`. Spelling it as a mode word would be a
         // worse name for the same thing, so the two spellings coexist, and only the default is shared.
         val prod = cxtIn(ENV.prod, "bootCheckAllow")
-        prod.instanceConfig.put(DbEnv.allowSchemaDrift, "true")
+        prod.instanceConfig.put(DbEnv.allowSchemaDrift.name, "true")
         SqlSchemaDrift.driftMode(prod) shouldBe BootCheckMode.warn
 
-        prod.instanceConfig.put(DbEnv.allowSchemaDrift, "false")
+        prod.instanceConfig.put(DbEnv.allowSchemaDrift.name, "false")
         SqlSchemaDrift.driftMode(prod) shouldBe BootCheckMode.strict
         // Unset is the check's own production policy, which for drift is to refuse.
         SqlSchemaDrift.driftMode(cxtIn(ENV.prod, "bootCheckAllowUnset")) shouldBe BootCheckMode.strict
@@ -132,9 +132,9 @@ class BootCheckTest : StringSpec({
         // A unit instance is not production, so both are strict here -- which is what makes the *envVar* the
         // useful half of the report: it is how an operator changes the answer without reading the source.
         byName.getValue(BCHK.fragments)[BCHK.mode] shouldBe BootCheckMode.strict.name
-        byName.getValue(BCHK.fragments)[BCHK.envVar] shouldBe FRAG.checkEnvVar
-        byName.getValue(BCHK.schemaDrift)[BCHK.envVar] shouldBe DbEnv.allowSchemaDrift
-        byName.getValue(BCHK.gedraConfig)[BCHK.envVar] shouldBe GCFG.checkEnvVar
+        byName.getValue(BCHK.fragments)[BCHK.envVar] shouldBe FRAG.checkEnvVar.name
+        byName.getValue(BCHK.schemaDrift)[BCHK.envVar] shouldBe DbEnv.allowSchemaDrift.name
+        byName.getValue(BCHK.gedraConfig)[BCHK.envVar] shouldBe GCFG.checkEnvVar.name
     }
 
     "a degraded node says so, which is the whole reason the endpoint exists" {
@@ -149,7 +149,7 @@ class BootCheckTest : StringSpec({
         val degraded = Startup.mkTestBootCxt("bootChecksDegraded", "bootChecksDegradedTest")
         BootCheckRegistry.get(degraded).record(
             BCHK.fragments,
-            FRAG.checkEnvVar,
+            FRAG.checkEnvVar.name,
             BootCheckMode.warn,
             listOf("'demo' is declared but absent"),
         )

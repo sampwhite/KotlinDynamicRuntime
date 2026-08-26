@@ -24,7 +24,12 @@ import java.io.File
 @Suppress("ConstPropertyName")
 object AppPaths {
     const val workspaceDirProperty = "kdr.workspaceDir"
-    const val workspaceDirEnvVar = "KDR_WORKSPACE_DIR"
+    val workspaceDirEnvVar = EnvVarDef(
+        "KDR_WORKSPACE_DIR", group = ENVGRP.application, defaultDoc = "found by walking up to `settings.gradle.kts`",
+        description = "The workspace directory (the Gradle build root that contains this repo). Read before " +
+            "the instance exists, via `System.getenv`. Normally left unset -- the directory is found by " +
+            "walking up to the nearest `settings.gradle.kts`.",
+    )
 
     /** The per-deployment Gradle settings file that marks the workspace directory. */
     const val settingsFileName = "settings.gradle.kts"
@@ -34,7 +39,7 @@ object AppPaths {
 
     fun workspaceDir(): File {
         System.getProperty(workspaceDirProperty)?.let { return File(it) }
-        System.getenv(workspaceDirEnvVar)?.let { return File(it) }
+        System.getenv(workspaceDirEnvVar.name)?.let { return File(it) }
         return findWorkspaceDir() ?: File(System.getProperty("user.dir"))
     }
 
