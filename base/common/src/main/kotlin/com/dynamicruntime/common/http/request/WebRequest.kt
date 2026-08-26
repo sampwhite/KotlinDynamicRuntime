@@ -29,8 +29,12 @@ interface WebRequest {
 
     fun addResponseHeader(header: String, value: String)
 
-    /** Adds a `Set-Cookie` response header (Path=/, HttpOnly, secure when proxied), optionally with expiry. */
-    fun addResponseCookie(name: String, value: String, expire: Instant?)
+    /**
+     * Adds a `Set-Cookie` response header (Path=/, HttpOnly, `SameSite` per [sameSite], and `Secure` derived
+     * from the node's configuration -- see `CookieRules`, issue #431), optionally with expiry. [sameSite]
+     * defaults to [CKI.lax], which a session cookie wants; a perimeter cookie passes [CKI.strict].
+     */
+    fun addResponseCookie(name: String, value: String, expire: Instant?, sameSite: String = CKI.lax)
 
     fun sendRedirect(url: String)
 
