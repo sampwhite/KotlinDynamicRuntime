@@ -112,4 +112,33 @@ class SchOpenOptionsTest : StringSpec({
         narrowingProblems("t.Visit", body(open = true, "inspection"), body(open = false, "audit"))
             .shouldBeEmpty()
     }
+
+    "adding an open suggestion list to an optionless base is allowed" {
+        // The global field is free text (no choices); a client adds per-caller *suggestions* without bounding
+        // it. That accepts exactly what the base did -- any string -- so it must not be refused. Adding a
+        // *closed* list to the same optionless field is already allowed (narrowing rule 2), and refusing the
+        // weaker, open one while permitting the stricter, closed one would be backwards.
+        //
+        // A `purpose` that is free text on the base and gains a list on the variant. Both carry `type: string`
+        // so the only difference under test is the list -- otherwise the "everything else must match" rule
+        // would flag the type, which is a different thing entirely.
+        fun purpose(prop: Map<String, Any?>) = mapOf<String, Any?>(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf("purpose" to (mapOf(SCH.type to SCT.string) + prop)),
+        )
+        val freeText = purpose(emptyMap())
+        val withOpenList = purpose(
+            mapOf(
+                SCH.options to listOf(mapOf(SCH.label to "inspection", SCH.value to "inspection")),
+                SCH.openOptions to true,
+            ),
+        )
+        val withClosedList = purpose(
+            mapOf(SCH.options to listOf(mapOf(SCH.label to "inspection", SCH.value to "inspection"))),
+        )
+        narrowingProblems("t.Visit", freeText, withOpenList).shouldBeEmpty()
+        // The closed counterpart is likewise allowed -- applying a list where there was none narrows.
+        narrowingProblems("t.Visit", freeText, withClosedList).shouldBeEmpty()
+    }
+
 })
