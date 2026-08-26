@@ -59,7 +59,7 @@ fun cfactSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "cfact") {
  * people running the deployment, for whom every client is already theirs. `userAdmin` admits a *customer's*
  * own administrator, and one customer reading another's declarations is exactly the leak that decided cfact
  * names are not held unique across clients: a name refused at boot would let a client discover its
- * neighbours by trying words, and so would a listing of their vocabulary.
+ * neighbors by trying words, and so would a listing of their vocabulary.
  *
  * Only fires on a client copy -- on the shared surface `clientFromPath` is null and the caller gets their own
  * registry, which is theirs by definition. [AdminScope.allClients] passes, which is the whole meaning of the

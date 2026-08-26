@@ -177,7 +177,7 @@ class SchemaService : ServiceInitializer {
         checkOptionsSources(optionsProviders)
         // Built here for the reason the client variants are: this is the first moment every contributor has
         // been heard, and a client's declarations can only be held to "add, never redefine" against a
-        // complete global set. Once built it never changes -- which is what makes a registry something an
+        // complete global set. Once built, it never changes -- which is what makes a registry something an
         // expression can be parsed against once and evaluated many times.
         cfactRegistries = buildCFactRegistries(collected.cfacts, collected.cfactSources, collected.clientCFacts)
         isInit = true

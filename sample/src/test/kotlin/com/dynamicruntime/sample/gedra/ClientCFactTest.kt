@@ -83,7 +83,7 @@ class ClientCFactTest : StringSpec({
     "one client's administrator cannot read another's list" {
         // The confinement the section change made **necessary** rather than optional. Under `operator` this
         // was reachable only by people running the deployment, for whom every client is already theirs;
-        // `userAdmin` admits a customer's own administrator, and a customer able to read their neighbours'
+        // `userAdmin` admits a customer's own administrator, and a customer able to read their neighbors'
         // vocabulary is the same leak that decided cfact names are not held unique across clients.
         globexAdmin.expectError(EXC.badInput, clientPath(CFD.cfactsPath, SC.acme))
         acmeAdmin.expectError(EXC.badInput, clientPath(CFD.cfactsPath, SC.globex))
