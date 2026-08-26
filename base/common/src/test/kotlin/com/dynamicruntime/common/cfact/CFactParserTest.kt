@@ -63,7 +63,7 @@ class CFactParserTest : StringSpec({
         val e = shouldThrow<KdrException> { parse("ab,cd|ef") }
         e.fullMessage() shouldContain "mixed without parentheses"
         e.fullMessage() shouldContain "("
-        // Both parenthesised forms are accepted, and they mean different things.
+        // Both parenthesized forms are accepted, and they mean different things.
         matches("(ab,cd)|ef", "ef") shouldBe true
         matches("ab,(cd|ef)", "ef") shouldBe false
         matches("ab,(cd|ef)", "ab", "ef") shouldBe true
@@ -132,7 +132,7 @@ class CFactParserTest : StringSpec({
     }
 
     /**
-     * Absence means always; blankness is refused. A missing field, a typo or an emptied overlay value all
+     * Absence means always; blankness is refused. A missing field, a typo, or an emptied overlay value all
      * produce an empty string, and reading those as "show to everyone" fails in the permissive direction.
      */
     "an omitted expression matches everything, but a blank one is refused" {

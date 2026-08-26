@@ -28,8 +28,8 @@ object CFactParser {
      * silently always true.
      *
      * **Blank is refused, not read as "always".** A condition that is *absent* means always -- see
-     * [parseOrAlways], which is what a default case with no expression uses -- but an empty string is a
-     * different thing: it is what a missing field, a typo or an emptied overlay value produces, and reading
+     * [parseCFactOrAlways], which is what a default case with no expression uses -- but an empty string is a
+     * different thing: it is what a missing field, a typo, or an emptied overlay value produces, and reading
      * those as "show this to everyone" fails in the permissive direction. Omission is structural and
      * deliberate; blankness is usually an accident.
      */
