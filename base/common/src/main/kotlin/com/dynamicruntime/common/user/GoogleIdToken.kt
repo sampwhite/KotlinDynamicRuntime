@@ -4,15 +4,12 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
+import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.util.base64Decode
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.util.jsonMap
 import java.math.BigInteger
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.security.KeyFactory
 import java.security.Signature
 import java.security.interfaces.RSAPublicKey
@@ -141,8 +138,6 @@ interface JwtKeySource {
  * case is a cache hit.
  */
 class GoogleJwksKeySource(private val jwksUri: String = GOOG.defaultJwksUri) : JwtKeySource {
-    private val httpClient: HttpClient by lazy { HttpClient.newHttpClient() }
-
     // Guarded by `this`: a rotation can have several request threads miss at once, and they must not each
     // start a fetch or race the map into an inconsistent state.
     private var cached: Map<String, RSAPublicKey> = emptyMap()
@@ -156,16 +151,13 @@ class GoogleJwksKeySource(private val jwksUri: String = GOOG.defaultJwksUri) : J
     }
 
     private fun fetchKeys(cxt: KdrCxt): Map<String, RSAPublicKey> {
-        val request = HttpRequest.newBuilder().uri(URI.create(jwksUri)).GET().build()
-        val response = try {
-            httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-        } catch (e: Exception) {
-            throw KdrException("Could not reach Google's signing keys at '$jwksUri'.", cause = e)
+        // The one outbound client (issue #420): the `fast` timeouts are what stop an unresponsive endpoint from
+        // holding this monitor -- and every request thread that needs a key behind it -- indefinitely.
+        val response = OutboundHttpService.get(cxt).fast(cxt).get(jwksUri)
+        if (response.status != 200) {
+            throw KdrException("Google's signing keys returned status ${response.status}.")
         }
-        if (response.statusCode() != 200) {
-            throw KdrException("Google's signing keys returned status ${response.statusCode()}.")
-        }
-        return parseJwks(response.body())
+        return parseJwks(response.body)
     }
 
     companion object {

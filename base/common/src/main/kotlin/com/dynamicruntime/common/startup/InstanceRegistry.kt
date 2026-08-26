@@ -26,6 +26,10 @@ object InstanceRegistry {
     private val instanceConfigs = HashMap<String, KdrInstanceConfig>()
     private var shutdownHookInstalled = false
 
+    // Resources to release when the JVM shuts down -- today the outbound HTTP clients (issue #420), which hold
+    // threads. Drained by [ShutdownThread]; empty in a test that never creates one, so the suite pays nothing.
+    private val shutdownCloseables = mutableListOf<AutoCloseable>()
+
     /**
      * Registers component definitions (idempotent by [ComponentDefinition.providerName])
      * and installs the JVM shutdown hook on first call. Call during VM startup.
@@ -40,6 +44,20 @@ object InstanceRegistry {
                 componentDefinitions.putIfAbsent(component.providerName, component)
             }
         }
+    }
+
+    /**
+     * Registers an [AutoCloseable] to be closed on the JVM shutdown hook. For a long-lived resource that holds
+     * threads and is created lazily, so nothing but its owner has to remember to stop it (issue #420).
+     */
+    fun registerForShutdown(closeable: AutoCloseable) {
+        synchronized(shutdownCloseables) { shutdownCloseables.add(closeable) }
+    }
+
+    /** Closes everything [registerForShutdown] collected. Called once by [ShutdownThread]; failures are swallowed. */
+    fun runShutdownCloseables() {
+        val toClose = synchronized(shutdownCloseables) { shutdownCloseables.toList() }
+        toClose.forEach { runCatching { it.close() } }
     }
 
     /**

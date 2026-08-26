@@ -32,49 +32,54 @@ class ProbeSessionTest : StringSpec({
     afterSpec { server.close() }
 
     "a session logs in and carries the cookie to the next call" {
-        val session = ProbeSession(ROLE.admin, baseUrl)
-        session.becomeUser("probe-admin@example.com", ROLE.admin, listOf(ROLE.allClients))
+        ProbeSession(ROLE.admin, baseUrl).use { session ->
+            session.becomeUser("probe-admin@example.com", ROLE.admin, listOf(ROLE.allClients))
 
-        // The second call proves the session stuck: an anonymous caller would be refused this outright.
-        val response = session.sendGetRequest(ADEP.users)
-        response.statusCode shouldBe 200
+            // The second call proves the session stuck: an anonymous caller would be refused this outright.
+            val response = session.sendGetRequest(ADEP.users)
+            response.statusCode shouldBe 200
+        }
     }
 
     "a level is what it claims: an operator reaches an operator section but not an admin one" {
-        val session = ProbeSession(ROLE.operator, baseUrl)
-        val info = session.becomeUser("probe-operator@example.com", ROLE.operator)
-        info["roles"].toJsonListOfStrings() shouldContain ROLE.operator
+        ProbeSession(ROLE.operator, baseUrl).use { session ->
+            val info = session.becomeUser("probe-operator@example.com", ROLE.operator)
+            info["roles"].toJsonListOfStrings() shouldContain ROLE.operator
 
-        session.sendGetRequest("/operator/system/info").statusCode shouldBe 200
-        // 403 rather than 401 -- logged in, wrong rung (issue #211).
-        session.sendGetRequest(ADEP.users).statusCode shouldBe 403
+            session.sendGetRequest("/operator/system/info").statusCode shouldBe 200
+            // 403 rather than 401 -- logged in, wrong rung (issue #211).
+            session.sendGetRequest(ADEP.users).statusCode shouldBe 403
+        }
     }
 
     "an anonymous session is refused, and says so with a status rather than an empty body" {
-        val session = ProbeSession(anonymousLabel, baseUrl)
-        val response = session.sendGetRequest(ADEP.users)
-        response.statusCode shouldBe 401
-        response.errorMessage.isNullOrBlank() shouldBe false
+        ProbeSession(anonymousLabel, baseUrl).use { session ->
+            val response = session.sendGetRequest(ADEP.users)
+            response.statusCode shouldBe 401
+            response.errorMessage.isNullOrBlank() shouldBe false
+        }
     }
 
     // The one that matters most. A probe pointed somewhere with no server must raise, so a scenario stops
     // instead of printing zeroes that look like an answer about the code under test.
     "a session pointed at nothing fails loudly instead of reporting an empty result" {
-        val session = ProbeSession(anonymousLabel, "http://localhost:1")
-        val failure = shouldThrow<KdrException> { session.sendGetRequest("/health") }
-        failure.fullMessage() shouldContain "Could not reach"
-        // And it names a cause: a connection refusal carries no message of its own, and "(null)" would be
-        // useless from the tool whose entire purpose is diagnosis.
-        failure.fullMessage() shouldContain "Exception"
+        ProbeSession(anonymousLabel, "http://localhost:1").use { session ->
+            val failure = shouldThrow<KdrException> { session.sendGetRequest("/health") }
+            failure.fullMessage() shouldContain "Could not reach"
+            // And it names a cause: a connection refusal carries no message of its own, and "(null)" would be
+            // useless from the tool whose entire purpose is diagnosis.
+            failure.fullMessage() shouldContain "Exception"
+        }
     }
 
     "becoming a user throws when the instance refuses, rather than handing back an anonymous session" {
-        val session = ProbeSession(ROLE.user, baseUrl)
-        // `failIfUserAlreadyExists` is not set, so the only way to be refused here is a bad level -- the
-        // field is a closed option list, so this is a 400. Whatever the reason, the session must not come
-        // back looking usable.
-        val failure = shouldThrow<KdrException> { session.becomeUser("probe-bad@example.com", "sysadmin") }
-        failure.fullMessage() shouldContain "Could not become"
-        session.userInfo shouldBe null
+        ProbeSession(ROLE.user, baseUrl).use { session ->
+            // `failIfUserAlreadyExists` is not set, so the only way to be refused here is a bad level -- the
+            // field is a closed option list, so this is a 400. Whatever the reason, the session must not come
+            // back looking usable.
+            val failure = shouldThrow<KdrException> { session.becomeUser("probe-bad@example.com", "sysadmin") }
+            failure.fullMessage() shouldContain "Could not become"
+            session.userInfo shouldBe null
+        }
     }
 })

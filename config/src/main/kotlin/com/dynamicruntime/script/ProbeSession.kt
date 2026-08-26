@@ -3,20 +3,14 @@ package com.dynamicruntime.script
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.http.client.KdrHttpClient
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
-import java.net.CookieManager
-import java.net.CookiePolicy
-import java.net.URI
 import java.net.URLEncoder
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
-import java.time.Duration
 
 /** The instance a probe talks to unless told otherwise. Never 7070 -- that is the developer's own server. */
 const val defaultProbeUrl = "http://localhost:7071"
@@ -55,12 +49,10 @@ class ProbeResponse(val statusCode: Int, val body: Map<String, Any?>, val rawBod
  * own [ProbeResponse.statusCode], because out here every call crosses a real socket and can be refused.
  */
 @Suppress("ConstPropertyName")
-class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) {
-    private val cookies = CookieManager(null, CookiePolicy.ACCEPT_ALL)
-    private val http: HttpClient = HttpClient.newBuilder()
-        .cookieHandler(cookies)
-        .connectTimeout(Duration.ofSeconds(10))
-        .build()
+class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) : AutoCloseable {
+    // A cookie-keeping standalone client so a login sticks across calls. Standalone -- not the instance's
+    // `fast`/`slow` clients -- because a script host has no instance config behind it (issue #420).
+    private val httpClient = KdrHttpClient("probe-$label", keepCookies = true)
 
     /** The acting user's info once [becomeUser] has run; null while anonymous. */
     var userInfo: Map<String, Any?>? = null
@@ -103,14 +95,14 @@ class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) {
 
     /** A GET, returning status as well as body -- the form to use when a refusal is a possible outcome. */
     fun sendGetRequest(path: String, args: Map<String, Any?>? = null): ProbeResponse =
-        send(HttpRequest.newBuilder(URI("$baseUrl$apiRoot$path${query(args)}")).GET())
+        send("GET", url(path, args))
 
     /**
      * A DELETE, returning status as well as body. Like a GET, its input is [args] in the query string --
      * this codebase sends no DELETE body (see `HttpMethod.DELETE`), and neither does its probe.
      */
     fun sendDeleteRequest(path: String, args: Map<String, Any?>? = null): ProbeResponse =
-        send(HttpRequest.newBuilder(URI("$baseUrl$apiRoot$path${query(args)}")).DELETE())
+        send("DELETE", url(path, args))
 
     /** A POST, returning status as well as body. */
     fun sendPostRequest(path: String, data: Map<String, Any?>): ProbeResponse =
@@ -124,11 +116,7 @@ class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) {
         if (method != HttpMethod.POST && method != HttpMethod.PUT) {
             throw KdrException("sendEditRequest sends a JSON body, so its method must be POST or PUT, not ${method.name}.")
         }
-        return send(
-            HttpRequest.newBuilder(URI("$baseUrl$apiRoot$path"))
-                .header("Content-Type", "application/json")
-                .method(method.name, HttpRequest.BodyPublishers.ofString(data.toJsonStr())),
-        )
+        return send(method.name, url(path, null), contentType = "application/json", body = data.toJsonStr())
     }
 
     private fun query(args: Map<String, Any?>?): String =
@@ -136,16 +124,19 @@ class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) {
             "?" + params.entries.joinToString("&") { (k, v) -> "${encode(k)}=${encode(v?.toString() ?: "")}" }
         } ?: ""
 
-    private fun send(builder: HttpRequest.Builder): ProbeResponse {
+    private fun url(path: String, args: Map<String, Any?>?): String = "$baseUrl$apiRoot$path${query(args)}"
+
+    private fun send(method: String, url: String, contentType: String? = null, body: String? = null): ProbeResponse {
         val response = try {
-            http.send(builder.timeout(Duration.ofSeconds(30)).build(), HttpResponse.BodyHandlers.ofString())
-        } catch (e: Exception) {
-            // A connection refusal arrives as a ConnectException with a null message, so fall back to the
-            // type -- "(null)" from the tool whose job is diagnosis would be its own small joke.
-            val why = e.message?.takeIf { it.isNotBlank() } ?: e::class.simpleName ?: "unknown error"
+            httpClient.send(method, url, contentType = contentType, body = body)
+        } catch (e: KdrException) {
+            // A connection refusal arrives as a cause with a null message, so fall back to the type -- "(null)"
+            // from the tool whose entire job is diagnosis would be its own small joke.
+            val root = e.cause ?: e
+            val why = root.message?.takeIf { it.isNotBlank() } ?: root::class.simpleName ?: "unknown error"
             throw KdrException("Could not reach $baseUrl -- is an instance running there? ($why)", e)
         }
-        val raw = response.body() ?: ""
+        val raw = response.body
         // A non-JSON body is not a parse failure worth throwing over: an HTML error page or an empty 404 is
         // itself the answer, and the status already says so. Keep the raw text for the caller to show.
         val parsed = try {
@@ -153,10 +144,13 @@ class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) {
         } catch (_: Exception) {
             emptyMap()
         }
-        return ProbeResponse(response.statusCode(), parsed, raw)
+        return ProbeResponse(response.status, parsed, raw)
     }
 
     private fun encode(s: String): String = URLEncoder.encode(s, StandardCharsets.UTF_8)
+
+    /** Stops the underlying HTTP client and releases its threads. */
+    override fun close() = httpClient.close()
 
     companion object {
         /** The API context root every endpoint path hangs off. */
