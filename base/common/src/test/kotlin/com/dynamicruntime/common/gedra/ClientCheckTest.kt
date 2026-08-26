@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 import io.kotest.assertions.throwables.shouldThrow
@@ -278,7 +279,7 @@ class ClientCheckTest : StringSpec({
     }
 
     "the refusal says how to start anyway" {
-        refusal(clientConfig("acme", declaredId = "ac-me")) shouldContain "${GCFG.checkEnvVar}=${GCFG.warn}"
+        refusal(clientConfig("acme", declaredId = "ac-me")) shouldContain "${GCFG.checkEnvVar}=${BootCheckMode.warn}"
     }
 
     // --- the clients every deployment has --------------------------------------

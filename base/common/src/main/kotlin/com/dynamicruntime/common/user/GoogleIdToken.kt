@@ -71,6 +71,16 @@ object GOOG {
      * drift between Google and this node without meaningfully extending a token's life.
      */
     const val expiryLeewayMs = 60L * 1000
+
+    /**
+     * The minimum interval between JWKS refetches (issue #430). A `kid` that misses the cache triggers a
+     * refetch, but at most one per this interval: within it, an unknown `kid` is answered from memory (a
+     * negative cache), so however many bogus `kid`s an anonymous caller floods the login with, they produce at
+     * most one outbound fetch to Google per interval. Chosen well under Google's rotation period (days, with
+     * generous key overlap so a new key is published before it signs) and far above any request rate -- so a
+     * genuinely new signing key is picked up within a minute, while amplification stays bounded.
+     */
+    const val jwksMinRefetchMs = 60L * 1000
 }
 
 /**
@@ -133,34 +143,73 @@ interface JwtKeySource {
 
 /**
  * Google's published signing keys, fetched from the JWKS endpoint and cached in memory. Google rotates these
- * keys, so a `kid` that misses the cache triggers exactly one refetch -- which is also what makes a rotation
- * self-healing without a restart. Fetching is the only network call the login path makes; the far more common
- * case is a cache hit.
+ * keys, so a `kid` that misses the cache triggers a refetch -- which is what makes a rotation self-healing
+ * without a restart. The common case by far is a hit, and **a hit is read with no lock at all** (the keys live
+ * in a `@Volatile` snapshot); only a miss takes the monitor, to fetch and republish.
+ *
+ * A miss is **bounded** (issue #430). The `kid` is chosen by whoever presented the token, and the login it
+ * sits behind is anonymous, so an unbounded "miss -> fetch" would be an outbound-amplification and
+ * thread-exhaustion path on the one thing an unauthenticated caller may do on an edge. Two bounds in one rule:
+ * a fetch happens at most once per [GOOG.jwksMinRefetchMs], and within that interval a `kid` absent from the
+ * last fetched set is answered `null` from memory (a negative cache). So a flood of bogus `kid`s produces at
+ * most one fetch per interval, and a slow fetch -- itself bounded by #420's `fast` timeouts -- blocks only the
+ * misses piling up behind that one monitor, never the hits.
  */
-class GoogleJwksKeySource(private val jwksUri: String = GOOG.defaultJwksUri) : JwtKeySource {
-    // Guarded by `this`: a rotation can have several request threads miss at once, and they must not each
-    // start a fetch or race the map into an inconsistent state.
-    private var cached: Map<String, RSAPublicKey> = emptyMap()
+class GoogleJwksKeySource(
+    private val jwksUri: String = GOOG.defaultJwksUri,
+    // Injectable so a test can drive the caching and throttle without a network call (which a test instance
+    // refuses anyway). Production leaves it defaulted: a JWKS GET through the instance's `fast` outbound client.
+    private val fetch: (KdrCxt) -> Map<String, RSAPublicKey> = { cxt -> fetchFromGoogle(cxt, jwksUri) },
+) : JwtKeySource {
+    // Immutable and published lock-free: a hit is read with no lock. The monitor below is taken only on a miss,
+    // to fetch and republish -- so several threads missing at once cannot each start a fetch.
+    @Volatile
+    private var snapshot: Jwks = Jwks.empty
 
     override fun rsaKey(cxt: KdrCxt, kid: String): RSAPublicKey? {
-        synchronized(this) {
-            cached[kid]?.let { return it }
-            cached = fetchKeys(cxt)
-            return cached[kid]
+        // The common path: a known kid, answered without any lock.
+        snapshot.keys[kid]?.let { return it }
+
+        return synchronized(this) {
+            val current = snapshot
+            val known = current.keys[kid]
+            val nowMs = cxt.now().toEpochMilliseconds()
+            when {
+                // Another thread refetched while we waited for the monitor.
+                known != null -> known
+                // Within the interval: a negative cache. An unknown kid is answered from memory, and the
+                // outbound rate stays bounded however many unknown kids arrive.
+                nowMs - current.fetchedAtMs < GOOG.jwksMinRefetchMs -> null
+                // Interval elapsed: refetch. Advance the throttle BEFORE fetching, so a failing fetch is
+                // throttled exactly like a succeeding one -- otherwise a Google outage would let every miss
+                // retry, reintroducing the amplification this bounds. On success the fresh keys replace the old.
+                else -> {
+                    snapshot = Jwks(current.keys, nowMs)
+                    val fresh = fetch(cxt)
+                    snapshot = Jwks(fresh, nowMs)
+                    fresh[kid]
+                }
+            }
         }
     }
 
-    private fun fetchKeys(cxt: KdrCxt): Map<String, RSAPublicKey> {
-        // The one outbound client (issue #420): the `fast` timeouts are what stop an unresponsive endpoint from
-        // holding this monitor -- and every request thread that needs a key behind it -- indefinitely.
-        val response = OutboundHttpService.get(cxt).fast(cxt).get(jwksUri)
-        if (response.status != 200) {
-            throw KdrException("Google's signing keys returned status ${response.status}.")
+    /** An immutable JWKS snapshot: keys by `kid`, and when they were fetched (for the refetch throttle). */
+    private class Jwks(val keys: Map<String, RSAPublicKey>, val fetchedAtMs: Long) {
+        companion object {
+            val empty = Jwks(emptyMap(), 0L)
         }
-        return parseJwks(response.body)
     }
 
     companion object {
+        /** The real fetch: a JWKS GET through the instance's `fast` outbound client (issue #420), then parse. */
+        private fun fetchFromGoogle(cxt: KdrCxt, jwksUri: String): Map<String, RSAPublicKey> {
+            val response = OutboundHttpService.get(cxt).fast(cxt).get(jwksUri)
+            if (response.status != 200) {
+                throw KdrException("Google's signing keys returned status ${response.status}.")
+            }
+            return parseJwks(response.body)
+        }
+
         /**
          * Extracts the RSA keys from a JWKS document, keyed by `kid`. Entries that are not RSA signing keys,
          * or that are malformed, are skipped rather than failing the whole set -- one unusable key must not
