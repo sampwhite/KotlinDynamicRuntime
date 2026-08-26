@@ -3,6 +3,18 @@ package com.dynamicruntime.common.user
 import kotlin.time.Instant
 
 /**
+ * A closed-at-both-ends date range, either end optional (issue #462).
+ *
+ * A pair rather than two loose values because that is what a caller supplies and what a filter consumes: the
+ * two halves of one question, and keeping them together is what lets a date field be one map entry rather
+ * than two.
+ */
+class InstantRange(val after: Instant? = null, val before: Instant? = null) {
+    /** Whether this constrains anything -- a range with neither end is not a filter. */
+    val isEmpty: Boolean get() = after == null && before == null
+}
+
+/**
  * The brute-force search/sort over the user cache (issue #411).
  *
  * The whole feature is a scan of active users held in memory (`UserService.searchUsers`) rather than an SQL
@@ -39,11 +51,53 @@ class UserSearchField(
     /** True: a case-insensitive **substring** match. False: a case-insensitive **exact** match (the client). */
     val substring: Boolean,
     /**
-     * The value the field sorts by. Null sorts **last** regardless of direction -- an unnamed or dateless row
-     * belongs at the end of a list ordered by that field, not surfaced at the top of a descending one.
+     * The value the field sorts by. Null sorts **last** regardless of direction -- an account with no
+     * real-world name has nothing to order by, so it belongs at the end either way rather than heading an
+     * ascending list of names.
+     *
+     * A **date** field never returns null, and so never meets that rule: it returns a floor instead, which
+     * puts absence below every date (issue #462, and see `asSearchField`). The difference is real rather than
+     * an inconsistency -- a missing name is no information, while a missing date genuinely is earlier than
+     * any date, and an administrator sorting by oldest is hunting exactly those rows.
      */
     val sortOf: (AuthUserRow) -> Comparable<*>?,
 )
+
+/**
+ * One **date** attribute of a user: the wire names it carries (issue #462) and how to read it off a row.
+ *
+ * Split across two modules on purpose. [UserDateKeys] generates the three names in the kernel, so the console
+ * derives the same strings the endpoint reads; [instantOf] cannot live there, because it needs [AuthUserRow].
+ * Pairing them here is what lets one entry produce a sort key, a filterable range and a column at once.
+ */
+class UserDateField(val keys: UserDateKeys, val instantOf: (AuthUserRow) -> Instant?)
+
+/**
+ * The date attributes a caller may sort on and filter by range (issue #462).
+ *
+ * Adding one here gives it a sort key, an `After`/`Before` pair on the endpoint, and a filter in
+ * [searchUserRows] -- none of which is written per date. That matters at five dates rather than one: the
+ * previous shape had the range hard-coded in the criteria, in the filter and in the endpoint's declaration,
+ * so four more dates meant two dozen near-identical lines that all had to agree.
+ */
+val userDateFields: List<UserDateField> = listOf(
+    UserDateField(USF.updated) { it.updatedAt },
+)
+
+/** [userDateFields] by root, for resolving the range keys a caller filtered on. */
+val userDateFieldsByRoot: Map<String, UserDateField> = userDateFields.associateBy { it.keys.root }
+
+/**
+ * The sortable entry a date attribute contributes, so a date is declared once rather than in two registries.
+ *
+ * **Absence sorts below every date**, which is the point rather than a detail: an administrator sorting by
+ * oldest login is hunting dormant accounts, and never having logged in is the most dormant state there is --
+ * burying those rows at the bottom in both directions would hide exactly what the sort was opened to find.
+ * Returning a floor rather than null is also what keeps [UserSearchField]'s own nulls-last rule intact for
+ * the fields that want it: this field simply never returns one.
+ */
+private fun UserDateField.asSearchField(): UserSearchField =
+    UserSearchField(keys.at, textsOf = null, substring = false, sortOf = { instantOf(it) ?: Instant.DISTANT_PAST })
 
 /**
  * The searchable/sortable user attributes (issue #411). Add an attribute here and it is searchable (if it
@@ -63,9 +117,8 @@ val userSearchFields: List<UserSearchField> = listOf(
     ),
     // Exact, not substring: the client is a picked id, not a fragment someone types.
     UserSearchField(USF.client, textsOf = { listOf(it.client) }, substring = false, sortOf = { it.client.lowercase() }),
-    // Sortable (the default) but filtered by a date range rather than a text term, so it declares no textsOf.
-    UserSearchField(USF.updatedAt, textsOf = null, substring = false, sortOf = { it.updatedAt }),
-)
+) + userDateFields.map { it.asSearchField() }
+
 
 /** [userSearchFields] by name, for resolving a text term's field and the requested sort key. */
 val userSearchFieldsByName: Map<String, UserSearchField> = userSearchFields.associateBy { it.name }
@@ -81,10 +134,13 @@ class UserSearchCriteria(
      * not constrained; a blank term is dropped before it gets here, since "" would match everything.
      */
     val textTerms: Map<String, String> = emptyMap(),
-    /** Low end of the update-time range (inclusive), or null for no lower bound. */
-    val updatedAfter: Instant? = null,
-    /** High end of the update-time range (inclusive), or null for no upper bound. */
-    val updatedBefore: Instant? = null,
+    /**
+     * date root -> the range the caller asked for, for the date fields they filtered on (issue #462). Keyed
+     * by [UserDateKeys.root] and shaped like [textTerms] deliberately: a date filter and a text filter are
+     * the same kind of thing to everything downstream, and were only written differently because there used
+     * to be one date.
+     */
+    val dateRanges: Map<String, InstantRange> = emptyMap(),
     /** The field to sort by; must be a [userSearchFieldsByName] key (the endpoint validates it). */
     val sortBy: String = USF.updatedAt,
     /** Descending (the default): newest, or Z-A, first. */
@@ -127,11 +183,14 @@ fun searchUserRows(rows: List<AuthUserRow>, criteria: UserSearchCriteria): UserS
             }
         }
     }
-    criteria.updatedAfter?.let { after ->
-        matched = matched.filter { (it.updatedAt ?: return@filter false) >= after }
-    }
-    criteria.updatedBefore?.let { before ->
-        matched = matched.filter { (it.updatedAt ?: return@filter false) <= before }
+    for ((root, range) in criteria.dateRanges) {
+        val field = userDateFieldsByRoot[root] ?: continue
+        val instantOf = field.instantOf
+        // A row with no date matches **no** range, in either direction. It is not "before everything": a
+        // user who never logged in did not log in before Tuesday, and a range filter is asking which rows
+        // fall inside a window rather than sorting them.
+        range.after?.let { after -> matched = matched.filter { (instantOf(it) ?: return@filter false) >= after } }
+        range.before?.let { before -> matched = matched.filter { (instantOf(it) ?: return@filter false) <= before } }
     }
 
     val field = userSearchFieldsByName[criteria.sortBy] ?: userSearchFieldsByName.getValue(USF.updatedAt)

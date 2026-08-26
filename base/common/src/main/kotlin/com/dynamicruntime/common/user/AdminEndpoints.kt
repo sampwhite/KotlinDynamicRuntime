@@ -115,8 +115,12 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 "Exact client id to confine to. Only meaningful to an '${ROLE.allClients}' caller; anyone " +
                     "else is already confined to their own client.",
             )
-            field(USF.updatedAfter, "Only users updated at or after this time (ISO-8601).") { dateTime() }
-            field(USF.updatedBefore, "Only users updated at or before this time (ISO-8601).") { dateTime() }
+            // One pair per date attribute, generated from the registry (issue #462) rather than written out:
+            // the keys and the wording both follow the root, so adding a date adds its range with them.
+            for (date in userDateFields) {
+                field(date.keys.after, "Only users ${date.keys.phrase} at or after this time (ISO-8601).") { dateTime() }
+                field(date.keys.before, "Only users ${date.keys.phrase} at or before this time (ISO-8601).") { dateTime() }
+            }
             field(
                 USF.sortBy,
                 "Which attribute to sort by: ${userSearchFields.joinToString(", ") { "'${it.name}'" }}. " +
@@ -506,10 +510,18 @@ private fun parseUserSearch(request: Map<String, Any?>): UserSearchCriteria {
             "Unknown sort field '$sortBy'; expected one of ${userSearchFields.joinToString(", ") { "'${it.name}'" }}.",
         )
     }
+    // The date ranges the caller asked for, keyed by root. A range with neither end is dropped rather than
+    // carried as an empty filter, so `dateRanges` holds only what was actually constrained -- the same rule
+    // the text terms follow.
+    val dateRanges = buildMap {
+        for (date in userDateFields) {
+            val range = InstantRange(request[date.keys.after].toOptInstant(), request[date.keys.before].toOptInstant())
+            if (!range.isEmpty) put(date.keys.root, range)
+        }
+    }
     return UserSearchCriteria(
         textTerms = textTerms,
-        updatedAfter = request[USF.updatedAfter].toOptInstant(),
-        updatedBefore = request[USF.updatedBefore].toOptInstant(),
+        dateRanges = dateRanges,
         sortBy = sortBy ?: USF.updatedAt,
         descending = request.getOptBool(USF.descending) ?: true,
         // Floored at 0: a negative limit would otherwise reach `List.take`, which throws -- surfacing as a 500
