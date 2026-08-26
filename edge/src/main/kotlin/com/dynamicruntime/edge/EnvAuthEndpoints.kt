@@ -7,6 +7,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.http.request.CKI
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.AddressRules
@@ -97,8 +98,12 @@ fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "auth") {
         // Written through the request's WebRequest -- the transport-neutral seam -- so it behaves identically
         // under a browser and the in-process test client. Safe here because a handler runs before the response
         // is sent; a cookie set afterwards would be dropped.
+        // SameSite=Strict for the perimeter cookie (issue #431): nothing should be arriving at an edge
+        // cross-site, so its session cookie need not ride a cross-site request. The cookie is set and read
+        // same-origin, so the login flow is unaffected; the app's `kdrAuth` stays Lax for its Google redirect.
         c.request?.webRequest?.addResponseCookie(
             ENVAUTH.cookie, EnvAuthCookie(email, expireMs).encode(node), Instant.fromEpochMilliseconds(expireMs),
+            CKI.strict,
         )
         // Bound for this request too, so the response is already the signed-in view rather than one round trip
         // behind it.

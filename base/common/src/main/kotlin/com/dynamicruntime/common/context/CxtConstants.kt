@@ -31,6 +31,13 @@ object ACFG {
     const val isTestInstance = "isTestInstance"
 
     /**
+     * Whether `Set-Cookie` carries the `Secure` attribute (issue #431). Decides it outright when present;
+     * unset, it defaults from the `KDR_COOKIE_SECURE` env var, then from the environment (secure everywhere
+     * but [ENV.local]/[ENV.unit], so plain-HTTP localhost dev keeps working). See `CookieRules.isSecure`.
+     */
+    const val cookieSecure = "cookieSecure"
+
+    /**
      * The **boot role** this process is running as (issue #377): one of [BOOT]'s names, and unset for an
      * ordinary application node -- see [BOOT.app] for why absence and `app` are the same thing seen from two
      * directions. Set by the launcher, because the launcher *is* the role: it has to be known before any

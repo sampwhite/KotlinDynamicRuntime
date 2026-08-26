@@ -73,6 +73,14 @@ class RequestHandler : WebRequest {
     override var forwardedFor: String? = null
     var isFromLoadBalancer: Boolean = false
 
+    /**
+     * The instance config, bound once [handleRequest] resolves it, so [addResponseCookie] can decide `Secure`
+     * from the deployment's own configuration rather than a caller-controlled header (issue #431). Null before
+     * a request is dispatched (a hand-built handler in a test); the cookie then defaults to `Secure`, the safe
+     * side.
+     */
+    var boundConfig: KdrInstanceConfig? = null
+
     var queryParams: MutableMap<String, Any?> = LinkedHashMap()
     var postData: MutableMap<String, Any?>? = null
 
@@ -179,6 +187,7 @@ class RequestHandler : WebRequest {
             // check (a probe submits no *body* for parsing).
             parseQueryParams()
             val config = InstanceRegistry.getOrCreateInstanceConfig(instanceName)
+            boundConfig = config
             cxt = InstanceRegistry.createCxt("request", config)
             cxt.forwardedFor = forwardedFor
             cxt.appId = appId()
@@ -519,16 +528,20 @@ class RequestHandler : WebRequest {
         rptResponseHeaders.getOrPut(header.lowercase()) { mutableListOf() }.add(value)
     }
 
-    override fun addResponseCookie(name: String, value: String, expire: Instant?) {
+    override fun addResponseCookie(name: String, value: String, expire: Instant?, sameSite: String) {
         val parts = mutableListOf("$name=$value")
         if (expire != null) {
             parts.add("Expires=${expire.formatCookieDate()}")
         }
         parts.add("Path=/")
-        if (forwardedFor != null && forwardedFor != "127.0.0.1") {
-            parts.add("secure")
+        // `Secure` from the node's own configuration, never from `X-Forwarded-For` (which the caller controls);
+        // and `SameSite` stated rather than left to browser defaults (issue #431). Null config -- a hand-built
+        // handler outside a request -- defaults to Secure, the safe side.
+        if (boundConfig?.let { CookieRules.isSecure(it) } != false) {
+            parts.add("Secure")
         }
         parts.add("HttpOnly")
+        parts.add("SameSite=$sameSite")
         addResponseHeader("Set-Cookie", parts.joinToString("; "))
     }
 
