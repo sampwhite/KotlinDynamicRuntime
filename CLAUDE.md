@@ -5,8 +5,11 @@ holds guidance that should reach *every* developer's agent sessions — theirs a
 machine-specific configuration belongs in your own non-versioned `CLAUDE.md` in the **workspace directory**
 (the parent of this repo), not here.
 
-Coding conventions live in [`code-guide.md`](code-guide.md); environment variables in
-[`environment-variables.md`](environment-variables.md).
+Coding conventions live in [`code-guide.md`](code-guide.md). Environment variables are **declared once in
+code** as `EnvVarDef` values, grouped by area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbours) — the
+declaration is the reference, since the read path takes a declared def, so an undeclared variable cannot be
+read; a running node serves the live set, with each variable's resolved value, at the `operator` endpoint
+`/operator/env/reference`.
 
 ## Skills: the house APIs, already written down
 

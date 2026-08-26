@@ -2,7 +2,7 @@ package com.dynamicruntime.common.context
 
 import com.dynamicruntime.common.exception.KdrException
 
-/** The groups an [EnvVarDef] renders under -- the sections `environment-variables.md` divides into today. */
+/** The groups an [EnvVarDef] renders under -- the areas the operator env-var reference divides into. */
 @Suppress("ConstPropertyName")
 object ENVGRP {
     const val application = "Application"
@@ -17,7 +17,8 @@ object ENVGRP {
 
 /**
  * One environment variable, declared once (issue #371): its name, the group it renders under, its documented
- * default, and the "why" that used to live in `environment-variables.md` and in scattered KDoc.
+ * default, and the "why" that used to be split between a separate reference document and scattered KDoc (the
+ * document this retired).
  *
  * **Declaring one registers it** ([EnvVarRegistry]) and reading one goes through [KdrInstanceConfig.getEnvVar],
  * which takes an `EnvVarDef` rather than a raw string. Together those make the declaration *the* reference,
