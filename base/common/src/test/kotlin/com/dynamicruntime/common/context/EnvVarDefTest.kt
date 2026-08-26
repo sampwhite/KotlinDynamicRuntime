@@ -52,6 +52,25 @@ class EnvVarDefTest : StringSpec({
         EnvVarRegistry.all() shouldContain sample
     }
 
+    "resolveEnvVar reports the value, the exact key that supplied it, and the source" {
+        val fromConfig = config().apply { put(sample.name, "v") }.resolveEnvVar(sample)
+        fromConfig.value shouldBe "v"
+        fromConfig.matchedName shouldBe sample.name
+        fromConfig.source shouldBe EVSRC.config
+
+        val unset = config().resolveEnvVar(sample)
+        unset.value shouldBe null
+        unset.matchedName shouldBe null
+        unset.source shouldBe EVSRC.unset
+
+        // Under a boot role the role-prefixed key is the one reported, not the plain name -- which is the fact
+        // an operator needs to see when an edge and an app disagree about the same variable.
+        val role = config("edge").apply { put("KDR_EDGE_ENV_DEF_TEST", "r") }.resolveEnvVar(sample)
+        role.value shouldBe "r"
+        role.matchedName shouldBe "KDR_EDGE_ENV_DEF_TEST"
+        role.source shouldBe EVSRC.config
+    }
+
     "declaring a second variable with the same name is refused" {
         // Built from `sample.name`, not the literal: referencing `sample` forces its (lazy, file-class)
         // registration to exist first, so this test cannot run against an empty registry in any order.

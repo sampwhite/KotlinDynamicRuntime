@@ -141,6 +141,7 @@ val App = FC<Props> {
                             pageRegister -> AuthFlow { mode = pageRegister }
                             pageProfile -> Profile {}
                             pageUsers -> Users {}
+                            pageEnv -> EnvReferencePage {}
                             pageNewForm -> NewFormPage {}
                             pageForms -> FormsPage {}
                             pageEditForm -> EditFormPage {}
@@ -167,6 +168,11 @@ private const val pageProfile = "profile"
 // route exists unconditionally: the page itself reports honestly when the caller lacks the capability.
 private const val pageUsers = HMENU.pageUsers
 
+// The operator environment-variable reference (issue #371). Same route policy as Users: present
+// unconditionally, offered in the menu only to operators, and the endpoint refuses a caller who reaches it
+// without the role -- reported honestly by the page rather than hidden.
+private const val pageEnv = HMENU.pageEnv
+
 // The create-a-form page (issue #408). Login-gated on the backend (the `gedra` section), but the route exists
 // unconditionally like the others -- the menu, built server-side, is what decides whether it is offered.
 private const val pageNewForm = HMENU.pageNewForm
@@ -192,6 +198,7 @@ private fun currentPage(): String {
         params[HP.page] == pageRegister -> pageRegister
         params[HP.page] == pageProfile -> pageProfile
         params[HP.page] == pageUsers -> pageUsers
+        params[HP.page] == pageEnv -> pageEnv
         params[HP.page] == pageNewForm -> pageNewForm
         params[HP.page] == pageForms -> pageForms
         params[HP.page] == pageEditForm -> pageEditForm

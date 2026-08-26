@@ -96,6 +96,7 @@ object HMENU {
     // Item ids.
     const val catalog = "catalog"
     const val users = "users"
+    const val envReference = "envReference"
     // No `newForm` item id: creating a form is reached from the "My forms" list, not a menu entry (issue #417).
     // The `pageNewForm` route below still exists -- the list's "New form" button navigates to it.
     const val forms = "forms"
@@ -107,6 +108,7 @@ object HMENU {
     // Frontend page ids ([HFLD.page]); the frontend maps these onto its own routing.
     const val pageCatalog = "catalog"
     const val pageUsers = "users"
+    const val pageEnv = "env"
     const val pageNewForm = "newForm"
     const val pageForms = "forms"
     const val pageProfile = "profile"

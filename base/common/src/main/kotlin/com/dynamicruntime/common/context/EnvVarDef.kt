@@ -47,6 +47,35 @@ class EnvVarDef(
     override fun toString(): String = name
 }
 
+/** Where a resolved [EnvVarResolution.value] came from -- one field of the operator view (issue #371). */
+@Suppress("ConstPropertyName")
+object EVSRC {
+    /** An instance-config entry: deployment configuration, or a value a test injected. Wins over the process env. */
+    const val config = "config"
+
+    /** The real process environment (`System.getenv`). */
+    const val processEnv = "processEnv"
+
+    /** Neither supplied it, so the documented default applies -- see [EnvVarDef.defaultDoc]. */
+    const val unset = "unset"
+}
+
+/**
+ * How one [EnvVarDef] resolved on **this** node (issue #371): the [value] in effect, the exact [matchedName]
+ * that supplied it (the role-prefixed key or the plain one), and its [source]. This is the fact a documented
+ * default cannot be -- `"true, from KDR_ENV=local"` rather than `"on for local/dev"` -- and what the operator
+ * view reports. Produced by [KdrInstanceConfig.resolveEnvVar], which is also what [KdrInstanceConfig.getEnvVar]
+ * reads through, so the reported value and the value a request actually gets cannot disagree.
+ */
+class EnvVarResolution(
+    /** The value in effect, or null when the variable is unset (the documented default applies then). */
+    val value: String?,
+    /** The exact key that supplied [value] -- the role-prefixed name or the plain one -- or null when unset. */
+    val matchedName: String?,
+    /** Where [value] came from: one of [EVSRC]. */
+    val source: String,
+)
+
 /**
  * The VM-global index of every declared [EnvVarDef] (issue #371). Populated by declaration — an `EnvVarDef`
  * registers itself as it is constructed — so the set is complete for whatever has been class-loaded. The
