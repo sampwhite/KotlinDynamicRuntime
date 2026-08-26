@@ -410,7 +410,7 @@ val Users = FC<Props> {
     val inEditor = creating || editing != null
 
     div {
-        className = ClassName("card wide")
+        className = ClassName("card full")
 
         if (denied) {
             h1 { +"Users" }
@@ -708,6 +708,10 @@ val Users = FC<Props> {
                         Input {
                             value = textFilters[spec.name] ?: ""
                             placeholder = "${spec.label} contains…"
+                            // A width of its own, so the panel can be as wide as the table needs without the
+                            // search boxes swallowing the difference (issue #462). `maxWidth` rather than
+                            // `width`, so a narrow browser still shrinks it.
+                            style = js("({ maxWidth: 420 })")
                             onChange = { event -> setText(spec.name, event.target.value as String, immediate = false) }
                         }
                     }
@@ -739,11 +743,15 @@ val Users = FC<Props> {
                             DatePicker {
                                 value = range.after?.let { dayjs(it) }?.takeIf { it.isValid() }
                                 showTime = true
+                                // Bounded for the same reason as the text boxes above; a date-time picker has
+                                // a known amount to show, so it gains nothing from being wider.
+                                style = js("({ maxWidth: 220 })")
                                 onChange = { date, _ -> setRange(spec.name, DateRange(date?.toISOString(), range.before)) }
                             }
                             DatePicker {
                                 value = range.before?.let { dayjs(it) }?.takeIf { it.isValid() }
                                 showTime = true
+                                style = js("({ maxWidth: 220 })")
                                 onChange = { date, _ -> setRange(spec.name, DateRange(range.after, date?.toISOString())) }
                             }
                         }
