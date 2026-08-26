@@ -28,6 +28,15 @@ object SC {
     const val auditor = "auditor"
     const val findings = "findings"
 
+    /**
+     * A cfact acme declares and nothing yet produces (issue #455) -- the ordinary shape of a client
+     * declaration, since a client's config is data and cannot carry the Kotlin that would decide it.
+     */
+    const val underAudit = "acmeUnderAudit"
+
+    /** The friendly label [underAudit] presents under. */
+    const val auditGroup = "Site audits"
+
     // Globex extends a global type rather than altering it: a new name, constraining nothing.
     const val globexNamespace = "globexconfig"
     const val richAddress = "RichAddress"
@@ -115,6 +124,18 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             }
             property(ST.postcode, "Postal code, as written locally.")
         }
+
+        // --- a cfact of its own -------------------------------------------------------------------------
+        //
+        // Declared and not produced, which is what a client declaration *is*: acme is saying the name exists
+        // so that its own data may write `acmeUnderAudit` in an expression. Nothing else's registry has it,
+        // which is the half that matters -- a global expression naming it would refuse to parse everywhere,
+        // rather than parsing here and quietly meaning nothing anywhere else.
+        cfact(
+            SC.underAudit, SC.auditGroup,
+            "True while a site acme is looking at has an audit open against it. Nothing sets it yet: acme " +
+                "declares it ahead of the workflow that will.",
+        )
 
         // --- a trait of its own -------------------------------------------------------------------------
         //

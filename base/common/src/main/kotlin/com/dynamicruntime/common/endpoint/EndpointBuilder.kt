@@ -124,6 +124,21 @@ class KdrEndpoint(
      * query.
      */
     val tags: Set<String> = emptySet(),
+    /**
+     * Whether this endpoint gets a **per-client copy** at a path naming the client (issue #455) --
+     * `/userAdmin/cfacts` alongside `/userAdmin/<client>/cfacts`.
+     *
+     * `buildClientEndpoints` copies the whole `gedra` section without being asked, because everything there
+     * reads or writes one client's data. Its own note says the property is really "what this endpoint answers
+     * belongs to a client", which is a fact about the endpoint rather than about its path -- and the cfact
+     * registry is the first case where that is true outside `gedra`, since a client's config may add names.
+     * So this is that note's flag, declared where the endpoint is.
+     *
+     * **It says the answer differs, not that the caller is confined.** A gedra copy also refuses a target
+     * belonging to another client; there is nothing to refuse in a listing of what a client declared, and the
+     * section gate is what decides who may read it either way.
+     */
+    val clientShaped: Boolean = false,
 ) {
     init {
         if (inputFields != null && inputTypeRef != null) {
@@ -308,13 +323,21 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         publicApi: Boolean = false,
         /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
         tags: Set<String> = emptySet(),
+        /**
+         * Gets a per-client copy at a path naming the client (issue #455); see [KdrEndpoint.clientShaped].
+         *
+         * On this builder alone because a listing is what has wanted it so far. It belongs on the others the
+         * day one of them answers differently per client -- adding it to all four now would be three
+         * parameters nothing passes, which read as options rather than as the record of a decision.
+         */
+        clientShaped: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = listOutput(outputRef, hasMore, hasNumAvailable)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output,
-                forTestingOnly, handler, publicApi = publicApi, tags = tags),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags, clientShaped = clientShaped),
         )
     }
 

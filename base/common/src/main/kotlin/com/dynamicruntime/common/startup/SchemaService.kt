@@ -1,6 +1,9 @@
 package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.cfact.CFactRegistries
+import com.dynamicruntime.common.cfact.CFactRegistry
+import com.dynamicruntime.common.cfact.buildCFactRegistries
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -135,10 +138,17 @@ class SchemaService : ServiceInitializer {
         // Built after the global store, from it (issue #356). A variant is the same document with one
         // client's overlays applied and re-parsed, so it cannot exist until the document is complete.
         val variants = buildClientVariants(cxt, collected, store)
-        // Each client that has a variant gets its own copy of the client-shaped endpoints (issue #387). After
-        // the variants, because a client with no variant needs none -- its endpoints would be the global ones
-        // under a longer name.
-        val clientEndpoints = buildClientEndpoints(cxt, availableEndpoints, variants.keys)
+        // Each client that varies something gets its own copy of the client-shaped endpoints (issue #387).
+        // After the variants, because a client varying nothing needs none -- its endpoints would be the
+        // global ones under a longer name.
+        //
+        // "Varies something" is no longer "has a schema variant" (issue #455): a client whose config adds
+        // cfacts and no types still answers `/userAdmin/cfacts` differently. Leaving it as the schema set
+        // would have quietly made client-shapedness mean *client-shaped schema*, which is not what the
+        // endpoints being copied are about -- and the client's copies would have gone missing rather than
+        // failed, which is the shape of thing nobody reports.
+        val varyingClients = variants.keys + collected.clientCFacts.keys
+        val clientEndpoints = buildClientEndpoints(cxt, availableEndpoints, varyingClients)
         if (clientEndpoints.isEmpty()) {
             clientStores = variants
         } else {
@@ -148,8 +158,16 @@ class SchemaService : ServiceInitializer {
             // parsed -- only the endpoint map changes -- so this costs a map merge and no re-parsing.
             val allEndpoints = endpoints + clientEndpoints.associateBy { it.collationKey }
             val withClients = KdrSchemaStore(types, allEndpoints, tables, collected.defs)
-            clientStores = variants.mapValues { (_, v) ->
-                KdrSchemaStore(v.types, allEndpoints, v.tables, v.defs)
+            clientStores = varyingClients.associateWith { client ->
+                val variant = variants[client]
+                // A client that varies nothing about *schema* gets the global document with the full endpoint
+                // map -- present in this map rather than absent, because `hasEndpoints` reads it to decide
+                // whether to advertise the copies that were just made for that client.
+                if (variant == null) {
+                    KdrSchemaStore(types, allEndpoints, tables, collected.defs)
+                } else {
+                    KdrSchemaStore(variant.types, allEndpoints, variant.tables, variant.defs)
+                }
             }
             schemaStore = withClients
             cxt.instanceConfig.put(KdrSchemaStore.key, withClients)
@@ -157,6 +175,11 @@ class SchemaService : ServiceInitializer {
         }
         optionsProviders = collected.optionsProviders.toMap()
         checkOptionsSources(optionsProviders)
+        // Built here for the reason the client variants are: this is the first moment every contributor has
+        // been heard, and a client's declarations can only be held to "add, never redefine" against a
+        // complete global set. Once built it never changes -- which is what makes a registry something an
+        // expression can be parsed against once and evaluated many times.
+        cfactRegistries = buildCFactRegistries(collected.cfacts, collected.cfactSources, collected.clientCFacts)
         isInit = true
     }
 
@@ -200,6 +223,19 @@ class SchemaService : ServiceInitializer {
             )
         }
     }
+
+    /**
+     * The cfacts each scope knows about (issue #455): the global set, and the additions of each client that
+     * made any. Empty until [checkInit] runs.
+     */
+    var cfactRegistries: CFactRegistries = CFactRegistries.empty
+        private set
+
+    /**
+     * The cfacts [client] may write in an expression: their own registry when they add any, otherwise the
+     * global one -- the same absent-means-global shape as [storeFor], and for the same reason.
+     */
+    fun cfactsFor(client: String?): CFactRegistry = cfactRegistries.forClient(client)
 
     /**
      * The schema each client sees, for the clients that vary something. Absent from this map means the global

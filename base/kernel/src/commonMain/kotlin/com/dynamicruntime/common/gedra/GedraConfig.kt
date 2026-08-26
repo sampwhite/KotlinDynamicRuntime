@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchTypeBuilder
@@ -98,6 +99,21 @@ class GedraConfig(
      * under one id. Null is the ordinary case -- most bundles add traits to a client somebody else declared.
      */
     val client: ClientDef? = null,
+    /**
+     * The cfacts this config declares (issue #455) -- names its own data may then write in an expression.
+     *
+     * **Declaration only, never production.** A component is what makes a cfact true, because that takes
+     * Kotlin; a config is data, and data has no place to put a computation. What a client declares here is
+     * that a name *exists*, so an expression naming it parses -- which is exactly what a client needs before
+     * it can author the data that uses it, and what lets the whole registry stay static per client.
+     *
+     * A client may only **add**. Redefining or removing a name a component declared is refused when the
+     * registry is built, and the reason is the failure it prevents: an expression in shared, component-owned
+     * data that parses everywhere except at one customer -- discovered by that customer. Additive-only keeps
+     * every shared expression valid under every client's registry by construction rather than by a check
+     * somebody has to remember to run.
+     */
+    val cfacts: List<CFactDef> = emptyList(),
 ) {
     /**
      * The code-explicit name this config is addressed by, which is also its id's base.
@@ -121,6 +137,25 @@ class GedraConfigBuilder(cxt: KdrCxtBase, namespace: String) : SchTypesBuilder(c
     /** The client this config defines, if it declared one; see [defineClient]. */
     var clientDef: ClientDef? = null
         private set
+
+    /** The cfacts declared in this block; see [cfact]. */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val cfacts: MutableList<CFactDef> = mutableListOf()
+
+    /**
+     * Declares a cfact this config's client may write in an expression (issue #455) -- see
+     * [GedraConfig.cfacts] for why a config declares a name without producing it.
+     *
+     * [description] says what makes the cfact **true**, not what it means: whoever writes the expression is
+     * trying to predict when it fires.
+     *
+     * Collisions are settled where the registry is built rather than here, because that is the first moment
+     * holding every contributor: a name is unique across components *and* every config of one client, and no
+     * single config can see enough to say so.
+     */
+    fun cfact(name: String, group: String, description: String) {
+        cfacts.add(CFactDef(name, group, description))
+    }
 
     /**
      * Declares the client this config defines (issue #343).
@@ -245,5 +280,6 @@ fun gedraConfig(
         traits = builder.traits.toMap(),
         defs = builder.defs.toMap(),
         client = builder.clientDef,
+        cfacts = builder.cfacts.toList(),
     )
 }
