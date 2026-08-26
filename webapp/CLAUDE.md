@@ -162,6 +162,53 @@ shapes the UI and is not the enforcement point, which stays the section gate.
 Paths, field names and the ladder all come from `base/kernel`, so a backend rename breaks compilation here
 rather than at runtime.
 
+## Choice widgets, and the free-entry one (issues #261, #418)
+
+`SchemaForm` draws a choice field from the schema, and which control it draws is decided by two keywords:
+
+| schema | control | means |
+| --- | --- | --- |
+| `g-options` | antd `Select` | pick one of these, and nothing else validates |
+| `g-options` + `g-openOptions` | antd `AutoComplete` (`OpenChoiceField`) | pick one, **or type your own** |
+| `g-options` on an array's items | `Select mode="multiple"` | pick several |
+| both, on an array's items | `Select mode="tags"` | pick several, **or add your own** |
+
+**A free-entry ("non-strict") list is antd's `AutoComplete`, and needs no new dependency.** antd renders it as
+`<Select mode={SECRET_COMBOBOX_MODE_DO_NOT_USE} suffixIcon={null}>` — the same `@rc-component/select` engine
+the closed dropdown already uses, so it inherits the theme tokens and the keyboard behavior for free. Reaching
+for Downshift, react-select or a hand-built widget buys nothing that matters here and costs a second styling
+system beside antd. A native `<input list>` + `<datalist>` is tempting for its zero cost and is not usable:
+the popup is browser-drawn, so CSS cannot reach it and it renders as a light control inside our dark shell.
+
+Four things about it were expensive to learn, and none is guessable from the docs:
+
+- **The value shown after a selection is the option's `value`, never its `label`.** Intentional in antd since
+  v4, and `optionLabelProp` is explicitly `Omit`ted from `AutoCompleteProps`, so it cannot be worked around
+  inside the component. Treat it as a design rule instead: on an open list, keep labels close to values,
+  because a free-entry value has to be something a person could plausibly have typed.
+- **`filterOption` as a *function* is not a top-level prop in antd 6** — it moved under `showSearch`. A
+  function passed at the top level is **ignored silently**, so a filtering rule can look broken when it was
+  simply never called. Several rules were written before that was noticed. The boolean form still works.
+- **Filtering is off (`filterOption = false`), on purpose.** A combobox that narrows its popup hides the rest
+  of a short list exactly when someone is trying to find out what is on offer — and once a value is committed,
+  the box holds it, so reopening would offer only that one option and nothing else. A long list will want
+  narrowing back; that is when the `showSearch` note above matters.
+- **Do not put widget state in a form field component.** A keystroke re-renders the form, so anything a field
+  keeps in `useState` is at the mercy of what the parent does between renders. Two versions of this widget
+  held a "has the user typed?" flag and neither survived. Prefer a rule computed from what the control already
+  passes you.
+
+**The array case behaves differently from the single one, and less well.** `tags` mode commits a typed value
+on **blur** rather than on Enter, and while a non-matching value is being typed the popup shows only the
+"create this" entry — the other suggestions disappear, which is the very thing `filterOption = false` fixes for
+the single-choice field. It does not fix it here (tried; no observable difference, so the line was removed
+rather than left in looking load-bearing). Standard tags-mode behavior, and acceptable, but if an open
+multi-select ever becomes a surface people use a lot, this is what to improve.
+
+**Testing note, and it is the good news:** an `AutoComplete` **can** be driven by the browser tools — typing
+and clicking an option both work — because its control is a real `<input>`. A plain antd `Select` cannot be
+(see `deferred-work.md`), so an open choice field is the one choice widget an agent can verify end to end.
+
 ## Errors: never a blank page (issue #223)
 
 A throw during render used to unmount the whole React tree and leave an empty body — the least informative

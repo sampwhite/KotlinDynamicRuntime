@@ -532,6 +532,7 @@ fun inputObjectType(name: String, properties: Map<String, SchProperty>, required
         additionalProperties = false,
         itemType = null,
         options = null,
+        openOptions = false,
         // An envelope is not a branch of anything and admits no single value, so neither construct applies.
         constValue = null,
         derived = false,
@@ -568,6 +569,7 @@ val limitInputProperty: SchProperty =
             additionalProperties = false,
             itemType = null,
             options = null,
+            openOptions = false,
             constValue = null,
             derived = false,
             variants = null,

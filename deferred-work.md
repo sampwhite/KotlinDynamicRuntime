@@ -262,6 +262,60 @@ The trigger is observable: the first route added for a backend whose application
   acts on, instead of a redirect it tried to parse as JSON — so the symptom is a clean refusal rather than a
   broken page, and that is the whole of why it can wait.
 
+- **A caller without env auth sees only the published API** *(Sam, during the #433 review).* The endpoint
+  catalog is curated by the section model today: an anonymous caller sees every anonymous section, which is 30
+  endpoints and correct, since a login page needs `/auth/...` and a shell needs `/app/ui/config`. The intended
+  end state is narrower — no env auth means the catalog shows only endpoints marked `publicApi`, so an
+  outsider is shown the surface we document and support rather than everything they happen to be allowed to
+  reach.
+
+  Env auth is the right discriminator because it already means "arrived through our perimeter", so it
+  separates the people who operate a deployment from the people who use it, without either becoming a role.
+  The mechanism is in place after #433: the tag exists, the catalog carries it, and it already filters on it.
+
+  **The precondition is what makes this deferred rather than a small change.** Nothing is marked `publicApi`
+  yet, so switching the default over today would show an outsider an *empty* catalog — worse than the current
+  behaviour, and precisely for the people it is meant to serve. It needs the published set curated first,
+  which is a product decision about what we will support rather than a code task. Note also that the anonymous
+  sections are anonymous for a reason: whatever the rule becomes, an unauthenticated client still has to be
+  able to find the endpoints that let it log in.
+
+  The acceptance test already exists: the env-auth toggle from #360 was built partly so this filter could be
+  exercised by hand.
+
+## When a closed choice list has to change
+
+A closed `g-options` list is a promise that nothing else is valid, and the promise is made at **both** ends:
+a value is refused on the way in, and refused again on the way out. The second half is the problem. Change a
+list — globally, or by a client narrowing one (`SchNarrowing` rule 2, and since #418 by closing an open list
+too) — and rows written under the old list stop validating. What that costs is not a rejected write, which
+would be fair, but a **read that fails**: data already stored becomes unreadable, and a schema edit turns into
+an outage over content nobody is touching.
+
+The trigger is observable and has not happened yet: the first time a deployment carrying real data changes a
+closed list's values. Nothing is deployed, so nothing is stranded; that is the whole of why this can wait.
+
+- **Drop option validation on the response side** *(Sam, reviewing #418)*. Ingest strictly, emit leniently. The
+  option list exists to stop a bad value *entering*; once it is stored, refusing to hand it back helps nobody.
+  Cedar built request/response variance into its schema for a family of problems like this one.
+
+- **The direction already exists**, which is what makes this a small change rather than a design. `SchOpts`
+  carries `forInput` (#254), and `g-derived` is the precedent: a property meaningful only in a **response**,
+  neither asked for nor accepted on the way in. This is its mirror — a *constraint* meaningful only in a
+  **request**. Same flag, opposite side, and the symmetry is worth preserving in whatever keyword or default
+  it lands as.
+
+- **Decide whether it is a default or a declaration.** Making it unconditional says every closed list is
+  lenient outbound, which is probably right and is a behavior change to make deliberately. A per-property
+  keyword says which lists expect to shift, which is more honest and is another keyword to carry. Note that
+  `validateResponseSchema` is on in tests, so whichever is chosen shows up there first rather than in
+  production.
+
+- **This is not the whole of the stranded-data question**, only the half that keeps a node serving. A value
+  that no longer validates is still *wrong* by the current schema, and something eventually has to reconcile
+  it — a migration, a report, or a refusal at config-load time when stored data would fail the definition
+  being loaded. Reading it back is what buys the time to do that.
+
 ## When the people who can reach an edge stop being a small trusted group
 
 A diverse employee and consulting base, with active customers behind the deployment. Today everyone who can

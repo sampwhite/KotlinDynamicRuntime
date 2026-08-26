@@ -31,6 +31,7 @@ object ST {
     const val hasIssue = "hasIssue"
     const val explanation = "explanation"
 
+
     // --- the approval trait, which exercises a conditional inside `data` ---
     /**
      * A named **interior** type, referenced by [siteVisit]'s data rather than declared inline (issue #379).
@@ -47,6 +48,17 @@ object ST {
     const val siteVisitEntry = "SiteVisitEntry"
     const val visitedOn = "visitedOn"
     const val address = "address"
+    const val purpose = "purpose"
+
+    /**
+     * Suggested purposes for a site visit -- an **open** list (issue #418), against [countries] beside it.
+     *
+     * Both in one sample on purpose, because the difference is the whole of what the keyword means. A country
+     * list can claim to be complete, so it bounds the value and a client may narrow it. A list of purposes
+     * cannot: whatever is written here, the next visit is for something else, and a field that refused it
+     * would be wrong rather than strict.
+     */
+    val purposes: List<String> = listOf("inspection", "maintenance", "delivery", "survey")
 
     /** The countries the global schema admits; a client may offer fewer, and one does. */
     val countries: List<String> = listOf("gb", "ie", "fr", "de")
@@ -157,6 +169,10 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         "A visit to a site, whose address is a type in its own right.",
     ) {
         property(ST.visitedOn, "When the visit happened.") { dayOnlyDate() }
+        property(ST.purpose, "Why the visit happened; the suggestions are not the whole list.") {
+            for (p in ST.purposes) option(p)
+            openOptions()
+        }
         // The `$ref` that makes interior alteration possible: a client narrowing `SiteAddress` narrows this
         // without the trait being edited, or knowing.
         property(ST.address, "Where the visit happened.", required = true) { ref(ST.siteAddress) }

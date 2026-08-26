@@ -111,6 +111,14 @@ Declaring both an `option` and an `optionsSource` fails the boot, as does an id 
 checks run in `SchemaService.checkInit`, which is the one moment holding the compiled document and the full
 registry together. Register the callback with `optionsProvider(id) { … }` — see `kdr-endpoint-builder`.
 
+**Open lists.** `openOptions()` beside the choices says they are *suggestions rather than a bound*: the
+validator stops reporting `invalidOption`, and a data-entry surface draws a combobox instead of a closed
+dropdown. Reach for it whenever the list cannot claim to be complete — one drawn from a table, or assembled
+per caller. A client may **close** an open list — an open list accepts anything, so bounding it accepts a subset, which is
+narrowing rule 2 in a different keyword — but may not **open** a closed one, which widens. While the base is
+open a client may also change the *contents* freely, and need not stay within the base's choices: nothing they
+put there could accept more than "anything" already did.
+
 **Sharing an attribute across surfaces.** Where several endpoints ask for the same thing, put the shared part
 in an extension on the builder, beside the Kotlin class that owns the concept — `clientAttribute()` lives with
 `ClientDef` and is called from every field naming a client. The *name* and the *description* stay at each
