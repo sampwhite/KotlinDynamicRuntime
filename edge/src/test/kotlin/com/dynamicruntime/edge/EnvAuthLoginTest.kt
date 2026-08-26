@@ -7,6 +7,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.ADMR
@@ -88,7 +89,7 @@ class EnvAuthLoginTest : StringSpec({
      * The whole point of the cookie: the *next* request is signed in without re-presenting anything, with the
      * identity restored by the edge's own extractor rather than the application's session path.
      */
-    "the session is restored on the next request, as an operator acting for the house" {
+    "the session is restored on the next request, as an admin acting for the house" {
         val cxt = bootEdge("envLoginRestore")
         val client = TestHttpClient(cxt.instanceConfig)
         client.sendJsonPostRequest(EAEP.login, mapOf(EAEP.googleCredential to credential("dana@gyassa.com")))
@@ -97,7 +98,14 @@ class EnvAuthLoginTest : StringSpec({
         val profile = handler.createdCxt?.userProfile
         profile?.authId shouldBe "dana@gyassa.com"
         profile?.client shouldBe CL.house
-        profile?.roles?.contains(ROLE.operator) shouldBe true
+        // Admin is the level, and the ladder implies every rung below it -- so an operator-gated section
+        // admits them without `operator` appearing in the set.
+        profile?.roles shouldBe setOf(ROLE.admin)
+        RoleLadder.satisfies(profile!!.roles, ROLE.operator) shouldBe true
+        RoleLadder.satisfies(profile.roles, ROLE.user) shouldBe true
+        // Not the all-clients capability: that is a separate grant, and the full-scope admin sections need it
+        // on top of the level.
+        profile.roles.contains(ROLE.allClients) shouldBe false
         // No row stands behind them, which is what stops refreshActingRoles going after CL.systemUserId.
         profile?.isRowBacked shouldBe false
         // And the address reaches the log line the same way it would on a backend told by header.

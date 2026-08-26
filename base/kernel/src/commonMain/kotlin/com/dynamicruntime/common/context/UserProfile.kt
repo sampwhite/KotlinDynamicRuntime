@@ -168,10 +168,23 @@ data class UserProfile(
          * The profile for a caller an **edge** vouched for (issue #386): authenticated by [email] at the
          * perimeter, acting for [CL.house], and backed by no database row anywhere.
          *
-         * **[ROLE.operator], because `admin` has nothing to mean on an edge.** The admin sections are user
-         * administration, and an edge has no user store -- there is nothing there to administer. `operator` is
-         * the level for *running the deployment rather than using it*, which is exactly an edge's own surface.
-         * `RoleLadder` ranks admin above it, so nothing is locked in should that change.
+         * **[ROLE.admin], the top of the ladder.** This was [ROLE.operator] on the reasoning that admin meant
+         * user administration and an edge has no user store -- true, but it answered the wrong question. The
+         * people who reach an edge are the ones who got through the perimeter's own Google gate on a permitted
+         * domain: staff, running the deployment. Withholding the top rung from them buys nothing, because the
+         * gate they already passed is the one that mattered.
+         *
+         * `RoleLadder` orders `user` below `operator` below `admin` and `satisfies` implies every rung below
+         * the one held, so this grants operator too without listing it. That the old comment noted "nothing is
+         * locked in should that change" is why changing it is one line.
+         *
+         * **Not `ROLE.allClients`.** That is a *capability* rather than a rung, and the full-scope admin
+         * sections require it on top of the level -- so those stay closed to an env-authed caller until
+         * something decides they should not. A deliberate stopping point rather than an oversight: the level
+         * is what Sam asked for, and the capability is a separate grant that deserves its own reason.
+         *
+         * Someday a production deployment may want to narrow what env auth grants -- see `deferred-work.md`,
+         * "When the people who can reach an edge stop being a small trusted group".
          *
          * The address is the identity: it is what reaches the log line, and it is why [userId] stays the
          * default rather than being invented. Nothing may query by it -- see [isRowBacked].
@@ -179,7 +192,7 @@ data class UserProfile(
         fun envAuthed(email: String): UserProfile = UserProfile(
             authId = email,
             client = CL.house,
-            roles = setOf(ROLE.operator),
+            roles = setOf(ROLE.admin),
             isRowBacked = false,
         )
 
