@@ -406,7 +406,7 @@ fun isScalarType(jsonType: String?): Boolean =
  *
  * **The rule is "could this only ever arrive as text?"** A query string and a form encoding carry nothing but
  * strings, so a parameter of one of these types could not be supplied *at all* without coercion: there would
- * be no spelling of `5` or of `true` that worked. Strings, arrays and objects are left strict because they
+ * be no spelling of `5` or of `true` that worked. Strings, arrays, and objects are left strict because they
  * have a faithful spelling on those transports already, or no sensible one at all.
  *
  * Booleans were the odd omission, and the asymmetry was invisible until it bit: `?publicApi=true` failed as a

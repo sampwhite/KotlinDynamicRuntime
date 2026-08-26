@@ -711,9 +711,9 @@ private val falseSpellings = setOf("false", "f", "no", "n", "0", "off")
 @KdrPrivate
 fun parseExactBool(s: String): Boolean? {
     val v = s.trim { it <= ' ' }.lowercase()
-    return when {
-        v in trueSpellings -> true
-        v in falseSpellings -> false
+    return when (v) {
+        in trueSpellings -> true
+        in falseSpellings -> false
         else -> null
     }
 }

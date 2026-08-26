@@ -44,7 +44,7 @@ import com.dynamicruntime.common.util.toOptStr
  *    `RequestService` caches resolved types by path. A client's narrowing is enforced only where the entry is
  *    *stored*, so a form built from this schema offers choices a client has removed and finds out on save.
  *  - **On a client's own path**, the published type is that client's, so what is advertised is what is
- *    enforced and a control cannot offer what the client removed.
+ *    enforced, and a control cannot offer what the client removed.
  *
  * **So a UI must reach the *client's* path, not the bare shared one.** `GET /schema/endpoints` already answers
  * with the caller's own client's paths -- an `acme` user is shown `/gedra/acme/...` and *not* the shared one --

@@ -1,6 +1,5 @@
 package com.dynamicruntime.common.user
 
-import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
@@ -244,7 +243,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
     ) { c, request ->
         val userId = requireUserId(request)
         val roles = request[ADF.roles].toJsonListOfStrings()
-        // Loaded before the role checks so a user outside the caller's scope is a 404 rather than a complaint
+        // Loaded before the role checks, so a user outside the caller's scope is a 404 rather than a complaint
         // about roles -- the complaint would confirm the id belongs to somebody.
         val row = loadEditableUser(c, userId)
         requireUsableRoles(c, roles, row.roles)
@@ -391,7 +390,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
  * widens that user's reach beyond the caller's own. Applied to the caller themselves it is the escape hatch
  * from confinement altogether, which is why this needs no separate self-check.
  *
- * An administrator who is not confined to an organization -- most of them -- may assign anything, including
+ * An administrator not confined to an organization -- most of them -- may assign anything, including
  * nothing.
  */
 /**
@@ -459,9 +458,9 @@ private fun loadUser(cxt: KdrCxt, userId: Long): AuthUserRow =
         ?: throw KdrException("No user with id $userId.", code = EXC.notFound)
 
 /**
- * Loads a user for an **edit**, refusing a permanently-deleted tombstone: its identity is obfuscated and there
- * is nothing left to administer -- re-enabling, renaming or re-deleting one would either resurrect an account
- * that was meant to be gone or write to a hollowed-out row. The single gate every mutating handler passes
+ * Loads a user for an **edit**, refusing a permanently-deleted tombstone: its identity is obfuscated, and there
+ * is nothing left to administer -- re-enabling, renaming, or re-deleting one would either resurrect an account
+ * meant to be gone or write to a hollowed-out row. The single gate every mutating handler passes
  * through, so the UI's read-only treatment is a convenience over an enforced rule, not the rule itself.
  */
 private fun loadEditableUser(cxt: KdrCxt, userId: Long): AuthUserRow {
