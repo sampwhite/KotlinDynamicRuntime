@@ -8,7 +8,7 @@ import com.dynamicruntime.common.util.toOptBool
 import com.dynamicruntime.common.util.toOptEnum
 
 /**
- * What a configuration defect does at startup, and what a running node can be asked about afterwards
+ * What a configuration defect does at startup, and what a running node can be asked about afterward
  * (issue #303).
  *
  * ### The paradigm
@@ -35,7 +35,7 @@ import com.dynamicruntime.common.util.toOptEnum
  * the rest of the instance is fine. It is not for a security fence: `SchemaService.checkInit` refuses to start
  * a test instance outside `local`/`unit`, and that stays absolute. Nor for a misconfiguration that leaves the
  * node unable to do its job -- which is why [SqlSchemaDrift][com.dynamicruntime.common.sql.SqlSchemaDrift]
- * stays [strict] even in production. The first fails toward "one feature is wrong"; the second toward "the
+ * stays [BootCheckMode.strict] even in production. The first fails toward "one feature is wrong"; the second toward "the
  * wrong people can reach something", and no amount of uptime is worth the second.
  *
  * So the mode is **per check**, and `strict` in production is a legitimate answer for a check whose failure is

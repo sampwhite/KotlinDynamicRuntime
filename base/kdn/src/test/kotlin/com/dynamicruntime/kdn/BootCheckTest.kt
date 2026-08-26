@@ -12,7 +12,6 @@ import com.dynamicruntime.common.sql.SqlSchemaDrift
 import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.BootCheckRegistry
-import com.dynamicruntime.common.startup.allowOverride
 import com.dynamicruntime.common.startup.bootCheckMode
 import com.dynamicruntime.common.startup.modeOverride
 import com.dynamicruntime.common.user.TestUser
@@ -71,7 +70,7 @@ class BootCheckTest : StringSpec({
 
     "an allow-flag reads as permission, not as a mode word" {
         // `KDR_ALLOW_SCHEMA_DRIFT=true` says *allow*, which is `warn`. Spelling it as a mode word would be a
-        // worse name for the same thing, so the two spellings coexist and only the default is shared.
+        // worse name for the same thing, so the two spellings coexist, and only the default is shared.
         val prod = cxtIn(ENV.prod, "bootCheckAllow")
         prod.instanceConfig.put(DbEnv.allowSchemaDrift, "true")
         SqlSchemaDrift.driftMode(prod) shouldBe BootCheckMode.warn

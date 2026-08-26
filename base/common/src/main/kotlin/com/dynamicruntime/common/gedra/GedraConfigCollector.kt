@@ -32,7 +32,7 @@ object GCFG {
 
 /**
  * What a Gedra config problem does at startup: an explicit [GCFG.checkEnvVar] decides it, and otherwise it is
- * [GCFG.strict] everywhere except [ENV.prod], where it is [GCFG.warn].
+ * [BootCheckMode.strict] everywhere except [ENV.prod], where it is [BootCheckMode.warn].
  *
  * The paradigm #296 established for Markdown fragments, applied to the same class of problem: **a
  * configuration defect degrades in production and refuses everywhere else.** Silence while the author is
