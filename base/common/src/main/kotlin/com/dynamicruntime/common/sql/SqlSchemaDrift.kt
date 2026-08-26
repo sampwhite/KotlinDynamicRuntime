@@ -74,7 +74,7 @@ object SqlSchemaDrift {
                 "column and apply the NOT NULL by hand."
             LogSql.warn(cxt) { note }
             // Reported as a finding as well as logged. It is transient by nature, which is an argument for
-            // not *failing* on it and none at all for hiding it: "if it persists" is a judgement somebody has
+            // not *failing* on it and none at all for hiding it: "if it persists" is a judgment somebody has
             // to be able to make, and a log line from boot is not where they will make it.
             registry.record(BCHK.schemaDrift, DbEnv.allowSchemaDrift, mode, listOf(note))
         }
@@ -147,7 +147,7 @@ object SqlSchemaDrift {
      * decision rather than an oversight. Drift that makes every insert fail is not a defect on the side: a
      * table that cannot be written to is the node unable to do its job, which is the half of the boundary
      * that does *not* degrade. It is also the kind of thing found long before a production deploy, so
-     * refusing there is a backstop rather than the primary defence.
+     * refusing there is a backstop rather than the primary defense.
      *
      * [DbEnv.allowSchemaDrift] stays the operator's way past it while a migration is in flight -- an
      * allow-flag rather than a mode word, which is why this reads [allowOverride] (see its note).

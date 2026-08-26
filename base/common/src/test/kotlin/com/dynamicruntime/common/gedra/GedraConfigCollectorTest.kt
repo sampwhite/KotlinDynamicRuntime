@@ -111,7 +111,7 @@ class GedraConfigCollectorTest : StringSpec({
         collector.configs.map { it.name } shouldContainExactly listOf("coreTraits")
         collector.traits.getValue("name").typeName shouldBe "globalconfig.NameEntry"
 
-        // And the node can say what it dropped, which is what stops a degraded boot from being a silent one.
+        // And the node can say what it dropped, which is what stops a degraded boot from being silent.
         collector.issues.size shouldBe 1
         collector.issues.first().message shouldContain "Trait 'name' is declared by both"
         collector.issues.first().degradedTo shouldContain "dropping"
@@ -119,7 +119,7 @@ class GedraConfigCollectorTest : StringSpec({
 
     // Keyed on the ENVIRONMENT, never on isTestInstance -- that flag is inferred from in-memory-ness and the
     // unit environment, so an ordinary local run against a real database is not a test instance, and keying
-    // on it would hand a developer production behaviour on their own machine. #296 got this wrong-footed
+    // on it would hand a developer production behavior on their own machine. #296 got this wrong-footed
     // first and left a warning; this is that warning made executable.
     "the split follows the environment, not the test-instance flag" {
         gedraConfigCheckMode(cxtIn(ENV.prod)) shouldBe BootCheckMode.warn

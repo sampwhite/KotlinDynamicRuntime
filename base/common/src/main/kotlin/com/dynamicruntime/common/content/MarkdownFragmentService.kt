@@ -162,7 +162,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * another service, for a per-client or per-version copy. Callers reach it via [get]; the seam is in place
      * so that change stays inside here.
      */
-    fun resolveFragment(cxt: KdrCxt, fileId: String, namespace: String, key: String): String? {
+    fun resolveFragment(@Suppress("unused") cxt: KdrCxt, fileId: String, namespace: String,
+                        key: String): String? {
         val parsed = parsedByFileId.getOrPut(fileId) {
             ContentResources.readText(resourceDir, fileId)?.parseMarkdownFragments() ?: emptyMap()
         }
@@ -220,7 +221,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
          * production node, whose boot only warned, gets told what is wrong without a restart. `fileId` narrows
          * it to one file; omitted, it checks everything the components declared.
          *
-         * Under `operator` rather than open: a fragment issue names files, line numbers and copy internals.
+         * Under `operator` rather than open: a fragment issue names files, line numbers, and copy internals.
          */
         fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "fragmentCheck") {
             // Described rather than a bare object: `required` and `optional` are a distinction a caller has to
