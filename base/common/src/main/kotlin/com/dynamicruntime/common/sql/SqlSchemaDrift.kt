@@ -5,6 +5,11 @@ import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
+import com.dynamicruntime.common.startup.BCHK
+import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.startup.BootCheckRegistry
+import com.dynamicruntime.common.startup.allowOverride
+import com.dynamicruntime.common.startup.bootCheckMode
 
 /**
  * One live database column, as JDBC metadata describes it (issue #216). [SqlTableUtil] reads these while
@@ -49,19 +54,29 @@ object SqlSchemaDrift {
         aliases: SqlColumnAliases,
     ) {
         val cxt = sqlCxt.cxt
+        val mode = driftMode(cxt)
+        val registry = BootCheckRegistry.get(cxt)
+        // Registered before anything is looked at, and on every table, so the report says the check *ran*
+        // even when every table is clean (issue #303). Recording only on a finding would make a healthy node
+        // and a node where this never executed look identical, which is the confusion the registry exists to
+        // remove. Findings accumulate under the one name, so the per-table calls build a single entry.
+        registry.record(BCHK.schemaDrift, DbEnv.allowSchemaDrift.name, mode)
         val blocking = strandedBlockingColumns(tableDef, existing, aliases)
         val unbackfilled = unbackfilledColumns(tableDef, existing, aliases)
 
         if (unbackfilled.isNotEmpty()) {
             // A warning and never fatal: the deployment works, and this is the state a correct rollout passes
             // through. It matters because the drift does not sit still -- see the class comment on `client`.
-            LogSql.warn(cxt) {
-                "Table $dbTableName has ${unbackfilled.size} column(s) the code declares required that the " +
-                    "database still allows to be null: ${unbackfilled.joinToString(", ")}. That is expected " +
-                    "just after a deploy that added them (ALTER TABLE ADD COLUMN cannot say NOT NULL on a " +
-                    "table with rows) and means a backfill never happened if it persists. Backfill the " +
-                    "column and apply the NOT NULL by hand."
-            }
+            val note = "Table $dbTableName has ${unbackfilled.size} column(s) the code declares required " +
+                "that the database still allows to be null: ${unbackfilled.joinToString(", ")}. That is " +
+                "expected just after a deploy that added them (ALTER TABLE ADD COLUMN cannot say NOT NULL " +
+                "on a table with rows) and means a backfill never happened if it persists. Backfill the " +
+                "column and apply the NOT NULL by hand."
+            LogSql.warn(cxt) { note }
+            // Reported as a finding as well as logged. It is transient by nature, which is an argument for
+            // not *failing* on it and none at all for hiding it: "if it persists" is a judgment somebody has
+            // to be able to make, and a log line from boot is not where they will make it.
+            registry.record(BCHK.schemaDrift, DbEnv.allowSchemaDrift.name, mode, listOf(note))
         }
         if (blocking.isEmpty()) {
             return
@@ -76,7 +91,8 @@ object SqlSchemaDrift {
             "behind. Drop it, or give it a default, or declare it. Set ${DbEnv.allowSchemaDrift}=true to " +
             "boot anyway (writes will still fail) while a migration is in progress."
 
-        if (isDriftAllowed(cxt)) {
+        if (mode != BootCheckMode.strict) {
+            registry.record(BCHK.schemaDrift, DbEnv.allowSchemaDrift.name, mode, listOf(message))
             // Logged at error rather than warn: this is not a caveat, it is a broken deployment that somebody
             // has asked to start regardless.
             LogSql.error(cxt, message)
@@ -124,6 +140,19 @@ object SqlSchemaDrift {
         .mapNotNull { col -> existing[aliases.getColumnName(col.name)]?.takeIf { it.nullable }?.name }
         .sorted()
 
-    /** Whether an operator has asked to boot despite blocking drift (see [DbEnv.allowSchemaDrift]). */
-    fun isDriftAllowed(cxt: KdrCxt): Boolean = cxt.getEnvBool(DbEnv.allowSchemaDrift) ?: false
+    /**
+     * What blocking drift does at startup (issue #303).
+     *
+     * **[BootCheckMode.strict] in production too**, unlike the fragment check beside it, and that is the
+     * decision rather than an oversight. Drift that makes every insert fail is not a defect on the side: a
+     * table that cannot be written to is the node unable to do its job, which is the half of the boundary
+     * that does *not* degrade. It is also the kind of thing found long before a production deploy, so
+     * refusing there is a backstop rather than the primary defense.
+     *
+     * [DbEnv.allowSchemaDrift] stays the operator's way past it while a migration is in flight -- an
+     * allow-flag rather than a mode word, which is why this reads [allowOverride] (see its note).
+     */
+    fun driftMode(cxt: KdrCxt): BootCheckMode =
+        bootCheckMode(cxt, allowOverride(cxt, DbEnv.allowSchemaDrift), prodMode = BootCheckMode.strict)
+
 }

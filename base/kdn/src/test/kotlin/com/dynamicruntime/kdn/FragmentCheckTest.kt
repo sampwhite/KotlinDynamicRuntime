@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.FCHK
 import com.dynamicruntime.common.content.FRAG
+import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
@@ -41,23 +42,23 @@ class FragmentCheckTest : StringSpec({
      */
     "the check is strict outside prod and lenient in prod" {
         val cxt = Startup.mkTestBootCxt("fragMode", "fragModeTest")
-        MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe FRAG.strict
+        MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe BootCheckMode.strict
 
         // A prod-shaped config built directly: `env` is fixed at construction, and `mkTestBootCxt` forces
         // `unit`, so a booted test instance cannot be turned into a production one after the fact.
         val prodCxt = KdrCxt("fragProd", KdrInstanceConfig("fragProdTest", ENV.prod, ENV.deployed))
-        MarkdownFragmentService.fragmentCheckMode(prodCxt) shouldBe FRAG.warn
+        MarkdownFragmentService.fragmentCheckMode(prodCxt) shouldBe BootCheckMode.warn
     }
 
     "an explicit setting decides it either way" {
         val cxt = Startup.mkTestBootCxt("fragEnv", "fragEnvTest")
-        cxt.instanceConfig.put(FRAG.checkEnvVar.name, FRAG.warn)
-        MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe FRAG.warn
-        cxt.instanceConfig.put(FRAG.checkEnvVar.name, FRAG.off)
-        MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe FRAG.off
+        cxt.instanceConfig.put(FRAG.checkEnvVar.name, BootCheckMode.warn.name)
+        MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe BootCheckMode.warn
+        cxt.instanceConfig.put(FRAG.checkEnvVar.name, BootCheckMode.off.name)
+        MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe BootCheckMode.off
         // An unrecognized value falls back to the environment rule rather than silently disabling the check.
         cxt.instanceConfig.put(FRAG.checkEnvVar.name, "yes-please")
-        MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe FRAG.strict
+        MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe BootCheckMode.strict
     }
 
     // --- what the check finds ---------------------------------------------------

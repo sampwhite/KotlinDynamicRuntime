@@ -3,6 +3,9 @@ package com.dynamicruntime.common.operator
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
+import com.dynamicruntime.common.startup.BCHK
+import com.dynamicruntime.common.startup.BootCheckRegistry
+import com.dynamicruntime.common.startup.BootCheckResult
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.schema.SCT
@@ -132,6 +135,18 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "operator") {
             }
         },
     ) { c, request -> systemInfo(c, collect = request[OSI.collect] == true) }
+
+    BootCheckResult.defineInfoType(this)
+    listEndpoint(
+        "/operator/boot/checks",
+        "Reports every boot check this node ran: the mode each resolved to, and what each found.",
+        outputRef = BCHK.infoTypeName,
+        // No `limit`: the checks are a fixed, small set registered at boot, and paging a report somebody
+        // opened to find out whether anything is wrong would be a way to hide the answer on page two.
+        noLimit = true,
+    ) { c, _ ->
+        BootCheckRegistry.get(c).results().map { it.toInfo() }
+    }
 }
 
 /**

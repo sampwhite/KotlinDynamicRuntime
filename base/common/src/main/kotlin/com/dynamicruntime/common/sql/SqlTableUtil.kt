@@ -54,6 +54,11 @@ object SqlTableUtil {
             }
 
             val aliases = sqlDb.getAliases(sqlCxt.topic)
+            // Applied to every table, including one being created from scratch (issue #303). A fresh table has
+            // nothing to drift from, so the check finds nothing -- but it *registers*, and that is the point:
+            // otherwise a node whose database happened to be new and a node where this was never wired up
+            // report identically, and the second is the one worth noticing.
+            SqlSchemaDrift.check(sqlCxt, tableDef, dbTableName, existing, aliases)
             if (existing.isEmpty()) {
                 // Create the table from scratch.
                 val sb = StringBuilder()
@@ -70,11 +75,10 @@ object SqlTableUtil {
                 sb.append(" PRIMARY KEY (").append(primaryKeyClause).append(")\n);")
                 sqlDb.executeSchemaChangeSql(cxt, sb.toString())
             } else {
-                // Before adding anything, look the other way (issue #216): at what the database has and this
-                // declaration does not. Deliberately *before* the ALTERs below, so a column added by this very
-                // boot -- necessarily nullable, since the table has rows -- is not reported as an overdue
-                // backfill on the boot that legitimately created it.
-                SqlSchemaDrift.check(sqlCxt, tableDef, dbTableName, existing, aliases)
+                // The drift check above ran *before* the ALTERs below, and that ordering is load-bearing
+                // (issue #216): a column added by this very boot is necessarily nullable, since the table has
+                // rows, and would otherwise be reported as an overdue backfill on the boot that legitimately
+                // created it.
                 // Add any missing columns. Different databases handle multi-column adds differently, so we do
                 // one ALTER per column for simplicity; columns are added rarely enough that this is fine.
                 for (col in tableDef.columns) {

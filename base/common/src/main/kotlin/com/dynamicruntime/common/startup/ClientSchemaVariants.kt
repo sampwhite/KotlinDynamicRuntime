@@ -5,7 +5,6 @@ import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GU
-import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.gedra.GedraConfigIssue
@@ -133,7 +132,7 @@ private fun keepWhatNarrows(
     client: String,
     globalDefs: Map<String, Any?>,
     declared: Map<String, Any?>,
-    mode: String,
+    mode: BootCheckMode,
     issues: MutableList<GedraConfigIssue>,
 ): Map<String, Any?> {
     val kept = LinkedHashMap<String, Any?>(declared.size)
