@@ -113,7 +113,11 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
     // The account's own name; an unnamed account shows the placeholder rather than the username standing in.
     USF.name -> user.name?.takeIf { it.isNotBlank() } ?: "—"
     USF.client -> user.client
-    USF.updatedAt -> user.updatedAt?.let { formatTimestamp(it) } ?: "—"
+    // The three tracked dates the console shows (issue #462). A dash rather than a blank: "never" is a fact
+    // about the account -- never logged in, never edited -- and an empty cell reads as a rendering failure.
+    USF.lastEdited.at -> user.lastEditedAt?.let { formatTimestamp(it) } ?: "—"
+    USF.lastLoggedIn.at -> user.lastLoggedInAt?.let { formatTimestamp(it) } ?: "—"
+    USF.activated.at -> user.activatedAt?.let { formatTimestamp(it) } ?: "—"
     else -> unmappedCell
 }
 
@@ -122,7 +126,8 @@ const val unmappedCell = "(?)"
 
 /** Column widths (a presentation detail, so front-end only) keyed by the spec field name; absent = auto. */
 private val columnWidths: Map<String, Int> = mapOf(
-    USF.email to 220, USF.name to 180, USF.client to 110, USF.updatedAt to 150,
+    USF.email to 220, USF.name to 180, USF.client to 110,
+    USF.lastEdited.at to 150, USF.lastLoggedIn.at to 150, USF.activated.at to 150,
 )
 
 /** Builds an antd column config `{ title, dataIndex, key, width? }`. */

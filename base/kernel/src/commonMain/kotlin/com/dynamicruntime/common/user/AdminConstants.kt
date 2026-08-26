@@ -162,6 +162,38 @@ object USF {
      */
     val updated = UserDateKeys("updated", "updated")
 
+    /**
+     * When the account was **first created**. Never overwritten -- it is the one of these that cannot move,
+     * which is what makes it worth keeping and also why the console does not show it: [activated] answers the
+     * everyday question, and a column that never changes is noise in a list somebody is scanning.
+     */
+    val registered = UserDateKeys("registered", "registered")
+
+    /**
+     * When the account most recently **became active**: at creation, and again each time a disabled account is
+     * re-enabled. Named for what it records rather than `registeredAt`, which would read as a permanent fact
+     * about an account that re-enabling had quietly rewritten.
+     */
+    val activated = UserDateKeys("activated", "activated")
+
+    /**
+     * When a login sequence last **completed**. Presenting an existing session cookie does not count -- that
+     * is not a login, and counting it would turn this into "last seen", which is a different question and one
+     * every background poll would answer.
+     */
+    val lastLoggedIn = UserDateKeys("lastLoggedIn", "last logged in")
+
+    /**
+     * When the account was last **edited** -- anything that is not a login and not an activation.
+     *
+     * The administrative counterpart of [updated], and the reason both exist. Stamping a login writes the row,
+     * so `updatedAt` moves whenever anybody signs in; left as the console's column, the Users page would
+     * quietly have become "most recently active" and a busy account would sit at the top for good. So
+     * `updatedAt` stays the storage-level "this row was written", useful precisely because nothing filters it,
+     * and this is the one an administrator is asking about.
+     */
+    val lastEdited = UserDateKeys("lastEdited", "last edited")
+
     /** The `updatedAt` sort key, and the field carrying the update time on each returned row. */
     val updatedAt: String get() = updated.at
 

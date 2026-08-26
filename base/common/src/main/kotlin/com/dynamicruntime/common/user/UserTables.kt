@@ -80,6 +80,19 @@ object AD {
     const val org = "org"
 
     /**
+     * The four tracked dates (issue #462), stored in the auth-data payload beside [org].
+     *
+     * Their own literals rather than references to the wire keys they happen to match. A storage key and a
+     * wire key are different contracts: renaming what an endpoint calls a field should not silently change
+     * where it is *stored* and orphan every existing row. `org` and `ADF.org` are already separate for the
+     * same reason.
+     */
+    const val registeredAt = "registeredAt"
+    const val activatedAt = "activatedAt"
+    const val lastLoggedInAt = "lastLoggedInAt"
+    const val lastEditedAt = "lastEditedAt"
+
+    /**
      * Whether this account belongs to a **business** rather than a person. It says how to read [name] -- a
      * business's name rather than a person's -- and is absent (i.e. false) for an ordinary personal account.
      * Set at registration, and held here beside the other identity data rather than in a column, the same way

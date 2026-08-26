@@ -56,7 +56,7 @@ val Users = FC<Props> {
     var textFilters by useState<Map<String, String>>(emptyMap())
     var rangeFilters by useState<Map<String, DateRange>>(emptyMap())
     // The sort, driven by the table's column headers. Default: newest first, as the issue specifies.
-    var sortBy by useState(USF.updatedAt)
+    var sortBy by useState(USF.lastEdited.at)
     var descending by useState(true)
     // What the last search reported: how many matched in all, and whether the cap hid some.
     var numAvailable by useState(0)
@@ -760,7 +760,7 @@ val Users = FC<Props> {
             // count as an active filter here -- matching what the query serialization actually sends.
             val anyFilter = textFilters.values.any { it.isNotBlank() } || rangeFilters.values.any { !it.isEmpty }
             // The sort counts as something to reset too, so Clear returns the whole view to its default.
-            val canReset = anyFilter || sortBy != USF.updatedAt || !descending
+            val canReset = anyFilter || sortBy != USF.lastEdited.at || !descending
 
             div {
                 className = ClassName("row")
@@ -844,7 +844,7 @@ fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery {
     return UserSearchQuery(
         textTerms = texts,
         ranges = ranges,
-        sortBy = hp[USF.sortBy]?.takeIf { userSortKeys.contains(it) } ?: USF.updatedAt,
+        sortBy = hp[USF.sortBy]?.takeIf { userSortKeys.contains(it) } ?: USF.lastEdited.at,
         // Descending is the default; only an explicit "false" means ascending.
         descending = hp[USF.descending] != "false",
     )
@@ -859,7 +859,7 @@ fun searchHashParams(query: UserSearchQuery): List<Pair<String, String>> =
     userSearchArgs(query).mapNotNull { (k, v) ->
         when {
             // The sort defaults are omitted so an untouched search carries no params.
-            k == USF.sortBy && v == USF.updatedAt -> null
+            k == USF.sortBy && v == USF.lastEdited.at -> null
             k == USF.descending && v == true -> null
             k == USF.descending -> k to "false"
             else -> k to v.toString()

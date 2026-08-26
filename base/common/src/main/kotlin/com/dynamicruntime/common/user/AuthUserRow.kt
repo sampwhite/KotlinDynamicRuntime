@@ -58,6 +58,26 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
      */
     var updatedAt: Instant? = null
 
+    /**
+     * When the account was first created; never overwritten once set (issue #462). Read from
+     * [AD.registeredAt] in the auth data, like the three below.
+     */
+    var registeredAt: Instant? = null
+
+    /** When the account most recently became active -- at creation, and on each re-enable. */
+    var activatedAt: Instant? = null
+
+    /** When a login sequence last completed. A presented session cookie is not a login and does not move it. */
+    var lastLoggedInAt: Instant? = null
+
+    /**
+     * When the account was last edited: anything that is not a login and not an activation.
+     *
+     * Against [updatedAt], which is the storage-level "this row was written" and therefore moves on a login
+     * too. This is the one an administrator is asking about, and is what the console shows.
+     */
+    var lastEditedAt: Instant? = null
+
     lateinit var username: String
     var roles: List<String> = listOf(ROLE.user)
 
@@ -117,7 +137,18 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         ADF.deleted to isDeleted,
         ADF.deletedAt to deletedAt,
         ADF.updatedAt to updatedAt,
+        // Keyed off the date registry rather than a second set of constants holding the same strings
+        // (issue #462). `ADF.updatedAt` predates that and stays as it is.
+        USF.registered.at to registeredAt,
+        USF.activated.at to activatedAt,
+        USF.lastLoggedIn.at to lastLoggedInAt,
+        USF.lastEdited.at to lastEditedAt,
     )
+
+    /** Writes [value] under [key] when it is set, and removes the key when it is not. */
+    private fun putDate(data: MutableMap<String, Any?>, key: String, value: Instant?) {
+        if (value != null) data[key] = value else data.remove(key)
+    }
 
     /** Repackages the typed fields into a storage map (roles and password folded back into `authUserData`). */
     fun toMap(): Map<String, Any?> {
@@ -132,6 +163,14 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         // account has one too -- so clearing `isEntity` leaves the name alone.
         if (isEntity) newAuthData[AD.isEntity] = true else newAuthData.remove(AD.isEntity)
         if (name != null) newAuthData[AD.name] = name else newAuthData.remove(AD.name)
+        // Written back explicitly rather than left to ride along in `authUserData`, so that setting the typed
+        // field is what persists -- the rule the note at the end of this method states. Absent stays absent
+        // for the same reason `org` does: an account that has never logged in should not carry a null saying
+        // so in every row.
+        putDate(newAuthData, AD.registeredAt, registeredAt)
+        putDate(newAuthData, AD.activatedAt, activatedAt)
+        putDate(newAuthData, AD.lastLoggedInAt, lastLoggedInAt)
+        putDate(newAuthData, AD.lastEditedAt, lastEditedAt)
         val retData = data.toMutableMap()
         retData[AU.username] = username
         retData[AU.authUserData] = newAuthData
@@ -244,7 +283,13 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
                     type = SCT.boolean
                 }
                 property(ADF.deletedAt, "When the account was permanently deleted, for a deleted account.") { dateTime() }
-                property(ADF.updatedAt, "When the row was last updated (the default sort key of the cache search).") { dateTime() }
+                property(ADF.updatedAt, "When the row was last updated -- moved by anything, a login included.") { dateTime() }
+                // The four tracked dates (issue #462). Declared from the same registry the sort keys and the
+                // filter ranges come from, so a date is one entry rather than four places that must agree.
+                property(USF.registered.at, "When the account was first created; never overwritten.") { dateTime() }
+                property(USF.activated.at, "When the account most recently became active -- at creation, and on each re-enable.") { dateTime() }
+                property(USF.lastLoggedIn.at, "When a login sequence last completed; a refreshed cookie does not count.") { dateTime() }
+                property(USF.lastEdited.at, "When the account was last edited -- not a login, not an activation.") { dateTime() }
             }
         }
 
@@ -263,6 +308,10 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
             row.isEntity = userData[AD.isEntity] == true
             row.name = userData[AD.name].toOptStr()
             row.deletedAt = userData[AD.deletedAt].toOptInstant()
+            row.registeredAt = userData[AD.registeredAt].toOptInstant()
+            row.activatedAt = userData[AD.activatedAt].toOptInstant()
+            row.lastLoggedInAt = userData[AD.lastLoggedInAt].toOptInstant()
+            row.lastEditedAt = userData[AD.lastEditedAt].toOptInstant()
             // A real column, read from the row rather than the auth-data blob (unlike org/name/deletedAt).
             row.updatedAt = data[PF.updatedAt].toOptInstant()
             row.encodedPassword = userData[AD.encodedPassword].toOptStr()
@@ -285,12 +334,25 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
             client: String,
             roles: List<String>,
             org: String? = null,
+            /**
+             * When the account came into being (issue #462), stamped as both [AD.registeredAt] and
+             * [AD.activatedAt]. Passed in rather than read here because this builds a map and has no context
+             * to ask for the time; null leaves both unset, which is what a caller with no clock to hand gets
+             * and what an older row already looks like.
+             */
+            createdAt: Instant? = null,
         ): Map<String, Any?> = mapOf(
             AU.primaryId to primaryId,
             AU.username to (usernameTmpPrefix + primaryId),
             PF.client to client,
             AU.authUserData to mutableMapOf<String, Any?>(AD.roles to roles).also {
                 if (org != null) it[AD.org] = org
+                // Both, from one moment: creation is the first activation. They part company later, when a
+                // re-enable moves `activatedAt` and leaves `registeredAt` where it was.
+                if (createdAt != null) {
+                    it[AD.registeredAt] = createdAt
+                    it[AD.activatedAt] = createdAt
+                }
             },
         )
     }

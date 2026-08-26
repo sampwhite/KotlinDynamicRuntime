@@ -55,11 +55,30 @@ class UserSearchFieldSpec(
     val allClientsOnly: Boolean = false,
     /**
      * For a [UserFilterKind.dateRange] field, the two wire/hash param names its bounds travel under (the
-     * endpoint reads them, the console sends and encodes them). Null for every other kind. It is here rather
-     * than derived from [name] because the pair does not follow a pattern from it -- `updatedAt`'s bounds are
-     * `updatedAfter`/`updatedBefore`.
+     * endpoint reads them, the console sends and encodes them). Null for every other kind.
+     *
+     * It **is** derived from the field name now (issue #462): `UserDateKeys` generates `at`/`after`/`before`
+     * from one root, so a date spec should be built with [dateSpec] rather than by listing the pair. This
+     * stays a plain property because a non-date field has none, and because the spec is deliberately flat
+     * data that a future server-driven console can serialize without a rule attached.
      */
     val rangeKeys: Pair<String, String>? = null,
+)
+
+/**
+ * A [UserSearchFieldSpec] for a date attribute, built from its [keys] (issue #462).
+ *
+ * The convenience is the point: a date's sort key *and* its two range bounds all come from one root, so
+ * spelling them out at the call site is three chances to disagree with the endpoint that reads them. With five
+ * dates that is fifteen strings; with this it is five roots.
+ */
+fun dateSpec(
+    keys: UserDateKeys,
+    label: String,
+    filterKind: UserFilterKind? = UserFilterKind.dateRange,
+    sortable: Boolean = true,
+): UserSearchFieldSpec = UserSearchFieldSpec(
+    keys.at, label, filterKind, sortable, rangeKeys = keys.after to keys.before,
 )
 
 /**
@@ -74,10 +93,12 @@ val userSearchFieldSpecs: List<UserSearchFieldSpec> = listOf(
     UserSearchFieldSpec(USF.email, "Email", UserFilterKind.substring, sortable = true),
     UserSearchFieldSpec(USF.name, "Name", UserFilterKind.substring, sortable = true),
     UserSearchFieldSpec(USF.client, "Client", UserFilterKind.exact, sortable = true, allClientsOnly = true),
-    UserSearchFieldSpec(
-        USF.updatedAt, "Updated", UserFilterKind.dateRange, sortable = true,
-        rangeKeys = USF.updatedAfter to USF.updatedBefore,
-    ),
+    // The three dates the console shows (issue #462). `updatedAt` and `registeredAt` are deliberately absent:
+    // the endpoint still sorts on both, but neither earns a column -- `updatedAt` moves on a login and so
+    // answers a question nobody is asking here, and `registeredAt` never moves at all.
+    dateSpec(USF.lastEdited, "Edited"),
+    dateSpec(USF.lastLoggedIn, "Last login"),
+    dateSpec(USF.activated, "Activated"),
 )
 
 /** [userSearchFieldSpecs] by name, for resolving a field the console or a shared URL names. */

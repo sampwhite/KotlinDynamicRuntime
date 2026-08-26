@@ -67,6 +67,10 @@ class AdminUser(
      * #411). The default sort key of the search, and a column the console can order on.
      */
     val updatedAt: String? = null,
+    /** The tracked dates (issue #462); absent until the event that sets each one has happened. */
+    val lastEditedAt: String? = null,
+    val lastLoggedInAt: String? = null,
+    val activatedAt: String? = null,
 ) {
     /**
      * This user's access level: the highest rung of [RoleLadder] they hold, which is what the Users page's
@@ -231,6 +235,9 @@ object AdminApi {
         hasPassword = this[ADF.hasPassword] == true,
         deleted = this[ADF.deleted] == true,
         updatedAt = this[ADF.updatedAt] as? String,
+        lastEditedAt = this[USF.lastEdited.at] as? String,
+        lastLoggedInAt = this[USF.lastLoggedIn.at] as? String,
+        activatedAt = this[USF.activated.at] as? String,
     )
 }
 
@@ -250,7 +257,7 @@ class DateRange(val after: String? = null, val before: String? = null) {
 class UserSearchQuery(
     val textTerms: Map<String, String> = emptyMap(),
     val ranges: Map<String, DateRange> = emptyMap(),
-    val sortBy: String = USF.updatedAt,
+    val sortBy: String = USF.lastEdited.at,
     val descending: Boolean = true,
 )
 

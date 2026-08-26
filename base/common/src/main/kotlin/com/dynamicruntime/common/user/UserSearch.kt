@@ -82,6 +82,10 @@ class UserDateField(val keys: UserDateKeys, val instantOf: (AuthUserRow) -> Inst
  */
 val userDateFields: List<UserDateField> = listOf(
     UserDateField(USF.updated) { it.updatedAt },
+    UserDateField(USF.registered) { it.registeredAt },
+    UserDateField(USF.activated) { it.activatedAt },
+    UserDateField(USF.lastLoggedIn) { it.lastLoggedInAt },
+    UserDateField(USF.lastEdited) { it.lastEditedAt },
 )
 
 /** [userDateFields] by root, for resolving the range keys a caller filtered on. */

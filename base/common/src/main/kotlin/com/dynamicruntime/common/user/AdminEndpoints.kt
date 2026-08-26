@@ -200,7 +200,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null } ?: c.userProfile.org
         requireAssignableOrg(c, org)
         val data = AuthUserRow
-            .mkInitialUser(primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org)
+            .mkInitialUser(primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now())
             .toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
@@ -305,7 +305,14 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         }
         val row = loadEditableUser(c, userId)
         row.enabled = enabled
-        userService(c).updateUser(c, row)
+        // Re-enabling is an **activation**, not an edit (issue #462): it is the account coming back into
+        // being, which is the same event as its creation and the one `activatedAt` records. Disabling is an
+        // ordinary administrative change and takes the default, so the two directions are deliberately not
+        // symmetric.
+        if (enabled) {
+            row.activatedAt = c.now()
+        }
+        userService(c).updateUser(c, row, isEdit = !enabled)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId enabled=$enabled." }
         row.toAdminInfo()
     }

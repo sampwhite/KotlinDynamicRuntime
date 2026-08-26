@@ -183,7 +183,7 @@ class AuthFormHandler(
         // `+acme` tag puts them in `acme`, and anything else -- including a client this node does not carry --
         // is `public`, exactly as every registration was before.
         val data = AuthUserRow
-            .mkInitialUser(contactAddress, AddressRules.clientForNewUser(cxt, contactAddress), initialRoles)
+            .mkInitialUser(contactAddress, AddressRules.clientForNewUser(cxt, contactAddress), initialRoles, createdAt = cxt.now())
             .toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
@@ -351,7 +351,7 @@ class AuthFormHandler(
      */
     private fun mkGoogleUser(cxt: KdrCxt, email: String): AuthUserRow {
         val data = AuthUserRow
-            .mkInitialUser(email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email))
+            .mkInitialUser(email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email), createdAt = cxt.now())
             .toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
@@ -440,7 +440,7 @@ class AuthFormHandler(
             return completeLogin(cxt, existing, byCode = false)
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
-        val data = AuthUserRow.mkInitialUser(email, fixtureClient(cxt, email, client), roles).toMutableMap()
+        val data = AuthUserRow.mkInitialUser(email, fixtureClient(cxt, email, client), roles, createdAt = cxt.now()).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(email)
@@ -489,6 +489,13 @@ class AuthFormHandler(
         // about how an account was created, and it only ever grants, so a role an administrator deliberately
         // removed came back at the next login. An address now decides what a user is provisioned as, and from
         // then on their roles are whatever an administrator has made them.
+        // The one place a login *completes* -- byCode, byPassword and Google all funnel through here -- which
+        // is why the stamp goes here and not at each of them (issue #462). It is also why "a refreshed cookie
+        // does not count" needs no enforcing: `extractSessionAuth` restores a profile from a cookie and never
+        // reaches this method. `isEdit = false`, because signing in is not an edit of the account.
+        row.lastLoggedInAt = cxt.now()
+        UserService.get(cxt).updateUser(cxt, row, isEdit = false)
+
         val profile = row.toUserProfile()
         cxt.bindToUserProfile(profile)
         cxt.request?.let {

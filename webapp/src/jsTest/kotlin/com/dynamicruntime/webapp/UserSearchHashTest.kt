@@ -37,15 +37,15 @@ class UserSearchHashTest {
     fun aFullSearchRoundTrips() {
         val q = UserSearchQuery(
             textTerms = mapOf(USF.email to "a@b", USF.name to "Ada", USF.client to "acme"),
-            ranges = mapOf(USF.updatedAt to DateRange("2026-01-01T00:00:00.000Z", "2026-06-01T00:00:00.000Z")),
+            ranges = mapOf(USF.lastEdited.at to DateRange("2026-01-01T00:00:00.000Z", "2026-06-01T00:00:00.000Z")),
             sortBy = USF.client, descending = false,
         )
         val back = roundTrip(q)
         assertEquals("a@b", back.textTerms[USF.email])
         assertEquals("Ada", back.textTerms[USF.name])
         assertEquals("acme", back.textTerms[USF.client])
-        assertEquals("2026-01-01T00:00:00.000Z", back.ranges[USF.updatedAt]?.after)
-        assertEquals("2026-06-01T00:00:00.000Z", back.ranges[USF.updatedAt]?.before)
+        assertEquals("2026-01-01T00:00:00.000Z", back.ranges[USF.lastEdited.at]?.after)
+        assertEquals("2026-06-01T00:00:00.000Z", back.ranges[USF.lastEdited.at]?.before)
         assertEquals(USF.client, back.sortBy)
         assertEquals(false, back.descending)
     }
@@ -55,15 +55,15 @@ class UserSearchHashTest {
         val q = searchQueryFromHash(emptyMap())
         assertTrue(q.textTerms.isEmpty())
         assertTrue(q.ranges.isEmpty())
-        assertEquals(USF.updatedAt, q.sortBy)
+        assertEquals(USF.lastEdited.at, q.sortBy)
         assertEquals(true, q.descending)
     }
 
     @Test
     fun anUnknownSortKeyFallsBackToTheDefault() {
         // A hand-edited or stale link must not send a sort the endpoint would 400 on.
-        assertEquals(USF.updatedAt, searchQueryFromHash(mapOf(USF.sortBy to "bogusField")).sortBy)
+        assertEquals(USF.lastEdited.at, searchQueryFromHash(mapOf(USF.sortBy to "bogusField")).sortBy)
         // publicName is a backend axis but not a console column, so it is not an accepted hash sort either.
-        assertEquals(USF.updatedAt, searchQueryFromHash(mapOf(USF.sortBy to USF.publicName)).sortBy)
+        assertEquals(USF.lastEdited.at, searchQueryFromHash(mapOf(USF.sortBy to USF.publicName)).sortBy)
     }
 }
