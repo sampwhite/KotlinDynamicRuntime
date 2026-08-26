@@ -130,4 +130,33 @@ class AddressRulesTest : StringSpec({
         AddressRules.isControlledDomain(cxtIn(ENV.local), "user1") shouldBe false
         tags("user1+acme").clientId shouldBe null
     }
+
+    // --- whether Google is authoritative for the perimeter (issue #429) ---------
+
+    "the hosted-domain claim is authoritative only when it equals the configured admin domain" {
+        val cxt = cxtIn(ENV.local, "acme.com")
+        AddressRules.isGoogleAuthoritative(cxt, "acme.com") shouldBe true
+        AddressRules.isGoogleAuthoritative(cxt, "ACME.com") shouldBe true // normalized the same way the domain is
+        AddressRules.isGoogleAuthoritative(cxt, "evil.com") shouldBe false // present-but-different must fail
+    }
+
+    // The case the whole fix exists for: a Google consumer account carries no hd, so there is nothing to match
+    // even though its address is verified and on the domain.
+    "an absent or empty hosted domain is never authoritative" {
+        AddressRules.isGoogleAuthoritative(cxtIn(ENV.local, "acme.com"), null) shouldBe false
+        AddressRules.isGoogleAuthoritative(cxtIn(ENV.local, "acme.com"), "  ") shouldBe false
+    }
+
+    // Exactness, unlike isControlledDomain's subdomain latitude for addresses: a perimeter wants the tighter rule.
+    "a subdomain of the admin domain is not an authoritative hosted domain" {
+        AddressRules.isControlledDomain(cxtIn(ENV.local, "acme.com"), "user1@eu.acme.com") shouldBe true
+        AddressRules.isGoogleAuthoritative(cxtIn(ENV.local, "acme.com"), "eu.acme.com") shouldBe false
+    }
+
+    // Fail closed: neither an unset nor a Gmail-hosted admin domain can name a Workspace whose hd could match.
+    "with no admin domain, or a gmail one, nothing is authoritative" {
+        AddressRules.isGoogleAuthoritative(cxtIn(ENV.local), "acme.com") shouldBe false
+        AddressRules.isGoogleAuthoritative(cxtIn(ENV.local, "gmail.com"), "gmail.com") shouldBe false
+        AddressRules.isGoogleAuthoritative(cxtIn(ENV.local, "googlemail.com"), "googlemail.com") shouldBe false
+    }
 })

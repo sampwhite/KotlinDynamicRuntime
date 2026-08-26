@@ -45,18 +45,28 @@ class EnvAuthLoginTest : StringSpec({
 
     InstanceRegistry.register(listOf(EdgeComponent()))
 
-    /** An edge instance with Google sign-in configured against this test's signing key. */
-    fun bootEdge(name: String) = Startup.mkTestBootCxt(
+    /**
+     * An edge instance with Google sign-in configured against this test's signing key. [adminDomain] is the
+     * permitted domain; pass null to leave it unset, the fail-closed case.
+     */
+    fun bootEdge(name: String, adminDomain: String? = "gyassa.com") = Startup.mkTestBootCxt(
         name, name,
-        mapOf(
-            ACFG.bootRole to BOOT.edge,
-            GOOG.googleClientId to clientId,
-            GOOG.googleKeySource to keySource,
-            ADMR.adminEmailDomainEnvVar to "gyassa.com",
-        ),
+        buildMap {
+            put(ACFG.bootRole, BOOT.edge)
+            put(GOOG.googleClientId, clientId)
+            put(GOOG.googleKeySource, keySource)
+            if (adminDomain != null) put(ADMR.adminEmailDomainEnvVar, adminDomain)
+        },
     )
 
-    fun credential(email: String?, emailVerified: Boolean = true, aud: String = clientId): String {
+    // `hostedDomain` defaults to the configured admin domain, so an ordinary call mints a real Workspace token
+    // that the gate admits; the refusal cases below vary it to a consumer account (null) or another domain.
+    fun credential(
+        email: String?,
+        emailVerified: Boolean = true,
+        aud: String = clientId,
+        hostedDomain: String? = "gyassa.com",
+    ): String {
         val header = mapOf(GOOG.alg to GOOG.rs256, GOOG.kid to testKid)
         val claims = buildMap<String, Any?> {
             put(GOOG.sub, "sub-${email ?: "none"}")
@@ -65,6 +75,7 @@ class EnvAuthLoginTest : StringSpec({
             put(GOOG.exp, (System.currentTimeMillis() / 1000) + 3600)
             if (email != null) put(GOOG.email, email)
             put(GOOG.emailVerified, emailVerified)
+            if (hostedDomain != null) put(GOOG.hd, hostedDomain)
         }
         val h = header.toJsonStr(compact = true).toByteArray(Charsets.UTF_8).base64Encode()
         val c = claims.toJsonStr(compact = true).toByteArray(Charsets.UTF_8).base64Encode()
@@ -127,6 +138,48 @@ class EnvAuthLoginTest : StringSpec({
         client.sendEditRequest(
             EAEP.login, null,
             mapOf(EAEP.googleCredential to credential("sam@gyassa.com", emailVerified = false)),
+            HttpMethod.POST,
+        ).rptStatusCode shouldBe EXC.notAuthorized
+    }
+
+    /**
+     * The core of issue #429: a *verified* address on the permitted domain, but from a Google **consumer**
+     * account -- no `hd`. It clears email_verified and the domain match, and is refused all the same, because
+     * Google is not authoritative for the address. A stale alias, forward or catch-all would otherwise enter.
+     */
+    "a verified address from a consumer account (no hosted domain) is refused" {
+        val cxt = bootEdge("envLoginNoHd")
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.sendEditRequest(
+            EAEP.login, null,
+            mapOf(EAEP.googleCredential to credential("sam@gyassa.com", hostedDomain = null)),
+            HttpMethod.POST,
+        ).rptStatusCode shouldBe EXC.notAuthorized
+    }
+
+    // Present-but-different must fail: a Workspace account whose hd names another domain does not enter this one.
+    "a hosted-domain claim naming a different domain is refused" {
+        val cxt = bootEdge("envLoginOtherHd")
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.sendEditRequest(
+            EAEP.login, null,
+            mapOf(EAEP.googleCredential to credential("sam@gyassa.com", hostedDomain = "evil.com")),
+            HttpMethod.POST,
+        ).rptStatusCode shouldBe EXC.notAuthorized
+    }
+
+    /**
+     * Fail closed with no admin domain configured (issue #429). The address is `example.com`, which a non-prod
+     * test instance treats as controlled, so it clears the domain gate -- and is still refused, because
+     * `isGoogleAuthoritative` has no configured domain a signed `hd` could match. Pins the fail-closed branch so
+     * a later change cannot quietly reopen the perimeter when the domain is unset.
+     */
+    "with no admin domain configured, even a controlled address is refused" {
+        val cxt = bootEdge("envLoginNoDomain", adminDomain = null)
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.sendEditRequest(
+            EAEP.login, null,
+            mapOf(EAEP.googleCredential to credential("alice@example.com", hostedDomain = "example.com")),
             HttpMethod.POST,
         ).rptStatusCode shouldBe EXC.notAuthorized
     }

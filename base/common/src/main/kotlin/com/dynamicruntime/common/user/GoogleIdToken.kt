@@ -56,6 +56,14 @@ object GOOG {
     const val emailVerified = "email_verified"
     const val name = "name"
 
+    /**
+     * The Google Workspace *hosted domain* claim. Present -- and inside the signed token -- only for a Workspace
+     * account; a consumer Gmail account carries none. Google's backend-auth guidance names this the claim that
+     * makes it authoritative for the address's domain (issue #429). The request parameter of the same name is
+     * unsigned and is not this.
+     */
+    const val hd = "hd"
+
     // JWKS entry fields.
     const val keys = "keys"
     const val modulus = "n"
@@ -109,6 +117,12 @@ class GoogleIdToken(
     val email: String?,
     val emailVerified: Boolean,
     val displayName: String?,
+    /**
+     * The Workspace hosted-domain (`hd`) claim, or null when the token carries none -- which a consumer Gmail
+     * account never does. Carried, not enforced here: whether it must equal a configured domain is a perimeter
+     * decision (see [AddressRules.isGoogleAuthoritative] and the edge's Env Auth gate, issue #429).
+     */
+    val hostedDomain: String?,
 )
 
 /**
@@ -242,6 +256,7 @@ class GoogleIdTokenVerifier(private val clientId: String, private val keySource:
             email = claims.getOptStr(GOOG.email),
             emailVerified = claims.getOptBool(GOOG.emailVerified) == true,
             displayName = claims.getOptStr(GOOG.name),
+            hostedDomain = claims.getOptStr(GOOG.hd),
         )
     }
 

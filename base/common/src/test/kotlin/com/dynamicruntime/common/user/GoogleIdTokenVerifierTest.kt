@@ -60,6 +60,7 @@ class GoogleIdTokenVerifierTest : StringSpec({
         email: String? = "alice@example.com",
         emailVerified: Any? = true,
         sub: String? = "google-subject-123",
+        hd: String? = null,
     ): Map<String, Any?> = buildMap {
         put(GOOG.aud, aud)
         put(GOOG.iss, iss)
@@ -67,6 +68,7 @@ class GoogleIdTokenVerifierTest : StringSpec({
         if (sub != null) put(GOOG.sub, sub)
         if (email != null) put(GOOG.email, email)
         put(GOOG.emailVerified, emailVerified)
+        if (hd != null) put(GOOG.hd, hd)
         put(GOOG.name, "Alice Example")
     }
 
@@ -92,6 +94,13 @@ class GoogleIdTokenVerifierTest : StringSpec({
         token.email shouldBe "alice@example.com"
         token.emailVerified shouldBe true
         token.displayName shouldBe "Alice Example"
+    }
+
+    // hd is carried, not enforced here -- the edge's perimeter is what requires it (issue #429). A Workspace
+    // token carries it; a consumer account never does, which is exactly the difference the perimeter turns on.
+    "the hosted-domain claim is carried through, and its absence is null" {
+        verifier().verify(cxt(), mkToken(goodClaims(hd = "acme.com"))).hostedDomain shouldBe "acme.com"
+        verifier().verify(cxt(), mkToken(goodClaims())).hostedDomain shouldBe null
     }
 
     "both of Google's issuer spellings are accepted" {
