@@ -119,10 +119,10 @@ class SqlDbBuilderTest : StringSpec({
 
     "env vars fully configure a PostgreSQL database, parsing an optional :port on the host" {
         val c = KdrCxt.mkSimpleCxt("pgenv")
-        c.instanceConfig.put(DbEnv.dbType, "postgres")
-        c.instanceConfig.put(DbEnv.dbHost, "db.example.com:5433")
-        c.instanceConfig.put(DbEnv.dbName, "orders")
-        c.instanceConfig.put(DbEnv.dbUser, "svc")
+        c.instanceConfig.put(DbEnv.dbType.name, "postgres")
+        c.instanceConfig.put(DbEnv.dbHost.name, "db.example.com:5433")
+        c.instanceConfig.put(DbEnv.dbName.name, "orders")
+        c.instanceConfig.put(DbEnv.dbUser.name, "svc")
         val cfg = SqlDbBuilder.resolveDbConfig(c, isInMemory = false)
         cfg[DBC.dbType] shouldBe DbType.postgres.name
         cfg[DBC.host] shouldBe "db.example.com"
@@ -134,8 +134,8 @@ class SqlDbBuilderTest : StringSpec({
 
     "a host with no :port suffix uses the database's default port" {
         val c = KdrCxt.mkSimpleCxt("pgport")
-        c.instanceConfig.put(DbEnv.dbType, "postgres")
-        c.instanceConfig.put(DbEnv.dbHost, "localhost")
+        c.instanceConfig.put(DbEnv.dbType.name, "postgres")
+        c.instanceConfig.put(DbEnv.dbHost.name, "localhost")
         val cfg = SqlDbBuilder.resolveDbConfig(c, isInMemory = false)
         cfg[DBC.host] shouldBe "localhost"
         cfg[DBC.port] shouldBe SqlDbBuilder.defaultPostgresPort
@@ -143,7 +143,7 @@ class SqlDbBuilderTest : StringSpec({
 
     "the default (non-in-memory) type is file H2 with a name-derived path" {
         val c = KdrCxt.mkSimpleCxt("fileenv")
-        c.instanceConfig.put(DbEnv.dbName, "mydb")
+        c.instanceConfig.put(DbEnv.dbName.name, "mydb")
         val cfg = SqlDbBuilder.resolveDbConfig(c, isInMemory = false)
         cfg[DBC.dbType] shouldBe DbType.h2File.name
         cfg[DBC.filePath] shouldBe "h2Database/mydb.dat"
@@ -152,13 +152,13 @@ class SqlDbBuilderTest : StringSpec({
     "resolveInMemoryOnly defaults to true and honors KDR_IN_MEMORY_ONLY" {
         DbEnv.resolveInMemoryOnly(KdrCxt.mkSimpleCxt("d1")) shouldBe true
         val c = KdrCxt.mkSimpleCxt("d2")
-        c.instanceConfig.put(DbEnv.inMemoryOnly, "false")
+        c.instanceConfig.put(DbEnv.inMemoryOnly.name, "false")
         DbEnv.resolveInMemoryOnly(c) shouldBe false
     }
 
     "in the local environment, PostgreSQL defaults the host to localhost and the user to kdr" {
         val c = KdrCxt("pglocal", KdrInstanceConfig("pglocal", ENV.local, ENV.liveSource))
-        c.instanceConfig.put(DbEnv.dbType, "postgres")
+        c.instanceConfig.put(DbEnv.dbType.name, "postgres")
         val cfg = SqlDbBuilder.resolveDbConfig(c, isInMemory = false)
         cfg[DBC.host] shouldBe SqlDbBuilder.defaultLocalDbHost
         cfg[DBC.port] shouldBe SqlDbBuilder.defaultPostgresPort
@@ -168,7 +168,7 @@ class SqlDbBuilderTest : StringSpec({
 
     "outside the local environment, PostgreSQL requires an explicit host" {
         val c = KdrCxt.mkSimpleCxt("pgnonlocal") // env = unit
-        c.instanceConfig.put(DbEnv.dbType, "postgres")
+        c.instanceConfig.put(DbEnv.dbType.name, "postgres")
         val ex = shouldThrow<KdrException> { SqlDbBuilder.resolveDbConfig(c, isInMemory = false) }
         ex.source shouldBe SRC.config
     }

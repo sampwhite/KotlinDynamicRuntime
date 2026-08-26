@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.context
 
+import com.dynamicruntime.common.sql.DbEnv
+
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.maps.shouldContainExactly
 import io.kotest.matchers.shouldBe
@@ -40,7 +42,7 @@ class KdrInstanceConfigTest : StringSpec({
     }
 
     "the env var makes a test instance when set true" {
-        config(ENV.local).apply { put(KdrInstanceConfig.testInstanceEnvVar, "true") }.isTestInstance shouldBe true
+        config(ENV.local).apply { put(KdrInstanceConfig.testInstanceEnvVar.name, "true") }.isTestInstance shouldBe true
     }
 
     "not a test instance by default (no env var, not unit, not in-memory)" {
@@ -95,6 +97,6 @@ class KdrInstanceConfigTest : StringSpec({
         config.put("NodeService", "svc")
         config.put("KDR_DB_TYPE", "h2File")
         config.get("NodeService") shouldBe "svc"
-        config.getEnvVar("KDR_DB_TYPE") shouldBe "h2File"
+        config.getEnvVar(DbEnv.dbType) shouldBe "h2File"
     }
 })

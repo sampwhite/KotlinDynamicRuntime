@@ -72,7 +72,7 @@ object InstanceRegistry {
         synchronized(instanceConfigs) {
             instanceConfigs[instanceName]?.let { return it }
 
-            val env = (overlay[ACFG.env] as? String) ?: System.getenv("KDR_ENV") ?: ENV.local
+            val env = (overlay[ACFG.env] as? String) ?: System.getenv(KdrInstanceConfig.envName.name) ?: ENV.local
             // The boot role rides in on the overlay (issue #377): the launcher put it there, and it has to
             // reach the instance config every request later reads its environment through.
             val config = KdrInstanceConfig(instanceName, env, ENV.liveSource, overlay[ACFG.bootRole] as? String)

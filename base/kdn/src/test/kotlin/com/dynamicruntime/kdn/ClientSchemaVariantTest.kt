@@ -4,6 +4,8 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.context.CL
@@ -36,7 +38,7 @@ class ClientSchemaVariantTest : StringSpec({
 
     fun boot(name: String): KdrCxt {
         InstanceRegistry.register(listOf(VariantFixtureComponent()))
-        return Startup.mkTestBootCxt("variants", name, mapOf(VariantFixtureComponent.loadFlag to "true"))
+        return Startup.mkTestBootCxt("variants", name, mapOf(VariantFixtureComponent.loadFlag.name to "true"))
     }
 
     fun schema(cxt: KdrCxt): SchemaService =
@@ -86,7 +88,7 @@ class ClientSchemaVariantTest : StringSpec({
     "an alteration that widens refuses the boot" {
         val ex = shouldThrow<KdrException> {
             InstanceRegistry.register(listOf(WideningFixtureComponent()))
-            Startup.mkTestBootCxt("widening", "wideningVariantTest", mapOf(WideningFixtureComponent.loadFlag to "true"))
+            Startup.mkTestBootCxt("widening", "wideningVariantTest", mapOf(WideningFixtureComponent.loadFlag.name to "true"))
         }
         val message = ex.fullMessage()
         message shouldContain "does not narrow"
@@ -161,7 +163,10 @@ class VariantFixtureComponent : ComponentDefinition {
 
     @Suppress("ConstPropertyName")
     companion object {
-        const val loadFlag = "KDR_LOAD_VARIANT_FIXTURE"
+        val loadFlag = EnvVarDef(
+            "KDR_LOAD_VARIANT_FIXTURE", group = ENVGRP.application, defaultDoc = "off",
+            description = "Test-only flag that loads this fixture component regardless of environment.",
+        )
         const val baseNamespace = "variantfixture"
         const val narrowClient = "narrowfixture"
         const val sampleType = "$baseNamespace.Sample"
@@ -193,7 +198,10 @@ class WideningFixtureComponent : ComponentDefinition {
 
     @Suppress("ConstPropertyName")
     companion object {
-        const val loadFlag = "KDR_LOAD_WIDENING_FIXTURE"
+        val loadFlag = EnvVarDef(
+            "KDR_LOAD_WIDENING_FIXTURE", group = ENVGRP.application, defaultDoc = "off",
+            description = "Test-only flag that loads this fixture component regardless of environment.",
+        )
         const val baseNamespace = "wideningfixture"
     }
 }

@@ -44,10 +44,10 @@ class BootRoleEnvVarTest : StringSpec({
             put("KDR_PORT", "7070")
             put("KDR_EDGE_PORT", "7080")
         }
-        c.getEnvVar("KDR_PORT") shouldBe "7080"
+        c.getEnvVar(NodeUtil.port) shouldBe "7080"
 
         val fallback = config("edge").apply { put("KDR_PORT", "7070") }
-        fallback.getEnvVar("KDR_PORT") shouldBe "7070"
+        fallback.getEnvVar(NodeUtil.port) shouldBe "7070"
     }
 
     "the same lookup on an unrolled node ignores the prefixed value entirely" {
@@ -57,7 +57,7 @@ class BootRoleEnvVarTest : StringSpec({
             put("KDR_PORT", "7070")
             put("KDR_EDGE_PORT", "7080")
         }
-        c.getEnvVar("KDR_PORT") shouldBe "7070"
+        c.getEnvVar(NodeUtil.port) shouldBe "7070"
     }
 
     /**
@@ -66,7 +66,7 @@ class BootRoleEnvVarTest : StringSpec({
      * without anybody remembering to do anything.
      */
     "the namespace covers variables nobody thought about when it was built" {
-        val c = config("edge").apply { put("KDR_EDGE_" + ENVA.trustEnvAuthHeaderEnvVar.removePrefix("KDR_"), "true") }
+        val c = config("edge").apply { put("KDR_EDGE_" + ENVA.trustEnvAuthHeaderEnvVar.name.removePrefix("KDR_"), "true") }
         c.getEnvBool(ENVA.trustEnvAuthHeaderEnvVar) shouldBe true
     }
 

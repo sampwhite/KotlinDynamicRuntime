@@ -31,7 +31,7 @@ class ErrorObfuscationConfigTest : StringSpec({
 
     "the env var is the default when the config option is unset, and the config option still wins over it" {
         // A config entry under the env-var key is read by getEnvVar as if it were the process env var.
-        val c = config(ENV.local).apply { put(RequestHandler.obfuscateErrorsEnvVar, "true") }
+        val c = config(ENV.local).apply { put(RequestHandler.obfuscateErrorsEnvVar.name, "true") }
         RequestHandler.obfuscateSensitiveErrors(c) shouldBe true
 
         c.put(ACFG.obfuscateSensitiveErrors, false)
@@ -47,7 +47,7 @@ class ErrorObfuscationConfigTest : StringSpec({
     "the env var accepts the loose spellings, not only 'true' and 'false'" {
         fun withEnv(value: String) =
             RequestHandler.obfuscateSensitiveErrors(
-                config(ENV.local).apply { put(RequestHandler.obfuscateErrorsEnvVar, value) },
+                config(ENV.local).apply { put(RequestHandler.obfuscateErrorsEnvVar.name, value) },
             )
 
         for (yes in listOf("true", "TRUE", "yes", "y", "t", "1")) withEnv(yes) shouldBe true
@@ -60,10 +60,10 @@ class ErrorObfuscationConfigTest : StringSpec({
      * deployment obfuscating.
      */
     "an unreadable value falls through to the default rather than reading as false" {
-        val local = config(ENV.local).apply { put(RequestHandler.obfuscateErrorsEnvVar, "maybe") }
+        val local = config(ENV.local).apply { put(RequestHandler.obfuscateErrorsEnvVar.name, "maybe") }
         RequestHandler.obfuscateSensitiveErrors(local) shouldBe false // local's default, not the value
 
-        val prod = config(ENV.prod).apply { put(RequestHandler.obfuscateErrorsEnvVar, "maybe") }
+        val prod = config(ENV.prod).apply { put(RequestHandler.obfuscateErrorsEnvVar.name, "maybe") }
         RequestHandler.obfuscateSensitiveErrors(prod) shouldBe true // prod stays on
     }
 })

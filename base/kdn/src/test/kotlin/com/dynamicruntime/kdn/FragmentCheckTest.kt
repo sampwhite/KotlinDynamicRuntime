@@ -51,12 +51,12 @@ class FragmentCheckTest : StringSpec({
 
     "an explicit setting decides it either way" {
         val cxt = Startup.mkTestBootCxt("fragEnv", "fragEnvTest")
-        cxt.instanceConfig.put(FRAG.checkEnvVar, FRAG.warn)
+        cxt.instanceConfig.put(FRAG.checkEnvVar.name, FRAG.warn)
         MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe FRAG.warn
-        cxt.instanceConfig.put(FRAG.checkEnvVar, FRAG.off)
+        cxt.instanceConfig.put(FRAG.checkEnvVar.name, FRAG.off)
         MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe FRAG.off
         // An unrecognized value falls back to the environment rule rather than silently disabling the check.
-        cxt.instanceConfig.put(FRAG.checkEnvVar, "yes-please")
+        cxt.instanceConfig.put(FRAG.checkEnvVar.name, "yes-please")
         MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe FRAG.strict
     }
 

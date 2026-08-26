@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.node
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
@@ -15,18 +17,24 @@ object NodeUtil {
     /** The port the server binds to when [port] is not set. */
     const val defaultPort = 7070
 
-    /**
-     * Overrides the HTTP port the server binds to (default [defaultPort]). Set this to run a second instance
-     * alongside another (e.g., an automated agent's server beside a developer's) without a port collision --
-     * usually together with `KDR_IN_MEMORY_ONLY=true` so the two do not contend on a database.
-     */
-    const val port = "KDR_PORT"
+    val port = EnvVarDef(
+        "KDR_PORT", group = ENVGRP.node, defaultDoc = "$defaultPort (or the boot role's default)",
+        description = "Overrides the HTTP port the server binds to. Set this to run a second instance " +
+            "alongside another without a port collision -- usually together with `KDR_IN_MEMORY_ONLY=true`. " +
+            "The one variable a boot role must NOT inherit from the unprefixed name (issue #377): under a " +
+            "role only `KDR_EDGE_PORT` and the role's default are consulted, because two nodes sharing a port " +
+            "collide, quietly.",
+    )
 
-    /** Overrides the node's IP identity (used in the node label). */
-    const val nodeIpAddress = "KDR_NODE_IP_ADDRESS"
+    val nodeIpAddress = EnvVarDef(
+        "KDR_NODE_IP_ADDRESS", group = ENVGRP.node, defaultDoc = "`127.0.0.1`",
+        description = "Overrides the node's IP identity, used in the node label.",
+    )
 
-    /** Overrides the node's host name (used in the node label); falls back to the OS `HOSTNAME`. */
-    const val hostName = "KDR_HOSTNAME"
+    val hostName = EnvVarDef(
+        "KDR_HOSTNAME", group = ENVGRP.node, defaultDoc = "the OS `HOSTNAME`, else `localhost`",
+        description = "Overrides the node's host name, used in the node label; falls back to the OS `HOSTNAME`.",
+    )
 
     /**
      * Determines this node's identity from the environment, falling back to a localhost identity. The HTTP
@@ -59,7 +67,7 @@ object NodeUtil {
         val value = if (role.isNullOrEmpty()) {
             cxt.getEnvVar(port)
         } else {
-            KdrInstanceConfig.envVarNamesFor(port, role).first()
+            KdrInstanceConfig.envVarNamesFor(port.name, role).first()
                 .let { (config.get(it) as? String) ?: System.getenv(it) }
         }
         if (value.isNullOrEmpty()) {

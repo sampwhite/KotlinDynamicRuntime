@@ -2,6 +2,8 @@ package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrInstanceConfig
 
 /** Constants for the environment-auth ("env auth") header contract. */
@@ -19,10 +21,25 @@ object ENVA {
     const val header = "X-Kdr-Env-Email"
 
     /** Env var that defaults [ACFG.trustEnvAuthHeader] when the config option is unset. */
-    const val trustEnvAuthHeaderEnvVar = "KDR_TRUST_ENV_AUTH_HEADER"
+    val trustEnvAuthHeaderEnvVar = EnvVarDef(
+        "KDR_TRUST_ENV_AUTH_HEADER", group = ENVGRP.application, defaultDoc = "on for a test instance, off otherwise",
+        description = "Whether this node believes the `X-Kdr-Env-Email` header an edge server sets on a request " +
+            "it has already authenticated. A node cannot verify that claim -- the real guarantee is that only " +
+            "the edge can reach it, a network property -- so the deployment asserts it here. A node not behind " +
+            "an edge leaves it off. Env auth is a property of the channel, not the user: it grants no role and " +
+            "never stands in for a login. The `trustEnvAuthHeader` config option wins over this.",
+    )
 
     /** Env var that defaults [ACFG.assumeEnvAuth] when the config option is unset. */
-    const val assumeEnvAuthEnvVar = "KDR_ASSUME_ENV_AUTH"
+    val assumeEnvAuthEnvVar = EnvVarDef(
+        "KDR_ASSUME_ENV_AUTH", group = ENVGRP.application,
+        defaultDoc = "on for a test instance in `local` only (not `unit`)",
+        description = "Whether this node invents env auth for a request that arrived with no `X-Forwarded-For` " +
+            "-- the convenience that makes a developer's box behave like one behind an edge. The identity is " +
+            "synthetic (`assumed@local.invalid`). Independent of `KDR_TRUST_ENV_AUTH_HEADER`. The missing " +
+            "forwarded-for is not what makes it safe; the test-instance fence is. The `assumeEnvAuth` config " +
+            "option wins over this.",
+    )
 
     /**
      * The identity an *assumed* env auth carries (see [EnvAuthRules.assumesEnvAuth]) -- deliberately synthetic,

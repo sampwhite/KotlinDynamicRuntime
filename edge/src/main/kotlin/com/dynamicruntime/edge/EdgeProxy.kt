@@ -1,6 +1,8 @@
 package com.dynamicruntime.edge
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.endpoint.EP
@@ -31,7 +33,12 @@ import org.eclipse.jetty.util.Callback
 @Suppress("ConstPropertyName")
 object EDGEUP {
     /** Where application traffic goes. One upstream for now; a route table replaces this. */
-    const val upstreamEnvVar = "KDR_EDGE_UPSTREAM"
+    val upstreamEnvVar = EnvVarDef(
+        "KDR_EDGE_UPSTREAM", group = ENVGRP.edge, defaultDoc = "`http://localhost:7070`",
+        description = "Where an edge forwards application traffic -- every request whose leading path segment " +
+            "is an application context root (`kda`/`cp`/`wa`/`st`) rather than one of the edge's own. Read only " +
+            "by a node in the `edge` role. The `edgeUpstream` config option wins over this.",
+    )
 
     /**
      * The ordinary development application, which is the only upstream a local edge could mean.

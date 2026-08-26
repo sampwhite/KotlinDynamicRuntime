@@ -28,7 +28,7 @@ class GedraConfigCollectorTest : StringSpec({
     // optional env var, both of which live on the instance config.
     fun cxtIn(env: String, override: String? = null): KdrCxt {
         val config = KdrInstanceConfig("collect-$env-$override", env, ENV.liveSource)
-        override?.let { config.put(GCFG.checkEnvVar, it) }
+        override?.let { config.put(GCFG.checkEnvVar.name, it) }
         return KdrCxt("collect", config)
     }
 
@@ -143,7 +143,7 @@ class GedraConfigCollectorTest : StringSpec({
         val collector = GedraConfigCollector()
         collector.add(devCxt, nameConfig())
         shouldThrow<KdrException> { collector.add(devCxt, nameConfig(configName = "extraTraits", namespace = "other")) }
-            .message.shouldNotBeNull() shouldContain GCFG.checkEnvVar
+            .message.shouldNotBeNull() shouldContain GCFG.checkEnvVar.name
     }
 
     "off takes everything, checks nothing" {

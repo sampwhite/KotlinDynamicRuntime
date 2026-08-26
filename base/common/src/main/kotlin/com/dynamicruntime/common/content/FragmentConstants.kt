@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.content
 
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
+
 /**
  * Names for the Markdown fragment files `base/common` ships that no UI-config declares, plus the wiring for
  * checking fragments at startup. The widget-group files are named by their own component's constants
@@ -23,7 +26,12 @@ object FRAG {
      * defect in one piece of copy. Naming it explicitly overrides that either way, so a cautious deployment
      * can demand [strict] and a developer chasing something else can drop to [warn].
      */
-    const val checkEnvVar = "KDR_FRAGMENT_CHECK"
+    val checkEnvVar = EnvVarDef(
+        "KDR_FRAGMENT_CHECK", group = ENVGRP.content, defaultDoc = "strict everywhere but `prod`",
+        description = "What a fragment problem does at startup: `strict`, `warn` or `off`. Unset means strict " +
+            "everywhere except `prod` -- a developer or test should be stopped by a broken fragment; a " +
+            "production node should not refuse to serve everything else over a defect in one piece of copy.",
+    )
 
     /** Refuse to boot when a fragment has a syntax problem. */
     const val strict = "strict"

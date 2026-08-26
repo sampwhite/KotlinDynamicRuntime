@@ -377,7 +377,7 @@ private fun ensurePostgres(workDir: File) {
     }
 
     // Only handle a local database here; a configured remote host is the operator's responsibility.
-    val configuredHost = System.getenv(DbEnv.dbHost)?.substringBefore(':')?.trim()
+    val configuredHost = System.getenv(DbEnv.dbHost.name)?.substringBefore(':')?.trim()
     if (!configuredHost.isNullOrEmpty() && configuredHost != "localhost" && configuredHost != "127.0.0.1") {
         return
     }
@@ -760,10 +760,10 @@ private fun setOwnerOnly(file: File, executable: Boolean) {
  */
 private fun printPostgresEnvGuidance(workDir: File, dbName: String) {
     val vars = LinkedHashMap<String, String>()
-    vars[DbEnv.dbType] = DbType.postgres.name
-    vars[DbEnv.inMemoryOnly] = "false"
+    vars[DbEnv.dbType.name] = DbType.postgres.name
+    vars[DbEnv.inMemoryOnly.name] = "false"
     if (dbName != SqlDbBuilder.defaultDbName) {
-        vars[DbEnv.dbName] = dbName
+        vars[DbEnv.dbName.name] = dbName
     }
 
     println()

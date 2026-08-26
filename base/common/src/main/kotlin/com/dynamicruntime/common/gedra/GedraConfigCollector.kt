@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
@@ -19,7 +21,11 @@ object GCFG {
     const val globalNamespace = "globalconfig"
 
     /** Overrides what a config problem does at startup; see [gedraConfigCheckMode]. */
-    const val checkEnvVar = "KDR_GEDRA_CONFIG_CHECK"
+    val checkEnvVar = EnvVarDef(
+        "KDR_GEDRA_CONFIG_CHECK", group = ENVGRP.gedra, defaultDoc = "strict everywhere but `prod`",
+        description = "What a Gedra config problem does at startup: `strict` (refuse to boot), `warn`, or " +
+            "`off`. Unset means strict everywhere except `prod`.",
+    )
 
     /** Refuse to boot. */
     const val strict = "strict"

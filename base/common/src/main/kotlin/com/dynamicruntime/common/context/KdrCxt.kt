@@ -284,10 +284,8 @@ class KdrCxt(
             KdrCxt(cxtName, instanceConfig)
     }
 
-    fun getEnvVar(key: String): String? {
-        return instanceConfig.getEnvVar(key)
-    }
+    fun getEnvVar(def: EnvVarDef): String? = instanceConfig.getEnvVar(def)
 
     /** [getEnvVar] parsed loosely as a boolean; null when unset or unrecognized. See [KdrInstanceConfig.getEnvBool]. */
-    fun getEnvBool(key: String): Boolean? = instanceConfig.getEnvBool(key)
+    fun getEnvBool(def: EnvVarDef): Boolean? = instanceConfig.getEnvBool(def)
 }

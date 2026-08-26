@@ -2,6 +2,8 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ClientAudience
@@ -40,7 +42,7 @@ class ClientRegistryTest : StringSpec({
 
     fun boot(name: String): KdrCxt {
         InstanceRegistry.register(listOf(OffsiteClientComponent()))
-        return Startup.mkTestBootCxt("clients", name, mapOf(OffsiteClientComponent.loadFlag to "true"))
+        return Startup.mkTestBootCxt("clients", name, mapOf(OffsiteClientComponent.loadFlag.name to "true"))
     }
 
     "the clients every deployment has are present, with what they declared" {
@@ -114,7 +116,10 @@ class OffsiteClientComponent : ComponentDefinition {
 
     @Suppress("ConstPropertyName")
     companion object {
-        const val loadFlag = "KDR_LOAD_OFFSITE_CLIENT"
+        val loadFlag = EnvVarDef(
+            "KDR_LOAD_OFFSITE_CLIENT", group = ENVGRP.application, defaultDoc = "off",
+            description = "Test-only flag that loads this fixture component regardless of environment.",
+        )
         const val clientId = "offsite"
     }
 }

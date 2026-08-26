@@ -33,7 +33,7 @@ class EnvAuthSessionTest : StringSpec({
         val c = config(ENV.prod).apply { put(ENVAUTH.sessionMillisKey, 5_000L) }
         ENVAUTH.sessionMillis(c) shouldBe 5_000L
 
-        val viaEnv = config(ENV.prod).apply { put(ENVAUTH.sessionMillisEnvVar, "9000") }
+        val viaEnv = config(ENV.prod).apply { put(ENVAUTH.sessionMillisEnvVar.name, "9000") }
         ENVAUTH.sessionMillis(viaEnv) shouldBe 9_000L
     }
 })

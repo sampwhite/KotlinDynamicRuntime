@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.sql.cache
 
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 
 /** `KdrCacheState` table and column names. Each name matches its value. */
 @Suppress("ConstPropertyName")
@@ -105,9 +107,15 @@ object TCH {
      *  request (or [SqlTableCacheService.withMonitoring] block). */
     const val monitorKey = "kdrTableCacheMonitor"
 
-    /** Turns every registered table cache off; reads fall back to their SQL path. */
-    const val disabledEnv = "KDR_TABLE_CACHE_DISABLED"
+    val disabledEnv = EnvVarDef(
+        "KDR_TABLE_CACHE_DISABLED", group = ENVGRP.caching, defaultDoc = "off (caches on)",
+        description = "Turns every registered table cache off; reads fall back to their SQL path.",
+    )
 
-    /** Overrides [defaultMinRecheckMs]. */
-    const val minRecheckMsEnv = "KDR_TABLE_CACHE_MIN_RECHECK_MS"
+    val minRecheckMsEnv = EnvVarDef(
+        "KDR_TABLE_CACHE_MIN_RECHECK_MS", group = ENVGRP.caching, defaultDoc = "$defaultMinRecheckMs",
+        description = "Overrides the backstop interval (ms) at which a cache reconsiders changes made outside " +
+            "the application, which nothing announces. Cross-node promptness for an announced change is set by " +
+            "the state-read throttle, not this floor.",
+    )
 }

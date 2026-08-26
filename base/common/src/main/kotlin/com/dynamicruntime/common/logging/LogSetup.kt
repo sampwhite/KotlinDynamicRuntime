@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.logging
 
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrCxtBase
 import org.apache.logging.log4j.Level
@@ -18,14 +20,20 @@ import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilderFact
  */
 @Suppress("ConstPropertyName")
 object LogSetup {
-    /** Env var naming the [LogLevel] for our application topics; falls back to the [initFromEnv] default. */
-    const val appLogLevelEnvVar = "KDR_LOG_LEVEL"
+    val appLogLevelEnvVar = EnvVarDef(
+        "KDR_LOG_LEVEL", group = ENVGRP.logging, defaultDoc = "`debug`",
+        description = "The log level for our application topics (`trace`/`debug`/`info`/`warn`/`error`).",
+    )
 
-    /** Env var naming the root [LogLevel] for everything else (third-party log4j2 loggers). */
-    const val rootLogLevelEnvVar = "KDR_ROOT_LOG_LEVEL"
+    val rootLogLevelEnvVar = EnvVarDef(
+        "KDR_ROOT_LOG_LEVEL", group = ENVGRP.logging, defaultDoc = "`info`",
+        description = "The root log level for everything else (third-party log4j2 loggers).",
+    )
 
-    /** Env var toggling async delivery of our logs (`true`/`false`); default sync for immediate, ordered output. */
-    const val asyncEnvVar = "KDR_LOG_ASYNC"
+    val asyncEnvVar = EnvVarDef(
+        "KDR_LOG_ASYNC", group = ENVGRP.logging, defaultDoc = "false (sync)",
+        description = "Toggles async delivery of our logs; default sync, for immediate, ordered output.",
+    )
 
     /** The log4j2 console pattern for third-party loggers -- shaped to match [LogFormat]'s line. */
     const val thirdPartyPattern =
@@ -44,7 +52,7 @@ object LogSetup {
         defaultAppLevel: LogLevel = LogLevel.debug,
         defaultRootLevel: LogLevel = LogLevel.info,
         defaultAsync: Boolean = false,
-        getEnv: (String) -> String? = System::getenv,
+        getEnv: (EnvVarDef) -> String? = { System.getenv(it.name) },
     ) {
         val appLevel = getEnv(appLogLevelEnvVar)?.let { logLevelOf(it) } ?: defaultAppLevel
         val rootLevel = getEnv(rootLogLevelEnvVar)?.let { logLevelOf(it) } ?: defaultRootLevel

@@ -48,7 +48,7 @@ class EdgeContentPathsTest : StringSpec({
             ACFG.bootRole to BOOT.edge,
             GOOG.googleClientId to clientId,
             GOOG.googleKeySource to keySource,
-            ADMR.adminEmailDomainEnvVar to "gyassa.com",
+            ADMR.adminEmailDomainEnvVar.name to "gyassa.com",
         ),
     )
 

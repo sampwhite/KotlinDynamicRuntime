@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.http.request.ROLE
@@ -27,7 +29,14 @@ enum class AdminScope {
 @Suppress("ConstPropertyName")
 object ADMR {
     /** Env var that defaults [ACFG.adminEmailDomain] when the config option is unset. */
-    const val adminEmailDomainEnvVar = "KDR_ADMIN_EMAIL_DOMAIN"
+    val adminEmailDomainEnvVar = EnvVarDef(
+        "KDR_ADMIN_EMAIL_DOMAIN", group = ENVGRP.application, defaultDoc = "unset (no address auto-granted)",
+        description = "Email domain whose addresses are automatically granted the `admin` role -- how a " +
+            "deployment's first administrator comes to exist. An address qualifies when its domain is this " +
+            "domain (or a subdomain of it) and its local part carries no `+` tag. Applied at provisioning. It " +
+            "only ever grants: unsetting it demotes nobody. Unset means no address is ever auto-granted. See " +
+            "[AdminRules].",
+    )
 
     /** Marks a plus-addressed local part (`name+tag@domain`), which never auto-grants. */
     const val plusAddressChar = '+'

@@ -27,17 +27,17 @@ class NodeUtilTest : StringSpec({
     }
 
     "KDR_PORT overrides the port the server binds to" {
-        NodeUtil.extractNodeId(cxt(NodeUtil.port to "7071")).port shouldBe 7071
+        NodeUtil.extractNodeId(cxt(NodeUtil.port.name to "7071")).port shouldBe 7071
     }
 
     "KDR_NODE_IP_ADDRESS and KDR_HOSTNAME override the node label parts" {
-        val id = NodeUtil.extractNodeId(cxt(NodeUtil.nodeIpAddress to "10.0.0.5", NodeUtil.hostName to "kdr-box"))
+        val id = NodeUtil.extractNodeId(cxt(NodeUtil.nodeIpAddress.name to "10.0.0.5", NodeUtil.hostName.name to "kdr-box"))
         id.nodeIpAddress shouldBe "10.0.0.5"
         id.hostname shouldBe "kdr-box"
         id.label shouldBe "10.0.0.5:${NodeUtil.defaultPort}"
     }
 
     "a set-but-non-integer KDR_PORT fails loudly instead of falling back" {
-        shouldThrow<KdrException> { NodeUtil.extractNodeId(cxt(NodeUtil.port to "not-a-port")) }
+        shouldThrow<KdrException> { NodeUtil.extractNodeId(cxt(NodeUtil.port.name to "not-a-port")) }
     }
 })

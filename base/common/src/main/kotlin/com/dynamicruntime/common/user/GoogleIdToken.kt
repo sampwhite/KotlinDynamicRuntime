@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
@@ -22,7 +24,15 @@ object GOOG {
     const val googleClientId = "googleClientId"
 
     /** Environment variable naming the client id. */
-    const val googleClientIdEnvVar = "KDR_GOOGLE_CLIENT_ID"
+    val googleClientIdEnvVar = EnvVarDef(
+        "KDR_GOOGLE_CLIENT_ID", group = ENVGRP.application, defaultDoc = "unset",
+        description = "The deployment's Google OAuth client id, which turns Google sign-in on: unset (the " +
+            "default) and the feature is neither offered by the auth UI nor accepted by its endpoint. Public " +
+            "by design -- it identifies the application to Google and the browser presents it -- so an " +
+            "environment variable rather than a secret. Also what an incoming ID token's `aud` claim is " +
+            "checked against, which is deliberately why there is no default. Every origin the page is served " +
+            "from must also be registered against it as an Authorized JavaScript origin in Google Cloud Console.",
+    )
 
     /** Instance-config key overriding the JWKS endpoint. Exists so a test can serve its own key set. */
     const val googleJwksUri = "googleJwksUri"

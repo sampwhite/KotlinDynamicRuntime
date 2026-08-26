@@ -35,7 +35,7 @@ class SqlSchemaDriftTest : StringSpec({
      */
     fun reconcile(dbName: String, before: KdrTable, allowDrift: Boolean = false, after: (KdrCxt) -> KdrTable) {
         val instanceConfig = KdrInstanceConfig.codeTest()
-        if (allowDrift) instanceConfig.put(DbEnv.allowSchemaDrift, "true")
+        if (allowDrift) instanceConfig.put(DbEnv.allowSchemaDrift.name, "true")
         val cxt = KdrCxt.mkSimpleCxt("test", instanceConfig)
         val db = SqlDatabase.mkInMemoryH2(dbName)
         val sqlCxt = SqlCxt(cxt, db, "app")
@@ -61,7 +61,7 @@ class SqlSchemaDriftTest : StringSpec({
         e.message shouldContain "account"
         e.message shouldContain "NOT NULL with no default"
         e.message shouldContain "not declared by the code"
-        e.message shouldContain DbEnv.allowSchemaDrift // the way past it, stated where it is needed
+        e.message shouldContain DbEnv.allowSchemaDrift.name // the way past it, stated where it is needed
     }
 
     "an undeclared column that is nullable is left alone" {

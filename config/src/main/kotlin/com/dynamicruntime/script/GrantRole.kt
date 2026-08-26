@@ -93,7 +93,7 @@ object GrantRole {
         val preBoot = KdrInstanceConfig.preBootLoadConfig()
         val cxt = KdrCxt.mkSimpleCxt("preBoot", preBoot)
         LogSetup.initFromEnv(getEnv = cxt::getEnvVar)
-        val env = cxt.getEnvVar(envVarName) ?: ENV.local
+        val env = cxt.getEnvVar(KdrInstanceConfig.envName) ?: ENV.local
         return Startup.mkBootCxt("grantRole", env, preBoot.entries().toMap())
     }
 
@@ -139,9 +139,6 @@ object GrantRole {
 
     /** How many matches `--list` prints. */
     private const val listLimit = 50
-
-    /** The environment-name variable, read to boot the same instance the deployment runs. */
-    private const val envVarName = "KDR_ENV"
 }
 
 fun main(args: Array<String>) {
