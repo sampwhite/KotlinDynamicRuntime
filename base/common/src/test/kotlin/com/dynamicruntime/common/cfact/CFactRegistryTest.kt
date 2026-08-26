@@ -88,7 +88,7 @@ class CFactRegistryTest : StringSpec({
 
     "the built registry does not follow the collection it was built from" {
         // What arrives is what a collector accumulated and goes on owning. A registry that aliased it would
-        // be a way round every check above -- a name added afterwards would never be held to "add, never
+        // be a way round every check above -- a name added afterward would never be held to "add, never
         // redefine" -- and an expression parsed against `names` would have the set move under it.
         val collected = linkedMapOf("app" to def("app"))
         val registries = buildCFactRegistries(collected, emptyMap(), emptyMap())

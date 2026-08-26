@@ -138,7 +138,7 @@ class CommonComponent : ComponentDefinition {
 
     /**
      * Startup services -- fully initialized before regular services. [ClientService] leads (issue #343),
-     * because schema compilation is heading towards being per-client and a variant cannot be built before it
+     * because schema compilation is heading toward being per-client and a variant cannot be built before it
      * is known which clients there are; nothing depends on that ordering yet, which is when it is cheap to
      * establish. Schema compilation comes next, and must be ready before the topic service reads the compiled
      * table definitions; [NodeService] is here so the node's identity and basic facts are known early;
