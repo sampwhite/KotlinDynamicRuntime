@@ -2,6 +2,11 @@ package com.dynamicruntime.common.content
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.startup.BCHK
+import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.startup.BootCheckRegistry
+import com.dynamicruntime.common.startup.bootCheckMode
+import com.dynamicruntime.common.startup.modeOverride
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
@@ -66,21 +71,26 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      */
     fun checkFragmentsAtStartup(cxt: KdrCxt) {
         val mode = fragmentCheckMode(cxt)
-        if (mode == FRAG.off) return
+        if (mode == BootCheckMode.off) return
         val results = checkFragments(cxt)
         val broken = results.filter { it.issues.isNotEmpty() || !it.found }
-        if (broken.isEmpty()) return
-        val detail = broken.joinToString("; ") { r ->
+        val findings = broken.map { r ->
             if (!r.found) {
                 "'${r.fileId}' is declared but absent"
             } else {
                 "'${r.fileId}': " + r.issues.joinToString(", ") { "${it.message} (line ${it.line})" }
             }
         }
-        if (mode == FRAG.strict) {
+        // Recorded before the refusal below, and unconditionally -- including when there is nothing to say.
+        // A clean run is a fact the report needs (issue #303): "ran and found nothing" and "never ran" are
+        // different states of a node and look identical in a report that lists only problems.
+        BootCheckRegistry.get(cxt).record(BCHK.fragments, FRAG.checkEnvVar, mode, findings)
+        if (findings.isEmpty()) return
+        val detail = findings.joinToString("; ")
+        if (mode == BootCheckMode.strict) {
             throw KdrException(
                 "Markdown fragment files have problems: $detail. Fix them, or set ${FRAG.checkEnvVar}=" +
-                    "${FRAG.warn} to start anyway (which is the default outside ${ENV.prod}).",
+                    "${BootCheckMode.warn} to start anyway (which is the default outside ${ENV.prod}).",
             )
         }
         LogStartup.warn(cxt, "Markdown fragment files have problems: $detail")
@@ -195,13 +205,15 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
 
         /**
          * What a fragment problem does at startup. An explicit [FRAG.checkEnvVar] decides it; otherwise it is
-         * [FRAG.strict] everywhere except [ENV.prod], where it is [FRAG.warn].
+         * [BootCheckMode.strict] everywhere except [ENV.prod], where it is [BootCheckMode.warn].
+         *
+         * A broken fragment is the archetypal defect *on the side* -- one piece of copy, with the render path
+         * already containing the failure -- which is why production degrades rather than refusing. See
+         * [bootCheckMode] for the shared half of this and `SqlSchemaDrift` for a check that answers the
+         * production question the other way.
          */
-        fun fragmentCheckMode(cxt: KdrCxt): String {
-            val explicit = cxt.getEnvVar(FRAG.checkEnvVar)?.trim()?.lowercase()
-            if (explicit == FRAG.strict || explicit == FRAG.warn || explicit == FRAG.off) return explicit
-            return if (cxt.instanceConfig.env == ENV.prod) FRAG.warn else FRAG.strict
-        }
+        fun fragmentCheckMode(cxt: KdrCxt): BootCheckMode =
+            bootCheckMode(cxt, modeOverride(cxt, FRAG.checkEnvVar), prodMode = BootCheckMode.warn)
 
         /**
          * The operator-section endpoint for checking fragments on a **running** instance -- which is how a

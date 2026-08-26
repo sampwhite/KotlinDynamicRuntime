@@ -17,7 +17,8 @@ object FRAG {
     const val registryKey = "fragmentFiles"
 
     /**
-     * Env var choosing what a fragment problem does at startup: [strict], [warn] or [off]. Unset means
+     * Env var choosing what a fragment problem does at startup: `strict`, `warn` or `off`
+     * (`BootCheckMode`). Unset means
      * **strict everywhere except `prod`**, which is the split that matters -- a developer or a test should be
      * stopped by a broken fragment, and a production node should not refuse to serve everything else over a
      * defect in one piece of copy. Naming it explicitly overrides that either way, so a cautious deployment
@@ -25,14 +26,8 @@ object FRAG {
      */
     const val checkEnvVar = "KDR_FRAGMENT_CHECK"
 
-    /** Refuse to boot when a fragment has a syntax problem. */
-    const val strict = "strict"
-
-    /** Log the problems and serve anyway. */
-    const val warn = "warn"
-
-    /** Do not check at all. */
-    const val off = "off"
+    // The mode words themselves live on `BootCheckMode` (issue #303): they are the same three for every boot
+    // check, and a per-check copy of them is how two checks come to disagree about what "off" means.
 }
 
 /** Field names for a fragment check result; each name matches its value. */
