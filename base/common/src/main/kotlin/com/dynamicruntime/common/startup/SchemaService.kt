@@ -267,11 +267,6 @@ class SchemaService : ServiceInitializer {
                         "is *listed*; it grants nothing, and omitting it lists everything you may already see.",
                 ) {
                     type = SCT.boolean
-                    // Explicit because the default is off for booleans, unlike numbers and dates. A GET
-                    // carries its input in a query string, where every value is a string -- so a boolean
-                    // parameter that does not coerce cannot be supplied at all, and `?publicApi=true` fails
-                    // as `wrongType` while `?limit=5` beside it works.
-                    allowCoerce = true
                 }
                 property(EP.limit, "The maximum number of endpoints to return.") {
                     type = SCT.integer
@@ -438,10 +433,10 @@ class SchemaService : ServiceInitializer {
                         default("A score has to be a number, such as 42 or 3.5.")
                     }
                 }
-                // Booleans do not coerce by default; opt in with allowCoerce so "true"/"yes" strings are accepted.
-                property(CX.active, "Active flag (string-coercible: allowCoerce is on).") {
+                // A boolean coerces from a string by default (issue #439), so "true" / "yes" / "on" are all
+                // accepted here without the field saying anything -- which is the construct being shown.
+                property(CX.active, "Active flag (string-coercible, as a boolean is by default).") {
                     type = SCT.boolean
-                    allowCoerce = true
                 }
                 property(CX.aliases, "Alternate names (at most three).") {
                     type = SCT.array; items { type = SCT.string }

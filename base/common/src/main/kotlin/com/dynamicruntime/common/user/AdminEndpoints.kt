@@ -120,14 +120,10 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             )
             field(USF.descending, "Sort descending (newest / Z-A first). Defaults to true.") {
                 type = SCT.boolean
-                // A GET carries this in the query string as "true"/"false"; a boolean does not coerce from a
-                // string by default, so `?descending=false` would 400 without this (as `permanent` learned).
-                allowCoerce = true
             }
             field(EP.limit, "The maximum number of users to return; defaults to '${USF.defaultLimit}'.") {
                 type = SCT.integer
                 default = USF.defaultLimit
-                allowCoerce = true
                 // `?limit=` (empty) reads as no limit given rather than a 400, matching the auto-appended one.
                 emptyIsAbsent = true
             }
@@ -323,12 +319,6 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                     "Defaults to false, a recoverable disable.",
             ) {
                 type = SCT.boolean
-                // Required because this is a DELETE: a query string carries "true", not a JSON boolean, and
-                // allowCoerce defaults on only for numeric types and date formats (SchParser). Without it,
-                // `?permanent=true` fails validation as a wrongType -- and would fail *safe*, refusing the
-                // call rather than quietly performing a recoverable delete, but refusing it all the same.
-                // `userId` needs nothing here: it is an integer, so it coerces by default.
-                allowCoerce = true
             }
         },
     ) { c, request ->

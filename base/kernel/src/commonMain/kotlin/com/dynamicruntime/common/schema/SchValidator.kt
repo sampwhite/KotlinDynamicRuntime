@@ -682,8 +682,45 @@ fun coerceNumericString(
 }
 
 /**
- * Coerces a string to a boolean via [toOptBool]. A recognizable value becomes the Boolean; a
- * non-whitespace string that is unrecognized is a [SchFailCode.badValue]; a pure-whitespace string is
+ * The spellings of a boolean this layer accepts from a string, and the whole of them (issue #439).
+ *
+ * **A closed set, deliberately, and not [toOptBool].** That one exists for CSV and other loose sources and
+ * reads only the *first character*, so `null`, `nil` and `None` all become `false` and `tremendous` becomes
+ * `true` -- over-acceptance its own note owns up to, and right for the job it was built for. On a request it
+ * is the wrong trade: a client that serializes a missing value as the string `"null"` would get a confident
+ * `false` where a failure is the honest answer, and that is the unsafe direction for any flag whose false
+ * branch does more than its true one.
+ *
+ * So this recognizes what somebody would actually write and refuses the rest. `on`/`off` earn their place by
+ * being what an HTML checkbox submits -- the very transport the coercion default exists for, and a spelling
+ * [toOptBool] happens to reject.
+ *
+ * Note that this keeps booleans no laxer than the numbers they now match: `toOptLong` throws on a
+ * non-numeric string rather than guessing, so neither type turns nonsense into a value.
+ */
+private val trueSpellings = setOf("true", "t", "yes", "y", "1", "on")
+
+/** The counterpart of [trueSpellings]; see its note for why the set is closed. */
+private val falseSpellings = setOf("false", "f", "no", "n", "0", "off")
+
+/**
+ * A string read as a boolean, or null when it spells neither. Case-insensitive, and tolerant of surrounding
+ * whitespace up to a space -- the same bound [toOptBool] uses, so a non-breaking space is not forgiven here
+ * either.
+ */
+@KdrPrivate
+fun parseExactBool(s: String): Boolean? {
+    val v = s.trim { it <= ' ' }.lowercase()
+    return when {
+        v in trueSpellings -> true
+        v in falseSpellings -> false
+        else -> null
+    }
+}
+
+/**
+ * Coerces a string to a boolean via [parseExactBool]. A recognized spelling becomes the Boolean; a
+ * non-whitespace string that is not one is a [SchFailCode.badValue]; a pure-whitespace string is
  * treated as no value (null), not a failure. A non-string value is a plain [SchFailCode.wrongType].
  */
 @KdrPrivate
@@ -693,12 +730,19 @@ fun coerceStringToBool(type: SchType, value: Any?, path: String, coerce: Boolean
         failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
         return value
     }
-    val b = s.toOptBool()
+    val b = parseExactBool(s)
     if (b != null) {
         return b
     }
     if (s.any { it > ' ' }) {
-        failures.add(type.failure(path, SchFailCode.badValue, "'$s' is not a recognizable boolean."))
+        failures.add(
+            type.failure(
+                path,
+                SchFailCode.badValue,
+                "'$s' is not a recognizable boolean. Use one of: " +
+                    "${trueSpellings.joinToString("/")} or ${falseSpellings.joinToString("/")}.",
+            ),
+        )
         return value
     }
     // Pure whitespace: a blank cell is treated as an absent value.

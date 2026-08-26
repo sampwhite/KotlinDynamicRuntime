@@ -321,13 +321,13 @@ class SchValidatorTest : StringSpec({
         schemaDefs(cxt, "core") {
             type("Rec") {
                 type = SCT.kObject
-                property("active", "Active") { type = SCT.boolean; allowCoerce = true }
-                property("strict", "Strict bool") { type = SCT.boolean } // allowCoerce defaults false
+                property("active", "Active") { type = SCT.boolean } // coerces by default since #439
+                property("strict", "Strict bool") { type = SCT.boolean; allowCoerce = false }
             }
         },
     )["core.Rec"]!!
 
-    "boolean coercion reads loose spellings when allowCoerce is on" {
+    "boolean coercion reads the spellings a query string would carry" {
         val rec = boolRec()
         coerceAndValidate(rec, mapOf("active" to "yes")).let {
             it.failures.shouldBeEmpty()
@@ -350,9 +350,40 @@ class SchValidatorTest : StringSpec({
             .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("active" to SchFailCode.badValue)
     }
 
-    "without allowCoerce a boolean string is a plain wrongType" {
+    "a boolean coerces by default, and turning it off is still a plain wrongType" {
+        // The pair is the point (issue #439). A boolean now behaves like the integer beside it -- a query
+        // string carries nothing but text, so a parameter that did not coerce could not be supplied at all --
+        // while an explicit `allowCoerce = false` still refuses the string outright.
+        coerceAndValidate(boolRec(), mapOf("active" to "true")).let {
+            it.failures.shouldBeEmpty()
+            (it.value as Map<*, *>)["active"] shouldBe true
+        }
         validate(boolRec(), mapOf("strict" to "true"))
             .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("strict" to SchFailCode.wrongType)
+    }
+
+    "the spellings are a closed set, so a value nobody meant is refused rather than guessed" {
+        // The reason this does not reuse `toOptBool`, which reads only the first character. Each of these
+        // would become a confident `false` under that rule; `null` in particular is what a client sends when
+        // it serializes a missing value, and answering it with `false` is worse than answering with a 400 --
+        // it is the unsafe direction for any flag whose false branch does more than its true one.
+        for (nonsense in listOf("null", "nil", "None", "NaN", "nope", "tremendous", "2", "-1")) {
+            validate(boolRec(), mapOf("active" to nonsense))
+                .map { it.code } shouldContainExactlyInAnyOrder listOf(SchFailCode.badValue)
+        }
+    }
+
+    "a checkbox's own spelling is accepted" {
+        // `on` is what an HTML checkbox submits, and is the spelling `toOptBool` rejects -- so the transport
+        // the coercion default exists to serve was the one it did not serve.
+        coerceAndValidate(boolRec(), mapOf("active" to "on")).let {
+            it.failures.shouldBeEmpty()
+            (it.value as Map<*, *>)["active"] shouldBe true
+        }
+        coerceAndValidate(boolRec(), mapOf("active" to "OFF")).let {
+            it.failures.shouldBeEmpty()
+            (it.value as Map<*, *>)["active"] shouldBe false
+        }
     }
 
     // --- JSON coercion for lists and maps (issue #10) -----------------------

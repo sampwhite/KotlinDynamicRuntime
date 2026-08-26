@@ -129,10 +129,6 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "operator") {
                     "collection is a real pause, so it is asked for deliberately rather than on every call.",
             ) {
                 type = SCT.boolean
-                // Required because this is a GET: a query string carries "true", not a JSON boolean, and
-                // allowCoerce defaults on only for numeric types and date formats (SchParser). Without it,
-                // `?collect=true` fails validation as a wrongType rather than turning into `true`.
-                allowCoerce = true
             }
         },
     ) { c, request -> systemInfo(c, collect = request[OSI.collect] == true) }

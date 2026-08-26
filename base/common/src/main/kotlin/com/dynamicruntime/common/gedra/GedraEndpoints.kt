@@ -141,9 +141,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         inputFields = {
             field(EP.offset, "How many documents to skip before this page; 0 for the first page.") {
                 type = SCT.integer
-                // A query param arrives as text, so coercion is on (as it is for `limit`); empty means the
-                // default rather than a 400, and a page never starts before the beginning.
-                allowCoerce = true
+                // Empty means the default rather than a 400, and a page never starts before the beginning.
+                // (A query param arrives as text; an integer coerces from one by default.)
                 emptyIsAbsent = true
                 minimum = 0
                 default = 0
