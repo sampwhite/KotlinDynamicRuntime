@@ -117,3 +117,15 @@ object CFACT {
         override fun render(): String = neverName
     }
 }
+
+/**
+ * Whether [c] may appear in a cfact name: a letter, a digit, `_` or `.`.
+ *
+ * Shared by the parser (which reads a name off an expression) and by [CFactDef] (which refuses a declaration
+ * an expression could never spell). One rule rather than two, because the failure of two would be a name that
+ * registers and then cannot be referred to -- discovered only by whoever tried to write it.
+ */
+fun isCFactNameChar(c: Char): Boolean = c.isLetterOrDigit() || c == '_' || c == '.'
+
+/** Whether [name] is spellable as a cfact name: non-empty, and [isCFactNameChar] throughout. */
+fun isCFactName(name: String): Boolean = name.isNotEmpty() && name.all { isCFactNameChar(it) }

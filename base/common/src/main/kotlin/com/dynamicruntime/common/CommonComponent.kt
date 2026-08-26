@@ -1,5 +1,7 @@
 package com.dynamicruntime.common
 
+import com.dynamicruntime.common.cfact.addCoreCFacts
+import com.dynamicruntime.common.cfact.cfactSchema
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.client.OutboundHttpService
@@ -61,6 +63,10 @@ class CommonComponent : ComponentDefinition {
         // its job: it has no user store, so serving the application's account endpoints from its own database
         // is an account-creation surface on the one node that should have none.
         val appOnly = Presence(roles = setOf(BOOT.app))
+        // The cfacts every deployment has (issue #455). Not presence-gated, and that is the point: a cfact
+        // an expression may name has to be declared on every node that could serve the data naming it, or
+        // shared data would parse on some nodes and refuse the boot on others.
+        addCoreCFacts(collector)
         // Endpoints/types live with the services that own them; the component just wires them in.
         collector.addModule(NodeService.schema(cxt))
         collector.addModule(SchemaService.schema(cxt))
@@ -94,6 +100,10 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(clientAdminSchema(cxt))
         // The same user-administration operations, scoped to the caller's client (issue #225).
         collector.addModule(scopedUserAdminSchema(cxt), appOnly)
+        // The cfacts an expression may name, for whoever is authoring configuration against them. In the
+        // `userAdmin` section rather than `operator`, and everywhere rather than app-only, because an edge
+        // has a registry of its own to report -- see `cfactSchema`.
+        collector.addModule(cfactSchema(cxt))
         // Operator: running-the-deployment diagnostics, gated on ROLE.operator by their `operator` section.
         collector.addModule(operatorSchema(cxt))
         // Home/shell: the UI-config endpoint that tells the frontend which layout to build and which
@@ -128,7 +138,7 @@ class CommonComponent : ComponentDefinition {
 
     /**
      * Startup services -- fully initialized before regular services. [ClientService] leads (issue #343),
-     * because schema compilation is heading towards being per-client and a variant cannot be built before it
+     * because schema compilation is heading toward being per-client and a variant cannot be built before it
      * is known which clients there are; nothing depends on that ordering yet, which is when it is cheap to
      * establish. Schema compilation comes next, and must be ready before the topic service reads the compiled
      * table definitions; [NodeService] is here so the node's identity and basic facts are known early;

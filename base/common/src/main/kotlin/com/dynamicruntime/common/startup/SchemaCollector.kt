@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.startup
 
+import com.dynamicruntime.common.cfact.CFactDef
+import com.dynamicruntime.common.cfact.CFactSource
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.KdrEndpoint
@@ -77,6 +79,49 @@ class SchemaCollector(
         optionsProviders[id] = provider
     }
 
+    /**
+     * The cfacts components declared, keyed by name (issue #455), and [cfactSources], what decides each.
+     *
+     * Two maps rather than one because they come from two places: a **component** declares a name and the
+     * Kotlin that makes it true, while a **client** declares only a name -- its config is data, and data has
+     * nowhere to put a computation. So sources are global by construction, and a client-declared cfact is
+     * one nothing yet produces, which is exactly what "declare up front what your workflow will need" means.
+     */
+    val cfacts: MutableMap<String, CFactDef> = LinkedHashMap()
+
+    /** What decides each declared cfact for a request, keyed by name; a subset of [cfacts]. */
+    val cfactSources: MutableMap<String, CFactSource> = LinkedHashMap()
+
+    /**
+     * The cfacts each client's own configs declared, in arrival order (issue #455).
+     *
+     * A list rather than a map so a client declaring one name twice is *reported* rather than silently
+     * collapsed, and held apart from [cfacts] for the reason [clientOverlays] is held apart from [defs]:
+     * folding them in would give every other client a name only this one declared.
+     */
+    val clientCFacts: MutableMap<String, MutableList<CFactDef>> = LinkedHashMap()
+
+    /**
+     * Declares [def], optionally with the [source] that decides it, refusing a second declaration of the name.
+     *
+     * Refused rather than overwritten for the reason [addOptionsProvider] gives, and one more: a cfact is
+     * matched by *name*, so a second declaration would not shadow the first, it would silently answer for it
+     * everywhere the first is written -- visible only as something shown to the wrong people.
+     */
+    fun addCFact(def: CFactDef, source: CFactSource? = null) {
+        val existing = cfacts[def.name]
+        if (existing != null) {
+            throw KdrException(
+                "The cfact '${def.name}' is declared twice, in groups '${existing.group}' and '${def.group}'. " +
+                    "A cfact name is unique across every component on this node -- rename one of them.",
+            )
+        }
+        cfacts[def.name] = def
+        if (source != null) {
+            cfactSources[def.name] = source
+        }
+    }
+
     /** Folds a module's types, endpoints, and options providers into the collector. */
     /**
      * Contributes [module] only when this node is admitted by [presence] (issue #433).
@@ -141,8 +186,16 @@ class SchemaCollector(
         val client = config.gedraId.client
         if (client == GID.globalClient) {
             defs.putAll(config.defs)
+            // A global config's cfacts are declarations like a component's, and go through the same checked
+            // add -- a name is unique whichever route it arrives by.
+            config.cfacts.forEach { addCFact(it) }
         } else {
             clientOverlays.getOrPut(client) { LinkedHashMap() }.putAll(config.defs)
+            // Collected, not checked: whether a client may take this name depends on what every other
+            // contributor declared, which is not known until the registries are built.
+            if (config.cfacts.isNotEmpty()) {
+                clientCFacts.getOrPut(client) { mutableListOf() }.addAll(config.cfacts)
+            }
         }
     }
 

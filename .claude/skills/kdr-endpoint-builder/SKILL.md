@@ -75,8 +75,8 @@ Every JSON output also carries `requestUri` (String) and `duration` (number, ms)
 - **`generalEndpoint`** → result under **`results`** (a map object).
 - **`itemEndpoint`** → single resource under **`item`**.
 - **`listEndpoint`** → payload list under **`items`**, with `numItems`; options `hasMore`,
-  `hasNumAvailable`, `noLimit`. Method **defaults to `GET`**, and note the parameter order differs:
-  `(path, description, outputRef, method = GET, …)` against general/item's
+  `hasNumAvailable`, `noLimit`, `clientShaped`. Method **defaults to `GET`**, and note the parameter order
+  differs: `(path, description, outputRef, method = GET, …)` against general/item's
   `(path, description, method, outputRef, …)`.
 - **`fileUploadEndpoint`** / **`fileDownloadEndpoint`** → see *Files* below.
 
@@ -89,6 +89,12 @@ no-parameter endpoint:
 - **`inputRef`** — a named type whose top-level properties become the fields.
 - **`inputFields`** — declared inline. `field(name, description, required = false) { … }` mirrors
   `property(...)`: description mandatory, type defaults to string unless the block sets a `type`/`$ref`.
+
+`clientShaped = true` gives the endpoint a **per-client copy** at a path naming the client —
+`/userAdmin/cfacts` alongside `/userAdmin/<client>/cfacts` — for every client that varies what the endpoint
+answers with. Set it when the *answer* differs per client and the endpoint is outside the `gedra` section,
+whose endpoints are copied without asking. The handler is the same object on both surfaces and reads
+`cxt.client`, which is the caller's own on the shared path and the path's on a copy.
 
 A list endpoint appends a **`limit`** field (default 100) as a plain sibling, unless `noLimit`. The resolved
 input type is always closed to undeclared properties (`additionalProperties = false`); off-contract `_`/`$`

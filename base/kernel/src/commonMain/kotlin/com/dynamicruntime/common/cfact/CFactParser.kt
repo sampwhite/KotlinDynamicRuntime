@@ -130,7 +130,7 @@ object CFactParser {
 
         fun readName(): String {
             val start = at
-            while (!atEnd() && (peek().isLetterOrDigit() || peek() == '_' || peek() == '.')) at++
+            while (!atEnd() && isCFactNameChar(peek())) at++
             if (at == start) fail("a cfact name was expected")
             val name = text.substring(start, at)
             if (name !in allowed) {

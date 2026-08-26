@@ -37,7 +37,7 @@ fun buildClientEndpoints(
     if (clients.isEmpty()) {
         return emptyList()
     }
-    val copyable = shared.filter { it.path.startsWith("/${CLIENT_SHAPED_SECTION}/") }
+    val copyable = shared.filter { it.path.startsWith("/${CLIENT_SHAPED_SECTION}/") || it.clientShaped }
     if (copyable.isEmpty()) {
         return emptyList()
     }
@@ -54,12 +54,17 @@ fun buildClientEndpoints(
 }
 
 /**
- * The section whose endpoints get a per-client copy.
+ * The section every one of whose endpoints gets a per-client copy.
  *
- * One section today, and named rather than inferred: an endpoint is client-shaped when what it reads or writes
- * belongs to a client, which is a fact about the endpoint rather than about its path. `gedra` is the only
- * section where that is true -- `auth`, `admin` and `operator` are about the deployment, and copying them per
- * client would offer the same answer under several names.
+ * Named rather than inferred: an endpoint is client-shaped when what it reads or writes belongs to a client,
+ * which is a fact about the endpoint rather than about its path. `gedra` is the only *section* where that is
+ * true of everything in it -- `auth`, `admin` and `operator` are otherwise about the deployment, and copying
+ * them wholesale would offer the same answer under several names.
+ *
+ * Elsewhere an endpoint says so for itself, with [KdrEndpoint.clientShaped] (issue #455). The two are the same
+ * property declared at two granularities, which is what this note always implied: `/userAdmin/cfacts` answers
+ * with a registry a client's own config may have added to, so it is client-shaped while the rest of its
+ * section is not.
  */
 private const val CLIENT_SHAPED_SECTION = "gedra"
 
@@ -77,6 +82,7 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         includeLimit = endpoint.includeLimit,
         outputSchema = endpoint.outputSchema,
         forTestingOnly = endpoint.forTestingOnly,
+        clientShaped = endpoint.clientShaped,
         // The path is the statement of which client this is for, so the handler is run bound to it and reads
         // `cxt.client` exactly as it does on the shared surface -- which is why the same lambda serves both.
         handler = { c, request ->
