@@ -106,6 +106,11 @@ private fun show(value: Any?): String = if (value == null) "absent" else "'$valu
  * under the looser version failing validation against the tighter one. That is a real problem and a different
  * one: it is about a definition changing over *time*, where everything here is about two definitions
  * coexisting. Nothing in this file would catch it, and permitting rule 2 at all already accepts it.
+ *
+ * There has to *be* a closed list to open. A base with no `${SCH.options}` at all bounds nothing, so a variant
+ * that adds an **open** list to it accepts exactly what the base did (any value) -- that is not opening a
+ * closed list but applying suggestions where there were none, which narrows no less than applying a closed
+ * list would (rule 2). So this fires only when the base carries a list this variant flips open.
  */
 private fun checkOpenOptions(
     path: String,
@@ -113,7 +118,7 @@ private fun checkOpenOptions(
     variant: Map<String, Any?>,
     out: MutableList<String>,
 ) {
-    if (base[SCH.openOptions] != true && variant[SCH.openOptions] == true) {
+    if (base[SCH.options] != null && base[SCH.openOptions] != true && variant[SCH.openOptions] == true) {
         out.add(
             "'$path' opens a choice list the type closes ('${SCH.openOptions}'), which widens what it " +
                 "accepts: values the type rejects would be storable for this client and invalid to " +

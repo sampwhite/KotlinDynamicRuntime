@@ -1076,7 +1076,7 @@ fun checkboxDraw(vt: SchType, value: Any?): CheckDraw = when {
 @Suppress("EnumEntryName")
 enum class CheckDraw { on, off, unanswered }
 
-/** What a free-form map field needs: the value it holds, where to point a screen reader, and how to emit. */
+/** What an open choice field needs: its suggestions, the value held, where to point a screen reader, how to emit. */
 external interface OpenChoiceFieldProps : Props {
     var options: List<SchOption>
     var value: String?
@@ -1127,7 +1127,7 @@ val OpenChoiceField = FC<OpenChoiceFieldProps> { props ->
     }
 }
 
-
+/** What a free-form map field needs: the value it holds, where to point a screen reader, and how to emit. */
 external interface JsonObjectFieldProps : Props {
     var value: Any?
     var describedBy: String?

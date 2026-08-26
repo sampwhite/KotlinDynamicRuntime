@@ -185,9 +185,11 @@ object SCH {
      * closed dropdown, so an off-list value can be entered at all -- a control that refuses what the server
      * accepts is the same advertise-versus-serve drift as one that offers what the server refuses.
      *
-     * **It is not a way for a client to differ**, unlike [optionsSource]. Turning it off narrows a type and
-     * turning it on widens one, and neither is among the three ways an alteration may narrow -- so it has to
-     * match the base, and `SchNarrowing` refuses it in either direction by saying nothing about it at all.
+     * **Under a client alteration it is asymmetric**, unlike [optionsSource]. Turning it *off* -- closing an
+     * open list -- narrows the type: an open list accepts anything, so bounding it accepts a subset, which is
+     * narrowing rule 2 wearing this keyword, and a client may do it. Turning it *on* -- opening a list the base
+     * closes -- widens, and `SchNarrowing` refuses that direction. (Adding an open list to a field the base
+     * left optionless is not opening anything: it accepts what the base did, so it is allowed too.)
      */
     const val openOptions = "g-openOptions"
 
