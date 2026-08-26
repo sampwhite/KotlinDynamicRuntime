@@ -44,7 +44,7 @@ import com.dynamicruntime.common.util.toOptStr
  *    `RequestService` caches resolved types by path. A client's narrowing is enforced only where the entry is
  *    *stored*, so a form built from this schema offers choices a client has removed and finds out on save.
  *  - **On a client's own path**, the published type is that client's, so what is advertised is what is
- *    enforced and a control cannot offer what the client removed.
+ *    enforced, and a control cannot offer what the client removed.
  *
  * **So a UI must reach the *client's* path, not the bare shared one.** `GET /schema/endpoints` already answers
  * with the caller's own client's paths -- an `acme` user is shown `/gedra/acme/...` and *not* the shared one --
@@ -141,9 +141,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         inputFields = {
             field(EP.offset, "How many documents to skip before this page; 0 for the first page.") {
                 type = SCT.integer
-                // A query param arrives as text, so coercion is on (as it is for `limit`); empty means the
-                // default rather than a 400, and a page never starts before the beginning.
-                allowCoerce = true
+                // Empty means the default rather than a 400, and a page never starts before the beginning.
+                // (A query param arrives as text; an integer coerces from one by default.)
                 emptyIsAbsent = true
                 minimum = 0
                 default = 0

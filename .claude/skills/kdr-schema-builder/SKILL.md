@@ -135,12 +135,16 @@ val failures: List<SchFailure> = validate(type, data)          // collects ALL f
 val result: SchResult          = coerceAndValidate(type, data) // .value (coerced) + .failures; input never mutated
 ```
 
-`allowCoerce` (a kd2 keyword, so `g-allowCoerce` on the wire; default **true** for numeric +
-date-format types, **false** otherwise) governs coercion of a mismatched value — and changes
+`allowCoerce` (a kd2 keyword, so `g-allowCoerce` on the wire; default **true** for numeric,
+**boolean** and date-format types, **false** otherwise — see `coercesByDefault`) governs coercion
+of a mismatched value — and changes
 validation even when no output is requested:
 
 - number/integer strings → `Long`/`Double`; string ← any non-null (`toString`).
-- boolean ← string via `toOptBool` (blank → null, unrecognized → failure).
+- boolean ← string via `parseExactBool`: a **closed** set of spellings — `true/false`, `t/f`, `yes/no`,
+  `y/n`, `1/0`, `on/off`, case-insensitive — blank → null, anything else a `badValue`. Deliberately not
+  `toOptBool`, which reads only the first character (so `null` and `nil` would become `false`) and exists
+  for CSV.
 - date-format string → `Instant`; array/object ← JSON string (`[`→`jsonArray`, else comma-split;
   `jsonMap`), then re-validated element/property-wise.
 - Missing required properties with a `default` are injected (deep-cloned), not failed.

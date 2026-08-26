@@ -96,7 +96,7 @@ private const val systemInfoType = "SystemInfo"
  * section requires [com.dynamicruntime.common.http.request.ROLE.operator], so an administrator reaches it too
  * (the ladder ranks admin above operator) while an ordinary user does not.
  *
- * `/operator/system/info` reports this node's identity, uptime and JVM statistics, and will **request a
+ * `/operator/system/info` reports this node's identity, uptime, and JVM statistics, and will **request a
  * garbage collection first if asked** ([OSI.collect], off by default).
  *
  * The collection is opt-in because a full GC is a real pause: an endpoint that triggers one on every call is
@@ -129,10 +129,6 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "operator") {
                     "collection is a real pause, so it is asked for deliberately rather than on every call.",
             ) {
                 type = SCT.boolean
-                // Required because this is a GET: a query string carries "true", not a JSON boolean, and
-                // allowCoerce defaults on only for numeric types and date formats (SchParser). Without it,
-                // `?collect=true` fails validation as a wrongType rather than turning into `true`.
-                allowCoerce = true
             }
         },
     ) { c, request -> systemInfo(c, collect = request[OSI.collect] == true) }

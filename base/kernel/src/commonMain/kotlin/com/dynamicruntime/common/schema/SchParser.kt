@@ -322,7 +322,7 @@ fun parseNode(
         name = name,
         jsonType = jsonType,
         // Numeric types and recognized date formats are coercible by default; everything else is strict.
-        allowCoerce = (map[SCH.allowCoerce] as? Boolean) ?: (isNumericType(jsonType) || isDateFormat(format)),
+        allowCoerce = (map[SCH.allowCoerce] as? Boolean) ?: coercesByDefault(jsonType, format),
         // Scalars read an empty value as "not supplied"; arrays/objects opt in, and an untyped field -- which
         // constrains nothing -- is left alone.
         emptyIsAbsent = (map[SCH.emptyIsAbsent] as? Boolean) ?: isScalarType(jsonType),
@@ -399,6 +399,24 @@ fun isNumericType(jsonType: String?): Boolean = jsonType == SCT.integer || jsonT
 @KdrPrivate
 fun isScalarType(jsonType: String?): Boolean =
     jsonType == SCT.string || jsonType == SCT.boolean || isNumericType(jsonType)
+
+/**
+ * Whether a type coerces from a string unless the schema says otherwise -- the [SCH.allowCoerce] default
+ * (issue #439).
+ *
+ * **The rule is "could this only ever arrive as text?"** A query string and a form encoding carry nothing but
+ * strings, so a parameter of one of these types could not be supplied *at all* without coercion: there would
+ * be no spelling of `5` or of `true` that worked. Strings, arrays, and objects are left strict because they
+ * have a faithful spelling on those transports already, or no sensible one at all.
+ *
+ * Booleans were the odd omission, and the asymmetry was invisible until it bit: `?publicApi=true` failed as a
+ * `wrongType` while `?limit=5` beside it worked, with nothing at either declaration to say why. Note that
+ * admitting them costs less strictness than it sounds -- see `parseExactBool`, which recognizes a closed set
+ * of spellings rather than guessing.
+ */
+@KdrPrivate
+fun coercesByDefault(jsonType: String?, format: String?): Boolean =
+    isNumericType(jsonType) || jsonType == SCT.boolean || isDateFormat(format)
 
 /** Whether a `format` value is one of the date formats we validate/coerce ([SFMT.date] / [SFMT.dateTime]). */
 @KdrPrivate
