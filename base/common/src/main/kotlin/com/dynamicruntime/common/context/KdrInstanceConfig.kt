@@ -184,14 +184,23 @@ class KdrInstanceConfig(
     /** Returns a process-unique, increasing suffix for a context's logging id. */
     fun nextLoggingId(): Long = loggingIdCounter.incrementAndGet()
 
-    /** The value of [def], resolved for this instance, or null when it is unset. See [resolveEnvVarByName]. */
-    fun getEnvVar(def: EnvVarDef): String? = resolveEnvVarByName(def.name)
+    /** The value of [def], resolved for this instance, or null when it is unset. See [resolveEnvVar]. */
+    fun getEnvVar(def: EnvVarDef): String? = resolveByName(def.name).value
 
     /**
-     * The raw-name resolution behind [getEnvVar]. **Private on purpose** (issue #371): ordinary reads take an
-     * [EnvVarDef], so a variable nobody declared cannot be read. Only the bootstrap paths that run before a
-     * declaration is convenient (`KDR_ENV` in [preBootLoadConfig], `KDR_WORKSPACE_DIR` in `AppPaths`) name a
-     * variable as a string, and they read it through a declared def's [EnvVarDef.name] and `System.getenv`.
+     * The full resolution of [def] on this node -- the value, the exact key that supplied it, and its source
+     * (issue #371). What the operator view reports, and the same computation [getEnvVar] reads through, so a
+     * request's value and the reported value cannot disagree. Takes an [EnvVarDef] like [getEnvVar], so it too
+     * cannot resolve a variable nobody declared.
+     */
+    fun resolveEnvVar(def: EnvVarDef): EnvVarResolution = resolveByName(def.name)
+
+    /**
+     * The raw-name resolution behind [getEnvVar] and [resolveEnvVar]. **Private on purpose** (issue #371):
+     * ordinary reads take an [EnvVarDef], so a variable nobody declared cannot be read. Only the bootstrap
+     * paths that run before a declaration is convenient (`KDR_ENV` in [preBootLoadConfig], `KDR_WORKSPACE_DIR`
+     * in `AppPaths`) name a variable as a string, and they read it through a declared def's [EnvVarDef.name]
+     * and `System.getenv`.
      *
      * Instance-config entries win over the real process environment, so configuration (and tests) can inject
      * or override an "environment variable" without touching the process environment.
@@ -202,11 +211,12 @@ class KdrInstanceConfig(
      * plain name is considered at all, because a value naming this role was written for this role and a
      * general one was not.
      */
-    private fun resolveEnvVarByName(name: String): String? {
+    private fun resolveByName(name: String): EnvVarResolution {
         for (k in envVarNamesFor(name, bootRole)) {
-            ((get(k) as? String) ?: System.getenv(k))?.let { return it }
+            (get(k) as? String)?.let { return EnvVarResolution(it, k, EVSRC.config) }
+            System.getenv(k)?.let { return EnvVarResolution(it, k, EVSRC.processEnv) }
         }
-        return null
+        return EnvVarResolution(null, null, EVSRC.unset)
     }
 
     /**

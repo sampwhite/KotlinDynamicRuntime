@@ -9,6 +9,8 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.refreshActingRoles
@@ -128,6 +130,12 @@ private fun menuItems(cxt: KdrCxt): List<Map<String, Any?>> = buildList {
     add(item(HMENU.catalog, "Endpoint catalog", page = HMENU.pageCatalog))
     if (AdminRules.canManageUsers(cxt)) {
         add(item(HMENU.users, "Users", page = HMENU.pageUsers))
+    }
+    // The environment-variable reference (issue #371): a running-the-deployment diagnostic, so offered on the
+    // same terms its `operator` section admits -- the operator level, which an administrator satisfies too (the
+    // ladder ranks admin above operator). The roles are the refreshed acting roles (see refreshActingRoles above).
+    if (RoleLadder.satisfies(cxt.userProfile.roles, ROLE.operator)) {
+        add(item(HMENU.envReference, "Environment", page = HMENU.pageEnv))
     }
     if (cxt.userProfile.isLoggedIn) {
         // Forms are login-gated only (the `gedra` section), so every signed-in caller is offered the list; how

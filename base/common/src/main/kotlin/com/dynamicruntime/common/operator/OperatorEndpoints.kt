@@ -147,6 +147,22 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "operator") {
     ) { c, _ ->
         BootCheckRegistry.get(c).results().map { it.toInfo() }
     }
+
+    // The environment-variable reference (issue #371), assembled server-side as one Markdown document and
+    // rendered by the frontend the way the README is. The genuinely-new half of #371: it shows the value each
+    // variable resolved to *on this node*, which no static reference can. Operator-gated because it names
+    // infrastructure detail (`KDR_DB_HOST`, `KDR_DB_USER`); it only ever enumerates environment variables and
+    // never reaches into the secrets file real passwords live in.
+    type(OENV.referenceType) {
+        type = SCT.kObject
+        property(OENV.markdown, "The assembled environment-variable reference, as Markdown.", required = true)
+    }
+    generalEndpoint(
+        OENV.envReferencePath,
+        "The environment variables this node declares, assembled as Markdown with each variable's resolved value here.",
+        HttpMethod.GET,
+        outputRef = OENV.referenceType,
+    ) { c, _ -> mapOf(OENV.markdown to renderEnvVarReference(c)) }
 }
 
 /**
