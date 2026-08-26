@@ -6,14 +6,11 @@ import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
+import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.sql.SecretsUtil
 import com.dynamicruntime.common.startup.ServiceInitializer
-import java.net.URI
 import java.net.URLEncoder
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicInteger
@@ -85,8 +82,6 @@ class MailService : ServiceInitializer {
     var useSimulatedEmail: Boolean = false
         private set
 
-    private val httpClient: HttpClient by lazy { HttpClient.newHttpClient() }
-
     private val mailId = AtomicInteger(1)
 
     // Most-recent-first, bounded ring of sent/simulated mail, for tests and troubleshooting.
@@ -157,19 +152,22 @@ class MailService : ServiceInitializer {
         val body = listOf("from" to from, "to" to to, "subject" to subject, "text" to text)
             .joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, StandardCharsets.UTF_8)}" }
         val basic = Base64.getEncoder().encodeToString("api:$key".toByteArray(StandardCharsets.UTF_8))
-        val request = HttpRequest.newBuilder(URI.create(mailgunUri))
-            .header("Authorization", "Basic $basic")
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .POST(HttpRequest.BodyPublishers.ofString(body))
-            .build()
+        // The one outbound client (issue #420). The content type rides on the body, so only the auth header is
+        // passed here. The client's own connect/timeout error names the endpoint, not the recipient, so keep
+        // "$to" by re-wrapping -- the context an operator wants when a send fails.
         val response = try {
-            httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-        } catch (e: Exception) {
+            OutboundHttpService.get(cxt).fast(cxt).send(
+                "POST", mailgunUri,
+                headers = mapOf("Authorization" to "Basic $basic"),
+                contentType = "application/x-www-form-urlencoded",
+                body = body,
+            )
+        } catch (e: KdrException) {
             throw KdrException("Could not send email to $to.", e, EXC.internalError, SRC.network, ACT.io)
         }
-        if (response.statusCode() != 200) {
-            val msg = if (response.statusCode() == 401) "Mail request could not authenticate."
-            else "Mailgun rejected the email to $to (status ${response.statusCode()})."
+        if (response.status != 200) {
+            val msg = if (response.status == 401) "Mail request could not authenticate."
+            else "Mailgun rejected the email to $to (status ${response.status})."
             throw KdrException(msg, null, EXC.internalError, SRC.network, ACT.io)
         }
         LogMail.debug(cxt) { "Sent email to $to via Mailgun." }

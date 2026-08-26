@@ -68,10 +68,15 @@ object Probe {
     )
 }
 
-/** What a scenario is handed: where the instance is, and whatever arguments followed its name. */
-class ProbeContext(val baseUrl: String, val args: List<String>) {
-    /** A fresh session for [label], against this run's instance. */
-    fun session(label: String): ProbeSession = ProbeSession(label, baseUrl)
+/**
+ * What a scenario is handed: where the instance is, and whatever arguments followed its name. It owns the
+ * sessions it hands out and closes them (with their HTTP clients) on [close], so a scenario never has to.
+ */
+class ProbeContext(val baseUrl: String, val args: List<String>) : AutoCloseable {
+    private val sessions = mutableListOf<ProbeSession>()
+
+    /** A fresh session for [label], against this run's instance. Closed with the context. */
+    fun session(label: String): ProbeSession = ProbeSession(label, baseUrl).also { sessions.add(it) }
 
     /**
      * A session already logged in at [level], using an address derived from the level so repeated runs against
@@ -88,6 +93,12 @@ class ProbeContext(val baseUrl: String, val args: List<String>) {
             session.becomeUser("probe-$level@example.com", level, capabilities)
         }
         return session
+    }
+
+    /** Closes every session this context handed out, releasing their HTTP clients. */
+    override fun close() {
+        sessions.forEach { runCatching { it.close() } }
+        sessions.clear()
     }
 }
 
@@ -117,11 +128,17 @@ fun main(args: Array<String>) {
     val name = rest.removeAt(0)
     val cxt = ProbeContext(baseUrl, rest)
     try {
-        if (name == Probe.callVerb) {
-            oneShotCall(cxt)
-        } else {
-            val scenario = Probe.scenarios[name] ?: usage("Unknown scenario '$name'.")
-            scenario(cxt)
+        try {
+            if (name == Probe.callVerb) {
+                oneShotCall(cxt)
+            } else {
+                val scenario = Probe.scenarios[name] ?: usage("Unknown scenario '$name'.")
+                scenario(cxt)
+            }
+        } finally {
+            // Close the sessions (and their HTTP clients) whether the scenario finished or threw, before the
+            // catch below may exit the process.
+            cxt.close()
         }
     } catch (e: Throwable) {
         // A probe that cannot do its job says so and stops. Reporting a partial result is what makes a broken

@@ -2,6 +2,7 @@ package com.dynamicruntime.common
 
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
@@ -150,6 +151,10 @@ class CommonComponent : ComponentDefinition {
      */
     override fun services(cxt: KdrCxt): List<ServiceEntry> =
         listOf(
+            // The one outbound HTTP client (issue #420). Unscoped on purpose: an edge needs it too, for
+            // `GoogleJwksKeySource` on the env-auth sign-in path. Its clients are created lazily on first call,
+            // so a node (or a test) that never calls out pays nothing for it.
+            service(::OutboundHttpService),
             // Its `checkReady` performs every cache's initial load, by which point the whole set is
             // registered. Its position here is no longer load-bearing: it reads the caching environment in
             // `onCreate`, which the whole tier completes before any `checkInit` registers a cache.
