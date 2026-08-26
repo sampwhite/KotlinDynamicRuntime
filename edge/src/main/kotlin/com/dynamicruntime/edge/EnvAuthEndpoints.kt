@@ -84,6 +84,14 @@ fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "auth") {
             throw KdrException(refusal, code = EXC.notAuthorized, sensitive = true)
         }
 
+        // A verified address on the domain is still not evidence Google is authoritative for it. A Google
+        // consumer account can be registered against one of our addresses -- it presents email_verified=true and
+        // no `hd`, and would otherwise pass the check above. Require the signed `hd` to name the configured
+        // domain, so a stale alias, forwarding rule or catch-all cannot open the gate (issue #429).
+        if (!AddressRules.isGoogleAuthoritative(c, token.hostedDomain)) {
+            throw KdrException(refusal, code = EXC.notAuthorized, sensitive = true)
+        }
+
         val node = NodeService.get(c)
         val expireMs = c.now().toEpochMilliseconds() + ENVAUTH.sessionMillis(c.instanceConfig)
         // Written through the request's WebRequest -- the transport-neutral seam -- so it behaves identically
@@ -104,9 +112,9 @@ fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "auth") {
 /**
  * The one thing every refusal says.
  *
- * Deliberately identical for "no verified address" and "wrong domain", and marked sensitive so a deployment
- * that obfuscates replaces even this: a caller learning *which* check they tripped learns which domain opens
- * the gate, which is the one fact a probe wants. `GoogleIdTokenVerifier` already takes the same line with its
- * own failures.
+ * Deliberately identical for "no verified address", "wrong domain", and "Google is not authoritative for the
+ * address" (issue #429), and marked sensitive so a deployment that obfuscates replaces even this: a caller
+ * learning *which* check they tripped learns which domain opens the gate, which is the one fact a probe wants.
+ * `GoogleIdTokenVerifier` already takes the same line with its own failures.
  */
 private const val refusal = "That account may not enter this environment."

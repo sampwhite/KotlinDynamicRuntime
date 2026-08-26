@@ -19,6 +19,13 @@ object ADR {
      * should not be able to name a client on a deployment that has real ones.
      */
     const val exampleDomain = "example.com"
+
+    /**
+     * The domains Google hosts *consumer* Gmail accounts under. Google is authoritative for an address at one
+     * of these (issue #429) -- but "any Gmail address" is no organizational boundary, so a deployment that
+     * names one as its admin domain admits nobody through the edge's `hd` check, by design.
+     */
+    val gmailDomains = setOf("gmail.com", "googlemail.com")
 }
 
 /**
@@ -96,6 +103,32 @@ object AddressRules {
             }
         }
         return cxt.instanceConfig.env != ENV.prod && matches(domain, ADR.exampleDomain)
+    }
+
+    /**
+     * Whether the signed `hd` claim [hostedDomain] establishes Google as authoritative for the deployment's
+     * configured admin domain, to the standard of Google's own backend-auth guidance (issue #429).
+     *
+     * `email_verified` plus a matching address domain is deliberately **not** enough. A Google *consumer*
+     * account can be registered against an arbitrary address -- ownership proven by receiving mail there, which
+     * a stale alias, a forward or a catch-all can also do -- and it presents `email_verified: true` with **no**
+     * `hd`. Only a Workspace account carries `hd`, and Google says that claim, being inside the signed token,
+     * is the one that may be trusted. So the perimeter requires it, matched **exactly** against the configured
+     * domain: unlike [isControlledDomain]'s subdomain latitude for *addresses*, `eu.acme.com` does not satisfy
+     * `acme.com` here -- the tighter rule a perimeter wants (issue #429's open question, decided for exactness).
+     * The configured domain is normalized by [AdminRules.adminEmailDomain]; [hostedDomain] is normalized the
+     * same way, so the comparison is that of two like-shaped domain parts, not a bare string test.
+     *
+     * **Fails closed** when no admin domain is configured, or it is itself a Gmail-hosted domain ([ADR.gmailDomains]):
+     * neither can name a Workspace whose `hd` could match, so there is nobody this check could ever admit.
+     */
+    fun isGoogleAuthoritative(cxt: KdrCxt, hostedDomain: String?): Boolean {
+        val configured = AdminRules.adminEmailDomain(cxt.instanceConfig) ?: return false
+        if (configured in ADR.gmailDomains) {
+            return false
+        }
+        val hd = hostedDomain?.trim()?.lowercase()?.ifEmpty { null } ?: return false
+        return hd == configured
     }
 
     /**

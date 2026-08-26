@@ -57,7 +57,8 @@ class EdgeContentPathsTest : StringSpec({
         val claims = mapOf(
             GOOG.sub to "sub-$email", GOOG.aud to clientId, GOOG.iss to "https://accounts.google.com",
             GOOG.exp to (System.currentTimeMillis() / 1000) + 3600,
-            GOOG.email to email, GOOG.emailVerified to true,
+            // A real Workspace token names its hosted domain; the gate now requires it to match (issue #429).
+            GOOG.email to email, GOOG.emailVerified to true, GOOG.hd to "gyassa.com",
         )
         val h = header.toJsonStr(compact = true).toByteArray(Charsets.UTF_8).base64Encode()
         val c = claims.toJsonStr(compact = true).toByteArray(Charsets.UTF_8).base64Encode()
