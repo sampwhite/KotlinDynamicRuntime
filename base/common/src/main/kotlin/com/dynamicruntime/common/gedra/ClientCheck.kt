@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.startup.BootCheckMode
 
 /** What checking the declared clients produced (issue #343). */
 class ClientCheckResult(
@@ -30,7 +31,7 @@ class ClientCheckResult(
 fun checkClientDefs(cxt: KdrCxt, configs: GedraConfigCollector): ClientCheckResult {
     val mode = gedraConfigCheckMode(cxt)
     val declared = configs.configs.mapNotNull { config -> config.client?.let { config to it } }
-    if (mode == GCFG.off) {
+    if (mode == BootCheckMode.off) {
         return ClientCheckResult(declared.associate { (_, def) -> def.clientId to def }, emptyList())
     }
     val issues = mutableListOf<GedraConfigIssue>()

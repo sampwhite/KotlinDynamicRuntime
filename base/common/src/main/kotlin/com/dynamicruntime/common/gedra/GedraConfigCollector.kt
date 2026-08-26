@@ -2,6 +2,11 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.startup.BCHK
+import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.startup.BootCheckRegistry
+import com.dynamicruntime.common.startup.bootCheckMode
+import com.dynamicruntime.common.startup.modeOverride
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 
@@ -21,19 +26,13 @@ object GCFG {
     /** Overrides what a config problem does at startup; see [gedraConfigCheckMode]. */
     const val checkEnvVar = "KDR_GEDRA_CONFIG_CHECK"
 
-    /** Refuse to boot. */
-    const val strict = "strict"
-
-    /** Log at error, degrade, and carry on. */
-    const val warn = "warn"
-
-    /** Do not check at all. */
-    const val off = "off"
+    // The mode words live on `BootCheckMode` (issue #303), shared with every other boot check rather than
+    // spelled out a third time here.
 }
 
 /**
  * What a Gedra config problem does at startup: an explicit [GCFG.checkEnvVar] decides it, and otherwise it is
- * [GCFG.strict] everywhere except [ENV.prod], where it is [GCFG.warn].
+ * [BootCheckMode.strict] everywhere except [ENV.prod], where it is [BootCheckMode.warn].
  *
  * The paradigm #296 established for Markdown fragments, applied to the same class of problem: **a
  * configuration defect degrades in production and refuses everywhere else.** Silence while the author is
@@ -50,16 +49,12 @@ object GCFG {
  * unit environment, so an ordinary local run against a real database is not a test instance, and keying on it
  * would hand a developer production behavior on their own machine.
  *
- * This is the third hand-rolled mode resolver, after `MarkdownFragmentService.fragmentCheckMode` and
- * `SqlSchemaDrift.isDriftAllowed` — which is what #303 exists to retire.
+ * Was the third hand-rolled mode resolver, after `MarkdownFragmentService.fragmentCheckMode` and
+ * `SqlSchemaDrift.driftMode`; #303 retired all three onto [bootCheckMode], which now owns the environment
+ * default the three of them each carried a copy of.
  */
-fun gedraConfigCheckMode(cxt: KdrCxt): String {
-    val explicit = cxt.getEnvVar(GCFG.checkEnvVar)?.trim()?.lowercase()
-    if (explicit == GCFG.strict || explicit == GCFG.warn || explicit == GCFG.off) {
-        return explicit
-    }
-    return if (cxt.instanceConfig.env == ENV.prod) GCFG.warn else GCFG.strict
-}
+fun gedraConfigCheckMode(cxt: KdrCxt): BootCheckMode =
+    bootCheckMode(cxt, modeOverride(cxt, GCFG.checkEnvVar), prodMode = BootCheckMode.warn)
 
 /** A problem found while collecting configs, and what was done about it. */
 class GedraConfigIssue(
@@ -82,18 +77,23 @@ class GedraConfigIssue(
  */
 fun reportConfigProblem(
     cxt: KdrCxt,
-    mode: String,
+    mode: BootCheckMode,
     problem: GedraConfigIssue,
     issues: MutableList<GedraConfigIssue>,
 ) {
-    if (mode == GCFG.strict) {
+    if (mode == BootCheckMode.strict) {
         throw KdrException(
-            "${problem.message} Fix it, or set ${GCFG.checkEnvVar}=${GCFG.warn} to start anyway " +
+            "${problem.message} Fix it, or set ${GCFG.checkEnvVar}=${BootCheckMode.warn} to start anyway " +
                 "(which is the default in ${ENV.prod}).",
         )
     }
     LogStartup.error(cxt, "${problem.message} ${problem.degradedTo}")
     issues.add(problem)
+    // Also recorded for the operator report (issue #303): what a production node dropped is precisely what
+    // somebody arriving later needs, and the error log said it once while nobody was watching.
+    BootCheckRegistry.get(cxt).record(
+        BCHK.gedraConfig, GCFG.checkEnvVar, mode, listOf("${problem.message} ${problem.degradedTo}"),
+    )
 }
 
 /**
@@ -164,7 +164,9 @@ class GedraConfigCollector {
      */
     fun add(cxt: KdrCxt, config: GedraConfig): Boolean {
         val mode = gedraConfigCheckMode(cxt)
-        if (mode == GCFG.off) {
+        // Registered on the way past, findings or not, so the report can say the check ran (issue #303).
+        BootCheckRegistry.get(cxt).record(BCHK.gedraConfig, GCFG.checkEnvVar, mode)
+        if (mode == BootCheckMode.off) {
             keep(config)
             return true
         }

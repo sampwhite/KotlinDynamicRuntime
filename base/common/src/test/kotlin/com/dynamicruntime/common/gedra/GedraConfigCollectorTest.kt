@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 import io.kotest.assertions.throwables.shouldThrow
@@ -110,7 +111,7 @@ class GedraConfigCollectorTest : StringSpec({
         collector.configs.map { it.name } shouldContainExactly listOf("coreTraits")
         collector.traits.getValue("name").typeName shouldBe "globalconfig.NameEntry"
 
-        // And the node can say what it dropped, which is what stops a degraded boot from being a silent one.
+        // And the node can say what it dropped, which is what stops a degraded boot from being silent.
         collector.issues.size shouldBe 1
         collector.issues.first().message shouldContain "Trait 'name' is declared by both"
         collector.issues.first().degradedTo shouldContain "dropping"
@@ -118,25 +119,25 @@ class GedraConfigCollectorTest : StringSpec({
 
     // Keyed on the ENVIRONMENT, never on isTestInstance -- that flag is inferred from in-memory-ness and the
     // unit environment, so an ordinary local run against a real database is not a test instance, and keying
-    // on it would hand a developer production behaviour on their own machine. #296 got this wrong-footed
+    // on it would hand a developer production behavior on their own machine. #296 got this wrong-footed
     // first and left a warning; this is that warning made executable.
     "the split follows the environment, not the test-instance flag" {
-        gedraConfigCheckMode(cxtIn(ENV.prod)) shouldBe GCFG.warn
+        gedraConfigCheckMode(cxtIn(ENV.prod)) shouldBe BootCheckMode.warn
         for (env in listOf(ENV.local, ENV.unit, ENV.dev, ENV.integration)) {
-            gedraConfigCheckMode(cxtIn(env)) shouldBe GCFG.strict
+            gedraConfigCheckMode(cxtIn(env)) shouldBe BootCheckMode.strict
         }
         // An in-memory local instance is a "test instance" by inference and still gets the strict answer.
         val inMemoryLocal = KdrInstanceConfig("inMem", ENV.local, ENV.liveSource)
             .apply { put(ACFG.inMemoryOnly, true) }
-        gedraConfigCheckMode(KdrCxt("collect", inMemoryLocal)) shouldBe GCFG.strict
+        gedraConfigCheckMode(KdrCxt("collect", inMemoryLocal)) shouldBe BootCheckMode.strict
     }
 
     "an explicit override decides it either way" {
-        gedraConfigCheckMode(cxtIn(ENV.prod, GCFG.strict)) shouldBe GCFG.strict
-        gedraConfigCheckMode(cxtIn(ENV.local, GCFG.warn)) shouldBe GCFG.warn
-        gedraConfigCheckMode(cxtIn(ENV.local, GCFG.off)) shouldBe GCFG.off
+        gedraConfigCheckMode(cxtIn(ENV.prod, BootCheckMode.strict.name)) shouldBe BootCheckMode.strict
+        gedraConfigCheckMode(cxtIn(ENV.local, BootCheckMode.warn.name)) shouldBe BootCheckMode.warn
+        gedraConfigCheckMode(cxtIn(ENV.local, BootCheckMode.off.name)) shouldBe BootCheckMode.off
         // Anything unrecognized is not an override; the environment still decides.
-        gedraConfigCheckMode(cxtIn(ENV.local, "maybe")) shouldBe GCFG.strict
+        gedraConfigCheckMode(cxtIn(ENV.local, "maybe")) shouldBe BootCheckMode.strict
     }
 
     "strict mode names the way past itself" {
@@ -147,7 +148,7 @@ class GedraConfigCollectorTest : StringSpec({
     }
 
     "off takes everything, checks nothing" {
-        val offCxt = cxtIn(ENV.local, GCFG.off)
+        val offCxt = cxtIn(ENV.local, BootCheckMode.off.name)
         val collector = GedraConfigCollector()
         collector.add(offCxt, nameConfig()) shouldBe true
         collector.add(offCxt, nameConfig(configName = "extraTraits", namespace = "other")) shouldBe true
