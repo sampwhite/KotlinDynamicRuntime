@@ -26,10 +26,12 @@ still use the real `private` or `internal` keyword in the occasional case where 
 matters, such as a cache that is mutated without first synchronizing.
 
 * This code base will use environment variables more than is typical to create variations in configuration on startup.
-Each is **declared once in code** as an `EnvVarDef` value (grouped by area, carrying its name, default and
-documentation), and the read path takes a declared def — so an undeclared variable cannot be read and the
-declaration is the reference. A running node serves the live set — each variable and the value it resolved to
-there — at the `operator` endpoint `/operator/env/reference`.
+Each is **declared once in code** as an `EnvVarDef` value (grouped by area — see `DbEnv`, `NodeUtil`,
+`LogSetup` and their neighbours — carrying its name, default and documentation), and the read path takes a
+declared def, so an undeclared variable cannot be read and the declaration is the reference. Resolution
+consults the running instance's config *before* the real process environment, and under a boot role tries the
+role-prefixed name (`KDR_EDGE_PORT`) before the plain one. A running node serves the live set — each variable
+and the value it resolved to there — at the `operator` endpoint `/operator/env/reference`.
 
 * Generally, we will choose to write our own code instead of using a library to implement a feature. We will still
 use core libraries such as Jetty and libraries to interact with third parties such as AWS. If we do use libraries,

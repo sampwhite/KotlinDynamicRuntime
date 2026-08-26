@@ -203,8 +203,9 @@ configuration, a single universal exception (`KdrException`) and context
 Application behavior is varied at startup largely through environment variables (a deliberate choice
 explained in [`code-guide.md`](code-guide.md)). Each variable is **declared once in code** as an `EnvVarDef`
 value — carrying its name, default, and documentation — so the declaration is the reference: the read path
-takes a declared def, so a variable nobody declared cannot even be read. A running node serves the live set —
-each variable and the value it actually resolved to *on that node* — at the operator endpoint
+takes a declared def, so a variable nobody declared cannot even be read. Browse the declarations grouped by
+area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbours). A running node also serves the live set — each
+variable and the value it actually resolved to *on that node* — at the operator endpoint
 `/operator/env/reference`, shown as the **Environment** view in the app.
 
 ## The Gedra design documents
