@@ -132,8 +132,9 @@ kdr-backend` is the same boot from any directory if `bin/` is on your `PATH`.
 - API endpoints are under the **`/kda`** context root (`/kda/health`, `/kda/auth/self/info`, …).
 - **Env vars flip options at boot** — the most useful lever for testing a config-gated behavior without
   touching code: `KDR_IN_MEMORY_ONLY`, `KDR_PORT`, `KDR_OBFUSCATE_ERRORS` (obfuscate sensitive errors),
-  `KDR_TEST_INSTANCE` (mark a test instance: expose `forTestingOnly` endpoints, simulate email). See `environment-variables.md` for the full
-  list.
+  `KDR_TEST_INSTANCE` (mark a test instance: expose `forTestingOnly` endpoints, simulate email). Each is
+  declared once in code as an `EnvVarDef`; a running node serves the full list, with each variable's resolved
+  value, at the operator `/operator/env/reference` view.
 - **A variable the Gradle daemon has not already seen will not reach the server.** `:launch:run` forks the
   node from the **daemon**, and it inherits the daemon's environment rather than your command's — so a
   variable you add on a later invocation, when a daemon is already up, silently never arrives. Nothing

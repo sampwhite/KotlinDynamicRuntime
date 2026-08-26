@@ -71,7 +71,8 @@ Current UI-config endpoints:
   *Authorized JavaScript origins*, and an unregistered one fails in the browser without the backend seeing
   anything. `http://localhost:7070` (same-origin, `/wa`) and `http://localhost:8080` (dev server) are separate
   origins and both need registering — as is any other port, and `127.0.0.1` is a different origin again from
-  `localhost`. See `environment-variables.md`.
+  `localhost`. See the `KDR_GOOGLE_CLIENT_ID` declaration (`GOOG.googleClientIdEnvVar`), whose documentation
+  covers this, or the operator `/operator/env/reference` view.
 
   **The symptom is not reliable, and the frontend cannot detect it** (issue #250). It may be a `403` plus
   `[GSI_LOGGER]: The given origin is not allowed for the given client ID`; it may be *"Access blocked — You

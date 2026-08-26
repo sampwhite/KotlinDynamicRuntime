@@ -21,7 +21,7 @@ object CST {
 
 /**
  * Tuning constants and lookup keys for the table-cache subsystem, plus the two environment variables that
- * configure it (documented in `environment-variables.md`).
+ * configure it ([disabledEnv] and [minRecheckMsEnv], each an `EnvVarDef` carrying its own documentation).
  */
 @Suppress("ConstPropertyName")
 object TCH {
