@@ -12,6 +12,10 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * kernel constants ([OENV]) rather than re-hardcoding the endpoint.
  */
 object EnvReferenceApi {
+    // Throw rather than fall back to "" when the field is absent: the endpoint declares `markdown` required, so
+    // a response without it is a server-side defect, and a blank document reads as "this node declares nothing"
+    // -- a plausible-looking wrong answer. Throwing lets the page's error state say something failed instead.
     suspend fun fetch(): String =
-        Http.getApi(OENV.envReferencePath)[EP.results].toJsonMapOrEmpty().getOptStr(OENV.markdown) ?: ""
+        Http.getApi(OENV.envReferencePath)[EP.results].toJsonMapOrEmpty().getOptStr(OENV.markdown)
+            ?: error("The environment reference response carried no '${OENV.markdown}' field.")
 }

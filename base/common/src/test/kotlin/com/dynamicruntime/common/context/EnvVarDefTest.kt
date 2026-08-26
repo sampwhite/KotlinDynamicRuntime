@@ -63,6 +63,13 @@ class EnvVarDefTest : StringSpec({
         unset.matchedName shouldBe null
         unset.source shouldBe EVSRC.unset
 
+        // An explicitly empty value is a set value, distinct from unset: resolution reports the raw truth (the
+        // variable IS present), and it is the operator view -- not this layer -- that says most reads treat
+        // empty as unset. Collapsing empty to null here would hide that a variable is set at all.
+        val empty = config().apply { put(sample.name, "") }.resolveEnvVar(sample)
+        empty.value shouldBe ""
+        empty.source shouldBe EVSRC.config
+
         // Under a boot role the role-prefixed key is the one reported, not the plain name -- which is the fact
         // an operator needs to see when an edge and an app disagree about the same variable.
         val role = config("edge").apply { put("KDR_EDGE_ENV_DEF_TEST", "r") }.resolveEnvVar(sample)

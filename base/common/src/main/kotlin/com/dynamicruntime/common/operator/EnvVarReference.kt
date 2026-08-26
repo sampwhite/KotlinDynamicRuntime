@@ -42,7 +42,9 @@ fun renderEnvVarReference(cxt: KdrCxt): String {
     sb.append("# Environment variables\n\n")
     sb.append(
         "Every environment variable this node has declared, and the value each resolved to **here** -- a fact " +
-            "about this node, not a documented default. A variable read through no code path yet is not listed.\n\n",
+            "about this node, not a documented default. **The list grows as the node runs**: a variable no code " +
+            "path has read yet is not listed, so an absent name means \"not touched yet on this node\", not " +
+            "\"not a variable\".\n\n",
     )
     for (group in orderedGroups) {
         sb.append("## ").append(group).append("\n\n")
@@ -60,16 +62,32 @@ private fun appendVar(sb: StringBuilder, config: KdrInstanceConfig, def: EnvVarD
 
     sb.append("**On this node:** ")
     val value = resolution.value
-    if (value == null) {
-        sb.append("_unset_ -- the default below applies.\n\n")
-    } else {
-        sb.append(inlineCode(value)).append(" -- from ").append(inlineCode(resolution.matchedName ?: def.name))
-            .append(" (").append(sourceText(resolution.source)).append(").\n\n")
+    val from = inlineCode(resolution.matchedName ?: def.name) + " (" + sourceText(resolution.source) + ")"
+    when {
+        value == null -> sb.append("_unset_ -- the default below applies.\n\n")
+        // Set, but to the empty string -- which most read sites (`AdminRules`, `NodeUtil`, `GoogleIdToken`)
+        // normalize to unset, so a bare empty value would otherwise read as "configured" when the behavior is
+        // off. Said outright rather than shown as an (invalid) empty code span, which is the wrong conclusion
+        // the view exists to prevent.
+        value.isEmpty() -> sb.append("set to an **empty string** -- from ").append(from)
+            .append("; most variables treat an empty value as unset.\n\n")
+        else -> sb.append(inlineCode(value)).append(" -- from ").append(from).append(".\n\n")
     }
 
-    sb.append("**Default when unset:** ").append(def.defaultDoc).append("\n\n")
-    sb.append(def.description).append("\n\n")
+    sb.append("**Default when unset:** ").append(prose(def.defaultDoc)).append("\n\n")
+    sb.append(prose(def.description)).append("\n\n")
 }
+
+/** Matches a KDoc `[Symbol]` reference -- a bare `[Identifier]` (dotted members allowed), not a `[text](url)` link. */
+private val kdocReference = Regex("""\[([A-Za-z][\w.]*)](?!\()""")
+
+/**
+ * A def's KDoc prose rendered for the operator document: a `[Symbol]` reference -- clickable in the source for
+ * a developer, but a dangling `[Symbol]` if dropped into CommonMark verbatim -- becomes an inline-code span,
+ * which reads as "a name" rather than a broken link. A real `[text](url)` link is left alone (the negative
+ * lookahead); the descriptions carry none today, but the guard keeps this honest if one is ever added.
+ */
+private fun prose(text: String): String = kdocReference.replace(text) { "`${it.groupValues[1]}`" }
 
 /** Plain words for a resolution source, so the document reads for an operator rather than naming a constant. */
 private fun sourceText(source: String): String = when (source) {
