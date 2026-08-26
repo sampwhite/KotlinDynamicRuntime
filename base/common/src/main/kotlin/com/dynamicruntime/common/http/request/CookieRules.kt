@@ -20,10 +20,12 @@ object CKI {
 /**
  * Whether a `Set-Cookie` this node issues carries `Secure` (issue #431).
  *
- * **Derived from the deployment's own configuration, never from a request header.** The old rule read the
- * `Secure` flag off `X-Forwarded-For`, which the caller controls -- so a request that simply omits it was
- * issued its session cookie (`kdrAuth`, or the edge's `kdrEnvAuth`) without `Secure`. A security attribute of
- * a cookie *we* issue must not be a function of a header the caller sets.
+ * **Derived from the deployment's own configuration, not from a request header.** The old rule read the
+ * `Secure` flag off `X-Forwarded-For`. In a real deployment the edge (or load balancer) in front of a node
+ * sets that header, so it is not directly attacker-supplied -- but a request reaching a node with it absent
+ * was still issued its session cookie (`kdrAuth`, or the edge's `kdrEnvAuth`) without `Secure`. A cookie's
+ * `Secure` flag should be a property of how the node is *served*, not read off a request header at all:
+ * hardening, and the kind of line flagged on sight independent of reachability.
  */
 object CookieRules {
     /**

@@ -534,9 +534,9 @@ class RequestHandler : WebRequest {
             parts.add("Expires=${expire.formatCookieDate()}")
         }
         parts.add("Path=/")
-        // `Secure` from the node's own configuration, never from `X-Forwarded-For` (which the caller controls);
-        // and `SameSite` stated rather than left to browser defaults (issue #431). Null config -- a hand-built
-        // handler outside a request -- defaults to Secure, the safe side.
+        // `Secure` from the node's own configuration, not read off `X-Forwarded-For` -- a request header rather
+        // than a fact about how the node is served (issue #431); and `SameSite` stated rather than left to
+        // browser defaults. Null config -- a hand-built handler outside a request -- defaults to Secure, safe.
         if (boundConfig?.let { CookieRules.isSecure(it) } != false) {
             parts.add("Secure")
         }
