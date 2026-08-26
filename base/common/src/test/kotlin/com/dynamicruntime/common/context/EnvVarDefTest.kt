@@ -7,6 +7,17 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 
 /**
+ * The one declared variable this test reads. Declared at **file scope**, not inside the spec body, so it is
+ * constructed exactly once per classload (in the file initializer) and therefore registers exactly once --
+ * independent of Kotest's isolation mode. Were it a spec-level `val`, an isolation mode that re-instantiates
+ * the spec (InstancePerTest/PerLeaf) would re-run its initializer and the second construction of the same name
+ * would throw "declared more than once" from a field initializer, failing spec init rather than a test.
+ */
+private val sample = EnvVarDef(
+    "KDR_ENV_DEF_TEST", group = ENVGRP.application, defaultDoc = "unset", description = "A test variable.",
+)
+
+/**
  * The declaration model (issue #371): an [EnvVarDef] resolves its value the way [KdrInstanceConfig.getEnvVar]
  * always did -- config over the process environment, role-prefixed name first under a boot role -- and
  * declaring one registers it, so the reference is complete by construction. A duplicate name is refused,
@@ -15,11 +26,6 @@ import io.kotest.matchers.shouldBe
 class EnvVarDefTest : StringSpec({
 
     fun config(bootRole: String? = null) = KdrInstanceConfig("envDefTest", ENV.local, ENV.liveSource, bootRole)
-
-    // Declared once, at spec construction -- which registers it.
-    val sample = EnvVarDef(
-        "KDR_ENV_DEF_TEST", group = ENVGRP.application, defaultDoc = "unset", description = "A test variable.",
-    )
 
     "a value in the instance config is read through the def, and unset reads null" {
         config().apply { put(sample.name, "hello") }.getEnvVar(sample) shouldBe "hello"
@@ -47,8 +53,10 @@ class EnvVarDefTest : StringSpec({
     }
 
     "declaring a second variable with the same name is refused" {
+        // Built from `sample.name`, not the literal: referencing `sample` forces its (lazy, file-class)
+        // registration to exist first, so this test cannot run against an empty registry in any order.
         shouldThrow<KdrException> {
-            EnvVarDef("KDR_ENV_DEF_TEST", group = ENVGRP.application, defaultDoc = "x", description = "dup")
+            EnvVarDef(sample.name, group = ENVGRP.application, defaultDoc = "x", description = "dup")
         }
     }
 })

@@ -29,7 +29,7 @@ object ENVAUTH {
 
     /** Env var that defaults [sessionMillisKey] when the config option is unset. */
     val sessionMillisEnvVar = EnvVarDef(
-        "KDR_ENV_AUTH_SESSION_MILLIS", group = ENVGRP.edge, defaultDoc = "1 day (7 days in `prod`)",
+        "KDR_ENV_AUTH_SESSION_MILLIS", group = ENVGRP.edge, defaultDoc = "2 days (12 hours in `prod`)",
         description = "How long an edge env-auth session cookie lasts, in milliseconds. The `envAuthSessionMillis` " +
             "config option wins over this.",
     )

@@ -22,9 +22,9 @@ object GCFG {
 
     /** Overrides what a config problem does at startup; see [gedraConfigCheckMode]. */
     val checkEnvVar = EnvVarDef(
-        "KDR_GEDRA_CONFIG_CHECK", group = ENVGRP.gedra, defaultDoc = "strict everywhere but `prod`",
+        "KDR_GEDRA_CONFIG_CHECK", group = ENVGRP.gedra, defaultDoc = "strict (`warn` in `prod`)",
         description = "What a Gedra config problem does at startup: `strict` (refuse to boot), `warn`, or " +
-            "`off`. Unset means strict everywhere except `prod`.",
+            "`off`. Unset means strict everywhere except `prod`, which warns.",
     )
 
     /** Refuse to boot. */

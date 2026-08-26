@@ -27,7 +27,7 @@ object FRAG {
      * can demand [strict] and a developer chasing something else can drop to [warn].
      */
     val checkEnvVar = EnvVarDef(
-        "KDR_FRAGMENT_CHECK", group = ENVGRP.content, defaultDoc = "strict everywhere but `prod`",
+        "KDR_FRAGMENT_CHECK", group = ENVGRP.content, defaultDoc = "strict (`warn` in `prod`)",
         description = "What a fragment problem does at startup: `strict`, `warn` or `off`. Unset means strict " +
             "everywhere except `prod` -- a developer or test should be stopped by a broken fragment; a " +
             "production node should not refuse to serve everything else over a defect in one piece of copy.",
