@@ -125,4 +125,18 @@ class AccessLevelTest {
     fun clientLabelFallsBackToTheIdAlone() {
         assertEquals("acme", clientChoiceLabel(ClientChoice("acme", "")))
     }
+
+    // --- which access levels the editor offers (issue #464) ------------------
+
+    /**
+     * The operator rung is deployment-wide, so it is offered only to a caller who can grant that reach. When
+     * they can, all three rungs are on the ladder in order; when they cannot, operator drops out and user and
+     * administrator remain -- a scoped administrator may still appoint a client administrator, just not a
+     * deployment operator.
+     */
+    @Test
+    fun operatorIsOfferedOnlyWhenSelectable() {
+        assertEquals(listOf(ROLE.user, ROLE.operator, ROLE.admin), offeredAccessLevels(operatorSelectable = true))
+        assertEquals(listOf(ROLE.user, ROLE.admin), offeredAccessLevels(operatorSelectable = false))
+    }
 }

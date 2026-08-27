@@ -137,9 +137,12 @@ like no change and never be sent.
 
 **Controls that could only ever fail are not shown.** "All clients" appears only to a caller who holds it (the
 backend refuses to grant reach the granter lacks), and the Organization field is editable only by someone not
-confined to one (a confined administrator may assign only their own). This is the advertise-versus-serve drift
-issue #211 exists to remove, relocated into a form: a control that can only produce a 400 is worse than no
-control.
+confined to one (a confined administrator may assign only their own). The **Operator** rung of the level
+`Select` follows the same rule since #464: it is deployment-wide (it requires `allClients`), so it is offered
+only to a caller who holds `allClients` — via `offeredAccessLevels(operatorSelectable)`, covered under
+`jsNodeTest` — except when the edited user already is an operator, so the value still shows and can be kept
+(anti-escalation checks *adding*, not the result set). This is the advertise-versus-serve drift issue #211
+exists to remove, relocated into a form: a control that can only produce a 400 is worse than no control.
 
 Editing **yourself** disables the level, the capability and the enabled flag — another administrator has to
 change those, so an account cannot demote or disable itself into a lock-out. Organization is deliberately *not*
