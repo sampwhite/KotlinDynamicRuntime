@@ -6,7 +6,6 @@ import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.home.HFRAG
-import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.TestUser
@@ -163,7 +162,9 @@ class FragmentOverlayTest : StringSpec({
     // --- the operator check ------------------------------------------------------------------------------
 
     "the check reports a row per client, so a client's copy is checked too" {
-        val opal = TestUser.create(cxt, "frag-ops@example.com", level = ROLE.operator)
+        // A **deployment** operator: the `operator` section requires `allClients` as well as the level since
+        // #464, so the level alone (a client-confined operator) no longer reaches this surface.
+        val opal = TestUser.createOperator(cxt, "frag-ops@example.com")
         val rows = opal.getItems("/operator/fragments/check", mapOf(FCHK.fileId to SF.content))
         val clients = rows.map { it[FCHK.client].toOptStr() }
         // The shared variant and acme's. Without the per-client row, a client's overlay would be the only
