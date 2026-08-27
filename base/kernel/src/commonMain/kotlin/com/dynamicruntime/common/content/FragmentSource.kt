@@ -28,7 +28,7 @@ class FragmentSource(
     /**
      * Whether this **changes** content rather than supplying it.
      *
-     * It decides precedence (every overlay is applied after every base) and it is what makes an orphan
+     * It decides precedence (every overlay is applied after every base), and it is what makes an orphan
      * checkable: an overlay key that no base declares is almost always a base key that was renamed, and
      * `/operator/fragments/check` reports it. A base key nothing overlays is just an ordinary key.
      */
@@ -65,7 +65,7 @@ const val fragmentOverlaySuffix = "_overlay"
  * A layer built **in code** rather than read from a file (issue #456), through the [FragmentMapBuilder] DSL.
  *
  * Not every fragment wants to be a file. A component with three strings to override should not have to ship a
- * Markdown resource to say so, and configuration that arrives as data has no classpath to live on at all. The
+ * Markdown resource to say so, and a configuration that arrives as data has no classpath to live on at all. The
  * merge does not care which a layer is, so the two compose: a file base with an inline overlay over it is the
  * ordinary shape of a small change.
  *

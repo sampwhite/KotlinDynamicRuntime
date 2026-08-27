@@ -18,7 +18,6 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
-import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
  * The `sample` module's component. It contributes the file upload/download endpoints (owned by
@@ -48,7 +47,6 @@ class SampleComponent : ComponentDefinition {
         return env == ENV.local || env == ENV.dev
     }
 
-    @Suppress("ConstPropertyName")
     companion object {
         val loadSampleEnvVar = EnvVarDef(
             "KDR_LOAD_SAMPLE", group = ENVGRP.application, defaultDoc = "on for `local`/`dev`, off otherwise",

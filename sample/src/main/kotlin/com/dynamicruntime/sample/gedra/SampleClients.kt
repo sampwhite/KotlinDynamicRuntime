@@ -15,7 +15,7 @@ import com.dynamicruntime.common.schema.SCT
 
 /**
  * The sample fragment file and the keys it carries (issue #456) -- named rather than written as literals
- * because four different layers refer to them and a typo in any one is a key that silently never wins.
+ * because four different layers refer to them, and a typo in any one of them is a key that silently never wins.
  */
 @Suppress("ConstPropertyName")
 object SF {

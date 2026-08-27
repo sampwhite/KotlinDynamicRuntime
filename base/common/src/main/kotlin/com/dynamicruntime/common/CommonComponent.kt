@@ -45,7 +45,6 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.Presence
 import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
-import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
  * The `common` module's component. It owns the foundational schema and services: the [SchemaService]
