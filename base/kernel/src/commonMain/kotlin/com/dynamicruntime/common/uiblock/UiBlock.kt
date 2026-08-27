@@ -22,6 +22,9 @@ object UIB {
 
     /** The spacing convention for [displayOrder]: room for 99 later arrivals between any two items. */
     const val orderStep = 100
+
+    /** Instance-config key under which the boot collects every contributed [UiBlockSource]. */
+    const val registryKey = "uiBlockSources"
 }
 
 /**

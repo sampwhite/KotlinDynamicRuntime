@@ -12,6 +12,7 @@ import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.uiblock.UIB
 
 /**
  * The sample fragment file and the keys it carries (issue #456) -- named rather than written as literals
@@ -28,6 +29,28 @@ object SF {
     const val intro = "intro"
     const val support = "support"
     const val copyright = "copyright"
+}
+
+/** The sample UiBlock and the keys inside it (issue #457). */
+@Suppress("ConstPropertyName")
+object SB {
+    /** The block the sample registers. */
+    const val nav = "sampleNav"
+
+    const val title = "title"
+    const val items = "items"
+
+    /** The primary key its items merge by -- what makes an overlay's item *the same item*. */
+    const val id = "id"
+    const val label = "label"
+
+    const val overview = "overview"
+    const val users = "users"
+    const val perimeter = "perimeter"
+    const val retired = "retired"
+
+    /** Acme's own item, added by overlay rather than present in the base. */
+    const val siteAudits = "siteAudits"
 }
 
 /** The sample clients' own names (issue #379). */
@@ -167,6 +190,18 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         fragmentOverlay(HFRAG.home) {
             namespace("home") {
                 key("brand", "ACME KDR")
+            }
+        }
+
+        // --- an interface of its own --------------------------------------------------------------------
+        //
+        // Acme renames one item and adds one of its own. The renamed item is matched by the base's primary
+        // key, so it changes that item rather than becoming a second; the added one states its own
+        // displayOrder, because only acme knows where it belongs. Nothing else in the block is mentioned.
+        uiBlockOverlay(SB.nav) {
+            items(SB.items) {
+                item { set(SB.id, SB.overview); set(SB.label, "Acme overview") }
+                item { set(SB.id, SB.siteAudits); set(SB.label, "Site audits"); set(UIB.displayOrder, 150) }
             }
         }
 
