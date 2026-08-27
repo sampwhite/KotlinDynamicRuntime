@@ -83,6 +83,7 @@ class UiBlockService : ServiceInitializer {
         }
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "UiBlockService"
 

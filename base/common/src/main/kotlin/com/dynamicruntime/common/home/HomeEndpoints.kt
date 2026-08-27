@@ -5,7 +5,6 @@ import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.cfact.CFACTS
-import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.uiBlock
@@ -147,39 +146,18 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
     arrayKeys = mapOf(HFLD.menu to HFLD.id),
 ) {
     items(HFLD.menu) {
-        item { set(HFLD.id, HMENU.catalog); set(HFLD.label, "Endpoint catalog"); set(HFLD.page, HMENU.pageCatalog) }
-        item {
-            set(HFLD.id, HMENU.users); set(HFLD.label, "Users"); set(HFLD.page, HMENU.pageUsers)
-            set(UIB.cfact, CFACTS.isAdmin)
-        }
-        item {
-            set(HFLD.id, HMENU.envReference); set(HFLD.label, "Environment"); set(HFLD.page, HMENU.pageEnv)
-            set(UIB.cfact, CFACTS.isDeploymentOperator)
-        }
+        menuItem(HMENU.catalog, "Endpoint catalog", page = HMENU.pageCatalog)
+        menuItem(HMENU.users, "Users", page = HMENU.pageUsers, cfact = CFACTS.isAdmin)
+        menuItem(HMENU.envReference, "Environment", page = HMENU.pageEnv, cfact = CFACTS.isDeploymentOperator)
         // Forms are login-gated only (the `gedra` section), so every signed-in caller is offered the list; how
         // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"
         // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
         // "New form" button rather than a second, redundant nav item (issue #417).
-        item {
-            set(HFLD.id, HMENU.forms); set(HFLD.label, "My forms"); set(HFLD.page, HMENU.pageForms)
-            set(UIB.cfact, CFACTS.loggedIn)
-        }
-        item {
-            set(HFLD.id, HMENU.profile); set(HFLD.label, "Profile"); set(HFLD.page, HMENU.pageProfile)
-            set(UIB.cfact, CFACTS.loggedIn)
-        }
-        item {
-            set(HFLD.id, HMENU.logout); set(HFLD.label, "Log out"); set(HFLD.action, HMENU.logout)
-            set(UIB.cfact, CFACTS.loggedIn)
-        }
-        item {
-            set(HFLD.id, HMENU.login); set(HFLD.label, "Log in"); set(HFLD.page, HMENU.pageLogin)
-            set(UIB.cfact, CFACTS.anonymous)
-        }
-        item {
-            set(HFLD.id, HMENU.register); set(HFLD.label, "Register"); set(HFLD.page, HMENU.pageRegister)
-            set(UIB.cfact, CFACTS.anonymous)
-        }
+        menuItem(HMENU.forms, "My forms", page = HMENU.pageForms, cfact = CFACTS.loggedIn)
+        menuItem(HMENU.profile, "Profile", page = HMENU.pageProfile, cfact = CFACTS.loggedIn)
+        menuItem(HMENU.logout, "Log out", action = HMENU.logout, cfact = CFACTS.loggedIn)
+        menuItem(HMENU.login, "Log in", page = HMENU.pageLogin, cfact = CFACTS.anonymous)
+        menuItem(HMENU.register, "Register", page = HMENU.pageRegister, cfact = CFACTS.anonymous)
     }
 }
 

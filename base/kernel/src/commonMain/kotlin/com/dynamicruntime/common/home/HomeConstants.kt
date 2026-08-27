@@ -30,9 +30,9 @@ object HFEAT {
 
     /**
      * Whether this caller may administer other users -- today "has the admin role", later something narrower
-     * (e.g. may edit only users in their own client). It is expressed as a **capability of the caller**, not
+     * (e.g., may edit only users in their own client). It is expressed as a **capability of the caller**, not
      * as their role, precisely so that refinement changes what the backend computes here and nothing else: the
-     * frontend already asks "may I?" rather than "am I an admin?".
+     * frontend already asks "may I?" rather than "am I an admin?"
      */
     const val canManageUsers = "canManageUsers"
 }
@@ -55,7 +55,7 @@ object HFLD {
     /** A menu item's navigation target: a frontend page id, e.g. [HMENU.pageProfile]. Absent for an action. */
     const val page = "page"
 
-    /** A menu item's client-side action ([HACT]) instead of a navigation, e.g. logging out. */
+    /** A menu item's client-side action ([HACT]) instead of a navigation, e.g., logging out. */
     const val action = "action"
 
     /** A link's stable id (used to address it in the frontend's URL). */
