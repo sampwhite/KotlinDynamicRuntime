@@ -41,6 +41,7 @@ import com.dynamicruntime.common.startup.PRI
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.Presence
 import com.dynamicruntime.common.startup.ServiceEntry
@@ -177,6 +178,10 @@ class CommonComponent : ComponentDefinition {
             // sign-in page could. Absent here, that race cannot happen (issues #432, #433).
             service(::PortalService, roles = setOf(BOOT.app)),
             service(::MarkdownFragmentService), service(::MarkdownDocService),
+            // Resolves UiBlocks for a caller (issue #457). A regular service, so the startup tier's
+            // SchemaService -- which its boot check reads for each client's cfact vocabulary -- is already
+            // compiled by the time this initializes.
+            service(::UiBlockService),
             service(::InstanceConfigService),
             // Application-only, matching the schema they serve (issues #432, #433). An edge keeps the
             // dispatcher, the content servers and the instance config -- everything it needs to answer for

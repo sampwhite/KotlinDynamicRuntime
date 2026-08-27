@@ -4,6 +4,9 @@ import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.content.FragmentMapBuilder
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.fragmentInline
+import com.dynamicruntime.common.uiblock.UiBlockBuilder
+import com.dynamicruntime.common.uiblock.UiBlockSource
+import com.dynamicruntime.common.uiblock.uiBlockOverlay
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchTypeBuilder
@@ -118,8 +121,8 @@ class GedraConfig(
      */
     val cfacts: List<CFactDef> = emptyList(),
     /**
-     * Fragment overlays this config contributes (issue #456) -- the copy its client reads in place of the
-     * default.
+     * The fragment overlays contributed by this config (issue #456) -- the copy its client reads in place
+     * of the default.
      *
      * **Unlike a cfact, a client really can supply this**, and the difference is what each one *is*. A cfact
      * declaration needs Kotlin to decide it, which data has nowhere to put; a fragment overlay is a handful of
@@ -131,6 +134,15 @@ class GedraConfig(
      * fragment renders its key path rather than failing.
      */
     val fragments: List<FragmentSource> = emptyList(),
+    /**
+     * The UiBlock overlays contributed by this config (issue #457) -- what its client's interface shows
+     * where the deployment's own would show something else.
+     *
+     * Overlays only, as fragments are, and for the same reason: the base is the block its owning component
+     * registered, and a client replacing one wholesale would drift out of step with every item that block
+     * later gains -- silently, since an unmatched item is simply absent rather than an error.
+     */
+    val uiBlocks: List<UiBlockSource> = emptyList(),
 ) {
     /**
      * The code-explicit name this config is addressed by, which is also its id's base.
@@ -177,6 +189,22 @@ class GedraConfigBuilder(
 
     /** How a contribution from this config identifies itself in a report. */
     private fun configOrigin(): String = if (configName.isEmpty()) "a Gedra config" else "config '$configName'"
+
+    /** The UiBlock overlays declared in this block; see [uiBlockOverlay]. */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val uiBlocks: MutableList<UiBlockSource> = mutableListOf()
+
+    /**
+     * Overlays part of [blockId] for this config's client (issue #457) -- see [GedraConfig.uiBlocks].
+     *
+     * Name only what is being changed. Items are matched by the primary key the base declared, so an item here
+     * carrying that key changes the base's item rather than adding a second one, and an item carrying a key
+     * the base does not have is a new item -- which must state its own `displayOrder`, since only this config
+     * knows where it belongs.
+     */
+    fun uiBlockOverlay(blockId: String, build: UiBlockBuilder.() -> Unit) {
+        uiBlocks.add(uiBlockOverlay(blockId, origin = configOrigin(), client = configClient, build = build))
+    }
 
     /** The client this config defines, if it declared one; see [defineClient]. */
     var clientDef: ClientDef? = null
@@ -329,5 +357,6 @@ fun gedraConfig(
         client = builder.clientDef,
         cfacts = builder.cfacts.toList(),
         fragments = builder.fragments.toList(),
+        uiBlocks = builder.uiBlocks.toList(),
     )
 }

@@ -3,12 +3,19 @@ package com.dynamicruntime.sample
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
+import com.dynamicruntime.common.uiblock.UiBlockSource
+import com.dynamicruntime.common.uiblock.uiBlock
+import com.dynamicruntime.sample.gedra.SB
 import com.dynamicruntime.sample.gedra.SF
+import com.dynamicruntime.common.cfact.CFACT
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.content.fragmentOverlayFile
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.sample.file.SampleFileService
 import com.dynamicruntime.sample.gedra.GedraFixtureEndpoints
 import com.dynamicruntime.sample.gedra.sampleClients
@@ -75,6 +82,29 @@ class SampleComponent : ComponentDefinition {
                     key(SF.copyright, "Copyright the sample deployment.")
                 }
             }
+
+    /**
+     * The UiBlock the sample registers (issue #457), which exercises what a block can say: an item every
+     * caller sees, one behind a caller cfact, one behind a boot-role cfact that an application never matches,
+     * and one an overlay has retired with `#never`. Acme overlays it through its Gedra config.
+     */
+    override fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = listOf(
+        uiBlock(SB.nav, origin = "SampleComponent", arrayKeys = mapOf(SB.items to SB.id)) {
+            set(SB.title, "Sample")
+            items(SB.items) {
+                item { set(SB.id, SB.overview); set(SB.label, "Overview") }
+                // Resolved per caller: present for an administrator and absent for everybody else, decided on
+                // the side that knows rather than by the frontend reading a role.
+                item { set(SB.id, SB.users); set(SB.label, "Users"); set(UIB.cfact, CFACTS.isAdmin) }
+                // The boot role as a cfact: this application never matches it, and an edge would -- one set of
+                // data serving both, with nothing removed for either.
+                item { set(SB.id, SB.perimeter); set(SB.label, "Perimeter"); set(UIB.cfact, BOOT.edge) }
+                // Still in the list, and never shown. `#never` is how something is taken away without merging
+                // learning to delete: the item is here to be read, which is what answers "why is this gone?".
+                item { set(SB.id, SB.retired); set(SB.label, "Retired"); set(UIB.cfact, CFACT.neverName) }
+            }
+        },
+    )
 
     /**
      * Traits contributed for testing (issue #301). They join the manufactured `FormDocEntry` union alongside

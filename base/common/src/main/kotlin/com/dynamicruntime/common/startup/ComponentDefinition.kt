@@ -3,6 +3,7 @@ package com.dynamicruntime.common.startup
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.uiblock.UiBlockSource
 
 /**
  * A component bundles a set of contributions -- schema and services -- that an
@@ -85,6 +86,15 @@ interface ComponentDefinition : KdrProvider {
      * thing in two, and the merge order would depend on which list a reader happened to be in.
      */
     fun fragments(cxt: KdrCxt): List<FragmentSource> = emptyList()
+
+    /**
+     * The UiBlocks this component contributes (issue #457) -- the blocks it owns, and any layer it puts over
+     * somebody else's.
+     *
+     * One method for both, as `fragments` is, and for the same reason: a block's content is what its layers
+     * add up to, so listing bases in one place and overlays in another would describe one thing in two.
+     */
+    fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = emptyList()
 
     /**
      * The Gedra config bundles this component defines (issue #299) -- traits now, workflows later. Collected

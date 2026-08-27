@@ -4,6 +4,8 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.logging.LogStartup
@@ -111,9 +113,11 @@ object InstanceRegistry {
             // Fragment layers are collected alongside schema and for the same reason: a component knows what
             // it ships, and nothing else can find out (the classpath is not enumerable here).
             val fragmentSources = mutableListOf<FragmentSource>()
+            val uiBlockSources = mutableListOf<UiBlockSource>()
             for (component in loaded) {
                 component.addSchema(cxt, collector)
                 fragmentSources.addAll(component.fragments(cxt))
+                uiBlockSources.addAll(component.uiBlocks(cxt))
                 // Same loop, so every config is present before any service binds -- which is what lets
                 // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
                 for (config in component.gedraConfigs(cxt)) {
@@ -122,6 +126,7 @@ object InstanceRegistry {
                     // client's people read.
                     if (collector.addGedraConfig(cxt, config)) {
                         fragmentSources.addAll(config.fragments)
+                        uiBlockSources.addAll(config.uiBlocks)
                     }
                 }
             }
@@ -135,6 +140,7 @@ object InstanceRegistry {
             // themselves), the check derives its file list with its own `distinct()`, and a repeated resource
             // read happens once per boot.
             config.put(FRAG.registryKey, fragmentSources.toList())
+            config.put(UIB.registryKey, uiBlockSources.toList())
 
             val startupEntries = mutableListOf<ServiceEntry>()
             val serviceEntries = mutableListOf<ServiceEntry>()
