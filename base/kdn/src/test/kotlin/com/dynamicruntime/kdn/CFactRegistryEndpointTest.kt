@@ -89,7 +89,7 @@ class CFactRegistryEndpointTest : StringSpec({
     }
 
     "the listing is an administrator's, not an ordinary user's -- and not an operator's" {
-        // `userAdmin` rather than `operator`, which is a real narrowing as well as a change of meaning: an
+        // `clientAdmin` rather than `operator`, which is a real narrowing as well as a change of meaning: an
         // administrator confined to one client reads it (that is who authors configuration), and somebody
         // running the deployment no longer does unless they are also an administrator. Both halves asserted,
         // because the second is the cost of the move and would otherwise be discovered by an operator.

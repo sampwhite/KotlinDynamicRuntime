@@ -20,8 +20,12 @@ import com.dynamicruntime.common.user.ADEP
  * beside the reason (see [checkClientDefs]). The listing is not the place to explain an absence, because
  * anything that could explain one would also have to be readable by somebody who should not see the client at
  * all.
+ *
+ * The module is named `clientCatalog`, not `clientAdmin` (issue #466). This is a *catalog of clients*, served
+ * full-scope under the `admin` section; `clientAdmin` now names the opposite thing -- the client-*scoped*
+ * administration section -- and one name reading both ways was the ambiguity #466 cleared.
  */
-fun clientAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "clientAdmin") {
+fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "clientCatalog") {
     ClientDef.defineInfoType(this)
 
     listEndpoint(

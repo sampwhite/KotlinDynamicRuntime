@@ -15,10 +15,10 @@ import com.dynamicruntime.common.user.AdminScope
  *
  * **Reference material, in the same sense the schema catalog is.** A client authoring workflows and UI
  * configuration has to know which cfacts exist before it can write a condition, exactly as it has to know
- * which types exist before it can extend one. That is why this sits in `userAdmin` -- the client-scoped
- * administration section -- rather than in `operator`, which is for somebody running the deployment. Both
- * admit an administrator through the ladder today; the section says *whose* surface it is, and that outlives
- * the ladder.
+ * which types exist before it can extend one. That is why this sits in `clientAdmin` -- the client-scoped
+ * administration section (issue #466) -- rather than in `operator`, which is for somebody running the
+ * deployment. Both admit an administrator through the ladder today; the section says *whose* surface it is,
+ * and that outlives the ladder.
  *
  * Its own module rather than a listing folded into `AdminEndpoints`: a section is a statement about
  * authority, not about topic, and that module is about administering users -- and it is contributed
@@ -36,7 +36,7 @@ fun cfactSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "cfact") {
         // the name they are about to write exists. Paging the answer would put half of it where they cannot
         // see it while they are looking for exactly the entry that is missing.
         noLimit = true,
-        // A copy per client that adds any, at `/userAdmin/<client>/cfacts` (issue #455). That is what lets an
+        // A copy per client that adds any, at `/clientAdmin/<client>/cfacts` (issue #455). That is what lets an
         // administrator who may reach every client ask about one, and what puts the client's copy in the
         // catalog its own people are shown.
         clientShaped = true,
@@ -56,7 +56,7 @@ fun cfactSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "cfact") {
  * Refuses a client-pathed read by an administrator confined to a different client (issue #455).
  *
  * **Required by the section rather than optional.** Under `operator` this endpoint was reachable only by
- * people running the deployment, for whom every client is already theirs. `userAdmin` admits a *customer's*
+ * people running the deployment, for whom every client is already theirs. `clientAdmin` admits a *customer's*
  * own administrator, and one customer reading another's declarations is exactly the leak that decided cfact
  * names are not held unique across clients: a name refused at boot would let a client discover its
  * neighbors by trying words, and so would a listing of their vocabulary.

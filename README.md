@@ -204,11 +204,11 @@ Application behavior is varied at startup largely through environment variables 
 explained in [`code-guide.md`](code-guide.md)). Each variable is **declared once in code** as an `EnvVarDef`
 value — carrying its name, default, and documentation — so the declaration is the reference: the read path
 takes a declared def, so a variable nobody declared cannot even be read. Browse the declarations grouped by
-area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbours). A running node also serves the live set — each
+area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbors). A running node also serves the live set — each
 variable and the value it actually resolved to *on that node* — at the operator endpoint
 `/operator/env/reference`, shown as the **Environment** view in the app.
 
-## The Gedra design documents
+## Design documents
 
 [`gedra-entry.md`](gedra-entry.md) describes the **Gedra entry** — the universal stored entity the next phase
 of the project is built around — together with the JSON-schema constructs it needs (a declared discriminator,
@@ -231,6 +231,13 @@ code, and it records why decisions changed as well as what they became.
 `GedraId`, and which turns out to own more than an identifier: which environments it is enabled in, which
 traits it supports, what its callers are shown, and what happens to its content when it is not there. Like
 the others it was written before the code, and it is grown as decisions settle rather than restated.
+
+[`ui-block.md`](ui-block.md) names the **UiBlock** — a registered piece of declared presentation structure,
+merged from layers as a fragment is, and the counterpart to Gedra (stored entity data) and fragments (copy).
+It records what a UiBlock is the unit of, and where each kind of reference inside one resolves: cfact
+expressions by the backend before the response is built, fragment references by the frontend against copy it
+has already cached. Nothing is built yet — it exists so the term and the settled decisions are not buried in
+an issue thread.
 
 ## Deferred work
 

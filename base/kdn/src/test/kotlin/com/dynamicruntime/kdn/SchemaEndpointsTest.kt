@@ -170,7 +170,7 @@ class SchemaEndpointsTest : StringSpec({
         // asks -- and filtering on the login-time cookie would hide these endpoints for the cookie's whole
         // 30-day life, from exactly the person just given the role.
         //
-        // Granting `admin` opens the scoped-admin (`userAdmin`) surface; `operator` is no longer the example
+        // Granting `admin` opens the scoped-admin (`clientAdmin`) surface; `operator` is no longer the example
         // here because #464 fenced that surface behind the `allClients` capability, which no endpoint grants.
         val newAdmin = TestUser.create(cxt, "fresh-adm@other.com")
         pathsFor(newAdmin.client) shouldNotContain UADEP.users

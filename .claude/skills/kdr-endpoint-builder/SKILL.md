@@ -91,7 +91,7 @@ no-parameter endpoint:
   `property(...)`: description mandatory, type defaults to string unless the block sets a `type`/`$ref`.
 
 `clientShaped = true` gives the endpoint a **per-client copy** at a path naming the client —
-`/userAdmin/cfacts` alongside `/userAdmin/<client>/cfacts` — for every client that varies what the endpoint
+`/clientAdmin/cfacts` alongside `/clientAdmin/<client>/cfacts` — for every client that varies what the endpoint
 answers with. Set it when the *answer* differs per client and the endpoint is outside the `gedra` section,
 whose endpoints are copied without asking. The handler is the same object on both surfaces and reads
 `cxt.client`, which is the caller's own on the shared path and the path's on a copy.

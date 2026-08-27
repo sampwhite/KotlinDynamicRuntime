@@ -134,7 +134,7 @@ object AdminRules {
      * Whether the caller may administer other users -- create them, edit their roles, enable or disable them.
      * The question the home menu asks before offering the Users page.
      *
-     * Any administrator qualifies, scoped or not: the `userAdmin` section (issue #225) gives a client-scoped
+     * Any administrator qualifies, scoped or not: the `clientAdmin` section (issue #225) gives a client-scoped
      * administrator a surface of their own, so answering `true` for them no longer offers a menu item leading
      * to a 403 -- the drift issue #211 set out to remove. What differs between the two is *how much they see*
      * once there, which is [ReadScopeRules.forCaller]'s job, not this one's.

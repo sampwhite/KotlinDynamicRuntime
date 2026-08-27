@@ -8,7 +8,7 @@ description of the fields that both the backend and the console build from.
 
 ## What the search is
 
-`GET /userAdmin/userSearch` (and the full-scope `/admin/userSearch`) filters and sorts **active** users:
+`GET /clientAdmin/userSearch` (and the full-scope `/admin/userSearch`) filters and sorts **active** users:
 
 - **email** — case-insensitive substring
 - **name** — case-insensitive substring of the real-world name *or* the username (so pasting a login handle

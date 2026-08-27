@@ -7,6 +7,7 @@ import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckRegistry
 import com.dynamicruntime.common.startup.BootCheckResult
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.formatDate
@@ -115,7 +116,7 @@ private const val systemInfoType = "SystemInfo"
  * editing a type every time a bean gains a field, and the catalog would advertise a contract the endpoint
  * cannot really promise. Every *other* endpoint should declare its output type.
  */
-fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "operator") {
+fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
     type(systemInfoType) {
         // No properties on purpose: this is the free-form diagnostic map described above.
         type = SCT.kObject

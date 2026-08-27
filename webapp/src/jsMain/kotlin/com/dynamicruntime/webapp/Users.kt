@@ -39,11 +39,13 @@ private val userIdentity = setOf(HP.user)
  * Whether this page is offered at all is the *backend's* call: the shell's UI-config advertises a
  * `canManageUsers` capability for the current caller and only then includes the Users item in the menu. This
  * page reads the same flag, so arriving by a bookmarked `#page=users` gives an honest "not available" instead
- * of a wall of failed requests. Neither is enforcement -- every call sits behind the `admin` section and 401s
- * regardless of what the frontend believes.
+ * of a wall of failed requests. Neither is enforcement -- every call goes through `AdminApi` to the
+ * `clientAdmin` section (issue #466), which refuses a caller without the role (401 anonymous, 403 logged in
+ * without it) regardless of what the frontend believes.
  *
- * The capability is deliberately not "is an admin". When it grows narrower -- someone administering only the
- * users in their own client, say -- the backend answers differently and this page needs no change.
+ * The capability is deliberately not "is an admin", and the narrowing is not hypothetical: a client-scoped
+ * administrator already reaches this page, and the backend confines what they see to their own client (or the
+ * org within it) rather than showing an error -- so this page needs no branch on who is asking.
  */
 val Users = FC<Props> {
     var config by useState<HomeConfig?>(null)
