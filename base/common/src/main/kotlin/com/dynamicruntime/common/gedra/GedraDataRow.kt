@@ -88,20 +88,13 @@ class GedraDataRow(
 
     companion object {
         /**
-         * Defines the schema type for gedras of one [kind] -- `FormDoc` for [GedraDataType.formDoc] -- on
-         * [builder], beside the [toJsonMap] it describes so the two cannot drift.
+         * Defines the schema types for gedras of one [kind] -- `FormDoc` for [GedraDataType.formDoc] -- on
+         * [builder], beside the [toJsonMap] they describe so the three cannot drift: **the stored shape, and
+         * beside it the shape a caller sends** (issue #379).
          *
          * Its `entries` refer to the **manufactured** union for the same kind, which does not exist when this
          * runs and is an ordinary type by the time anything resolves the reference. That is the arrangement the
          * fixture in `sample` already proved out.
-         *
-         * Everything except `entries` is `g-derived`, which is what lets one type serve both directions: the
-         * endpoint builder's input projection drops derived fields, so a caller creating a gedra supplies its
-         * entries and nothing else, while the output carries the whole thing. Two types would be two places to
-         * add a field to.
-         */
-        /**
-         * The stored shape, and beside it the shape a caller **sends** (issue #379).
          *
          * Two types rather than one, because they are not the same thing. Everything a gedra *is* appears in
          * both; `allowAdditionalTraits` is an instruction about a write, so it appears only in the second --

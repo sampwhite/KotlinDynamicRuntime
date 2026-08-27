@@ -197,11 +197,6 @@ private fun issueOf(e: KdrException, state: ScriptState): TemplateIssue = Templa
     e.extraData[KdrException.lineColKey] as? Int ?: (state.blockCol + 1),
 )
 
-/**
- * Checks every value of a parsed fragment file (`namespace -> key -> value`), returning the issues found with
- * each one's `namespace.key` prefixed onto the message -- a file-level check is only useful if it says *which*
- * entry is broken.
- */
 /** One fragment entry's data requirements, named by its `namespace.key` so a report can point at it. */
 class FragmentEntryPaths(val entry: String, val paths: TemplatePaths)
 
@@ -222,6 +217,11 @@ fun Map<String, Map<String, String>>.fragmentPaths(prefix: Char = '$'): List<Fra
     return out
 }
 
+/**
+ * Checks every value of a parsed fragment file (`namespace -> key -> value`), returning the issues found with
+ * each one's `namespace.key` prefixed onto the message -- a file-level check is only useful if it says *which*
+ * entry is broken.
+ */
 fun Map<String, Map<String, String>>.checkFragmentSyntax(prefix: Char = '$'): List<TemplateIssue> {
     val issues = mutableListOf<TemplateIssue>()
     for ((namespace, entries) in this) {

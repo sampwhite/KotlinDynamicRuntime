@@ -397,19 +397,6 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
 }
 
 /**
- * Guards the organization an administrator is assigning: one confined to an organization may only ever assign
- * **that** organization (issue #225).
- *
- * Both other answers would be an escalation of a kind. A *different* organization moves the user out of the
- * caller's own scope -- they would be editing somebody into invisibility. **Clearing** it is subtler and
- * worse: a row with no organization is visible to the whole client under the lenient rule, so clearing one
- * widens that user's reach beyond the caller's own. Applied to the caller themselves it is the escape hatch
- * from confinement altogether, which is why this needs no separate self-check.
- *
- * An administrator not confined to an organization -- most of them -- may assign anything, including
- * nothing.
- */
-/**
  * The client a created user belongs to: [named] when the caller may say so, and their own otherwise (issue
  * #352).
  *
@@ -444,6 +431,19 @@ private fun assignableClient(cxt: KdrCxt, named: String?): String {
     return client
 }
 
+/**
+ * Guards the organization an administrator is assigning: one confined to an organization may only ever assign
+ * **that** organization (issue #225).
+ *
+ * Both other answers would be an escalation of a kind. A *different* organization moves the user out of the
+ * caller's own scope -- they would be editing somebody into invisibility. **Clearing** it is subtler and
+ * worse: a row with no organization is visible to the whole client under the lenient rule, so clearing one
+ * widens that user's reach beyond the caller's own. Applied to the caller themselves it is the escape hatch
+ * from confinement altogether, which is why this needs no separate self-check.
+ *
+ * An administrator not confined to an organization -- most of them -- may assign anything, including
+ * nothing.
+ */
 private fun requireAssignableOrg(cxt: KdrCxt, org: String?) {
     val actingOrg = cxt.userProfile.org ?: return
     if (AdminRules.adminScope(cxt) == AdminScope.allClients) return

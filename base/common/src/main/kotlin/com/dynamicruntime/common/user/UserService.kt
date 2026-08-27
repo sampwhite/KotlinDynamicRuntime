@@ -347,12 +347,6 @@ class UserService : ServiceInitializer {
     }
 
     /**
-     * The update-by-userId statement with the optimistic-concurrency condition added: `... and updatedAt =
-     * :priorUpdatedAt`. The bind parameter needs its own column definition (cloned from `updatedAt`, so it
-     * binds as a date) because the standard update already binds `updatedAt` to the *new* value in its SET
-     * clause -- one name cannot carry both.
-     */
-    /**
      * Deletes a user, in the two senses of the word (issue #396).
      *
      *  - **Recoverable** ([permanent] false): the account is merely disabled. A disabled row cannot log in and
@@ -397,6 +391,12 @@ class UserService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(AU.userId to userId)) }
     }
 
+    /**
+     * The update-by-userId statement with the optimistic-concurrency condition added: `... and updatedAt =
+     * :priorUpdatedAt`. The bind parameter needs its own column definition (cloned from `updatedAt`, so it
+     * binds as a date) because the standard update already binds `updatedAt` to the *new* value in its SET
+     * clause -- one name cannot carry both.
+     */
     private fun mkGuardedUserUpdateStmt(sqlCxt: SqlCxt, table: KdrTable): SqlStatement {
         val setColumns = table.columns.filter { col ->
             col.name != PF.touchedAt && col.name != PF.createdAt && col.name != PF.createdBy && !col.autoIncrement

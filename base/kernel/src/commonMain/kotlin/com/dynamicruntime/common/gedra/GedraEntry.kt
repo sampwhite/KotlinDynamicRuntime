@@ -90,6 +90,15 @@ object GSRC {
 }
 
 /**
+ * The type holding a trait's own data, named from the entry type that carries it: `NameEntry` becomes
+ * `NameData` (issue #379).
+ *
+ * Derived by one rule rather than given a naming scheme of its own, so the pair reads as a pair -- and so
+ * that nothing has to be told the name twice. A type not ending in `Entry` simply gains the suffix.
+ */
+fun traitDataTypeName(entryTypeName: String): String = entryTypeName.removeSuffix("Entry") + "Data"
+
+/**
  * Declares the entry type for one trait: a branch of the entry union, with the trait's own schema under
  * [GE.data] and the stored envelope around it (issue #297).
  *
@@ -114,15 +123,6 @@ object GSRC {
  * and on workflow data — and the alternative, a `name` beside a `wfDataName`, is two names for one concept.
  * Where two traits really are different concepts they get different ids, which is the right answer anyway.
  */
-/**
- * The type holding a trait's own data, named from the entry type that carries it: `NameEntry` becomes
- * `NameData` (issue #379).
- *
- * Derived by one rule rather than given a naming scheme of its own, so the pair reads as a pair -- and so
- * that nothing has to be told the name twice. A type not ending in `Entry` simply gains the suffix.
- */
-fun traitDataTypeName(entryTypeName: String): String = entryTypeName.removeSuffix("Entry") + "Data"
-
 fun SchTypesBuilder.traitEntry(
     name: String,
     traitId: String,

@@ -427,37 +427,6 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * Refuses a target the caller may not reach, or that contradicts the kind it was filed under.
-     *
-     * One scoped query per target, and it stays one even for a caller who is confined by nothing. The scope is
-     * a clause on a query that has to happen anyway: a patch must know the gedra **exists** before entering a
-     * transaction for it, because `executeTopicTran` inserts the lock row when it is missing and would
-     * otherwise mint a root row for a gedra that never was -- the same trap the delete guards.
-     *
-     * So the obvious saving is not one. Skipping the check for an `allClients` administrator, or reading
-     * ownership out of the id's client segment for a client-scoped one, removes a `where` clause and no round
-     * trip: the id says who *would* own the row, never whether there is one. What removes the round trip is
-     * the table cache, and until it exists this is a database query per target, which is the right cost for a
-     * surface where nearly every caller is an ordinary user confined to their own rows.
-     */
-    /**
-     * The one client every target belongs to, which the whole patch is then bound to (issue #356).
-     *
-     * **A patch may not span clients.** Each target names its own gedra, so a caller holding `allClients`
-     * could otherwise reach into several at once -- and a client's schema is a property of where the data
-     * lives, so a patch spanning two would have two different sets of rules running inside one transaction.
-     * Refusing is both simpler to reason about and simpler to say: split it into a patch per client.
-     *
-     * The answer binds a sub context, so everything downstream -- validating against the right variant, and
-     * any later client-specific logic -- reads `cxt.client` and is correct without being handed the client.
-     * For a caller without `allClients` this changes nothing: their scope confines them to their own client,
-     * so the only client they can name is the one they were already bound to.
-     *
-     * Note what it does **not** do: choosing a client here never grants reach. `admit` still runs the scope
-     * check and the existence check against every target, so naming a gedra in somebody else's client answers
-     * 404 rather than borrowing that client's rules.
-     */
-    /**
      * Refuses a gedra outside the client the **path** named (issue #387).
      *
      * Only ever fires on a client endpoint: on the shared surface `cxt.clientFromPath` is null and this does
@@ -479,6 +448,23 @@ class GedraDataService : ServiceInitializer {
         }
     }
 
+    /**
+     * The one client every target belongs to, which the whole patch is then bound to (issue #356).
+     *
+     * **A patch may not span clients.** Each target names its own gedra, so a caller holding `allClients`
+     * could otherwise reach into several at once -- and a client's schema is a property of where the data
+     * lives, so a patch spanning two would have two different sets of rules running inside one transaction.
+     * Refusing is both simpler to reason about and simpler to say: split it into a patch per client.
+     *
+     * The answer binds a sub context, so everything downstream -- validating against the right variant, and
+     * any later client-specific logic -- reads `cxt.client` and is correct without being handed the client.
+     * For a caller without `allClients` this changes nothing: their scope confines them to their own client,
+     * so the only client they can name is the one they were already bound to.
+     *
+     * Note what it does **not** do: choosing a client here never grants reach. `admit` still runs the scope
+     * check and the existence check against every target, so naming a gedra in somebody else's client answers
+     * 404 rather than borrowing that client's rules.
+     */
     private fun oneClient(cxt: KdrCxt, ordered: List<Pair<GedraDataType, List<GedraPatchTarget>>>): String {
         ordered.forEach { (_, targets) -> targets.forEach { checkPathClient(cxt, it.gedraId) } }
         val clients = ordered.flatMap { (_, targets) -> targets.map { it.gedraId.client } }.distinct()
@@ -492,6 +478,20 @@ class GedraDataService : ServiceInitializer {
         return clients.firstOrNull() ?: cxt.client
     }
 
+    /**
+     * Refuses a target the caller may not reach, or that contradicts the kind it was filed under.
+     *
+     * One scoped query per target, and it stays one even for a caller who is confined by nothing. The scope is
+     * a clause on a query that has to happen anyway: a patch must know the gedra **exists** before entering a
+     * transaction for it, because `executeTopicTran` inserts the lock row when it is missing and would
+     * otherwise mint a root row for a gedra that never was -- the same trap the delete guards.
+     *
+     * So the obvious saving is not one. Skipping the check for an `allClients` administrator, or reading
+     * ownership out of the id's client segment for a client-scoped one, removes a `where` clause and no round
+     * trip: the id says who *would* own the row, never whether there is one. What removes the round trip is
+     * the table cache, and until it exists this is a database query per target, which is the right cost for a
+     * surface where nearly every caller is an ordinary user confined to their own rows.
+     */
     private fun admit(cxt: KdrCxt, kind: GedraDataType, target: GedraPatchTarget, scope: ReadScope) {
         if (target.gedraId.dataType != kind) {
             // The id carries its kind, so a row filed under the wrong group is a request that disagrees with
@@ -668,35 +668,6 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * Checks the entries a patch is about to store against the entry union -- the stored shape, not the "sent"
-     * one.
-     *
-     * The edit was already validated on the way in, so why again? Because a **merge** produces something
-     * neither half was: the stored data and the supplied keys each satisfied the trait alone, and their union
-     * may not. A conditional is the ordinary way that happens -- a stored `approved: true` beside a newly
-     * merged `rejectionReason` is two valid halves making one invalid entry.
-     *
-     * Known limit, recorded rather than fixed: a merge fragment is validated against the trait's own schema on
-     * the way in, `required` included. That is a non-issue for the traits merges are for, which mark their
-     * fields optional and leave requiredness to the workflow, and it would bite a trait that mixed required
-     * fields with merge usage. See the soft-validation section of `gedra-patch.md`.
-     */
-    /**
-     * Checks what is about to be stored against the schema of the client it is being stored **in** (issue
-     * #356) -- `cxt.client`, which the caller has bound to the data's own client.
-     *
-     * This is the strict half of case (a). An endpoint's *published* input type stays global, so the form
-     * shows global traits and `RequestService`'s path-keyed type caches stay sound; a client's own trait
-     * arrives on the union's default branch as plain JSON and would pass unexamined. Here it is checked
-     * properly, against the definitions its own client declared. Permissive at the edge, strict where it is
-     * stored.
-     *
-     * The variant is the **data's**, never the caller's, and the distinction only shows for a caller holding
-     * `allClients`: a client narrows a type so that data living there is valid for that client's users, which
-     * is a fact about the destination rather than about who did the writing. For everybody else the two are
-     * the same client, since their scope confines them to it.
-     */
-    /**
      * Refuses trait ids this client does not support, unless the caller asked to write outside its schema
      * (issue #379).
      *
@@ -734,6 +705,32 @@ class GedraDataService : ServiceInitializer {
         SchemaService.get(cxt).storeFor(cxt.client)
             .types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]
 
+    /**
+     * Checks what is about to be stored against the schema of the client it is being stored **in** (issue
+     * #356) -- `cxt.client`, which the caller has bound to the data's own client. Against the entry union, so
+     * what is checked is the **stored** shape rather than the "sent" one.
+     *
+     * This is the strict half of case (a). An endpoint's *published* input type stays global, so the form
+     * shows global traits and `RequestService`'s path-keyed type caches stay sound; a client's own trait
+     * arrives on the union's default branch as plain JSON and would pass unexamined. Here it is checked
+     * properly, against the definitions its own client declared. Permissive at the edge, strict where it is
+     * stored.
+     *
+     * The variant is the **data's**, never the caller's, and the distinction only shows for a caller holding
+     * `allClients`: a client narrows a type so that data living there is valid for that client's users, which
+     * is a fact about the destination rather than about who did the writing. For everybody else the two are
+     * the same client, since their scope confines them to it.
+     *
+     * The edit was already validated on the way in, so why again? Because a **merge** produces something
+     * neither half was: the stored data and the supplied keys each satisfied the trait alone, and their union
+     * may not. A conditional is the ordinary way that happens -- a stored `approved: true` beside a newly
+     * merged `rejectionReason` is two valid halves making one invalid entry.
+     *
+     * Known limit, recorded rather than fixed: a merge fragment is validated against the trait's own schema on
+     * the way in, `required` included. That is a non-issue for the traits merges are for, which mark their
+     * fields optional and leave requiredness to the workflow, and it would bite a trait that mixed required
+     * fields with merge usage. See the soft-validation section of `gedra-patch.md`.
+     */
     private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {
         checkOneEntryPerTrait(entries)
         val union = clientUnion(cxt, kind) ?: return
