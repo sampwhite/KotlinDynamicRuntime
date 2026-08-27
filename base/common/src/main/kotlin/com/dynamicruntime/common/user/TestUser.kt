@@ -158,6 +158,16 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
             create(cxt, email, level = ROLE.admin, capabilities = listOf(ROLE.allClients))
 
         /**
+         * A **deployment operator**: [ROLE.operator] plus [ROLE.allClients] (issue #464). The `operator`
+         * section requires the capability as well as the level -- so it is a statement about *deployment*
+         * scope, and the level alone (a client-confined operator) no longer reaches it. This is the caller a
+         * test of the deployment-operator surface needs. Same reasoning as [createFullAdmin] for why it is a
+         * named helper: no endpoint grants `allClients`, so provisioning is the only way to hold it.
+         */
+        fun createOperator(cxt: KdrCxt, email: String): TestUser =
+            create(cxt, email, level = ROLE.operator, capabilities = listOf(ROLE.allClients))
+
+        /**
          * Registers a brand-new user through the real self-service verification-code flow (createToken →
          * sendVerify → createInitial → setLoginData) and returns a [TestUser] logged in as them. Unlike
          * [create], which provisions rows directly, this exercises the ordinary registration path -- so it is

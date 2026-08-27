@@ -7,6 +7,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.startup.SS
@@ -168,13 +169,16 @@ class SchemaEndpointsTest : StringSpec({
         // through. The catalog's own section is anonymous, so nothing refreshes roles on its behalf unless it
         // asks -- and filtering on the login-time cookie would hide these endpoints for the cookie's whole
         // 30-day life, from exactly the person just given the role.
-        val newOperator = TestUser.create(cxt, "fresh-op@other.com")
-        pathsFor(newOperator.client) shouldNotContain "/operator/system/info"
+        //
+        // Granting `admin` opens the scoped-admin (`userAdmin`) surface; `operator` is no longer the example
+        // here because #464 fenced that surface behind the `allClients` capability, which no endpoint grants.
+        val newAdmin = TestUser.create(cxt, "fresh-adm@other.com")
+        pathsFor(newAdmin.client) shouldNotContain UADEP.users
         chief.postData(
             ADEP.userSetRoles,
-            mapOf(ADF.userId to newOperator.userId, ADF.roles to listOf(ROLE.user, ROLE.operator)),
+            mapOf(ADF.userId to newAdmin.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)),
         )
-        pathsFor(newOperator.client) shouldContain "/operator/system/info"
+        pathsFor(newAdmin.client) shouldContain UADEP.users
 
         // The single-endpoint lookup filters identically. Without this it would be a one-call way around the
         // hiding, since it returns the same shape from the same store.
@@ -205,7 +209,9 @@ class SchemaEndpointsTest : StringSpec({
         bySection["admin"]!![SS.requiredRole] shouldBe ROLE.admin
         bySection["admin"]!![SS.requiredCapability] shouldBe ROLE.allClients
         bySection["operator"]!![SS.requiredRole] shouldBe ROLE.operator
-        bySection["operator"]!![SS.requiredCapability] shouldBe null
+        // Since #464 the operator section is a deployment surface too: it wants the capability as well as the
+        // level, so a client-scoped admin (or a client-confined operator) is laddered off it.
+        bySection["operator"]!![SS.requiredCapability] shouldBe ROLE.allClients
         bySection["admin"]!![EI.endpoints].toJsonListOfStrings() shouldContain ADEP.users
 
         // The explanation and the listing are two readings of one decision, so they must partition the store:

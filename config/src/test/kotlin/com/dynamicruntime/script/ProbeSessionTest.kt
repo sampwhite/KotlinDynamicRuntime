@@ -41,13 +41,18 @@ class ProbeSessionTest : StringSpec({
         }
     }
 
-    "a level is what it claims: an operator reaches an operator section but not an admin one" {
+    "a deployment operator reaches the operator section but not an admin one" {
         ProbeSession(ROLE.operator, baseUrl).use { session ->
-            val info = session.becomeUser("probe-operator@example.com", ROLE.operator)
+            // The operator section is a deployment surface since #464: the level needs the `allClients`
+            // capability beside it, so a client-confined operator would be refused.
+            val info = session.becomeUser(
+                "probe-operator@example.com", ROLE.operator, capabilities = listOf(ROLE.allClients),
+            )
             info["roles"].toJsonListOfStrings() shouldContain ROLE.operator
 
             session.sendGetRequest("/operator/system/info").statusCode shouldBe 200
-            // 403 rather than 401 -- logged in, wrong rung (issue #211).
+            // 403 rather than 401 -- logged in, holds the capability but not the admin *level*, and the admin
+            // section needs both (issue #211).
             session.sendGetRequest(ADEP.users).statusCode shouldBe 403
         }
     }

@@ -110,12 +110,21 @@ class RequestService : ServiceInitializer {
     val userSections: List<String> = listOf("user", "profile", "gedra")
 
     /**
-     * Sections requiring [ROLE.operator] -- the middle rung of [RoleLadder], between an ordinary user and an
-     * administrator. `operator` holds endpoints for running the deployment rather than using it (see
-     * `OperatorEndpoints`); nothing that predates the role was moved onto this list, so adding the level
-     * widened nobody's access.
+     * Sections requiring [ROLE.operator] **and** the [ROLE.allClients] capability -- endpoints for running the
+     * deployment rather than using it (see `OperatorEndpoints`), which are deployment-wide by nature: node
+     * identity and JVM stats, cache coherence across every client, the env-var reference, boot checks.
      *
-     * An admin reaches these without holding `operator`, because [RoleLadder] ranks admin above it.
+     * **The capability, not the level alone, is what fences these (issue #464).** The level is a rung of
+     * [RoleLadder], so an `admin` satisfies it by ranking above `operator` -- but "admin" now includes a
+     * *client-scoped* administrator (issue #225), who runs one client's users and has no business in the
+     * deployment's operational internals. Requiring `allClients` as well ladders both such an admin and a
+     * client-confined `operator` off this surface at once: the capability closes the implication route (an
+     * admin reaching operator through the ladder) and the direct one (somebody holding `operator` outright by
+     * exact rank) with a single rule, in the same shape [adminSections] already uses.
+     *
+     * The deliberate cost is that a genuine operator now needs `allClients` granted beside the role, which
+     * makes `operator` a statement about *deployment* scope. A client-scoped operator is a different surface
+     * (a future `/clientOperator`, issue #466), not this one with a narrowed view.
      */
     val operatorSections: List<String> = listOf("operator")
 
@@ -236,7 +245,9 @@ class RequestService : ServiceInitializer {
         }
         for (s in anonSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = null)
         for (s in userSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.user)
-        for (s in operatorSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.operator)
+        for (s in operatorSections) sectionRulesMap[s] = SectionRules(
+            s, needsLogin = true, requiredRole = ROLE.operator, requiredCapability = ROLE.allClients,
+        )
         for (s in scopedAdminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.admin)
         for (s in adminSections) {
             sectionRulesMap[s] = SectionRules(

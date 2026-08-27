@@ -140,7 +140,7 @@ class AuthUserCacheTest : StringSpec({
      */
     "the operator report shows this node's caches beside the dates every node shares" {
         val cxt = Startup.mkTestBootCxt("userCacheReport", "userCacheReportTest")
-        val opal = TestUser.create(cxt, "ucache-operator@example.com", level = ROLE.operator)
+        val opal = TestUser.createOperator(cxt, "ucache-operator@example.com")
 
         // A request first, so there is something for the shared row to hold.
         TestUser.create(cxt, "ucache-reported@example.com")

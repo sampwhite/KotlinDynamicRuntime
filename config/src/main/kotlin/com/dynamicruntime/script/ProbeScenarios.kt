@@ -7,6 +7,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -121,8 +122,12 @@ fun accessMatrix(cxt: ProbeContext) {
  * scenario rather than a reconstruction each time.
  */
 fun grantThenCall(cxt: ProbeContext) {
-    val operatorPath = "/operator/system/info"
-    println("Granting ${ROLE.operator} to a live session at ${cxt.baseUrl}")
+    // Granting `admin` opens the scoped-admin (`userAdmin`) surface, which is what makes the point here.
+    // `operator` is not the vehicle since #464 fenced the operator surface behind the `allClients` capability,
+    // which no endpoint grants -- so a granted operator would stay refused and the scenario would show no
+    // change at all.
+    val scopedPath = UADEP.users
+    println("Granting ${ROLE.admin} to a live session at ${cxt.baseUrl}")
     println()
 
     val admin = cxt.sessionAt(ROLE.admin)
@@ -136,27 +141,27 @@ fun grantThenCall(cxt: ProbeContext) {
         ?: throw KdrException("becomeUser did not return a ${UPF.userId} for '$email'.")
     println("  subject $email (userId $userId), roles ${info[UPF.roles].toJsonListOfStrings()}")
 
-    println("  before: $operatorPath -> ${subject.sendGetRequest(operatorPath).statusCode}" +
-        ", catalog lists it: ${listsOperator(subject, operatorPath)}")
+    println("  before: $scopedPath -> ${subject.sendGetRequest(scopedPath).statusCode}" +
+        ", catalog lists it: ${catalogLists(subject, scopedPath)}")
 
     val granted = admin.sendPostRequest(
         ADEP.userSetRoles,
-        mapOf(ADF.userId to userId, ADF.roles to listOf(ROLE.user, ROLE.operator)),
+        mapOf(ADF.userId to userId, ADF.roles to listOf(ROLE.user, ROLE.admin)),
     )
     if (!granted.isSuccess) {
-        throw KdrException("Could not grant ${ROLE.operator} (HTTP ${granted.statusCode}): ${granted.errorMessage}")
+        throw KdrException("Could not grant ${ROLE.admin} (HTTP ${granted.statusCode}): ${granted.errorMessage}")
     }
-    println("  granted ${ROLE.operator} as ${admin.label}, no new cookie issued to the subject")
+    println("  granted ${ROLE.admin} as ${admin.label}, no new cookie issued to the subject")
 
-    println("  after:  $operatorPath -> ${subject.sendGetRequest(operatorPath).statusCode}" +
-        ", catalog lists it: ${listsOperator(subject, operatorPath)}")
+    println("  after:  $scopedPath -> ${subject.sendGetRequest(scopedPath).statusCode}" +
+        ", catalog lists it: ${catalogLists(subject, scopedPath)}")
     println()
     println("Expected: before 403 / false, after 200 / true. A 200 with a false is the gate and the catalog")
     println("disagreeing -- the endpoint is callable but not advertised to the caller who may call it.")
 }
 
 /** Whether [path] appears in the catalog as [session] sees it right now. */
-private fun listsOperator(session: ProbeSession, path: String): Boolean {
+private fun catalogLists(session: ProbeSession, path: String): Boolean {
     val response = session.sendGetRequest("/schema/endpoints", mapOf(EP.limit to catalogLimit))
     return response.results[EI.endpoints].toJsonListOfMaps().any { it[EI.path].toOptStr() == path }
 }

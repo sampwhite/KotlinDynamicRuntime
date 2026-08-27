@@ -261,9 +261,37 @@ class ClientScopedAdminTest : StringSpec({
             mapOf(ADF.userId to target.userId, ADF.roles to listOf(ROLE.user, ROLE.allClients)),
         )
 
-        // An ordinary grant beside it still works, so the guard is about the capability and not about roles.
+        // An ordinary grant beside it still works, so the guard is about deployment reach and not a blanket
+        // refusal: a scoped administrator may still appoint another administrator within their own client.
+        // (The operator level is now guarded too, for the same reach reason -- see the test below.)
         scoped.postData(
             UADEP.userSetRoles,
+            mapOf(ADF.userId to target.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)),
+        )[ADF.roles] shouldBe listOf(ROLE.user, ROLE.admin)
+    }
+
+    /**
+     * The operator level is deployment reach too (issue #464): it does nothing without `allClients`, which a
+     * scoped administrator does not hold, so they may not grant the rung either. The refusal is legible at the
+     * grant rather than surfacing as a silently inert role nobody can explain. A full-scope administrator, who
+     * holds the capability, still can.
+     */
+    "a scoped administrator cannot grant the operator level either" {
+        val cxt = Startup.mkTestBootCxt("scopedEscalateOp", "scopedEscalateOpTest")
+        val scoped = TestUser.create(cxt, "op-granter@example.com", level = ROLE.admin)
+        val target = TestUser.create(cxt, "op-target@example.com")
+
+        scoped.selfRoles().contains(ROLE.allClients) shouldBe false
+        scoped.expectError(
+            EXC.badInput,
+            UADEP.userSetRoles,
+            mapOf(ADF.userId to target.userId, ADF.roles to listOf(ROLE.user, ROLE.operator)),
+        )
+
+        // A full-scope administrator holds the capability, so the same grant is theirs to make.
+        val full = TestUser.createFullAdmin(cxt, "op-granter-full@example.com")
+        full.postData(
+            ADEP.userSetRoles,
             mapOf(ADF.userId to target.userId, ADF.roles to listOf(ROLE.user, ROLE.operator)),
         )[ADF.roles] shouldBe listOf(ROLE.user, ROLE.operator)
     }
@@ -351,11 +379,15 @@ class ClientScopedAdminTest : StringSpec({
             mapOf(ADF.userId to target.userId, ADF.roles to listOf(ROLE.user, ROLE.allClients)),
         )
 
+        // The level edit changes the rung to `admin` (a grant a scoped administrator may make) while sending
+        // `allClients` back untouched. Not `operator`, which since #464 is itself deployment reach a scoped
+        // administrator may not add -- the point here is the *preserve* exemption for the capability, not a
+        // second guarded grant.
         val after = scoped.postData(
             UADEP.userSetRoles,
-            mapOf(ADF.userId to target.userId, ADF.roles to listOf(ROLE.user, ROLE.operator, ROLE.allClients)),
+            mapOf(ADF.userId to target.userId, ADF.roles to listOf(ROLE.user, ROLE.admin, ROLE.allClients)),
         )[ADF.roles] as List<*>
-        after.contains(ROLE.operator) shouldBe true
+        after.contains(ROLE.admin) shouldBe true
         after.contains(ROLE.allClients) shouldBe true // preserved, not granted
 
         // Adding it to somebody who does not have it is still refused.

@@ -109,7 +109,7 @@ class BootCheckTest : StringSpec({
     val cxt = Startup.mkTestBootCxt("bootChecks", "bootChecksTest")
 
     "a booted node reports the checks that ran, clean ones included" {
-        val opal = TestUser.create(cxt, "boot-ops@example.com", level = ROLE.operator)
+        val opal = TestUser.createOperator(cxt, "boot-ops@example.com")
         val checks = opal.getItems("/operator/boot/checks")
         val names = checks.mapNotNull { it[BCHK.name].toOptStr() }
 
@@ -126,7 +126,7 @@ class BootCheckTest : StringSpec({
     }
 
     "each check reports the mode it resolved to and the variable that overrides it" {
-        val opal = TestUser.create(cxt, "boot-ops2@example.com", level = ROLE.operator)
+        val opal = TestUser.createOperator(cxt, "boot-ops2@example.com")
         val byName = opal.getItems("/operator/boot/checks").associateBy { it[BCHK.name].toOptStr() }
 
         // A unit instance is not production, so both are strict here -- which is what makes the *envVar* the
@@ -153,7 +153,7 @@ class BootCheckTest : StringSpec({
             BootCheckMode.warn,
             listOf("'demo' is declared but absent"),
         )
-        val opal = TestUser.create(degraded, "boot-ops3@example.com", level = ROLE.operator)
+        val opal = TestUser.createOperator(degraded, "boot-ops3@example.com")
         val fragments = opal.getItems("/operator/boot/checks")
             .single { it[BCHK.name].toOptStr() == BCHK.fragments }
 

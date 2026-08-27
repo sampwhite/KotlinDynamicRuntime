@@ -523,16 +523,26 @@ private fun parseUserSearch(request: Map<String, Any?>): UserSearchCriteria {
 private fun requireUsableRoles(cxt: KdrCxt, roles: List<String>, current: List<String> = emptyList()) {
     // Anti-escalation: a role set may not hand out reach the granter does not have, or a client-scoped
     // administrator could promote someone in their own client to see every client -- and then act through
-    // them. The general rule is "you cannot grant a capability you do not hold"; `allClients` is the only one
-    // that exists so far, so it is the only one enumerated.
+    // them. The general rule is "you cannot grant reach you do not hold".
     //
     // It is a check on *adding*, not on the resulting set. A role list replaces rather than merges, so an
-    // administrator editing somebody who already holds the capability sends it back unchanged -- and judging
-    // the result alone would refuse that, meaning a scoped administrator could never touch such a user at
-    // all, for a reason ("you cannot grant") that has nothing to do with what they were changing.
-    // [current] is empty on a create, where every role in the list is by definition being added.
+    // administrator editing somebody who already holds the role sends it back unchanged -- and judging the
+    // result alone would refuse that, meaning a scoped administrator could never touch such a user at all, for
+    // a reason ("you cannot grant") that has nothing to do with what they were changing. [current] is empty on
+    // a create, where every role in the list is by definition being added.
     if (ROLE.allClients in roles && ROLE.allClients !in current && ROLE.allClients !in cxt.userProfile.roles) {
         throw KdrException.mkInput("You cannot grant the '${ROLE.allClients}' capability; you do not hold it.")
+    }
+    // The operator *level*, since #464. The operator surface is deployment-wide -- it requires `allClients` as
+    // well as the rung -- so a granter who cannot reach it (one without `allClients`, i.e. a client-scoped
+    // administrator) may not confer it. Without this they could grant the rung and produce a role set that
+    // does nothing -- an operator with no `allClients` reaches no operator endpoint -- with nothing to say why.
+    // The gate on the section already makes it *safe*; this makes the refusal *legible*, at the grant.
+    if (ROLE.operator in roles && ROLE.operator !in current && ROLE.allClients !in cxt.userProfile.roles) {
+        throw KdrException.mkInput(
+            "You cannot grant the '${ROLE.operator}' role; the operator surface is deployment-wide and " +
+                "requires the '${ROLE.allClients}' capability, which you do not hold.",
+        )
     }
     if (roles.any { it.isBlank() }) {
         throw KdrException.mkInput("Role names cannot be blank.")

@@ -92,7 +92,7 @@ class FragmentCheckTest : StringSpec({
 
     "an operator can check the fragments of a running instance" {
         val cxt = Startup.mkTestBootCxt("fragEndpoint", "fragEndpointTest")
-        val operator = TestUser.create(cxt, "frag-op@example.com", level = ROLE.operator)
+        val operator = TestUser.createOperator(cxt, "frag-op@example.com")
 
         val items = operator.getItems("/operator/fragments/check")
         items.isNotEmpty() shouldBe true
@@ -107,7 +107,7 @@ class FragmentCheckTest : StringSpec({
 
     "the endpoint reports what each entry asks of its data" {
         val cxt = Startup.mkTestBootCxt("fragPaths", "fragPathsTest")
-        val operator = TestUser.create(cxt, "frag-paths-op@example.com", level = ROLE.operator)
+        val operator = TestUser.createOperator(cxt, "frag-paths-op@example.com")
 
         val auth = operator.getItems("/operator/fragments/check", mapOf(FCHK.fileId to AFRAG.auth)).single()
         val entries = auth[FCHK.entries].toJsonListOfMaps().associateBy { it[FCHK.entry] }
@@ -122,7 +122,7 @@ class FragmentCheckTest : StringSpec({
 
     "supplying a data map reports the required paths it would not satisfy" {
         val cxt = Startup.mkTestBootCxt("fragData", "fragDataTest")
-        val operator = TestUser.create(cxt, "frag-data-op@example.com", level = ROLE.operator)
+        val operator = TestUser.createOperator(cxt, "frag-data-op@example.com")
 
         fun missingFor(data: String): List<String> {
             val auth = operator.getItems(

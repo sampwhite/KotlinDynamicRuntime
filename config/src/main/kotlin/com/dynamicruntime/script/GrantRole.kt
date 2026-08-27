@@ -82,6 +82,16 @@ object GrantRole {
         val verb = if (revoke) "Revoked" else "Granted"
         println("$verb '$role' ${if (revoke) "from" else "to"} ${describe(row)}.")
         println("Roles are now: ${row.roles.joinToString(", ")}.")
+        // The operator surface is deployment-wide since #464: it needs the allClients capability as well as the
+        // rung. This script is the bootstrap escape hatch and stands outside the endpoint's anti-escalation, so
+        // it will happily grant the rung alone -- say so, or the role reaches nothing and nothing explains why.
+        if (!revoke && role == ROLE.operator && !row.roles.contains(ROLE.allClients)) {
+            println(
+                "Note: the operator surface also requires the '${ROLE.allClients}' capability (issue #464), " +
+                    "which this user does not hold -- so the operator role reaches no operator endpoint on its " +
+                    "own. Grant '${ROLE.allClients}' as well for a deployment operator.",
+            )
+        }
         if (!revoke) {
             println("It takes effect on their next request; they do not need to log in again.")
         }

@@ -491,6 +491,13 @@ val Users = FC<Props> {
             // rejected. The backend remains the enforcement point -- this only keeps the UI honest.
             val self = editing != null && editing?.userId == config?.user?.userId
 
+            // The Operator rung is deployment-wide since #464 (it requires allClients), so offer it only to a
+            // caller who can grant that reach -- one holding allClients -- or when the edited user already is an
+            // operator, so the value shows and can be kept (anti-escalation checks adding, not the result set).
+            // Withholding a choice that would only 400 is the rule the All-clients checkbox below already keeps.
+            val operatorSelectable = config?.user?.roles?.contains(ROLE.allClients) == true ||
+                editing?.roles?.contains(ROLE.operator) == true
+
             div {
                 className = ClassName("row")
                 span {
@@ -501,7 +508,7 @@ val Users = FC<Props> {
                 // not a thing one can be. Picking a rung replaces the one below it (see [RoleLadder.rolesAtLevel]).
                 Select {
                     value = draftLevel
-                    options = accessLevelOptions
+                    options = accessLevelOptions(operatorSelectable)
                     disabled = busy || self
                     style = js("({ minWidth: 180 })")
                     onChange = { v -> draftLevel = v as? String ?: ROLE.user }
@@ -509,7 +516,7 @@ val Users = FC<Props> {
             }
             p {
                 className = ClassName("type-hint")
-                +accessLevelHint
+                +accessLevelHint(operatorSelectable)
             }
 
             // Offered only to a caller who holds the capability, because the backend refuses to let anyone
@@ -889,12 +896,25 @@ private val accessLevelLabels = mapOf(
     ROLE.admin to "Administrator",
 )
 
-private val accessLevelOptions: Array<dynamic> = RoleLadder.ordered.map { role ->
-    val obj: dynamic = js("({})")
-    obj.label = accessLevelLabels[role] ?: role
-    obj.value = role
-    obj
-}.toTypedArray()
+/**
+ * The level values to offer, lowest first. The **operator** rung is deployment-wide since #464 -- it requires
+ * `allClients` as well as the level -- so it is withheld unless [operatorSelectable]: a caller who cannot grant
+ * that reach would only ever get a 400 from picking it, the advertise-versus-serve drift this page exists to
+ * remove (the same rule the All-clients checkbox already follows). It is still offered when the edited user
+ * *already* holds it, so a scoped administrator editing an operator sees the true value and may keep it (the
+ * anti-escalation check is on adding, not on the resulting set). Pure, and covered under `jsNodeTest`.
+ */
+fun offeredAccessLevels(operatorSelectable: Boolean): List<String> =
+    RoleLadder.ordered.filter { it != ROLE.operator || operatorSelectable }
+
+/** The [offeredAccessLevels] as antd `{ label, value }` option objects. */
+private fun accessLevelOptions(operatorSelectable: Boolean): Array<dynamic> =
+    offeredAccessLevels(operatorSelectable).map { role ->
+        val obj: dynamic = js("({})")
+        obj.label = accessLevelLabels[role] ?: role
+        obj.value = role
+        obj
+    }.toTypedArray()
 
 /** Says why the choice is offered here and nowhere else. */
 private const val clientHint =
@@ -928,7 +948,17 @@ private const val nameHint =
     "The name shown for this account. It need not be unique, and is not a login -- the email address and " +
         "username remain the identifiers."
 
-/** Says what the middle rung is for, since "operator" does not explain itself the way the other two do. */
-private const val accessLevelHint =
-    "An operator can reach the operator endpoints (system diagnostics); an administrator can do that and " +
-        "manage users. Each level includes the ones below it."
+/**
+ * Says what the levels are for. Two readings, because since #464 the operator rung is only offered to a caller
+ * who can grant it ([operatorShown]): explaining a level that is not on screen would puzzle a scoped
+ * administrator, and the operator rung no longer "includes the ones below it" in the way the old copy implied
+ * -- reaching the operator endpoints takes the deployment-wide `allClients`, not merely ranking above `user`.
+ */
+private fun accessLevelHint(operatorShown: Boolean): String =
+    if (operatorShown) {
+        "An administrator manages users. The Operator level reaches the deployment diagnostics -- a " +
+            "deployment-wide surface, so it takes All clients as well as the level."
+    } else {
+        "An administrator manages users in this client. The deployment-operator level is offered only to a " +
+            "full-scope administrator, since its surface spans every client."
+    }
