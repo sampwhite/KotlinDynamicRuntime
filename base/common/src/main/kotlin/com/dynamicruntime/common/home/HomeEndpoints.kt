@@ -127,7 +127,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
  *
  * The three conditions are worth reading against what they replaced:
  *
- * - **Users** was `AdminRules.canManageUsers`, which is `admin` held -- the same test [CFACTS.isAdmin] makes.
+ * - **Users** was `AdminRules.canManageUsers`, which is `admin` held -- the same test [CFACTS.hasAdminLevel] makes.
  * - **Environment** was `RequestService.canAccess(...)` on the env-reference path, asked of the dispatcher so
  *   the menu and the gate could not drift (#211). [CFACTS.isDeploymentOperator] asks the dispatcher too, about
  *   the `operator` section rather than one endpoint in it, so the invariant survives the move.
@@ -147,7 +147,7 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
 ) {
     items(HFLD.menu) {
         menuItem(HMENU.catalog, "Endpoint catalog", page = HMENU.pageCatalog)
-        menuItem(HMENU.users, "Users", page = HMENU.pageUsers, cfact = CFACTS.isAdmin)
+        menuItem(HMENU.users, "Users", page = HMENU.pageUsers, cfact = CFACTS.hasAdminLevel)
         menuItem(HMENU.envReference, "Environment", page = HMENU.pageEnv, cfact = CFACTS.isDeploymentOperator)
         // Forms are login-gated only (the `gedra` section), so every signed-in caller is offered the list; how
         // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"

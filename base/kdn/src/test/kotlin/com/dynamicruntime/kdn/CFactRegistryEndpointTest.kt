@@ -42,13 +42,13 @@ class CFactRegistryEndpointTest : StringSpec({
         byName.keys shouldContain BOOT.edge
         byName.keys shouldContain CFACTS.loggedIn
         byName.keys shouldContain CFACTS.anonymous
-        byName.keys shouldContain CFACTS.isOperator
-        byName.keys shouldContain CFACTS.isAdmin
+        byName.keys shouldContain CFACTS.hasOperatorLevel
+        byName.keys shouldContain CFACTS.hasAdminLevel
 
         // A declaration with no description is one somebody has to read the source to use, which is the state
         // the discovery endpoint exists to replace.
-        byName.getValue(CFACTS.isAdmin)[CFD.group] shouldBe CFGRP.caller
-        byName.getValue(CFACTS.isAdmin)[CFD.description].toOptStr() shouldNotBe null
+        byName.getValue(CFACTS.hasAdminLevel)[CFD.group] shouldBe CFGRP.caller
+        byName.getValue(CFACTS.hasAdminLevel)[CFD.description].toOptStr() shouldNotBe null
         byName.getValue(BOOT.app)[CFD.group] shouldBe CFGRP.node
     }
 
@@ -72,18 +72,18 @@ class CFactRegistryEndpointTest : StringSpec({
         // ...and this caller has no identity, so the positive form of "not logged in" is the one that fires.
         present shouldContain CFACTS.anonymous
         present shouldNotContain CFACTS.loggedIn
-        present shouldNotContain CFACTS.isAdmin
+        present shouldNotContain CFACTS.hasAdminLevel
     }
 
     "an administrator satisfies the operator cfact without holding the role" {
-        // What makes `isOperator` a ladder question rather than a membership one -- and why it is `is`-prefixed
-        // rather than being called `operator`, which would read as the role.
+        // What makes this a ladder question rather than a membership one -- and why it is named for the *level*
+        // rather than `isOperator`, which said neither axis clearly.
         val registry = SchemaService.get(cxt).cfactsFor(null)
         val admin = cxt.mkSubContext("cfactAdmin")
         admin.userProfile = UserProfile(authId = "someone", roles = setOf(ROLE.user, ROLE.admin))
         val present = registry.assemble(admin)
-        present shouldContain CFACTS.isOperator
-        present shouldContain CFACTS.isAdmin
+        present shouldContain CFACTS.hasOperatorLevel
+        present shouldContain CFACTS.hasAdminLevel
         present shouldContain CFACTS.loggedIn
         present shouldNotContain CFACTS.anonymous
     }

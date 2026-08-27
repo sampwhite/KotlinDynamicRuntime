@@ -26,10 +26,13 @@ object CFGRP {
 object CFACTS {
     const val loggedIn = "loggedIn"
     const val anonymous = "anonymous"
-    const val isOperator = "isOperator"
-    const val isAdmin = "isAdmin"
+    /** The caller ranks at `operator` or above on the ladder. **Level only** -- see the naming note. */
+    const val hasOperatorLevel = "hasOperatorLevel"
 
-    /** True when the caller may reach the deployment-operator surface; see the declaration for why. */
+    /** The caller ranks at `admin`. **Level only**: it is not "may reach `/admin`", which also takes scope. */
+    const val hasAdminLevel = "hasAdminLevel"
+
+    /** The caller may reach the `operator` section -- level **and** deployment-wide scope. */
     const val isDeploymentOperator = "isDeploymentOperator"
 }
 
@@ -50,10 +53,32 @@ object CFACTS {
  *
  * ### Naming
  *
- * A boot-role cfact is the role's own name (`app`, `edge`), because there is exactly one boot role and
- * nothing else the bare word could mean. A caller-level cfact is `is`-prefixed, because the bare word would
- * be read as **holding that role** when what it means is the privilege ladder: [CFACTS.isOperator] is true
- * for an administrator who does not hold `operator` at all.
+ * A boot-role cfact is the role's own name (`app`, `edge`), because there is exactly one boot role and nothing
+ * else the bare word could mean.
+ *
+ * A caller cfact says which of the **two axes** it tests, because the bare word does not. Level and scope are
+ * separate (see `AdminRules` and `ReadScopeRules`), and the sections are their four combinations:
+ *
+ * | | level only | deployment-wide |
+ * | --- | --- | --- |
+ * | admin | [CFACTS.hasAdminLevel] | `isDeploymentAdmin` -- named, not yet declared |
+ * | operator | [CFACTS.hasOperatorLevel] | [CFACTS.isDeploymentOperator] |
+ *
+ * `has*Level` is a statement about **rank on the ladder**, and rank alone: [CFACTS.hasOperatorLevel] is true
+ * for an administrator who does not hold `operator` at all, and [CFACTS.hasAdminLevel] is *not* the same as
+ * "may reach `/admin`", which takes the `allClients` capability as well. A bare `isOperator` said neither
+ * clearly, and its description drifted into claiming section parity it did not have once #464 landed.
+ *
+ * There is no `isDeploymentAdmin` yet, and the name is recorded here rather than declared: a *core* cfact
+ * with neither a producer nor a consumer is a row in every deployment's discovery listing that nothing uses.
+ * It arrives with the first thing that needs it, which is the cheap half -- the name is the part that would
+ * have been expensive to change later.
+ *
+ * `isDeployment*` is a statement about **a section**, and carries a rule: **a cfact named after a section must
+ * ask that section**, through `RequestService.sectionAdmits`. That is what keeps the name's promise true by
+ * construction rather than by a description somebody has to remember to update -- and it is why there is no
+ * `isClientOperator`: `/clientOperator` is reserved but has no rules registered, and an unregistered section
+ * is served permissively, so such a cfact would quietly be true for everybody.
  */
 fun addCoreCFacts(collector: SchemaCollector) {
     // The profile the boot already computed, not a fresh `NodeProfile.of` off the config. Two reasons, and
@@ -94,10 +119,11 @@ fun addCoreCFacts(collector: SchemaCollector) {
     ) { !it.userProfile.isLoggedIn }
     collector.addCFact(
         CFactDef(
-            CFACTS.isOperator, CFGRP.caller,
-            "True when the caller holds `operator`, or `admin` by the privilege ladder. A statement about " +
-                "**level only**: since issue #464 the `operator` section also requires `allClients`, so this " +
-                "is no longer the same test that section applies -- use `${CFACTS.isDeploymentOperator}` for that.",
+            CFACTS.hasOperatorLevel, CFGRP.caller,
+            "True when the caller ranks at `operator` or above on the privilege ladder -- so an administrator " +
+                "satisfies it without holding `operator` at all. **Level only**: the `operator` section also " +
+                "requires `allClients` since issue #464, so this is not the test that section applies -- " +
+                "`${CFACTS.isDeploymentOperator}` is.",
         ),
     ) { RoleLadder.satisfies(it.userProfile.roles, ROLE.operator) }
     collector.addCFact(
@@ -114,9 +140,10 @@ fun addCoreCFacts(collector: SchemaCollector) {
     ) { RequestService.get(it).sectionAdmits(it.userProfile, SECT.operator) }
     collector.addCFact(
         CFactDef(
-            CFACTS.isAdmin, CFGRP.caller,
-            "True when the caller holds `admin`. It says what the caller may do, not over whose rows: the " +
-                "`allClients` capability is a separate axis and is no cfact yet.",
+            CFACTS.hasAdminLevel, CFGRP.caller,
+            "True when the caller ranks at `admin` on the privilege ladder. **Level only**: it says what the " +
+                "caller may do, not over whose rows, so it is not the same as reaching the deployment-wide " +
+                "`/admin` section, which takes the `allClients` capability too.",
         ),
     ) { RoleLadder.satisfies(it.userProfile.roles, ROLE.admin) }
 }
