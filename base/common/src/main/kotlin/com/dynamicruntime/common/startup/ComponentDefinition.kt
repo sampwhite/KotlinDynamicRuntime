@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.startup
 
+import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GedraConfig
 
@@ -19,11 +20,6 @@ import com.dynamicruntime.common.gedra.GedraConfig
  * component-specific and so stays here rather than on the shared base.
  */
 interface ComponentDefinition : KdrProvider {
-    /**
-     * Whether this component contributes its schema to the application. Receives the startup [cxt] so the
-     * decision can read instance config and environment (e.g., a demo component that loads only in developer
-     * environments, as the `sample` module's `SampleComponent` does).
-     */
     /**
      * Where this component belongs (issue #433): the boot roles and capability tags whose nodes carry it.
      *
@@ -76,11 +72,19 @@ interface ComponentDefinition : KdrProvider {
     fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {}
 
     /**
-     * The Markdown fragment files (`md-fragments/<fileId>.md`) this component ships, named so they can be
-     * checked. Nothing enumerates the classpath, so a file that no component declares is a file nothing
-     * validates -- declaring it is what puts it under the startup and `/operator/fragments/check` checks.
+     * The fragment content this component contributes (issue #456) -- its own files, and any layer it puts
+     * over somebody else's.
+     *
+     * Nothing enumerates the classpath, so a file no component declares is a file nothing validates;
+     * declaring it is what puts it under the startup and `/operator/fragments/check` checks. Use
+     * `fragmentFiles(...)` for the ordinary case of shipping files, `fragmentOverlayFile(...)` for a
+     * `_overlay.md` beside one, and `fragmentInline(...)` for a layer written in code.
+     *
+     * One method rather than one per kind on purpose: a fragment file's content is what its layers add up to,
+     * so a component that lists its files in one place and its overlays in another would be describing one
+     * thing in two, and the merge order would depend on which list a reader happened to be in.
      */
-    fun fragmentFiles(cxt: KdrCxt): List<String> = emptyList()
+    fun fragments(cxt: KdrCxt): List<FragmentSource> = emptyList()
 
     /**
      * The Gedra config bundles this component defines (issue #299) -- traits now, workflows later. Collected

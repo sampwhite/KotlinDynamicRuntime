@@ -55,9 +55,12 @@ class UiConfigEndpointTest : StringSpec({
     }
 
     "fragmentBuildId is stable for a present file and null for an absent one" {
-        val first = MarkdownFragmentService.fragmentBuildId("auth")
+        // Its own instance: the build id is now read through the running service (issue #456), so this needs a
+        // booted node rather than the static classpath read it used to be.
+        val cxt = Startup.mkTestBootCxt("uiBuildId", "uiBuildIdTest")
+        val first = MarkdownFragmentService.fragmentBuildId(cxt, "auth")
         first.shouldNotBeNull()
-        MarkdownFragmentService.fragmentBuildId("auth") shouldBe first // cached, same value
-        MarkdownFragmentService.fragmentBuildId("no-such-fragment-file") shouldBe null
+        MarkdownFragmentService.fragmentBuildId(cxt, "auth") shouldBe first // cached, same value
+        MarkdownFragmentService.fragmentBuildId(cxt, "no-such-fragment-file") shouldBe null
     }
 })

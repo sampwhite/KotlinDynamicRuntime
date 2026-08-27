@@ -3,6 +3,11 @@ package com.dynamicruntime.sample
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
+import com.dynamicruntime.sample.gedra.SF
+import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.fragmentFiles
+import com.dynamicruntime.common.content.fragmentInline
+import com.dynamicruntime.common.content.fragmentOverlayFile
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.sample.file.SampleFileService
 import com.dynamicruntime.sample.gedra.GedraFixtureEndpoints
@@ -13,7 +18,6 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
-import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
  * The `sample` module's component. It contributes the file upload/download endpoints (owned by
@@ -43,7 +47,6 @@ class SampleComponent : ComponentDefinition {
         return env == ENV.local || env == ENV.dev
     }
 
-    @Suppress("ConstPropertyName")
     companion object {
         val loadSampleEnvVar = EnvVarDef(
             "KDR_LOAD_SAMPLE", group = ENVGRP.application, defaultDoc = "on for `local`/`dev`, off otherwise",
@@ -56,6 +59,22 @@ class SampleComponent : ComponentDefinition {
         collector.addModule(SampleFileService.schema(cxt))
         collector.addModule(GedraFixtureEndpoints.schema(cxt))
     }
+
+    /**
+     * The fragment layers the sample ships (issue #456), which between them exercise every kind there is: a
+     * base file, a `_overlay.md` beside it, and an overlay written in code. Acme's own overlay of the same
+     * file arrives through its Gedra config, so the file ends up with four contributors and one reader.
+     */
+    override fun fragments(cxt: KdrCxt): List<FragmentSource> =
+        fragmentFiles(SF.content) +
+            fragmentOverlayFile(SF.content) +
+            // In code rather than in a file, which is the case a small change should not need a resource for.
+            // Applied after the overlay file above, so this is what a reader of `footer.copyright` gets.
+            fragmentInline(SF.content, origin = "SampleComponent") {
+                namespace(SF.footer) {
+                    key(SF.copyright, "Copyright the sample deployment.")
+                }
+            }
 
     /**
      * Traits contributed for testing (issue #301). They join the manufactured `FormDocEntry` union alongside

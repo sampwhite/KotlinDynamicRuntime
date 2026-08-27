@@ -52,7 +52,7 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "profile") {
         val row = UserService.get(c).queryByUserId(c, c.userProfile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
         mapOf(
-            UIC.fragments to fragmentRefs(AFRAG.profile),
+            UIC.fragments to fragmentRefs(c, AFRAG.profile),
             UIC.features to mapOf(
                 AFEAT.hasPassword to (row.encodedPassword != null), AFEAT.canSetPassword to true,
                 // Carried here too (the auth config has it as well): the page enters a code, so it wants the

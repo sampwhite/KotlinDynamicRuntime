@@ -21,8 +21,8 @@ class MarkdownFragmentEndpointTest : StringSpec({
         val cxt = Startup.mkTestBootCxt("md", "markdownFragmentTest")
         val client = TestHttpClient(cxt.instanceConfig)
 
-        // The buildId is a content hash of the resource; the endpoint strips and ignores it (cache-busting only).
-        val buildId = MarkdownFragmentService.fragmentBuildId("sample").shouldNotBeNull()
+        // The buildId is a content hash of the merged content, and since #456 it *selects* what is served.
+        val buildId = MarkdownFragmentService.fragmentBuildId(cxt, "sample").shouldNotBeNull()
         val handler = client.sendGetRequestRaw("/st/myapp/md/sample:$buildId")
 
         handler.rptStatusCode shouldBe EXC.ok
@@ -42,7 +42,7 @@ class MarkdownFragmentEndpointTest : StringSpec({
     "an unknown appId is ignored -- content is still served" {
         val cxt = Startup.mkTestBootCxt("md2", "markdownFragmentAppIdTest")
         val client = TestHttpClient(cxt.instanceConfig)
-        val buildId = MarkdownFragmentService.fragmentBuildId("sample").shouldNotBeNull()
+        val buildId = MarkdownFragmentService.fragmentBuildId(cxt, "sample").shouldNotBeNull()
         // A different appId (with client/locale-style suffixes) resolves the same file for now.
         val handler = client.sendGetRequestRaw("/st/myapp.acme.en/md/sample:$buildId")
         handler.rptStatusCode shouldBe EXC.ok

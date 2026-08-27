@@ -3,6 +3,7 @@ package com.dynamicruntime.common.startup
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.content.FRAG
+import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.logging.LogStartup
@@ -107,19 +108,33 @@ object InstanceRegistry {
             for (component in loaded) {
                 component.applyInstanceConfig(cxt)
             }
-            // Fragment files are collected alongside schema and for the same reason: a component knows what it
-            // ships, and nothing else can find out (the classpath is not enumerable here).
-            val fragmentFiles = mutableListOf<String>()
+            // Fragment layers are collected alongside schema and for the same reason: a component knows what
+            // it ships, and nothing else can find out (the classpath is not enumerable here).
+            val fragmentSources = mutableListOf<FragmentSource>()
             for (component in loaded) {
                 component.addSchema(cxt, collector)
-                fragmentFiles.addAll(component.fragmentFiles(cxt))
+                fragmentSources.addAll(component.fragments(cxt))
                 // Same loop, so every config is present before any service binds -- which is what lets
                 // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
                 for (config in component.gedraConfigs(cxt)) {
-                    collector.addGedraConfig(cxt, config)
+                    // A config's fragment overlays travel with the config, so they are taken only when it is
+                    // (issue #456) -- a bundle whose checks just failed must not still change what its
+                    // client's people read.
+                    if (collector.addGedraConfig(cxt, config)) {
+                        fragmentSources.addAll(config.fragments)
+                    }
                 }
             }
-            config.put(FRAG.registryKey, fragmentFiles.distinct())
+            // Kept as declared, duplicates and all. Two components declaring the same file would once have
+            // been collapsed by `.distinct()` on a list of file-id strings, and the equivalent for layers is a
+            // trap: a layer's *content* is part of what it is, and no key over its other fields can see that
+            // -- so two inline layers a component writes for one file, sharing the origin it naturally names
+            // after itself, would be read as one statement and the second silently dropped.
+            //
+            // Nothing needs the dedupe. Folding a layer in twice is idempotent (the same keys are put over
+            // themselves), the check derives its file list with its own `distinct()`, and a repeated resource
+            // read happens once per boot.
+            config.put(FRAG.registryKey, fragmentSources.toList())
 
             val startupEntries = mutableListOf<ServiceEntry>()
             val serviceEntries = mutableListOf<ServiceEntry>()

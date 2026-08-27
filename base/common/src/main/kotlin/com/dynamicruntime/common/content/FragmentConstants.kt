@@ -43,6 +43,13 @@ object FRAG {
 @Suppress("ConstPropertyName")
 object FCHK {
     const val fileId = "fileId"
+
+    /** The client a check row is about; absent on the shared one (issue #456). */
+    const val client = "client"
+
+    /** Overlay keys no base declares (issue #456). */
+    const val orphans = "orphans"
+
     const val found = "found"
     const val issueCount = "issueCount"
     const val issues = "issues"

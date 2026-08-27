@@ -46,21 +46,6 @@ fun identityLabel(loaded: Boolean, isLoggedIn: Boolean, displayName: String?): S
 const val signedInFallback = "Signed in"
 
 /**
- * The persistent top app bar: a brand on the left, and a hamburger menu on the right.
- *
- * **The menu is data.** Its items come whole from the home/shell UI-config (`state.menu`), which the backend
- * composes for the *current caller* -- so what a user may reach is decided once, on the side that knows. The
- * bar renders the list it is handed, in order, and adds nothing of its own: an item this user may not have is
- * simply absent from the response. That is what lets an entry like user administration appear for an
- * administrator and for nobody else without the frontend knowing anything about roles.
- *
- * Each item either navigates to a page ([MenuItem.page]) or runs a client-side action ([MenuItem.action]) --
- * today only logging out, which cannot be a link because it is a request plus a redirect.
- *
- * It re-reads the config on every refresh generation, so signing in or out (or being granted a capability)
- * redraws the menu.
- */
-/**
  * The two env-auth facts the bar draws (issue #360): whether the control should exist at all, and what it
  * currently says.
  *
@@ -76,6 +61,21 @@ external interface AppBarProps : Props {
     var envAuthActing: Boolean
 }
 
+/**
+ * The persistent top app bar: a brand on the left, and a hamburger menu on the right.
+ *
+ * **The menu is data.** Its items come whole from the home/shell UI-config (`state.menu`), which the backend
+ * composes for the *current caller* -- so what a user may reach is decided once, on the side that knows. The
+ * bar renders the list it is handed, in order, and adds nothing of its own: an item this user may not have is
+ * simply absent from the response. That is what lets an entry like user administration appear for an
+ * administrator and for nobody else without the frontend knowing anything about roles.
+ *
+ * Each item either navigates to a page ([MenuItem.page]) or runs a client-side action ([MenuItem.action]) --
+ * today only logging out, which cannot be a link because it is a request plus a redirect.
+ *
+ * It re-reads the config on every refresh generation, so signing in or out (or being granted a capability)
+ * redraws the menu.
+ */
 val AppBar = FC<AppBarProps> { props ->
     // The one conditional fault that cannot live in a dedicated component (issue #227): proving the *backstop*
     // boundary catches means breaking the chrome, and the chrome is what renders outside the page boundary.
@@ -85,6 +85,7 @@ val AppBar = FC<AppBarProps> { props ->
     }
     var open by useState(false)
     var config by useState<HomeConfig?>(null)
+    var copy by useState(Copy.empty)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
 
@@ -92,7 +93,13 @@ val AppBar = FC<AppBarProps> { props ->
     // (notably sign-in / sign-out). The menu stays as it was if the config could not be loaded.
     useEffect(generation) {
         appBarScope.launch {
-            runCatching { HomeApi.fetchConfig() }.getOrNull()?.let { config = it }
+            runCatching { HomeApi.fetchConfig() }.getOrNull()?.let {
+                config = it
+                // The copy alongside the config, on the same generation: the wordmark below is a client's to
+                // change (issue #456), so it has to be re-read when the caller changes and not only on mount.
+                // Kept as-is on a failure -- the previous wordmark beats no wordmark.
+                copy = runCatching { fetchCopy(it.fragment) }.getOrNull() ?: copy
+            }
         }
     }
 
@@ -121,11 +128,18 @@ val AppBar = FC<AppBarProps> { props ->
             img {
                 className = ClassName("app-bar-logo")
                 src = brandMarkUrl
-                // Decorative: the wordmark beside it already says "KDR", so alt text here would only make a
-                // screen reader announce the brand twice.
+                // Decorative: the wordmark beside it already carries the name, so alt text here would only
+                // make a screen reader announce the brand twice.
                 alt = ""
             }
-            +"KDR"
+            // Copy, not a literal (issue #456): the same `home.brand` the hero renders, so a client that
+            // overlays it is renamed in both places at once and neither knows the client exists.
+            //
+            // Nothing is drawn until the copy arrives, rather than falling back to a built-in "KDR". Same
+            // reasoning as `identityLabel` above: a literal would be *wrong* for a moment for anybody whose
+            // brand differs, and would flicker on every load. The mark carries the bar until then, and a
+            // deployment that names no brand simply has an unlettered mark.
+            copy.opt("home", "brand")?.let { +it }
         }
         div {
             className = ClassName("app-bar-right")
