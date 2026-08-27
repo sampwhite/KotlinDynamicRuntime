@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.home.HACT
+import com.dynamicruntime.common.uiblock.UiCall
+import com.dynamicruntime.common.uiblock.UiRoute
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -103,7 +104,7 @@ val AppBar = FC<AppBarProps> { props ->
         }
     }
 
-    fun logout() {
+    fun logoutAction() {
         open = false
         appBarScope.launch {
             runCatching { AuthApi.logout() }
@@ -113,6 +114,9 @@ val AppBar = FC<AppBarProps> { props ->
             bump()
         }
     }
+
+    // Built after the function it calls: a local `val` cannot forward-reference a local `fun`.
+    val frontendActions = FrontendActions(logout = { logoutAction() })
 
     // The bar takes on the elevated-privilege look while the caller holds administrative rights. It reads the
     // same `canManageUsers` capability the menu does, so the cue and the Users item can never disagree -- and
@@ -221,15 +225,22 @@ val AppBar = FC<AppBarProps> { props ->
 
                     // The items themselves, exactly as the backend composed them for this caller.
                     for (menuItem in config?.menu.orEmpty()) {
-                        when {
-                            menuItem.action == HACT.logout -> button {
+                        // A route is a link and a call is a button, which is the whole of the dispatch: the
+                        // backend already decided *whether* this caller sees the item, and the shape of the
+                        // action says how to render it (issue #483).
+                        when (val action = menuItem.action) {
+                            is UiRoute -> menuLink("#page=${action.page}", menuItem.label) { open = false }
+                            is UiCall -> button {
                                 className = ClassName("app-menu-item")
-                                onClick = { logout() }
+                                onClick = {
+                                    open = false
+                                    // An unimplemented name closes the menu and does nothing else, which is
+                                    // what the startup check exists to stop ever reaching a person.
+                                    frontendActions.run(action.def.name, action.args)
+                                }
                                 +menuItem.label
                             }
-                            menuItem.page != null -> menuLink("#page=${menuItem.page}", menuItem.label) {
-                                open = false
-                            }
+                            null -> Unit
                         }
                     }
                 }

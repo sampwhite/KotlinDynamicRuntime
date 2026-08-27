@@ -5,6 +5,9 @@ import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.uiblock.UiCall
+import com.dynamicruntime.common.uiblock.UiRoute
 import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
 import kotlin.test.Test
@@ -92,8 +95,8 @@ class ConfigParsersTest {
                         mapOf(HFLD.id to "l1", HFLD.label to "Guide", HFLD.docId to "guide", HFLD.buildId to "b7"),
                     ),
                     HFLD.menu to listOf(
-                        mapOf(HFLD.id to "m1", HFLD.label to "Profile", HFLD.page to "profile"),
-                        mapOf(HFLD.id to "m2", HFLD.label to "Log out", HFLD.action to "logout"),
+                        mapOf(HFLD.id to "m1", HFLD.label to "Profile", UIB.action to "profile"),
+                        mapOf(HFLD.id to "m2", HFLD.label to "Log out", UIB.action to listOf("logout")),
                     ),
                     HFLD.userInfo to sampleUserInfo,
                 ),
@@ -109,10 +112,12 @@ class ConfigParsersTest {
         assertEquals("b7", cfg.links[0].buildId)
 
         assertEquals(2, cfg.menu.size)
-        assertEquals("profile", cfg.menu[0].page)
-        assertNull(cfg.menu[0].action)
-        assertEquals("logout", cfg.menu[1].action)
-        assertNull(cfg.menu[1].page)
+        // One field, two shapes (issue #483): a string is a route, an array is a call. The old pair of
+        // nullable fields could be both or neither; this cannot.
+        assertEquals("profile", (cfg.menu[0].action as UiRoute).page)
+        val call = cfg.menu[1].action as UiCall
+        assertEquals("logout", call.def.name)
+        assertTrue(call.args.isEmpty())
 
         assertEquals("Ada", cfg.user.publicName)
         assertTrue(cfg.user.isLoggedIn)

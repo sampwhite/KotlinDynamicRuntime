@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.uiblock
 
 import com.dynamicruntime.common.cfact.CFACT
+import com.dynamicruntime.common.home.HACT
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
@@ -62,6 +63,31 @@ class UiBlockCheckTest : StringSpec({
         // ...and the reverse: the same block where acme does *not* have the name.
         uiBlockProblems(listOf(block(null), acmeOverlay), everywhere(emptySet()))
             .single() shouldContain "client 'acme'"
+    }
+
+
+    // --- calls into the frontend -------------------------------------------------------------------------
+
+    fun blockCalling(action: Any?) = uiBlock(menu, origin = "core", arrayKeys = mapOf("items" to "id")) {
+        items("items") { item { set("id", "home"); if (action != null) set(UIB.action, action) } }
+    }
+
+    "a call to a function nothing declares is reported" {
+        // The silent failure this catches: a name no frontend function implements is a click that does
+        // nothing, and neither side can see the other to notice.
+        uiBlockProblems(listOf(blockCalling(listOf("noSuchFunction"))), everywhere(emptySet()))
+            .single() shouldContain "which no frontend function declares"
+    }
+
+    "a call with the wrong number of parameters is reported" {
+        uiBlockProblems(listOf(blockCalling(listOf(HACT.logout.name, "extra"))), everywhere(emptySet()))
+            .single() shouldContain "with 1 parameter(s); it takes 0"
+    }
+
+    "a declared call with the right arity, and a route, are both fine" {
+        uiBlockProblems(listOf(blockCalling(listOf(HACT.logout.name))), everywhere(emptySet())).shouldBeEmpty()
+        // A route is a string and is not a call at all, so nothing looks it up in the registry.
+        uiBlockProblems(listOf(blockCalling("/forms/123")), everywhere(emptySet())).shouldBeEmpty()
     }
 
     "every problem is reported in one pass" {

@@ -2,6 +2,7 @@ package com.dynamicruntime.common.uiblock
 
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.home.menuItem
+import com.dynamicruntime.common.uiblock.parseUiAction
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -141,14 +142,24 @@ class UiBlockMergeTest : StringSpec({
 
     // --- the menu item helper --------------------------------------------------------------------------
 
-    "a menu item refuses to be both a navigation and an action" {
-        // A rule the hardcoded menu's own builder stated and a sequence of `set` calls cannot hold: an item
-        // does one thing when clicked, and which one is not the frontend's to choose.
-        shouldThrow<KdrException> {
-            uiBlock(menu, origin = "t", arrayKeys = byId) {
-                items(SB_ITEMS) { menuItem("x", "X", page = "p", action = "a") }
-            }
-        }.fullMessage() shouldContain "declares both a page"
+    "an item cannot be both a navigation and a call, and no longer needs a check to say so" {
+        // The old builder refused a `page` and an `action` together. Since #483 the field is one typed value,
+        // so "both" is not a state that can be written -- the refusal became unnecessary rather than being
+        // dropped. What is left to check at runtime is the *call*, whose parameter count the registry declares.
+        shouldThrow<KdrException> { UiCall(UiActionDef("confirm", arity = 2), listOf("only-one")) }
+            .fullMessage() shouldContain "takes 2 parameter(s) and was given 1"
+        // The right count builds, and travels as the array the frontend reads.
+        UiCall(UiActionDef("confirm", arity = 2), listOf("a", "b")).toJson() shouldBe listOf("confirm", "a", "b")
+        UiRoute("forms").toJson() shouldBe "forms"
+    }
+
+    "an action survives the round trip through the wire shape" {
+        // Written by the backend and read by the frontend through one interpretation, which is why both halves
+        // live in the kernel: two readings of a two-shaped field is the drift this construct would invite.
+        (parseUiAction(UiRoute("forms").toJson()) as UiRoute).page shouldBe "forms"
+        val call = parseUiAction(UiCall(UiActionDef("confirm", arity = 1), listOf("x")).toJson()) as UiCall
+        call.def.name shouldBe "confirm"
+        call.args shouldBe listOf("x")
     }
 
     "a menu item names only what it changes, which is what an overlay needs" {
