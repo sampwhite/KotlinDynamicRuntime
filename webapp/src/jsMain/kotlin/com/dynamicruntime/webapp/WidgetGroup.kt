@@ -72,3 +72,29 @@ suspend fun fetchCopy(ref: FragmentRef): Copy = Copy(
         namespace.toJsonMapOrEmpty().mapValues { (_, value) -> value?.toString() ?: "" }
     },
 )
+
+/**
+ * [fetchCopy] with **stale-ref recovery** (issue #469). A fragment ref is per-caller and per-build, so a
+ * rolling deploy leaves every open browser holding one no node recognizes; that 404s -- the ordinary case, not
+ * an edge one. On a stale 404 ([isStaleFragment]) this re-fetches the UI-config for a fresh ref (via [freshRef])
+ * and retries **once**. Never a loop: a file genuinely removed from a deployment 404s forever, and a retry loop
+ * on a page-load path is a far worse bug than the blank it was meant to fix.
+ *
+ * Lives here, in the shared helper, rather than in `AppBar` and `Home` separately -- they handled failure two
+ * different ways, which is how one bug became two (see the issue). A non-stale failure, or a stale one whose
+ * retry also fails, propagates for the caller to render as [ShellBrand.Failed] / its error boundary.
+ */
+suspend fun fetchCopyWithRetry(ref: FragmentRef, freshRef: suspend () -> FragmentRef?): Copy =
+    try {
+        fetchCopy(ref)
+    } catch (e: ApiError) {
+        if (isStaleFragment(e.status)) {
+            val fresh = freshRef() ?: throw e
+            // If the config hands back the same ref, the 404 is not staleness -- the file is genuinely gone, and
+            // it 404s forever. Re-fetching it would just fail again, once per refresh generation; give up now.
+            if (fresh.fileId == ref.fileId && fresh.buildId == ref.buildId) throw e
+            fetchCopy(fresh)
+        } else {
+            throw e
+        }
+    }

@@ -52,7 +52,12 @@ val Home = FC<Props> {
             try {
                 val loaded = HomeApi.fetchConfig()
                 config = loaded
-                copy = fetchCopy(loaded.fragment)
+                // Recover a stale build id silently (issue #469): a rolling deploy leaves this ref one deploy
+                // old, which 404s -- re-fetch the config for a fresh ref and retry once, rather than surfacing
+                // the misleading "is the runtime running?" below for a runtime that is running perfectly.
+                copy = fetchCopyWithRetry(loaded.fragment) {
+                    runCatching { HomeApi.fetchConfig().fragment }.getOrNull()
+                }
                 error = null
             } catch (e: Throwable) {
                 error = "Could not load the home page — is the runtime running? (${e.message})"

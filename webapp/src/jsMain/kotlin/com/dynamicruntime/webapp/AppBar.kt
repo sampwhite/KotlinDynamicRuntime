@@ -13,6 +13,7 @@ import react.dom.html.ReactHTML.header
 import react.dom.html.ReactHTML.img
 import react.dom.html.ReactHTML.span
 import react.useEffect
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 
@@ -44,6 +45,44 @@ fun identityLabel(loaded: Boolean, isLoggedIn: Boolean, displayName: String?): S
 
 /** Shown in place of a name for a signed-in caller who has none -- still says *signed in*, which is the point. */
 const val signedInFallback = "Signed in"
+
+/**
+ * What the app bar's brand area should show -- an explicit **three-state** rather than inferring from an absent
+ * value (issue #469). Same reasoning as [identityLabel] one element to the left: a blank wordmark is *ambiguous*
+ * between "still loading" and "the fetch failed", and #456 reintroduced exactly that ambiguity by moving the
+ * wordmark into a `home.brand` fragment fetched over two round trips.
+ */
+sealed class ShellBrand {
+    /** Neither the config nor its copy has arrived; the mark carries the bar (with a delayed progress cue). */
+    object Loading : ShellBrand()
+    /** Loaded. [label] is the wordmark, or null when the deployment names no brand -- then the mark stands alone. */
+    class Ready(val label: String?) : ShellBrand()
+    /** The copy could not be loaded (and a stale ref did not recover); mark alone, the body reports the outage. */
+    object Failed : ShellBrand()
+}
+
+/**
+ * The brand state to move to after a load attempt (issue #469), or **null to keep the current one**.
+ *
+ * A success shows the brand -- or the mark alone when it is blank, a deployment that names none. A failure
+ * downgrades to [Failed] only when nothing has loaded yet ([everLoaded] false); once a wordmark has shown, a
+ * transient re-fetch failure keeps it -- "the previous wordmark beats no wordmark", which is what lets a refresh
+ * never flicker. The initial [Loading] is the `useState` default, never re-entered here. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun brandAfterLoad(loaded: Boolean, brand: String?, everLoaded: Boolean): ShellBrand? = when {
+    loaded -> ShellBrand.Ready(brand?.trim()?.ifEmpty { null })
+    everLoaded -> null
+    else -> ShellBrand.Failed
+}
+
+/**
+ * Whether a failed fragment fetch is a **stale build id** rather than a genuine outage (issue #469): a rolling
+ * deploy leaves every open browser holding a ref no node recognizes, which 404s -- the ordinary case, not an
+ * edge one. Distinguishable by the status alone, which is what lets the recovery ([fetchCopyWithRetry]) be
+ * automatic. Pure, covered under `jsNodeTest`.
+ */
+fun isStaleFragment(status: Int?): Boolean = status == 404
 
 /**
  * The two env-auth facts the bar draws (issue #360): whether the control should exist at all, and what it
@@ -85,21 +124,50 @@ val AppBar = FC<AppBarProps> { props ->
     }
     var open by useState(false)
     var config by useState<HomeConfig?>(null)
-    var copy by useState(Copy.empty)
+    // The brand's three-state, held directly (issue #469): the effect knows which of loading/ready/failed
+    // happened, so it writes the state rather than the bar inferring it from an empty [copy] -- which is
+    // ambiguous, since a deployment that names no brand is *also* empty.
+    var brandState by useState<ShellBrand>(ShellBrand.Loading)
+    // Refs, not state: [everLoaded] is monotonic (a wordmark, once shown, is kept through a transient refresh
+    // failure), and [genRef] lets a slow, superseded generation's late result bow out instead of clobbering a
+    // newer one. Neither is read for rendering, so neither needs to trigger one.
+    val everLoaded = useRef(false)
+    val genRef = useRef(0)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
 
     // Re-read the shell config on every refresh generation -- mount, navigation, and any state mutation
     // (notably sign-in / sign-out). The menu stays as it was if the config could not be loaded.
     useEffect(generation) {
+        genRef.current = generation
         appBarScope.launch {
-            runCatching { HomeApi.fetchConfig() }.getOrNull()?.let {
-                config = it
-                // The copy alongside the config, on the same generation: the wordmark below is a client's to
-                // change (issue #456), so it has to be re-read when the caller changes and not only on mount.
-                // Kept as-is on a failure -- the previous wordmark beats no wordmark.
-                copy = runCatching { fetchCopy(it.fragment) }.getOrNull() ?: copy
+            val cfg = runCatching { HomeApi.fetchConfig() }.getOrNull()
+            if (genRef.current != generation) return@launch // a newer generation is already in charge
+            if (cfg == null) {
+                // Config failed: Failed on a first load, but keep any wordmark already shown on a refresh.
+                brandAfterLoad(loaded = false, brand = null, everLoaded = everLoaded.current == true)
+                    ?.let { brandState = it }
+                return@launch
             }
+            config = cfg
+            // The wordmark is a client's to change (issue #456), so it is re-read when the caller changes, not
+            // only on mount. A stale build id (a rolling deploy) recovers silently via the shared retry.
+            val loaded = runCatching {
+                fetchCopyWithRetry(cfg.fragment) { runCatching { HomeApi.fetchConfig().fragment }.getOrNull() }
+            }
+            if (genRef.current != generation) return@launch
+            val copy = loaded.getOrNull()
+            if (copy != null) {
+                everLoaded.current = true
+            } else {
+                // Never swallow (webapp/CLAUDE.md): the chrome does not *show* an outage, but a Failed that
+                // renders nothing must at least reach the console, or a browser test cannot assert its absence.
+                loaded.exceptionOrNull()?.let {
+                    console.error("$errorLogPrefix could not load app-bar copy: ${it.message}")
+                }
+            }
+            brandAfterLoad(copy != null, copy?.opt("home", "brand"), everLoaded.current == true)
+                ?.let { brandState = it }
         }
     }
 
@@ -119,6 +187,8 @@ val AppBar = FC<AppBarProps> { props ->
     // when that capability narrows, the cue narrows with it.
     val elevated = config?.canManageUsers == true
 
+    // A *delayed* loading flag so a fast load never flashes the cue (issue #469).
+    val brandLoadingShown = useDelayedFlag(brandState is ShellBrand.Loading)
 
     header {
         className = ClassName(if (elevated) "app-bar admin" else "app-bar")
@@ -133,13 +203,25 @@ val AppBar = FC<AppBarProps> { props ->
                 alt = ""
             }
             // Copy, not a literal (issue #456): the same `home.brand` the hero renders, so a client that
-            // overlays it is renamed in both places at once and neither knows the client exists.
+            // overlays it is renamed in both places at once and neither knows the client exists. The mark
+            // (above) always carries the bar; what follows it is the wordmark's three-state (issue #469).
             //
-            // Nothing is drawn until the copy arrives, rather than falling back to a built-in "KDR". Same
-            // reasoning as `identityLabel` above: a literal would be *wrong* for a moment for anybody whose
-            // brand differs, and would flicker on every load. The mark carries the bar until then, and a
-            // deployment that names no brand simply has an unlettered mark.
-            copy.opt("home", "brand")?.let { +it }
+            // A literal fallback ("KDR") is deliberately avoided -- it would be *wrong* for a moment for anybody
+            // whose brand differs, and flicker on every load, the same reasoning as `identityLabel`.
+            when (val b = brandState) {
+                // Loaded: the wordmark, or nothing when the deployment names no brand (the mark stands alone).
+                is ShellBrand.Ready -> b.label?.let { +it }
+                // Failed: mark alone. The chrome is the wrong place to explain an outage -- the page body does,
+                // through its error boundary; a blank bar here reads as "loading", which this exists to stop.
+                ShellBrand.Failed -> {}
+                // Loading: a quiet cue beside the mark, but only after a short hold so a fast load never flashes it.
+                ShellBrand.Loading -> if (brandLoadingShown) {
+                    span {
+                        className = ClassName("app-bar-brand-loading")
+                        +"…"
+                    }
+                }
+            }
         }
         div {
             className = ClassName("app-bar-right")
@@ -236,6 +318,37 @@ val AppBar = FC<AppBarProps> { props ->
             }
         }
     }
+}
+
+/** A short delay before a loading cue appears, so a fast load never flashes it then removes it (issue #469). */
+private const val brandFlashDelayMs = 200
+
+/**
+ * True only once [active] has held for [delayMs] -- and immediately false again when it clears (issue #469). The
+ * conventional cure for a flashing indicator: a fast resolve never crosses the threshold, so nothing appears.
+ */
+fun useDelayedFlag(active: Boolean, delayMs: Int = brandFlashDelayMs): Boolean {
+    var shown by useState(false)
+    val timer = useRef<Int>(null)
+    useEffect(active) {
+        // Clear any pending timer from the previous run first, so a quick active→inactive→active never leaves
+        // two racing. (This codebase does its timer cleanup on the next run rather than via an effect-cleanup
+        // callback -- see the debounce in Users.kt.)
+        timer.current?.let { clearTimer(it) }
+        timer.current = null
+        if (!active) {
+            shown = false
+        } else if (!shown) {
+            timer.current = setTimer({ shown = true }, delayMs)
+        }
+    }
+    return shown
+}
+
+/** The browser's `setTimeout`/`clearTimeout`, declared locally rather than reaching for a DOM wrapper. */
+private fun setTimer(block: () -> Unit, delayMs: Int): Int = js("setTimeout(block, delayMs)") as Int
+private fun clearTimer(id: Int) {
+    js("clearTimeout(id)")
 }
 
 /** One anchor menu item; navigating by hash fires `hashchange`, which the router and this bar react to. */

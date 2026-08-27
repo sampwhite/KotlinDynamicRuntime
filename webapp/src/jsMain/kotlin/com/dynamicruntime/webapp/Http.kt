@@ -161,15 +161,21 @@ object Http {
             //
             // Handled here rather than at each call site because it can arrive on ANY of them -- a session
             // expires between two background refreshes, not at a moment a screen chose.
-            redirectToEnvAuthLogin(text.jsonMap())?.let { throw it }
+            // Parse the body as the error envelope only if it *is* one. A non-JSON error body -- the terse
+            // context-root 404, or a fragment 404 that `MarkdownFragmentService` serves as `text/plain` -- is
+            // not, and `jsonMap()` **throws** on it rather than returning null (issue #469: that throw used to
+            // escape and hide the 404 the stale-fragment recovery keys off). Catch it here, once.
+            val env = runCatching { text.jsonMap() }.getOrNull()
+            redirectToEnvAuthLogin(env)?.let { throw it }
             // Carry the whole error envelope up as a structured error (issue #111), so a display site can decide
             // how to present it -- designed fragment copy vs. a raw/internal message -- rather than seeing only a
-            // string. A non-JSON error body (e.g., the terse context-root 404) yields a null map and a fallback.
-            val env = text.jsonMap()
+            // string.
             throw ApiError(
                 message = env?.get(EP.errorMessage) as? String ?: "$method $url failed with status ${response.status}",
                 fromFragment = env?.get(EP.errorFromFragment) == true,
-                status = (env?.get(EP.status) as? Number)?.toInt(),
+                // The envelope's status when present, else the transport status -- so a non-envelope error (a
+                // fragment 404) still carries its code for a caller keying on it (issue #469; EditFormPage too).
+                status = (env?.get(EP.status) as? Number)?.toInt() ?: (response.status as? Number)?.toInt(),
                 errorCode = env?.get(EP.errorCode) as? String,
                 traceId = traceId,
             )

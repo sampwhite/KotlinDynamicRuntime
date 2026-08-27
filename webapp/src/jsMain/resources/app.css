@@ -126,6 +126,10 @@ body {
     letter-spacing: 0.03em;
 }
 .app-bar-logo { display: block; width: 26px; height: 26px; }
+/* The wordmark's loading cue (issue #469): a muted, lighter-weight ellipsis beside the mark, distinct from the
+   loaded wordmark so it reads as "still arriving" rather than as the brand itself. Only shown after a short
+   delay (see useDelayedFlag), so a fast load never flashes it. */
+.app-bar-brand-loading { color: var(--text-faint); font-weight: 400; letter-spacing: normal; }
 
 /* The app bar while the signed-in user holds administrative rights: a standing visual cue that actions taken
    here carry more weight than usual. The colour is deliberately not the only signal -- see .admin-badge --

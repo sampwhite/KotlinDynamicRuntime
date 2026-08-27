@@ -70,7 +70,11 @@ val Profile = FC<Props> {
     useEffect(generation) {
         loadConfig { c ->
             profileScope.launch {
-                copy = runCatching { fetchCopy(c.fragment) }.getOrDefault(Copy.empty)
+                // Recover a stale build id (a rolling deploy) via the shared retry, rather than silently
+                // falling back to Copy.empty and showing every label's hardcoded default forever (#469).
+                copy = runCatching {
+                    fetchCopyWithRetry(c.fragment) { runCatching { ProfileApi.fetchConfig().fragment }.getOrNull() }
+                }.getOrDefault(Copy.empty)
             }
         }
     }
