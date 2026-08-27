@@ -25,7 +25,7 @@ class InstantRange(val after: Instant? = null, val before: Instant? = null) {
  *
  * **[userSearchFields] is the one extensibility point.** The issue's own framing is that each new user
  * attribute is "another search & sort combination"; a field added to that registry becomes both filterable
- * (when it declares [UserSearchField.textOf]) and sortable, with no new code path. [searchUserRows] below is
+ * (when it declares [UserSearchField.textsOf]) and sortable, with no new code path. [searchUserRows] below is
  * pure -- rows in, a page out -- so it is covered under Kotest without a server.
  */
 
@@ -33,8 +33,8 @@ class InstantRange(val after: Instant? = null, val before: Instant? = null) {
  * One searchable and/or sortable user attribute.
  *
  * Every field is **sortable** ([sortOf]); a field is additionally **text-searchable** when it declares
- * [textOf]. The update time is the one field that is sortable but not text-searchable -- it is filtered by a
- * date *range* instead (see [UserSearchCriteria.updatedAfter]), which is a different shape of filter and lives
+ * [textsOf]. The update time is the one field that is sortable but not text-searchable -- it is filtered by a
+ * date *range* instead (see [UserSearchCriteria.dateRanges]), which is a different shape of filter and lives
  * apart from the uniform text one.
  */
 class UserSearchField(
@@ -105,7 +105,7 @@ private fun UserDateField.asSearchField(): UserSearchField =
 
 /**
  * The searchable/sortable user attributes (issue #411). Add an attribute here and it is searchable (if it
- * names [UserSearchField.textOf]) and sortable at once; the console offers the same set as columns to order
+ * names [UserSearchField.textsOf]) and sortable at once; the console offers the same set as columns to order
  * on. Text fields sort on a lower-cased value so the order matches the case-insensitive match.
  */
 val userSearchFields: List<UserSearchField> = listOf(
