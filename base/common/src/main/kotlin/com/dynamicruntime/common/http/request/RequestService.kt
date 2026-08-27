@@ -330,6 +330,30 @@ class RequestService : ServiceInitializer {
                     "capability).",
             )
         }
+
+        // Test-only request-misbehavior scenarios (issue #471), when configured, are checked two ways at boot.
+        if (VariantBehavior.isEnabled(cxt.instanceConfig)) {
+            // (1) They must never reach a real environment: a delay *consumes* -- it holds a worker -- so an
+            // enabled facility is a denial-of-service lever. Refuse to boot outside a developer/test environment,
+            // the same fatal shape as `SchemaService.checkInit`'s test-instance refusal. Gated on the
+            // *environment*, not `isTestInstance`: an ordinary local run against a real database is not a test
+            // instance, yet is exactly where somebody wants to watch a spinner in a real browser.
+            val env = cxt.instanceConfig.env
+            if (env != ENV.local && env != ENV.dev && env != ENV.unit) {
+                throw KdrException(
+                    "Refusing to start: request-variant test scenarios (${ACFG.testVariantScenarios}) are " +
+                        "configured in the '$env' environment. They must NEVER be reachable outside " +
+                        "'local'/'dev'/'unit' -- an injected delay holds a worker and is a denial-of-service " +
+                        "lever. Remove them from the deployment's config for this environment.",
+                )
+            }
+            // (2) A malformed scenario fails loudly here rather than silently misbehaving at request time -- a
+            // name that is not a safe cookie token, a rule that matches everything or does nothing, or a delay
+            // over the ceiling.
+            VariantBehavior.validationError(cxt.instanceConfig)?.let {
+                throw KdrException("Refusing to start: invalid ${ACFG.testVariantScenarios} -- $it")
+            }
+        }
         // Publication is restricted to the user sections (issue #433).
         //
         // Note what this is *not* protecting. `publicApi` decides advertisement, not access, so a stray tag
@@ -459,6 +483,11 @@ class RequestService : ServiceInitializer {
         }
 
         loadProfile(cxt, handler)
+
+        // Test-only misbehavior (issue #471): after auth and before the handler, so every endpoint and content
+        // path is covered without opting in. A no-op unless the deployment configured scenarios *and* the
+        // request carries the selecting cookie -- see [VariantBehavior], which enforces that safety property.
+        VariantBehavior.apply(cxt, handler)
 
         // Dispatch by focus: the API root routes to JSON endpoints; every other root routes to content
         // servers. Each content server self-selects on the request's focus (see [ContentServer]).

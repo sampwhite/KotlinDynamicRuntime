@@ -114,6 +114,16 @@ object ACFG {
     const val idleBumpIntervalMs = "idleBumpIntervalMs"
 
     /**
+     * The named request-misbehavior scenarios this node offers for frontend testing (issue #471) -- a
+     * `List<VariantScenario>`, carried as live objects in the config map rather than a string, which is why it
+     * is a code-side deployment choice (an `AppConfigApplier`) and not an env var. Empty/absent means the
+     * facility is **off**: the selecting cookie does nothing, which is its whole safety property. A node in a
+     * real environment (`prod`/`integration`) refuses to boot with this set -- see `RequestService.onCreate`
+     * and `VariantBehavior`.
+     */
+    const val testVariantScenarios = "testVariantScenarios"
+
+    /**
      * The context root (leading path segment) under which API endpoints are served; defaults to
      * `ContextRoot.kda` when absent. Each kind of traffic binds to its own context root under its own key,
      * and a request whose leading segment matches none of them is fast-failed with a short 404.
