@@ -115,8 +115,12 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 "Exact client id to confine to. Only meaningful to an '${ROLE.allClients}' caller; anyone " +
                     "else is already confined to their own client.",
             )
-            field(USF.updatedAfter, "Only users updated at or after this time (ISO-8601).") { dateTime() }
-            field(USF.updatedBefore, "Only users updated at or before this time (ISO-8601).") { dateTime() }
+            // One pair per date attribute, generated from the registry (issue #462) rather than written out:
+            // the keys and the wording both follow the root, so adding a date adds its range with them.
+            for (date in userDateFields) {
+                field(date.keys.after, "Only users ${date.keys.phrase} at or after this time (ISO-8601).") { dateTime() }
+                field(date.keys.before, "Only users ${date.keys.phrase} at or before this time (ISO-8601).") { dateTime() }
+            }
             field(
                 USF.sortBy,
                 "Which attribute to sort by: ${userSearchFields.joinToString(", ") { "'${it.name}'" }}. " +
@@ -196,7 +200,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null } ?: c.userProfile.org
         requireAssignableOrg(c, org)
         val data = AuthUserRow
-            .mkInitialUser(primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org)
+            .mkInitialUser(primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now())
             .toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
@@ -301,7 +305,14 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         }
         val row = loadEditableUser(c, userId)
         row.enabled = enabled
-        userService(c).updateUser(c, row)
+        // Re-enabling is an **activation**, not an edit (issue #462): it is the account coming back into
+        // being, which is the same event as its creation and the one `activatedAt` records. Disabling is an
+        // ordinary administrative change and takes the default, so the two directions are deliberately not
+        // symmetric.
+        if (enabled) {
+            row.activatedAt = c.now()
+        }
+        userService(c).updateUser(c, row, isEdit = !enabled)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId enabled=$enabled." }
         row.toAdminInfo()
     }
@@ -386,19 +397,6 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
 }
 
 /**
- * Guards the organization an administrator is assigning: one confined to an organization may only ever assign
- * **that** organization (issue #225).
- *
- * Both other answers would be an escalation of a kind. A *different* organization moves the user out of the
- * caller's own scope -- they would be editing somebody into invisibility. **Clearing** it is subtler and
- * worse: a row with no organization is visible to the whole client under the lenient rule, so clearing one
- * widens that user's reach beyond the caller's own. Applied to the caller themselves it is the escape hatch
- * from confinement altogether, which is why this needs no separate self-check.
- *
- * An administrator not confined to an organization -- most of them -- may assign anything, including
- * nothing.
- */
-/**
  * The client a created user belongs to: [named] when the caller may say so, and their own otherwise (issue
  * #352).
  *
@@ -433,6 +431,19 @@ private fun assignableClient(cxt: KdrCxt, named: String?): String {
     return client
 }
 
+/**
+ * Guards the organization an administrator is assigning: one confined to an organization may only ever assign
+ * **that** organization (issue #225).
+ *
+ * Both other answers would be an escalation of a kind. A *different* organization moves the user out of the
+ * caller's own scope -- they would be editing somebody into invisibility. **Clearing** it is subtler and
+ * worse: a row with no organization is visible to the whole client under the lenient rule, so clearing one
+ * widens that user's reach beyond the caller's own. Applied to the caller themselves it is the escape hatch
+ * from confinement altogether, which is why this needs no separate self-check.
+ *
+ * An administrator not confined to an organization -- most of them -- may assign anything, including
+ * nothing.
+ */
 private fun requireAssignableOrg(cxt: KdrCxt, org: String?) {
     val actingOrg = cxt.userProfile.org ?: return
     if (AdminRules.adminScope(cxt) == AdminScope.allClients) return
@@ -506,10 +517,18 @@ private fun parseUserSearch(request: Map<String, Any?>): UserSearchCriteria {
             "Unknown sort field '$sortBy'; expected one of ${userSearchFields.joinToString(", ") { "'${it.name}'" }}.",
         )
     }
+    // The date ranges the caller asked for, keyed by root. A range with neither end is dropped rather than
+    // carried as an empty filter, so `dateRanges` holds only what was actually constrained -- the same rule
+    // the text terms follow.
+    val dateRanges = buildMap {
+        for (date in userDateFields) {
+            val range = InstantRange(request[date.keys.after].toOptInstant(), request[date.keys.before].toOptInstant())
+            if (!range.isEmpty) put(date.keys.root, range)
+        }
+    }
     return UserSearchCriteria(
         textTerms = textTerms,
-        updatedAfter = request[USF.updatedAfter].toOptInstant(),
-        updatedBefore = request[USF.updatedBefore].toOptInstant(),
+        dateRanges = dateRanges,
         sortBy = sortBy ?: USF.updatedAt,
         descending = request.getOptBool(USF.descending) ?: true,
         // Floored at 0: a negative limit would otherwise reach `List.take`, which throws -- surfacing as a 500
@@ -539,7 +558,7 @@ private fun requireUsableRoles(cxt: KdrCxt, roles: List<String>, current: List<S
         throw KdrException.mkInput("You cannot grant the '${ROLE.allClients}' capability; you do not hold it.")
     }
     // The operator *level*, since #464. The operator surface is deployment-wide -- it requires `allClients` as
-    // well as the rung -- so a granter who cannot reach it (one without `allClients`, i.e. a client-scoped
+    // well as the rung -- so a granter who cannot reach it (one without `allClients`, i.e., a client-scoped
     // administrator) may not confer it. Without this they could grant the rung and produce a role set that
     // does nothing -- an operator with no `allClients` reaches no operator endpoint -- with nothing to say why.
     // The gate on the section already makes it *safe*; this makes the refusal *legible*, at the grant.

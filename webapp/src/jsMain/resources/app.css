@@ -126,6 +126,10 @@ body {
     letter-spacing: 0.03em;
 }
 .app-bar-logo { display: block; width: 26px; height: 26px; }
+/* The wordmark's loading cue (issue #469): a muted, lighter-weight ellipsis beside the mark, distinct from the
+   loaded wordmark so it reads as "still arriving" rather than as the brand itself. Only shown after a short
+   delay (see useDelayedFlag), so a fast load never flashes it. */
+.app-bar-brand-loading { color: var(--text-faint); font-weight: 400; letter-spacing: normal; }
 
 /* The app bar while the signed-in user holds administrative rights: a standing visual cue that actions taken
    here carry more weight than usual. The colour is deliberately not the only signal -- see .admin-badge --
@@ -349,6 +353,19 @@ body {
 .card > .type-hint + .type-hint { margin-top: 2px; }
 /* The endpoint browser needs room for the table and wide responses. */
 .card.wide { width: min(1040px, 95vw); }
+/* A table-first page: the content is a grid of many columns, so it takes the window rather than a chosen
+   width. Separate from `.wide` rather than widening it, because 1040 is a deliberate figure for the endpoint
+   browser -- prose and a form read badly at 1600, and a ten-column table reads badly at 1040 (issue #462).
+   `calc` rather than a flat cap so a large monitor is actually used; the cap keeps a line of text readable.
+
+   This only pays off because the controls inside declare their own widths. While they did not, every pixel
+   this rule adds went to the search boxes -- one reached 816px -- and the columns stayed exactly as cramped. */
+.card.full { width: min(1600px, calc(100vw - 48px)); }
+/* ...and when the window is narrower than the table wants, the table scrolls **inside** the card rather than
+   spilling over its edge -- which is what it did, rows running past the rounded corner and off the screen.
+   Pre-existing (ten columns never fitted a phone) and made more visible by the three columns #462 added, so
+   it is fixed here rather than left as the cost of them. `auto`, so the scrollbar exists only when needed. */
+.card .ant-table-wrapper { overflow-x: auto; }
 
 h1 { margin: 0 0 4px; font-size: 1.6rem; }
 h2 { margin: 28px 0 12px; font-size: 1.05rem; color: var(--text-muted); }

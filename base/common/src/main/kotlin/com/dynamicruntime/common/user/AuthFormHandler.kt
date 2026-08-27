@@ -1,6 +1,5 @@
 package com.dynamicruntime.common.user
 
-import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
@@ -183,9 +182,9 @@ class AuthFormHandler(
         // `+acme` tag puts them in `acme`, and anything else -- including a client this node does not carry --
         // is `public`, exactly as every registration was before.
         val data = AuthUserRow
-            .mkInitialUser(contactAddress, AddressRules.clientForNewUser(cxt, contactAddress), initialRoles)
+            .mkInitialUser(contactAddress, AddressRules.clientForNewUser(cxt, contactAddress), initialRoles, createdAt = cxt.now())
             .toMutableMap()
-        @Suppress("UNCHECKED_CAST")
+        @Suppress("UNCHECKED_CAST", "DuplicatedCode")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(contactAddress)
         authUserData[AD.contacts] = listOf(mapOf("address" to contactAddress, "type" to "email"))
@@ -286,7 +285,7 @@ class AuthFormHandler(
     /**
      * Logs a user in from a Google ID token, linking the Google identity to a local user on first use.
      *
-     * The identity is Google's `sub`, held in `LinkedUsers`. Once that link exists it is the *only* thing
+     * The identity is Google's `sub`, held in `LinkedUsers`. Once that link exists, it is the *only* thing
      * consulted, so a later change to the account's Google email -- or that email being reassigned to someone
      * else, which a Workspace domain can do -- cannot re-point the link or hand the account to a stranger.
      *
@@ -351,7 +350,7 @@ class AuthFormHandler(
      */
     private fun mkGoogleUser(cxt: KdrCxt, email: String): AuthUserRow {
         val data = AuthUserRow
-            .mkInitialUser(email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email))
+            .mkInitialUser(email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email), createdAt = cxt.now())
             .toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
@@ -381,10 +380,6 @@ class AuthFormHandler(
     }
 
     /**
-     * Removes the currently-logged-in user's password (opt back out of password login; code login still
-     * works). Reached from the profile page, so it relies on the authenticated session rather than a code.
-     */
-    /**
      * Sets the caller's own [name] -- what they are shown as -- and returns their refreshed info. A blank name
      * clears it, which falls the display back to [AuthUserRow.publicName].
      *
@@ -408,6 +403,10 @@ class AuthFormHandler(
         return live.toUserInfo()
     }
 
+    /**
+     * Removes the currently-logged-in user's password (opt back out of password login; code login still
+     * works). Reached from the profile page, so it relies on the authenticated session rather than a code.
+     */
     fun removePassword(cxt: KdrCxt): Map<String, Any?> {
         val row = userService.queryByUserId(cxt, cxt.userProfile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
@@ -440,7 +439,7 @@ class AuthFormHandler(
             return completeLogin(cxt, existing, byCode = false)
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
-        val data = AuthUserRow.mkInitialUser(email, fixtureClient(cxt, email, client), roles).toMutableMap()
+        val data = AuthUserRow.mkInitialUser(email, fixtureClient(cxt, email, client), roles, createdAt = cxt.now()).toMutableMap()
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(email)
@@ -451,10 +450,6 @@ class AuthFormHandler(
         return completeLogin(cxt, row, byCode = false)
     }
 
-    /**
-     * Binds the acting profile and flags the request for the cookie hook; returns the user-info payload. A
-     * [byCode] login additionally flags the device to be marked familiar (see KdrRequest.trustDevice).
-     */
     /**
      * The client the fixture creates a user in: [named] when it is given, and otherwise whatever [email] says.
      *
@@ -481,6 +476,10 @@ class AuthFormHandler(
         return client
     }
 
+    /**
+     * Binds the acting profile and flags the request for the cookie hook; returns the user-info payload. A
+     * [byCode] login additionally flags the device to be marked familiar (see KdrRequest.trustDevice).
+     */
     private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean): Map<String, Any?> {
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
         // The auto-admin rule is not re-applied here (issue #352). It used to be, so that configuring the
@@ -489,6 +488,13 @@ class AuthFormHandler(
         // about how an account was created, and it only ever grants, so a role an administrator deliberately
         // removed came back at the next login. An address now decides what a user is provisioned as, and from
         // then on their roles are whatever an administrator has made them.
+        // The one place a login *completes* -- byCode, byPassword and Google all funnel through here -- which
+        // is why the stamp goes here and not at each of them (issue #462). It is also why "a refreshed cookie
+        // does not count" needs no enforcing: `extractSessionAuth` restores a profile from a cookie and never
+        // reaches this method. `isEdit = false`, because signing in is not an edit of the account.
+        row.lastLoggedInAt = cxt.now()
+        UserService.get(cxt).updateUser(cxt, row, isEdit = false)
+
         val profile = row.toUserProfile()
         cxt.bindToUserProfile(profile)
         cxt.request?.let {

@@ -91,7 +91,10 @@ class UserSearchTest : StringSpec({
 
     "the update-time range is inclusive on both ends" {
         // [t2, t3] admits ada (t2) and grace (t3) but not alan (t1).
-        val page = searchUserRows(all, UserSearchCriteria(updatedAfter = t2, updatedBefore = t3))
+        val page = searchUserRows(
+            all,
+            UserSearchCriteria(dateRanges = mapOf(USF.updated.root to InstantRange(after = t2, before = t3))),
+        )
         ids(page).sorted() shouldBe listOf(1L, 2L)
     }
 
@@ -109,13 +112,27 @@ class UserSearchTest : StringSpec({
             listOf(1L, 3L, 2L)
     }
 
-    "a null sort value sorts last in both directions" {
+    "a missing date sorts below every date, in both directions" {
+        // Changed by #462, and the pair below is the reason. A dateless row is not "no information" the way a
+        // nameless one is -- it is genuinely earlier than any date, and an administrator sorting by oldest is
+        // hunting exactly those rows. Nulls-last would bury them at the bottom whichever way the sort ran,
+        // hiding what the sort was opened to find.
         val dateless = user(9, "zzz@example.com", "zzz", updatedAt = null)
         val rows = all + dateless
-        // Descending: real dates first, the dateless row last.
+        // Descending (newest first): the dateless row is last, as it always was.
         ids(searchUserRows(rows, UserSearchCriteria(descending = true))).last() shouldBe 9L
-        // Ascending: still last -- nulls are not floated to the top.
-        ids(searchUserRows(rows, UserSearchCriteria(descending = false))).last() shouldBe 9L
+        // Ascending (oldest first): now **first**, which is the half that changed.
+        ids(searchUserRows(rows, UserSearchCriteria(descending = false))).first() shouldBe 9L
+    }
+
+    "a missing text value still sorts last in both directions" {
+        // The other half of the rule, and why it is two rules rather than one: an account with no real-world
+        // name has nothing to order by, so it belongs at the end either way rather than heading an ascending
+        // list of names.
+        val nameless = user(9, "zzz@example.com", "zzz").also { it.name = null }
+        val rows = all + nameless
+        ids(searchUserRows(rows, UserSearchCriteria(sortBy = USF.name, descending = true))).last() shouldBe 9L
+        ids(searchUserRows(rows, UserSearchCriteria(sortBy = USF.name, descending = false))).last() shouldBe 9L
     }
 
     "a tie on the sort field breaks by userId for a stable order" {

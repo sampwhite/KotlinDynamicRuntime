@@ -10,6 +10,7 @@ import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserFilterKind
+import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -67,6 +68,10 @@ class AdminUser(
      * #411). The default sort key of the search, and a column the console can order on.
      */
     val updatedAt: String? = null,
+    /** The tracked dates (issue #462); absent until the event that sets each one has happened. */
+    val lastEditedAt: String? = null,
+    val lastLoggedInAt: String? = null,
+    val activatedAt: String? = null,
 ) {
     /**
      * This user's access level: the highest rung of [RoleLadder] they hold, which is what the Users page's
@@ -231,6 +236,9 @@ object AdminApi {
         hasPassword = this[ADF.hasPassword] == true,
         deleted = this[ADF.deleted] == true,
         updatedAt = this[ADF.updatedAt] as? String,
+        lastEditedAt = this[USF.lastEdited.at] as? String,
+        lastLoggedInAt = this[USF.lastLoggedIn.at] as? String,
+        activatedAt = this[USF.activated.at] as? String,
     )
 }
 
@@ -250,7 +258,7 @@ class DateRange(val after: String? = null, val before: String? = null) {
 class UserSearchQuery(
     val textTerms: Map<String, String> = emptyMap(),
     val ranges: Map<String, DateRange> = emptyMap(),
-    val sortBy: String = USF.updatedAt,
+    val sortBy: String = USF.lastEdited.at,
     val descending: Boolean = true,
 )
 
@@ -273,7 +281,7 @@ fun userSearchArgs(query: UserSearchQuery): Map<String, Any?> = buildMap {
 
 /**
  * One page of a user search: the [users] returned, [numAvailable] (how many matched before the cap), and
- * [hasMore] (whether the cap hid some). The console shows the two counts so an over-broad search reads as
+ * [hasMore] (whether the cap hid some). The console shows the two counts, so an over-broad search reads as
  * "showing 500 of 4000" rather than looking like the whole population.
  */
 class UserSearchResult(val users: List<AdminUser>, val numAvailable: Int, val hasMore: Boolean)

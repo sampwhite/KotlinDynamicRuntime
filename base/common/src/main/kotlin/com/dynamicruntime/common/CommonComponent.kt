@@ -29,6 +29,8 @@ import com.dynamicruntime.common.app.appSchema
 import com.dynamicruntime.common.home.homeMenuBlock
 import com.dynamicruntime.common.home.homeSchema
 import com.dynamicruntime.common.test.testSchema
+import com.dynamicruntime.common.http.request.VariantBehavior
+import com.dynamicruntime.common.http.request.variantSchema
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.portal.PortalService
 import com.dynamicruntime.common.user.UserService
@@ -118,6 +120,13 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(appSchema(cxt))
         // Test-only endpoints (issue #125): filtered out of the store unless the deployment allows them.
         collector.addModule(testSchema(cxt))
+        // Request-variant escape hatch (issue #471): selects a configured misbehavior scenario by cookie so the
+        // frontend's loading/failure states can be driven. App-only -- it exists for the browser talking to this
+        // node -- and registered only when the deployment configured scenarios, so it is not a squatting,
+        // always-400 endpoint on a node that never opted in (the `fixture` section's every-endpoint-is-gated rule).
+        if (VariantBehavior.isEnabled(cxt.instanceConfig)) {
+            collector.addModule(variantSchema(cxt), appOnly)
+        }
         // Fragment checking: the operator endpoint that validates this instance's Markdown fragment files.
         collector.addModule(MarkdownFragmentService.schema(cxt))
         // Gedra data (issue #310): the form-document endpoints and the two tables under them.
