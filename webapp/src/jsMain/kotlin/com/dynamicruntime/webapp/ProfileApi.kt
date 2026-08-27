@@ -34,15 +34,6 @@ class ProfileConfig(
 )
 
 /**
- * The profile widget-group's backend calls (issue #70 Piece 3), keyed off the shared kernel constants so the
- * frontend never re-hardcodes a path or a JSON key the backend serves.
- *
- * Setting or changing a password is **code-verified** even though the caller is already logged in: it is a
- * step-up, and it runs through the same `auth` endpoints the login flow uses ([AuthApi.sendVerifyUser] with
- * `addPassword`, then [AuthApi.setPassword]). Only *removing* a password is a plain session call -- it is a
- * de-escalation, and code login still works afterward.
- */
-/**
  * The pure [UiConfig] -> [ProfileConfig] mapping, separated from the fetch so it is unit-testable (issue #161):
  * the password affordance flags, the caller's profile, and the login id its password calls need.
  */
@@ -57,6 +48,15 @@ fun profileConfigFrom(config: UiConfig): ProfileConfig = ProfileConfig(
     loginId = config.state.getOptStr(AFLD.loginId) ?: "",
 )
 
+/**
+ * The profile widget-group's backend calls (issue #70 Piece 3), keyed off the shared kernel constants so the
+ * frontend never re-hardcodes a path or a JSON key the backend serves.
+ *
+ * Setting or changing a password is **code-verified** even though the caller is already logged in: it is a
+ * step-up, and it runs through the same `auth` endpoints the login flow uses ([AuthApi.sendVerifyUser] with
+ * `addPassword`, then [AuthApi.setPassword]). Only *removing* a password is a plain session call -- it is a
+ * de-escalation, and code login still works afterward.
+ */
 object ProfileApi {
     /** GET the profile UI-config. Login-required: a logged-out caller raises, and the page sends them to login. */
     suspend fun fetchConfig(): ProfileConfig = profileConfigFrom(fetchUiConfig(AEP.profileUiConfig))

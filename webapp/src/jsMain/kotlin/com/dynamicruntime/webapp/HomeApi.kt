@@ -34,16 +34,6 @@ class HomeConfig(
 )
 
 /**
- * The home widget-group's backend calls, all keyed off the shared kernel constants so the frontend never
- * re-hardcodes a path or a JSON key the backend serves:
- *  - The **UI-config** (fetchConfig) -- the construction manifest: which fragment holds the copy, which
- *    layout affordances are on, and which documents to link to;
- *  - A linked **document** (fetchDoc) -- whole Markdown, rendered by [Markdown].
- *
- * The group's copy comes from the shared [fetchCopy]. Everything goes through [Http], which carries the
- * runtime's conventions (the roots, the app id, the error envelope) for every group alike.
- */
-/**
  * The pure [UiConfig] -> [HomeConfig] mapping, separated from the fetch so it is unit-testable (issue #161):
  * the links and menu lists, the layout toggles, the caller's profile, and the manage-users flag, all read off
  * the group's own keys with per-field fallbacks.
@@ -79,6 +69,16 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
     )
 }
 
+/**
+ * The home widget-group's backend calls, all keyed off the shared kernel constants so the frontend never
+ * re-hardcodes a path or a JSON key the backend serves:
+ *  - The **UI-config** (fetchConfig) -- the construction manifest: which fragment holds the copy, which
+ *    layout affordances are on, and which documents to link to;
+ *  - A linked **document** (fetchDoc) -- whole Markdown, rendered by [Markdown].
+ *
+ * The group's copy comes from the shared [fetchCopy]. Everything goes through [Http], which carries the
+ * runtime's conventions (the roots, the app id, the error envelope) for every group alike.
+ */
 object HomeApi {
     /** GET the home UI-config -- cheap and meant to be re-fetched on navigation. */
     suspend fun fetchConfig(): HomeConfig = homeConfigFrom(fetchUiConfig(HEP.homeUiConfig))
