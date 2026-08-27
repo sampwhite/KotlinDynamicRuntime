@@ -138,7 +138,7 @@ fun uiBlockProblems(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<S
 }
 
 /**
- * Removes every object whose [UIB.cfact] expression is not satisfied by [present].
+ * Removes every object whose [UIB.cfactExpression] expression is not satisfied by [present].
  *
  * **Recursive, and keyed on the presence of the field rather than on where the object sits.** One rule, so a
  * UiBlock can grow a shape the resolver has never seen -- a section, an action inside an item -- and its
@@ -156,7 +156,7 @@ fun filterByCFacts(
         // condition decided whether this object is here at all, and the order decided where it sits in an
         // array that is now sorted -- and shipping them would put the caller's vocabulary on the wire and
         // invite a frontend to re-sort a list the backend already ordered.
-        if (key == UIB.cfact || key == UIB.displayOrder) continue
+        if (key == UIB.cfactExpression || key == UIB.displayOrder) continue
         when (value) {
             is Map<*, *> -> {
                 val child = asObject(value)
@@ -178,7 +178,7 @@ fun filterByCFacts(
 
 /** Whether [node]'s condition (if it states one) is satisfied; an object stating none always matches. */
 private fun matches(node: Map<String, Any?>, present: Set<String>, predicate: (String) -> CFactPredicate): Boolean {
-    val expression = node[UIB.cfact].toOptStr() ?: return true
+    val expression = node[UIB.cfactExpression].toOptStr() ?: return true
     return predicate(expression).matches(present)
 }
 
@@ -187,7 +187,7 @@ fun collectExpressions(node: Map<String, Any?>): List<String> {
     val out = mutableListOf<String>()
     for ((key, value) in node) {
         when {
-            key == UIB.cfact -> value.toOptStr()?.let { out.add(it) }
+            key == UIB.cfactExpression -> value.toOptStr()?.let { out.add(it) }
             value is Map<*, *> -> out.addAll(collectExpressions(asObject(value)))
             value is List<*> -> value.forEach { if (it is Map<*, *>) out.addAll(collectExpressions(asObject(it))) }
         }

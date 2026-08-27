@@ -147,17 +147,17 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
 ) {
     items(HFLD.menu) {
         menuItem(HMENU.catalog, "Endpoint catalog", page = HMENU.pageCatalog)
-        menuItem(HMENU.users, "Users", page = HMENU.pageUsers, cfact = CFACTS.hasAdminLevel)
-        menuItem(HMENU.envReference, "Environment", page = HMENU.pageEnv, cfact = CFACTS.isDeploymentOperator)
+        menuItem(HMENU.users, "Users", page = HMENU.pageUsers, cfactExpression = CFACTS.hasAdminLevel)
+        menuItem(HMENU.envReference, "Environment", page = HMENU.pageEnv, cfactExpression = CFACTS.isDeploymentOperator)
         // Forms are login-gated only (the `gedra` section), so every signed-in caller is offered the list; how
         // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"
         // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
         // "New form" button rather than a second, redundant nav item (issue #417).
-        menuItem(HMENU.forms, "My forms", page = HMENU.pageForms, cfact = CFACTS.loggedIn)
-        menuItem(HMENU.profile, "Profile", page = HMENU.pageProfile, cfact = CFACTS.loggedIn)
-        menuItem(HMENU.logout, "Log out", action = HMENU.logout, cfact = CFACTS.loggedIn)
-        menuItem(HMENU.login, "Log in", page = HMENU.pageLogin, cfact = CFACTS.anonymous)
-        menuItem(HMENU.register, "Register", page = HMENU.pageRegister, cfact = CFACTS.anonymous)
+        menuItem(HMENU.forms, "My forms", page = HMENU.pageForms, cfactExpression = CFACTS.loggedIn)
+        menuItem(HMENU.profile, "Profile", page = HMENU.pageProfile, cfactExpression = CFACTS.loggedIn)
+        menuItem(HMENU.logout, "Log out", action = HMENU.logout, cfactExpression = CFACTS.loggedIn)
+        menuItem(HMENU.login, "Log in", page = HMENU.pageLogin, cfactExpression = CFACTS.anonymous)
+        menuItem(HMENU.register, "Register", page = HMENU.pageRegister, cfactExpression = CFACTS.anonymous)
     }
 }
 

@@ -16,7 +16,7 @@ package com.dynamicruntime.common.uiblock
  * ### Additive and overriding only -- nothing is ever removed
  *
  * There is no tombstone, no remove marker, and no rule about one overlay deleting what a later one expected to
- * find. An overlay takes an item away by setting its [UIB.cfact] to `#never`, which is resolved later, per
+ * find. An overlay takes an item away by setting its [UIB.cfactExpression] to `#never`, which is resolved later, per
  * request. Three things follow: the base stays one readable list of everything that exists, *"why is this
  * gone?"* is answered by reading the item rather than by diffing overlays in load order, and `#always` puts it
  * back.

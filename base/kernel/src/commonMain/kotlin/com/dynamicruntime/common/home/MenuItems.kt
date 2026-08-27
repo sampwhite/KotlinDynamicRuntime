@@ -30,7 +30,7 @@ fun UiBlockItemsBuilder.menuItem(
     page: String? = null,
     action: String? = null,
     /** The cfact expression deciding whether this caller is offered the item; absent means always. */
-    cfact: String? = null,
+    cfactExpression: String? = null,
     /** Where it sorts. Absent lets a base's items take their written order, and an overlay must state it. */
     displayOrder: Int? = null,
 ) {
@@ -45,7 +45,7 @@ fun UiBlockItemsBuilder.menuItem(
         if (label != null) set(HFLD.label, label)
         if (page != null) set(HFLD.page, page)
         if (action != null) set(HFLD.action, action)
-        if (cfact != null) set(UIB.cfact, cfact)
+        if (cfactExpression != null) set(UIB.cfactExpression, cfactExpression)
         if (displayOrder != null) set(UIB.displayOrder, displayOrder)
     }
 }

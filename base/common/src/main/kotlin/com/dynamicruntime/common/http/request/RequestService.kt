@@ -127,7 +127,7 @@ class RequestService : ServiceInitializer {
      * not this one with a narrowed view.
      *
      * **The bare name means deployment-wide.** The role model draws two axes -- level ([RoleLadder]:
-     * `user` < `operator` < `admin`) and, for a privileged section, scope (deployment-wide vs one client) --
+     * `user` < `operator` < `admin`) and, for a privileged section, scope (deployment-wide vs. one client) --
      * and four sections name the cells (issue #466):
      *
      * |            | deployment-wide (`allClients`) | one client        |
