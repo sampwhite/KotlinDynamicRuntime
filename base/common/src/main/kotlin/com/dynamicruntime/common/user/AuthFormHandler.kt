@@ -1,6 +1,5 @@
 package com.dynamicruntime.common.user
 
-import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
@@ -381,10 +380,6 @@ class AuthFormHandler(
     }
 
     /**
-     * Removes the currently-logged-in user's password (opt back out of password login; code login still
-     * works). Reached from the profile page, so it relies on the authenticated session rather than a code.
-     */
-    /**
      * Sets the caller's own [name] -- what they are shown as -- and returns their refreshed info. A blank name
      * clears it, which falls the display back to [AuthUserRow.publicName].
      *
@@ -408,6 +403,10 @@ class AuthFormHandler(
         return live.toUserInfo()
     }
 
+    /**
+     * Removes the currently-logged-in user's password (opt back out of password login; code login still
+     * works). Reached from the profile page, so it relies on the authenticated session rather than a code.
+     */
     fun removePassword(cxt: KdrCxt): Map<String, Any?> {
         val row = userService.queryByUserId(cxt, cxt.userProfile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
@@ -452,10 +451,6 @@ class AuthFormHandler(
     }
 
     /**
-     * Binds the acting profile and flags the request for the cookie hook; returns the user-info payload. A
-     * [byCode] login additionally flags the device to be marked familiar (see KdrRequest.trustDevice).
-     */
-    /**
      * The client the fixture creates a user in: [named] when it is given, and otherwise whatever [email] says.
      *
      * An explicit client this node does not carry is **refused**, where a registration falls back to `public`.
@@ -481,6 +476,10 @@ class AuthFormHandler(
         return client
     }
 
+    /**
+     * Binds the acting profile and flags the request for the cookie hook; returns the user-info payload. A
+     * [byCode] login additionally flags the device to be marked familiar (see KdrRequest.trustDevice).
+     */
     private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean): Map<String, Any?> {
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
         // The auto-admin rule is not re-applied here (issue #352). It used to be, so that configuring the

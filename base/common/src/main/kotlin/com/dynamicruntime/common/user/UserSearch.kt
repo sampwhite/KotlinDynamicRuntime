@@ -3,18 +3,6 @@ package com.dynamicruntime.common.user
 import kotlin.time.Instant
 
 /**
- * A closed-at-both-ends date range, either end optional (issue #462).
- *
- * A pair rather than two loose values because that is what a caller supplies and what a filter consumes: the
- * two halves of one question, and keeping them together is what lets a date field be one map entry rather
- * than two.
- */
-class InstantRange(val after: Instant? = null, val before: Instant? = null) {
-    /** Whether this constrains anything -- a range with neither end is not a filter. */
-    val isEmpty: Boolean get() = after == null && before == null
-}
-
-/**
  * The brute-force search/sort over the user cache (issue #411).
  *
  * The whole feature is a scan of active users held in memory (`UserService.searchUsers`) rather than an SQL
@@ -28,6 +16,18 @@ class InstantRange(val after: Instant? = null, val before: Instant? = null) {
  * (when it declares [UserSearchField.textsOf]) and sortable, with no new code path. [searchUserRows] below is
  * pure -- rows in, a page out -- so it is covered under Kotest without a server.
  */
+
+/**
+ * A closed-at-both-ends date range, either end optional (issue #462).
+ *
+ * A pair rather than two loose values because that is what a caller supplies and what a filter consumes: the
+ * two halves of one question, and keeping them together is what lets a date field be one map entry rather
+ * than two.
+ */
+class InstantRange(val after: Instant? = null, val before: Instant? = null) {
+    /** Whether this constrains anything -- a range with neither end is not a filter. */
+    val isEmpty: Boolean get() = after == null && before == null
+}
 
 /**
  * One searchable and/or sortable user attribute.

@@ -558,7 +558,7 @@ private fun requireUsableRoles(cxt: KdrCxt, roles: List<String>, current: List<S
         throw KdrException.mkInput("You cannot grant the '${ROLE.allClients}' capability; you do not hold it.")
     }
     // The operator *level*, since #464. The operator surface is deployment-wide -- it requires `allClients` as
-    // well as the rung -- so a granter who cannot reach it (one without `allClients`, i.e. a client-scoped
+    // well as the rung -- so a granter who cannot reach it (one without `allClients`, i.e., a client-scoped
     // administrator) may not confer it. Without this they could grant the rung and produce a role set that
     // does nothing -- an operator with no `allClients` reaches no operator endpoint -- with nothing to say why.
     // The gate on the section already makes it *safe*; this makes the refusal *legible*, at the grant.
