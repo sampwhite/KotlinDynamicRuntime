@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.http.request.VariantScenario
 import com.dynamicruntime.common.sql.DbEnv
 
 @Suppress("MoveLambdaOutsideParentheses", "unused")
@@ -33,4 +34,13 @@ class AppConfigBuilder(cxt: KdrCxt, data: MutableMap<String,Any?>) : KdrConfigDa
      * to an env var, which is for ops/environment concerns.
      */
     var idleBumpIntervalMs: Int by data
+
+    /**
+     * Named request-misbehavior scenarios for frontend testing (issue #471) -- slow or failed responses a
+     * browser can be driven through. Left unset here, so the facility is off by default; a deployment that
+     * wants it declares scenarios in its own `customConfig` applier. Carried as live objects (not a string),
+     * which is why it is a code-side choice rather than an env var. A real environment refuses to boot with
+     * this set. See [VariantScenario] and `VariantBehavior`.
+     */
+    var testVariantScenarios: List<VariantScenario> by data
 }
