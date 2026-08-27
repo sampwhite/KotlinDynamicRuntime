@@ -87,9 +87,12 @@ class ProbeContext(val baseUrl: String, val args: List<String>) : AutoCloseable 
     fun sessionAt(level: String?): ProbeSession {
         val session = session(level ?: anonymousLabel)
         if (level != null) {
-            // An administrator gets the full-scope capability too (issue #225): the `admin` section requires
-            // it, so a probe admin without it would be refused the very surface a scenario walks it to.
-            val capabilities = if (level == ROLE.admin) listOf(ROLE.allClients) else emptyList()
+            // An administrator gets the full-scope capability too (issue #225), and so now does an operator
+            // (issue #464): both the `admin` and the `operator` sections require `allClients`, so a probe at
+            // either level without it would be refused the very surface a scenario walks it to. Driving those
+            // surfaces is the point of `--as`, so the deployment-scoped capability rides along with the level.
+            val capabilities =
+                if (level == ROLE.admin || level == ROLE.operator) listOf(ROLE.allClients) else emptyList()
             session.becomeUser("probe-$level@example.com", level, capabilities)
         }
         return session

@@ -54,40 +54,65 @@ class OperatorRoleTest : StringSpec({
         plain.expectError(EXC.notAuthorized, systemInfo)
     }
 
-    "an operator reaches the operator section once the role is granted" {
+    /**
+     * The change (issue #464): the operator section now demands the `allClients` capability as well as the
+     * level, so granting the operator *role* alone -- which a client-scoped admin can do to one of their own
+     * users -- does not open the deployment surface. The grant lands (the role really is held, the dispatcher
+     * re-reads live roles) and the section still refuses it.
+     */
+    "an operator without allClients is refused the operator section" {
         val admin = TestUser.createFullAdmin(cxt, "grantor-op@example.com")
         val operator = TestUser.create(cxt, "operator-op@example.com")
-        operator.expectError(EXC.notAuthorized, systemInfo) // an ordinary user until the grant lands
-
         grantOperator(admin, operator)
 
-        // The dispatcher re-reads live roles before enforcing, so the grant takes effect on the very next
-        // request -- the session cookie's stale role list does not have to be re-issued first.
         operator.selfRoles() shouldContain ROLE.operator
+        operator.selfRoles().contains(ROLE.allClients) shouldBe false
+        operator.expectError(EXC.notAuthorized, systemInfo)
+    }
+
+    /** A deployment operator -- the level plus the capability -- is what the section now asks for. */
+    "a deployment operator (operator + allClients) reaches the operator section" {
+        val operator = TestUser.createOperator(cxt, "deploy-op@example.com")
+
+        operator.selfRoles() shouldContain ROLE.operator
+        operator.selfRoles() shouldContain ROLE.allClients
         operator.getData(systemInfo).isEmpty() shouldBe false
     }
 
-    /** The point of ranking: nobody grants the admin `operator`, and the admin gets in regardless. */
-    "an admin reaches the operator section without holding the operator role" {
-        val admin = TestUser.create(cxt, "boss-op@example.com", level = ROLE.admin)
+    /**
+     * The point of #464: a **client-scoped** admin -- the admin level without `allClients` -- satisfies the
+     * operator rung on the ladder but is laddered off the section by the missing capability. They administer
+     * one client's users; the deployment's operational internals are not theirs.
+     */
+    "a client-scoped admin is refused the operator section" {
+        val scoped = TestUser.create(cxt, "scoped-adm-op@example.com", level = ROLE.admin)
+
+        scoped.selfRoles().contains(ROLE.allClients) shouldBe false
+        scoped.expectError(EXC.notAuthorized, systemInfo)
+    }
+
+    /** A full-scope admin reaches it: the level satisfies the operator rung and the capability is held. */
+    "a full-scope admin reaches the operator section" {
+        val admin = TestUser.createFullAdmin(cxt, "boss-op@example.com")
 
         admin.selfRoles().contains(ROLE.operator) shouldBe false
         admin.getData(systemInfo).isEmpty() shouldBe false
     }
 
-    /** The other direction, which is the whole request: operator must not be a way into admin surfaces. */
-    "an operator is still refused an admin section" {
-        val admin = TestUser.createFullAdmin(cxt, "boss2-op@example.com")
-        val operator = TestUser.create(cxt, "operator2-op@example.com")
-        grantOperator(admin, operator)
+    /**
+     * The other direction: the operator surface is not a way into the admin one. A deployment operator holds
+     * `allClients` but not the admin *level*, so the admin section -- which needs both -- still refuses them.
+     */
+    "a deployment operator is still refused an admin section" {
+        val operator = TestUser.createOperator(cxt, "operator2-op@example.com")
 
         operator.selfRoles() shouldContain ROLE.operator
         operator.expectError(EXC.notAuthorized, ADEP.users)
     }
 
     "the system report carries node identity, uptime and VM statistics" {
-        val admin = TestUser.create(cxt, "report-op@example.com", level = ROLE.admin)
-        val info = admin.getData(systemInfo)
+        val operator = TestUser.createOperator(cxt, "report-op@example.com")
+        val info = operator.getData(systemInfo)
 
         val node = info[OSI.node].toJsonMapOrEmpty()
         node[OSI.nodeId].toOptStr().isNullOrBlank() shouldBe false
@@ -116,9 +141,9 @@ class OperatorRoleTest : StringSpec({
      * on the collector counts, which a concurrent collector can move on its own at any moment.
      */
     "no collection happens unless one is asked for" {
-        val admin = TestUser.create(cxt, "nogc-op@example.com", level = ROLE.admin)
+        val operator = TestUser.createOperator(cxt, "nogc-op@example.com")
 
-        val gc = admin.getData(systemInfo)[OSI.gc].toJsonMapOrEmpty()
+        val gc = operator.getData(systemInfo)[OSI.gc].toJsonMapOrEmpty()
         gc[OSI.requested] shouldBe false
         // Nothing ran, so there is no before/after to report -- a `freed` of 0 would claim a collection did.
         gc.containsKey(OSI.freed) shouldBe false
@@ -126,9 +151,9 @@ class OperatorRoleTest : StringSpec({
     }
 
     "collect=true requests a collection and reports what it reclaimed" {
-        val admin = TestUser.create(cxt, "gc-op@example.com", level = ROLE.admin)
+        val operator = TestUser.createOperator(cxt, "gc-op@example.com")
 
-        val gc = admin.getData(systemInfo, mapOf(OSI.collect to true))[OSI.gc].toJsonMapOrEmpty()
+        val gc = operator.getData(systemInfo, mapOf(OSI.collect to true))[OSI.gc].toJsonMapOrEmpty()
         gc[OSI.requested] shouldBe true
 
         // The JVM may ignore the request, so `freed` is not asserted to be positive -- but the readings that
@@ -140,8 +165,8 @@ class OperatorRoleTest : StringSpec({
 
     /** The field is declared, so the input type is closed around it: a misspelling is a 400, not a silent no-op. */
     "an undeclared query parameter is rejected" {
-        val admin = TestUser.create(cxt, "badparam-op@example.com", level = ROLE.admin)
+        val operator = TestUser.createOperator(cxt, "badparam-op@example.com")
 
-        admin.client.sendGetRequest(systemInfo, mapOf("collectt" to "true")).rptStatusCode shouldBe EXC.badInput
+        operator.client.sendGetRequest(systemInfo, mapOf("collectt" to "true")).rptStatusCode shouldBe EXC.badInput
     }
 })

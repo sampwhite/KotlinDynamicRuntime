@@ -430,8 +430,11 @@ val alice = TestUser.create(cxt, "alice@example.com", level = ROLE.admin)
 alice.userId shouldBeGreaterThan 0L
 alice.getData("/profile/ui/config")   // made as alice; getData/postData unwrap `results`
 
-val opal = TestUser.create(cxt, "opal@example.com", level = ROLE.operator)
-opal.getData("/operator/system/info")            // an operator section
+// A deployment operator: the operator level plus the `allClients` capability. Since #464 the `operator`
+// section requires the capability as well as the level (it is a deployment-wide surface), so the level
+// alone -- a client-confined operator -- no longer reaches it. `createFullAdmin` is the admin equivalent.
+val opal = TestUser.createOperator(cxt, "opal@example.com")
+opal.getData("/operator/system/info")            // the deployment operator section
 opal.expectError(EXC.notAuthorized, ADEP.users)  // ...but not an admin one
 ```
 

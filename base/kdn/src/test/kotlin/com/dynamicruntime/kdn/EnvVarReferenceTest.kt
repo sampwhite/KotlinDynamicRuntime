@@ -35,7 +35,7 @@ class EnvVarReferenceTest : StringSpec({
                 LogSetup.rootLogLevelEnvVar.name to "",
             ),
         )
-        val operator = TestUser.create(cxt, "env-op@example.com", level = ROLE.operator)
+        val operator = TestUser.createOperator(cxt, "env-op@example.com")
 
         val md = operator.getData(OENV.envReferencePath)[OENV.markdown].toString()
         md shouldContain "# Environment variables"

@@ -68,9 +68,11 @@ class BecomeUserEndpointTest : StringSpec({
         roles.contains(ROLE.user) shouldBe true
         roles.contains(ROLE.admin) shouldBe false
 
-        // The ladder is what makes this useful: the operator reaches an operator section for real.
-        operator.getData("/operator/system/info").isEmpty() shouldBe false
-        operator.expectError(EXC.notAuthorized, ADEP.users) // ...and still not an admin section
+        // The level really is applied, but on its own opens nothing: since #464 the operator section demands
+        // the `allClients` capability as well as the level (a client-confined operator is not a deployment
+        // one), and the admin section demands the admin level. Both refuse a bare operator.
+        operator.expectError(EXC.notAuthorized, "/operator/system/info")
+        operator.expectError(EXC.notAuthorized, ADEP.users)
     }
 
     /** An unrecognized level can only under-grant, so a typo cannot hand out privileges. */

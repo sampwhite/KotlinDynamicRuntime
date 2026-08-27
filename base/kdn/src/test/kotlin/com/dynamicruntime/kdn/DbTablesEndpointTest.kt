@@ -32,16 +32,10 @@ class DbTablesEndpointTest : StringSpec({
         TestUser.create(cxt, "plain-db@example.com").expectError(EXC.notAuthorized, path)
     }
 
-    "an operator lists the registered tables, including InstanceConfig" {
-        val admin = TestUser.createFullAdmin(cxt, "grantor-db@example.com")
-        val operator = TestUser.create(cxt, "operator-db@example.com")
-        admin.postData(
-            com.dynamicruntime.common.user.ADEP.userSetRoles,
-            mapOf(
-                com.dynamicruntime.common.user.ADF.userId to operator.userId,
-                com.dynamicruntime.common.user.ADF.roles to listOf(ROLE.user, ROLE.operator),
-            ),
-        )
+    "a deployment operator lists the registered tables, including InstanceConfig" {
+        // A deployment operator -- the operator level plus `allClients` (issue #464); the level alone no longer
+        // reaches the operator section, which is deployment-wide.
+        val operator = TestUser.createOperator(cxt, "operator-db@example.com")
 
         val items = operator.getItems(path)
         items.map { it[TI.tableName] } shouldContain "InstanceConfig"
