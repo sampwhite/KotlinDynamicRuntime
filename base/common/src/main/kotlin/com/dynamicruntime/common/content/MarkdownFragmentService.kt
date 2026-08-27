@@ -132,7 +132,14 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         val fileIds = if (only != null) listOf(only) else sources.map { it.fileId }.distinct()
         return fileIds.flatMap { fileId ->
             val forFile = sources.filter { it.fileId == fileId }
-            val clients = listOf<String?>(null) + forFile.mapNotNull { it.client }.distinct()
+            // A base layer belongs to no client, so a file whose base is absent is absent for everybody. One
+            // row rather than one per client: they would each report the same missing resource, and a boot
+            // refusal listing it three times reads as three broken files.
+            val clients = if (!mergeFragmentLayers(fileId, forFile, null).found) {
+                listOf<String?>(null)
+            } else {
+                listOf<String?>(null) + forFile.mapNotNull { it.client }.distinct()
+            }
             clients.map { client ->
                 val merged = mergeFragmentLayers(fileId, forFile, client)
                 val entries = merged.content.fragmentPaths().map { e ->
@@ -171,20 +178,28 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         // URL and being answered with their own content would put that answer in a shared cache under that
         // client's URL, and the client would then be served it. Answering by build id makes the URL mean one
         // document again, which is the property the permanent cache was always resting on.
-        val effective = if (requestedBuildId.isEmpty()) {
-            effectiveFragments(cxt, fileId)
-        } else {
+        val versioned = requestedBuildId.isNotEmpty()
+        val effective = if (versioned) {
             fragmentsWithBuildId(cxt, fileId, requestedBuildId)
+        } else {
+            effectiveFragments(cxt, fileId)
         }
         if (effective == null || !effective.found) {
             // Explicitly uncached: a stale URL from a redeploy lands here, and a cached 404 would keep
             // answering for a file that exists. The frontend's next UI-config call hands it a current ref.
-            handler.setResponseHeader("Cache-Control", "no-store")
+            handler.setResponseHeader("Cache-Control", noStore)
             handler.sendStringResponse("No fragment file '$fileId'.", EXC.notFound, "text/plain")
             return true
         }
-        // Immutable, long-lived cache: the versioned URL is the cache key, so a new buildId is a new URL.
-        handler.setResponseHeader("Cache-Control", cacheControl)
+        // **Only a versioned URL is cacheable**, and this is the whole of what makes the permanent header
+        // safe. A bare `/st/<appId>/md/<fileId>` names no particular document -- it is answered with whatever
+        // *this caller* reads -- so storing that answer under that URL is precisely the poisoning the build id
+        // exists to prevent: the first requester's copy would be served to every client behind the cache.
+        //
+        // Answered rather than refused, because it is reachable without malice: a hand-driven `curl`, and a
+        // frontend whose UI-config gave it no build id (`fetchUiConfig` defaults a missing one to empty). Both
+        // want the content; neither may leave it in a shared cache.
+        handler.setResponseHeader("Cache-Control", if (versioned) cacheControl else noStore)
         handler.sendJsonResponse(effective.content, EXC.ok)
         return true
     }
@@ -269,6 +284,9 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         /** Permanent, shared cache: safe because the `buildId` in the URL changes whenever content changes. */
         const val cacheControl = "public, max-age=31536000, immutable"
 
+        /** For an answer no shared cache may keep: a URL that does not name one document, and a 404. */
+        const val noStore = "no-store"
+
         fun get(cxt: KdrCxt): MarkdownFragmentService =
             cxt.instanceConfig.get(serviceName) as? MarkdownFragmentService
                 ?: throw KdrException("The $serviceName is not available on this node.")
@@ -297,9 +315,6 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         fun registeredFragmentSources(cxt: KdrCxt): List<FragmentSource> =
             (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.filterIsInstance<FragmentSource>() ?: emptyList()
 
-        /** The fragment files declared here, each named once however many layers contribute to it. */
-        fun declaredFragmentFiles(cxt: KdrCxt): List<String> =
-            registeredFragmentSources(cxt).map { it.fileId }.distinct()
 
         /**
          * What a fragment problem does at startup. An explicit [FRAG.checkEnvVar] decides it; otherwise it is

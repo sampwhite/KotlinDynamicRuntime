@@ -137,13 +137,27 @@ class FragmentOverlayTest : StringSpec({
         welcome[SF.title] shouldBe "Welcome to Acme"
     }
 
+    "a URL with no build id is answered, but may never be cached" {
+        // The hazard the build id exists to remove, on the one path that does not carry one. A bare URL names
+        // no particular document -- it is answered with whatever *this caller* reads -- so keeping that answer
+        // in a shared cache would serve the first requester's copy to every client behind it.
+        val http = TestHttpClient(cxt.instanceConfig)
+        val handler = http.sendGetRequestRaw("/st/myapp/md/${SF.content}")
+        handler.rptStatusCode shouldBe EXC.ok
+        handler.rptResponseHeaders["cache-control"] shouldBe listOf(MarkdownFragmentService.noStore)
+        // Still answered: a hand-driven curl and a frontend that was given no ref both want the content.
+        val map = handler.rptResponseData.shouldNotBeNull().jsonMap().shouldNotBeNull()
+        @Suppress("UNCHECKED_CAST")
+        (map[SF.welcome] as Map<String, Any?>)[SF.title] shouldBe "Welcome"
+    }
+
     "a build id this node does not have is refused, and the refusal is not cached" {
         val http = TestHttpClient(cxt.instanceConfig)
         val handler = http.sendGetRequestRaw("/st/myapp/md/${SF.content}:deadbeef")
         handler.rptStatusCode shouldBe EXC.notFound
         // Explicitly uncached: a stale URL from a redeploy lands here, and a cached 404 would go on answering
         // for a file that exists.
-        handler.rptResponseHeaders["cache-control"] shouldBe listOf("no-store")
+        handler.rptResponseHeaders["cache-control"] shouldBe listOf(MarkdownFragmentService.noStore)
     }
 
     // --- the operator check ------------------------------------------------------------------------------

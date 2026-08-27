@@ -125,10 +125,16 @@ object InstanceRegistry {
                     }
                 }
             }
-            // Deduplicated by what a layer *is* rather than by identity: two components declaring the same
-            // file are saying one thing twice, and applying it twice would be harmless now and confusing the
-            // first time one of them is an overlay.
-            config.put(FRAG.registryKey, fragmentSources.distinctBy { it.dedupeKey })
+            // Kept as declared, duplicates and all. Two components declaring the same file would once have
+            // been collapsed by `.distinct()` on a list of file-id strings, and the equivalent for layers is a
+            // trap: a layer's *content* is part of what it is, and no key over its other fields can see that
+            // -- so two inline layers a component writes for one file, sharing the origin it naturally names
+            // after itself, would be read as one statement and the second silently dropped.
+            //
+            // Nothing needs the dedupe. Folding a layer in twice is idempotent (the same keys are put over
+            // themselves), the check derives its file list with its own `distinct()`, and a repeated resource
+            // read happens once per boot.
+            config.put(FRAG.registryKey, fragmentSources.toList())
 
             val startupEntries = mutableListOf<ServiceEntry>()
             val serviceEntries = mutableListOf<ServiceEntry>()

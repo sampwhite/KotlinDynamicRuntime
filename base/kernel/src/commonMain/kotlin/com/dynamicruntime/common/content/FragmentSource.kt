@@ -55,16 +55,6 @@ class FragmentSource(
      */
     val load: () -> Map<String, Map<String, String>>?,
 ) {
-    /**
-     * What makes this layer the *same statement* as another: everything but the loader.
-     *
-     * Two components declaring the same file are saying one thing twice, and the boot drops the repeat. By
-     * value rather than by object identity, because each call to a factory builds a fresh instance -- so
-     * identity would dedupe nothing at all, which is what `.distinct()` on the old list of file-id strings
-     * quietly did do.
-     */
-    val dedupeKey: String get() = "$fileId|$origin|$client|$isOverlay"
-
     override fun toString(): String = "$fileId <- $origin" + (client?.let { " ($it)" } ?: "")
 }
 
