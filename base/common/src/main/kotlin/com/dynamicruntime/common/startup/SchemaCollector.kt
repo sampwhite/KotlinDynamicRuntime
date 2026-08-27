@@ -178,10 +178,14 @@ class SchemaCollector(
      * **Where they are folded depends on who owns the config.** A `global` config contributes to the shared
      * document; a client's own contributes to that client's [clientOverlays]. The config's id carries the
      * owner, so nothing has to say it twice.
+     *
+     * Returns whether the config was taken, which the boot needs (issue #456): a config's fragment overlays
+     * are collected outside this class, and folding in the overlays of a config whose checks just failed
+     * would let a rejected bundle change what people read.
      */
-    fun addGedraConfig(cxt: KdrCxt, config: GedraConfig) {
+    fun addGedraConfig(cxt: KdrCxt, config: GedraConfig): Boolean {
         if (!gedraConfigs.add(cxt, config)) {
-            return
+            return false
         }
         val client = config.gedraId.client
         if (client == GID.globalClient) {
@@ -197,6 +201,7 @@ class SchemaCollector(
                 clientCFacts.getOrPut(client) { mutableListOf() }.addAll(config.cfacts)
             }
         }
+        return true
     }
 
     /** Adds contributed table definitions (from a `tableModule`) into the collector. */

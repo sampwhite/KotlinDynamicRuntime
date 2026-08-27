@@ -12,6 +12,23 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.SCT
 
+/**
+ * The sample fragment file and the keys it carries (issue #456) -- named rather than written as literals
+ * because four different layers refer to them and a typo in any one is a key that silently never wins.
+ */
+@Suppress("ConstPropertyName")
+object SF {
+    /** The fragment file every sample layer contributes to. */
+    const val content = "sampleContent"
+
+    const val welcome = "welcome"
+    const val footer = "footer"
+    const val title = "title"
+    const val intro = "intro"
+    const val support = "support"
+    const val copyright = "copyright"
+}
+
 /** The sample clients' own names (issue #379). */
 @Suppress("ConstPropertyName")
 object SC {
@@ -123,6 +140,18 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 for (c in SC.acmeCountries) option(c)
             }
             property(ST.postcode, "Postal code, as written locally.")
+        }
+
+        // --- copy of its own ----------------------------------------------------------------------------
+        //
+        // Applied after every component layer, so acme's wording wins over both the base and the sample's own
+        // overlay -- a client is the most specific thing with an opinion. It names two keys and says nothing
+        // about the rest of the file, which keep whatever the layers underneath say.
+        fragmentOverlay(SF.content) {
+            namespace(SF.welcome) {
+                key(SF.title, "Welcome to Acme")
+                key(SF.support, "Acme site services will help.")
+            }
         }
 
         // --- a cfact of its own -------------------------------------------------------------------------

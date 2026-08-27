@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrMsg
 import io.kotest.core.spec.style.StringSpec
@@ -63,12 +65,25 @@ class ErrorMessageRenderTest : StringSpec({
     // --- the real resolver against the shipped auth.md --------------------------------------------------
 
     "resolveFragment reads a real key, and null for a missing one" {
-        // The cxt is threaded but unused today (a future version resolves per-context); a bare service instance
-        // and simple cxt suffice to read the classpath fragment. auth.md ships in base/common's resources.
+        // The cxt is load-bearing since issue #456: a fragment's content is what its declared layers add up
+        // to, so the lookup goes through the registry rather than straight to the classpath. Registered here
+        // rather than by booting a node, which is what this seam actually needs. auth.md ships in
+        // base/common's resources.
         val service = MarkdownFragmentService()
         val cxt = KdrCxt.mkSimpleCxt("resolveFragmentTest")
+        cxt.instanceConfig.put(FRAG.registryKey, fragmentFiles("auth"))
         service.resolveFragment(cxt, "auth", "error", "codeIncorrect") shouldBe "The verification code is incorrect."
         service.resolveFragment(cxt, "auth", "error", "noSuchKey") shouldBe null
         service.resolveFragment(cxt, "noSuchFile", "error", "codeIncorrect") shouldBe null
+    }
+
+    "an undeclared fragment file resolves to nothing, even though its resource is right there" {
+        // The tightening #456 brought, and worth pinning because it is a behavior change: this used to read
+        // any file on the classpath. Declaring a file is what puts it under the startup and operator checks,
+        // so a file nothing declares is a file nothing validates -- and error copy should not be the one
+        // corner of the system that reads unvalidated content.
+        val service = MarkdownFragmentService()
+        val cxt = KdrCxt.mkSimpleCxt("undeclaredFragmentTest")
+        service.resolveFragment(cxt, "auth", "error", "codeIncorrect") shouldBe null
     }
 })

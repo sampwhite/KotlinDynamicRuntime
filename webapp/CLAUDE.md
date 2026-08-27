@@ -14,15 +14,22 @@ The backend serves per-component UI text as **Markdown fragment files** through 
 **Request:** `GET /st/<appId>/md/<fileId:buildId>` (e.g. `/st/myapp.acme.en/md/emailForms:9f3ac1`)
 
 - `appId` — **you** construct it: the application you're serving, plus an optional client-variation suffix,
-  plus an optional locale suffix. Opaque to the backend for now (it ignores it); a future backend may return
-  different content per `appId`.
-- `fileId` — names the file `md-fragments/<fileId>.md` in the owning backend component's resources. If that
-  component isn't in the deployment, the file is absent and the request 404s.
-- `buildId` — a cache-busting suffix (a content hash the backend provides). The endpoint **strips and
-  ignores** it; its only purpose is to change the URL when the file changes.
+  plus an optional locale suffix. It stays **opaque and unread** by the backend, and deliberately so: whose
+  content you are served must not be something the caller can choose. The backend decides that from who you
+  are signed in as.
+- `fileId` — names a fragment file the deployment declares. Its content is every layer that applies added up
+  (issue #456): the file the owning component ships, any overlay over it, and any a client contributed. If no
+  component in the deployment declares it, the request 404s.
+- `buildId` — a content hash the backend provides, and since issue #456 it **selects** the content rather than
+  being stripped. Practically nothing changes for you — keep fetching the exact `fileId:buildId` a UI-config
+  handed you — but two things follow. A ref is **per caller**, so do not reuse one across sign-ins or share it
+  between users. And a `buildId` this node does not recognize 404s (uncached) rather than falling back to
+  current content, so re-fetch the UI-config to get a fresh ref rather than retrying the old URL.
 
 **Response:** a free-form two-tier JSON map `{ namespace: { key: value } }` with an **immutable**
-`Cache-Control` (cache it forever / front it with a CDN — the `buildId` busts it on change).
+`Cache-Control` (cache it forever / front it with a CDN — the `buildId` busts it on change). Safe to put
+behind a shared cache: a URL names one document, because the `buildId` hashes the merged content rather than
+the underlying file, so two clients reading different copy never share a URL.
 
 **Using a fragment value:** each value is Markdown that may embed `${namespace.key}` placeholders. Resolve
 them with the kernel's `String.evalTemplate(data)` — the fragment map *is* the data map, so `${email.subject}`

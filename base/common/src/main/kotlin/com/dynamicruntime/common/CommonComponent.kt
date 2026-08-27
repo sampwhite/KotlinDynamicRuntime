@@ -11,6 +11,8 @@ import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.operator.operatorSchema
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.FRAG
+import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataService
@@ -133,8 +135,8 @@ class CommonComponent : ComponentDefinition {
      * files: `errors` is reached through the error-message path rather than a UI-config, so nothing else
      * names it, and an unchecked error fragment is exactly the one you find out about during an incident.
      */
-    override fun fragmentFiles(cxt: KdrCxt): List<String> =
-        listOf(AFRAG.auth, AFRAG.profile, HFRAG.home, FRAG.errors, FRAG.sample)
+    override fun fragments(cxt: KdrCxt): List<FragmentSource> =
+        fragmentFiles(AFRAG.auth, AFRAG.profile, HFRAG.home, FRAG.errors, FRAG.sample)
 
     /**
      * Startup services -- fully initialized before regular services. [ClientService] leads (issue #343),

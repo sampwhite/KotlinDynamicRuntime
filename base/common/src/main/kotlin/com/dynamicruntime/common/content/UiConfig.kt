@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.content
 
+import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
@@ -24,12 +25,17 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  */
 
 /**
- * Builds the `fragments` list for a UI-config payload: each of [fileIds] paired with its current
- * [MarkdownFragmentService.fragmentBuildId]. A missing fragment file is a deployment/packaging error (these
- * are core resources), so it throws rather than emitting a ref the frontend cannot fetch.
+ * Builds the `fragments` list for a UI-config payload: each of [fileIds] with the build id naming the content
+ * **this caller** will be served. A missing fragment file is a deployment/packaging error (these are core
+ * resources), so it throws rather than emitting a ref the frontend cannot fetch.
+ *
+ * Takes [cxt] since issue #456, and that is the load-bearing part rather than a signature tidy-up: a build id
+ * now names *merged* content, which a client's overlays change. Handing every caller the same id would leave
+ * two clients fetching one URL for two different documents, and the permanent `Cache-Control` on that
+ * response would let whichever was cached first be served to both.
  */
-fun fragmentRefs(vararg fileIds: String): List<Map<String, Any?>> = fileIds.map { fileId ->
-    val buildId = MarkdownFragmentService.fragmentBuildId(fileId)
+fun fragmentRefs(cxt: KdrCxt, vararg fileIds: String): List<Map<String, Any?>> = fileIds.map { fileId ->
+    val buildId = MarkdownFragmentService.fragmentBuildId(cxt, fileId)
         ?: throw KdrException("Markdown fragment file '$fileId' is not available.", code = EXC.internalError)
     mapOf(UIC.fileId to fileId, UIC.buildId to buildId)
 }

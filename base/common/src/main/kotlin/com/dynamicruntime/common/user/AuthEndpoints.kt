@@ -176,7 +176,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     generalEndpoint(AEP.authUiConfig, "Returns the config for constructing the auth (register/login) UI.",
         HttpMethod.GET, outputRef = ATYPE.authUiConfig) { c, _ ->
         mapOf(
-            UIC.fragments to fragmentRefs(AFRAG.auth),
+            UIC.fragments to fragmentRefs(c, AFRAG.auth),
             UIC.features to mapOf(
                 AFEAT.registration to true, AFEAT.codeLogin to true, AFEAT.passwordLogin to true,
                 AFEAT.googleLogin to authHandler(c).googleLoginEnabled,

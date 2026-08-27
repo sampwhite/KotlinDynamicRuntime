@@ -1,6 +1,9 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.cfact.CFactDef
+import com.dynamicruntime.common.content.FragmentMapBuilder
+import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchTypeBuilder
@@ -114,6 +117,20 @@ class GedraConfig(
      * somebody has to remember to run.
      */
     val cfacts: List<CFactDef> = emptyList(),
+    /**
+     * Fragment overlays this config contributes (issue #456) -- the copy its client reads in place of the
+     * default.
+     *
+     * **Unlike a cfact, a client really can supply this**, and the difference is what each one *is*. A cfact
+     * declaration needs Kotlin to decide it, which data has nowhere to put; a fragment overlay is a handful of
+     * strings, which is exactly what configuration is made of. So this is the first thing a client's config
+     * changes about what its people actually see.
+     *
+     * Always overlays, never a base: the base is the file the owning component ships, and a client replacing
+     * it wholesale would drift out of step with every key that file later gains -- silently, since a missing
+     * fragment renders its key path rather than failing.
+     */
+    val fragments: List<FragmentSource> = emptyList(),
 ) {
     /**
      * The code-explicit name this config is addressed by, which is also its id's base.
@@ -130,9 +147,36 @@ class GedraConfig(
  * Builds a [GedraConfig]. Extends [SchTypesBuilder], so a config can declare ordinary types beside its
  * traits — which is how a trait references a shared data shape instead of inlining one.
  */
-class GedraConfigBuilder(cxt: KdrCxtBase, namespace: String) : SchTypesBuilder(cxt, namespace) {
+class GedraConfigBuilder(
+    cxt: KdrCxtBase,
+    namespace: String,
+    /** This config's name and client, so a contribution can say where it came from; see [fragmentOverlay]. */
+    private val configName: String = "",
+    private val configClient: String? = null,
+) : SchTypesBuilder(cxt, namespace) {
     @Suppress("MemberVisibilityCanBePrivate")
     val traits: MutableMap<String, GedraTrait> = LinkedHashMap()
+
+    /** The fragment overlays declared in this block; see [fragmentOverlay]. */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val fragments: MutableList<FragmentSource> = mutableListOf()
+
+    /**
+     * Overlays some of [fileId]'s copy for this config's client (issue #456) -- see [GedraConfig.fragments].
+     *
+     * Name only the keys being changed. An overlay listing everything is one that stops matching the base the
+     * first time the base gains a key, and nothing fails when it does: the frontend simply receives the
+     * default wording for whatever the overlay never mentioned.
+     *
+     * The layer is stamped with this config's client and id, so a fragment report can say *which* config set a
+     * value rather than only that something did.
+     */
+    fun fragmentOverlay(fileId: String, build: FragmentMapBuilder.() -> Unit) {
+        fragments.add(fragmentInline(fileId, origin = configOrigin(), client = configClient, build = build))
+    }
+
+    /** How a contribution from this config identifies itself in a report. */
+    private fun configOrigin(): String = if (configName.isEmpty()) "a Gedra config" else "config '$configName'"
 
     /** The client this config defines, if it declared one; see [defineClient]. */
     var clientDef: ClientDef? = null
@@ -271,7 +315,10 @@ fun gedraConfig(
                 "name from code, so it has to be usable as a variable name.",
         )
     }
-    val builder = GedraConfigBuilder(cxt, namespace).apply(build)
+    // The name and client are handed to the builder rather than stamped onto what it produced: a contribution
+    // that knows where it came from can be built complete, and nothing downstream has to rewrite it.
+    val configClient = client.takeIf { it != GID.globalClient }
+    val builder = GedraConfigBuilder(cxt, namespace, name, configClient).apply(build)
     return GedraConfig(
         // `of` validates the name as it builds the id, so a config called something a base id cannot spell is
         // refused here rather than at whatever later point first tried to address it.
@@ -281,5 +328,6 @@ fun gedraConfig(
         defs = builder.defs.toMap(),
         client = builder.clientDef,
         cfacts = builder.cfacts.toList(),
+        fragments = builder.fragments.toList(),
     )
 }

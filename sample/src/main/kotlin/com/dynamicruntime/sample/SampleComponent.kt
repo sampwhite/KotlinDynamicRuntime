@@ -3,6 +3,11 @@ package com.dynamicruntime.sample
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
+import com.dynamicruntime.sample.gedra.SF
+import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.fragmentFiles
+import com.dynamicruntime.common.content.fragmentInline
+import com.dynamicruntime.common.content.fragmentOverlayFile
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.sample.file.SampleFileService
 import com.dynamicruntime.sample.gedra.GedraFixtureEndpoints
@@ -61,6 +66,22 @@ class SampleComponent : ComponentDefinition {
      * Traits contributed for testing (issue #301). They join the manufactured `FormDocEntry` union alongside
      * the runtime's own, which is what gives the fixture a union with more than one branch to select between.
      */
+    /**
+     * The fragment layers the sample ships (issue #456), which between them exercise every kind there is: a
+     * base file, a `_overlay.md` beside it, and an overlay written in code. Acme's own overlay of the same
+     * file arrives through its Gedra config, so the file ends up with four contributors and one reader.
+     */
+    override fun fragments(cxt: KdrCxt): List<FragmentSource> =
+        fragmentFiles(SF.content) +
+            fragmentOverlayFile(SF.content) +
+            // In code rather than in a file, which is the case a small change should not need a resource for.
+            // Applied after the overlay file above, so this is what a reader of `footer.copyright` gets.
+            fragmentInline(SF.content, origin = "SampleComponent") {
+                namespace(SF.footer) {
+                    key(SF.copyright, "Copyright the sample deployment.")
+                }
+            }
+
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(sampleTraits(cxt)) + sampleClients(cxt)
 
     override fun services(cxt: KdrCxt): List<ServiceEntry> =

@@ -96,7 +96,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
         // dispatcher for the same reason; this is the one config that needs it outside a gated section.
         refreshActingRoles(c)
         mapOf(
-            UIC.fragments to fragmentRefs(HFRAG.home),
+            UIC.fragments to fragmentRefs(c, HFRAG.home),
             // Default to a left nav bar alone: the classic shape, and the one that stays usable as the
             // document list grows. A deployment turns on the others (or off) via HCFG.
             UIC.features to mapOf(

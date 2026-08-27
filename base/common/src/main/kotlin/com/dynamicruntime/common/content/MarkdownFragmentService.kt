@@ -36,13 +36,23 @@ import java.util.concurrent.ConcurrentHashMap
  * API catalog. See `webapp/CLAUDE.md` for the frontend-facing contract.
  *
  * Request shape: `/<staticRoot>/<appId>/md/<fileId:buildId>`, e.g. `/st/myapp/md/emailForms:9f3ac1`.
- *  - `appId` is an opaque, frontend-constructed id (application + optional client/locale suffixes). It is
- *    **ignored for now**; a future backend may return different content per `appId`.
- *  - `buildId` is a cache-busting suffix (a content hash; see [fragmentBuildId]). It is **stripped and
- *    ignored** for the lookup -- its only job is to make the URL change when the file changes, so the
- *    permanent cache (browser or CDN) refetches. A rebuild with unchanged content keeps the same URL.
- *  - `fileId` names the resource read from `md-fragments/<fileId>.md` on the classpath. If the owning
- *    component/module is not in the deployment, the resource is simply absent and the request 404s.
+ *  - `appId` stays **opaque and unread**. It is frontend-constructed, so whose content a caller receives must
+ *    never be decided by it; the client comes from the request context. See [effectiveFragments].
+ *  - `buildId` is a content hash of the **merged** content ([fragmentContentBuildId]), and since issue #456 it
+ *    *selects* what is served rather than being stripped. Its cache-busting job is unchanged -- a new hash is
+ *    a new URL, so a permanent cache refetches -- but a URL now names one document rather than "whatever this
+ *    file currently is", which is what keeps a shared cache sound when two clients read different copy.
+ *  - `fileId` names a declared fragment file. Its content is every layer that applies added up (issue #456):
+ *    the resource `md-fragments/<fileId>.md`, any overlay over it, and any a client contributed.
+ *
+ * ### Fragment content is not access-controlled, and a client's copy is no exception
+ *
+ * Worth stating outright, because per-client copy invites the opposite assumption. This response is `public`
+ * and cached forever, so anybody holding a URL can fetch it and any shared cache in front of the deployment
+ * will serve it to whoever asks -- enforcing at the origin would buy nothing behind a CDN. The URL is the
+ * capability, and a build id is a hash of content nobody else has, so it is not *discoverable*; it is not a
+ * secret either. **Do not put anything confidential in a fragment**, per client or otherwise. Copy that
+ * genuinely must not leak between clients needs a different transport, not a rule added here.
  */
 class MarkdownFragmentService : ServiceInitializer, ContentServer {
     override val serviceName: String = MarkdownFragmentService.serviceName
@@ -73,12 +83,17 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         val mode = fragmentCheckMode(cxt)
         if (mode == BootCheckMode.off) return
         val results = checkFragments(cxt)
-        val broken = results.filter { it.issues.isNotEmpty() || !it.found }
+        val broken = results.filter { it.issues.isNotEmpty() || !it.found || it.orphans.isNotEmpty() }
         val findings = broken.map { r ->
-            if (!r.found) {
-                "'${r.fileId}' is declared but absent"
-            } else {
-                "'${r.fileId}': " + r.issues.joinToString(", ") { "${it.message} (line ${it.line})" }
+            val where = r.fileId + (r.client?.let { " (client '$it')" } ?: "")
+            when {
+                !r.found -> "'$where' is declared but absent"
+                r.issues.isNotEmpty() ->
+                    "'$where': " + r.issues.joinToString(", ") { "${it.message} (line ${it.line})" }
+                // An orphan is a finding rather than a note, and strict mode therefore refuses to boot on one.
+                // It is the silent failure this check exists for: the overlay simply stops winning a lookup
+                // that no longer happens, nothing throws, and the customer's wording reverts to the default.
+                else -> "'$where': overlay keys no base declares: " + r.orphans.joinToString(", ")
             }
         }
         // Recorded before the refusal below, and unconditionally -- including when there is nothing to say.
@@ -97,27 +112,38 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     }
 
     /**
-     * Parses and syntax-checks every fragment file the components declared. Returns a result per file --
-     * including the ones that are clean -- so a caller can see what was actually covered rather than inferring
-     * it from an empty problem list.
+     * Syntax-checks every declared fragment file, and does it **per variant** (issue #456): once for the
+     * content everybody shares, and once more for each client that overlays the file.
+     *
+     * Per variant rather than per file, because a client's overlay is copy like any other and would otherwise
+     * be the only copy on the node that nothing ever checked. It also checks what is actually *served* -- the
+     * merged map -- rather than the base resource, so a broken value that an overlay replaces is correctly not
+     * reported for the client whose overlay replaced it.
+     *
+     * A result per variant including the clean ones, so a caller can see what was covered rather than
+     * inferring it from an empty problem list.
      */
     fun checkFragments(
         cxt: KdrCxt,
         only: String? = null,
         data: Map<String, Any?>? = null,
     ): List<FragmentCheckResult> {
-        val declared = registeredFragmentFiles(cxt)
-        val fileIds = if (only != null) listOf(only) else declared
-        return fileIds.map { fileId ->
-            val text = ContentResources.readText(resourceDir, fileId)
-            if (text == null) {
-                FragmentCheckResult(fileId, found = false, issues = emptyList(), entries = emptyList())
-            } else {
-                val parsed = text.parseMarkdownFragments()
-                val entries = parsed.fragmentPaths().map { e ->
+        val sources = registeredFragmentSources(cxt)
+        val fileIds = if (only != null) listOf(only) else sources.map { it.fileId }.distinct()
+        return fileIds.flatMap { fileId ->
+            val forFile = sources.filter { it.fileId == fileId }
+            val clients = listOf<String?>(null) + forFile.mapNotNull { it.client }.distinct()
+            clients.map { client ->
+                val merged = mergeFragmentLayers(fileId, forFile, client)
+                val entries = merged.content.fragmentPaths().map { e ->
                     FragmentEntryReport(e.entry, e.paths, data?.let { e.paths.missingFrom(it) } ?: emptyList())
                 }
-                FragmentCheckResult(fileId, found = true, issues = parsed.checkFragmentSyntax(), entries = entries)
+                FragmentCheckResult(
+                    fileId, client, merged.found,
+                    issues = if (merged.found) merged.content.checkFragmentSyntax() else emptyList(),
+                    entries = if (merged.found) entries else emptyList(),
+                    orphans = merged.orphans,
+                )
             }
         }
     }
@@ -132,25 +158,90 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         if (segments.size != 4 || segments[2] != mdMarker) {
             return false
         }
-        val fileId = segments[3].substringBefore(':') // strip the ":buildId" cache-busting suffix
+        val fileId = segments[3].substringBefore(':')
+        val requestedBuildId = segments[3].substringAfter(':', "")
         if (!ContentResources.isSafeFileId(fileId)) {
             handler.sendStringResponse("Bad fragment file id.", EXC.badInput, "text/plain")
             return true
         }
-        val text = ContentResources.readText(resourceDir, fileId)
-        if (text == null) {
+        // The build id now **selects** the content rather than being stripped and ignored (issue #456).
+        //
+        // It had to. Content varies by client once a client can overlay it, and the response is cached
+        // `public` and `immutable` with the URL as the whole key -- so a caller asking for another client's
+        // URL and being answered with their own content would put that answer in a shared cache under that
+        // client's URL, and the client would then be served it. Answering by build id makes the URL mean one
+        // document again, which is the property the permanent cache was always resting on.
+        val effective = if (requestedBuildId.isEmpty()) {
+            effectiveFragments(cxt, fileId)
+        } else {
+            fragmentsWithBuildId(cxt, fileId, requestedBuildId)
+        }
+        if (effective == null || !effective.found) {
+            // Explicitly uncached: a stale URL from a redeploy lands here, and a cached 404 would keep
+            // answering for a file that exists. The frontend's next UI-config call hands it a current ref.
+            handler.setResponseHeader("Cache-Control", "no-store")
             handler.sendStringResponse("No fragment file '$fileId'.", EXC.notFound, "text/plain")
             return true
         }
-        val fragments = text.parseMarkdownFragments()
         // Immutable, long-lived cache: the versioned URL is the cache key, so a new buildId is a new URL.
         handler.setResponseHeader("Cache-Control", cacheControl)
-        handler.sendJsonResponse(fragments, EXC.ok)
+        handler.sendJsonResponse(effective.content, EXC.ok)
         return true
     }
 
-    /** Fragment files parsed once and memoized by fileId. Classpath resources today, fixed at build. */
-    private val parsedByFileId = ConcurrentHashMap<String, Map<String, Map<String, String>>>()
+    /**
+     * Merged content per `fileId|client`, computed once (issue #456). Layers are fixed at boot, so the merge
+     * is too -- what varies is only which client it was done for.
+     */
+    private val effectiveCache = ConcurrentHashMap<String, EffectiveFragments>()
+
+    /**
+     * Merged content by `fileId|buildId`, which is how a request for a versioned URL is answered.
+     *
+     * Populated by computing every variant a file has -- the shared one, and one per client that overlays it.
+     * That set is small (a file most clients do not touch has exactly one variant) and known at boot, so the
+     * index is complete after one pass rather than filling in as callers arrive.
+     */
+    private val byBuildId = ConcurrentHashMap<String, EffectiveFragments>()
+
+    /**
+     * The content [cxt]'s client sees for [fileId], or null when nothing declares that file.
+     *
+     * The client is taken from the context rather than from the URL's `appId`, which stays opaque: `appId` is
+     * frontend-constructed, so honoring it would let a caller choose whose copy they are served. Note the
+     * consequence while `ClientDef.domainPrefix` and `customDomain` have no implementation yet -- an
+     * anonymous visitor has no client, so a client's overlays reach its **signed-in** people and nobody else.
+     * The mechanism is right; the missing half is domain-to-client routing, not this.
+     */
+    fun effectiveFragments(cxt: KdrCxt, fileId: String): EffectiveFragments? {
+        val sources = registeredFragmentSources(cxt).filter { it.fileId == fileId }
+        if (sources.isEmpty()) {
+            return null
+        }
+        // A client with no overlay of its own merges to the shared content, so it is not given a variant --
+        // which is what keeps one cache entry serving everybody who is not being treated differently.
+        val client = cxt.client.takeIf { c -> sources.any { it.client == c } }
+        return effectiveCache.getOrPut("$fileId|${client ?: ""}") {
+            mergeFragmentLayers(fileId, sources, client).also { byBuildId["$fileId|${it.buildId}"] = it }
+        }
+    }
+
+    /** The content of [fileId] that [buildId] names, or null when this node has no such version of it. */
+    fun fragmentsWithBuildId(cxt: KdrCxt, fileId: String, buildId: String): EffectiveFragments? {
+        val key = "$fileId|$buildId"
+        byBuildId[key]?.let { return it }
+        // Not seen yet: compute every variant of this file, which is what makes a miss here mean "no such
+        // version" rather than "nobody has asked for that client yet".
+        val sources = registeredFragmentSources(cxt).filter { it.fileId == fileId }
+        if (sources.isEmpty()) {
+            return null
+        }
+        for (client in listOf(null) + sources.mapNotNull { it.client }.distinct()) {
+            val merged = effectiveCache.getOrPut("$fileId|${client ?: ""}") { mergeFragmentLayers(fileId, sources, client) }
+            byBuildId["$fileId|${merged.buildId}"] = merged
+        }
+        return byBuildId[key]
+    }
 
     /**
      * The value at `<fileId>.md` → [namespace] → [key], or null when the file or entry is absent. Used
@@ -162,13 +253,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * another service, for a per-client or per-version copy. Callers reach it via [get]; the seam is in place
      * so that change stays inside here.
      */
-    fun resolveFragment(@Suppress("unused") cxt: KdrCxt, fileId: String, namespace: String,
-                        key: String): String? {
-        val parsed = parsedByFileId.getOrPut(fileId) {
-            ContentResources.readText(resourceDir, fileId)?.parseMarkdownFragments() ?: emptyMap()
-        }
-        return parsed[namespace]?.get(key)
-    }
+    fun resolveFragment(cxt: KdrCxt, fileId: String, namespace: String, key: String): String? =
+        effectiveFragments(cxt, fileId)?.content?.get(namespace)?.get(key)
 
     @Suppress("ConstPropertyName")
     companion object {
@@ -188,11 +274,15 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 ?: throw KdrException("The $serviceName is not available on this node.")
 
         /**
-         * The cache-busting build id for a fragment file (see [ContentResources.buildId]): a memoized content
-         * hash, or null if the resource is absent. Used by the code that hands a component its
-         * `fileId:buildId` (the UI-config endpoints); the fragment request itself only strips it.
+         * The cache-busting build id of [fileId] as **this caller** will be served it, or null when nothing
+         * declares the file or its resource is absent (issue #456).
+         *
+         * Per caller, because the id names merged content and a client's overlays change it. Handing every
+         * caller the same id would be the whole bug: two clients would share one URL for two documents, and
+         * the permanent cache on that response would settle which of them everybody got.
          */
-        fun fragmentBuildId(fileId: String): String? = ContentResources.buildId(resourceDir, fileId)
+        fun fragmentBuildId(cxt: KdrCxt, fileId: String): String? =
+            get(cxt).effectiveFragments(cxt, fileId)?.takeIf { it.found }?.buildId
 
         /** Schema type name for a per-file check result. */
         const val checkTypeName = "FragmentCheck"
@@ -200,9 +290,16 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         /** Schema type name for one entry's data requirements within a check result. */
         const val entryTypeName = "FragmentEntryPaths"
 
-        /** The fragment files every loaded component declared, collected at boot by `InstanceRegistry`. */
-        fun registeredFragmentFiles(cxt: KdrCxt): List<String> =
-            (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+        /**
+         * Every fragment layer this node carries, collected at boot by `InstanceRegistry` (issue #456) -- the
+         * components' files and overlays, and the overlays of every client config that was accepted.
+         */
+        fun registeredFragmentSources(cxt: KdrCxt): List<FragmentSource> =
+            (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.filterIsInstance<FragmentSource>() ?: emptyList()
+
+        /** The fragment files declared here, each named once however many layers contribute to it. */
+        fun declaredFragmentFiles(cxt: KdrCxt): List<String> =
+            registeredFragmentSources(cxt).map { it.fileId }.distinct()
 
         /**
          * What a fragment problem does at startup. An explicit [FRAG.checkEnvVar] decides it; otherwise it is
@@ -274,6 +371,17 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                     type = SCT.array
                     items { ref(entryTypeName) }
                 }
+                property(FCHK.client, "The client this variant is for; absent for the content everybody shares.")
+                property(
+                    FCHK.orphans,
+                    "Overlay keys, as 'namespace.key', that no base layer declares -- usually a base key that " +
+                        "was renamed, which fails silently: the overlay stops winning and the default copy is " +
+                        "served in its place.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
             }
             listEndpoint(
                 "/operator/fragments/check",
@@ -310,17 +418,29 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
  */
 class FragmentCheckResult(
     val fileId: String,
+    /** The client this variant is for, or null for the content everybody else gets (issue #456). */
+    val client: String?,
     val found: Boolean,
     val issues: List<TemplateIssue>,
     val entries: List<FragmentEntryReport>,
+    /** Overlay keys no base declares -- see `orphanedOverlayKeys`, and why silence is the failure mode. */
+    val orphans: List<String>,
 ) : JsonMappable {
-    override fun toJsonMap(): Map<String, Any?> = mapOf(
-        FCHK.fileId to fileId,
-        FCHK.found to found,
-        FCHK.issueCount to issues.size,
-        FCHK.issues to issues.map { it.toJsonMap() },
-        FCHK.entries to entries.map { it.toJsonMap() },
-    )
+    override fun toJsonMap(): Map<String, Any?> {
+        // An explicit map rather than `buildMap`: inside that block the receiver is a MutableMap, whose own
+        // `entries` shadows this class's -- so `entries.map { ... }` silently means the wrong thing.
+        val out = LinkedHashMap<String, Any?>()
+        out[FCHK.fileId] = fileId
+        // Omitted rather than null for the shared variant: "this row is about a client" is the unusual case,
+        // and a column of nulls is how a reader stops noticing the rows that do have one.
+        if (client != null) out[FCHK.client] = client
+        out[FCHK.found] = found
+        out[FCHK.issueCount] = issues.size
+        out[FCHK.issues] = issues.map { it.toJsonMap() }
+        out[FCHK.entries] = entries.map { it.toJsonMap() }
+        out[FCHK.orphans] = orphans
+        return out
+    }
 }
 
 /**
