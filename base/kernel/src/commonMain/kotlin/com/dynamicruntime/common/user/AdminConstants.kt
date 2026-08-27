@@ -156,14 +156,52 @@ object USF {
      */
     const val client = "client"
 
+    /**
+     * The date attributes: each is a sort key, a field on every returned row, and a filterable range
+     * (issue #462). See [UserDateKeys] for why they are generated from a root rather than written out.
+     */
+    val updated = UserDateKeys("updated", "updated")
+
+    /**
+     * When the account was **first created**. Never overwritten -- it is the one of these that cannot move,
+     * which is what makes it worth keeping and also why the console does not show it: [activated] answers the
+     * everyday question, and a column that never changes is noise in a list somebody is scanning.
+     */
+    val registered = UserDateKeys("registered", "registered")
+
+    /**
+     * When the account most recently **became active**: at creation, and again each time a disabled account is
+     * re-enabled. Named for what it records rather than `registeredAt`, which would read as a permanent fact
+     * about an account that re-enabling had quietly rewritten.
+     */
+    val activated = UserDateKeys("activated", "activated")
+
+    /**
+     * When a login sequence last **completed**. Presenting an existing session cookie does not count -- that
+     * is not a login, and counting it would turn this into "last seen", which is a different question and one
+     * every background poll would answer.
+     */
+    val lastLoggedIn = UserDateKeys("lastLoggedIn", "last logged in")
+
+    /**
+     * When the account was last **edited** -- anything that is not a login and not an activation.
+     *
+     * The administrative counterpart of [updated], and the reason both exist. Stamping a login writes the row,
+     * so `updatedAt` moves whenever anybody signs in; left as the console's column, the Users page would
+     * quietly have become "most recently active" and a busy account would sit at the top for good. So
+     * `updatedAt` stays the storage-level "this row was written", useful precisely because nothing filters it,
+     * and this is the one an administrator is asking about.
+     */
+    val lastEdited = UserDateKeys("lastEdited", "last edited")
+
     /** The `updatedAt` sort key, and the field carrying the update time on each returned row. */
-    const val updatedAt = "updatedAt"
+    val updatedAt: String get() = updated.at
 
     /** Only users updated **at or after** this instant (ISO-8601); the low end of the date range. */
-    const val updatedAfter = "updatedAfter"
+    val updatedAfter: String get() = updated.after
 
     /** Only users updated **at or before** this instant (ISO-8601); the high end of the date range. */
-    const val updatedBefore = "updatedBefore"
+    val updatedBefore: String get() = updated.before
 
     /** Which attribute to sort by -- one of [email], [name], [publicName], [client], [updatedAt]. Defaults to [updatedAt]. */
     const val sortBy = "sortBy"
@@ -179,4 +217,34 @@ object USF {
 @Suppress("ConstPropertyName")
 object ADTY {
     const val adminUser = "AdminUser"
+}
+
+/**
+ * The three wire names a date attribute of a user carries, generated from one [root] (issue #462).
+ *
+ * A date is never just one key: it is something to **sort** on (`updatedAt`), and a **range** to filter by
+ * (`updatedAfter` / `updatedBefore`), and those three names always stand in the same relation. Written out by
+ * hand they are three constants per date that have to agree, and five dates would be fifteen of them --
+ * fifteen chances for a `lastLoggedInBefore` to be spelled `lastLoginBefore` on one side of the wire.
+ *
+ * The convention is not invented here. `updated` / `updatedAt` / `updatedAfter` / `updatedBefore` already
+ * existed and already followed it exactly; this only stops the pattern being retyped.
+ *
+ * **In the kernel because both sides need the same strings.** The console builds its query and reads its
+ * columns from these, so generating them here means the frontend derives what the backend serves rather than
+ * carrying a parallel list that agrees until it does not. What cannot live here is how a date is *read off a
+ * row* -- that needs `AuthUserRow`, and so pairs with these keys in `base/common`'s `userDateFields`.
+ *
+ * [phrase] is the human wording the endpoint's own descriptions are built from ("Only users **last edited**
+ * at or after this time"), so the copy follows the same root as the keys.
+ */
+class UserDateKeys(val root: String, val phrase: String) {
+    /** The sort key, and the field carrying this date on every returned row. */
+    val at: String get() = root + "At"
+
+    /** Only users whose date is **at or after** this instant; the low end of the range. */
+    val after: String get() = root + "After"
+
+    /** Only users whose date is **at or before** this instant; the high end of the range. */
+    val before: String get() = root + "Before"
 }

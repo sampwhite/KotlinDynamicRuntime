@@ -146,7 +146,7 @@ class UserService : ServiceInitializer {
      * already selects every scoped row, so evaluating the term in Kotlin only lifts a typed search to that same
      * baseline rather than introducing a new full scan.
      *
-     * The filter is applied in SQL (not by loading the table and filtering in Kotlin) so the cap is a real one:
+     * The filter is applied in SQL (not by loading the table and filtering in Kotlin), so the cap is a real one:
      * a deployment's user table is the one table guaranteed to outgrow any page size. `lower(...) like ?` will
      * not use the plain unique indexes, which is acceptable for an admin-only, human-paced screen; a
      * case-insensitive index is the fix if it ever matters.
@@ -297,7 +297,14 @@ class UserService : ServiceInitializer {
      * row can be. On a refusal the cache is marked so the very next read is fresh; the caller re-reads and
      * retries, now working from the row that actually exists.
      */
-    fun updateUser(cxt: KdrCxt, row: AuthUserRow) {
+    fun updateUser(cxt: KdrCxt, row: AuthUserRow, isEdit: Boolean = true) {
+        // `lastEditedAt` moves on an ordinary write and is opted *out* of, not into (issue #462). The failure
+        // modes are not symmetric: a new edit path that forgot to opt in would silently stop tracking, which
+        // nothing would ever show, while a non-edit write that forgets to opt out moves a timestamp it should
+        // not -- rarer, and visible. Two callers opt out today: the login stamp and re-enabling an account.
+        if (isEdit) {
+            row.lastEditedAt = cxt.now()
+        }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUsersTable(cxt)
         val data = row.toMap().toMutableMap()
@@ -306,7 +313,7 @@ class UserService : ServiceInitializer {
         SqlTopicUtil.prepForStdExecute(cxt, table, data)
         // prepForStdExecute stamps `enabled = true` unconditionally -- deliberate for a "create" that revives a
         // disabled row (issue #48), but wrong for an update, where it would make disabling a user impossible:
-        // the write would silently succeed and the row stay enabled. The caller's intent wins here.
+        // the write would silently succeed, leaving the row enabled. The caller's intent wins here.
         data[PF.enabled] = row.enabled
         var count = 1
         if (priorUpdatedAt == null) {

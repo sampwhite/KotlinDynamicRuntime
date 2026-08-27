@@ -56,7 +56,7 @@ val Users = FC<Props> {
     var textFilters by useState<Map<String, String>>(emptyMap())
     var rangeFilters by useState<Map<String, DateRange>>(emptyMap())
     // The sort, driven by the table's column headers. Default: newest first, as the issue specifies.
-    var sortBy by useState(USF.updatedAt)
+    var sortBy by useState(USF.lastEdited.at)
     var descending by useState(true)
     // What the last search reported: how many matched in all, and whether the cap hid some.
     var numAvailable by useState(0)
@@ -410,7 +410,7 @@ val Users = FC<Props> {
     val inEditor = creating || editing != null
 
     div {
-        className = ClassName("card wide")
+        className = ClassName("card full")
 
         if (denied) {
             h1 { +"Users" }
@@ -708,6 +708,10 @@ val Users = FC<Props> {
                         Input {
                             value = textFilters[spec.name] ?: ""
                             placeholder = "${spec.label} contains…"
+                            // A width of its own, so the panel can be as wide as the table needs without the
+                            // search boxes swallowing the difference (issue #462). `maxWidth` rather than
+                            // `width`, so a narrow browser still shrinks it.
+                            style = js("({ maxWidth: 420 })")
                             onChange = { event -> setText(spec.name, event.target.value as String, immediate = false) }
                         }
                     }
@@ -739,11 +743,15 @@ val Users = FC<Props> {
                             DatePicker {
                                 value = range.after?.let { dayjs(it) }?.takeIf { it.isValid() }
                                 showTime = true
+                                // Bounded for the same reason as the text boxes above; a date-time picker has
+                                // a known amount to show, so it gains nothing from being wider.
+                                style = js("({ maxWidth: 220 })")
                                 onChange = { date, _ -> setRange(spec.name, DateRange(date?.toISOString(), range.before)) }
                             }
                             DatePicker {
                                 value = range.before?.let { dayjs(it) }?.takeIf { it.isValid() }
                                 showTime = true
+                                style = js("({ maxWidth: 220 })")
                                 onChange = { date, _ -> setRange(spec.name, DateRange(range.after, date?.toISOString())) }
                             }
                         }
@@ -760,7 +768,7 @@ val Users = FC<Props> {
             // count as an active filter here -- matching what the query serialization actually sends.
             val anyFilter = textFilters.values.any { it.isNotBlank() } || rangeFilters.values.any { !it.isEmpty }
             // The sort counts as something to reset too, so Clear returns the whole view to its default.
-            val canReset = anyFilter || sortBy != USF.updatedAt || !descending
+            val canReset = anyFilter || sortBy != USF.lastEdited.at || !descending
 
             div {
                 className = ClassName("row")
@@ -844,7 +852,7 @@ fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery {
     return UserSearchQuery(
         textTerms = texts,
         ranges = ranges,
-        sortBy = hp[USF.sortBy]?.takeIf { userSortKeys.contains(it) } ?: USF.updatedAt,
+        sortBy = hp[USF.sortBy]?.takeIf { userSortKeys.contains(it) } ?: USF.lastEdited.at,
         // Descending is the default; only an explicit "false" means ascending.
         descending = hp[USF.descending] != "false",
     )
@@ -859,7 +867,7 @@ fun searchHashParams(query: UserSearchQuery): List<Pair<String, String>> =
     userSearchArgs(query).mapNotNull { (k, v) ->
         when {
             // The sort defaults are omitted so an untouched search carries no params.
-            k == USF.sortBy && v == USF.updatedAt -> null
+            k == USF.sortBy && v == USF.lastEdited.at -> null
             k == USF.descending && v == true -> null
             k == USF.descending -> k to "false"
             else -> k to v.toString()

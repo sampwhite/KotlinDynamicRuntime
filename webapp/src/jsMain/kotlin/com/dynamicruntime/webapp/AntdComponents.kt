@@ -71,6 +71,17 @@ external interface InputProps : PropsWithChildren {
      * what stops a password manager from guessing wrong -- see [AC] and the note in [textField].
      */
     var autoComplete: String?
+
+    /**
+     * React style object. antd's `Input` is `width: 100%`, so inside a flex row it takes whatever the
+     * container has left -- which makes its width an accident of the panel rather than a decision, and is why
+     * a filter box grew to 816px the moment the panel around it did (issue #462).
+     *
+     * Set here rather than in `app.css`, and that is not a preference: antd 6 emits its own CSS-in-JS rules
+     * with higher specificity and later injection, so a stylesheet selector for an antd control's width is
+     * quietly ignored. Tried, and it was. [SelectProps.style] carries its widths for the same reason.
+     */
+    var style: dynamic
 }
 
 external val Input: ComponentType<InputProps>
@@ -154,6 +165,9 @@ external interface DatePickerProps : PropsWithChildren {
 
     /** antd calls this with (date, dateString): the Dayjs object and its formatted text. */
     var onChange: ((date: Dayjs?, dateString: String) -> Unit)?
+
+    /** React style object; see [InputProps.style] for why a width belongs here and not in the stylesheet. */
+    var style: dynamic
 }
 
 external val DatePicker: ComponentType<DatePickerProps>
@@ -176,6 +190,16 @@ external interface TableProps : Props {
     var rowKey: String?
     /** "large" | "middle" | "small". */
     var size: String?
+    /**
+     * `"fixed"` makes the declared column widths **authoritative**; left unset, the browser's auto table
+     * layout treats them as hints and hands width to whichever column has the longest unbreakable content.
+     *
+     * That difference is visible rather than theoretical: with auto layout one 41-character email address
+     * took 298px of a 220px column while the three date columns -- whose content is a fixed 153px and cannot
+     * be shortened -- were squeezed to 138 and wrapped onto a second line. The column that *could* have given
+     * way took from the ones that could not.
+     */
+    var tableLayout: String?
     /**
      * Fires on a table change -- here, a column-header sort. antd calls it with (pagination, filters, sorter);
      * the sorter carries `{ field, order }`, `order` being "ascend" | "descend" | undefined (undefined when a
