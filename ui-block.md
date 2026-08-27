@@ -64,6 +64,78 @@ registered. Evaluating server-side is what keeps it off the wire.
 
 Stated as one rule: **the backend decides whether and which; the frontend decides how it reads.**
 
+## Invoking frontend functionality: named registries
+
+A UiBlock's third kind of reference, after copy and conditions. A menu item does something when clicked; a
+workflow form names the component that renders it. Both are the backend's data pointing at the **frontend's**
+code, and both are the same construct.
+
+### A string is a route; an array is a call
+
+```json
+"action": "/forms/123"
+"action": ["confirmDelete", "formDoc", "123"]
+```
+
+An array's first element is the name of a registered function; the rest are its parameters. The JSON **type**
+is the discriminator, so nothing needs a sigil — and unlike a delimited path (`f:confirmDelete/formDoc/123`)
+there is no separator for a parameter to collide with, so a parameter may be any string at all. That deleted
+rule is the reason for the array rather than tidiness.
+
+This is a legitimate union rather than a shortcut past `thoughts-schema-direction.md`'s "declare the
+discriminator": that rule is about telling *object variants* apart, where nothing in the JSON says which branch
+you are in. Here a validator checks the type directly — `{"anyOf": [{"type": "string"}, {"type": "array"}]}`.
+
+### One construct, not a family of lookalikes
+
+A component reference is the same shape as an action: a name, then parameters. **Keep it literally the same
+construct** — one validator, one boot check, one frontend lookup — rather than two that resemble each other.
+Registries introduced separately drift in small ways (one checks arity, one does not; one takes an array, one
+an object), and then a comment saying two things must match is doing the work a mechanism should.
+
+### Why the names live in the kernel
+
+kd2 already runs *closed vocabulary, checked at the earliest binding time*: `optionsSource` ids, boot checks,
+environment variables, cfacts. In all of those the reference and the implementation are both backend, so one
+side can check the other.
+
+This pattern is that one **across the boundary** — the reference is authored in backend data, the
+implementation is a frontend artifact, and neither side can see the other. So the names must live in shared
+kernel code, as `HACT.logout` already does. That is not tidiness; it is the only thing that makes the reference
+checkable at all. Without it, a misspelled name is a click that silently does nothing — the same silent failure
+as an orphaned overlay key or an unresolved fragment reference, which is the third time this family has come up
+in this design.
+
+The registry should declare each entry's **arity**, so a wrong parameter count is a boot failure rather than an
+undefined argument at click time. The array makes arity readable without parsing, which is what makes that
+check cheap.
+
+### The registry stays hardwired, and that is load-bearing
+
+A config may only ever name a function a developer wrote. This is the line that keeps *extensibility through
+data* from becoming *code in data*: the name is the seam, everything on the data side is configurable,
+per-client and overlayable, and everything on the code side is typed, tested and reviewed.
+
+So when somebody wants a conditional argument, or two calls in sequence, the answer is a **new named
+function**, not a richer array — the same line held for cfact expressions, where a new condition is a new cfact
+computed in Kotlin rather than a new operator. This is the configuration complexity clock, and the registry is
+the stop placed on it (see `vocabulary-code-vs-data.md`).
+
+### Deferred, with the shape already decided
+
+A parameter may eventually be a **Map**, which is what a component reference wants (`["FormEditor", {"mode":
+"edit"}]`). Two notes for when that door opens:
+
+- It is the same question as "one construct or two". With a Map, a component reference and a function call are
+  indistinguishable in shape, which is right if they are one construct and confusing if they are not. Deciding
+  they are one now is what makes the Map cheap to add later.
+- The registry entry should **declare what it accepts**, because a map of arbitrary keys is one step from an
+  expression tree. A schema is the kd2 answer everywhere else and applies here too.
+
+A component reference is a stronger coupling than a function call, and worth knowing before it lands: the
+component's props become a contract between backend-authored data and frontend code. Undeclared, that contract
+fails the usual way — the backend passes `mode`, the component reads `viewMode`, and nothing says so.
+
 ## Invariants worth checking at boot
 
 - **Every fragment reference resolves.** A reference to a key no fragment declares does not fail — the render

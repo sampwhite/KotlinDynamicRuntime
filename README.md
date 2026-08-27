@@ -236,8 +236,9 @@ the others it was written before the code, and it is grown as decisions settle r
 merged from layers as a fragment is, and the counterpart to Gedra (stored entity data) and fragments (copy).
 It records what a UiBlock is the unit of, and where each kind of reference inside one resolves: cfact
 expressions by the backend before the response is built, fragment references by the frontend against copy it
-has already cached. Nothing is built yet — it exists so the term and the settled decisions are not buried in
-an issue thread.
+has already cached, and how SDUI data invokes frontend functionality at all — by naming an entry in a
+hardwired registry, with the names in shared kernel code so the reference is checkable at boot. Nothing is
+built yet; it exists so the term and the settled decisions are not buried in an issue thread.
 
 ## Deferred work
 
