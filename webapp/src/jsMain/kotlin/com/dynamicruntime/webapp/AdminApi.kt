@@ -109,10 +109,9 @@ fun isAllClientsDormant(level: String, granted: Boolean): Boolean =
     granted && !RoleLadder.satisfies(setOf(level), ROLE.admin)
 
 /**
- * The user-administration calls, behind the **`clientAdmin`** section (issue #225, renamed in #466) -- so
- * every one of them 403s
- * unless the caller holds the role the shell advertised as `canManageUsers`. The frontend uses that flag to
- * decide what to *show*; this is the surface that is actually gated.
+ * The user-administration calls, behind the **`clientAdmin`** section (issue #225, renamed in #466) -- so every
+ * one of them 403s unless the caller holds the role the shell advertised as `canManageUsers`. The frontend uses
+ * that flag to decide what to *show*; this is the surface that is actually gated.
  *
  * The scoped surface rather than the full-scope `admin` one, because it serves both kinds of administrator
  * correctly: a caller with `allClients` is simply unconfined there, so this console needs no branch on who is

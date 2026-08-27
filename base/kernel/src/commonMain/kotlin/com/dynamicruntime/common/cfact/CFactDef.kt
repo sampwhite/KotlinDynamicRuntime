@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
 
@@ -23,7 +24,7 @@ object CFD {
      * catalog. Being a scoped-admin section also brings the confinement this needs, since one client must not
      * be able to read what another declared.
      */
-    const val cfactsPath = "/clientAdmin/cfacts"
+    const val cfactsPath = "/${SECT.clientAdmin}/cfacts"
 
     /** Schema type name for the [CFactDef.toInfo] dump. */
     const val infoTypeName = "CFactInfo"

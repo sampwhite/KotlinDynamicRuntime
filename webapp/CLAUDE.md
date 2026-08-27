@@ -159,10 +159,10 @@ the checkbox: demoting an administrator should leave the capability dormant rath
 to re-grant it, which is the same reasoning that makes `rolesAtLevel` preserve capabilities at all.
 
 `AdminApi` calls the **`clientAdmin`** paths ([UADEP], renamed from `userAdmin` in #466), not the full-scope
-`admin` ones. That surface serves both
-kinds of administrator correctly — a capability holder is simply unconfined on it — so the console needs no
-branch on who is asking. `canManageUsers` from the home config decides whether the page is offered at all; it
-shapes the UI and is not the enforcement point, which stays the section gate.
+`admin` ones. That surface serves both kinds of administrator correctly — a capability holder is simply
+unconfined on it — so the console needs no branch on who is asking. `canManageUsers` from the home config
+decides whether the page is offered at all; it shapes the UI and is not the enforcement point, which stays the
+section gate.
 
 Paths, field names and the ladder all come from `base/kernel`, so a backend rename breaks compilation here
 rather than at runtime.

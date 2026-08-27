@@ -17,9 +17,8 @@ import com.dynamicruntime.common.user.AdminScope
  * configuration has to know which cfacts exist before it can write a condition, exactly as it has to know
  * which types exist before it can extend one. That is why this sits in `clientAdmin` -- the client-scoped
  * administration section (issue #466) -- rather than in `operator`, which is for somebody running the
- * deployment. Both
- * admit an administrator through the ladder today; the section says *whose* surface it is, and that outlives
- * the ladder.
+ * deployment. Both admit an administrator through the ladder today; the section says *whose* surface it is,
+ * and that outlives the ladder.
  *
  * Its own module rather than a listing folded into `AdminEndpoints`: a section is a statement about
  * authority, not about topic, and that module is about administering users -- and it is contributed

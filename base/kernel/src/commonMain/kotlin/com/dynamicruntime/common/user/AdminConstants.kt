@@ -5,6 +5,8 @@ package com.dynamicruntime.common.user
 // and it should build its calls from the same strings the backend serves them under. Per the code guide, these
 // are lowerCamelCase `const val`s in short upper-case acronym objects, always referenced qualified.
 
+import com.dynamicruntime.common.http.request.SECT
+
 /**
  * **Full-scope** admin endpoint paths (before the API context root is prepended). Every one sits under the
  * `admin` *section*, which `RequestService.adminSections` gates on
@@ -16,24 +18,24 @@ package com.dynamicruntime.common.user
  */
 @Suppress("ConstPropertyName")
 object ADEP {
-    const val users = "/admin/users"
+    const val users = "/${SECT.admin}/users"
 
     /**
      * The brute-force search over the user cache (issue #411): richer than [users], which is a
      * newest-first SQL listing. This one searches and sorts *active* users in memory (email/name substring,
      * client, update-time range) and is the surface the console's search should call.
      */
-    const val userSearch = "/admin/userSearch"
-    const val userCreate = "/admin/user/create"
-    const val userSetRoles = "/admin/user/setRoles"
-    const val userSetEnabled = "/admin/user/setEnabled"
-    const val userSetOrg = "/admin/user/setOrg"
-    const val userSetName = "/admin/user/setName"
+    const val userSearch = "/${SECT.admin}/userSearch"
+    const val userCreate = "/${SECT.admin}/user/create"
+    const val userSetRoles = "/${SECT.admin}/user/setRoles"
+    const val userSetEnabled = "/${SECT.admin}/user/setEnabled"
+    const val userSetOrg = "/${SECT.admin}/user/setOrg"
+    const val userSetName = "/${SECT.admin}/user/setName"
     /**
      * The verb says what happens; the path names the resource (issue #335). Its input rides in the query
      * string, since a DELETE carries no body -- see [com.dynamicruntime.common.endpoint.HttpMethod.DELETE].
      */
-    const val userDelete = "/admin/user"
+    const val userDelete = "/${SECT.admin}/user"
 
     /**
      * The clients this deployment carries (issue #343).
@@ -42,7 +44,7 @@ object ADEP {
      * a cross-client view is not a client-scoped administrator's business. Somebody confined to one client has
      * no question this listing answers that their own client's definition does not.
      */
-    const val clients = "/admin/clients"
+    const val clients = "/${SECT.admin}/clients"
 }
 
 /**
@@ -52,27 +54,32 @@ object ADEP {
  * full-scope surface.
  *
  * The section is named for **authority**, not topic (issue #466): `clientAdmin` says "an administrator confined
- * to one client", which is the statement a section makes. It sits opposite `admin` (the deployment-wide,
+ * to one client's scope", which is the statement a section makes. It sits opposite `admin` (the deployment-wide,
  * `allClients` surface) on the scope axis, and beside a future `/clientOperator` on the level axis. The old
  * name `userAdmin` described a topic, which stopped being right the moment anything but user administration
  * (the cfact discovery listing, #455) joined the section. `UADEP` keeps its name -- these paths still *do*
  * user administration; only the section they hang under was renamed.
+ *
+ * "Confined to a client" is the *widest* confinement this surface applies, not the only one: an administrator
+ * who also carries a primary *organization* is narrowed one width further, to that org within the client (see
+ * `ReadScopeRules.forCaller`). So a handler derives its scope from the caller rather than assuming the client --
+ * the section name marks the authority, and the scope it resolves to is the caller's, which can be narrower.
  *
  * **This is the surface a frontend should call.** It serves both kinds of administrator correctly -- a caller
  * with `allClients` is simply unconfined -- so a console built on it needs no branch on who is asking.
  */
 @Suppress("ConstPropertyName")
 object UADEP {
-    const val users = "/clientAdmin/users"
+    const val users = "/${SECT.clientAdmin}/users"
     /** The scoped counterpart to [ADEP.userSearch] -- the brute-force cache search (issue #411). */
-    const val userSearch = "/clientAdmin/userSearch"
-    const val userCreate = "/clientAdmin/user/create"
-    const val userSetRoles = "/clientAdmin/user/setRoles"
-    const val userSetEnabled = "/clientAdmin/user/setEnabled"
-    const val userSetOrg = "/clientAdmin/user/setOrg"
-    const val userSetName = "/clientAdmin/user/setName"
+    const val userSearch = "/${SECT.clientAdmin}/userSearch"
+    const val userCreate = "/${SECT.clientAdmin}/user/create"
+    const val userSetRoles = "/${SECT.clientAdmin}/user/setRoles"
+    const val userSetEnabled = "/${SECT.clientAdmin}/user/setEnabled"
+    const val userSetOrg = "/${SECT.clientAdmin}/user/setOrg"
+    const val userSetName = "/${SECT.clientAdmin}/user/setName"
     /** `DELETE`, like [ADEP.userDelete], and scoped to the caller's own client. */
-    const val userDelete = "/clientAdmin/user"
+    const val userDelete = "/${SECT.clientAdmin}/user"
 }
 
 /** Admin request/response field (JSON key) names. */

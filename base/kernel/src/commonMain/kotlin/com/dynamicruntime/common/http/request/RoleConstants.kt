@@ -32,6 +32,37 @@ object ROLE {
 }
 
 /**
+ * The **gated section names** -- the first path segment of a privileged surface, which `SectionRules` gates on.
+ *
+ * These exist because one section name is spelled in several places that must agree: the section list in
+ * `RequestService` that assigns it rules, the path constants served under it ([com.dynamicruntime.common.user.UADEP],
+ * [com.dynamicruntime.common.user.ADEP], [com.dynamicruntime.common.cfact.CFD]), and the schema-module namespace
+ * that carries it. A section rename that missed one spelling would leave the surface gated as one section while
+ * served under another: a *complete* miss trips the boot check (the section becomes unruled), but a slip landing
+ * in another ruled section boots clean and silently moves the surface. Building every spelling from one constant
+ * is what makes that impossible (issue #466).
+ *
+ * Only the gated sections are here -- the ones named in more than one place. The anonymous and plain-user
+ * sections (`health`, `gedra`, ...) appear once, in `RequestService`, and their endpoint paths are ordinary
+ * literals, so a constant would buy them nothing. The names match their values, as the code guide asks of a
+ * key constant.
+ */
+@Suppress("ConstPropertyName")
+object SECT {
+    /** Full-scope administration (needs [ROLE.admin] **and** [ROLE.allClients]); the deployment-wide cell. */
+    const val admin = "admin"
+
+    /** Client-scoped administration (needs [ROLE.admin], confined by scope); renamed from `userAdmin` in #466. */
+    const val clientAdmin = "clientAdmin"
+
+    /** Node identity and stats -- full-scope, gated beside [admin]. */
+    const val node = "node"
+
+    /** Running the deployment (needs [ROLE.operator] **and** [ROLE.allClients] since #464); deployment-wide. */
+    const val operator = "operator"
+}
+
+/**
  * The built-in privilege ladder: [ROLE.user] < [ROLE.operator] < [ROLE.admin]. It answers one question --
  * does a caller's role set satisfy the role a section requires? -- and it is the only place that ordering is
  * written down.
