@@ -249,6 +249,35 @@ backend sets from `isTestInstance` — the same fence `_debug=explainAccess` use
 of "a dev build". Note the limit: a crash in the *shell* happens before the config fetch returns, so the
 detail is withheld there even on a test instance and the console is where you read it.
 
+## Iterating on the frontend without a rebuild each time
+
+Rebuilding the bundle and restarting `:launch:run` is roughly a minute per change, which is a poor loop for
+anything visual — a column width, a spacing tweak, a control that is the wrong size. The webpack **dev server**
+turns that into about two seconds, and the flag that makes it work is easy to miss:
+
+```bash
+./gradlew :webapp:jsBrowserDevelopmentRun --continuous -Pwebapp.backendPort=7071 -Pwebapp.port=8081 -Pwebapp.open=false
+```
+
+- **`--continuous` is the load-bearing part.** Without it the dev server serves a snapshot: neither a Kotlin
+  edit nor an `app.css` edit reaches the browser, because Gradle never re-runs the compile and resource-copy
+  tasks that feed webpack. With it, both were measured at **~2 seconds** from save to served.
+- **`-Pwebapp.backendPort`** points the API proxy at your own backend. It defaults to `7070`, the developer's
+  IntelliJ instance — which is also the one port a second session must not bind, so without this the dev
+  server is unusable from any checkout but the first.
+- **`-Pwebapp.port`** moves the dev server itself off 8080, for the same reason.
+- `-Pwebapp.open=false` stops it launching Chrome, which an agent session does not want.
+
+Start your backend first (`KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run`), then browse the dev
+server rather than the backend: **`http://localhost:8081/`**, not `:7071/wa`. The proxy forwards `/kda` and
+`/st`, so the app is same-origin and logins work normally.
+
+**For CSS specifically, probe in the browser before writing the rule.** Injecting a candidate `<style>` and
+measuring with `getBoundingClientRect` answers "what would this look like" in one call, with no build at all —
+and measuring beats eyeballing, since "an 816px input beside a 178px column" is a diagnosis where "looks
+cramped" is a complaint. Write the rule to `app.css` once it is settled. Note the antd caveat below when the
+rule targets one of its controls.
+
 ## Reading a frontend crash: the readable bundle (issue #230)
 
 What ships is webpack's **production** bundle, and a Kotlin exception reaches JS with `message` undefined and a

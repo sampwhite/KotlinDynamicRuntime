@@ -34,12 +34,21 @@ kotlin {
                 // already running" dialog. Disabling the auto-open leaves the debugger as the sole opener.
                 val openInBrowser = (project.findProperty("webapp.open") as? String) != "false"
 
+                // Which backend the dev server proxies the API to. `7070` is the developer's own IntelliJ
+                // instance, which is the right default and is also the one port a second session must not
+                // touch -- so an agent, or anyone running a second checkout, could not use the dev server at
+                // all while this was hardcoded. Override it with `-Pwebapp.backendPort=7071`.
+                val backendPort = (project.findProperty("webapp.backendPort") as? String)?.toIntOrNull() ?: 7070
+
+                // The dev-server port itself, for the same reason: two sessions cannot both hold 8080.
+                val devServerPort = (project.findProperty("webapp.port") as? String)?.toIntOrNull() ?: 8080
+
                 // Pin the webpack dev server to a fixed port. Without this,
                 // Kotlin/JS defaults to 8080 and will silently hop to the next
                 // free port if it's taken, giving an unpredictable URL. Reuse
                 // any existing DevServer config so other settings aren't lost.
                 devServer = (devServer ?: KotlinWebpackConfig.DevServer()).copy(
-                    port = 8080,
+                    port = devServerPort,
                     // Open Chrome specifically (not the OS default browser) at the fixed
                     // http://localhost:8080/ once compiled and listening. `open` is serialized to the
                     // webpack-dev-server config via Gson, so this map becomes
@@ -48,9 +57,9 @@ kotlin {
                     // JavaScript Debug session that opens its OWN Chrome. For debugging, prefer Run +
                     // `-Pwebapp.open=false` (see [openInBrowser]) and attach a JS Debug config at :8080.
                     open = if (openInBrowser) mapOf("app" to mapOf("name" to "google chrome")) else false,
-                    // Same-origin dev: proxy the runtime's context roots to the backend on :7070. The browser
-                    // then makes same-origin calls to the dev server, which forwards them — so no CORS
-                    // handling is needed (the runtime's HTTP server has none). Start the backend with
+                    // Same-origin dev: proxy the runtime's context roots to the backend (see [backendPort]).
+                    // The browser then makes same-origin calls to the dev server, which forwards them — so no
+                    // CORS handling is needed (the runtime's HTTP server has none). Start the backend with
                     // `./gradlew :launch:run` first.
                     //   "/kda" — the API context root (endpoints).
                     //   "/st"  — the static context root: Markdown fragments (a group's copy) and whole
@@ -59,7 +68,7 @@ kotlin {
                     proxy = mutableListOf(
                         KotlinWebpackConfig.DevServer.Proxy(
                             context = mutableListOf("/kda", "/st"),
-                            target = "http://localhost:7070",
+                            target = "http://localhost:$backendPort",
                         ),
                     ),
                 )
