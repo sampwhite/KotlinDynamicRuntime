@@ -126,7 +126,7 @@ class KdrEndpoint(
     val tags: Set<String> = emptySet(),
     /**
      * Whether this endpoint gets a **per-client copy** at a path naming the client (issue #455) --
-     * `/userAdmin/cfacts` alongside `/userAdmin/<client>/cfacts`.
+     * `/clientAdmin/cfacts` alongside `/clientAdmin/<client>/cfacts`.
      *
      * `buildClientEndpoints` copies the whole `gedra` section without being asked, because everything there
      * reads or writes one client's data. Its own note says the property is really "what this endpoint answers

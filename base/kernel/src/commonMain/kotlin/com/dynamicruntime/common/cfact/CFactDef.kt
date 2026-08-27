@@ -16,14 +16,14 @@ object CFD {
      * paths there: the page that presents this list is built from the same string the backend serves it
      * under, and a path spelled twice is a rename that empties a page.
      *
-     * The `userAdmin` section, not `operator`. Both admit an administrator today -- the ladder ranks admin
-     * above operator -- but they say different things, and the difference will outlive the ladder: `operator`
-     * is for somebody running the *deployment*, while reading what a cfact means is what a **client's own**
-     * administrator does while authoring their configuration, exactly as they read the schema catalog. Being
-     * a scoped-admin section also brings the confinement this needs, since one client must not be able to
-     * read what another declared.
+     * The `clientAdmin` section (issue #466), not `operator`. Both admit an administrator today -- the ladder
+     * ranks admin above operator -- but they say different things, and the difference will outlive the ladder:
+     * `operator` is for somebody running the *deployment*, while reading what a cfact means is what a
+     * **client's own** administrator does while authoring their configuration, exactly as they read the schema
+     * catalog. Being a scoped-admin section also brings the confinement this needs, since one client must not
+     * be able to read what another declared.
      */
-    const val cfactsPath = "/userAdmin/cfacts"
+    const val cfactsPath = "/clientAdmin/cfacts"
 
     /** Schema type name for the [CFactDef.toInfo] dump. */
     const val infoTypeName = "CFactInfo"

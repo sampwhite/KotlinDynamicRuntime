@@ -109,7 +109,8 @@ fun isAllClientsDormant(level: String, granted: Boolean): Boolean =
     granted && !RoleLadder.satisfies(setOf(level), ROLE.admin)
 
 /**
- * The user-administration calls, behind the **`userAdmin`** section (issue #225) -- so every one of them 403s
+ * The user-administration calls, behind the **`clientAdmin`** section (issue #225, renamed in #466) -- so
+ * every one of them 403s
  * unless the caller holds the role the shell advertised as `canManageUsers`. The frontend uses that flag to
  * decide what to *show*; this is the surface that is actually gated.
  *

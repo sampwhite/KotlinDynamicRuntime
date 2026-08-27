@@ -56,8 +56,8 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
 )
 
 /**
- * The **scoped** surface: the `userAdmin` section, which requires only [ROLE.admin] and confines every read to
- * `ReadScopeRules.forCaller` (issue #225).
+ * The **scoped** surface: the `clientAdmin` section (renamed from `userAdmin` in issue #466), which requires
+ * only [ROLE.admin] and confines every read to `ReadScopeRules.forCaller` (issue #225).
  *
  * The same module built twice rather than a second set of handlers, because the difference between the two
  * surfaces is *who may enter*, not what they do once inside: the scope is derived from the caller's roles, so
@@ -65,7 +65,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  * mean two implementations of the same rules, and the copy is the one that would miss a fix.
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, "userAdmin",
+    cxt, "clientAdmin",
     UserAdminPaths(UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetName, UADEP.userDelete),
 )
 

@@ -48,28 +48,31 @@ object ADEP {
 /**
  * **Scoped** user-administration paths: the same operations as [ADEP], reachable by any
  * [com.dynamicruntime.common.http.request.ROLE.admin] and confined to what their `ReadScope` allows (issue
- * #225). Its `userAdmin` section is what a client-scoped administrator has instead of a narrowed view of the
+ * #225). Its `clientAdmin` section is what a client-scoped administrator has instead of a narrowed view of the
  * full-scope surface.
  *
- * Named for the job rather than for the client level on purpose: an administrator limited to a primary
- * *organization* within a client will use this same surface, so a name like `clientAdmin` would be wrong on
- * arrival.
+ * The section is named for **authority**, not topic (issue #466): `clientAdmin` says "an administrator confined
+ * to one client", which is the statement a section makes. It sits opposite `admin` (the deployment-wide,
+ * `allClients` surface) on the scope axis, and beside a future `/clientOperator` on the level axis. The old
+ * name `userAdmin` described a topic, which stopped being right the moment anything but user administration
+ * (the cfact discovery listing, #455) joined the section. `UADEP` keeps its name -- these paths still *do*
+ * user administration; only the section they hang under was renamed.
  *
  * **This is the surface a frontend should call.** It serves both kinds of administrator correctly -- a caller
  * with `allClients` is simply unconfined -- so a console built on it needs no branch on who is asking.
  */
 @Suppress("ConstPropertyName")
 object UADEP {
-    const val users = "/userAdmin/users"
+    const val users = "/clientAdmin/users"
     /** The scoped counterpart to [ADEP.userSearch] -- the brute-force cache search (issue #411). */
-    const val userSearch = "/userAdmin/userSearch"
-    const val userCreate = "/userAdmin/user/create"
-    const val userSetRoles = "/userAdmin/user/setRoles"
-    const val userSetEnabled = "/userAdmin/user/setEnabled"
-    const val userSetOrg = "/userAdmin/user/setOrg"
-    const val userSetName = "/userAdmin/user/setName"
+    const val userSearch = "/clientAdmin/userSearch"
+    const val userCreate = "/clientAdmin/user/create"
+    const val userSetRoles = "/clientAdmin/user/setRoles"
+    const val userSetEnabled = "/clientAdmin/user/setEnabled"
+    const val userSetOrg = "/clientAdmin/user/setOrg"
+    const val userSetName = "/clientAdmin/user/setName"
     /** `DELETE`, like [ADEP.userDelete], and scoped to the caller's own client. */
-    const val userDelete = "/userAdmin/user"
+    const val userDelete = "/clientAdmin/user"
 }
 
 /** Admin request/response field (JSON key) names. */

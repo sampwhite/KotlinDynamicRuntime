@@ -476,7 +476,7 @@ else. Grouping by what an endpoint writes beats grouping by what parameterizes i
 aesthetic: **the section is how this codebase declares access.** `gedra` is login-gated and nothing more,
 because reach there is a scope question. Config authoring is not — it is administrative, and putting it under
 `gedra` would inherit the login-only gate and hand config editing to every user. A `gedraConfig` section gated
-the way `userAdmin` is (admin level, client-scoped) says the right thing in the one place that is enforced.
+the way `clientAdmin` is (admin level, client-scoped) says the right thing in the one place that is enforced.
 
 It also matches the storage split the ids already draw: `gc.` against `gd.` is a different family, not a
 different kind, so it is a sibling of `/gedra/...` rather than a path under it.

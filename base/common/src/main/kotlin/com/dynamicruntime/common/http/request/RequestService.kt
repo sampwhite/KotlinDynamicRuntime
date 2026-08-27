@@ -123,8 +123,24 @@ class RequestService : ServiceInitializer {
      * exact rank) with a single rule, in the same shape [adminSections] already uses.
      *
      * The deliberate cost is that a genuine operator now needs `allClients` granted beside the role, which
-     * makes `operator` a statement about *deployment* scope. A client-scoped operator is a different surface
-     * (a future `/clientOperator`, issue #466), not this one with a narrowed view.
+     * makes `operator` a statement about *deployment* scope. A client-scoped operator is a different surface,
+     * not this one with a narrowed view.
+     *
+     * **The bare name means deployment-wide.** The role model draws two axes -- level ([RoleLadder]:
+     * `user` < `operator` < `admin`) and scope (`AdminScope`: one client vs `allClients`) -- and the four
+     * sections are their cells (issue #466):
+     *
+     * |            | deployment-wide (`allClients`) | one client        |
+     * | ---------- | ------------------------------ | ----------------- |
+     * | admin      | `admin`                        | `clientAdmin`     |
+     * | operator   | `operator`                     | `clientOperator`  |
+     *
+     * `clientOperator` is **reserved, not built** -- the name is claimed here so the first client-scoped
+     * operator surface (client-scoped batch jobs are the expected first tenant) is not invented under another
+     * one. The bare `operator`/`admin` are the unmarked -- and *more* privileged -- half of each scope pair; if
+     * that reads backwards once `clientOperator` is real, the fix is to mark both ends
+     * (`deploymentOperator`/`deploymentAdmin`), deferred because nothing is deployed and those are the two paths
+     * used most.
      */
     val operatorSections: List<String> = listOf("operator")
 
@@ -132,7 +148,8 @@ class RequestService : ServiceInitializer {
      * Sections requiring [ROLE.admin] **and** the [ROLE.allClients] capability -- the **full-scope**
      * administration surface (issue #225). The level alone is not enough: an administrator confined to one
      * client does not get a narrowed view of these endpoints, they get a different surface
-     * ([scopedAdminSections]).
+     * ([scopedAdminSections], the `clientAdmin` section). The bare name means deployment-wide; see
+     * [operatorSections] for the level x scope grid the four sections fill (issue #466).
      *
      * **Both, not either.** These sections originally named the capability as their required role, which made
      * holding it sufficient on its own -- `RoleLadder.satisfies` falls back to exact membership off the
@@ -149,8 +166,14 @@ class RequestService : ServiceInitializer {
      * Sections requiring [ROLE.admin] but **confined by the caller's scope** (issue #225) -- what a
      * client-scoped administrator has instead of a narrowed view of [adminSections]. A caller holding
      * [ROLE.allClients] satisfies this too and is simply unconfined, so one surface serves both.
+     *
+     * The section is `clientAdmin` (renamed from `userAdmin` in issue #466): a section names **authority** --
+     * "an administrator confined to one client" -- not a topic, so it reads right for everything that belongs
+     * here, not only user administration. It is the client-scoped cell opposite the deployment-wide
+     * [adminSections] (`admin`); the level axis has a matching pair in [operatorSections] (`operator`) and a
+     * reserved-but-unbuilt `clientOperator` (see [operatorSections]).
      */
-    val scopedAdminSections: List<String> = listOf("userAdmin")
+    val scopedAdminSections: List<String> = listOf("clientAdmin")
 
     @KdrPrivate
     var isInit: Boolean = false

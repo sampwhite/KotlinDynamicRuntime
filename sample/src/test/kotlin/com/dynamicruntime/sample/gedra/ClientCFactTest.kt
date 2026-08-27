@@ -74,7 +74,7 @@ class ClientCFactTest : StringSpec({
         // exists outside that section at all. It is what lets an administrator who may reach every client ask
         // about one, and what puts acme's copy in the catalog acme's own people are shown.
         val ownPath = clientPath(CFD.cfactsPath, SC.acme)
-        ownPath shouldBe "/userAdmin/${SC.acme}/cfacts"
+        ownPath shouldBe "/clientAdmin/${SC.acme}/cfacts"
         namesAt(crossClient, ownPath) shouldContain SC.underAudit
         namesAt(acmeAdmin, ownPath) shouldContain SC.underAudit
         namesAt(crossClient, clientPath(CFD.cfactsPath, SC.globex)) shouldNotContain SC.underAudit
@@ -83,7 +83,7 @@ class ClientCFactTest : StringSpec({
     "one client's administrator cannot read another's list" {
         // The confinement the section change made **necessary** rather than optional. Under `operator` this
         // was reachable only by people running the deployment, for whom every client is already theirs;
-        // `userAdmin` admits a customer's own administrator, and a customer able to read their neighbors'
+        // `clientAdmin` admits a customer's own administrator, and a customer able to read their neighbors'
         // vocabulary is the same leak that decided cfact names are not held unique across clients.
         globexAdmin.expectError(EXC.badInput, clientPath(CFD.cfactsPath, SC.acme))
         acmeAdmin.expectError(EXC.badInput, clientPath(CFD.cfactsPath, SC.globex))
