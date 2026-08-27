@@ -4,14 +4,17 @@ import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
+import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.uiblock.UiBlockService
+import com.dynamicruntime.common.uiblock.UiBlockSource
+import com.dynamicruntime.common.uiblock.uiBlock
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
-import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.operator.OENV
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.refreshActingRoles
 
@@ -107,7 +110,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
             ),
             UIC.state to mapOf(
                 HFLD.links to homeLinks(),
-                HFLD.menu to menuItems(c),
+                HFLD.menu to resolvedMenu(c),
                 HFLD.userInfo to c.userProfile.toUserInfo(),
             ),
         )
@@ -115,53 +118,74 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
 }
 
 /**
- * The app-bar menu for *this* caller, in display order.
+ * The app-bar menu, as data (issue #458).
  *
- * The menu is built here rather than in the frontend so that what a user may reach is decided in one place, by
- * the side that actually knows -- the shell then renders whatever list it is handed. That matters most for the
- * user-administration entry: it appears only for a caller with the [AdminRules.canManageUsers] capability, and
- * when that capability grows narrower (per-client administration, say) the menu narrows with it and no
- * frontend changes. It also means a signed-out visitor is never sent the labels of pages they cannot open.
+ * The menu is decided here rather than in the frontend so that what a user may reach is settled in one place,
+ * by the side that knows -- the shell renders whatever list it is handed. What changed in #458 is that the
+ * *conditions* are data too: each item carries a cfact expression instead of sitting inside an `if`, which is
+ * what lets a client or a boot role vary the menu without another branch being added here. An item whose
+ * expression does not match is absent from the response, exactly as before.
  *
- * Labels are literal here, as the [homeDocs] link labels already are. Their natural home is the `home`
- * fragment file once this menu needs translating.
+ * The three conditions are worth reading against what they replaced:
+ *
+ * - **Users** was `AdminRules.canManageUsers`, which is `admin` held -- the same test [CFACTS.isAdmin] makes.
+ * - **Environment** was `RequestService.canAccess(...)` on the env-reference path, asked of the dispatcher so
+ *   the menu and the gate could not drift (#211). [CFACTS.isDeploymentOperator] asks the dispatcher too, about
+ *   the `operator` section rather than one endpoint in it, so the invariant survives the move.
+ * - **Signed in / out** was an `if/else` on `isLoggedIn`, and is now the pair [CFACTS.loggedIn] and
+ *   [CFACTS.anonymous] -- the positive form on both sides rather than a negation.
+ *
+ * Labels stay literal, as `homeDocs` link labels do. Their natural home is the `home` fragment file, and
+ * moving them is deliberately *not* part of this change: the acceptance criterion is a response that does not
+ * change, and moving copy in the same step would spend the one check that makes the move verifiable.
  */
-private fun menuItems(cxt: KdrCxt): List<Map<String, Any?>> = buildList {
-    add(item(HMENU.catalog, "Endpoint catalog", page = HMENU.pageCatalog))
-    if (AdminRules.canManageUsers(cxt)) {
-        add(item(HMENU.users, "Users", page = HMENU.pageUsers))
-    }
-    // The environment-variable reference (issue #371): a running-the-deployment diagnostic. Offered on exactly
-    // the terms its `operator` section admits -- asked of the dispatcher's own predicate rather than restated
-    // here, so the menu, the gate, and the catalog cannot drift (the #211 invariant). Since #464 that surface
-    // is deployment-wide (the operator level *and* `allClients`), so a client-scoped administrator is not
-    // offered it despite the ladder ranking them above operator. The roles are the refreshed acting roles
-    // (see refreshActingRoles above).
-    if (RequestService.get(cxt).canAccess(cxt.userProfile, OENV.envReferencePath)) {
-        add(item(HMENU.envReference, "Environment", page = HMENU.pageEnv))
-    }
-    if (cxt.userProfile.isLoggedIn) {
+fun homeMenuBlock(): UiBlockSource = uiBlock(
+    HMENU.block,
+    origin = "HomeEndpoints",
+    // Items are identified by their id: what an overlay names to mean *this* item, and so the one thing that
+    // must survive a change of label, route or condition.
+    arrayKeys = mapOf(HFLD.menu to HFLD.id),
+) {
+    items(HFLD.menu) {
+        item { set(HFLD.id, HMENU.catalog); set(HFLD.label, "Endpoint catalog"); set(HFLD.page, HMENU.pageCatalog) }
+        item {
+            set(HFLD.id, HMENU.users); set(HFLD.label, "Users"); set(HFLD.page, HMENU.pageUsers)
+            set(UIB.cfact, CFACTS.isAdmin)
+        }
+        item {
+            set(HFLD.id, HMENU.envReference); set(HFLD.label, "Environment"); set(HFLD.page, HMENU.pageEnv)
+            set(UIB.cfact, CFACTS.isDeploymentOperator)
+        }
         // Forms are login-gated only (the `gedra` section), so every signed-in caller is offered the list; how
         // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"
-        // is a menu entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
+        // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
         // "New form" button rather than a second, redundant nav item (issue #417).
-        add(item(HMENU.forms, "My forms", page = HMENU.pageForms))
-        add(item(HMENU.profile, "Profile", page = HMENU.pageProfile))
-        add(item(HMENU.logout, "Log out", action = HACT.logout))
-    } else {
-        add(item(HMENU.login, "Log in", page = HMENU.pageLogin))
-        add(item(HMENU.register, "Register", page = HMENU.pageRegister))
+        item {
+            set(HFLD.id, HMENU.forms); set(HFLD.label, "My forms"); set(HFLD.page, HMENU.pageForms)
+            set(UIB.cfact, CFACTS.loggedIn)
+        }
+        item {
+            set(HFLD.id, HMENU.profile); set(HFLD.label, "Profile"); set(HFLD.page, HMENU.pageProfile)
+            set(UIB.cfact, CFACTS.loggedIn)
+        }
+        item {
+            set(HFLD.id, HMENU.logout); set(HFLD.label, "Log out"); set(HFLD.action, HMENU.logout)
+            set(UIB.cfact, CFACTS.loggedIn)
+        }
+        item {
+            set(HFLD.id, HMENU.login); set(HFLD.label, "Log in"); set(HFLD.page, HMENU.pageLogin)
+            set(UIB.cfact, CFACTS.anonymous)
+        }
+        item {
+            set(HFLD.id, HMENU.register); set(HFLD.label, "Register"); set(HFLD.page, HMENU.pageRegister)
+            set(UIB.cfact, CFACTS.anonymous)
+        }
     }
 }
 
-/** One [HTYPE.menuItem]: a navigation ([page]) or an action, never both. */
-private fun item(id: String, label: String, page: String? = null, action: String? = null): Map<String, Any?> =
-    buildMap {
-        put(HFLD.id, id)
-        put(HFLD.label, label)
-        if (page != null) put(HFLD.page, page)
-        if (action != null) put(HFLD.action, action)
-    }
+/** [HMENU.block] resolved for this caller: the items their cfacts satisfy, in display order. */
+private fun resolvedMenu(cxt: KdrCxt): List<Any?> =
+    (UiBlockService.get(cxt).resolve(cxt, HMENU.block)?.get(HFLD.menu) as? List<*>) ?: emptyList()
 
 /** A layout toggle from the deployment's instance config, or [default] when it is not configured. */
 private fun KdrCxt.layoutFlag(key: String, default: Boolean): Boolean =

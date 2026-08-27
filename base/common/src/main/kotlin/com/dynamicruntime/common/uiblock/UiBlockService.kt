@@ -151,9 +151,11 @@ fun filterByCFacts(
 ): Map<String, Any?> {
     val out = LinkedHashMap<String, Any?>()
     for ((key, value) in node) {
-        // The condition decided the object it sits on, which has already been judged by whoever held it; it is not
-        // itself part of what the frontend needs, so it does not travel.
-        if (key == UIB.cfact) continue
+        // Neither the condition nor the order travels. Both have already done their work by now -- the
+        // condition decided whether this object is here at all, and the order decided where it sits in an
+        // array that is now sorted -- and shipping them would put the caller's vocabulary on the wire and
+        // invite a frontend to re-sort a list the backend already ordered.
+        if (key == UIB.cfact || key == UIB.displayOrder) continue
         when (value) {
             is Map<*, *> -> {
                 val child = asObject(value)

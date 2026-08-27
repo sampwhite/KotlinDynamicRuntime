@@ -242,8 +242,19 @@ class RequestService : ServiceInitializer {
      * people a role grant just admitted -- and keep hiding them for the cookie's whole life, since the grant
      * deliberately does not require a re-login.
      */
-    fun canAccess(profile: UserProfile, appPath: String): Boolean {
-        val rules = sectionRulesMap[sectionOf(appPath)] ?: return true
+    fun canAccess(profile: UserProfile, appPath: String): Boolean = sectionAdmits(profile, sectionOf(appPath))
+
+    /**
+     * Whether [profile] may reach [section] -- the same answer [canAccess] gives, asked of the section
+     * directly.
+     *
+     * Exists because some questions are about a section rather than about a path: "may this caller reach the
+     * deployment-operator surface?" is a fact about who they are (issue #458), and answering it by naming one
+     * endpoint would tie the fact to whichever endpoint happened to be picked. A section with no rules is
+     * served permissively, as it is for [canAccess].
+     */
+    fun sectionAdmits(profile: UserProfile, section: String): Boolean {
+        val rules = sectionRulesMap[section] ?: return true
         return rules.admits(profile.roles)
     }
 

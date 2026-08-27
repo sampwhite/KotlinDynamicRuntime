@@ -2,7 +2,9 @@ package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.startup.SchemaCollector
 
 /** The friendly labels the built-in cfacts group under. Metadata: they affect nothing but presentation. */
@@ -26,6 +28,9 @@ object CFACTS {
     const val anonymous = "anonymous"
     const val isOperator = "isOperator"
     const val isAdmin = "isAdmin"
+
+    /** True when the caller may reach the deployment-operator surface; see the declaration for why. */
+    const val isDeploymentOperator = "isDeploymentOperator"
 }
 
 /**
@@ -90,10 +95,23 @@ fun addCoreCFacts(collector: SchemaCollector) {
     collector.addCFact(
         CFactDef(
             CFACTS.isOperator, CFGRP.caller,
-            "True when the caller holds `operator`, or `admin` by the privilege ladder -- the same test the " +
-                "`operator` section applies.",
+            "True when the caller holds `operator`, or `admin` by the privilege ladder. A statement about " +
+                "**level only**: since issue #464 the `operator` section also requires `allClients`, so this " +
+                "is no longer the same test that section applies -- use `${CFACTS.isDeploymentOperator}` for that.",
         ),
     ) { RoleLadder.satisfies(it.userProfile.roles, ROLE.operator) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.isDeploymentOperator, CFGRP.caller,
+            "True when the caller may reach the `operator` section -- the deployment-wide surface, which " +
+                "takes the operator level **and** the `allClients` capability since issue #464. A " +
+                "client-scoped administrator is not one, despite the ladder ranking them above operator.",
+        ),
+        // Asked of the dispatcher rather than restated here, which is the whole point: the menu offering this
+        // surface and the gate admitting a caller to it are then one answer, and cannot drift (the #211
+        // invariant). Restating "operator and allClients" would be a second copy of a rule that has already
+        // changed once.
+    ) { RequestService.get(it).sectionAdmits(it.userProfile, SECT.operator) }
     collector.addCFact(
         CFactDef(
             CFACTS.isAdmin, CFGRP.caller,

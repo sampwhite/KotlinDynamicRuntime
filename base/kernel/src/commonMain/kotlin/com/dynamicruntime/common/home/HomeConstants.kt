@@ -93,6 +93,9 @@ object HTYPE {
  */
 @Suppress("ConstPropertyName")
 object HMENU {
+    /** The UiBlock the menu is registered as (issue #458); its items merge by [HFLD.id]. */
+    const val block = "homeMenu"
+
     // Item ids.
     const val catalog = "catalog"
     const val users = "users"
