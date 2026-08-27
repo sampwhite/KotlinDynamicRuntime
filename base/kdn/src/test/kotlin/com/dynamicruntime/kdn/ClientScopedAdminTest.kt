@@ -27,11 +27,11 @@ import io.kotest.matchers.shouldNotBe
  * confines one of them.
  *
  *  - The **`admin`** section requires [ROLE.allClients] -- full-scope, every client.
- *  - The **`userAdmin`** section requires only [ROLE.admin] and confines every read to the caller's scope. A
+ *  - The **`clientAdmin`** section requires only [ROLE.admin] and confines every read to the caller's scope. A
  *    holder of the capability satisfies it too and is simply unconfined there, which is why a console can be
  *    built on it without branching on who is asking.
  *
- * The scoping is proven at both levels on purpose. End to end through `userAdmin`, which is how a real caller
+ * The scoping is proven at both levels on purpose. End to end through `clientAdmin`, which is how a real caller
  * meets it; and at the service level, where the two scopes can be compared *directly on the same rows* --
  * an endpoint test can only show an absence, which a seeding bug would satisfy just as well.
  *
@@ -223,7 +223,7 @@ class ClientScopedAdminTest : StringSpec({
      * The whole point of the two surfaces: the same operations, reached by a lesser role and confined. A
      * scoped administrator is refused the full-scope surface and admitted to their own.
      */
-    "a scoped administrator works through userAdmin and is refused admin" {
+    "a scoped administrator works through clientAdmin and is refused admin" {
         val cxt = Startup.mkTestBootCxt("scopedSurface", "scopedSurfaceTest")
         val scoped = TestUser.create(cxt, "surface-admin@example.com", level = ROLE.admin)
         seedUserInClient(cxt, "surface-outsider@acme.com", otherClient)

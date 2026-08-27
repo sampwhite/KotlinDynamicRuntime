@@ -12,6 +12,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.isEmailAddress
@@ -24,9 +25,13 @@ import com.dynamicruntime.common.util.toOptStr
  * The administrator's user-management endpoints: list users, create one, and edit an existing one's roles or
  * enabled state.
  *
- * Access control is the path itself. Every path here sits under the `admin` **section**, which
- * `RequestService.adminSections` gates on [ROLE.admin] before dispatch -- so these handlers can assume an
- * authenticated administrator and none of them repeats the check. Granting that role in the first place is
+ * Access control is the path itself, and this module is built **twice** under two sections (see
+ * [scopedUserAdminSchema]): the full-scope `admin` section, which `RequestService.adminSections` gates on
+ * [ROLE.admin] **and** the [ROLE.allClients] capability (issue #464), and the `clientAdmin` section, gated on
+ * [ROLE.admin] alone and confined to the caller's scope. So a handler can assume an authenticated administrator
+ * and never repeats the section check -- but it must **not** assume full scope: every read passes
+ * `ReadScopeRules.forCaller(c)` (see the listing below), which is what makes the same handler correct on both
+ * surfaces. An `allClients` caller is simply unconfined there. Granting the role in the first place is
  * [AdminRules]' job (an auto-admin email domain) or the `GrantRole` command-line script's; from there,
  * [ADEP.userSetRoles] grants it to anyone else.
  *
@@ -51,13 +56,13 @@ class UserAdminPaths(
 
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
 fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, "admin",
+    cxt, SECT.admin,
     UserAdminPaths(ADEP.users, ADEP.userSearch, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetName, ADEP.userDelete),
 )
 
 /**
- * The **scoped** surface: the `userAdmin` section, which requires only [ROLE.admin] and confines every read to
- * `ReadScopeRules.forCaller` (issue #225).
+ * The **scoped** surface: the `clientAdmin` section (renamed from `userAdmin` in issue #466), which requires
+ * only [ROLE.admin] and confines every read to `ReadScopeRules.forCaller` (issue #225).
  *
  * The same module built twice rather than a second set of handlers, because the difference between the two
  * surfaces is *who may enter*, not what they do once inside: the scope is derived from the caller's roles, so
@@ -65,7 +70,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  * mean two implementations of the same rules, and the copy is the one that would miss a fix.
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, "userAdmin",
+    cxt, SECT.clientAdmin,
     UserAdminPaths(UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetName, UADEP.userDelete),
 )
 

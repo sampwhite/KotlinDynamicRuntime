@@ -17,7 +17,7 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraService
-import com.dynamicruntime.common.gedra.clientAdminSchema
+import com.dynamicruntime.common.gedra.clientCatalogSchema
 import com.dynamicruntime.common.gedra.coreClients
 import com.dynamicruntime.common.gedra.coreTraits
 import com.dynamicruntime.common.gedra.gedraDataTables
@@ -98,11 +98,12 @@ class CommonComponent : ComponentDefinition {
         // admin section, and no part of the account surface #432 is about -- so carrying it costs an edge
         // little. Worth revisiting when the endpoint axis lands and the two can be declared apart without
         // being written apart.
-        collector.addModule(clientAdminSchema(cxt))
-        // The same user-administration operations, scoped to the caller's client (issue #225).
+        collector.addModule(clientCatalogSchema(cxt))
+        // The same user-administration operations, scoped to the caller's client (issue #225): the
+        // `clientAdmin` section (renamed from `userAdmin` in #466).
         collector.addModule(scopedUserAdminSchema(cxt), appOnly)
         // The cfacts an expression may name, for whoever is authoring configuration against them. In the
-        // `userAdmin` section rather than `operator`, and everywhere rather than app-only, because an edge
+        // `clientAdmin` section rather than `operator`, and everywhere rather than app-only, because an edge
         // has a registry of its own to report -- see `cfactSchema`.
         collector.addModule(cfactSchema(cxt))
         // Operator: running-the-deployment diagnostics, gated on ROLE.operator by their `operator` section.

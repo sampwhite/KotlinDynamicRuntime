@@ -122,7 +122,7 @@ fun accessMatrix(cxt: ProbeContext) {
  * scenario rather than a reconstruction each time.
  */
 fun grantThenCall(cxt: ProbeContext) {
-    // Granting `admin` opens the scoped-admin (`userAdmin`) surface, which is what makes the point here.
+    // Granting `admin` opens the scoped-admin (`clientAdmin`) surface, which is what makes the point here.
     // `operator` is not the vehicle since #464 fenced the operator surface behind the `allClients` capability,
     // which no endpoint grants -- so a granted operator would stay refused and the scenario would show no
     // change at all.
