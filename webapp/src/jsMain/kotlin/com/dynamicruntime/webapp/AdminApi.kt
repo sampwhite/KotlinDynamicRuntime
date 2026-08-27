@@ -281,7 +281,7 @@ fun userSearchArgs(query: UserSearchQuery): Map<String, Any?> = buildMap {
 
 /**
  * One page of a user search: the [users] returned, [numAvailable] (how many matched before the cap), and
- * [hasMore] (whether the cap hid some). The console shows the two counts so an over-broad search reads as
+ * [hasMore] (whether the cap hid some). The console shows the two counts, so an over-broad search reads as
  * "showing 500 of 4000" rather than looking like the whole population.
  */
 class UserSearchResult(val users: List<AdminUser>, val numAvailable: Int, val hasMore: Boolean)

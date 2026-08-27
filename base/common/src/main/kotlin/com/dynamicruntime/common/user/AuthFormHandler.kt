@@ -184,7 +184,7 @@ class AuthFormHandler(
         val data = AuthUserRow
             .mkInitialUser(contactAddress, AddressRules.clientForNewUser(cxt, contactAddress), initialRoles, createdAt = cxt.now())
             .toMutableMap()
-        @Suppress("UNCHECKED_CAST")
+        @Suppress("UNCHECKED_CAST", "DuplicatedCode")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(contactAddress)
         authUserData[AD.contacts] = listOf(mapOf("address" to contactAddress, "type" to "email"))
@@ -285,7 +285,7 @@ class AuthFormHandler(
     /**
      * Logs a user in from a Google ID token, linking the Google identity to a local user on first use.
      *
-     * The identity is Google's `sub`, held in `LinkedUsers`. Once that link exists it is the *only* thing
+     * The identity is Google's `sub`, held in `LinkedUsers`. Once that link exists, it is the *only* thing
      * consulted, so a later change to the account's Google email -- or that email being reassigned to someone
      * else, which a Workspace domain can do -- cannot re-point the link or hand the account to a stranger.
      *

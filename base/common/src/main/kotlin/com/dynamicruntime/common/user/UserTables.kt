@@ -57,7 +57,7 @@ object AU {
 
     /**
      * Auth data map: roles, identity (org, name, isEntity), the optional encoded password, contacts, and
-     * lifecycle markers (e.g. deletion). The authoritative key list is [AD] -- this summary names the shape,
+     * lifecycle markers (e.g., deletion). The authoritative key list is [AD] -- this summary names the shape,
      * not every key.
      */
     const val authUserData = "authUserData"
@@ -94,7 +94,7 @@ object AD {
 
     /**
      * Whether this account belongs to a **business** rather than a person. It says how to read [name] -- a
-     * business's name rather than a person's -- and is absent (i.e. false) for an ordinary personal account.
+     * business's name rather than a person's -- and is absent (i.e., false) for an ordinary personal account.
      * Set at registration, and held here beside the other identity data rather than in a column, the same way
      * [org] is.
      */

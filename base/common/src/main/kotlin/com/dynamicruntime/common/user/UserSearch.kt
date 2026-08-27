@@ -68,7 +68,7 @@ class UserSearchField(
  *
  * Split across two modules on purpose. [UserDateKeys] generates the three names in the kernel, so the console
  * derives the same strings the endpoint reads; [instantOf] cannot live there, because it needs [AuthUserRow].
- * Pairing them here is what lets one entry produce a sort key, a filterable range and a column at once.
+ * Pairing them here is what lets one entry produce a sort key, a filterable range, and a column at once.
  */
 class UserDateField(val keys: UserDateKeys, val instantOf: (AuthUserRow) -> Instant?)
 
@@ -77,7 +77,7 @@ class UserDateField(val keys: UserDateKeys, val instantOf: (AuthUserRow) -> Inst
  *
  * Adding one here gives it a sort key, an `After`/`Before` pair on the endpoint, and a filter in
  * [searchUserRows] -- none of which is written per date. That matters at five dates rather than one: the
- * previous shape had the range hard-coded in the criteria, in the filter and in the endpoint's declaration,
+ * previous shape had the range hard-coded in the criteria, in the filter, and in the endpoint's declaration,
  * so four more dates meant two dozen near-identical lines that all had to agree.
  */
 val userDateFields: List<UserDateField> = listOf(
@@ -106,7 +106,7 @@ private fun UserDateField.asSearchField(): UserSearchField =
 /**
  * The searchable/sortable user attributes (issue #411). Add an attribute here and it is searchable (if it
  * names [UserSearchField.textsOf]) and sortable at once; the console offers the same set as columns to order
- * on. Text fields sort on a lower-cased value so the order matches the case-insensitive match.
+ * on. Text fields sort on a lower-cased value, so the order matches the case-insensitive match.
  */
 val userSearchFields: List<UserSearchField> = listOf(
     UserSearchField(USF.email, textsOf = { listOf(it.primaryId) }, substring = true, sortOf = { it.primaryId.lowercase() }),

@@ -146,7 +146,7 @@ class UserService : ServiceInitializer {
      * already selects every scoped row, so evaluating the term in Kotlin only lifts a typed search to that same
      * baseline rather than introducing a new full scan.
      *
-     * The filter is applied in SQL (not by loading the table and filtering in Kotlin) so the cap is a real one:
+     * The filter is applied in SQL (not by loading the table and filtering in Kotlin), so the cap is a real one:
      * a deployment's user table is the one table guaranteed to outgrow any page size. `lower(...) like ?` will
      * not use the plain unique indexes, which is acceptable for an admin-only, human-paced screen; a
      * case-insensitive index is the fix if it ever matters.
@@ -313,7 +313,7 @@ class UserService : ServiceInitializer {
         SqlTopicUtil.prepForStdExecute(cxt, table, data)
         // prepForStdExecute stamps `enabled = true` unconditionally -- deliberate for a "create" that revives a
         // disabled row (issue #48), but wrong for an update, where it would make disabling a user impossible:
-        // the write would silently succeed and the row stay enabled. The caller's intent wins here.
+        // the write would silently succeed and the row stays enabled. The caller's intent wins here.
         data[PF.enabled] = row.enabled
         var count = 1
         if (priorUpdatedAt == null) {

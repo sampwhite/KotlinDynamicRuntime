@@ -1,6 +1,5 @@
 package com.dynamicruntime.kdn
 
-import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
@@ -65,7 +64,7 @@ class UserDatesTest : StringSpec({
         val after = dates(subject.userId)
         // Asserted as "later than it was", not as equal to the clock now: the stamp is taken inside the
         // request and stored at millisecond precision, so an equality against a microsecond reading taken
-        // afterwards fails on precision rather than on behavior.
+        // afterward fails on precision rather than on behavior.
         after.getValue(USF.lastLoggedIn.root)!! shouldBeGreaterThan before.getValue(USF.lastLoggedIn.root)!!
         // The two that must not have moved: signing in neither edits the account nor re-activates it.
         after.getValue(USF.lastEdited.root).shouldBeNull()

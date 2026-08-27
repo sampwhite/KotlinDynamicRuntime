@@ -30,7 +30,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
      * Null when unnamed. Survives a change of [isEntity] -- both kinds of account have one (see [AD.name]).
      *
      * **Normalized on assignment** ([normalizeName]): trimmed, and blank stored as no name. Four callers set
-     * this -- registration, admin create, admin edit and the profile page -- and each was applying that rule by
+     * this -- registration, admin create, admin edit, and the profile page -- and each was applying that rule by
      * hand, which is three chances for them to disagree about whether `"  "` means "no name" or a name made of
      * spaces. Putting it in the setter makes it unbypassable rather than merely agreed.
      */
