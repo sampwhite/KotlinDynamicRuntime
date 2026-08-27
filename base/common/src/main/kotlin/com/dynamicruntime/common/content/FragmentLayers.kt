@@ -111,16 +111,28 @@ fun orphanedOverlayKeys(baseKeys: Set<String>, overlaidKeys: Set<String>): List<
  * what is served without touching any file, so a file-derived id would leave two clients sharing one URL for
  * two different documents, and whichever was cached first would be served to both.
  *
- * Each part is length-prefixed rather than delimited. A Markdown value may contain any character at all, so
- * there is no separator to reserve -- and without one, `a.b` = `"xy"` and `a.bx` = `"y"` would hash alike.
+ * ### Why every part is length-prefixed
+ *
+ * A Markdown value may contain any character at all, so there is no separator to reserve and no marker to
+ * trust: a scheme tagging each part with what it *is* (`n`/`k`/`v`) would still not say where it **ends**, and
+ * `{a: {b: "c", d: "e"}}` would hash as `{a: {b: "cnakdve"}}` does. A length says where a part ends, which is
+ * the only thing that makes the encoding unambiguous -- and the position in the triple already says which
+ * part it is, so a marker would buy nothing on top.
+ *
+ * The key **count** is written before a namespace's pairs for the same reason one level up. Without it a
+ * namespace with no keys would contribute nothing at all, so `{"a": {}}` and `{}` would share an id while
+ * serving different documents; and merely emitting the namespace once instead would leave `{a: {b:c, d:e}}`
+ * and `{a: {}, b: {c:d}, e: {}}` producing one string between them.
  */
 fun fragmentContentBuildId(content: Map<String, Map<String, String>>): String {
     val canonical = buildString {
+        fun part(text: String) = append(text.length).append(':').append(text)
         for ((namespace, keys) in content) {
+            part(namespace)
+            append(keys.size).append(':')
             for ((key, value) in keys) {
-                for (part in listOf(namespace, key, value)) {
-                    append(part.length).append(':').append(part)
-                }
+                part(key)
+                part(value)
             }
         }
     }

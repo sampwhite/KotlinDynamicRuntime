@@ -132,6 +132,31 @@ class FragmentLayerTest : StringSpec({
         left shouldNotBe right
     }
 
+    "a marker-tagged encoding would collide here, and this one does not" {
+        // Tagging each part with what it *is* rather than where it ends: `n`+`a`, `k`+`b`, `v`+`c` and so on
+        // would render both of these as "nakbvcnakdve", because the tags are not reserved characters and a
+        // value may contain them.
+        val twoEntries = fragmentContentBuildId(mapOf("a" to mapOf("b" to "c", "d" to "e")))
+        val oneLongValue = fragmentContentBuildId(mapOf("a" to mapOf("b" to "cnakdve")))
+        twoEntries shouldNotBe oneLongValue
+    }
+
+    "an empty namespace is part of the content, so it changes the id" {
+        // It contributes no keys and the frontend reads nothing from it -- but the served document differs,
+        // and the id has to name the document exactly or the permanent cache is resting on nothing.
+        fragmentContentBuildId(mapOf("a" to emptyMap())) shouldNotBe fragmentContentBuildId(emptyMap())
+    }
+
+    "an empty namespace is not confusable with a key of the namespace before it" {
+        // Why the key count is written rather than the namespace simply being emitted once: without it these
+        // two produce the same sequence of parts.
+        val nested = fragmentContentBuildId(mapOf("a" to mapOf("b" to "c", "d" to "e")))
+        val flat = fragmentContentBuildId(
+            mapOf("a" to emptyMap(), "b" to mapOf("c" to "d"), "e" to emptyMap()),
+        )
+        nested shouldNotBe flat
+    }
+
     // --- absence -----------------------------------------------------------------------------------------
 
     "a declared file whose layers supply nothing is not found" {
