@@ -122,7 +122,6 @@ class SchemaCollector(
         }
     }
 
-    /** Folds a module's types, endpoints, and options providers into the collector. */
     /**
      * Contributes [module] only when this node is admitted by [presence] (issue #433).
      *
@@ -148,6 +147,7 @@ class SchemaCollector(
         }
     }
 
+    /** Folds a module's types, endpoints, and options providers into the collector. */
     fun addModule(module: SchModule) {
         defs.putAll(module.defs)
         endpoints.addAll(module.endpoints)

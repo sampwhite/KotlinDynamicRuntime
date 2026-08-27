@@ -21,11 +21,6 @@ import com.dynamicruntime.common.gedra.GedraConfig
  */
 interface ComponentDefinition : KdrProvider {
     /**
-     * Whether this component contributes its schema to the application. Receives the startup [cxt] so the
-     * decision can read instance config and environment (e.g., a demo component that loads only in developer
-     * environments, as the `sample` module's `SampleComponent` does).
-     */
-    /**
      * Where this component belongs (issue #433): the boot roles and capability tags whose nodes carry it.
      *
      * The **declarative** half of the load decision, and the one worth preferring: it can be *read*. A

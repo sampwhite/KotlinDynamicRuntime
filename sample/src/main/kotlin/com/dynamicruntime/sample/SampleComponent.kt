@@ -63,10 +63,6 @@ class SampleComponent : ComponentDefinition {
     }
 
     /**
-     * Traits contributed for testing (issue #301). They join the manufactured `FormDocEntry` union alongside
-     * the runtime's own, which is what gives the fixture a union with more than one branch to select between.
-     */
-    /**
      * The fragment layers the sample ships (issue #456), which between them exercise every kind there is: a
      * base file, a `_overlay.md` beside it, and an overlay written in code. Acme's own overlay of the same
      * file arrives through its Gedra config, so the file ends up with four contributors and one reader.
@@ -82,6 +78,10 @@ class SampleComponent : ComponentDefinition {
                 }
             }
 
+    /**
+     * Traits contributed for testing (issue #301). They join the manufactured `FormDocEntry` union alongside
+     * the runtime's own, which is what gives the fixture a union with more than one branch to select between.
+     */
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(sampleTraits(cxt)) + sampleClients(cxt)
 
     override fun services(cxt: KdrCxt): List<ServiceEntry> =

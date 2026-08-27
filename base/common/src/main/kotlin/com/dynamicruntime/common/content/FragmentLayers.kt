@@ -58,7 +58,7 @@ fun mergeFragmentLayers(fileId: String, sources: List<FragmentSource>, client: S
         found = true
         foldInto(merged, content)
     }
-    // Captured before the overlays are folded in: afterwards every overlay key is present by definition, and
+    // Captured before the overlays are folded in: afterward every overlay key is present by definition, and
     // the question "does a base declare this?" can no longer be asked of the result.
     val baseKeys = merged.entries.flatMap { (ns, keys) -> keys.keys.map { "$ns.$it" } }.toSet()
     val overlaid = LinkedHashSet<String>()

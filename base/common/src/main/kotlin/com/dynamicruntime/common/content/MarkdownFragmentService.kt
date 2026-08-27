@@ -26,7 +26,6 @@ import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.startup.ServiceInitializer
-import com.dynamicruntime.common.util.parseMarkdownFragments
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -112,7 +111,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     }
 
     /**
-     * Syntax-checks every declared fragment file, and does it **per variant** (issue #456): once for the
+     * Syntax-checks every declared fragment file and does it **per variant** (issue #456): once for the
      * content everybody shares, and once more for each client that overlays the file.
      *
      * Per variant rather than per file, because a client's overlay is copy like any other and would otherwise
@@ -132,7 +131,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         val fileIds = if (only != null) listOf(only) else sources.map { it.fileId }.distinct()
         return fileIds.flatMap { fileId ->
             val forFile = sources.filter { it.fileId == fileId }
-            // A base layer belongs to no client, so a file whose base is absent is absent for everybody. One
+            // A base layer belongs to no client, so a file whose base is absent, is absent for everybody. One
             // row rather than one per client: they would each report the same missing resource, and a boot
             // refusal listing it three times reads as three broken files.
             val clients = if (!mergeFragmentLayers(fileId, forFile, null).found) {
