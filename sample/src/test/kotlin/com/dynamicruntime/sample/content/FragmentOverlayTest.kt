@@ -2,13 +2,16 @@ package com.dynamicruntime.sample.content
 
 import com.dynamicruntime.common.content.FCHK
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
@@ -78,6 +81,42 @@ class FragmentOverlayTest : StringSpec({
         acme shouldNotBe shared
         // ...and a client that changes nothing shares the URL, so it also shares the cache entry.
         MarkdownFragmentService.fragmentBuildId(globexCxt, SF.content) shouldBe shared
+    }
+
+    "a client renames the shell's own wordmark, and no frontend code knows it exists" {
+        // The overlay that changes something a person actually sees: `home.brand` is what the app bar and the
+        // home hero render. Asserted on the real `home` file rather than the sample fixture, because a feature
+        // demonstrated only on content invented for the demonstration has not been demonstrated.
+        val shellCopy = { scope: KdrCxt ->
+            service.effectiveFragments(scope, HFRAG.home)?.content?.get("home")?.get("brand")
+        }
+        shellCopy(cxt) shouldBe "KDR"
+        shellCopy(acmeCxt) shouldBe "ACME KDR"
+        shellCopy(globexCxt) shouldBe "KDR"
+    }
+
+    "the shell's fragment ref differs for a client, so its copy is fetched separately" {
+        // What makes the rename actually reach the browser: the UI-config hands acme a different
+        // `fileId:buildId`, so its shell fetches its own document rather than a cached shared one.
+        MarkdownFragmentService.fragmentBuildId(acmeCxt, HFRAG.home) shouldNotBe
+            MarkdownFragmentService.fragmentBuildId(cxt, HFRAG.home)
+    }
+
+    "the shell UI-config hands an acme user acme's ref, which is how the rename reaches a browser" {
+        // Through the endpoint the frontend actually calls, not the service behind it. The chain that matters
+        // is: acme user -> /home/ui/config -> a fileId:buildId of their own -> a fetch of their own document.
+        // Everything above this asserts the last link; this asserts the first two.
+        val acmeUser = TestUser.create(cxt, "shell@acme.test", userClient = SC.acme)
+        val plainUser = TestUser.create(cxt, "shell@example.com")
+
+        fun shellRef(user: TestUser): Map<String, Any?> =
+            user.getData("/home/ui/config")[UIC.fragments].toJsonListOfMaps()
+                .single { it[UIC.fileId].toOptStr() == HFRAG.home }
+
+        val acmeRef = shellRef(acmeUser)[UIC.buildId].toOptStr()
+        val plainRef = shellRef(plainUser)[UIC.buildId].toOptStr()
+        acmeRef shouldNotBe plainRef
+        acmeRef shouldBe MarkdownFragmentService.fragmentBuildId(acmeCxt, HFRAG.home)
     }
 
     // --- through the content server -----------------------------------------------------------------------

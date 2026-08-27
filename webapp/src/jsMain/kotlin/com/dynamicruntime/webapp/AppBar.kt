@@ -85,6 +85,7 @@ val AppBar = FC<AppBarProps> { props ->
     }
     var open by useState(false)
     var config by useState<HomeConfig?>(null)
+    var copy by useState(Copy.empty)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
 
@@ -92,7 +93,13 @@ val AppBar = FC<AppBarProps> { props ->
     // (notably sign-in / sign-out). The menu stays as it was if the config could not be loaded.
     useEffect(generation) {
         appBarScope.launch {
-            runCatching { HomeApi.fetchConfig() }.getOrNull()?.let { config = it }
+            runCatching { HomeApi.fetchConfig() }.getOrNull()?.let {
+                config = it
+                // The copy alongside the config, on the same generation: the wordmark below is a client's to
+                // change (issue #456), so it has to be re-read when the caller changes and not only on mount.
+                // Kept as-is on a failure -- the previous wordmark beats no wordmark.
+                copy = runCatching { fetchCopy(it.fragment) }.getOrNull() ?: copy
+            }
         }
     }
 
@@ -121,11 +128,18 @@ val AppBar = FC<AppBarProps> { props ->
             img {
                 className = ClassName("app-bar-logo")
                 src = brandMarkUrl
-                // Decorative: the wordmark beside it already says "KDR", so alt text here would only make a
-                // screen reader announce the brand twice.
+                // Decorative: the wordmark beside it already carries the name, so alt text here would only
+                // make a screen reader announce the brand twice.
                 alt = ""
             }
-            +"KDR"
+            // Copy, not a literal (issue #456): the same `home.brand` the hero renders, so a client that
+            // overlays it is renamed in both places at once and neither knows the client exists.
+            //
+            // Nothing is drawn until the copy arrives, rather than falling back to a built-in "KDR". Same
+            // reasoning as `identityLabel` above: a literal would be *wrong* for a moment for anybody whose
+            // brand differs, and would flicker on every load. The mark carries the bar until then, and a
+            // deployment that names no brand simply has an unlettered mark.
+            copy.opt("home", "brand")?.let { +it }
         }
         div {
             className = ClassName("app-bar-right")

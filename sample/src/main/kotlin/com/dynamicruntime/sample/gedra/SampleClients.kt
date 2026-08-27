@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.SCT
@@ -151,6 +152,21 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             namespace(SF.welcome) {
                 key(SF.title, "Welcome to Acme")
                 key(SF.support, "Acme site services will help.")
+            }
+        }
+
+        // --- copy of the real UI ------------------------------------------------------------------------
+        //
+        // The shell's own wordmark, not a fixture: an acme user sees "ACME KDR" where everybody else sees
+        // "KDR", in the app bar and in the home hero, and no frontend code knows acme exists.
+        //
+        // The namespace and key are literals here and in `Home.kt`/`AppBar.kt`, which is the tension
+        // `vocabulary-code-vs-data.md` is about -- and the reason the orphan check earns its place: a typo in
+        // either of these fails the boot with "overlay keys no base declares" rather than quietly leaving
+        // acme reading the default.
+        fragmentOverlay(HFRAG.home) {
+            namespace("home") {
+                key("brand", "ACME KDR")
             }
         }
 
