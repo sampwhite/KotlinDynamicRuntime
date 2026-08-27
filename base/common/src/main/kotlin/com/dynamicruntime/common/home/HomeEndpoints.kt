@@ -9,9 +9,9 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
-import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.operator.OENV
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.refreshActingRoles
 
@@ -131,10 +131,13 @@ private fun menuItems(cxt: KdrCxt): List<Map<String, Any?>> = buildList {
     if (AdminRules.canManageUsers(cxt)) {
         add(item(HMENU.users, "Users", page = HMENU.pageUsers))
     }
-    // The environment-variable reference (issue #371): a running-the-deployment diagnostic, so offered on the
-    // same terms its `operator` section admits -- the operator level, which an administrator satisfies too (the
-    // ladder ranks admin above operator). The roles are the refreshed acting roles (see refreshActingRoles above).
-    if (RoleLadder.satisfies(cxt.userProfile.roles, ROLE.operator)) {
+    // The environment-variable reference (issue #371): a running-the-deployment diagnostic. Offered on exactly
+    // the terms its `operator` section admits -- asked of the dispatcher's own predicate rather than restated
+    // here, so the menu, the gate, and the catalog cannot drift (the #211 invariant). Since #464 that surface
+    // is deployment-wide (the operator level *and* `allClients`), so a client-scoped administrator is not
+    // offered it despite the ladder ranking them above operator. The roles are the refreshed acting roles
+    // (see refreshActingRoles above).
+    if (RequestService.get(cxt).canAccess(cxt.userProfile, OENV.envReferencePath)) {
         add(item(HMENU.envReference, "Environment", page = HMENU.pageEnv))
     }
     if (cxt.userProfile.isLoggedIn) {

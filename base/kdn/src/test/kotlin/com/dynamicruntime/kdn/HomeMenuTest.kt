@@ -70,6 +70,28 @@ class HomeMenuTest : StringSpec({
         usersItem[HFLD.page] shouldBe HMENU.pageUsers
     }
 
+    /**
+     * The operator "Environment" entry (issue #371) follows the deployment gate, not the ladder alone. Since
+     * #464 the `operator` section demands `allClients` as well as the level, and the menu asks the dispatcher's
+     * own predicate -- so a client-scoped admin, who satisfies the operator rung but lacks the capability, is
+     * not offered a page the gate would then refuse (the #211 advertise-versus-serve invariant).
+     */
+    "the Environment item is offered only to who can reach the operator surface" {
+        val cxt = Startup.mkTestBootCxt("home", "homeMenuEnvTest")
+
+        // Full-scope admin and deployment operator both hold allClients, so the operator surface is theirs.
+        val fullAdmin = TestUser.createFullAdmin(cxt, "env-full@example.com")
+        menuIds(fullAdmin.client.sendJsonGetRequest(HEP.homeUiConfig)) shouldContain HMENU.envReference
+        val operator = TestUser.createOperator(cxt, "env-op@example.com")
+        menuIds(operator.client.sendJsonGetRequest(HEP.homeUiConfig)) shouldContain HMENU.envReference
+
+        // A client-scoped admin satisfies the operator rung but lacks the capability, so it is withheld.
+        val scoped = TestUser.create(cxt, "env-scoped@example.com", level = ROLE.admin)
+        val scopedMenu = menuIds(scoped.client.sendJsonGetRequest(HEP.homeUiConfig))
+        scopedMenu shouldNotContain HMENU.envReference
+        scopedMenu shouldContain HMENU.users // ...but the scoped user-administration item still is
+    }
+
     "the menu follows the caller: the same session loses the users item when the role is revoked" {
         val cxt = Startup.mkTestBootCxt("home", "homeMenuRevokeTest")
         val admin = TestUser.createFullAdmin(cxt, "chief2@example.com")
