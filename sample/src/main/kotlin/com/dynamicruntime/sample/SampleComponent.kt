@@ -95,13 +95,13 @@ class SampleComponent : ComponentDefinition {
                 item { set(SB.id, SB.overview); set(SB.label, "Overview") }
                 // Resolved per caller: present for an administrator and absent for everybody else, decided on
                 // the side that knows rather than by the frontend reading a role.
-                item { set(SB.id, SB.users); set(SB.label, "Users"); set(UIB.cfact, CFACTS.isAdmin) }
+                item { set(SB.id, SB.users); set(SB.label, "Users"); set(UIB.cfactExpression, CFACTS.hasAdminLevel) }
                 // The boot role as a cfact: this application never matches it, and an edge would -- one set of
                 // data serving both, with nothing removed for either.
-                item { set(SB.id, SB.perimeter); set(SB.label, "Perimeter"); set(UIB.cfact, BOOT.edge) }
+                item { set(SB.id, SB.perimeter); set(SB.label, "Perimeter"); set(UIB.cfactExpression, BOOT.edge) }
                 // Still in the list, and never shown. `#never` is how something is taken away without merging
                 // learning to delete: the item is here to be read, which is what answers "why is this gone?".
-                item { set(SB.id, SB.retired); set(SB.label, "Retired"); set(UIB.cfact, CFACT.neverName) }
+                item { set(SB.id, SB.retired); set(SB.label, "Retired"); set(UIB.cfactExpression, CFACT.neverName) }
             }
         },
     )

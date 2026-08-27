@@ -1,9 +1,11 @@
 package com.dynamicruntime.common.uiblock
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.home.menuItem
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * How UiBlock layers merge (issue #457): precedence, which arrays merge and which are replaced, and the
@@ -16,6 +18,7 @@ import io.kotest.matchers.shouldBe
 class UiBlockMergeTest : StringSpec({
 
     val menu = "menu"
+    val SB_ITEMS = "items"
     val byId = mapOf("items" to "id")
 
     fun base(vararg items: Pair<String, Int>) = uiBlock(menu, origin = "core", arrayKeys = byId) {
@@ -133,6 +136,30 @@ class UiBlockMergeTest : StringSpec({
         // contributor referring to something that is not there, and hiding that would be the worst outcome.
         mergeUiBlock(menu, listOf(overlay { set("title", "Only me") }), client = null).found shouldBe false
         mergeUiBlock(menu, listOf(base("home" to 100)), client = null).found shouldBe true
+    }
+
+
+    // --- the menu item helper --------------------------------------------------------------------------
+
+    "a menu item refuses to be both a navigation and an action" {
+        // A rule the hardcoded menu's own builder stated and a sequence of `set` calls cannot hold: an item
+        // does one thing when clicked, and which one is not the frontend's to choose.
+        shouldThrow<KdrException> {
+            uiBlock(menu, origin = "t", arrayKeys = byId) {
+                items(SB_ITEMS) { menuItem("x", "X", page = "p", action = "a") }
+            }
+        }.fullMessage() shouldContain "declares both a page"
+    }
+
+    "a menu item names only what it changes, which is what an overlay needs" {
+        // Everything but the id is optional: an overlay adjusting a label sets that alone, and the id says
+        // which item it means.
+        val over = uiBlockOverlay(menu, origin = "t") { items(SB_ITEMS) { menuItem("home", label = "Start") } }
+        val merged = mergeUiBlock(menu, listOf(base("home" to 100), over), client = null)
+        val item = (merged.content[SB_ITEMS] as List<*>).single() as Map<*, *>
+        item["label"] shouldBe "Start"
+        // ...and nothing else was invented for it.
+        item.keys shouldBe setOf("id", UIB.displayOrder, "label")
     }
 
     "the builder refuses a key set twice" {

@@ -6,13 +6,24 @@ import com.dynamicruntime.common.exception.KdrException
 @Suppress("ConstPropertyName")
 object UIB {
     /**
-     * The condition deciding whether an object is shown -- a cfact expression (issue #454).
+     * The condition deciding whether an object is shown -- a cfact **expression** (issue #454).
      *
      * Read **recursively**: any object carrying this key is dropped when its expression does not match, at
      * whatever depth it sits. One rule rather than a schema of where conditions may appear, which is what lets
      * a UiBlock grow new shapes without the resolver learning them.
+     *
+     * Named for the expression rather than for the cfact, and the distinction earns its keep twice. A single
+     * name *is* a valid expression, so `"cfact": "hasAdminLevel"` would read correctly while
+     * `"cfact": "(app,loggedIn)|isDeploymentOperator"` plainly would not -- that is not *a* cfact. And it
+     * leaves `cfacts` free for what is actually coming: a set of cfact **names** contributed about the thing
+     * being rendered, which `CFactRegistry.assemble` already takes as `targetFacts`. One word meaning a name
+     * in one place and an expression in another is a collision worth a longer key to avoid.
+     *
+     * A generic name (`condition`, `when`) was the other candidate and is worse: a field called `condition`
+     * invites somebody to write `count > 3` in it, where a field with `cfact` in its name says the vocabulary
+     * is closed.
      */
-    const val cfact = "cfact"
+    const val cfactExpression = "cfactExpression"
 
     /**
      * Where an item sorts within its array. Conventionally spaced by [orderStep], so a later contributor can

@@ -26,6 +26,7 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.app.appSchema
+import com.dynamicruntime.common.home.homeMenuBlock
 import com.dynamicruntime.common.home.homeSchema
 import com.dynamicruntime.common.test.testSchema
 import com.dynamicruntime.common.http.request.VariantBehavior
@@ -39,6 +40,7 @@ import com.dynamicruntime.common.user.authSchema
 import com.dynamicruntime.common.user.authTables
 import com.dynamicruntime.common.user.profileSchema
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.startup.PRI
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
@@ -131,6 +133,9 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(gedraSchema(cxt), appOnly)
         collector.addTables(gedraDataTables(cxt), appOnly)
     }
+
+    /** The app-bar menu, registered as a UiBlock (issue #458) so its items can be varied without an `if`. */
+    override fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = listOf(homeMenuBlock())
 
     /**
      * The Gedra configs this module defines: the traits every deployment has, in the reserved `globalconfig`

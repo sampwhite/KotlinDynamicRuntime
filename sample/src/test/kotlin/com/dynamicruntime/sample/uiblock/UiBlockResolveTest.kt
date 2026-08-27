@@ -65,7 +65,7 @@ class UiBlockResolveTest : StringSpec({
         // vocabulary on the wire.
         val items = service.resolve(asUser("admin3", null, ROLE.user, ROLE.admin), SB.nav)
             ?.get(SB.items) as List<*>
-        items.none { (it as Map<*, *>).containsKey(UIB.cfact) } shouldBe true
+        items.none { (it as Map<*, *>).containsKey(UIB.cfactExpression) } shouldBe true
     }
 
     "a client's overlay renames one item and adds another, in order" {

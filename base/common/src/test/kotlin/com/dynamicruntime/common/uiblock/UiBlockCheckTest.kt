@@ -23,7 +23,7 @@ class UiBlockCheckTest : StringSpec({
         items("items") {
             item {
                 set("id", "home")
-                if (expression != null) set(UIB.cfact, expression)
+                if (expression != null) set(UIB.cfactExpression, expression)
             }
         }
     }
@@ -55,7 +55,7 @@ class UiBlockCheckTest : StringSpec({
         // The failure this catches: a name every other client has, missing at one customer -- who would
         // otherwise be the one to find out.
         val acmeOverlay = uiBlockOverlay(menu, origin = "acmeConfig", client = "acme") {
-            items("items") { item { set("id", "audit"); set(UIB.cfact, "acmeOnly") } }
+            items("items") { item { set("id", "audit"); set(UIB.cfactExpression, "acmeOnly") } }
         }
         val allowed = { client: String? -> if (client == "acme") setOf("acmeOnly") else emptySet() }
         uiBlockProblems(listOf(block(null), acmeOverlay), allowed).shouldBeEmpty()
