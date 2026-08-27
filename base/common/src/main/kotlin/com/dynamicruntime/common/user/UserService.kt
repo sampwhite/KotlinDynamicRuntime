@@ -313,7 +313,7 @@ class UserService : ServiceInitializer {
         SqlTopicUtil.prepForStdExecute(cxt, table, data)
         // prepForStdExecute stamps `enabled = true` unconditionally -- deliberate for a "create" that revives a
         // disabled row (issue #48), but wrong for an update, where it would make disabling a user impossible:
-        // the write would silently succeed and the row stays enabled. The caller's intent wins here.
+        // the write would silently succeed, leaving the row enabled. The caller's intent wins here.
         data[PF.enabled] = row.enabled
         var count = 1
         if (priorUpdatedAt == null) {
