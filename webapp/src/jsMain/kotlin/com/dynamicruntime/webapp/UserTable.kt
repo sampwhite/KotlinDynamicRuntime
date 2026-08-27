@@ -40,10 +40,14 @@ external interface UserTableProps : Props {
 val UserTable = FC<UserTableProps> { props ->
     Table {
         size = "small"
+        // Declared widths mean what they say (see `TableProps.tableLayout`): under the default auto layout a
+        // long email address grew past its own column and took the space from the date columns, which have a
+        // fixed-width content that cannot give way.
+        tableLayout = "fixed"
         pagination = false
         rowKey = "key"
         columns = buildList {
-            add(column("Id", "userId", 70))
+            add(column("Id", idColumn, columnWidths[idColumn]))
             // The search columns, straight from the shared spec -- label, sortability, and order included.
             for (spec in userSearchFieldSpecs) {
                 if (spec.allClientsOnly && !props.showClient) continue
@@ -54,9 +58,9 @@ val UserTable = FC<UserTableProps> { props ->
                 }
             }
             // Descriptive columns that are not search fields, so they stay static and unsorted.
-            add(column("Type", "type", 90))
-            add(column("Roles", "roles", 130))
-            add(column("Status", "status", null))
+            add(column("Type", typeColumn, columnWidths[typeColumn]))
+            add(column("Roles", rolesColumn, columnWidths[rolesColumn]))
+            add(column("Status", statusColumn, columnWidths[statusColumn]))
         }.toTypedArray()
         dataSource = props.users.map { user ->
             val row: dynamic = js("({})")
@@ -124,10 +128,44 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
 /** What [cellValue] returns for a spec field with no display branch -- the tell `UserCellValueTest` catches. */
 const val unmappedCell = "(?)"
 
-/** Column widths (a presentation detail, so front-end only) keyed by the spec field name; absent = auto. */
+// The four columns that are not search fields, so they have no spec to take a name from. Named rather than
+// repeated as literals, because each appears three times -- the column, the row's cell, and its width.
+private const val idColumn = "userId"
+private const val typeColumn = "type"
+private const val rolesColumn = "roles"
+private const val statusColumn = "status"
+
+/**
+ * Column widths (a presentation detail, so front-end only) keyed by the spec field name; absent = auto.
+ *
+ * **Every column declares one now**, because "absent = auto" meant antd divided the leftover space by its own
+ * reckoning and gave `Status` -- which holds one short word -- as much as `Roles`, which holds a list. Measured
+ * rather than guessed: each figure is the widest content that column actually has to hold, plus its header.
+ *
+ * The three dates are the ones worth stating a reason for. Their content is **fixed width** --
+ * `2026-08-27 19:23 UTC` is the same length forever -- so 175 is not a preference but the number that stops
+ * them wrapping, and the previous 150 was 20px short of it. A column whose content cannot vary should never
+ * be the one that wraps, which is exactly what it was doing.
+ *
+ * The total is kept near what a 1440-wide window can show, so nothing is pushed off the right-hand edge and
+ * behind a scrollbar. Above that the surplus is shared out; below it the table scrolls inside the card. The
+ * columns that absorb the difference are the two whose content has no bound.
+ */
 private val columnWidths: Map<String, Int> = mapOf(
-    USF.email to 220, USF.name to 180, USF.client to 110,
-    USF.lastEdited.at to 150, USF.lastLoggedIn.at to 150, USF.activated.at to 150,
+    idColumn to 50,
+    // The two that genuinely vary, and so the two that give way. An address longer than this wraps, which is
+    // the right column to spend a second line on: it is the one whose content has no bound, and the row is
+    // clickable if the whole of it is wanted.
+    USF.email to 190, USF.name to 130, USF.client to 85,
+    // Fixed-width content, so these are the figures that must not be shaved: `2026-08-27 19:23 UTC` measures
+    // 153px and never varies. Everything else here was sized around them.
+    USF.lastEdited.at to 175, USF.lastLoggedIn.at to 175, USF.activated.at to 175,
+    // Bounded vocabularies: "Person"/"Business", and "enabled"/"disabled"/"deleted".
+    typeColumn to 80, statusColumn to 85,
+    // A list, so it is the other one that may wrap. Sized so that it does not at the case that actually
+    // occurs -- `user, admin, allClients`, which is what a full administrator holds and measures 159px. The
+    // 15px it needed over the obvious figure came from `Client` and `Type`, both of which had headroom.
+    rolesColumn to 160,
 )
 
 /** Builds an antd column config `{ title, dataIndex, key, width? }`. */

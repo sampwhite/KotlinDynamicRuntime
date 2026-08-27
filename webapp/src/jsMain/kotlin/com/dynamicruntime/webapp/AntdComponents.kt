@@ -191,6 +191,16 @@ external interface TableProps : Props {
     /** "large" | "middle" | "small". */
     var size: String?
     /**
+     * `"fixed"` makes the declared column widths **authoritative**; left unset, the browser's auto table
+     * layout treats them as hints and hands width to whichever column has the longest unbreakable content.
+     *
+     * That difference is visible rather than theoretical: with auto layout one 41-character email address
+     * took 298px of a 220px column while the three date columns -- whose content is a fixed 153px and cannot
+     * be shortened -- were squeezed to 138 and wrapped onto a second line. The column that *could* have given
+     * way took from the ones that could not.
+     */
+    var tableLayout: String?
+    /**
      * Fires on a table change -- here, a column-header sort. antd calls it with (pagination, filters, sorter);
      * the sorter carries `{ field, order }`, `order` being "ascend" | "descend" | undefined (undefined when a
      * header is toggled back to unsorted). Used to drive a **server-side** re-fetch (issue #411).
