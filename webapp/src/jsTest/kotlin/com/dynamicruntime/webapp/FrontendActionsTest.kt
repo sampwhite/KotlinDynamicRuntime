@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
  * **This is the half the backend cannot check.** Its boot refuses a UiBlock naming an *undeclared* function;
  * nothing on that side can see whether this side actually implements a declared one. A function declared, named
  * in a menu, and never implemented is a click that silently does nothing -- so the coverage assertion lives
- * here, and runs in CI rather than being discovered by somebody using the app.
+ *  here and runs in CI rather than being discovered by somebody using the app.
  */
 class FrontendActionsTest {
 

@@ -117,7 +117,6 @@ object HMENU {
 }
 
 /** Frontend functions a UiBlock may call, declared so both sides share the vocabulary (issue #483). */
-@Suppress("ConstPropertyName")
 object HACT {
     /**
      * Signing out: a request plus a redirect, which is why it cannot be a link and has to be a call.
