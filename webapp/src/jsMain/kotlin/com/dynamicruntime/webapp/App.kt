@@ -52,7 +52,7 @@ val App = FC<Props> {
 
     // The env-auth pair for the bar (issue #360). Held here, beside the other values derived from the app
     // config, because that config arrives asynchronously and its module cache re-renders nothing on its own.
-    var envAuthAvailable by useState(false)
+    var envAuthSuppressible by useState(false)
     var envAuthActing by useState(false)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
@@ -75,7 +75,7 @@ val App = FC<Props> {
             // Pick up a reconfigured interval; a change re-keys useIdleBump, which retires the old timer.
             idleBumpIntervalMs = appConfig().idleBumpIntervalMs
             debugAllowed = appConfig().allowDebugPages
-            envAuthAvailable = appConfig().envAuthAvailable
+            envAuthSuppressible = appConfig().envAuthSuppressible
             envAuthActing = appConfig().isEnvAuthed
         }
     }
@@ -118,7 +118,7 @@ val App = FC<Props> {
                     }
                 }
                 AppBar {
-                    this.envAuthAvailable = envAuthAvailable
+                    this.envAuthSuppressible = envAuthSuppressible
                     this.envAuthActing = envAuthActing
                 }
                 div {

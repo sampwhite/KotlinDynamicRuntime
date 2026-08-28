@@ -40,7 +40,7 @@ class EnvAuthHeaderTest : StringSpec({
         handler.createdCxt?.envAuthEmail shouldBe "envauth.alice@gyassa.com"
         val f = features(client.sendJsonGetRequest(APP.uiConfig))
         f[APP.isEnvAuthed] shouldBe true
-        f[APP.envAuthAvailable] shouldBe true
+        f[APP.envAuthSuppressible] shouldBe true
     }
 
     "a request that did not come through an edge reports nothing" {
@@ -92,7 +92,7 @@ class EnvAuthHeaderTest : StringSpec({
         anonHandler.createdCxt?.envAuthEmail shouldBe "envauth.chan@gyassa.com"
         anonHandler.createdCxt?.userProfile?.isLoggedIn shouldBe false
 
-        // Env-authed channel, logged-in caller: the address rides beside the session, and grants no role.
+        // Env-authed channel, logged-in caller: the address rides beside the session and grants no role.
         val user = TestUser.create(cxt, "envauth.dana@gyassa.com", level = ROLE.user)
         user.client.setHeader(ENVA.header, "envauth.chan@gyassa.com")
         val userHandler = user.client.sendGetRequest(APP.uiConfig)
@@ -114,7 +114,7 @@ class EnvAuthHeaderTest : StringSpec({
 
         val off = features(client.sendJsonGetRequest(APP.uiConfig))
         off[APP.isEnvAuthed] shouldBe false
-        off[APP.envAuthAvailable] shouldBe true
+        off[APP.envAuthSuppressible] shouldBe true
 
         // And the truth survives on the context, because that is what the log line records. Suppression is a
         // display choice, never a way to act unattributed.
@@ -131,7 +131,7 @@ class EnvAuthHeaderTest : StringSpec({
 
         val f = features(client.sendJsonGetRequest(APP.uiConfig))
         f[APP.isEnvAuthed] shouldBe false
-        f[APP.envAuthAvailable] shouldBe false
+        f[APP.envAuthSuppressible] shouldBe false
     }
 
     /**
@@ -143,7 +143,7 @@ class EnvAuthHeaderTest : StringSpec({
         val cxt = Startup.mkTestBootCxt("envAuthFixture", "envAuthFixtureTest")
         val client = TestHttpClient(cxt.instanceConfig)
 
-        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthAvailable] shouldBe false
+        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthSuppressible] shouldBe false
 
         client.sendJsonPostRequest(
             TENV.path,
@@ -151,11 +151,11 @@ class EnvAuthHeaderTest : StringSpec({
         )
         val on = features(client.sendJsonGetRequest(APP.uiConfig))
         on[APP.isEnvAuthed] shouldBe true
-        on[APP.envAuthAvailable] shouldBe true
+        on[APP.envAuthSuppressible] shouldBe true
         client.sendGetRequest(APP.uiConfig).createdCxt?.envAuthEmail shouldBe "envauth.fix@gyassa.com"
 
         client.sendJsonPostRequest(TENV.path, mapOf(TENV.op to EnvAuthFixtureOp.clear.name))
-        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthAvailable] shouldBe false
+        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthSuppressible] shouldBe false
     }
 
     /**
@@ -175,7 +175,7 @@ class EnvAuthHeaderTest : StringSpec({
         val client = TestHttpClient(cxt.instanceConfig)
         client.cookies[ENVA.assertCookie] = "attacker@gyassa.com"
 
-        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthAvailable] shouldBe false
+        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthSuppressible] shouldBe false
 
         // And the fixture endpoint itself is not in the store on a node like this.
         client.sendEditRequest(

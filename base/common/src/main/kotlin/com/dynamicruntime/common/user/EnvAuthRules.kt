@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrInstanceConfig
 
 /** Constants for the environment-auth ("env auth") header contract. */
@@ -166,6 +167,22 @@ object EnvAuthRules {
             ?: (config.isTestInstance && config.env == ENV.local && config.bootRole == null)
 
     /**
+     * Whether suppressing env auth means anything on this node (issue #446) -- **not** on an edge.
+     *
+     * On an application the toggle is a **preview**: env auth grants nothing there, so suppressing it changes
+     * what a caller is *shown* and nothing about their authority, which is honest. On an edge env auth is what
+     * let the caller in, and `EdgeService.extractEnvAuth` binds the profile from the cookie regardless of any
+     * suppression -- so honoring it produced two halves that disagreed: a UI curating itself as signed-out,
+     * and a caller who was still `admin`. There is nothing to preview, because the un-env-authed state of an
+     * edge is the sign-in page rather than a lesser version of the UI.
+     *
+     * One predicate, read by both the resolver here and the app config that offers the control, so "the
+     * toggle is shown" and "the cookie is honored" cannot drift apart again -- which is precisely how they
+     * came to disagree.
+     */
+    fun suppressionOffered(config: KdrInstanceConfig): Boolean = config.bootRole != BOOT.edge
+
+    /**
      * Everything a request's env auth amounts to: who an edge vouched for, and whether the session is choosing
      * to act on it (issue #360).
      *
@@ -178,15 +195,16 @@ object EnvAuthRules {
         cookies: Map<String, String>,
         forwardedFor: String?,
     ): EnvAuthState {
-        // Suppression is read first and unconditionally: it subtracts, so no environment needs protecting
-        // from it, and it applies even where the assertion below is refused.
+        // Suppression is read first: it subtracts, so no environment needs protecting from it, and it
+        // applies even where the assertion below is refused -- but only where it is offered at all, which is
+        // not everywhere (see `suppressionOffered`).
         //
         // Tested by VALUE, not presence. Clearing a cookie is done by re-sending it empty with an expiry in
         // the past, so a cleared cookie arrives as `kdrEnvOff=` rather than not arriving at all -- and a
         // `containsKey` check reads that as still suppressed, leaving no way to restore. (Found by the test
         // that restores; a browser drops it eventually, which would have made this intermittent rather than
         // absent.) The same reasoning covers the assert cookie below, where an empty value fails to sanitize.
-        val suppressed = !cookies[ENVA.suppressCookie].isNullOrEmpty()
+        val suppressed = suppressionOffered(config) && !cookies[ENVA.suppressCookie].isNullOrEmpty()
 
         // Independent of trust, because inventing a claim and believing one are different questions. Only for
         // a request that did not come through a proxy: on a developer's box that is what separates "through

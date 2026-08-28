@@ -188,7 +188,10 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         }
         // The state for the NEXT request, as this one resolved its env auth before the cookie changed.
         val available = asserted != null || c.envAuthEmail != null
-        mapOf(APP.isEnvAuthed to (available && !c.envAuthSuppressed), APP.envAuthAvailable to available)
+        mapOf(
+            APP.isEnvAuthed to (available && !c.envAuthSuppressed),
+            APP.envAuthSuppressible to (available && EnvAuthRules.suppressionOffered(c.instanceConfig)),
+        )
     }
 
     // Two endpoints on ONE path, differing only by verb -- the shape issue #335 introduced for real at

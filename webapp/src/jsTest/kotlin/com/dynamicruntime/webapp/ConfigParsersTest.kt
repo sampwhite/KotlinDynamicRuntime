@@ -213,25 +213,25 @@ class ConfigParsersTest {
      * The env-auth pair (issue #360). Both default false when absent, for the same reason `showErrorDetail`
      * does: a config that has not arrived must never be why an internal affordance appears.
      *
-     * The case that matters is the third -- suppressed. `isEnvAuthed` false with `envAuthAvailable` true is
+     * The case that matters is the third -- suppressed. `isEnvAuthed` false with `envAuthSuppressible` true is
      * what keeps the control that restores the session on screen, and reading either flag alone would lose it.
      */
     @Test
     fun envAuthFlagsReadThroughIndependently() {
         val absent = appConfigFrom(uiConfig())
         assertFalse(absent.isEnvAuthed)
-        assertFalse(absent.envAuthAvailable)
+        assertFalse(absent.envAuthSuppressible)
 
         val on = appConfigFrom(
-            uiConfig(features = mapOf(APP.isEnvAuthed to true, APP.envAuthAvailable to true)),
+            uiConfig(features = mapOf(APP.isEnvAuthed to true, APP.envAuthSuppressible to true)),
         )
         assertTrue(on.isEnvAuthed)
-        assertTrue(on.envAuthAvailable)
+        assertTrue(on.envAuthSuppressible)
 
         val suppressed = appConfigFrom(
-            uiConfig(features = mapOf(APP.isEnvAuthed to false, APP.envAuthAvailable to true)),
+            uiConfig(features = mapOf(APP.isEnvAuthed to false, APP.envAuthSuppressible to true)),
         )
         assertFalse(suppressed.isEnvAuthed)
-        assertTrue(suppressed.envAuthAvailable)
+        assertTrue(suppressed.envAuthSuppressible)
     }
 }

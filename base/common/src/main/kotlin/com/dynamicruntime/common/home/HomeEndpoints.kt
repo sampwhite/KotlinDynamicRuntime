@@ -5,6 +5,7 @@ import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.uiblock.UiCall
@@ -139,7 +140,22 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
  * what lets a client or a boot role vary the menu without another branch being added here. An item whose
  * expression does not match is absent from the response, exactly as before.
  *
- * The three conditions are worth reading against what they replaced:
+ * **Most items are application-only**, and that is a correctness fix rather than tidying (issue #446). The
+ * account, forms and profile surfaces are contributed `appOnly` (#432), so an edge that offered them was
+ * offering pages whose endpoints are not there: an anonymous edge caller was shown "Log in" and "Register" --
+ * the account-creation surface #432 existed to remove -- and an env-authed one, who holds `admin`, was shown
+ * Users, My forms, Profile and Log out. Six items, all of which 404 on the node serving them.
+ *
+ * They say `,app` rather than an edge overlay setting them to `#never`, which is the whole reason the boot
+ * role is a cfact: an edge does not *remove* the application's items, it fails to match them, so one list
+ * stays readable as everything that exists.
+ *
+ * `envReference` is deliberately **not** marked, and the difference is worth seeing. Its condition is already
+ * the real one -- can this caller reach the operator section -- which is false on an edge today because
+ * env auth grants `admin` without `allClients`. Adding `,app` would suppress it for a *second* reason that is
+ * not the true one, and would then wrongly hide it if an edge ever did have deployment operators.
+ *
+ * The three original conditions are worth reading against what they replaced:
  *
  * - **Users** was `AdminRules.canManageUsers`, which is `admin` held -- the same test [CFACTS.hasAdminLevel] makes.
  * - **Environment** was `RequestService.canAccess(...)` on the env-reference path, asked of the dispatcher so
@@ -161,7 +177,7 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
 ) {
     items(HFLD.menu) {
         menuItem(HMENU.catalog, "Endpoint catalog", UiRoute(HMENU.pageCatalog))
-        menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = CFACTS.hasAdminLevel)
+        menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = "${CFACTS.hasAdminLevel},${BOOT.app}")
         menuItem(
             HMENU.envReference, "Environment", UiRoute(HMENU.pageEnv),
             cfactExpression = CFACTS.isDeploymentOperator,
@@ -170,11 +186,11 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"
         // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
         // "New form" button rather than a second, redundant nav item (issue #417).
-        menuItem(HMENU.forms, "My forms", UiRoute(HMENU.pageForms), cfactExpression = CFACTS.loggedIn)
-        menuItem(HMENU.profile, "Profile", UiRoute(HMENU.pageProfile), cfactExpression = CFACTS.loggedIn)
-        menuItem(HMENU.logout, "Log out", UiCall(HACT.logout), cfactExpression = CFACTS.loggedIn)
-        menuItem(HMENU.login, "Log in", UiRoute(HMENU.pageLogin), cfactExpression = CFACTS.anonymous)
-        menuItem(HMENU.register, "Register", UiRoute(HMENU.pageRegister), cfactExpression = CFACTS.anonymous)
+        menuItem(HMENU.forms, "My forms", UiRoute(HMENU.pageForms), cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
+        menuItem(HMENU.profile, "Profile", UiRoute(HMENU.pageProfile), cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
+        menuItem(HMENU.logout, "Log out", UiCall(HACT.logout), cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
+        menuItem(HMENU.login, "Log in", UiRoute(HMENU.pageLogin), cfactExpression = "${CFACTS.anonymous},${BOOT.app}")
+        menuItem(HMENU.register, "Register", UiRoute(HMENU.pageRegister), cfactExpression = "${CFACTS.anonymous},${BOOT.app}")
     }
 }
 

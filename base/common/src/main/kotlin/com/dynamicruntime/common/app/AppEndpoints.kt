@@ -3,6 +3,7 @@ package com.dynamicruntime.common.app
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.user.EnvAuthRules
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -56,7 +57,7 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 required = true,
             ) { type = SCT.boolean }
             property(
-                APP.envAuthAvailable,
+                APP.envAuthSuppressible,
                 "Whether env auth is available on this channel at all, whatever the session is acting as.",
                 required = true,
             ) { type = SCT.boolean }
@@ -90,7 +91,10 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 // Effective and available are both served because one cannot be derived from the other, and
                 // the indicator needs the second to survive its own suppression (issue #360).
                 APP.isEnvAuthed to c.isEnvAuthEffective,
-                APP.envAuthAvailable to (c.envAuthEmail != null),
+                // Both halves from one rule (issue #446): the control is offered exactly where the cookie behind
+                // it is honored, so they cannot come to disagree.
+                APP.envAuthSuppressible to
+                    (c.envAuthEmail != null && EnvAuthRules.suppressionOffered(c.instanceConfig)),
             ),
             UIC.settings to mapOf(
                 // Always served, defaulting when the deployment did not tune it (a custom-config override, not
@@ -112,7 +116,7 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
         type = SCT.kObject
         property(APP.isEnvAuthed, "Whether the session is acting env-authed after the operation.",
             required = true) { type = SCT.boolean }
-        property(APP.envAuthAvailable, "Whether env auth is available on this channel at all.",
+        property(APP.envAuthSuppressible, "Whether this caller may suppress their own env auth.",
             required = true) { type = SCT.boolean }
     }
     generalEndpoint(
@@ -140,7 +144,8 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
         // The state as it will be on the NEXT request: this request already resolved its own env auth before
         // the cookie changed, so reporting c.isEnvAuthEffective here would echo the state being left behind.
         val suppressed = op == EnvAuthOp.suppress
-        val available = c.envAuthEmail != null
-        mapOf(APP.isEnvAuthed to (available && !suppressed), APP.envAuthAvailable to available)
+        // Same rule as the config above: the control is offered exactly where the cookie is honored.
+        val suppressible = c.envAuthEmail != null && EnvAuthRules.suppressionOffered(c.instanceConfig)
+        mapOf(APP.isEnvAuthed to (c.envAuthEmail != null && !suppressed), APP.envAuthSuppressible to suppressible)
     }
 }
