@@ -4,6 +4,9 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.uiblock.UiAction
+import com.dynamicruntime.common.uiblock.parseUiAction
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
@@ -15,10 +18,13 @@ class HomeLayout(val topBar: Boolean, val leftBar: Boolean, val inlineLinks: Boo
 
 /**
  * One app-bar menu item, exactly as the backend composed it for this caller: an [id] to key behavior off, a
- * [label] to show, and either a [page] to navigate to or an [action] to run. The frontend renders the list it
- * is given -- an item the caller may not have simply is not in it.
+ * [label] to show, and an [action] saying what it does. The frontend renders the list it is given -- an item
+ * the caller may not have simply is not in it.
+ *
+ * [action] is **one** value, a route or a call (issue #483), where it was once a `page` and an `action` that
+ * could be both or neither.
  */
-class MenuItem(val id: String, val label: String, val page: String?, val action: String?)
+class MenuItem(val id: String, val label: String, val action: UiAction?)
 
 /** The home page's construction manifest: where its copy lives, how to lay it out, and what to link to. */
 class HomeConfig(
@@ -51,8 +57,9 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         MenuItem(
             id = entry[HFLD.id] as? String ?: "",
             label = entry[HFLD.label] as? String ?: "",
-            page = entry[HFLD.page] as? String,
-            action = entry[HFLD.action] as? String,
+            // Read by the kernel's own parser, so the side that writes the union and the side that acts on
+            // it cannot come to disagree about what a given shape meant.
+            action = parseUiAction(entry[UIB.action]),
         )
     }
     return HomeConfig(

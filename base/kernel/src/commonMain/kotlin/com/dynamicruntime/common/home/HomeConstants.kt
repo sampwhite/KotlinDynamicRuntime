@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.home
 
+import com.dynamicruntime.common.uiblock.UiActionDef
+
 // Home/shell constants that the *frontend* (Kotlin/JS) shares with the backend: the UI-config endpoint path,
 // the layout feature flags, the response field names, the schema type name, and the fragment/document ids.
 // They live in the KMP kernel (not base:common) so the transpiled frontend references the same strings the
@@ -52,12 +54,6 @@ object HFLD {
     /** `state.userInfo`: who the caller is (the anonymous profile when signed out). */
     const val userInfo = "userInfo"
 
-    /** A menu item's navigation target: a frontend page id, e.g. [HMENU.pageProfile]. Absent for an action. */
-    const val page = "page"
-
-    /** A menu item's client-side action ([HACT]) instead of a navigation, e.g., logging out. */
-    const val action = "action"
-
     /** A link's stable id (used to address it in the frontend's URL). */
     const val id = "id"
 
@@ -108,7 +104,8 @@ object HMENU {
     const val register = "register"
     const val logout = "logout"
 
-    // Frontend page ids ([HFLD.page]); the frontend maps these onto its own routing.
+    // Frontend page ids, carried in a menu item's `action` as a string; the frontend maps them onto its
+    // own routing (issue #483).
     const val pageCatalog = "catalog"
     const val pageUsers = "users"
     const val pageEnv = "env"
@@ -119,10 +116,15 @@ object HMENU {
     const val pageRegister = "register"
 }
 
-/** Client-side actions a menu item can carry ([HFLD.action]) instead of navigating. */
-@Suppress("ConstPropertyName")
+/** Frontend functions a UiBlock may call, declared so both sides share the vocabulary (issue #483). */
 object HACT {
-    const val logout = "logout"
+    /**
+     * Signing out: a request plus a redirect, which is why it cannot be a link and has to be a call.
+     *
+     * Takes no parameters, and the count is declared so the backend can refuse a UiBlock that passes some --
+     * see [UiActionDef].
+     */
+    val logout = UiActionDef("logout")
 }
 
 /** Markdown fragment file ids for the home widget-group (each also the group's fragment namespace). */

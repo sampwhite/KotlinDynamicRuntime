@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.home.HACT
+import com.dynamicruntime.common.uiblock.UiCall
+import com.dynamicruntime.common.uiblock.UiRoute
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -109,8 +110,8 @@ external interface AppBarProps : Props {
  * simply absent from the response. That is what lets an entry like user administration appear for an
  * administrator and for nobody else without the frontend knowing anything about roles.
  *
- * Each item either navigates to a page ([MenuItem.page]) or runs a client-side action ([MenuItem.action]) --
- * today only logging out, which cannot be a link because it is a request plus a redirect.
+ * Each item carries one [MenuItem.action]: a route to navigate to, or a call to run (issue #483) -- today
+ * only logging out, which cannot be a link because it is a request plus a redirect.
  *
  * It re-reads the config on every refresh generation, so signing in or out (or being granted a capability)
  * redraws the menu.
@@ -171,7 +172,7 @@ val AppBar = FC<AppBarProps> { props ->
         }
     }
 
-    fun logout() {
+    fun logoutAction() {
         open = false
         appBarScope.launch {
             runCatching { AuthApi.logout() }
@@ -181,6 +182,9 @@ val AppBar = FC<AppBarProps> { props ->
             bump()
         }
     }
+
+    // Built after the function it calls: a local `val` cannot forward-reference a local `fun`.
+    val frontendActions = FrontendActions(logout = { logoutAction() })
 
     // The bar takes on the elevated-privilege look while the caller holds administrative rights. It reads the
     // same `canManageUsers` capability the menu does, so the cue and the Users item can never disagree -- and
@@ -303,15 +307,22 @@ val AppBar = FC<AppBarProps> { props ->
 
                     // The items themselves, exactly as the backend composed them for this caller.
                     for (menuItem in config?.menu.orEmpty()) {
-                        when {
-                            menuItem.action == HACT.logout -> button {
+                        // A route is a link and a call is a button, which is the whole of the dispatch: the
+                        // backend already decided *whether* this caller sees the item, and the shape of the
+                        // action says how to render it (issue #483).
+                        when (val action = menuItem.action) {
+                            is UiRoute -> menuLink("#page=${action.page}", menuItem.label) { open = false }
+                            is UiCall -> button {
                                 className = ClassName("app-menu-item")
-                                onClick = { logout() }
+                                onClick = {
+                                    open = false
+                                    // An unimplemented name closes the menu and does nothing else, which is
+                                    // what the startup check exists to stop ever reaching a person.
+                                    frontendActions.run(action.def.name, action.args)
+                                }
                                 +menuItem.label
                             }
-                            menuItem.page != null -> menuLink("#page=${menuItem.page}", menuItem.label) {
-                                open = false
-                            }
+                            null -> Unit
                         }
                     }
                 }

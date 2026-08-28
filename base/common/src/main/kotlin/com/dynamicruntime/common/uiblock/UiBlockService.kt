@@ -118,6 +118,23 @@ fun uiBlockProblems(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<S
             )
         }
     }
+    // Actions are checked once per block rather than per client: the vocabulary is hardwired in shared code
+    // (`UiActions`), so unlike a cfact name it cannot differ between customers.
+    for (source in sources) {
+        collectActions(source.content).forEach { call ->
+            val declared = UiActions.forName(call.first)
+            when {
+                declared == null -> problems.add(
+                    "UiBlock '${source.blockId}' (${source.origin}) calls '${call.first}', which no frontend " +
+                        "function declares. A name nothing implements is a click that does nothing.",
+                )
+                declared.arity != call.second -> problems.add(
+                    "UiBlock '${source.blockId}' (${source.origin}) calls '${call.first}' with ${call.second} " +
+                        "parameter(s); it takes ${declared.arity}.",
+                )
+            }
+        }
+    }
     // Every scope a block is ever resolved for: the shared one, and each client that overlays something. Per
     // client because the vocabulary varies by client (issue #455), so an expression valid globally may name
     // nothing at one customer -- and that customer is who would find out.
@@ -180,6 +197,22 @@ fun filterByCFacts(
 private fun matches(node: Map<String, Any?>, present: Set<String>, predicate: (String) -> CFactPredicate): Boolean {
     val expression = node[UIB.cfactExpression].toOptStr() ?: return true
     return predicate(expression).matches(present)
+}
+
+/** Every call anywhere in [node] as `(name, parameterCount)`, for the boot check; routes are not calls. */
+fun collectActions(node: Map<String, Any?>): List<Pair<String, Int>> {
+    val out = mutableListOf<Pair<String, Int>>()
+    for ((key, value) in node) {
+        when {
+            key == UIB.action && value is List<*> -> {
+                val name = value.firstOrNull() as? String
+                if (name != null) out.add(name to value.size - 1)
+            }
+            value is Map<*, *> -> out.addAll(collectActions(asObject(value)))
+            value is List<*> -> value.forEach { if (it is Map<*, *>) out.addAll(collectActions(asObject(it))) }
+        }
+    }
+    return out
 }
 
 /** Every cfact expression anywhere in [node], for the boot check. */

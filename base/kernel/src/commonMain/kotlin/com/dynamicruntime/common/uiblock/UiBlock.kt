@@ -31,6 +31,14 @@ object UIB {
      */
     const val displayOrder = "displayOrder"
 
+    /**
+     * What an item does when it is chosen: a route or a call -- see [UiAction] (issue #483).
+     *
+     * A UiBlock key rather than a menu one, because it is not about menus: a workflow form naming the
+     * component that renders it is the same construct with the same registry behind it.
+     */
+    const val action = "action"
+
     /** The spacing convention for [displayOrder]: room for 99 later arrivals between any two items. */
     const val orderStep = 100
 

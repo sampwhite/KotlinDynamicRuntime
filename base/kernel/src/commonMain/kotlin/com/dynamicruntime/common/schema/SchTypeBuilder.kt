@@ -288,6 +288,31 @@ open class SchTypeBuilder(
     }
 
     /**
+     * Whether this was deliberately left **unconstrained**: any JSON value validates.
+     *
+     * Set through [anyValue], and distinct from simply not having said anything -- an untyped property
+     * otherwise defaults to `string`, which is the right guess for a field somebody forgot to type and the
+     * wrong one for a field that genuinely holds more than one shape.
+     */
+    var isUnconstrained: Boolean = false
+        private set
+
+    /**
+     * Declares this property as holding **any** JSON value, suppressing the string default.
+     *
+     * For a value whose shape the `Sch*` layer cannot yet state. The honest use is narrow: a field that is
+     * genuinely two shapes, where declaring either one would be a schema that rejects half the values the
+     * endpoint really sends. `SchType.jsonType` has always been nullable for exactly this, and the wire form
+     * is a schema with no `type`, which is what JSON Schema means by "any value".
+     *
+     * Prefer a real type wherever there is one. This says "we cannot express this yet", not "anything goes".
+     */
+    fun anyValue() {
+        isUnconstrained = true
+        data.remove(SCH.type)
+    }
+
+    /**
      * Adds a property (field) subschema. A [description] is MANDATORY for fields
      * (unlike a type's description, which is optional). The field's type defaults
      * to `string` unless [build] sets a `type` or makes it a `$ref`. When
@@ -303,8 +328,9 @@ open class SchTypeBuilder(
         val sub = SchTypeBuilder(cxt, namespace)
         sub.description = description
         sub.apply(build)
-        // Default field type to string unless the build set a type or a $ref.
-        if (SCH.type !in sub.data && SCH.dRef !in sub.data) {
+        // Default field type to string unless the build set a type or a $ref -- or said outright that the
+        // property is unconstrained, which is a different thing from having forgotten to say.
+        if (!sub.isUnconstrained && SCH.type !in sub.data && SCH.dRef !in sub.data) {
             sub.type = SCT.string
         }
         propertiesMap()[name] = sub.data

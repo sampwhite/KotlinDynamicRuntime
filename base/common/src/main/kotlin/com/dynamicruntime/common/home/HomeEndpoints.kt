@@ -5,7 +5,10 @@ import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockService
+import com.dynamicruntime.common.uiblock.UiCall
+import com.dynamicruntime.common.uiblock.UiRoute
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.uiBlock
 import com.dynamicruntime.common.context.KdrCxt
@@ -13,6 +16,7 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.refreshActingRoles
@@ -49,8 +53,18 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
         type = SCT.kObject
         property(HFLD.id, "Stable id for this item (see HMENU); the frontend keys behavior off it.", required = true)
         property(HFLD.label, "Display label.", required = true)
-        property(HFLD.page, "Frontend page id to navigate to; absent when the item carries an action.")
-        property(HFLD.action, "Client-side action to run instead of navigating (see HACT).")
+        property(
+            UIB.action,
+            "What the item does when chosen: a **string** is a frontend page id to navigate to, an **array** " +
+                "is a call whose first element names a registered frontend function and whose rest are its " +
+                "parameters (issue #483).",
+            required = true,
+        ) {
+            // Unconstrained, because the layer cannot yet say "string or array": `SchParser` does not model
+            // `anyOf`. Declaring either type alone would be a schema that rejects half the values this
+            // endpoint really sends, so it says "any value" and the description carries the shape in prose.
+            anyValue()
+        }
     }
 
     // UserInfo (declared with UserProfile) describes who the caller is, for the menu's signed-in label.
@@ -146,18 +160,21 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
     arrayKeys = mapOf(HFLD.menu to HFLD.id),
 ) {
     items(HFLD.menu) {
-        menuItem(HMENU.catalog, "Endpoint catalog", page = HMENU.pageCatalog)
-        menuItem(HMENU.users, "Users", page = HMENU.pageUsers, cfactExpression = CFACTS.hasAdminLevel)
-        menuItem(HMENU.envReference, "Environment", page = HMENU.pageEnv, cfactExpression = CFACTS.isDeploymentOperator)
+        menuItem(HMENU.catalog, "Endpoint catalog", UiRoute(HMENU.pageCatalog))
+        menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = CFACTS.hasAdminLevel)
+        menuItem(
+            HMENU.envReference, "Environment", UiRoute(HMENU.pageEnv),
+            cfactExpression = CFACTS.isDeploymentOperator,
+        )
         // Forms are login-gated only (the `gedra` section), so every signed-in caller is offered the list; how
         // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"
         // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
         // "New form" button rather than a second, redundant nav item (issue #417).
-        menuItem(HMENU.forms, "My forms", page = HMENU.pageForms, cfactExpression = CFACTS.loggedIn)
-        menuItem(HMENU.profile, "Profile", page = HMENU.pageProfile, cfactExpression = CFACTS.loggedIn)
-        menuItem(HMENU.logout, "Log out", action = HMENU.logout, cfactExpression = CFACTS.loggedIn)
-        menuItem(HMENU.login, "Log in", page = HMENU.pageLogin, cfactExpression = CFACTS.anonymous)
-        menuItem(HMENU.register, "Register", page = HMENU.pageRegister, cfactExpression = CFACTS.anonymous)
+        menuItem(HMENU.forms, "My forms", UiRoute(HMENU.pageForms), cfactExpression = CFACTS.loggedIn)
+        menuItem(HMENU.profile, "Profile", UiRoute(HMENU.pageProfile), cfactExpression = CFACTS.loggedIn)
+        menuItem(HMENU.logout, "Log out", UiCall(HACT.logout), cfactExpression = CFACTS.loggedIn)
+        menuItem(HMENU.login, "Log in", UiRoute(HMENU.pageLogin), cfactExpression = CFACTS.anonymous)
+        menuItem(HMENU.register, "Register", UiRoute(HMENU.pageRegister), cfactExpression = CFACTS.anonymous)
     }
 }
 

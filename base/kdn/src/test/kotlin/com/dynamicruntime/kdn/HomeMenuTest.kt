@@ -3,7 +3,9 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
@@ -24,14 +26,21 @@ import io.kotest.matchers.shouldBe
  * frontend would.
  *
  * Written against the hardcoded `menuItems()` before it moved, so passing it after the move means the move was
- * faithful rather than merely plausible.
+ * faithful rather than merely plausible. It has since changed exactly once, in #483, and in one enumerable
+ * way: `page: "x"` became `action: "x"` and `action: "logout"` became `action: ["logout"]`. Nothing else about
+ * the response has moved across five rounds of refactoring, which is the property this test exists to have.
  */
 class HomeMenuTest : StringSpec({
 
     val cxt = Startup.mkTestBootCxt("homeMenu", "homeMenuTest")
 
+    /** A route item. Since #483 the field is `action` and a **string** is what makes it a navigation. */
     fun page(id: String, label: String, page: String) =
-        mapOf(HFLD.id to id, HFLD.label to label, HFLD.page to page)
+        mapOf(HFLD.id to id, HFLD.label to label, UIB.action to page)
+
+    /** A call item: an **array**, whose head names a registered frontend function. */
+    fun call(id: String, label: String, function: String, vararg args: String) =
+        mapOf(HFLD.id to id, HFLD.label to label, UIB.action to listOf(function) + args.toList())
 
     /** The menu out of a `results` map. */
     fun menuIn(results: Map<String, Any?>): List<Map<String, Any?>> =
@@ -55,7 +64,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.forms, "My forms", HMENU.pageForms),
             page(HMENU.profile, "Profile", HMENU.pageProfile),
-            mapOf(HFLD.id to HMENU.logout, HFLD.label to "Log out", HFLD.action to HMENU.logout),
+            call(HMENU.logout, "Log out", HACT.logout.name),
         )
     }
 
@@ -68,7 +77,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.users, "Users", HMENU.pageUsers),
             page(HMENU.forms, "My forms", HMENU.pageForms),
             page(HMENU.profile, "Profile", HMENU.pageProfile),
-            mapOf(HFLD.id to HMENU.logout, HFLD.label to "Log out", HFLD.action to HMENU.logout),
+            call(HMENU.logout, "Log out", HACT.logout.name),
         )
     }
 
@@ -79,7 +88,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.envReference, "Environment", HMENU.pageEnv),
             page(HMENU.forms, "My forms", HMENU.pageForms),
             page(HMENU.profile, "Profile", HMENU.pageProfile),
-            mapOf(HFLD.id to HMENU.logout, HFLD.label to "Log out", HFLD.action to HMENU.logout),
+            call(HMENU.logout, "Log out", HACT.logout.name),
         )
     }
 })
