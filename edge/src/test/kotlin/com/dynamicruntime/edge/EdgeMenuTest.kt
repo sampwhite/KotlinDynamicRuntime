@@ -21,7 +21,7 @@ import io.kotest.matchers.shouldBe
 /**
  * What an edge offers in its menu (issue #446).
  *
- * **This is a correctness test, not a presentation one.** The account, forms and profile surfaces are
+ * **This is a correctness test, not a presentation one.** The account, forms, and profile surfaces are
  * contributed application-only (#432), so every item an edge showed for them was a page whose endpoints are
  * not on the node serving the menu. An anonymous caller was offered "Log in" and "Register" -- the
  * account-creation surface #432 existed to remove -- and an env-authed one, who holds `admin`, was offered
@@ -55,7 +55,7 @@ class EdgeMenuTest : StringSpec({
     }
 
     "the boot role is what decides it, so the same data serves an application" {
-        // The point of the boot role being a cfact: this is one list, and an application matches the items an
+        // The point of the boot role being a cfact: this is one list, and an application matches the items, an
         // edge does not. Asserted from the *same* block rather than a second one.
         val app = Startup.mkTestBootCxt("edgeMenuApp", "edgeMenuAppTest")
         val scope = app.mkSubContext("appCaller")

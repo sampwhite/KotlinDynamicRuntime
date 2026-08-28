@@ -7,12 +7,10 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.startup.ComponentDefinition
-import com.dynamicruntime.common.startup.PRI
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.Presence
 import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
-import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
  * The **KdrEdge** component (issues #347, #386): what makes a node booted by `StartEdge` an edge rather than
@@ -55,7 +53,7 @@ class EdgeComponent : ComponentDefinition {
     }
 
     /*
-     * No load-priority override any more (issue #433).
+     * No load-priority override anymore (issue #433).
      *
      * This used to return `PRI.early` so `EdgeService` registered its content server before `PortalService`
      * did -- content servers answer in registration order, and without it `/ec` reached the application's
@@ -76,8 +74,8 @@ class EdgeComponent : ComponentDefinition {
      * handed and still does not know edges exist. It needs no cfact either -- this component loads only on an
      * edge, so its overlay simply is not present anywhere else.
      *
-     * Only the **edge** is marked, not the application. The application is the ordinary case, and labelling it
-     * would tell nearly every viewer something they never needed told; more to the point, a deployment's
+     * Only the **edge** is marked, not the application. The application is the ordinary case, and labeling it
+     * would tell nearly every viewer something they never needed to be told; more to the point, a deployment's
      * application will carry the *customer's* brand, where a marker would be wrong exactly where it matters.
      * An edge is ours in every deployment, so a marker on it stays true.
      *

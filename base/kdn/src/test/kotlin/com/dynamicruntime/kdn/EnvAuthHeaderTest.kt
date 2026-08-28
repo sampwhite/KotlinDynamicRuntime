@@ -92,7 +92,7 @@ class EnvAuthHeaderTest : StringSpec({
         anonHandler.createdCxt?.envAuthEmail shouldBe "envauth.chan@gyassa.com"
         anonHandler.createdCxt?.userProfile?.isLoggedIn shouldBe false
 
-        // Env-authed channel, logged-in caller: the address rides beside the session, and grants no role.
+        // Env-authed channel, logged-in caller: the address rides beside the session and grants no role.
         val user = TestUser.create(cxt, "envauth.dana@gyassa.com", level = ROLE.user)
         user.client.setHeader(ENVA.header, "envauth.chan@gyassa.com")
         val userHandler = user.client.sendGetRequest(APP.uiConfig)

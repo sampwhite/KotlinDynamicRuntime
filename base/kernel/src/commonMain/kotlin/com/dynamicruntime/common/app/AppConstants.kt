@@ -114,9 +114,9 @@ object APP {
  * The operations [APP.envAuthOp] accepts (issue #360). Names are the wire values, and drive both the schema's
  * choice list and the endpoint's `when`.
  *
- * [suppress] is not the same as clearing a test fixture's assertion: suppressing **overrides** a real env auth,
+ * [suppress] is different from clearing a test fixture's assertion: suppressing **overrides** a real env auth,
  * while clearing merely stops pretending and returns the session to whatever the channel actually is. With no
- * edge in front the two look identical, which is exactly why they do not share a name.
+ * edge in front, the two look identical, which is exactly why they do not share a name.
  */
 @Suppress("EnumEntryName")
 enum class EnvAuthOp { suppress, restore }
