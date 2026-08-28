@@ -47,9 +47,10 @@ enum class GedraEditAction {
  *
  * Neither `entryId` nor `data` is required, and both absences are meaningful rather than lax:
  *
- * - **`entryId` absent** means "the entry this trait names, or a new one". A gedra holds at most one entry per
- *   trait (see `checkOneEntryPerTrait`), so that is unambiguous today; when `g-primaryKey` allows several, this
- *   is the field that tells them apart.
+ * - **`entryId` absent** means "the entry this trait (and key) names, or a new one". A gedra holds at most one
+ *   entry per trait -- or per primary-key value, for a trait with a `g-primaryKey` (issue #487) -- so the entry
+ *   an edit names is `(traitId, data[primaryKey])`, which the edit's own data carries. `entryId`, when sent,
+ *   stays a staleness check: it has to match the entry that address resolves to.
  * - **`data` absent** is what a [GedraEditAction.deleteOrNoOp] sends. One branch cannot say "required unless
  *   the action is a delete", so the schema permits it, and the service refuses data-less adds — which is also
  *   where a merge's completeness is settled, for the same reason.
