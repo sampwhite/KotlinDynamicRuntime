@@ -91,8 +91,11 @@ class MarkdownDocService : ServiceInitializer, ContentServer {
 
         /**
          * The cache-busting build id for a document (see [ContentResources.buildId]): a memoized content hash,
-         * or null if the resource is absent. Used by the code handing the frontend a `docId:buildId` (the home
-         * UI-config endpoint); the document request itself only strips it.
+         * or null if the resource is absent.
+         *
+         * Both ends of the round trip: the code handing the frontend a `docId:buildId` (the home UI-config
+         * endpoint) mints it here, and [serve] compares the id it is given against this same value to decide
+         * whether the response may carry the permanent cache header (issue #472).
          */
         fun docBuildId(docId: String): String? = ContentResources.buildId(resourceDir, docId)
     }
