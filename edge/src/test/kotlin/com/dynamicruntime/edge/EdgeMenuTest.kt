@@ -1,6 +1,10 @@
 package com.dynamicruntime.edge
 
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.user.ENVA
+import com.dynamicruntime.common.user.EnvAuthRules
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
@@ -68,5 +72,41 @@ class EdgeMenuTest : StringSpec({
             .sendJsonGetRequest(HEP.homeUiConfig)
         val state = (results[com.dynamicruntime.common.endpoint.EP.results] as Map<*, *>)[UIC.state] as Map<*, *>
         (state[HFLD.menu] as List<*>).map { (it as Map<*, *>)[HFLD.id] } shouldBe listOf(HMENU.catalog)
+    }
+
+    // --- what else an edge says about itself ------------------------------------------------------------
+
+    "an edge marks itself in the shell's wordmark" {
+        // A fragment overlay, not a frontend conditional: the shell renders the brand it is handed. The
+        // overlay needs no cfact because this component loads only on an edge.
+        val service = MarkdownFragmentService.get(cxt)
+        service.effectiveFragments(cxt, HFRAG.home)?.content?.get(HFRAG.home)?.get(EDGEUI.brandKey) shouldBe
+            EDGEUI.brand
+    }
+
+    "an application is left unmarked" {
+        // Only the edge is marked. An application is the ordinary case, and in a real deployment its brand is
+        // the customer's -- where a marker would be wrong exactly where it matters.
+        val app = Startup.mkTestBootCxt("edgeBrandApp", "edgeBrandAppTest")
+        MarkdownFragmentService.get(app).effectiveFragments(app, HFRAG.home)
+            ?.content?.get(HFRAG.home)?.get(EDGEUI.brandKey) shouldBe "KDR"
+    }
+
+    "an edge does not offer the env-auth toggle, and ignores the cookie behind it" {
+        // The two halves that used to disagree (issue #446): `EdgeService.extractEnvAuth` binds the profile
+        // from the cookie regardless of suppression, so honoring `kdrEnvOff` gave a UI curating itself as
+        // signed-out and a caller who was still `admin`. One rule now decides both.
+        EnvAuthRules.suppressionOffered(cxt.instanceConfig) shouldBe false
+        EnvAuthRules.resolve(
+            cxt.instanceConfig, null, mapOf(ENVA.suppressCookie to "1"), null,
+        ).suppressed shouldBe false
+    }
+
+    "an application still offers it, which is what makes it a preview rather than a hole" {
+        val app = Startup.mkTestBootCxt("edgeSuppressApp", "edgeSuppressAppTest")
+        EnvAuthRules.suppressionOffered(app.instanceConfig) shouldBe true
+        EnvAuthRules.resolve(
+            app.instanceConfig, null, mapOf(ENVA.suppressCookie to "1"), null,
+        ).suppressed shouldBe true
     }
 })

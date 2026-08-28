@@ -38,3 +38,13 @@ object EdgeRoot {
     /** All four, for the collision check that refuses to boot when one matches an application root. */
     val all: List<String> = listOf(ea, ec, ew, es)
 }
+
+/** What an edge shows of itself in the shell (issue #446). */
+@Suppress("ConstPropertyName")
+object EDGEUI {
+    /** The `home` fragment key holding the shell's wordmark, which the app bar and the home hero both read. */
+    const val brandKey = "brand"
+
+    /** The wordmark an edge shows: the product, marked as the perimeter rather than the application. */
+    const val brand = "KDR Edge"
+}

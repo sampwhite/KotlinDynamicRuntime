@@ -41,7 +41,7 @@ class AppConfig(
      * indicator's visibility reads this: while suppressed, [isEnvAuthed] is false but the control that
      * restores it must stay on screen, or there is no way back.
      */
-    val envAuthAvailable: Boolean,
+    val envAuthSuppressible: Boolean,
 ) {
     companion object {
         /** The assumed config before the first fetch (and if a fetch fails): do not suppress (matching dev),
@@ -56,7 +56,7 @@ class AppConfig(
             // Assume neither until the backend says so, for the same reason as showErrorDetail: a fetch that
             // has not happened must not be why an internal affordance appears.
             isEnvAuthed = false,
-            envAuthAvailable = false,
+            envAuthSuppressible = false,
         )
     }
 }
@@ -78,7 +78,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
     showErrorDetail = config.features[APP.showErrorDetail] == true,
     allowDebugPages = config.features[APP.allowDebugPages] == true,
     isEnvAuthed = config.features[APP.isEnvAuthed] == true,
-    envAuthAvailable = config.features[APP.envAuthAvailable] == true,
+    envAuthSuppressible = config.features[APP.envAuthSuppressible] == true,
 )
 
 object AppApi {

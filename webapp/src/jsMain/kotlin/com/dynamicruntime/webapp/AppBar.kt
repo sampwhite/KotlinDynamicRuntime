@@ -96,7 +96,7 @@ fun isStaleFragment(status: Int?): Boolean = status == 404
  */
 external interface AppBarProps : Props {
     /** Whether env auth exists on this channel -- decides whether the control is shown at all. */
-    var envAuthAvailable: Boolean
+    var envAuthSuppressible: Boolean
     /** Whether the session is currently *acting* env-authed -- decides what the control says. */
     var envAuthActing: Boolean
 }
@@ -242,7 +242,7 @@ val AppBar = FC<AppBarProps> { props ->
             // A button rather than a span, unlike the badges around it: this one does something, and something
             // a keyboard user must be able to reach. It names the *state*, not the action, so the bar reads as
             // a description of where you are rather than a row of commands.
-            if (props.envAuthAvailable) {
+            if (props.envAuthSuppressible) {
                 button {
                     className = ClassName(if (props.envAuthActing) "bar-badge env-badge" else "bar-badge env-badge off")
                     title = if (props.envAuthActing) {

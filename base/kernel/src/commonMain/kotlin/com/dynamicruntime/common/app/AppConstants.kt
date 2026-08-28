@@ -46,7 +46,7 @@ object APP {
      *
      * **Effective rather than raw is the deliberate half.** Everything that varies with env auth reads this
      * one, so a consumer that has never heard of suppression still honors it -- and a consumer that forgets
-     * [envAuthAvailable] shows *less* than it might, never more. Failing in the closed direction is the same
+     * [envAuthSuppressible] shows *less* than it might, never more. Failing in the closed direction is the same
      * choice made for the boot-role default and the header trust flag.
      *
      * A **boolean, not the address.** The frontend needs to know *that* the channel is env-authed; who the
@@ -61,15 +61,21 @@ object APP {
     const val isEnvAuthed = "isEnvAuthed"
 
     /**
-     * Feature flag: whether env auth is **available** on this channel at all (issue #360) -- the truth an edge
-     * asserted, regardless of whether the session is currently acting on it.
+     * Feature flag: whether this caller may **suppress** their own env auth (issues #360, #446) -- which is
+     * what the control does, and so what deciding to show it depends on.
      *
      * Exists because one boolean cannot express this. While suppressed, [isEnvAuthed] is false but the user
      * must still be shown the control that restores it -- otherwise the affordance disappears along with the
      * thing it controls, and there is no way back. So **visibility of the indicator reads this**, and nothing
      * else should: anything deciding what a user may see or do reads [isEnvAuthed].
+     *
+     * Named for suppressibility rather than availability since #446. It was only ever read to decide whether
+     * to offer the toggle, and on an **edge** the two come apart: env auth is available there -- it is what
+     * let the caller in -- and suppressing it is not offered, because there is nothing to preview and
+     * `EnvAuthRules.suppressionOffered` therefore refuses the cookie. A name saying "available" would have had
+     * to be false on an edge while being true, which is how a field starts lying.
      */
-    const val envAuthAvailable = "envAuthAvailable"
+    const val envAuthSuppressible = "envAuthSuppressible"
 
     /**
      * The endpoint a session uses to suppress its own env auth, or restore it ([EnvAuthOp]). Anonymous and
