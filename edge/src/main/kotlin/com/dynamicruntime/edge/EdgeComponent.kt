@@ -1,8 +1,13 @@
 package com.dynamicruntime.edge
 
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.HACT
+import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
@@ -11,6 +16,9 @@ import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.Presence
 import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
+import com.dynamicruntime.common.uiblock.UiBlockSource
+import com.dynamicruntime.common.uiblock.UiCall
+import com.dynamicruntime.common.uiblock.uiBlockOverlay
 
 /**
  * The **KdrEdge** component (issues #347, #386): what makes a node booted by `StartEdge` an edge rather than
@@ -88,6 +96,41 @@ class EdgeComponent : ComponentDefinition {
             namespace(HFRAG.home) { key(EDGEUI.brandKey, EDGEUI.brand) }
         },
     )
+
+    /**
+     * The one menu item an edge adds: signing out of the environment (issue #486).
+     *
+     * An overlay onto the shared `homeMenu`, and needing no boot-role cfact for the same reason the brand
+     * overlay does not -- this component loads only on an edge, so the item is simply absent on every other
+     * node. It **does** carry [CFACTS.loggedIn], and that is the one dimension the brand analogy does not
+     * cover: a wordmark is shown to anyone, but an offer to *log out* is meaningless to a caller who is not
+     * logged in, and the anonymous menu (a bare sign-in surface) must not carry it. On an edge "logged in"
+     * can only mean env-authed, so the cfact reads exactly as intended -- the same gate the application's own
+     * "Log out" uses, minus the `,app` this side does not need.
+     *
+     * The item is a **call**, not a route, as signing out is everywhere: a request that clears the perimeter
+     * cookie, then a navigation. Both URLs it needs are the edge's to know and travel as the call's arguments
+     * (see [HACT.envLogout]) -- the api-relative clear-cookie path, and the absolute sign-in page to land on,
+     * carrying [EDGEP.loggedOutParam] so that page greets the caller as freshly signed out. The landing URL is
+     * built from this node's *own* content root, so a deployment that renamed it is honored rather than
+     * assumed.
+     */
+    override fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> {
+        val contentRoot = cxt.instanceConfig.get(ACFG.contentContextRoot) as? String ?: EdgeRoot.ec
+        val landingUrl = "/$contentRoot${EDGEP.loginPage}?${EDGEP.loggedOutParam}=1"
+        return listOf(
+            uiBlockOverlay(HMENU.block, origin = name) {
+                items(HFLD.menu) {
+                    menuItem(
+                        EDGEUI.logoutItem, "Log out",
+                        UiCall(HACT.envLogout, listOf(EAEP.logout, landingUrl)),
+                        cfactExpression = CFACTS.loggedIn,
+                        displayOrder = EDGEUI.logoutOrder,
+                    )
+                }
+            },
+        )
+    }
 
     override fun services(cxt: KdrCxt): List<ServiceEntry> = listOf(service(::EdgeService))
 

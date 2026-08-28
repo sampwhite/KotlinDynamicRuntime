@@ -110,6 +110,16 @@ The registry should declare each entry's **arity**, so a wrong parameter count i
 undefined argument at click time. The array makes arity readable without parsing, which is what makes that
 check cheap.
 
+`HACT.envLogout` (issue #486) is the first entry to use both halves of this. It takes **two** parameters — the
+edge supplies the path that clears its perimeter cookie and the sign-in page to land on afterwards, because the
+frontend is served *by* an edge but knows nothing about being behind one — and it is contributed from a
+**different module** than the one it is declared in: the name lives in the kernel beside `HACT.logout`, the
+implementation is in the web app's `FrontendActions`, and the menu item that names it is an overlay added by
+`EdgeComponent`. Three modules, none able to check the other two, which is exactly the boundary the shared name
+exists to span. The arguments are the reason arity>0 earns its keep here rather than staying theoretical: the
+frontend function is pure mechanism over them, so an edge varies where sign-out goes without a line of frontend
+code changing.
+
 ### The registry stays hardwired, and that is load-bearing
 
 A config may only ever name a function a developer wrote. This is the line that keeps *extensibility through

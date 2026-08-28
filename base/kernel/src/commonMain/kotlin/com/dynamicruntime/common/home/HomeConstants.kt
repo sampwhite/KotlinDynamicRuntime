@@ -125,6 +125,28 @@ object HACT {
      * see [UiActionDef].
      */
     val logout = UiActionDef("logout")
+
+    /**
+     * Signing out of an **environment** (issue #486): the edge's counterpart to [logout], contributed to the
+     * menu by `EdgeComponent` as an overlay. A request that clears the env-auth cookie, then a navigation to
+     * the environment's sign-in page -- a call for the same reason [logout] is, not a route.
+     *
+     * **Two parameters, both URLs, and that is deliberate.** The frontend is served *by* an edge but knows
+     * nothing about being behind one -- not which endpoint clears the perimeter cookie, nor where an edge's
+     * sign-in page lives. Both are the edge's to know, so the edge supplies them as the call's arguments and
+     * the function stays pure mechanism: fetch the first, navigate to the second. The order is
+     * `(logoutPath, landingUrl)`:
+     *
+     *  - **`logoutPath`** -- the api-relative path of the clear-cookie endpoint (`EAEP.logout`), so the
+     *    frontend's own api root is prepended exactly as for every other call, honoring a custom root.
+     *  - **`landingUrl`** -- the absolute path to send the browser to afterward: the edge's sign-in page,
+     *    which is the whole anonymous surface a signed-out caller has left.
+     *
+     * Declared here beside [logout] because this object *is* the shared vocabulary of callable functions, not
+     * a home-page-specific list; the edge is where it is contributed and implemented, but neither side of the
+     * boundary can check the other, so the name has to live in the kernel. See `UiActions`.
+     */
+    val envLogout = UiActionDef("envLogout", arity = 2)
 }
 
 /** Markdown fragment file ids for the home widget-group (each also the group's fragment namespace). */

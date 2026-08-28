@@ -9,10 +9,12 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.startup.InstanceRegistry
+import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
@@ -48,10 +50,31 @@ class EdgeMenuTest : StringSpec({
         menuIdsFor(UserProfile()) shouldBe listOf(HMENU.catalog)
     }
 
-    "an env-authed edge caller is not offered the application's signed-in pages" {
+    "an env-authed edge caller is offered the catalog and a way to sign out, and nothing else" {
         // `UserProfile.envAuthed` holds `admin`, so before #446 this caller was shown Users, My forms, Profile
-        // and Log out -- four items, none of which exist on an edge.
-        menuIdsFor(UserProfile.envAuthed("someone@gyassa.com")) shouldBe listOf(HMENU.catalog)
+        // and Log out -- four items, none of which exist on an edge. The application's items still fail to
+        // match; what an edge does add is its own env logout (#486), which it genuinely serves.
+        menuIdsFor(UserProfile.envAuthed("someone@gyassa.com")) shouldBe listOf(HMENU.catalog, EDGEUI.logoutItem)
+    }
+
+    "the edge's sign-out is offered only once there is a session to end" {
+        // It carries `loggedIn` -- the one dimension the brand overlay's "no cfact" reasoning does not cover:
+        // offering "Log out" to an anonymous caller (a bare sign-in surface) would be incoherent (#486).
+        menuIdsFor(UserProfile()) shouldBe listOf(HMENU.catalog)
+    }
+
+    "the edge's sign-out is a call carrying the clear-cookie path and where to land" {
+        // A call, not a route (a request plus a navigation), and the two URLs the frontend needs travel as the
+        // call's arguments because the edge is the authority on both (#486).
+        val scope = cxt.mkSubContext("edgeCaller")
+        scope.userProfile = UserProfile.envAuthed("someone@gyassa.com")
+        val menu = UiBlockService.get(scope).resolve(scope, HMENU.block)?.get(HFLD.menu) as List<*>
+        val logout = menu.map { it as Map<*, *> }.first { it[HFLD.id] == EDGEUI.logoutItem }
+        // The action is `[functionName, arg0, arg1]` on the wire -- a call is a list whose head is the name.
+        logout[UIB.action] shouldBe listOf(
+            HACT.envLogout.name, EAEP.logout,
+            "/${EdgeRoot.ec}${EDGEP.loginPage}?${EDGEP.loggedOutParam}=1",
+        )
     }
 
     "the boot role is what decides it, so the same data serves an application" {

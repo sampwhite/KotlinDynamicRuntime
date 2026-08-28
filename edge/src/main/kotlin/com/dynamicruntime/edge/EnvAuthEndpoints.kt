@@ -20,6 +20,14 @@ import kotlin.time.Instant
 object EDGEP {
     /** The sign-in page, under the edge's content root -- the whole anonymous surface of an edge. */
     const val loginPage = "/login"
+
+    /**
+     * Query parameter on [loginPage] noting the caller has just signed out (issue #486): presence-only, so its
+     * value is unread. The sign-in page shows a brief "you have been signed out" note when it is present -- a
+     * grace note that tells a caller their logout took rather than leaving them on a bare sign-in they might
+     * read as a session that simply expired.
+     */
+    const val loggedOutParam = "loggedOut"
 }
 
 /** Wire vocabulary for the Env Auth login. */
@@ -35,6 +43,14 @@ object EAEP {
      */
     const val login = "/auth/env/login"
 
+    /**
+     * Where a browser clears the env-auth session (issue #486) -- the symmetric counterpart to [login], under
+     * the same **`auth`** section and so anonymous for the same reason: it only ever subtracts, and the worst
+     * a caller can do to themselves is have to sign in again. A GET, matching the application's own logout
+     * (`AEP.logout`), which is likewise a cookie-clearing GET rather than a POST.
+     */
+    const val logout = "/auth/env/logout"
+
     /** Request field: the Google ID token (a JWT) the browser's sign-in hands back. */
     const val googleCredential = "googleCredential"
 
@@ -43,6 +59,9 @@ object EAEP {
 
     /** The response schema type name. */
     const val sessionType = "EnvAuthSession"
+
+    /** The [logout] response schema type name: an empty acknowledgement, since the frontend acts on the call's arguments, not the body. */
+    const val ackType = "EnvAuthLogoutAck"
 }
 
 /**
@@ -57,6 +76,8 @@ fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "auth") {
         type = SCT.kObject
         property(EAEP.email, "The address now signed in for this session.", required = true)
     }
+
+    type(EAEP.ackType) { type = SCT.kObject }
 
     generalEndpoint(
         EAEP.login,
@@ -97,7 +118,7 @@ fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "auth") {
         val expireMs = c.now().toEpochMilliseconds() + ENVAUTH.sessionMillis(c.instanceConfig)
         // Written through the request's WebRequest -- the transport-neutral seam -- so it behaves identically
         // under a browser and the in-process test client. Safe here because a handler runs before the response
-        // is sent; a cookie set afterwards would be dropped.
+        // is sent; a cookie set afterward would be dropped.
         // SameSite=Strict for the perimeter cookie (issue #431): nothing should be arriving at an edge
         // cross-site, so its session cookie need not ride a cross-site request. The cookie is set and read
         // same-origin, so the login flow is unaffected; the app's `kdrAuth` stays Lax for its Google redirect.
@@ -112,13 +133,32 @@ fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "auth") {
         LogEdge.info(c) { "Env auth granted to $email." }
         mapOf(EAEP.email to email)
     }
+
+    generalEndpoint(
+        EAEP.logout,
+        "Clear this environment's sign-in, dropping the perimeter cookie -- the counterpart to signing in.",
+        HttpMethod.GET, outputRef = EAEP.ackType,
+    ) { c, _ ->
+        // Clear by re-issuing the cookie empty and already expired, the pattern the app's logout and the
+        // variant-behavior endpoint both use. Written through the request's WebRequest for the same reason the
+        // login sets it there, and with the same SameSite=Strict so the attributes match the cookie being
+        // cleared. A caller with no cookie clears nothing and still succeeds -- logout is idempotent.
+        c.request?.webRequest?.addResponseCookie(
+            ENVAUTH.cookie, "", Instant.fromEpochMilliseconds(0), CKI.strict,
+        )
+        // The bound identity is left as it was for the rest of this request -- the frontend navigates away to
+        // the sign-in page next, so nothing renders from it, and the cleared cookie is what ends the session
+        // on the following request. Logged from the context so the line names who was signed out.
+        c.envAuthEmail?.let { LogEdge.info(c) { "Env auth cleared for $it." } }
+        emptyMap<String, Any?>()
+    }
 }
 
 /**
  * The one thing every refusal says.
  *
  * Deliberately identical for "no verified address", "wrong domain", and "Google is not authoritative for the
- * address" (issue #429), and marked sensitive so a deployment that obfuscates replaces even this: a caller
+ * address" (issue #429), and marked sensitive, so a deployment that obfuscates replaces even this: a caller
  * learning *which* check they tripped learns which domain opens the gate, which is the one fact a probe wants.
  * `GoogleIdTokenVerifier` already takes the same line with its own failures.
  */

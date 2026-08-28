@@ -47,4 +47,19 @@ object EDGEUI {
 
     /** The wordmark an edge shows: the product, marked as the perimeter rather than the application. */
     const val brand = "KDR Edge"
+
+    /**
+     * The id of the env-logout menu item an edge contributes (issue #486). Its own id, distinct from the
+     * application's `HMENU.logout`: the two never share a node, but a distinct id keeps the overlay
+     * unambiguous about which item it adds, and reads correctly in a menu snapshot.
+     */
+    const val logoutItem = "envLogout"
+
+    /**
+     * Where the env-logout item sorts. Well past the base menu's numbering (its items land at
+     * [com.dynamicruntime.common.uiblock.UIB.orderStep]-spaced positions from 100), so signing out sits last
+     * as a logout conventionally does -- and an overlay must state its own order, since only a base's items
+     * are auto-numbered.
+     */
+    const val logoutOrder = 1000
 }
