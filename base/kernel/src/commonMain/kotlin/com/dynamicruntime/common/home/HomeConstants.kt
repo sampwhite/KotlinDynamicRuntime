@@ -54,10 +54,6 @@ object HFLD {
     /** `state.userInfo`: who the caller is (the anonymous profile when signed out). */
     const val userInfo = "userInfo"
 
-    /** A menu item's navigation target: a frontend page id, e.g. [HMENU.pageProfile]. Absent for an action. */
-
-    /** A menu item's client-side action ([HACT]) instead of a navigation, e.g., logging out. */
-
     /** A link's stable id (used to address it in the frontend's URL). */
     const val id = "id"
 
