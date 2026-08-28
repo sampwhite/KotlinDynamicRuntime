@@ -15,9 +15,15 @@ import com.dynamicruntime.common.uiblock.UiActions
  * Parameters arrive as strings, and an implementation coerces what it needs -- which is why they are typed
  * here rather than on the wire.
  */
-class FrontendActions(private val logout: () -> Unit) {
+class FrontendActions(
+    private val logout: () -> Unit,
+    private val envLogout: (List<String>) -> Unit,
+) {
     private val byName: Map<String, (List<String>) -> Unit> = mapOf(
         HACT.logout.name to { _ -> logout() },
+        // Env logout takes its two URLs from the call (the edge is the authority on both); this side is pure
+        // mechanism and passes the arguments straight through -- see `HACT.envLogout`.
+        HACT.envLogout.name to { args -> envLogout(args) },
     )
 
     /** Runs [name] with [args], or returns false when nothing implements it. */

@@ -17,16 +17,26 @@ class FrontendActionsTest {
 
     @Test
     fun everyDeclaredActionIsImplemented() {
-        assertEquals(emptyList(), FrontendActions(logout = {}).missing())
+        assertEquals(emptyList(), FrontendActions(logout = {}, envLogout = {}).missing())
     }
 
     @Test
     fun runsTheImplementationAndReportsAnUnknownName() {
         var loggedOut = false
-        val actions = FrontendActions(logout = { loggedOut = true })
+        val actions = FrontendActions(logout = { loggedOut = true }, envLogout = {})
         assertTrue(actions.run("logout", emptyList()))
         assertTrue(loggedOut)
         // False rather than throwing: a name nothing implements must not break the shell it is rendered in.
         assertFalse(actions.run("noSuchFunction", emptyList()))
+    }
+
+    @Test
+    fun envLogoutReceivesItsCallArguments() {
+        // The two URLs the edge supplies must reach the implementation untouched -- it is pure mechanism over
+        // them (issue #486).
+        var received: List<String>? = null
+        val actions = FrontendActions(logout = {}, envLogout = { received = it })
+        assertTrue(actions.run("envLogout", listOf("/auth/env/logout", "/ec/login?loggedOut=1")))
+        assertEquals(listOf("/auth/env/logout", "/ec/login?loggedOut=1"), received)
     }
 }

@@ -183,8 +183,25 @@ val AppBar = FC<AppBarProps> { props ->
         }
     }
 
-    // Built after the function it calls: a local `val` cannot forward-reference a local `fun`.
-    val frontendActions = FrontendActions(logout = { logoutAction() })
+    // Env logout (issue #486): clear the perimeter cookie, then leave the app for the sign-in page. Both URLs
+    // come from the call's arguments -- the edge supplies them because only it knows them. Unlike `logout`,
+    // this is a full-window navigation, not a hash change: the caller is now anonymous on a node whose only
+    // anonymous surface is that sign-in page, so there is nothing of the app left to route within.
+    fun envLogoutAction(args: List<String>) {
+        open = false
+        val logoutPath = args.getOrNull(0) ?: return
+        val landingUrl = args.getOrNull(1) ?: return
+        appBarScope.launch {
+            runCatching { Http.getApi(logoutPath) }
+            leaveAppTo(landingUrl)
+        }
+    }
+
+    // Built after the functions they call: a local `val` cannot forward-reference a local `fun`.
+    val frontendActions = FrontendActions(
+        logout = { logoutAction() },
+        envLogout = { args -> envLogoutAction(args) },
+    )
 
     // The bar takes on the elevated-privilege look while the caller holds administrative rights. It reads the
     // same `canManageUsers` capability the menu does, so the cue and the Users item can never disagree -- and

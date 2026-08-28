@@ -14,11 +14,19 @@ object EnvAuthPage {
      * [clientId] is public by design -- it identifies the application to Google, and the browser must present
      * it. [returnTo] has already been through [EnvAuthReturn.sanitize], so it is a same-site path.
      */
-    fun render(clientId: String, returnTo: String, loginPath: String): String {
+    fun render(clientId: String, returnTo: String, loginPath: String, loggedOut: Boolean = false): String {
         // Escaped once, up front, so no second form of a value is floating around to embed by mistake.
         val rt = jsString(returnTo)
         val lp = jsString(loginPath)
         val cid = jsString(clientId)
+        // A grace note after signing out (issue #486): it tells a caller their logout took, rather than
+        // leaving them at a bare sign-in they might read as a session that merely lapsed. Static text, so it
+        // is composed here rather than passed through the script.
+        val signedOut = if (loggedOut) {
+            "\n  <p class=\"sub\">You have been signed out of this environment.</p>"
+        } else {
+            ""
+        }
         return $$"""
 <!doctype html>
 <html lang="en">
@@ -42,7 +50,7 @@ object EnvAuthPage {
 </head>
 <body>
 <main>
-  <h1>Sign in to continue</h1>
+  <h1>Sign in to continue</h1>$$signedOut
   <p class="sub">This environment is restricted.</p>
   <div id="btn"></div>
   <div id="err" role="alert"></div>
