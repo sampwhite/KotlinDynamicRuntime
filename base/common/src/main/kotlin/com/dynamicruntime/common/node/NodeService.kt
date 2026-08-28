@@ -52,7 +52,7 @@ class NodeService : ServiceInitializer {
     lateinit var internalIpAddresses: Regex
 
     /**
-     * Lookup name of the instance's active encryption key: the [configName] its auth-config row is stored
+     * Lookup name of the instance's active encryption key: the `configName` its auth-config row is stored
      * under, and the prefix stamped onto ciphertext so [decryptString] can pick the right key. From config
      * `node.instance.authConfigKey`, defaulting to [defaultAuthConfigKey].
      */

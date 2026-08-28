@@ -92,6 +92,28 @@ cycle by forcing a re-resolve first:
 The lock lives at the workspace root (`kotlin-js-store/yarn.lock`), outside the versioned repo, so each
 workspace drifts on its own and every checkout hits this independently.
 
+### `check` also validates KDoc `[link]`s (Dokka)
+
+`./gradlew check` runs **Dokka** (`dokkaGenerate`, wired into every module's `check`), whose job here is not
+the HTML it produces but the side effect: it resolves every KDoc `[link]` and **fails the build on any that
+dangles** (issue #491). A `[name]` in KDoc is a real cross-reference, not emphasis — so a renamed `$ref`, a
+comment moved to a package that doesn't import its target, or a `[localVar]` that was never a declaration now
+breaks the build here instead of surviving to a manual review.
+
+- **When `check` fails on it**, the task message only says `warningCount=N`. To see *which* links, run the
+  generator directly: `./gradlew dokkaGenerate` prints `Couldn't resolve link: [X] in File.kt` for each. An
+  **up-to-date** Dokka task prints nothing, so a silent run is not proof of a clean one — add `--rerun-tasks`
+  when you need the warnings re-emitted.
+- **The usual causes, and their fixes** (all seen in the wild): the target isn't imported in this file →
+  import it; a prose word or a local `val` got written as `[x]` → backtick it; a **cross-module** link the
+  module can't see (`base:kernel` → `base:common`, or `common` → a module that depends on it) → drop to a
+  backticked plain name (kernel especially cannot name `common` — see the code-guide rule); a link points at a
+  *file* rather than a declaration (`[Start]` for `Start.kt`) → backtick the filename.
+- **What it does NOT catch: *orphaned* doc comments** — a `/**` block stranded above the wrong declaration
+  (e.g. left behind when code moved). That comment is validly attached to whatever now follows it, so Dokka
+  sees nothing wrong. Only reading, or a purpose-built adjacency check, finds those; the Dokka gate is blind
+  to them by construction.
+
 ## Booting your own server (manual)
 
 Run Gradle from the **workspace root** — the parent of the versioned repo, where the live

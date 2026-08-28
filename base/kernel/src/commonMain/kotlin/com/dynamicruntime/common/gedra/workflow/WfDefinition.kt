@@ -73,7 +73,7 @@ enum class WfTaskStatus {
 @Suppress("EnumEntryName")
 enum class WfAssigneeKind { role, group, user }
 
-/** The keys of a stored [WfAssignment] under [com.dynamicruntime.common.gedra.GD.wfAssignment]. */
+/** The keys of a stored [WfAssignment] under `GD.wfAssignment`. */
 @Suppress("ConstPropertyName")
 object WFA {
     const val kind = "kind"

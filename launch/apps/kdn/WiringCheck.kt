@@ -9,7 +9,7 @@ import kotlin.time.TimeSource
 /**
  * Minimal launcher whose sole purpose is to prove the Gradle module graph wires
  * together end-to-end. It is intentionally *not* the real application entry point
- * (that is [Start] / `Start.kt`); it exists to surface dependency/build wiring
+ * (that is `Start.kt`); it exists to surface dependency/build wiring
  * problems quickly, without booting an instance.
  *
  * It logs the top of the module wiring chain, [Config.wiringTag], which chains
