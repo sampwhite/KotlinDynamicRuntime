@@ -110,8 +110,8 @@ external interface AppBarProps : Props {
  * simply absent from the response. That is what lets an entry like user administration appear for an
  * administrator and for nobody else without the frontend knowing anything about roles.
  *
- * Each item either navigates to a page ([MenuItem.page]) or runs a client-side action ([MenuItem.action]) --
- * today only logging out, which cannot be a link because it is a request plus a redirect.
+ * Each item carries one [MenuItem.action]: a route to navigate to, or a call to run (issue #483) -- today
+ * only logging out, which cannot be a link because it is a request plus a redirect.
  *
  * It re-reads the config on every refresh generation, so signing in or out (or being granted a capability)
  * redraws the menu.
