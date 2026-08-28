@@ -156,7 +156,7 @@ object HACT {
      * page, the application reached through an edge -- and a `UiRoute` cannot express them: it renders as
      * `#page=`, which the in-app router interprets. The one parameter is the path, supplied by whoever
      * contributes the item (the edge knows its own roots); the implementation **guards** it to a same-origin
-     * path so a client-contributed overlay cannot turn a menu item into an off-site redirect. That guard is
+     * path, so a client-contributed overlay cannot turn a menu item into an off-site redirect. That guard is
      * why this is one named function rather than a bare "navigate anywhere": the operation is fixed and
      * reviewed, only the destination is data -- the same shape as `UiRoute` varying its page id.
      *

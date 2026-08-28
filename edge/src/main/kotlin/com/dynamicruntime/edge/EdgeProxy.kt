@@ -200,7 +200,7 @@ class EdgeProxyHandler(
      * this node knows where its sign-in page lives -- the frontend is served by the application and has no
      * idea it is behind an edge, let alone which one.
      */
-    private fun sendAuthRequired(request: Request, response: Response, callback: Callback) {
+    private fun sendAuthRequired(@Suppress("unused") request: Request, response: Response, callback: Callback) {
         val body = mapOf(
             EP.status to EXC.authNeeded,
             EP.errorMessage to "Environment sign-in is required, or has expired.",

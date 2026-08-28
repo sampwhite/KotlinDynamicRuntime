@@ -18,7 +18,6 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
-import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.refreshActingRoles
@@ -220,7 +219,7 @@ private fun homeLinks(): List<Map<String, Any?>> = homeDocs.mapNotNull { (id, la
  * **A quick gate, deliberately not the principled form.** The list is computed in code and returned whole
  * under `state.links`, so a cfact cannot reach into it the way it filters a UiBlock's items. The natural
  * direction is *links become data* -- a UiBlock the edge overlays away exactly as it does the menu, the move
- * #458 made for the menu -- at which point this evaluate-and-null-it disappears. Until then it is decided by
+ * #458 made for the menu -- at which point this evaluate-and-null-it disappears. Until then, it is decided by
  * the *same cfact vocabulary the menu uses* (`anonymous` and the boot role), evaluated through the registry,
  * rather than a raw boot-role branch -- so the shortcut is in the shape (links are still not data), not in
  * reaching past the vocabulary.

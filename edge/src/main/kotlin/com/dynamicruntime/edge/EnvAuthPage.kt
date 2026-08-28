@@ -165,7 +165,7 @@ object EnvAuthPage {
      * Quotes and backslashes are escaped, and so is `<` -- because `</script>` ends the block wherever it
      * appears, including inside a string literal, which is the HTML escaping rule that catches people writing
      * values into a page. Every value passed here is already constrained (a sanitized path, a configured
-     * client id), so this is the second line of defence rather than the first.
+     * client id), so this is the second line of defense rather than the first.
      */
     private fun jsString(value: String): String {
         val escaped = value
