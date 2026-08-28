@@ -92,6 +92,60 @@ fun humanizeFieldName(name: String): String {
 private fun fieldLabel(name: String, prop: SchProperty, opts: FormOpts): String =
     if (opts.friendly) prop.title ?: humanizeFieldName(name) else name
 
+/**
+ * The primary-key value(s) an array element carries, as a label, or null when the element's type is not keyed
+ * (issue #487). This is what lets several entries of one keyed trait read as "2024", "2025" rather than a bare
+ * index -- a gedra holds one `yearly` entry per year, told apart by that key.
+ *
+ * Deliberately generic: it knows nothing of traits, only that a type may declare a `g-primaryKey` (surfaced on
+ * [SchType.primaryKey], Slice 1). It looks two ways -- the element's own type is keyed (a directly-keyed object
+ * list), or one of its properties' types is (the trait case: the key lives on `data`'s type and its fields sit
+ * one level down under `data`). For a union it first resolves which branch the element is. Pure, and covered
+ * under `jsNodeTest`.
+ */
+fun keyedElementLabel(elementType: SchType, element: Map<String, Any?>): String? {
+    val branch = elementType.variants?.let { it.select(element[it.discriminator] as? String) } ?: elementType
+    directPrimaryKeyLabel(branch, element)?.let { return it }
+    for ((propName, prop) in branch.properties) {
+        directPrimaryKeyLabel(prop.valueType, element[propName])?.let { return it }
+    }
+    return null
+}
+
+/** [type]'s own primary-key values read out of [value] (the map keyed by [type]'s fields), or null if not keyed. */
+private fun directPrimaryKeyLabel(type: SchType, value: Any?): String? {
+    if (type.primaryKey.isEmpty()) return null
+    val data = value as? Map<*, *> ?: return null
+    val parts = type.primaryKey.map { data[it] }
+    // Every key field must be present, or the label would read as complete while it is not: two rows of a
+    // composite-keyed trait with only their first field filled in would both show that one value and collide.
+    // An incomplete key yields no label, so the row falls back to its index until the key is whole.
+    return if (parts.any { it == null }) null else parts.joinToString(", ") { displayValue(it) }
+}
+
+/**
+ * The header an array element shows above its sub-form: its `[i]` index, followed by the branch title joined to
+ * its primary-key value(s) when it is keyed -- "[1] Yearly — 2024" for a keyed trait, "[1] 2024" when the
+ * element is not a union, and just "[1]" when it carries no key at all (issue #487).
+ *
+ * The index stays, always, because a validation failure is reported by path (`edits[1].data.year`) and the
+ * listing lets a reader jump to `[1]`; dropping it would leave that message naming a row nothing on screen
+ * carried. The key is added beside it, not in place of it, so several entries of one trait are still told apart
+ * at a glance. Pure, and covered under `jsNodeTest`.
+ */
+fun elementRowHeader(elementType: SchType, element: Map<String, Any?>, index: Int, friendly: Boolean): String {
+    val key = keyedElementLabel(elementType, element)
+    val title = elementType.variants?.let { v ->
+        (element[v.discriminator] as? String)?.let { if (friendly) v.byValue[it]?.title ?: humanizeFieldName(it) else it }
+    }
+    val label = when {
+        key != null && title != null -> "$title — $key"
+        key != null -> key
+        else -> null
+    }
+    return if (label != null) "[$index] $label" else "[$index]"
+}
+
 external interface SchemaFormProps : Props {
     /** The object type whose properties to render. */
     var type: SchType
@@ -744,6 +798,10 @@ private fun ChildrenBuilder.renderObjectList(
         // object at all, say. Its fields each have a row; until now the element did not, so this was the one
         // failure inside a list with nowhere of its own to appear.
         val elementMessages = errors.messagesAt(elementPath)
+        // A keyed element (issue #487) reads by its primary-key value -- "[i] Yearly — 2024" -- so several
+        // entries of one trait are told apart at a glance; an unkeyed list keeps its bare index. Computed once
+        // so the row's header and its remove button's label name the same thing.
+        val header = elementRowHeader(elementType, element.toJsonMapOrEmpty(), i, opts.friendly)
         div {
             className = ClassName("nested")
             div {
@@ -752,10 +810,10 @@ private fun ChildrenBuilder.renderObjectList(
                 className = ClassName(rowClass(elementMessages))
                 span {
                     className = ClassName("type-hint")
-                    +"[$i]"
+                    +header
                 }
                 if (editable) {
-                    removeControl("$name $i") {
+                    removeControl("$name $header") {
                         // Noted against the list, not the element: removing re-indexes everything after it, so
                         // a failure held against element 2 would end up pointing at what used to be element 3.
                         errors.noteEdit(path)
