@@ -299,16 +299,36 @@ fun canonicalKey(value: Any?): String = when (value) {
 
 /**
  * The ordered primary-key values [entry] carries for a trait keyed on [pkFields] -- one per field, in order.
- * Empty [pkFields] gives an empty list (a single-instance trait). A keyed entry that omits any key field throws:
- * it could not be told apart from another of the same trait.
+ * Empty [pkFields] gives an empty list (a single-instance trait). A keyed entry that omits any key field throws.
+ *
+ * [stored] chooses which absence this is. On the way **in** (a caller's new or edited entry) a missing key is a
+ * caller mistake -- two such entries could not be told apart. On a **stored** entry read back it is instead a
+ * migration hazard: the entry was written while the trait was single-instance and the trait has since been
+ * keyed, so an entry that was complete now lacks a field the trait requires. The two want different words,
+ * because only the second is fixed by touching the data rather than the request. Keying a trait that already
+ * has stored data is a migration (like a column rename, which the store also refuses to do silently); until the
+ * old entries are backfilled or removed, the gedra holding them cannot be addressed by key and so cannot be
+ * patched at all -- which is why this is caught when the gedra is read, and says what to do about it.
  */
-fun entryKeyValues(entry: Map<String, Any?>, traitId: String, pkFields: List<String>): List<Any?> {
+fun entryKeyValues(
+    entry: Map<String, Any?>,
+    traitId: String,
+    pkFields: List<String>,
+    stored: Boolean = false,
+): List<Any?> {
     if (pkFields.isEmpty()) return emptyList()
     val data = entry[GE.data] as? Map<*, *> ?: emptyMap<Any?, Any?>()
     return pkFields.map { field ->
         data[field] ?: throw KdrException.mkInput(
-            "An entry of trait '$traitId' supplies no value for its primary key '$field', so it could not be " +
-                "told apart from another entry of the same trait.",
+            if (stored) {
+                "This gedra holds a '$traitId' entry stored before the trait was keyed on '$field', so it " +
+                    "carries no such value and no longer conforms to the trait -- which is why it cannot be " +
+                    "patched. Keying a trait that already has data is a migration: delete and recreate the " +
+                    "gedra, or backfill '$field' onto that entry."
+            } else {
+                "An entry of trait '$traitId' supplies no value for its primary key '$field', so it could not " +
+                    "be told apart from another entry of the same trait."
+            },
         )
     }
 }
