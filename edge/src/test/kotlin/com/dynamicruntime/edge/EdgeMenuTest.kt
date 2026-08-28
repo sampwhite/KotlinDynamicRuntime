@@ -55,8 +55,8 @@ class EdgeMenuTest : StringSpec({
     }
 
     "the boot role is what decides it, so the same data serves an application" {
-        // The point of the boot role being a cfact: this is one list, and an application matches the items, an
-        // edge does not. Asserted from the *same* block rather than a second one.
+        // The point of the boot role being a cfact: this is one list, and the items an edge does not match are
+        // exactly the ones an application shows. Asserted from the *same* block rather than a second one.
         val app = Startup.mkTestBootCxt("edgeMenuApp", "edgeMenuAppTest")
         val scope = app.mkSubContext("appCaller")
         scope.userProfile = UserProfile(authId = "someone@example.com")
