@@ -18,6 +18,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GU
+import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
@@ -236,6 +237,13 @@ class SchemaService : ServiceInitializer {
      * global one -- the same absent-means-global shape as [storeFor], and for the same reason.
      */
     fun cfactsFor(client: String?): CFactRegistry = cfactRegistries.forClient(client)
+
+    /**
+     * The gedra traits [client] can see -- its own and global's (issue #487). Each carries its `primaryKey`, so
+     * a write path can key entries by `(traitId, data[primaryKey])` without re-reading the generated schema.
+     * The collector is what the unions were built from, so this is the same set they select on.
+     */
+    fun gedraTraitsFor(client: String): List<GedraTrait> = collector?.gedraConfigs?.traitsFor(client) ?: emptyList()
 
     /**
      * The schema each client sees, for the clients that vary something. Absent from this map means the global

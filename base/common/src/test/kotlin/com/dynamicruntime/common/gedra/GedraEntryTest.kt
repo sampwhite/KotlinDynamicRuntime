@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchOpts
@@ -170,5 +171,98 @@ class GedraEntryTest : StringSpec({
             mapOf(GE.traitId to "other", GE.data to mapOf("name" to "x")),
             SchOpts(forInput = true),
         ).failures.map { it.path } shouldContainExactlyInAnyOrder listOf(GE.traitId)
+    }
+
+    // --- primary key (issue #487) --------------------------------------------
+
+    fun yearlyDefs(
+        primaryKey: List<String> = listOf("year"),
+        yearRequired: Boolean = true,
+        yearDerived: Boolean = false,
+    ) = schemaDefs(cxt, "globalconfig") {
+        traitEntry("YearlyEntry", "yearly", setOf(GedraDataType.formDoc), primaryKey = primaryKey) {
+            property("year", "The year.", required = yearRequired) { type = SCT.integer; derived = yearDerived }
+            property("note", "A note.")
+        }
+    }
+
+    // The keyword goes on the *data* type, alongside its `required` and as an ordered array -- so a composite
+    // key keeps its order and a client narrowing the data type can see it. Read the same way as any keyword.
+    "a keyed trait declares its primary key on the data type; a single-instance one carries none" {
+        yearlyDefs().getValue("globalconfig.YearlyData").toJsonMapOrEmpty()[SCH.primaryKey] shouldBe listOf("year")
+        // Not on the entry branch -- it belongs to the data half a trait owns.
+        yearlyDefs().getValue("globalconfig.YearlyEntry").toJsonMapOrEmpty().keys shouldNotContain SCH.primaryKey
+        nameDefs().getValue("globalconfig.NameData").toJsonMapOrEmpty().keys shouldNotContain SCH.primaryKey
+    }
+
+    "and it is surfaced on the parsed SchType, for the form engine to read" {
+        parseSchemaTypes(yearlyDefs()).getValue("globalconfig.YearlyData").primaryKey shouldBe listOf("year")
+        parseSchemaTypes(nameDefs()).getValue("globalconfig.NameData").primaryKey.shouldBeEmpty()
+    }
+
+    "every key field must exist, be required, be scalar, and not be derived" {
+        shouldThrow<KdrException> { yearlyDefs(primaryKey = listOf("nope")) }
+            .message.shouldNotBeNull() shouldContain "no such field"
+        shouldThrow<KdrException> { yearlyDefs(yearRequired = false) }
+            .message.shouldNotBeNull() shouldContain "required"
+        shouldThrow<KdrException> { yearlyDefs(yearDerived = true) }
+            .message.shouldNotBeNull() shouldContain "derived"
+        // A key field that is a container, not a value: a key is compared by value, so this is refused.
+        shouldThrow<KdrException> {
+            schemaDefs(cxt, "globalconfig") {
+                traitEntry("BoxedEntry", "boxed", setOf(GedraDataType.formDoc), primaryKey = listOf("box")) {
+                    property("box", "An object, not a scalar.", required = true) { type = SCT.kObject }
+                }
+            }
+        }.message.shouldNotBeNull() shouldContain "scalar"
+    }
+
+    "a keyed trait may not carry its data as a \$ref" {
+        // The key and the fields it names have to be one type, which a bare `$ref` -- resolved only when types
+        // compile -- cannot give. Put the key on the referenced type instead.
+        shouldThrow<KdrException> {
+            schemaDefs(cxt, "globalconfig") {
+                type("YearData") {
+                    type = SCT.kObject
+                    property("year", "The year.", required = true) { type = SCT.integer }
+                }
+                traitEntry("RefEntry", "refKeyed", setOf(GedraDataType.formDoc), primaryKey = listOf("year")) {
+                    ref("YearData")
+                }
+            }
+        }.message.shouldNotBeNull() shouldContain "inline"
+    }
+
+    fun keyedEntry(traitId: String, year: Any?): Map<String, Any?> =
+        mapOf(GE.traitId to traitId, GE.data to (if (year == null) emptyMap() else mapOf("year" to year)))
+
+    // pkFieldsOf: `yearly` is keyed on `year`; anything else is single-instance.
+    val pk = { traitId: String -> if (traitId == "yearly") listOf("year") else emptyList() }
+
+    "distinct keys coexist while a duplicate key is refused" {
+        // Two years: fine. Same year (Int and Long agree once canonicalized, so 2024 == 2024L): refused.
+        checkEntryKeys(listOf(keyedEntry("yearly", 2023), keyedEntry("yearly", 2024)), pk)
+        shouldThrow<KdrException> {
+            checkEntryKeys(listOf(keyedEntry("yearly", 2024), keyedEntry("yearly", 2024L)), pk)
+        }.message.shouldNotBeNull() shouldContain "primary key"
+    }
+
+    "an unkeyed trait still holds one entry, and a keyed entry with no key is refused" {
+        shouldThrow<KdrException> {
+            checkEntryKeys(listOf(mapOf(GE.traitId to "name"), mapOf(GE.traitId to "name")), pk)
+        }.message.shouldNotBeNull() shouldContain "at most one entry per trait"
+        shouldThrow<KdrException> {
+            checkEntryKeys(listOf(keyedEntry("yearly", null)), pk)
+        }.message.shouldNotBeNull() shouldContain "no value for its primary key"
+    }
+
+    "a composite key distinguishes on all its fields together" {
+        val pk2 = { _: String -> listOf("client", "year") }
+        fun e(client: String, year: Int) =
+            mapOf(GE.traitId to "k", GE.data to mapOf("client" to client, "year" to year))
+        // Same year but different client, and same client but different year, are all distinct.
+        checkEntryKeys(listOf(e("acme", 2024), e("globex", 2024), e("acme", 2025)), pk2)
+        // Both fields equal: one key, so the pair collides.
+        shouldThrow<KdrException> { checkEntryKeys(listOf(e("acme", 2024), e("acme", 2024)), pk2) }
     }
 })

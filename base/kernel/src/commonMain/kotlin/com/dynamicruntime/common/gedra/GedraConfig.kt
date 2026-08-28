@@ -44,6 +44,12 @@ class GedraTrait(
      * was authored — the two are equivalent to a reader and neither is normalized here.
      */
     val dataSchema: Map<String, Any?>,
+    /**
+     * The ordered fields, within the trait's data, that tell several entries of it apart (issue #487) -- empty
+     * when the trait is single-instance. Held here so a write path can key entries without re-reading the
+     * generated schema, the same reason [appliesTo] is a typed field rather than a keyword to be parsed back.
+     */
+    val primaryKey: List<String> = emptyList(),
 ) {
     override fun toString(): String = "$traitId -> $typeName"
 }
@@ -268,14 +274,15 @@ class GedraConfigBuilder(
         traitId: String,
         appliesTo: Set<GedraDataType>,
         description: String? = null,
+        primaryKey: List<String> = emptyList(),
         dataSchema: SchTypeBuilder.() -> Unit,
     ) {
         // Checked before anything is built, so a duplicate is refused rather than half-declared, and recorded
         // afterward, because the trait cannot be described until its data schema exists.
         val qualified = qualifyTypeName(typeName, namespace)
         checkTraitIsNew(qualified, traitId)
-        val built = traitEntry(typeName, traitId, appliesTo, description, dataSchema)
-        traits[traitId] = GedraTrait(traitId, qualified, appliesTo, built)
+        val built = traitEntry(typeName, traitId, appliesTo, description, primaryKey, dataSchema)
+        traits[traitId] = GedraTrait(traitId, qualified, appliesTo, built, primaryKey)
     }
 
     /**
@@ -289,8 +296,9 @@ class GedraConfigBuilder(
         appliesTo: Set<GedraDataType>,
         dataType: String,
         description: String? = null,
+        primaryKey: List<String> = emptyList(),
     ) {
-        trait(typeName, traitId, appliesTo, description) { ref(dataType) }
+        trait(typeName, traitId, appliesTo, description, primaryKey) { ref(dataType) }
     }
 
     /** Refuses a trait id or a generated type name this config has already used. */

@@ -68,6 +68,11 @@ object ST {
     const val approved = "approved"
     const val decidedBy = "decidedBy"
     const val rejectionReason = "rejectionReason"
+
+    // --- the yearly trait, which exercises a primary key (issue #487): several entries told apart by `year` ---
+    const val yearly = "yearly"
+    const val yearlyEntry = "YearlyEntry"
+    const val note = "note"
 }
 
 /**
@@ -176,5 +181,23 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         // The `$ref` that makes interior alteration possible: a client narrowing `SiteAddress` narrows this
         // without the trait being edited, or knowing.
         property(ST.address, "Where the visit happened.", required = true) { ref(ST.siteAddress) }
+    }
+
+    // A trait with a **primary key** (issue #487), and the one that exercises several entries of one trait: a
+    // formDoc may carry one `yearly` entry per year, told apart by `year`. The key is numeric, which is the
+    // case the issue names -- a primary key is not always a string. Every other trait here is single-instance.
+    trait(
+        ST.yearlyEntry,
+        ST.yearly,
+        setOf(GedraDataType.formDoc),
+        "One record per year, keyed by the year.",
+        primaryKey = listOf(ST.year),
+    ) {
+        property(ST.year, "The year this record is for; the entry's primary key.", required = true) {
+            type = SCT.integer
+            minimum = 2000
+            maximum = 2100
+        }
+        property(ST.note, "Anything recorded for the year.")
     }
 }

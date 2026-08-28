@@ -60,11 +60,13 @@ object GDBG {
  * trait to declare itself locked. Said here rather than left as a silence, because a patch that looks as
  * though it honors them and does not is worse than one that plainly cannot yet.
  *
- * **`g-primaryKey`.** An entry is addressed by its trait, and a gedra holds at most one entry per trait
- * ([checkOneEntryPerTrait]). Several entries of one trait, told apart by a key drawn from their data, is what
- * that keyword will allow.
- *
  * **Dry runs, and all-or-nothing across gedras.** See `gedra-patch.md`.
+ *
+ * ### Keyed traits (issue #487)
+ *
+ * A gedra holds at most one entry per trait, **unless** the trait declares a `g-primaryKey` -- then one per
+ * distinct value of that key ([checkEntryKeys]). A keyed entry is addressed by `(traitId, data[primaryKey])`,
+ * which an edit carries in its own data, so the same rule names an entry to add, merge, replace or delete.
  */
 @Suppress("DuplicatedCode")
 class GedraDataService : ServiceInitializer {
@@ -181,15 +183,13 @@ class GedraDataService : ServiceInitializer {
         edits: List<GedraEdit>,
         entries: List<Map<String, Any?>>,
     ): List<Map<String, Any?>> {
-        val byTrait = LinkedHashMap<String, Map<String, Any?>>()
-        for (entry in entries) {
-            entry[GE.traitId].toOptStr()?.let { byTrait[it] = entry }
-        }
+        val pkFieldsOf = pkFieldsOf(cxt, kind)
+        val byKey = keyEntries(entries, pkFieldsOf)
         val now = cxt.instanceNow()
         for (edit in edits) {
-            applyEdit(cxt, edit, byTrait, now)
+            applyEdit(cxt, edit, byKey, pkFieldsOf(edit.traitId), now)
         }
-        val result = byTrait.values.toList()
+        val result = byKey.values.toList()
         checkStoredEntries(cxt, kind, result)
         return result
     }
@@ -223,10 +223,10 @@ class GedraDataService : ServiceInitializer {
         entries: List<Map<String, Any?>>,
         allowAdditionalTraits: Boolean = false,
     ): GedraDataRow {
-        // At most one entry per trait, refused before anything is minted (issue #337). This was not checked
-        // when create was written, so a caller could store two entries of one trait and leave a gedra nothing
-        // could address by trait alone -- which is how the patch, and the form, expect to address them.
-        checkOneEntryPerTrait(entries)
+        // At most one entry per trait -- or per primary-key value, for a keyed trait (issue #487) -- refused
+        // before anything is minted (issue #337). This was not checked when create was written, so a caller
+        // could store two entries nothing could address, which is how the patch, and the form, address them.
+        checkEntryKeys(entries, pkFieldsOf(cxt, kind))
         checkTraitsSupported(cxt, kind, entries.mapNotNull { it[GE.traitId].toOptStr() }, allowAdditionalTraits)
         // Interned as it is minted, so every later reader of this gedra shares one instance. The cache does
         // not yet hold every extant id, so this buys identity and cheap keys and not existence -- see
@@ -501,14 +501,29 @@ class GedraDataService : ServiceInitializer {
                     "'${kind.name}'. A gedra id already says what kind it is, so the two have to agree.",
             )
         }
-        // One edit per trait, for the reason a gedra holds one entry per trait: two edits naming one trait are
-        // either contradictory or a "replace" written twice, and neither has an honest reading.
-        val traits = target.edits.map { it.traitId }
-        traits.firstOrNull { id -> traits.count { it == id } > 1 }?.let {
-            throw KdrException.mkInput(
-                "The target '${target.gedraId}' asks two things of trait '$it'. A gedra holds one entry per " +
-                    "trait, so there is no way to say which of the two was meant.",
-            )
+        // One edit per entry, not per trait: two edits may name two *different* entries of one keyed trait --
+        // which is the whole point of a primary key (issue #487) -- but naming one entry twice is still
+        // contradictory, a "replace" written twice or a delete racing a merge, with no honest reading. The
+        // address is what has to be unique among a target's edits, and for an unkeyed trait the address is the
+        // trait, so this stays the one-per-trait rule there.
+        val pkFieldsOf = pkFieldsOf(cxt, kind)
+        val seenKeys = mutableSetOf<String>()
+        for (edit in target.edits) {
+            val pkFields = pkFieldsOf(edit.traitId)
+            val key = entryKey(edit.traitId, pkFields.map { edit.data?.get(it) })
+            if (!seenKeys.add(key)) {
+                throw KdrException.mkInput(
+                    if (pkFields.isEmpty()) {
+                        "The target '${target.gedraId}' asks two things of trait '${edit.traitId}'. A gedra " +
+                            "holds one entry per trait, so there is no way to say which of the two was meant."
+                    } else {
+                        "The target '${target.gedraId}' asks two things of the same '${edit.traitId}' entry " +
+                            "(${pkFields.joinToString(", ")} = " +
+                            "${pkFields.joinToString(", ") { canonicalKey(edit.data?.get(it)) }}). Two edits " +
+                            "may name different entries of a keyed trait, but not one entry twice."
+                    },
+                )
+            }
         }
         if (queryGedra(cxt, target.gedraId.fullId, kind, scope) == null) {
             throw KdrException("No ${kind.name} gedra '${target.gedraId}'.", code = EXC.notFound)
@@ -540,21 +555,20 @@ class GedraDataService : ServiceInitializer {
         ) {
             // Read under the lock: the admit-phase read was for permission, and a merge needs current data.
             val row = readForPatch(cxt, sqlCxt, table, target.gedraId)
-            // Keyed by trait because that is how an edit names an entry, and the one-per-trait rule makes the
-            // key unique. Order is preserved so an unrelated entry does not move when its neighbor changes.
-            val byTrait = LinkedHashMap<String, Map<String, Any?>>()
-            for (entry in row.entries) {
-                entry[GE.traitId].toOptStr()?.let { byTrait[it] = entry }
-            }
+            // Keyed by trait -- plus its primary-key value when the trait declares one (issue #487) -- because
+            // that is how an edit names an entry, and the address is unique. Order is preserved so an unrelated
+            // entry does not move when its neighbor changes.
+            val pkFieldsOf = pkFieldsOf(cxt, kind)
+            val byKey = keyEntries(row.entries, pkFieldsOf)
             // Strictly past the row's current updatedAt (read under this lock), not merely "now": the gedra
             // cache reloads by walking updatedAt forward and skips a row stamped at or before the version it
             // holds, so a re-edit landing in the same millisecond as the last would otherwise be invisible to
             // the cache until the gedra's next write. See SqlTopicUtil.nextUpdatedAt.
             val now = SqlTopicUtil.nextUpdatedAt(cxt, row.updatedAt)
             for (edit in target.edits) {
-                outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(cxt, edit, byTrait, now)))
+                outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(cxt, edit, byKey, pkFieldsOf(edit.traitId), now)))
             }
-            val entries = byTrait.values.toList()
+            val entries = byKey.values.toList()
             checkStoredEntries(cxt, kind, entries)
             val changed = sqlCxt.sqlDb.executeStatement(
                 cxt, stmt,
@@ -594,19 +608,30 @@ class GedraDataService : ServiceInitializer {
     /**
      * Applies one edit to the entries held by trait, returning whether anything changed.
      *
-     * A supplied [GedraEdit.entryId] has to name the entry that is actually there. It is redundant today --
-     * the trait already identifies the entry -- so treating a mismatch as an error costs nothing and turns it
-     * into a cheap staleness check: a caller working from an older copy is told so rather than overwriting
-     * whatever replaced it. When `g-primaryKey` allows several entries per trait, this is the field that will
-     * choose between them, and the check becomes load-bearing rather than a bonus.
+     * The entry an edit names is its `(traitId, primary-key values)` -- the trait alone for a single-instance
+     * trait, or the trait plus the key values carried in the edit's own data for a keyed one (issue #487). A
+     * supplied [GedraEdit.entryId] never chooses the entry; it is a staleness check on the entry that address
+     * resolves to. Treating a mismatch as an error costs nothing and tells a caller working from an older copy
+     * so, rather than letting it overwrite whatever replaced the entry it was written against.
      */
     private fun applyEdit(
         cxt: KdrCxt,
         edit: GedraEdit,
-        byTrait: MutableMap<String, Map<String, Any?>>,
+        byKey: MutableMap<String, Map<String, Any?>>,
+        pkFields: List<String>,
         now: Instant,
     ): Boolean {
-        val existing = byTrait[edit.traitId]
+        // The entry an edit names: its trait, plus its primary-key values when the trait declares a key (issue
+        // #487). The key rides in the edit's own data -- a delete of a keyed trait carries a minimal `{key:
+        // value}` -- so one addressing rule covers every action. An edit that omits a key field names no entry.
+        val pkValues = pkFields.map { field ->
+            edit.data?.get(field) ?: throw KdrException.mkInput(
+                "The edit to '${edit.traitId}' targets a trait keyed by '$field', but supplies no value for it, " +
+                    "so it names no entry.",
+            )
+        }
+        val key = entryKey(edit.traitId, pkValues)
+        val existing = byKey[key]
         val existingId = existing?.get(GE.entryId).toOptStr()
         if (edit.entryId != null && edit.entryId != existingId) {
             if (existing == null && edit.action == GedraEditAction.deleteOrNoOp) {
@@ -614,7 +639,7 @@ class GedraDataService : ServiceInitializer {
             }
             throw KdrException.mkInput(
                 "The edit to '${edit.traitId}' names entry '${edit.entryId}', but the gedra holds " +
-                    (existingId?.let { "'$it'" } ?: "no entry of that trait") +
+                    (existingId?.let { "'$it'" } ?: "no matching entry") +
                     ". The copy this edit was written against is out of date.",
             )
         }
@@ -622,7 +647,7 @@ class GedraDataService : ServiceInitializer {
             if (existing == null) {
                 return false
             }
-            byTrait.remove(edit.traitId)
+            byKey.remove(key)
             return true
         }
         val supplied = edit.data
@@ -638,7 +663,7 @@ class GedraDataService : ServiceInitializer {
         } else {
             supplied
         }
-        byTrait[edit.traitId] = mkStoredEntry(cxt, edit.traitId, data, existing, now)
+        byKey[key] = mkStoredEntry(cxt, edit.traitId, data, existing, now)
         return true
     }
 
@@ -700,6 +725,31 @@ class GedraDataService : ServiceInitializer {
         }
     }
 
+    /**
+     * Per trait id, the ordered fields of its primary key (issue #487), for [cxt]'s client and [kind] -- empty
+     * when the trait is single-instance or is not one this client carries for this kind. Read off the same
+     * [GedraTrait]s the unions were built from, so an entry keys the way the schema that validated it declares.
+     */
+    private fun pkFieldsOf(cxt: KdrCxt, kind: GedraDataType): (String) -> List<String> {
+        val keyed = SchemaService.get(cxt).gedraTraitsFor(cxt.client)
+            .filter { kind in it.appliesTo && it.primaryKey.isNotEmpty() }
+            .associate { it.traitId to it.primaryKey }
+        return { traitId -> keyed[traitId].orEmpty() }
+    }
+
+    /** Folds [entries] into a map addressed by [entryKey] -- trait id, plus primary-key values for a keyed trait. */
+    private fun keyEntries(
+        entries: List<Map<String, Any?>>,
+        pkFieldsOf: (String) -> List<String>,
+    ): LinkedHashMap<String, Map<String, Any?>> {
+        val byKey = LinkedHashMap<String, Map<String, Any?>>()
+        for (entry in entries) {
+            val traitId = entry[GE.traitId].toOptStr() ?: continue
+            byKey[entryKey(traitId, entryKeyValues(entry, traitId, pkFieldsOf(traitId)))] = entry
+        }
+        return byKey
+    }
+
     /** The entry union as [cxt]'s client sees it, or null on a node with no compiled schema for it. */
     private fun clientUnion(cxt: KdrCxt, kind: GedraDataType) =
         SchemaService.get(cxt).storeFor(cxt.client)
@@ -732,7 +782,7 @@ class GedraDataService : ServiceInitializer {
      * fields with merge usage. See the soft-validation section of `gedra-patch.md`.
      */
     private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {
-        checkOneEntryPerTrait(entries)
+        checkEntryKeys(entries, pkFieldsOf(cxt, kind))
         val union = clientUnion(cxt, kind) ?: return
         val failures = entries.flatMap { validate(union, it) }
         if (failures.isNotEmpty()) {

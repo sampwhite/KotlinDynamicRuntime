@@ -194,6 +194,15 @@ object SCH {
     const val openOptions = "g-openOptions"
 
     /**
+     * The ordered field names that identify one element of an array of this type (issue #487) -- a primary key.
+     * A type-level keyword like [required] and beside it, because a composite key is ordered and it is how SQL
+     * states the same thing. Absent means single-instance. Surfaced on `SchType.primaryKey`; what enforces
+     * uniqueness across the stored elements is the layer that holds them (a gedra's `checkEntryKeys`), never a
+     * single type against one value.
+     */
+    const val primaryKey = "g-primaryKey"
+
+    /**
      * Names a registered callback that produces this property's [options] when the schema is rendered, in
      * place of a list written into the document (issue #413).
      *

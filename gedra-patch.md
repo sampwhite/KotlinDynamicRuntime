@@ -171,9 +171,10 @@ carrying full `data`? So wrap rather than decorate.
 - **Edits nest under a target rather than being one flat list.** The target is the lock unit — one gedra, one
   root row, one transaction — so nesting makes the unit structural. Flat, the same gedra could appear twice
   with conflicting edits, and a naive implementation would take its lock twice.
-- **`entryId` is optional.** Absent means "the entry this `traitId` (and, once `g-primaryKey` exists, its key)
-  names, or a new one". Present means that entry and no other. This is the seam where `g-primaryKey` lands
-  later without a shape change.
+- **`entryId` is optional.** Absent means "the entry this `traitId`, and its primary key when it has one, name,
+  or a new one". Present means that entry and no other. `g-primaryKey` (issue #487) landed here without a shape
+  change: a keyed edit names its entry by the key carried in its own data, and `entryId`, when sent, is a
+  staleness check against the entry that address resolves to.
 - **`data` is absent for a delete**, which is what lets the primary-key-lives-in-`data` problem stay solved:
   absent `data` never means delete, because the *verb* says delete.
 
