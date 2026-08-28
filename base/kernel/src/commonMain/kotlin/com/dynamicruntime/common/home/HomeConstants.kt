@@ -139,14 +139,32 @@ object HACT {
      *
      *  - **`logoutPath`** -- the api-relative path of the clear-cookie endpoint (`EAEP.logout`), so the
      *    frontend's own api root is prepended exactly as for every other call, honoring a custom root.
-     *  - **`landingUrl`** -- the absolute path to send the browser to afterward: the edge's sign-in page,
-     *    which is the whole anonymous surface a signed-out caller has left.
+     *  - **`landingUrl`** -- the absolute path to send the browser to afterward: the edge's landing page
+     *    (issue #493), the anonymous surface a signed-out caller lands back on.
      *
      * Declared here beside [logout] because this object *is* the shared vocabulary of callable functions, not
      * a home-page-specific list; the edge is where it is contributed and implemented, but neither side of the
      * boundary can check the other, so the name has to live in the kernel. See `UiActions`.
      */
     val envLogout = UiActionDef("envLogout", arity = 2)
+
+    /**
+     * Navigate the whole window to a **same-origin path** (issue #493): a full page load out of this
+     * single-page app, as opposed to a `UiRoute`, which routes *within* it by hash.
+     *
+     * It exists because some destinations are server paths rather than in-app pages -- an edge's sign-in
+     * page, the application reached through an edge -- and a `UiRoute` cannot express them: it renders as
+     * `#page=`, which the in-app router interprets. The one parameter is the path, supplied by whoever
+     * contributes the item (the edge knows its own roots); the implementation **guards** it to a same-origin
+     * path, so a client-contributed overlay cannot turn a menu item into an off-site redirect. That guard is
+     * why this is one named function rather than a bare "navigate anywhere": the operation is fixed and
+     * reviewed, only the destination is data -- the same shape as `UiRoute` varying its page id.
+     *
+     * A frontend that renders one of these should mark it as leaving the app (issue #493) -- the ↗ affordance
+     * is derived from *this action kind*, not from a field on the item, since leaving the app is inherent to
+     * what `openPath` does.
+     */
+    val openPath = UiActionDef("openPath", arity = 1)
 }
 
 /** Markdown fragment file ids for the home widget-group (each also the group's fragment namespace). */

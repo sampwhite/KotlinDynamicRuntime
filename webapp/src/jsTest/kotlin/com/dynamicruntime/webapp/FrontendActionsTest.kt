@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -17,13 +18,13 @@ class FrontendActionsTest {
 
     @Test
     fun everyDeclaredActionIsImplemented() {
-        assertEquals(emptyList(), FrontendActions(logout = {}, envLogout = {}).missing())
+        assertEquals(emptyList(), FrontendActions(logout = {}, envLogout = {}, openPath = {}).missing())
     }
 
     @Test
     fun runsTheImplementationAndReportsAnUnknownName() {
         var loggedOut = false
-        val actions = FrontendActions(logout = { loggedOut = true }, envLogout = {})
+        val actions = FrontendActions(logout = { loggedOut = true }, envLogout = {}, openPath = {})
         assertTrue(actions.run("logout", emptyList()))
         assertTrue(loggedOut)
         // False rather than throwing: a name nothing implements must not break the shell it is rendered in.
@@ -35,8 +36,35 @@ class FrontendActionsTest {
         // The two URLs the edge supplies must reach the implementation untouched -- it is pure mechanism over
         // them (issue #486).
         var received: List<String>? = null
-        val actions = FrontendActions(logout = {}, envLogout = { received = it })
-        assertTrue(actions.run("envLogout", listOf("/auth/env/logout", "/ec/login?loggedOut=1")))
-        assertEquals(listOf("/auth/env/logout", "/ec/login?loggedOut=1"), received)
+        val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {})
+        assertTrue(actions.run("envLogout", listOf("/ea/auth/env/logout", "/ew")))
+        assertEquals(listOf("/ea/auth/env/logout", "/ew"), received)
+    }
+
+    @Test
+    fun openPathNavigatesOnlyToAGuardedSameOriginPath() {
+        // A menu item's action is data a client may overlay, so the one function that turns it into a
+        // navigation drops anything that is not a same-origin path rather than following it (issue #493).
+        var navigated: String? = null
+        val actions = FrontendActions(logout = {}, envLogout = {}, openPath = { navigated = it })
+        assertTrue(actions.run("openPath", listOf("/wa")))
+        assertEquals("/wa", navigated)
+        // An off-site protocol-relative target runs (the name is implemented) but navigates nowhere.
+        navigated = null
+        assertTrue(actions.run("openPath", listOf("//evil.example.com")))
+        assertNull(navigated)
+    }
+
+    @Test
+    fun sameOriginPathRefusesWhatAnOpenRedirectWouldNeed() {
+        // Directly on the guard, since it is the security boundary (issue #493).
+        assertEquals("/wa", FrontendActions.sameOriginPath("/wa"))
+        assertEquals("/ec/login?next=%2Fwa", FrontendActions.sameOriginPath("/ec/login?next=%2Fwa"))
+        assertNull(FrontendActions.sameOriginPath("//host"))          // protocol-relative
+        assertNull(FrontendActions.sameOriginPath("/\\host"))         // backslash smuggling
+        assertNull(FrontendActions.sameOriginPath("https://host"))    // a scheme
+        assertNull(FrontendActions.sameOriginPath("javascript:alert(1)"))
+        assertNull(FrontendActions.sameOriginPath("wa"))              // not absolute
+        assertNull(FrontendActions.sameOriginPath(""))
     }
 }

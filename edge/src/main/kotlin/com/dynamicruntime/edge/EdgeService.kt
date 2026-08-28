@@ -163,10 +163,8 @@ class EdgeService : ServiceInitializer, ContentServer {
                     return true
                 }
                 val returnTo = EnvAuthReturn.sanitize(handler.queryParams[EnvAuthReturn.param] as? String)
-                // Presence-only: the caller has just signed out, so the page adds a note saying so (#486).
-                val loggedOut = handler.queryParams.containsKey(EDGEP.loggedOutParam)
                 handler.sendStringResponse(
-                    EnvAuthPage.render(clientId, returnTo, apiRoot + EAEP.login, loggedOut),
+                    EnvAuthPage.render(clientId, returnTo, apiRoot + EAEP.login),
                     EXC.ok, "text/html; charset=utf-8",
                 )
                 true
