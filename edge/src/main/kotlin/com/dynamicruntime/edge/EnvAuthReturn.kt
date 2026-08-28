@@ -12,8 +12,9 @@ import com.dynamicruntime.common.util.sameOriginPath
  *
  * The reason it is careful: a redirect target taken from a query string is an **open redirect** unless proven
  * otherwise, and a perimeter is the worst place in a system to have one -- a link to the genuine sign-in host
- * that lands somewhere else afterwards is exactly the shape of a credible phishing link.
+ * that lands somewhere else afterward is exactly the shape of a credible phishing link.
  */
+@Suppress("ConstPropertyName")
 object EnvAuthReturn {
     /**
      * Query parameter naming where to go after signing in.

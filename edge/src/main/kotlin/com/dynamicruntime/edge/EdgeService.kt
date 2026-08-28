@@ -115,7 +115,7 @@ class EdgeService : ServiceInitializer, ContentServer {
     /**
      * Serves the sign-in page and sends the bare content root to it.
      *
-     * Deliberately two paths and no more. Since issue #493 the sign-in page is no longer an edge's whole
+     * Deliberately two paths and no more. Since issue #493, the sign-in page is no longer an edge's whole
      * anonymous surface -- the landing page is anonymously reachable through the edge's own front end -- but
      * that is served by the app shell, not from here. What this method owns is unchanged.
      */
