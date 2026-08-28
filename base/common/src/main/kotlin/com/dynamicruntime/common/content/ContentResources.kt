@@ -21,6 +21,21 @@ object ContentResources {
     /** Sentinel stored in [buildIdCache] for a file whose resource is absent (distinct from any hash). */
     private const val absentMarker = ""
 
+    /**
+     * The permanent, shared-cache header a content server may return **only** for a content-addressed URL --
+     * one whose supplied build id names exactly the bytes being returned. This is the entitlement a build id
+     * grants; see [buildId] for the rule that governs when it may be used.
+     */
+    const val cacheControl = "public, max-age=31536000, immutable"
+
+    /**
+     * The header for every response a shared cache must **not** keep: a URL with no build id or a build id
+     * that does not match the content, and a 404 (which one node can give for a resource another still serves
+     * mid-deploy). The content is still returned -- nothing here is secret -- but never stored under a URL
+     * that does not name it. See [buildId].
+     */
+    const val noStore = "no-store"
+
     /** A content file id must be a plain file-name token (guards the classpath lookup against traversal). */
     fun isSafeFileId(fileId: String): Boolean =
         fileId.isNotEmpty() && fileId.all { it.isLetterOrDigit() || it == '-' || it == '_' }
@@ -40,8 +55,21 @@ object ContentResources {
      * The cache-busting build id for a content file: a content hash (CRC32, hex) of the resource bytes, or
      * null if the resource is absent. A content hash (rather than a timestamp) is jar-agnostic and changes
      * only when the content changes -- so an unchanged file keeps its URL across rebuilds. Computed once per
-     * file per process; used by the code handing a component its `fileId:buildId` (the UI-config endpoints),
-     * while the content servers themselves only strip it.
+     * file per process; handed to a component as `fileId:buildId` by the UI-config endpoints.
+     *
+     * **The rule a build id exists to enforce** (both content servers turn on it, so it lives here, where the
+     * id is minted): *do not return [cacheControl] -- the permanent, shared-cache header -- unless the caller
+     * supplied a build id and it matches what this node has for that resource.* The general form is a
+     * **content-addressed URL**: a permanently-cacheable URL must be derived from the bytes it returns, the
+     * same idea as a hashed asset filename. The precise invariant is *the URL identifies exactly one immutable
+     * resource* -- not "the id is the current one", which stops being well-defined the moment content can vary
+     * by caller (as fragment overlays made it, #456). An absent or unmatched id still gets the content, under
+     * [noStore]; only the header is withheld.
+     *
+     * The **status code** on a miss is a separate decision, made by each server from its caller's recovery
+     * affordance, not by this rule. A document serves current content (a user need only navigate away and
+     * back), while a fragment 404s so the shell notices its ref is stale (#469, #472). The header protects the
+     * cache either way; the status is chosen by whether the client can recover without it.
      */
     fun buildId(dir: String, fileId: String): String? {
         if (!isSafeFileId(fileId)) {

@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.TestHttpClient
@@ -27,7 +28,7 @@ class MarkdownFragmentEndpointTest : StringSpec({
 
         handler.rptStatusCode shouldBe EXC.ok
         handler.rptResponseMimeType shouldBe "application/json"
-        handler.rptResponseHeaders["cache-control"] shouldBe listOf(MarkdownFragmentService.cacheControl)
+        handler.rptResponseHeaders["cache-control"] shouldBe listOf(ContentResources.cacheControl)
 
         val map = handler.rptResponseData.shouldNotBeNull().jsonMap().shouldNotBeNull()
         @Suppress("UNCHECKED_CAST")
