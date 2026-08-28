@@ -207,6 +207,30 @@ class GedraEntryTest : StringSpec({
             .message.shouldNotBeNull() shouldContain "required"
         shouldThrow<KdrException> { yearlyDefs(yearDerived = true) }
             .message.shouldNotBeNull() shouldContain "derived"
+        // A key field that is a container, not a value: a key is compared by value, so this is refused.
+        shouldThrow<KdrException> {
+            schemaDefs(cxt, "globalconfig") {
+                traitEntry("BoxedEntry", "boxed", setOf(GedraDataType.formDoc), primaryKey = listOf("box")) {
+                    property("box", "An object, not a scalar.", required = true) { type = SCT.kObject }
+                }
+            }
+        }.message.shouldNotBeNull() shouldContain "scalar"
+    }
+
+    "a keyed trait may not carry its data as a \$ref" {
+        // The key and the fields it names have to be one type, which a bare `$ref` -- resolved only when types
+        // compile -- cannot give. Put the key on the referenced type instead.
+        shouldThrow<KdrException> {
+            schemaDefs(cxt, "globalconfig") {
+                type("YearData") {
+                    type = SCT.kObject
+                    property("year", "The year.", required = true) { type = SCT.integer }
+                }
+                traitEntry("RefEntry", "refKeyed", setOf(GedraDataType.formDoc), primaryKey = listOf("year")) {
+                    ref("YearData")
+                }
+            }
+        }.message.shouldNotBeNull() shouldContain "inline"
     }
 
     fun keyedEntry(traitId: String, year: Any?): Map<String, Any?> =

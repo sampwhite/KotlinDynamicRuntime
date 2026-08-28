@@ -97,6 +97,39 @@ class YearlyTraitTest : StringSpec({
         byYear(id).keys shouldContainExactlyInAnyOrder listOf(2023, 2025)
     }
 
+    "one patch may edit several entries of one keyed trait at once" {
+        val id = create(yearly(2023, "a"))
+        // Two edits naming the same trait but different keys, in one patch -- what the add-row UI submits when
+        // a user changes several years before saving. The old one-edit-per-trait guard would have refused this.
+        alice.postItems(
+            GEP.patch,
+            patch(
+                id,
+                listOf(
+                    edit(GedraEditAction.addOrReplace, ST.yearly, mapOf(ST.year to 2024, ST.note to "b")),
+                    edit(GedraEditAction.addOrReplace, ST.yearly, mapOf(ST.year to 2025, ST.note to "c")),
+                ),
+            ),
+        )
+        byYear(id).keys shouldContainExactlyInAnyOrder listOf(2023, 2024, 2025)
+    }
+
+    "one patch may not name the same keyed entry twice" {
+        val id = create(yearly(2023, "a"))
+        // Same trait *and* same key: still contradictory, so still refused.
+        val env = alice.expectError(
+            400, GEP.patch,
+            patch(
+                id,
+                listOf(
+                    edit(GedraEditAction.addOrReplace, ST.yearly, mapOf(ST.year to 2024, ST.note to "b")),
+                    edit(GedraEditAction.addOrReplace, ST.yearly, mapOf(ST.year to 2024, ST.note to "c")),
+                ),
+            ),
+        )
+        env[EP.errorMessage].toOptStr().orEmpty() shouldContain "same 'yearly' entry"
+    }
+
     "a trait with no primary key still holds only one entry" {
         // The single-instance rule is unchanged for an unkeyed trait: two `name` entries have no key to tell
         // them apart, so the pair is refused exactly as before.

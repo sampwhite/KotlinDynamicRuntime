@@ -260,24 +260,36 @@ fun SchTypeBuilder.storedEntryFields() {
     }
 }
 
-/** The separator between an entry key's parts -- a space, which cannot occur in a trait id or a scalar value. */
-private const val entryKeySep = " "
-
 /**
  * The map key an entry is addressed by (issue #487): its [traitId] alone when the trait is single-instance, or
- * `traitId` plus each primary-key field's value in the key's declared order when the trait is keyed. Pass an
+ * `traitId` plus each primary-key field's value, in the key's declared order, when the trait is keyed. Pass an
  * empty [pkValues] for an unkeyed trait.
+ *
+ * Each part is **length-prefixed** rather than joined on a separator, because a separator has to be a character
+ * no value can contain, and a string key value can contain any of them. Prefixing each part with its length
+ * makes the boundary unambiguous whatever the content: `("a b", "c")` and `("a", "b c")` stay different keys,
+ * which a plain space would have merged.
  */
 fun entryKey(traitId: String, pkValues: List<Any?>): String =
     if (pkValues.isEmpty()) traitId
-    else traitId + pkValues.joinToString("") { entryKeySep + canonicalKey(it) }
+    else buildString {
+        append(traitId)
+        for (v in pkValues) {
+            val part = canonicalKey(v)
+            append('|').append(part.length).append(':').append(part)
+        }
+    }
 
 /**
- * A primary-key value as a stable string for keying and comparison (issue #487). A number is normalized to its
- * integral or decimal form, so the same year read back as `Int` or `Long` keys the same entry, and `"2024"` and
- * `2024` are one key once coerced; anything else is its own text.
+ * A primary-key value as a stable string for keying and comparison (issue #487). An integral number keeps every
+ * digit (so two ids that differ only above 2^53 stay distinct), and a floating value with no fraction reads as
+ * that same integer, so a year supplied as `Int`, `Long` or `2024.0` all key alike; anything else is its own
+ * text, which also makes `"2024"` and `2024` one key once the value has been coerced.
  */
 fun canonicalKey(value: Any?): String = when (value) {
+    // Integral types by their exact digits, never through Double: a Long past 2^53 loses precision as a Double,
+    // so routing it through one would collapse two distinct ids to a single key.
+    is Long, is Int, is Short, is Byte -> (value as Number).toLong().toString()
     is Number -> {
         val d = value.toDouble()
         if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()

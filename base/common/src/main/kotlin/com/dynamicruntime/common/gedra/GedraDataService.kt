@@ -501,14 +501,29 @@ class GedraDataService : ServiceInitializer {
                     "'${kind.name}'. A gedra id already says what kind it is, so the two have to agree.",
             )
         }
-        // One edit per trait, for the reason a gedra holds one entry per trait: two edits naming one trait are
-        // either contradictory or a "replace" written twice, and neither has an honest reading.
-        val traits = target.edits.map { it.traitId }
-        traits.firstOrNull { id -> traits.count { it == id } > 1 }?.let {
-            throw KdrException.mkInput(
-                "The target '${target.gedraId}' asks two things of trait '$it'. A gedra holds one entry per " +
-                    "trait, so there is no way to say which of the two was meant.",
-            )
+        // One edit per entry, not per trait: two edits may name two *different* entries of one keyed trait --
+        // which is the whole point of a primary key (issue #487) -- but naming one entry twice is still
+        // contradictory, a "replace" written twice or a delete racing a merge, with no honest reading. The
+        // address is what has to be unique among a target's edits, and for an unkeyed trait the address is the
+        // trait, so this stays the one-per-trait rule there.
+        val pkFieldsOf = pkFieldsOf(cxt, kind)
+        val seenKeys = mutableSetOf<String>()
+        for (edit in target.edits) {
+            val pkFields = pkFieldsOf(edit.traitId)
+            val key = entryKey(edit.traitId, pkFields.map { edit.data?.get(it) })
+            if (!seenKeys.add(key)) {
+                throw KdrException.mkInput(
+                    if (pkFields.isEmpty()) {
+                        "The target '${target.gedraId}' asks two things of trait '${edit.traitId}'. A gedra " +
+                            "holds one entry per trait, so there is no way to say which of the two was meant."
+                    } else {
+                        "The target '${target.gedraId}' asks two things of the same '${edit.traitId}' entry " +
+                            "(${pkFields.joinToString(", ")} = " +
+                            "${pkFields.joinToString(", ") { canonicalKey(edit.data?.get(it)) }}). Two edits " +
+                            "may name different entries of a keyed trait, but not one entry twice."
+                    },
+                )
+            }
         }
         if (queryGedra(cxt, target.gedraId.fullId, kind, scope) == null) {
             throw KdrException("No ${kind.name} gedra '${target.gedraId}'.", code = EXC.notFound)
@@ -593,11 +608,11 @@ class GedraDataService : ServiceInitializer {
     /**
      * Applies one edit to the entries held by trait, returning whether anything changed.
      *
-     * A supplied [GedraEdit.entryId] has to name the entry that is actually there. It is redundant today --
-     * the trait already identifies the entry -- so treating a mismatch as an error costs nothing and turns it
-     * into a cheap staleness check: a caller working from an older copy is told so rather than overwriting
-     * whatever replaced it. When `g-primaryKey` allows several entries per trait, this is the field that will
-     * choose between them, and the check becomes load-bearing rather than a bonus.
+     * The entry an edit names is its `(traitId, primary-key values)` -- the trait alone for a single-instance
+     * trait, or the trait plus the key values carried in the edit's own data for a keyed one (issue #487). A
+     * supplied [GedraEdit.entryId] never chooses the entry; it is a staleness check on the entry that address
+     * resolves to. Treating a mismatch as an error costs nothing and tells a caller working from an older copy
+     * so, rather than letting it overwrite whatever replaced the entry it was written against.
      */
     private fun applyEdit(
         cxt: KdrCxt,
