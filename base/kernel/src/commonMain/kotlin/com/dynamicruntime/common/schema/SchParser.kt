@@ -347,6 +347,8 @@ fun parseNode(
         errorMessages = parseErrorMessages(map[SCH.errors], name),
         minBound = map[minBoundKeyword(jsonType)].toOptDouble(),
         maxBound = map[maxBoundKeyword(jsonType)].toOptDouble(),
+        // Ordered, so a composite key keeps the order it was declared in (issue #487).
+        primaryKey = (map[SCH.primaryKey] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList(),
     )
     if (itemRefName != null) {
         pendingItemRefs.add(PendingItemRef(schType, itemRefName))
