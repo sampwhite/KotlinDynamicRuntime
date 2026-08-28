@@ -11,6 +11,7 @@ import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
+import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.Presence
@@ -76,51 +77,76 @@ class EdgeComponent : ComponentDefinition {
     }
 
     /**
-     * The shell's wordmark, marked so an edge is recognizable as one (issue #446).
+     * The shell's wordmark and landing hero, marked so an edge is recognizable as one (issues #446, #493).
      *
-     * An overlay of the `home` fragment rather than a frontend conditional: the shell renders the brand it is
+     * An overlay of the `home` fragment rather than a frontend conditional: the shell renders the copy it is
      * handed and still does not know edges exist. It needs no cfact either -- this component loads only on an
-     * edge, so its overlay simply is not present anywhere else.
+     * edge, so its overlay simply is not present anywhere else, and it is deliberately edge-wide rather than
+     * anonymous-only: an env-authed operator is in a KDR-hosted environment too. (Varying the hero *by caller*
+     * would need conditional text, which fragments cannot express; the answer, deferred, is a home UiBlock
+     * with a cfacts selector for the fragment -- see #493.)
      *
      * Only the **edge** is marked, not the application. The application is the ordinary case, and labeling it
      * would tell nearly every viewer something they never needed to be told; more to the point, a deployment's
      * application will carry the *customer's* brand, where a marker would be wrong exactly where it matters.
      * An edge is ours in every deployment, so a marker on it stays true.
      *
-     * The value is literal rather than composed from the base brand, which is the limitation to know: a
-     * deployment that renames the product renames this too. Composing it would need the base split into a
-     * separate key, which is not worth doing before a second deployment brand exists.
+     * The values are literal rather than composed from the base copy, which is the limitation to know: a
+     * deployment that renames the product renames these too. Composing them would need the base split apart,
+     * which is not worth doing before a second deployment brand exists.
      */
     override fun fragments(cxt: KdrCxt): List<FragmentSource> = listOf(
         fragmentInline(HFRAG.home, origin = name) {
-            namespace(HFRAG.home) { key(EDGEUI.brandKey, EDGEUI.brand) }
+            namespace(HFRAG.home) {
+                key(EDGEUI.brandKey, EDGEUI.brand)
+                key(EDGEUI.titleKey, EDGEUI.landingTitle)
+                key(EDGEUI.introKey, EDGEUI.landingIntro)
+            }
         },
     )
 
     /**
-     * The one menu item an edge adds: signing out of the environment (issue #486).
+     * The menu items an edge adds (issues #486, #493): a way into the application, and the two account actions.
      *
-     * An overlay onto the shared `homeMenu`, and needing no boot-role cfact for the same reason the brand
-     * overlay does not -- this component loads only on an edge, so the item is simply absent on every other
-     * node. It **does** carry [CFACTS.loggedIn], and that is the one dimension the brand analogy does not
-     * cover: a wordmark is shown to anyone, but an offer to *log out* is meaningless to a caller who is not
-     * logged in, and the anonymous menu (a bare sign-in surface) must not carry it. On an edge "logged in"
-     * can only mean env-authed, so the cfact reads exactly as intended -- the same gate the application's own
-     * "Log out" uses, minus the `,app` this side does not need.
+     * An overlay onto the shared `homeMenu`, needing no boot-role cfact for the same reason the fragment
+     * overlay does not -- this component loads only on an edge, so the items are simply absent on every other
+     * node. The three:
      *
-     * The item is a **call**, not a route, as signing out is everywhere: a request that clears the perimeter
-     * cookie, then a navigation. Both URLs it needs are the edge's to know and travel as the call's arguments
-     * (see [HACT.envLogout]) -- the api-relative clear-cookie path, and the absolute sign-in page to land on,
-     * carrying [EDGEP.loggedOutParam] so that page greets the caller as freshly signed out. The landing URL is
-     * built from this node's *own* content root, so a deployment that renamed it is honored rather than
-     * assumed.
+     *  - **Open application** -- to the app reached *through* this edge (`/wa`), shown to everyone. An
+     *    env-authed operator passes straight through the proxy; an anonymous caller's navigation is challenged
+     *    by `EdgeProxyHandler` and redirected to sign-in (then back), so "click to sign in" needs no code here
+     *    -- it is the existing perimeter challenge.
+     *  - **Log in** ([CFACTS.anonymous]) -- to the environment's sign-in page, carrying `next` back to the
+     *    edge landing so a caller returns here once signed in.
+     *  - **Log out** ([CFACTS.loggedIn]) -- clears the perimeter cookie, then lands on the edge landing (#493,
+     *    revising #486, which landed on the sign-in page because no landing existed yet). On an edge "logged
+     *    in" can only mean env-authed, so the pair reads exactly as intended; the two never coexist.
+     *
+     * The first two are `openPath` calls -- a full-window navigation to a **server path**, which a `UiRoute`
+     * cannot express (it routes within the app by hash). Every URL is the edge's to know and travels as the
+     * call's arguments, built from this node's *own* roots so a deployment that renamed one is honored.
      */
     override fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> {
-        val contentRoot = cxt.instanceConfig.get(ACFG.contentContextRoot) as? String ?: EdgeRoot.ec
-        val landingUrl = "/$contentRoot${EDGEP.loginPage}?${EDGEP.loggedOutParam}=1"
+        val config = cxt.instanceConfig
+        val contentRoot = config.get(ACFG.contentContextRoot) as? String ?: EdgeRoot.ec
+        val landingUrl = "/" + (config.get(ACFG.appContextRoot) as? String ?: EdgeRoot.ew)
+        val appUrl = "/" + ContextRoot.wa
+        val loginUrl = "/$contentRoot${EDGEP.loginPage}?${EnvAuthReturn.param}=" +
+            java.net.URLEncoder.encode(landingUrl, Charsets.UTF_8)
         return listOf(
             uiBlockOverlay(HMENU.block, origin = name) {
                 items(HFLD.menu) {
+                    menuItem(
+                        EDGEUI.openAppItem, "Open application",
+                        UiCall(HACT.openPath, listOf(appUrl)),
+                        displayOrder = EDGEUI.openAppOrder,
+                    )
+                    menuItem(
+                        EDGEUI.loginItem, "Log in",
+                        UiCall(HACT.openPath, listOf(loginUrl)),
+                        cfactExpression = CFACTS.anonymous,
+                        displayOrder = EDGEUI.loginOrder,
+                    )
                     menuItem(
                         EDGEUI.logoutItem, "Log out",
                         UiCall(HACT.envLogout, listOf(EAEP.logout, landingUrl)),

@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.uiblock.UiRoute
 import kotlinx.coroutines.MainScope
@@ -201,6 +202,13 @@ val AppBar = FC<AppBarProps> { props ->
     val frontendActions = FrontendActions(
         logout = { logoutAction() },
         envLogout = { args -> envLogoutAction(args) },
+        // openPath leaves the SPA for a same-origin server path (issue #493). The path is already guarded
+        // same-origin by FrontendActions; here it is just the navigation. Closing the menu first, as the
+        // other actions do.
+        openPath = { path ->
+            open = false
+            leaveAppTo(path)
+        },
     )
 
     // The bar takes on the elevated-privilege look while the caller holds administrative rights. It reads the
@@ -331,6 +339,16 @@ val AppBar = FC<AppBarProps> { props ->
                             is UiRoute -> menuLink("#page=${action.page}", menuItem.label) { open = false }
                             is UiCall -> button {
                                 className = ClassName("app-menu-item")
+                                // An `openPath` call leaves the SPA for a server path (issue #493). The cue is
+                                // derived from the action kind, not a field on the item -- leaving the app is
+                                // inherent to what `openPath` does. The ↗ glyph below is decorative; the
+                                // accessible name states the departure in words, and says "leaves this app"
+                                // rather than the reflexive "opens in a new tab", which would be a lie -- this
+                                // is a same-window full-page navigation.
+                                val leavesApp = action.def.name == HACT.openPath.name
+                                if (leavesApp) {
+                                    asDynamic()["aria-label"] = "${menuItem.label} (leaves this app)"
+                                }
                                 onClick = {
                                     open = false
                                     // An unimplemented name closes the menu and does nothing else, which is
@@ -338,6 +356,13 @@ val AppBar = FC<AppBarProps> { props ->
                                     frontendActions.run(action.def.name, action.args)
                                 }
                                 +menuItem.label
+                                if (leavesApp) {
+                                    span {
+                                        className = ClassName("app-menu-external")
+                                        asDynamic()["aria-hidden"] = true
+                                        +" ↗"
+                                    }
+                                }
                             }
                             null -> Unit
                         }

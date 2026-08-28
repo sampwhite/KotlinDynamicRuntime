@@ -255,6 +255,13 @@ body {
 }
 .app-menu-item:hover { background: var(--border); }
 
+/* The ↗ affordance on a menu item whose action leaves the app (issue #493) -- a quiet trailing glyph, not a
+   second control. Decorative: the accessible name already says "leaves this app". */
+.app-menu-external {
+    font-size: 0.85em;
+    opacity: 0.6;
+}
+
 /* A non-clickable menu header, e.g. "Signed in as …". */
 /* Home shell: the three link presentations (top bar / left bar / inline) around the content. */
 .home-shell { width: min(1040px, 95vw); }

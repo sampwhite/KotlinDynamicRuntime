@@ -9,8 +9,6 @@ import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain
-import io.kotest.matchers.string.shouldNotContain
 
 /**
  * Signing out of an environment (issue #486): the counterpart to `EnvAuthLoginTest`.
@@ -44,13 +42,5 @@ class EnvAuthLogoutTest : StringSpec({
         val client = TestHttpClient(cxt.instanceConfig)
         client.sendGetRequest(EAEP.logout).rptStatusCode shouldBe EXC.ok
         client.sendGetRequest("/health").createdCxt?.userProfile?.isLoggedIn shouldBe false
-    }
-
-    // The grace note is a pure function of the flag, so it is asserted directly on the rendered page.
-    "the sign-in page greets a freshly signed-out caller, and does not otherwise" {
-        EnvAuthPage.render("cid", "/", "/ea/auth/env/login", loggedOut = true)
-            .shouldContain("signed out of this environment")
-        EnvAuthPage.render("cid", "/", "/ea/auth/env/login", loggedOut = false)
-            .shouldNotContain("signed out of this environment")
     }
 })

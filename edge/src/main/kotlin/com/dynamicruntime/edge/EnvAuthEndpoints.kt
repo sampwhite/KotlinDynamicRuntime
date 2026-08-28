@@ -18,16 +18,8 @@ import kotlin.time.Instant
 /** Paths the edge serves as content rather than as endpoints. */
 @Suppress("ConstPropertyName")
 object EDGEP {
-    /** The sign-in page, under the edge's content root -- the whole anonymous surface of an edge. */
+    /** The sign-in page, under the edge's content root. */
     const val loginPage = "/login"
-
-    /**
-     * Query parameter on [loginPage] noting the caller has just signed out (issue #486): presence-only, so its
-     * value is unread. The sign-in page shows a brief "you have been signed out" note when it is present -- a
-     * grace note that tells a caller their logout took rather than leaving them on a bare sign-in they might
-     * read as a session that simply expired.
-     */
-    const val loggedOutParam = "loggedOut"
 }
 
 /** Wire vocabulary for the Env Auth login. */

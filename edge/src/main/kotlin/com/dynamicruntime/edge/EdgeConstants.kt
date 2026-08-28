@@ -39,7 +39,7 @@ object EdgeRoot {
     val all: List<String> = listOf(ea, ec, ew, es)
 }
 
-/** What an edge shows of itself in the shell (issue #446). */
+/** What an edge shows of itself in the shell (issues #446, #493). */
 @Suppress("ConstPropertyName")
 object EDGEUI {
     /** The `home` fragment key holding the shell's wordmark, which the app bar and the home hero both read. */
@@ -48,18 +48,49 @@ object EDGEUI {
     /** The wordmark an edge shows: the product, marked as the perimeter rather than the application. */
     const val brand = "KDR Edge"
 
-    /**
-     * The id of the env-logout menu item an edge contributes (issue #486). Its own id, distinct from the
-     * application's `HMENU.logout`: the two never share a node, but a distinct id keeps the overlay
-     * unambiguous about which item it adds, and reads correctly in a menu snapshot.
-     */
-    const val logoutItem = "envLogout"
+    /** The `home` fragment keys for the landing hero's heading and body -- the ones the base `home.md` names. */
+    const val titleKey = "title"
+    const val introKey = "intro"
 
     /**
-     * Where the env-logout item sorts. Well past the base menu's numbering (its items land at
-     * [com.dynamicruntime.common.uiblock.UIB.orderStep]-spaced positions from 100), so signing out sits last
-     * as a logout conventionally does -- and an overlay must state its own order, since only a base's items
-     * are auto-numbered.
+     * The landing hero an edge shows in place of the application's (issue #493). A fragment overlay, so it is
+     * edge-wide and persists after login -- an env-authed operator is in a KDR-hosted environment too, and
+     * this is deliberately not anonymous-only. Markdown, resolved and rendered like any fragment value; it
+     * deliberately does not end with the base's "pick a document from the navigation" line, since an edge
+     * suppresses that list.
      */
+    const val landingTitle = "A KDR-hosted environment"
+    const val landingIntro =
+        "You have reached an environment hosted on **KotlinDynamicRuntime** — a Kotlin-first runtime for " +
+            "building data-driven applications and APIs, where the interface, its schema, and its workflows " +
+            "are assembled from data the server serves rather than wired in by hand.\n\n" +
+            "Sign in to enter this environment, or open the application to see it in action."
+
+    // Menu item ids an edge contributes (issues #486, #493). Each is the edge's own, distinct from any
+    // application id: the two never share a node, but a distinct id keeps an overlay unambiguous about which
+    // item it adds and reads correctly in a menu snapshot.
+
+    /** "Open application" -- into the app reached through this edge. */
+    const val openAppItem = "openApp"
+
+    /** "Log in" -- to the environment's sign-in page (anonymous callers only). */
+    const val loginItem = "envLogin"
+
+    /** "Log out" -- clears the env-auth session (env-authed callers only). */
+    const val logoutItem = "envLogout"
+
+    // Where the edge's items sort. Well past the base menu's numbering (its items land at
+    // `UIB.orderStep`-spaced positions from 100), and an overlay must state its own order since only a base's
+    // items are auto-numbered. "Open application" sits just under the catalog; the account actions sit last,
+    // as they conventionally do -- Log in and Log out never coexist (opposite cfacts), so their adjacent
+    // numbers only decide where the single one that shows lands.
+
+    /** Just under the base catalog item (100). */
+    const val openAppOrder = 200
+
+    /** Near the bottom, an account action. */
+    const val loginOrder = 900
+
+    /** Last, as a logout conventionally is. */
     const val logoutOrder = 1000
 }

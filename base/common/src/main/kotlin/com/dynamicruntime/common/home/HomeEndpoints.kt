@@ -7,6 +7,7 @@ import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.uiblock.UiRoute
@@ -123,7 +124,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
                 HFEAT.canManageUsers to AdminRules.canManageUsers(c),
             ),
             UIC.state to mapOf(
-                HFLD.links to homeLinks(),
+                HFLD.links to homeLinksFor(c),
                 HFLD.menu to resolvedMenu(c),
                 HFLD.userInfo to c.userProfile.toUserInfo(),
             ),
@@ -210,6 +211,24 @@ private fun KdrCxt.layoutFlag(key: String, default: Boolean): Boolean =
 private fun homeLinks(): List<Map<String, Any?>> = homeDocs.mapNotNull { (id, label, docId) ->
     val buildId = MarkdownDocService.docBuildId(docId) ?: return@mapNotNull null
     mapOf(HFLD.id to id, HFLD.label to label, HFLD.docId to docId, HFLD.buildId to buildId)
+}
+
+/**
+ * The Documents list for this caller: empty on an edge's anonymous landing, [homeLinks] everywhere else
+ * (issue #493). An anonymous visitor to an edge lands on a marketing page, not a document index.
+ *
+ * **A quick gate, deliberately not the principled form.** The list is computed in code and returned whole
+ * under `state.links`, so a cfact cannot reach into it the way it filters a UiBlock's items. The natural
+ * direction is *links become data* -- a UiBlock the edge overlays away exactly as it does the menu, the move
+ * #458 made for the menu -- at which point this evaluate-and-null-it disappears. Until then it is decided by
+ * the *same cfact vocabulary the menu uses* (`anonymous` and the boot role), evaluated through the registry,
+ * rather than a raw boot-role branch -- so the shortcut is in the shape (links are still not data), not in
+ * reaching past the vocabulary.
+ */
+private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
+    val registry = SchemaService.get(cxt).cfactsFor(null)
+    val onAnonymousEdgeLanding = registry.parse("${CFACTS.anonymous},${BOOT.edge}").matches(registry.assemble(cxt))
+    return if (onAnonymousEdgeLanding) emptyList() else homeLinks()
 }
 
 /** The home page's link table: `(id, label, docId)`. Grows as more documents are published. */

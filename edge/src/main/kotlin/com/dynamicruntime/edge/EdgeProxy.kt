@@ -102,6 +102,16 @@ class EdgeProxyHandler(
     override fun handle(request: Request, response: Response, callback: Callback): Boolean {
         val (root, _) = RequestHandler.parsePath(Request.getPathInContext(request))
         if (root in EdgeRoot.all || root !in EDGEUP.proxiedRoots) {
+            // One of the edge's own roots (or nothing we forward) -- decline, and the dispatcher serves it.
+            //
+            // **An edge's own surface is intentionally reachable anonymously (issue #493), and env auth is
+            // deliberately not imposed here.** The perimeter's job is the *proxied application*, which has its
+            // own idea of who is logged in and would answer an anonymous request happily as its own anonymous
+            // user -- so this node is the only place that can insist, and it insists below, on the forward
+            // path. The edge's own endpoints are already section-gated: an anonymous caller on `/ea` gets
+            // exactly the anonymous sections, and `/ew` renders a KDR landing page rather than a login wall.
+            // Gating the edge's own roots on env auth would guard content that is anonymous-safe by
+            // construction; do not add such a gate here mistaking it for hardening.
             return false
         }
         // Created only AFTER the decline branch, and that ordering is what keeps it honest. A forwarded
