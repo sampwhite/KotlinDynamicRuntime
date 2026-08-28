@@ -226,7 +226,27 @@ class SchOpts(
      * refusing it would take down a payload over an entry nobody asked about.
      */
     val allowUnknownVariant: Boolean = true,
-)
+    /**
+     * Skip **this** object's completeness checks -- its `required` and its conditional (`if`/`then`/`else`)
+     * requiredness -- because it is the value of a property marked [SCH.optionalContents], a fragment whose
+     * completeness is settled where it is assembled into a whole, not here (issue #487). Its fields are still
+     * validated, and a schema-supplied `default` is still injected; only the demand that missing fields be
+     * present is waived. A conditional is waived whole rather than by half, because the value it keys on may
+     * live in the stored data the fragment folds into, not in the fragment -- so it cannot be judged here at
+     * all. Never set directly; [validateObject] turns it on for exactly the one object under such a property
+     * and off again for anything nested inside, via [withSkipCompleteness], so the relaxation does not leak
+     * down the tree.
+     */
+    val skipCompleteness: Boolean = false,
+) {
+    /**
+     * These options with [skipCompleteness] set to [v] -- the same instance when it already matches, so the
+     * common descent (into a property that is not a fragment, from a parent that was not one) allocates nothing.
+     */
+    fun withSkipCompleteness(v: Boolean): SchOpts =
+        if (v == skipCompleteness) this
+        else SchOpts(keepAdditionalProperties, forInput, allowUnknownVariant, skipCompleteness = v)
+}
 
 /** Result of a coercing validation: the (possibly transformed) [value] and the [failures]. */
 data class SchResult(val value: Any?, val failures: List<SchFailure>)
@@ -455,7 +475,9 @@ fun validateObject(
         }
         // Call validateValue unconditionally (it collects failures); only store when coercing. Kept on its
         // own line: folding it into `out?.put(...)` would short-circuit (and skip validation) when out is null.
-        val coerced = validateValue(prop.valueType, v, childPath(path, key), coerce, failures, opts)
+        // The child's completeness is relaxed iff this property is a fragment (issue #487), and reset
+        // otherwise, so the relaxation covers exactly one object and never leaks into what it nests.
+        val coerced = validateValue(prop.valueType, v, childPath(path, key), coerce, failures, opts.withSkipCompleteness(prop.optionalContents))
         out?.put(key, coerced)
     }
 
@@ -493,9 +515,12 @@ fun validateObject(
             continue
         }
         val default = reqType?.default
+        // A default is injected even for a fragment (issue #487): it is a value the schema *supplies*, not a
+        // demand on the caller, so waiving completeness must not silently drop it. Only the missing-required
+        // *failure* is what a fragment waives -- its completeness is settled where it is assembled into a whole.
         if (default != null) {
             out?.put(req, cloneForInjection(default)) // a default supplies the value, so no failure
-        } else {
+        } else if (!opts.skipCompleteness) {
             // Resolved against the missing property's OWN type, not this object's: the failure is reported by
             // the parent's required loop, but the copy belongs to the field it is about.
             failures.add(
@@ -504,7 +529,11 @@ fun validateObject(
             )
         }
     }
-    type.condition?.let { checkCondition(type, it, map, dropped, path, failures) }
+    // A fragment waives its conditional requiredness too, and for a sharper reason than its plain `required`:
+    // the property a condition keys on may live in the stored data the fragment folds into, not in the fragment
+    // itself, so "given approved, is rejectionReason required?" cannot be answered here at all (issue #487).
+    // It is answered on the assembled whole -- `checkStoredEntries`, whose existence this is the reason for.
+    if (!opts.skipCompleteness) type.condition?.let { checkCondition(type, it, map, dropped, path, failures) }
     return out ?: map
 }
 
@@ -606,9 +635,13 @@ fun validateArray(
 ): Any {
     val itemType = type.itemType
     val out: MutableList<Any?>? = if (coerce) ArrayList(list.size) else null
+    // A fragment relaxes one object's completeness; an array's elements are objects of their own, so the flag
+    // does not carry into them (issue #487). Reset here as well as at each object property, so the semantic
+    // holds however the flag is placed. Normally a no-op -- `withSkipCompleteness` returns the same instance.
+    val elementOpts = opts.withSkipCompleteness(false)
     list.forEachIndexed { i, elem ->
         val coerced = if (itemType != null) {
-            validateValue(itemType, elem, indexPath(path, i), coerce, failures, opts)
+            validateValue(itemType, elem, indexPath(path, i), coerce, failures, elementOpts)
         } else {
             elem
         }

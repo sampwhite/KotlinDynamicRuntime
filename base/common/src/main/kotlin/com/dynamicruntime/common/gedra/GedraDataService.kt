@@ -771,15 +771,16 @@ class GedraDataService : ServiceInitializer {
      * is a fact about the destination rather than about who did the writing. For everybody else the two are
      * the same client, since their scope confines them to it.
      *
-     * The edit was already validated on the way in, so why again? Because a **merge** produces something
-     * neither half was: the stored data and the supplied keys each satisfied the trait alone, and their union
-     * may not. A conditional is the ordinary way that happens -- a stored `approved: true` beside a newly
-     * merged `rejectionReason` is two valid halves making one invalid entry.
-     *
-     * Known limit, recorded rather than fixed: a merge fragment is validated against the trait's own schema on
-     * the way in, `required` included. That is a non-issue for the traits merges are for, which mark their
-     * fields optional and leave requiredness to the workflow, and it would bite a trait that mixed required
-     * fields with merge usage. See the soft-validation section of `gedra-patch.md`.
+     * The edit was already validated on the way in, so why again? Two reasons, and this is now the **only**
+     * place either is caught. A **merge** produces something neither half was: the stored data and the supplied
+     * keys each satisfied the trait alone, and their union may not -- a stored `approved: true` beside a newly
+     * merged `rejectionReason` is two valid halves making one invalid entry. And **completeness** is settled
+     * here at all because an edit's `data` is a fragment on the way in (`g-optionalContents`, issue #487):
+     * its fields are type-checked, but its `required` is not, so an edit may carry only what it changes -- a
+     * delete its key, a merge its page's fields. So the assembled result is validated with `required` on, which
+     * catches an incomplete add or a merge that leaves a required field unfilled; a delete leaves no entry to
+     * check. This is what lets a keyed trait with a required non-key field be deleted by its key alone, which
+     * the old on-the-way-in `required` check refused.
      */
     private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {
         checkEntryKeys(entries, pkFieldsOf(cxt, kind))

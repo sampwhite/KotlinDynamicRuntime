@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchOpts
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -121,6 +122,73 @@ class GedraEditUnionTest : StringSpec({
         coerceAndValidate(
             union,
             mapOf(GE.traitId to "name", GED.action to GedraEditAction.deleteOrNoOp.name),
+            SchOpts(forInput = true),
+        ).failures.shouldBeEmpty()
+    }
+
+    // A keyed trait (issue #487) that requires a field besides its key. Built apart from `traitsFor` so the
+    // branch-count assertions above stay untouched.
+    fun budgetDefs(): GedraConfig = gedraConfig(cxt, "keyedTraits", GCFG.globalNamespace) {
+        trait("BudgetEntry", "budget", setOf(GedraDataType.formDoc), primaryKey = listOf("year")) {
+            property("year", "The year this budget is for; its primary key.", required = true) { type = SCT.integer }
+            property("amount", "The budgeted amount -- required, and not the key.", required = true) { type = SCT.number }
+        }
+    }
+
+    fun budgetEditUnion(): SchType {
+        val config = budgetDefs()
+        val defs = config.defs.toMutableMap()
+        defs.putAll(entryEditUnionDefs(cxt, GCFG.globalNamespace, GedraDataType.formDoc, config.traits.values))
+        return parseSchemaTypes(defs).getValue(unionName)
+    }
+
+    // The fix (issue #487): a keyed trait's delete addresses its entry by the key carried in `data`, so the
+    // delete must send the key -- but not the trait's other required fields. Because an edit's `data` is a
+    // fragment, that minimal payload validates. Before, `amount` being required refused the delete outright.
+    "a keyed trait's delete may carry its key alone, though the trait has other required fields" {
+        coerceAndValidate(
+            budgetEditUnion(),
+            mapOf(
+                GE.traitId to "budget", GED.action to GedraEditAction.deleteOrNoOp.name,
+                GE.data to mapOf("year" to 2024),
+            ),
+            SchOpts(forInput = true),
+        ).failures.shouldBeEmpty()
+    }
+
+    // The other half: only the *edit* union's data is a fragment. The entry union -- what a create validates
+    // against -- shares the same data type but keeps its `required`, so an incomplete entry is still refused.
+    "the entry a create stores must still be complete" {
+        val entry = parseSchemaTypes(budgetDefs().defs).getValue("${GCFG.globalNamespace}.BudgetEntry")
+        coerceAndValidate(
+            entry,
+            mapOf(GE.traitId to "budget", GE.data to mapOf("year" to 2024)),
+            SchOpts(forInput = true),
+        ).failures.map { it.path to it.code } shouldContainExactly listOf("${GE.data}.amount" to SchFailCode.missingRequired)
+    }
+
+    // A trait with a conditional: `reason` is required only when `approved` is false. A merge is a fragment, so
+    // a page recording just `{approved: false}` -- with `reason` stored already or set by another page -- must
+    // not be refused for `reason` on the way in; the assembled result is where the conditional is judged.
+    fun approvalDefs(): GedraConfig = gedraConfig(cxt, "approvalTraits", GCFG.globalNamespace) {
+        trait("ApprovalEntry", "approval", setOf(GedraDataType.formDoc)) {
+            property("approved", "Whether it was approved.", required = true) { type = SCT.boolean }
+            property("reason", "Why it was rejected.")
+            presentWhen("reason", on = "approved", value = false)
+        }
+    }
+
+    "a merge carrying only a conditional's trigger is not refused for the field it makes required" {
+        val config = approvalDefs()
+        val defs = config.defs.toMutableMap()
+        defs.putAll(entryEditUnionDefs(cxt, GCFG.globalNamespace, GedraDataType.formDoc, config.traits.values))
+        val union = parseSchemaTypes(defs).getValue(unionName)
+        coerceAndValidate(
+            union,
+            mapOf(
+                GE.traitId to "approval", GED.action to GedraEditAction.addOrMerge.name,
+                GE.data to mapOf("approved" to false),
+            ),
             SchOpts(forInput = true),
         ).failures.shouldBeEmpty()
     }

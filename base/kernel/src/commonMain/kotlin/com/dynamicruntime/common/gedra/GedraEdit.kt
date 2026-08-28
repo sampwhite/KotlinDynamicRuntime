@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.util.deepClone
@@ -70,9 +71,18 @@ fun SchTypeBuilder.editEnvelopeFields() {
  * A known trait's [schema] is copied rather than referenced, and deep-cloned on the way in, so a branch cannot
  * be mutated through the trait it was built from. Where that schema is itself a `$ref`, the ref travels, and
  * both the entry type and this one resolve to the same target — one definition, two users, nothing to drift.
+ *
+ * It is a **fragment** ([SCH.optionalContents], issue #487): the validator checks its fields but not its
+ * `required`. An edit sends only what it means to change -- a delete carries its key alone, a merge the fields
+ * its page owns -- so demanding a complete object on the way in is what stopped a keyed trait with any other
+ * required field from being deleted at all. Completeness is settled instead where the edit is folded into the
+ * stored entry (`GedraDataService.checkStoredEntries`), which validates the assembled whole with `required`
+ * on. This marks only the edit union's copy; the entry union (a create) still requires a complete object,
+ * because the shared target type keeps its `required` and only this property waives it.
  */
 fun SchTypeBuilder.editDataProperty(schema: Map<String, Any?>?) {
     property(GE.data, "The data this edit supplies; absent for a delete.") {
         if (schema != null) data.putAll(schema.deepClone()) else type = SCT.kObject
+        data[SCH.optionalContents] = true
     }
 }

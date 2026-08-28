@@ -717,13 +717,21 @@ and its data shape is the most important part of it. With that field, `entryEdit
 It composes as `gedra-entry.md`'s ordering rule says it should — **overlay, then project, then export**. A
 task-scoped edit union is the trait, overlaid by the task's narrowing, then projected to patch-input shape.
 
-## The relax-`required` question is retired
+## The relax-`required` question, answered (issue #487)
 
 An earlier draft worried that a merge fragment cannot satisfy the trait's `required`, and proposed manufacturing
-a relaxed variant of each data type. In practice the traits that get merged are the ones with no schema-required
-elements — their requirements are soft and belong to the workflow. So the boundary type can carry the trait's
-data schema unchanged, completeness is settled after the merge, and no relaxation projection is needed. Recorded
-as a decision rather than an omission, in case a required-field trait ever does want merging.
+a relaxed variant of each data type. That projection was rejected — and stays rejected — because it duplicates
+every data type. But the underlying need turned out to be real: once #487 let an entry be addressed by a key
+carried in its `data`, a **delete** of a keyed trait must send its key, and a keyed trait with any *other*
+required field could then never be deleted, its minimal payload refused on the way in.
+
+So the relaxation is done, without duplicating a type: the edit union's `data` property is marked a **fragment**
+(`g-optionalContents`), which tells the validator to check its fields but not its `required`. The shared data
+type is untouched — only this *property's* use of it waives completeness — so the entry union (a create) still
+requires a complete object. Completeness for an edit is settled after the fold, where it always was
+(`checkStoredEntries`): a merge or add that leaves a required field unfilled fails against the assembled result,
+a delete leaves no entry to check. This fixes keyed deletes and lifts the old "merges only for all-optional
+traits" limit in one stroke.
 
 # Open choices, answered
 

@@ -203,6 +203,24 @@ object SCH {
     const val primaryKey = "g-primaryKey"
 
     /**
+     * Marks an object-valued **property** whose value is a *fragment* (issue #487): validate it against its
+     * type -- field types, options, nested shape -- but do **not** enforce its **completeness**, meaning
+     * neither that type's [required] nor its conditional (`if`/`then`/`else`) requiredness. A `default` is
+     * still injected; only the demand that missing fields be present is waived. It relaxes only the immediate
+     * object, not objects nested inside it.
+     *
+     * On the property rather than the type, because a `$ref` field's target type is shared: a gedra edit and a
+     * gedra entry both point at the same trait data type, and only the edit's copy is a fragment. It is what
+     * lets a keyed trait be deleted by sending its key alone, and a page merge send the fields it owns and no
+     * others, without the type having to drop a `required` that a complete record genuinely has. Completeness
+     * is then checked where the fragment is assembled into a whole (a gedra's `checkStoredEntries`), not on the
+     * way in. Surfaced on `SchProperty.optionalContents`; there is no standard JSON Schema equivalent, so an
+     * export drops it (a stricter reader that keeps `required` refuses a subset of what we accept -- see
+     * [gPrefix]).
+     */
+    const val optionalContents = "g-optionalContents"
+
+    /**
      * Names a registered callback that produces this property's [options] when the schema is rendered, in
      * place of a list written into the document (issue #413).
      *

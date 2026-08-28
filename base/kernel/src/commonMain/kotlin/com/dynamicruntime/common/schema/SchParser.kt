@@ -492,13 +492,15 @@ fun parseProperty(
     val description = map[SCH.description].toOptStr()
     // On the property, not only its value type -- see [SchProperty.title] for why a `$ref` field needs its own.
     val title = map[SCH.title].toOptStr()
+    // Read before the $ref/inline split so an edit's `data` -- a $ref -- carries it too (issue #487).
+    val optionalContents = map[SCH.optionalContents] == true
     val ref = map[SCH.dRef].toOptStr()
     if (ref != null) {
-        val prop = SchProperty(name, description, refTargetName(ref), title)
+        val prop = SchProperty(name, description, refTargetName(ref), title, optionalContents)
         pendingRefs.add(prop) // valueType bound in the resolution pass
         return prop
     }
-    val prop = SchProperty(name, description, refName = null, title = title)
+    val prop = SchProperty(name, description, refName = null, title = title, optionalContents = optionalContents)
     prop.valueType = parseNode(null, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1)
     return prop
 }

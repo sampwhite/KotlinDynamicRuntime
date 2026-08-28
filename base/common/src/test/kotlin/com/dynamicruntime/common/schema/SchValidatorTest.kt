@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.parseDate
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toStartOfDay
 import kotlinx.datetime.LocalDate
@@ -892,5 +893,94 @@ class SchValidatorTest : StringSpec({
             },
         )
         coerceAndValidate(types.getValue("core.Fixed2"), mapOf("answer" to "42")).failures.shouldBeEmpty()
+    }
+
+    // g-optionalContents (issue #487): a property whose object value is a fragment -- its fields are validated,
+    // its own `required` is not. What lets a gedra edit send only what it changes (a delete its key, a merge a
+    // page's fields) while the shared trait type keeps `required` for the entry that must be complete.
+    fun fragmentTypes(fragment: Boolean): Map<String, SchType> = parseSchemaTypes(
+        schemaDefs(cxt, "core") {
+            type("Nested") {
+                type = SCT.kObject
+                property("c", "A required field of a nested object.", required = true) { type = SCT.string }
+            }
+            type("Inner") {
+                type = SCT.kObject
+                property("a", "A required field.", required = true) { type = SCT.string }
+                property("b", "An optional integer.") { type = SCT.integer }
+                property("deep", "A nested object of its own.") { ref("Nested") }
+            }
+            type("Outer") {
+                type = SCT.kObject
+                property("frag", "The fragment (or not).") {
+                    ref("Inner")
+                    if (fragment) data[SCH.optionalContents] = true
+                }
+            }
+        },
+    )
+
+    "a fragment property skips its object's required but still validates its fields" {
+        val outer = fragmentTypes(fragment = true).getValue("core.Outer")
+        // Required `a` omitted: no complaint, because the object is a fragment.
+        validate(outer, mapOf("frag" to mapOf("b" to 5))).shouldBeEmpty()
+        // A field that *is* present is still checked -- a non-numeric integer is a badValue at its path.
+        validate(outer, mapOf("frag" to mapOf("b" to "x")))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("frag.b" to SchFailCode.badValue)
+    }
+
+    "the relaxation covers only the fragment, not an object nested inside it" {
+        val outer = fragmentTypes(fragment = true).getValue("core.Outer")
+        // `a` (the fragment's own required) is waived, but `deep` is a nested object whose own `required` `c`
+        // still applies -- the fragment flag does not leak down the tree.
+        validate(outer, mapOf("frag" to mapOf("deep" to emptyMap<String, Any?>())))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("frag.deep.c" to SchFailCode.missingRequired)
+    }
+
+    "without the flag the same object is required in full" {
+        val outer = fragmentTypes(fragment = false).getValue("core.Outer")
+        validate(outer, mapOf("frag" to mapOf("b" to 5)))
+            .map { it.path to it.code } shouldContainExactlyInAnyOrder listOf("frag.a" to SchFailCode.missingRequired)
+    }
+
+    // A trait-like object with a conditional (a `reason` required only when `approved` is false) and a required
+    // field that carries a `default`. `frag` points at it as a fragment; `full` requires it complete.
+    fun conditionalTypes(): Map<String, SchType> = parseSchemaTypes(
+        schemaDefs(cxt, "core") {
+            type("Decision") {
+                type = SCT.kObject
+                property("approved", "Whether it was approved.", required = true) { type = SCT.boolean }
+                property("reason", "Why it was rejected.") { type = SCT.string }
+                property("status", "A required field with a default.", required = true) {
+                    type = SCT.string
+                    default = "open"
+                }
+                presentWhen("reason", on = "approved", value = false)
+            }
+            type("Wrap") {
+                type = SCT.kObject
+                property("frag", "The decision, as a fragment.") { ref("Decision"); data[SCH.optionalContents] = true }
+            }
+        },
+    )
+
+    "a fragment waives its conditional requiredness but still injects a default" {
+        val wrap = conditionalTypes().getValue("core.Wrap")
+        // `approved: false` makes `reason` conditionally required, and `status` is required -- but this is a
+        // fragment, so neither is demanded. `status`'s default is still supplied, because a default is a value
+        // the schema gives, not a field the caller must send.
+        val result = coerceAndValidate(wrap, mapOf("frag" to mapOf("approved" to false)))
+        result.failures.shouldBeEmpty()
+        result.value.toJsonMapOrEmpty()["frag"].toJsonMapOrEmpty()["status"] shouldBe "open"
+    }
+
+    "without the fragment flag the conditional is enforced, and the default still injected" {
+        // The same object validated as a whole: `reason` is now required (approved is false), which the
+        // fragment above waived; `status`'s default is injected either way.
+        val decision = conditionalTypes().getValue("core.Decision")
+        val result = coerceAndValidate(decision, mapOf("approved" to false))
+        result.failures.map { it.path to it.code } shouldContainExactlyInAnyOrder
+            listOf("reason" to SchFailCode.missingRequired)
+        result.value.toJsonMapOrEmpty()["status"] shouldBe "open"
     }
 })
