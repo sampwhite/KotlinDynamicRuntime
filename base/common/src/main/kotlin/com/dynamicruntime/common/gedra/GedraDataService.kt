@@ -745,7 +745,9 @@ class GedraDataService : ServiceInitializer {
         val byKey = LinkedHashMap<String, Map<String, Any?>>()
         for (entry in entries) {
             val traitId = entry[GE.traitId].toOptStr() ?: continue
-            byKey[entryKey(traitId, entryKeyValues(entry, traitId, pkFieldsOf(traitId)))] = entry
+            // These are entries read back from storage, so a missing key is the migration case (a trait keyed
+            // after this entry was written), not a caller mistake -- `stored` picks the message that says so.
+            byKey[entryKey(traitId, entryKeyValues(entry, traitId, pkFieldsOf(traitId), stored = true))] = entry
         }
         return byKey
     }

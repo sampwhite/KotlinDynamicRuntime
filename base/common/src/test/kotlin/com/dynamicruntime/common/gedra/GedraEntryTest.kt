@@ -256,6 +256,21 @@ class GedraEntryTest : StringSpec({
         }.message.shouldNotBeNull() shouldContain "no value for its primary key"
     }
 
+    // A key-less entry the way a trait keyed after storage produces one: read back off a gedra, not sent in.
+    // Same throw, different words -- it names the migration and says what to do rather than reading as a caller
+    // mistake, since only this case is fixed by touching the stored data.
+    "a stored entry missing its key reports the migration, not a caller mistake" {
+        val message = shouldThrow<KdrException> {
+            entryKeyValues(keyedEntry("yearly", null), "yearly", listOf("year"), stored = true)
+        }.message.shouldNotBeNull()
+        message shouldContain "stored before the trait was keyed"
+        message shouldContain "delete and recreate"
+        // The default (a caller's entry) keeps the original wording.
+        shouldThrow<KdrException> {
+            entryKeyValues(keyedEntry("yearly", null), "yearly", listOf("year"))
+        }.message.shouldNotBeNull() shouldContain "could not be told apart"
+    }
+
     "a composite key distinguishes on all its fields together" {
         val pk2 = { _: String -> listOf("client", "year") }
         fun e(client: String, year: Int) =
