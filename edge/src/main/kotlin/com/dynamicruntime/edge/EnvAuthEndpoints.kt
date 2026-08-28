@@ -118,7 +118,7 @@ fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "auth") {
         val expireMs = c.now().toEpochMilliseconds() + ENVAUTH.sessionMillis(c.instanceConfig)
         // Written through the request's WebRequest -- the transport-neutral seam -- so it behaves identically
         // under a browser and the in-process test client. Safe here because a handler runs before the response
-        // is sent; a cookie set afterwards would be dropped.
+        // is sent; a cookie set afterward would be dropped.
         // SameSite=Strict for the perimeter cookie (issue #431): nothing should be arriving at an edge
         // cross-site, so its session cookie need not ride a cross-site request. The cookie is set and read
         // same-origin, so the login flow is unaffected; the app's `kdrAuth` stays Lax for its Google redirect.
@@ -158,7 +158,7 @@ fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "auth") {
  * The one thing every refusal says.
  *
  * Deliberately identical for "no verified address", "wrong domain", and "Google is not authoritative for the
- * address" (issue #429), and marked sensitive so a deployment that obfuscates replaces even this: a caller
+ * address" (issue #429), and marked sensitive, so a deployment that obfuscates replaces even this: a caller
  * learning *which* check they tripped learns which domain opens the gate, which is the one fact a probe wants.
  * `GoogleIdTokenVerifier` already takes the same line with its own failures.
  */

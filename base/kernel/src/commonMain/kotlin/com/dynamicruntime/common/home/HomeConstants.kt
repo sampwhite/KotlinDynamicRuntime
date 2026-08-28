@@ -139,7 +139,7 @@ object HACT {
      *
      *  - **`logoutPath`** -- the api-relative path of the clear-cookie endpoint (`EAEP.logout`), so the
      *    frontend's own api root is prepended exactly as for every other call, honoring a custom root.
-     *  - **`landingUrl`** -- the absolute path to send the browser to afterwards: the edge's sign-in page,
+     *  - **`landingUrl`** -- the absolute path to send the browser to afterward: the edge's sign-in page,
      *    which is the whole anonymous surface a signed-out caller has left.
      *
      * Declared here beside [logout] because this object *is* the shared vocabulary of callable functions, not

@@ -9,7 +9,7 @@ import com.dynamicruntime.common.uiblock.UiActions
  *
  * **Hardwired, and that is the point.** Backend data may name a function; it may never supply one. The name is
  * the seam: everything on the data side is configurable, per-client and overlayable, and everything on this
- * side is typed, tested and reviewed. When somebody wants a conditional argument or two calls in sequence, the
+ * side is typed, tested, and reviewed. When somebody wants a conditional argument or two calls in sequence, the
  * answer is a new entry here rather than a richer array on the wire.
  *
  * Parameters arrive as strings, and an implementation coerces what it needs -- which is why they are typed
