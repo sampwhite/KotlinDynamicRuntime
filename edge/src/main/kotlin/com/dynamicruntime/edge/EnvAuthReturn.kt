@@ -1,6 +1,7 @@
 package com.dynamicruntime.edge
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.util.sameOriginPath
 
 /**
  * Where a caller is sent after signing in (issue #386).
@@ -28,35 +29,10 @@ object EnvAuthReturn {
     /**
      * [raw] reduced to a **same-site absolute path**, or [default] when it is anything else.
      *
-     * Allowed: a single leading `/`, then path characters. Refused, each for its own reason:
-     *
-     *  - `//host` and `/\host` -- protocol-relative URLs, which a browser follows off-site while they look
-     *    local. This is the case a naive "starts with `/`" check misses, and it is the one that gets used.
-     *  - anything carrying a scheme (`https:`, `javascript:`, `data:`) -- off-site, or script execution.
-     *  - a backslash anywhere -- browsers have historically normalized it to `/`, so it can smuggle the above
-     *    past a check that only looks for `/`.
-     *  - control characters, via `isISOControl` rather than a `< ' '` test, because that one misses DEL and
-     *    the C1 range -- and these are the characters that split a header or truncate a value.
-     *
-     * A refused value is **replaced rather than rejected**: somebody signing in should land somewhere, and the
-     * home page is a truthful answer to "that could not be honored".
+     * The rule itself is `sameOriginPath` in the kernel, shared with the frontend's action registry so the two
+     * cannot drift (issue #498) -- see it for what is refused and why. What stays here is the perimeter's own
+     * answer to a refusal: the value is **replaced rather than rejected**, because somebody signing in should
+     * land somewhere, and the home page is a truthful answer to "that could not be honored".
      */
-    fun sanitize(raw: String?): String {
-        val value = raw?.trim().orEmpty()
-        if (value.isEmpty() || !value.startsWith("/")) {
-            return default
-        }
-        if (value.startsWith("//") || value.startsWith("/\\")) {
-            return default
-        }
-        if (value.any { it.isISOControl() || it == '\\' }) {
-            return default
-        }
-        // A scheme cannot appear in something that starts with `/`, but checking costs nothing and the
-        // failure it guards against is total.
-        if (value.drop(1).substringBefore('/').contains(':')) {
-            return default
-        }
-        return value
-    }
+    fun sanitize(raw: String?): String = sameOriginPath(raw) ?: default
 }

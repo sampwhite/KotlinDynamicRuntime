@@ -64,9 +64,12 @@ private fun assignLocation(url: String) {
 /**
  * A full-window navigation to [url], leaving this single-page app entirely (issue #486).
  *
- * A hash change re-routes *within* the app; this replaces the page. Env logout needs it: the caller is now
- * anonymous on a node whose only anonymous surface is the sign-in page, so there is nothing left of the app to
- * route to. The public seam over the file-local [assignLocation], which the 401 redirect already uses.
+ * A hash change re-routes *within* the app; this replaces the page. Env logout needs it: the destination is
+ * served by the edge rather than being a route within this app, so there is nothing to route to. The public
+ * seam over the file-local [assignLocation], which the 401 redirect already uses.
+ *
+ * **It does not guard [url]** -- callers pass a value they have already proven same-origin (`sameOriginPath`
+ * in the kernel). Anything reaching here navigates the whole window.
  */
 fun leaveAppTo(url: String) = assignLocation(url)
 

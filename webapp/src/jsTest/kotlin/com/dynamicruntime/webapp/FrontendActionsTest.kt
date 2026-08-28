@@ -32,9 +32,8 @@ class FrontendActionsTest {
     }
 
     @Test
-    fun envLogoutReceivesItsCallArguments() {
-        // The two URLs the edge supplies must reach the implementation untouched -- it is pure mechanism over
-        // them (issue #486).
+    fun envLogoutReceivesItsCallArgumentsWhenBothAreSameOrigin() {
+        // The two URLs the edge supplies reach the implementation when they are same-origin paths (issue #486).
         var received: List<String>? = null
         val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {})
         assertTrue(actions.run("envLogout", listOf("/ea/auth/env/logout", "/ew")))
@@ -42,9 +41,29 @@ class FrontendActionsTest {
     }
 
     @Test
+    fun envLogoutIsInertWhenEitherUrlIsNotSameOrigin() {
+        // The landing URL reaches a full-window navigation, so an overlaid off-site value would be an open
+        // redirect. Authority is not trust: the edge supplies these, but they are still guarded (issue #498).
+        var received: List<String>? = null
+        val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {})
+
+        // The name is implemented, so run() reports true -- but nothing is handed on.
+        assertTrue(actions.run("envLogout", listOf("/ea/auth/env/logout", "//evil.example.com")))
+        assertNull(received)
+
+        // ...and the same for the logout path, which reaches an API call.
+        assertTrue(actions.run("envLogout", listOf("https://evil.example.com", "/ew")))
+        assertNull(received)
+
+        // A missing argument is not a URL either.
+        assertTrue(actions.run("envLogout", listOf("/ea/auth/env/logout")))
+        assertNull(received)
+    }
+
+    @Test
     fun openPathNavigatesOnlyToAGuardedSameOriginPath() {
-        // A menu item's action is data a client may overlay, so the one function that turns it into a
-        // navigation drops anything that is not a same-origin path rather than following it (issue #493).
+        // A menu item's action is data a client may overlay, so every argument that becomes a navigation is
+        // dropped unless it is a same-origin path, rather than being followed (issue #493).
         var navigated: String? = null
         val actions = FrontendActions(logout = {}, envLogout = {}, openPath = { navigated = it })
         assertTrue(actions.run("openPath", listOf("/wa")))
@@ -53,18 +72,5 @@ class FrontendActionsTest {
         navigated = null
         assertTrue(actions.run("openPath", listOf("//evil.example.com")))
         assertNull(navigated)
-    }
-
-    @Test
-    fun sameOriginPathRefusesWhatAnOpenRedirectWouldNeed() {
-        // Directly on the guard, since it is the security boundary (issue #493).
-        assertEquals("/wa", FrontendActions.sameOriginPath("/wa"))
-        assertEquals("/ec/login?next=%2Fwa", FrontendActions.sameOriginPath("/ec/login?next=%2Fwa"))
-        assertNull(FrontendActions.sameOriginPath("//host"))          // protocol-relative
-        assertNull(FrontendActions.sameOriginPath("/\\host"))         // backslash smuggling
-        assertNull(FrontendActions.sameOriginPath("https://host"))    // a scheme
-        assertNull(FrontendActions.sameOriginPath("javascript:alert(1)"))
-        assertNull(FrontendActions.sameOriginPath("wa"))              // not absolute
-        assertNull(FrontendActions.sameOriginPath(""))
     }
 }

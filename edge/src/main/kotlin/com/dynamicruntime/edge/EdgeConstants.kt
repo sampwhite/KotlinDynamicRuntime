@@ -1,6 +1,7 @@
 package com.dynamicruntime.edge
 
 import com.dynamicruntime.common.http.request.ContextRoot
+import com.dynamicruntime.common.uiblock.UIB
 
 /**
  * The context roots a KdrEdge node serves its own surface under (issue #386).
@@ -79,18 +80,30 @@ object EDGEUI {
     /** "Log out" -- clears the env-auth session (env-authed callers only). */
     const val logoutItem = "envLogout"
 
-    // Where the edge's items sort. Well past the base menu's numbering (its items land at
-    // `UIB.orderStep`-spaced positions from 100), and an overlay must state its own order since only a base's
-    // items are auto-numbered. "Open application" sits just under the catalog; the account actions sit last,
-    // as they conventionally do -- Log in and Log out never coexist (opposite cfacts), so their adjacent
-    // numbers only decide where the single one that shows lands.
+    // Where the edge's items sort. An overlay must state its own order, since only a base's items are
+    // auto-numbered -- `homeMenu` declares its items contiguously from `UIB.orderStep`, so the base occupies
+    // 100, 200, 300, ... one slot per item.
+    //
+    // The edge's items therefore start at a **decade of their own** rather than at the next free base slot.
+    // `openAppOrder` used to be 200, which was exactly the base's `users` slot; that was harmless only because
+    // `users` is `,app`-gated, a fact about today's cfacts rather than about the numbering. Sitting just past
+    // the current base (900, when the base ended at 800) would have been no better -- the ninth base item
+    // added would land on it, and nothing would say so. `edgeOrderBase` is far enough out that the base menu
+    // would have to grow a hundredfold to reach it (issue #498).
+    //
+    // "Open application" leads; the account actions sit last, as they conventionally do -- Log in and Log out
+    // never coexist (opposite cfacts), so their adjacent numbers only decide where the single one that shows
+    // lands.
 
-    /** Just under the base catalog item (100). */
-    const val openAppOrder = 200
+    /** Where the edge's own numbering starts, clear of any plausible base menu. */
+    const val edgeOrderBase = 10_000
+
+    /** First of the edge's own items. */
+    const val openAppOrder = edgeOrderBase
 
     /** Near the bottom, an account action. */
-    const val loginOrder = 900
+    const val loginOrder = edgeOrderBase + UIB.orderStep
 
     /** Last, as a logout conventionally is. */
-    const val logoutOrder = 1000
+    const val logoutOrder = edgeOrderBase + 2 * UIB.orderStep
 }

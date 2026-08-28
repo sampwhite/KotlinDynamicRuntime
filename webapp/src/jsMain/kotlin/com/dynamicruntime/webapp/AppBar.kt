@@ -184,10 +184,11 @@ val AppBar = FC<AppBarProps> { props ->
         }
     }
 
-    // Env logout (issue #486): clear the perimeter cookie, then leave the app for the sign-in page. Both URLs
-    // come from the call's arguments -- the edge supplies them because only it knows them. Unlike `logout`,
-    // this is a full-window navigation, not a hash change: the caller is now anonymous on a node whose only
-    // anonymous surface is that sign-in page, so there is nothing of the app left to route within.
+    // Env logout (issue #486): clear the perimeter cookie, then leave the app for where the edge says to land.
+    // Both URLs come from the call's arguments -- the edge supplies them because only it knows them -- and both
+    // arrive already guarded same-origin by `FrontendActions` (issue #498). Unlike `logout`, this is a
+    // full-window navigation, not a hash change: the caller is now anonymous, and the destination is served by
+    // the edge rather than being a route within this app.
     fun envLogoutAction(args: List<String>) {
         open = false
         val logoutPath = args.getOrNull(0) ?: return

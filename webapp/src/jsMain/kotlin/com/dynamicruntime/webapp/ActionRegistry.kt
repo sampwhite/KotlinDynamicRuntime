@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.uiblock.UiActions
+import com.dynamicruntime.common.util.sameOriginPath
 
 /**
  * What the frontend can be asked to *do* by name (issue #483) -- the implementations behind the functions the
@@ -20,15 +21,24 @@ class FrontendActions(
     private val envLogout: (List<String>) -> Unit,
     private val openPath: (String) -> Unit,
 ) {
+    // Every URL an item supplies is guarded here, in the one place item data becomes a navigation. A menu item
+    // is data a client may overlay, so an unguarded argument that reaches a full-window navigation is an open
+    // redirect -- see `sameOriginPath` in the kernel for what is refused and why. A refused value makes the
+    // action inert rather than throwing: a menu entry that cannot be trusted is better dead than followed.
     private val byName: Map<String, (List<String>) -> Unit> = mapOf(
         HACT.logout.name to { _ -> logout() },
-        // Env logout takes its two URLs from the call (the edge is the authority on both); this side is pure
-        // mechanism and passes the arguments straight through -- see `HACT.envLogout`.
-        HACT.envLogout.name to { args -> envLogout(args) },
-        // openPath leaves the SPA for a same-origin server path. The path is guarded here -- a bad or off-site
-        // value is dropped rather than navigated to -- because a menu item is data a client may overlay, and
-        // this is the one function that turns such data into a navigation. See `HACT.openPath`.
-        HACT.openPath.name to { args -> args.firstOrNull()?.let { sameOriginPath(it) }?.let { openPath(it) } },
+        // Env logout takes its two URLs from the call (the edge is the authority on both), but authority is
+        // not trust: both reach a sink -- an API call and a full-window navigation -- so both are guarded, and
+        // the action runs only if both survive. See `HACT.envLogout`.
+        HACT.envLogout.name to { args ->
+            val logoutPath = sameOriginPath(args.getOrNull(0))
+            val landingUrl = sameOriginPath(args.getOrNull(1))
+            if (logoutPath != null && landingUrl != null) {
+                envLogout(listOf(logoutPath, landingUrl))
+            }
+        },
+        // openPath leaves the SPA for a same-origin server path. See `HACT.openPath`.
+        HACT.openPath.name to { args -> sameOriginPath(args.firstOrNull())?.let { openPath(it) } },
     )
 
     /** Runs [name] with [args], or returns false when nothing implements it. */
@@ -46,25 +56,4 @@ class FrontendActions(
      * implemented is a click that silently does nothing. Asserted at startup rather than discovered by a user.
      */
     fun missing(): List<String> = UiActions.declared.map { it.name }.filterNot { byName.containsKey(it) }
-
-    companion object {
-        /**
-         * [raw] if it is a **same-origin absolute path**, or null (issue #493). The frontend twin of the
-         * edge's `EnvAuthReturn.sanitize`, and for the same reason: a navigation target taken from data is an
-         * open redirect unless proven otherwise, and a menu item's action is data a client may overlay.
-         *
-         * Refused, each for its own reason: a protocol-relative `//host` or `/\host` (a browser follows it
-         * off-site while it looks local -- the case a naive "starts with /" check misses); any scheme
-         * (`https:`, `javascript:`); a backslash anywhere (browsers normalize it to `/`, so it can smuggle the
-         * above past a `/`-only check); and control characters. Covered under `jsNodeTest`.
-         */
-        fun sameOriginPath(raw: String): String? {
-            val v = raw.trim()
-            if (v.isEmpty() || !v.startsWith("/")) return null
-            if (v.startsWith("//") || v.startsWith("/\\")) return null
-            if (v.any { it.isISOControl() || it == '\\' }) return null
-            if (v.drop(1).substringBefore('/').contains(':')) return null
-            return v
-        }
-    }
 }

@@ -21,6 +21,7 @@ import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 
 /**
@@ -53,6 +54,22 @@ class EdgeMenuTest : StringSpec({
         scope.userProfile = profile
         val menu = UiBlockService.get(scope).resolve(scope, HMENU.block)?.get(HFLD.menu) as List<*>
         return menu.map { it as Map<*, *> }.first { it[HFLD.id] == id }[UIB.action]
+    }
+
+    "the edge's own items sort clear of the base menu's auto-numbered range" {
+        // The regression guard for issue #498. `homeMenu`'s items are auto-numbered contiguously from
+        // UIB.orderStep, so the base occupies 100, 200, 300, ... -- and `openAppOrder` was 200, exactly the
+        // base's `users` slot. A tie is decided by nothing, and this one was invisible because `users` is
+        // `,app`-gated: a fact about today's cfacts, not about the numbering.
+        val edgeOrders = listOf(EDGEUI.openAppOrder, EDGEUI.loginOrder, EDGEUI.logoutOrder)
+
+        // Headroom rather than the base's current length: a base of N items tops out at orderStep * N, so
+        // this says a base could grow to 99 items (9900) and still not reach the edge's first slot.
+        edgeOrders.forEach { it shouldBeGreaterThan UIB.orderStep * 99 }
+
+        // Distinct and ascending, so the relative order is decided here rather than by a tie-break.
+        edgeOrders.toSet().size shouldBe edgeOrders.size
+        edgeOrders shouldBe edgeOrders.sorted()
     }
 
     "an anonymous edge caller is offered the catalog, the app, and a way in" {
