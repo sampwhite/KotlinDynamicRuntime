@@ -17,6 +17,13 @@ class SchProperty(
      * *shared* target instance: a title from there would label every field referencing that type identically.
      */
     val title: String? = null,
+    /**
+     * `g-optionalContents`: this field's object value is a **fragment**, so the validator checks its fields but
+     * not its completeness -- neither [SchType.required] nor a conditional's requiredness (issue #487). On the
+     * property, not [valueType], because a `$ref` field's value type is shared -- only this use of it is a
+     * fragment. See [SCH.optionalContents].
+     */
+    val optionalContents: Boolean = false,
 ) {
     /** Resolved value schema. Set once during parsing (see class doc). */
     lateinit var valueType: SchType
