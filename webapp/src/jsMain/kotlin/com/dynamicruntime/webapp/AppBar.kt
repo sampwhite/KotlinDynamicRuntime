@@ -66,9 +66,9 @@ sealed class ShellBrand {
  * The brand state to move to after a load attempt (issue #469), or **null to keep the current one**.
  *
  * A success shows the brand -- or the mark alone when it is blank, a deployment that names none. A failure
- * downgrades to [Failed] only when nothing has loaded yet ([everLoaded] false); once a wordmark has shown, a
+ * downgrades to [ShellBrand.Failed] only when nothing has loaded yet (`everLoaded` false); once a wordmark has shown, a
  * transient re-fetch failure keeps it -- "the previous wordmark beats no wordmark", which is what lets a refresh
- * never flicker. The initial [Loading] is the `useState` default, never re-entered here. Pure, covered under
+ * never flicker. The initial [ShellBrand.Loading] is the `useState` default, never re-entered here. Pure, covered under
  * `jsNodeTest`.
  */
 fun brandAfterLoad(loaded: Boolean, brand: String?, everLoaded: Boolean): ShellBrand? = when {

@@ -17,4 +17,9 @@ dependencies {
     // version for every module that applies the convention. This versioned file
     // is now the single home for that version.
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.0")
+    // Dokka generates API docs, but we apply it for a side effect that matters more here: it resolves every
+    // KDoc `[link]` and warns on any that dangles. With `failOnWarning` (set in the convention plugins) that
+    // turns a renamed/moved/misspelled doc link into a build failure instead of something caught, if ever, in
+    // a later manual review. See issue #491.
+    implementation("org.jetbrains.dokka:dokka-gradle-plugin:2.2.0")
 }

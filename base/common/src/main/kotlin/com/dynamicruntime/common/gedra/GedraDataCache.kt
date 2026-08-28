@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.cache.SqlCacheIndex
+import com.dynamicruntime.common.sql.cache.TCH
 import com.dynamicruntime.common.sql.cache.SqlCacheParams
 import com.dynamicruntime.common.sql.cache.SqlCacheRow
 import com.dynamicruntime.common.sql.cache.SqlTableCache
