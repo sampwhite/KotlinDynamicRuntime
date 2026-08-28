@@ -186,19 +186,17 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         if (effective == null || !effective.found) {
             // Explicitly uncached: a stale URL from a redeploy lands here, and a cached 404 would keep
             // answering for a file that exists. The frontend's next UI-config call hands it a current ref.
-            handler.setResponseHeader("Cache-Control", noStore)
+            handler.setResponseHeader("Cache-Control", ContentResources.noStore)
             handler.sendStringResponse("No fragment file '$fileId'.", EXC.notFound, "text/plain")
             return true
         }
-        // **Only a versioned URL is cacheable**, and this is the whole of what makes the permanent header
-        // safe. A bare `/st/<appId>/md/<fileId>` names no particular document -- it is answered with whatever
-        // *this caller* reads -- so storing that answer under that URL is precisely the poisoning the build id
-        // exists to prevent: the first requester's copy would be served to every client behind the cache.
-        //
-        // Answered rather than refused, because it is reachable without malice: a hand-driven `curl`, and a
-        // frontend whose UI-config gave it no build id (`fetchUiConfig` defaults a missing one to empty). Both
-        // want the content; neither may leave it in a shared cache.
-        handler.setResponseHeader("Cache-Control", if (versioned) cacheControl else noStore)
+        // Only a versioned URL is cacheable -- the rule in ContentResources.buildId. Here the id does more
+        // than match: it **selects** the content (above), because fragment content varies by client. So a bare
+        // `/st/<appId>/md/<fileId>` names no particular document, and storing that answer under that URL is the
+        // cross-client poisoning the build id exists to prevent (#456) -- the first requester's copy served to
+        // every client behind the cache. Answered rather than refused, because it is reachable without malice:
+        // a hand-driven `curl`, or a frontend whose UI-config gave it no build id.
+        handler.setResponseHeader("Cache-Control", if (versioned) ContentResources.cacheControl else ContentResources.noStore)
         handler.sendJsonResponse(effective.content, EXC.ok)
         return true
     }
@@ -279,12 +277,6 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
 
         /** Classpath resource directory holding the `<fileId>.md` fragment files. */
         const val resourceDir = "md-fragments"
-
-        /** Permanent, shared cache: safe because the `buildId` in the URL changes whenever content changes. */
-        const val cacheControl = "public, max-age=31536000, immutable"
-
-        /** For an answer no shared cache may keep: a URL that does not name one document, and a 404. */
-        const val noStore = "no-store"
 
         fun get(cxt: KdrCxt): MarkdownFragmentService =
             cxt.instanceConfig.get(serviceName) as? MarkdownFragmentService

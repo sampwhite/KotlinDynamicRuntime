@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.content
 
+import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.FCHK
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.UIC
@@ -126,7 +127,7 @@ class FragmentOverlayTest : StringSpec({
         val handler = http.sendGetRequestRaw("/st/myapp/md/${SF.content}:$acmeBuildId")
 
         handler.rptStatusCode shouldBe EXC.ok
-        handler.rptResponseHeaders["cache-control"] shouldBe listOf(MarkdownFragmentService.cacheControl)
+        handler.rptResponseHeaders["cache-control"] shouldBe listOf(ContentResources.cacheControl)
         val map = handler.rptResponseData.shouldNotBeNull().jsonMap().shouldNotBeNull()
         @Suppress("UNCHECKED_CAST")
         val welcome = map[SF.welcome] as Map<String, Any?>
@@ -143,7 +144,7 @@ class FragmentOverlayTest : StringSpec({
         val http = TestHttpClient(cxt.instanceConfig)
         val handler = http.sendGetRequestRaw("/st/myapp/md/${SF.content}")
         handler.rptStatusCode shouldBe EXC.ok
-        handler.rptResponseHeaders["cache-control"] shouldBe listOf(MarkdownFragmentService.noStore)
+        handler.rptResponseHeaders["cache-control"] shouldBe listOf(ContentResources.noStore)
         // Still answered: a hand-driven curl and a frontend that was given no ref both want the content.
         val map = handler.rptResponseData.shouldNotBeNull().jsonMap().shouldNotBeNull()
         @Suppress("UNCHECKED_CAST")
@@ -156,7 +157,7 @@ class FragmentOverlayTest : StringSpec({
         handler.rptStatusCode shouldBe EXC.notFound
         // Explicitly uncached: a stale URL from a redeploy lands here, and a cached 404 would go on answering
         // for a file that exists.
-        handler.rptResponseHeaders["cache-control"] shouldBe listOf(MarkdownFragmentService.noStore)
+        handler.rptResponseHeaders["cache-control"] shouldBe listOf(ContentResources.noStore)
     }
 
     // --- the operator check ------------------------------------------------------------------------------

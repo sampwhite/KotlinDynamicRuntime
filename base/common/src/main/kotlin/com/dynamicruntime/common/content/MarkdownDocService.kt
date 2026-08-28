@@ -23,8 +23,10 @@ import com.dynamicruntime.common.startup.ServiceInitializer
  *
  * Request shape: `/<staticRoot>/<appId>/doc/<docId:buildId>`, e.g. `/st/myapp/doc/readme:9f3ac1`.
  *  - `appId` is opaque and **ignored for now** (as with fragments).
- *  - `buildId` is a cache-busting content hash ([docBuildId]); it is **stripped and ignored** for the lookup.
- *  - `docId` names the resource read from `md-docs/<docId>.md` on the classpath.
+ *  - `docId` names the resource read from `md-docs/<docId>.md` on the classpath, and is the lookup key.
+ *  - `buildId` is a cache-busting content hash ([docBuildId]). It does not select content -- a document has
+ *    exactly one -- but it **is verified**: only a request whose build id matches gets the permanent cache
+ *    header, per the rule in [ContentResources.buildId] (issue #472).
  */
 class MarkdownDocService : ServiceInitializer, ContentServer {
     override val serviceName: String = MarkdownDocService.serviceName
@@ -44,18 +46,28 @@ class MarkdownDocService : ServiceInitializer, ContentServer {
         if (segments.size != 4 || segments[2] != docMarker) {
             return false
         }
-        val docId = segments[3].substringBefore(':') // strip the ":buildId" cache-busting suffix
+        val docId = segments[3].substringBefore(':')
+        val requestedBuildId = segments[3].substringAfter(':', "")
         if (!ContentResources.isSafeFileId(docId)) {
             handler.sendStringResponse("Bad document id.", EXC.badInput, "text/plain")
             return true
         }
         val text = ContentResources.readText(resourceDir, docId)
         if (text == null) {
+            // A cached 404 outlives a rolling deploy, during which one node can 404 a document another still
+            // serves; keep the negative answer out of shared caches (see ContentResources.buildId).
+            handler.setResponseHeader("Cache-Control", ContentResources.noStore)
             handler.sendStringResponse("No document '$docId'.", EXC.notFound, "text/plain")
             return true
         }
-        // Immutable, long-lived cache: the versioned URL is the cache key, so a new buildId is a new URL.
-        handler.setResponseHeader("Cache-Control", MarkdownFragmentService.cacheControl)
+        // The permanent header is safe only on a URL whose build id names exactly these bytes -- the rule in
+        // ContentResources.buildId. A document has one build id (docBuildId), so verification is a straight
+        // equality check: matched -> cache forever; absent or stale -> serve the current document, but under
+        // no-store so the URL cannot lie about its contents for a year. Documents deliberately do NOT 404 on a
+        // mismatch (unlike fragments): a user recovers current prose by navigating away and back, so a 404
+        // would turn cosmetic staleness into a visible failure (#472).
+        val matched = requestedBuildId.isNotEmpty() && requestedBuildId == docBuildId(docId)
+        handler.setResponseHeader("Cache-Control", if (matched) ContentResources.cacheControl else ContentResources.noStore)
         handler.sendStringResponse(text, EXC.ok, contentType)
         return true
     }
@@ -79,8 +91,11 @@ class MarkdownDocService : ServiceInitializer, ContentServer {
 
         /**
          * The cache-busting build id for a document (see [ContentResources.buildId]): a memoized content hash,
-         * or null if the resource is absent. Used by the code handing the frontend a `docId:buildId` (the home
-         * UI-config endpoint); the document request itself only strips it.
+         * or null if the resource is absent.
+         *
+         * Both ends of the round trip: the code handing the frontend a `docId:buildId` (the home UI-config
+         * endpoint) mints it here, and [serve] compares the id it is given against this same value to decide
+         * whether the response may carry the permanent cache header (issue #472).
          */
         fun docBuildId(docId: String): String? = ContentResources.buildId(resourceDir, docId)
     }
