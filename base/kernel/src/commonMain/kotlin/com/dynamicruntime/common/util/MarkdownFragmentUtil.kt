@@ -108,6 +108,33 @@ enum class MarkdownError {
     emptyKey,
 }
 
+/**
+ * The value a **frontend-pass** `@t` fragment reference names in this one file's two-tier map, or null when it
+ * names none (issue #505).
+ *
+ * A frontend reference is `namespace.key` -- the shape `${namespace.key}` resolves, within one file, which is
+ * all a frontend has (its delivered copy). The map is exactly two tiers, so a well-formed key is exactly two
+ * dot-separated parts; anything else (one part, or three) names no value here and returns null. The boot
+ * checker validates a `${@t(...)}` reference with this, and the frontend `FragmentResolver` will resolve one
+ * with it at render time, so the two cannot disagree.
+ *
+ * The **backend pass** is a different rule and not this helper: `%{@t("fileId.namespace.key")}` resolves three
+ * parts across the *whole registry*, because the backend has every file where a frontend has only its own. That
+ * resolution, and the boot validation of it, arrive with the backend pass (Phase 4 of issue #505); nothing
+ * writes it yet.
+ */
+fun Map<String, Map<String, String>>.resolveFragment(key: String): String? {
+    val dot = key.indexOf('.')
+    if (dot <= 0 || dot >= key.length - 1) {
+        return null
+    }
+    // Exactly two parts: a second dot would name a third tier this map does not have.
+    if (key.indexOf('.', dot + 1) != -1) {
+        return null
+    }
+    return this[key.substring(0, dot)]?.get(key.substring(dot + 1))
+}
+
 // --- helpers ----------------------------------------------------------------
 
 /** Whether every character of [line] is whitespace (`<= ' '`), i.e., the line is "empty" for the format. */

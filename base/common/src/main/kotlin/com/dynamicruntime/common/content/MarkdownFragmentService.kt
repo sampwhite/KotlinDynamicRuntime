@@ -16,6 +16,7 @@ import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.TemplateIssue
 import com.dynamicruntime.common.util.TemplatePaths
+import com.dynamicruntime.common.util.checkFragmentReferences
 import com.dynamicruntime.common.util.checkFragmentSyntax
 import com.dynamicruntime.common.util.fragmentPaths
 import com.dynamicruntime.common.util.missingFrom
@@ -144,9 +145,17 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 val entries = merged.content.fragmentPaths().map { e ->
                     FragmentEntryReport(e.entry, e.paths, data?.let { e.paths.missingFrom(it) } ?: emptyList())
                 }
+                // Syntax and `@t` references both come from the merged content; a broken template stops the
+                // reference check for that value (analyzeTemplate returns no refs from a block it could not
+                // parse), so the two lists do not double-report one defect (issue #505).
+                val issues = if (merged.found) {
+                    merged.content.checkFragmentSyntax() + merged.content.checkFragmentReferences()
+                } else {
+                    emptyList()
+                }
                 FragmentCheckResult(
                     fileId, client, merged.found,
-                    issues = if (merged.found) merged.content.checkFragmentSyntax() else emptyList(),
+                    issues = issues,
                     entries = if (merged.found) entries else emptyList(),
                     orphans = merged.orphans,
                 )
