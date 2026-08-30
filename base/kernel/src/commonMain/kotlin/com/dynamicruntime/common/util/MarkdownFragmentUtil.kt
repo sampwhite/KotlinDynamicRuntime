@@ -50,6 +50,13 @@ fun String.parseMarkdownFragments(): Map<String, Map<String, String>> {
                 if (name.isEmpty()) {
                     throw mkMarkdownException(MarkdownError.emptyNamespace, "A '# @' namespace declaration has no name.")
                 }
+                if (name.contains('.')) {
+                    throw mkMarkdownException(
+                        MarkdownError.dottedName,
+                        "Namespace '$name' contains a '.', which the two-tier format cannot address: a value is " +
+                            "reached as 'namespace.key', so a dotted namespace can never be named.",
+                    )
+                }
                 namespace = name
                 result.getOrPut(name) { LinkedHashMap() }
                 i++
@@ -65,6 +72,13 @@ fun String.parseMarkdownFragments(): Map<String, Map<String, String>> {
                 val key = if (wsIndex < 0) rest else rest.substring(0, wsIndex)
                 if (key.isEmpty()) {
                     throw mkMarkdownException(MarkdownError.emptyKey, "A '# +' key declaration has no key name.")
+                }
+                if (key.contains('.')) {
+                    throw mkMarkdownException(
+                        MarkdownError.dottedName,
+                        "Key '$ns.$key' contains a '.' in its key name, which the two-tier format cannot " +
+                            "address: '\${$ns.$key}' would look for a third tier that does not exist.",
+                    )
                 }
                 val inline = if (wsIndex < 0) "" else rest.substring(wsIndex)
                 val (value, next) = if (inline.isNotBlank()) {
@@ -106,6 +120,15 @@ enum class MarkdownError {
 
     /** A `# +` declaration had no key name. */
     emptyKey,
+
+    /**
+     * A `# @` namespace or `# +` key name contained a `.`, which the two-tier format cannot address. A name is
+     * reached as `namespace.key` -- by `${namespace.key}`, which walks dot-separated segments through the map,
+     * and by `@t("namespace.key")` -- so a dotted name is unreachable either way: `${ns.a.b}` would look for
+     * `map["ns"]["a"]["b"]` and find a String where it needs a map. Refused where it is written rather than
+     * left to fail as a puzzling `notAnObject` at render or a dangling reference at boot.
+     */
+    dottedName,
 }
 
 /**

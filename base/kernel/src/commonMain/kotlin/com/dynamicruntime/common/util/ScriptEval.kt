@@ -122,16 +122,21 @@ fun evalFragment(state: ScriptState, data: Map<String, Any?>, node: FragmentNode
 }
 
 /**
- * The error codes a guarded `@t` absorbs: the ones meaning "the data was not there", never "the template is
- * wrong". That line is what keeps `?:` a statement about a missing value rather than a blanket catch -- a
- * fragment with a syntax error or a type mismatch still throws, or the defect would be hidden everywhere the
- * fragment is used. [ScriptError.fragmentNotFound] counts as absence: a pull naming nothing is a missing value.
+ * The error codes a guarded `@t` absorbs from **inside** the fragment it pulled: the ones meaning "the data was
+ * not there", never "the template is wrong". That line is what keeps `?:` a statement about a missing value
+ * rather than a blanket catch -- a fragment with a syntax error or a type mismatch still throws, or the defect
+ * would be hidden everywhere the fragment is used.
+ *
+ * [ScriptError.fragmentNotFound] is deliberately **not** here. This pull's *own* key missing is handled before
+ * the fragment runs at all (and does yield null under a guard, which is the absence a `?:` is for). So the only
+ * way that code reaches this set is a *nested* `@t` inside the pulled fragment naming something that does not
+ * exist -- a misspelled reference in the fragment's own text, which is a defect its author must fix, not a
+ * value the caller failed to supply.
  */
 private val absenceErrors = setOf(
     ScriptError.missingKey,
     ScriptError.nullValue,
     ScriptError.notAnObject,
-    ScriptError.fragmentNotFound,
 )
 
 /** Walks a dotted path through nested maps, keeping the pre-grammar error codes exactly as they were. */

@@ -211,6 +211,20 @@ class FragmentConstructTest {
     }
 
     @Test
+    fun aGuardDoesNotHideADanglingReferenceInsideTheFragment() {
+        // The pull's *own* key missing is an absence the guard covers (below). A misspelled `@t` *inside* the
+        // fragment is not: it is a defect in that fragment's text, and absorbing it would hide a broken
+        // reference everywhere the fragment is used.
+        val r = resolverOf("g" to $$"""${@t("typo")}""")
+        assertEquals(
+            ScriptError.fragmentNotFound,
+            errorCode { $$"""${@t("g") ?: "fallback"}""".evalTemplate(emptyMap(), resolver = r) },
+        )
+        // ...while the pull's own absent key still takes the default, unchanged.
+        assertEquals("fallback", $$"""${@t("absent") ?: "fallback"}""".evalTemplate(emptyMap(), resolver = r))
+    }
+
+    @Test
     fun aDuplicateBindingNameIsRefused() {
         // One of the two values would silently win, and which is not something a reader should have to work out.
         val r = resolverOf("g" to $$"""[${x}]""")
