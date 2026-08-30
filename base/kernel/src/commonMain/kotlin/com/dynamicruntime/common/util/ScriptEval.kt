@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.exception.KdrException
 
 /**
  * Evaluation and the value rules for the expression grammar in `ScriptExpr.kt`.
@@ -20,7 +21,7 @@ import com.dynamicruntime.common.annotation.KdrPrivate
  *    zero is [ScriptError.divideByZero] rather than an infinity that would print.
  *  - **`~` joins text**, formatting each side with [fmt]. Separate from `+` so neither operator is ever
  *    ambiguous about what it is doing. Most templates need no operator at all -- `n=${count}` already
- *    concatenates by juxtaposition; `~` is for composing inside an expression, e.g. a ternary branch.
+ *    concatenates by juxtaposition; `~` is for composing inside an expression, e.g., a ternary branch.
  *  - **Numbers stay integral where they start.** Two `Long`s divide as integers (`7 / 2` is 3); one `Double`
  *    makes the result a `Double`.
  *  - **`< > <= >=`** compare two numbers numerically and two strings lexicographically. Mixed kinds are a type
@@ -65,8 +66,73 @@ fun evalNode(state: ScriptState, data: Map<String, Any?>, node: ScriptNode, tole
             val cond = truthy(evalNode(state, data, node.cond, tolerant = true, depth = next))
             evalNode(state, data, if (cond) node.whenTrue else node.whenFalse, tolerant, next)
         }
+        is FragmentNode -> evalFragment(state, data, node, tolerant, next)
     }
 }
+
+/**
+ * Pulls the fragment `@t(key, ...)` names and evaluates it (issue #505).
+ *
+ * The key is a full expression, so it may be computed. In a tolerant position (`?:`, a ternary condition, a
+ * null test) an absent key, a not-found fragment, or an absence *inside* the fragment all make the pull null,
+ * so `@t("x") ?: "default"` uses the grammar's one default mechanism; see [absenceErrors] for where that stops.
+ *
+ * Scope follows the settled rule: **no bindings inherits** the caller's [data]; **any binding is hermetic** --
+ * the pulled fragment runs with only the bound values, so it cannot silently read a variable it was never
+ * handed. Bindings are evaluated in the caller's scope, before the fragment runs.
+ */
+@KdrPrivate
+fun evalFragment(state: ScriptState, data: Map<String, Any?>, node: FragmentNode, tolerant: Boolean, depth: Int): Any? {
+    val keyValue = evalNode(state, data, node.key, tolerant, depth)
+    if (keyValue == null) {
+        // Reachable non-null-throwing only under tolerance (an absent path there returns null); a literal
+        // `@t(null)` reaches here intolerant and is a real mistake.
+        if (tolerant) return null
+        throw mkScriptException(state, ScriptError.nullValue, "Fragment reference '@t' has a null key.")
+    }
+    val key = keyValue as? String ?: throw mkScriptException(
+        state, ScriptError.typeMismatch,
+        "Fragment reference '@t' needs a text key but was given ${describeValue(keyValue)}.",
+    )
+    val resolver = state.resolver ?: throw mkScriptException(
+        state, ScriptError.noResolver,
+        "Fragment reference '@t(\"$key\")' cannot be resolved: this evaluation was given no fragment resolver.",
+    )
+    val text = resolver.resolve(key)
+    if (text == null) {
+        if (tolerant) return null
+        throw mkScriptException(
+            state, ScriptError.fragmentNotFound, "Fragment reference '@t(\"$key\")' names no fragment this node has.",
+        )
+    }
+    val scope = if (node.bindings.isEmpty()) {
+        data
+    } else {
+        // Parsing refuses a duplicate name, so building the map cannot silently drop a binding here.
+        node.bindings.associate { (name, expr) -> name to evalNode(state, data, expr, tolerant, depth) }
+    }
+    if (!tolerant) {
+        return evalFragmentText(state, key, text, scope)
+    }
+    return try {
+        evalFragmentText(state, key, text, scope)
+    } catch (e: KdrException) {
+        if (e.extraData[KdrException.errorCodeKey] in absenceErrors) null else throw e
+    }
+}
+
+/**
+ * The error codes a guarded `@t` absorbs: the ones meaning "the data was not there", never "the template is
+ * wrong". That line is what keeps `?:` a statement about a missing value rather than a blanket catch -- a
+ * fragment with a syntax error or a type mismatch still throws, or the defect would be hidden everywhere the
+ * fragment is used. [ScriptError.fragmentNotFound] counts as absence: a pull naming nothing is a missing value.
+ */
+private val absenceErrors = setOf(
+    ScriptError.missingKey,
+    ScriptError.nullValue,
+    ScriptError.notAnObject,
+    ScriptError.fragmentNotFound,
+)
 
 /** Walks a dotted path through nested maps, keeping the pre-grammar error codes exactly as they were. */
 @KdrPrivate

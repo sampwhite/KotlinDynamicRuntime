@@ -60,6 +60,10 @@ fun String.checkTemplateSyntax(prefix: Char = '$'): List<TemplateIssue> = analyz
  * `${c ? a : b}` are required though only one is evaluated, and the right of `&&` is required though it may be
  * short-circuited away -- because either could run, and a caller that cannot supply one of them has a latent
  * failure either way. Reading "required" as "referenced" is the honest description.
+ *
+ * What a `@t` pull's fragment reads is **not** included: seeing it means resolving the key against the
+ * fragment registry, which this text-only walk has no access to (Phase 2 of issue #505). So [missingFrom] can
+ * answer "nothing missing" for a template that still fails at render.
  */
 class TemplatePaths(val required: Set<String>, val optional: Set<String>)
 
@@ -169,6 +173,12 @@ fun collectPaths(
             // Both arms, though only one will run: either could, so a caller must be able to supply either.
             collectPaths(node.whenTrue, tolerant, required, optional, next)
             collectPaths(node.whenFalse, tolerant, required, optional, next)
+        }
+        is FragmentNode -> {
+            // The key and the binding values read the caller's data, with the pull's own tolerance -- exactly
+            // as `evalFragment` evaluates them.
+            collectPaths(node.key, tolerant, required, optional, next)
+            node.bindings.forEach { collectPaths(it.second, tolerant, required, optional, next) }
         }
     }
 }

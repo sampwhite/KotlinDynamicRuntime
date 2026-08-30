@@ -10,7 +10,7 @@ import com.dynamicruntime.common.annotation.KdrPrivate
  * document deciding what is text and what is a block, while this parses one small language. Both are pure,
  * KMP-safe Kotlin, so the browser evaluates a template exactly as the backend does.
  *
- * Grammar, loosest binding first (each line binds tighter than the one above):
+ * Grammar, the loosest binding first (each line binds tighter than the one above):
  *
  * ```
  * expression     := ternary
@@ -24,8 +24,9 @@ import com.dynamicruntime.common.annotation.KdrPrivate
  * additive       := multiplicative { ('+' | '-') multiplicative }
  * multiplicative := unary { ('*' | '/' | '%') unary }
  * unary          := ('!' | '-') unary | primary
- * primary        := number | string | 'true' | 'false' | 'null' | call | path | '(' expression ')'
+ * primary        := number | string | 'true' | 'false' | 'null' | call | fragment | path | '(' expression ')'
  * call           := ident '(' [ expression { ',' expression } ] ')'
+ * fragment       := '@t' '(' expression { ',' ident ':' expression } ')'   // pull a fragment (issue #505)
  * path           := ident { '.' ident }
  * ```
  *
@@ -44,6 +45,26 @@ object SEXP {
      * `${((((...))))}` must report an error rather than exhaust the stack.
      */
     const val maxDepth = 32
+
+    /** The character that marks the fragment-pull construct `@t` (issue #505). */
+    const val fragmentMark = '@'
+
+    /**
+     * The name of the fragment-pull construct, so it is written `@t`. It echoes the frontend's `Copy.t`, but
+     * unlike a `scriptFunctions` entry it is **effectful** -- it pulls another fragment's text into scope --
+     * so it is parsed as its own production, marked with [fragmentMark], rather than being a function.
+     */
+    const val fragmentName = "t"
+
+    /**
+     * Cap on how deeply `@t` may pull fragments that themselves pull fragments (issue #505). Distinct from
+     * [maxDepth], which bounds expression nesting *within one* template -- a pull starts a fresh evaluation,
+     * so neither cap covers the other.
+     *
+     * A *cycle* is not what this catches: `evalFragmentText` detects one by ancestry and names it. This bounds
+     * a chain that is long without repeating, which only computed keys can produce.
+     */
+    const val maxIncludeDepth = 16
 }
 
 // --- tokens -----------------------------------------------------------------
@@ -52,14 +73,23 @@ object SEXP {
 @Suppress("EnumEntryName")
 enum class TokenKind { number, text, ident, op, end }
 
-/** One lexed token: its [kind], the source [text], a literal [value] for numbers/strings, and its position. */
+/**
+ * One lexed token: its [kind], the source [text], and a literal [value] for numbers/strings. No position --
+ * errors are reported against the enclosing `${` block, so a token offset has no consumer (issue #506).
+ */
 @KdrPrivate
-class Token(val kind: TokenKind, val text: String, val value: Any?, val pos: Int)
+class Token(val kind: TokenKind, val text: String, val value: Any?)
 
 /** The multi-character operators, longest first so `<=` is never read as `<` then `=`. */
 private val multiCharOps = listOf("?:", "==", "!=", "<=", ">=", "&&", "||")
 
-private val singleCharOps = "?:+-*/%<>!().~,".toSet()
+private val singleCharOps = "?:+-*/%<>!().~,@".toSet()
+
+/**
+ * The reserved words, which are literals rather than the start of a path. Named once because two places must
+ * agree about them: `parsePrimary` reads them as values, and a fragment parameter may not be called one.
+ */
+private val wordLiterals = setOf("true", "false", "null")
 
 /**
  * Splits an expression into tokens. Errors carry [ScriptError.syntaxError] and, like every template error,
@@ -89,10 +119,9 @@ fun tokenize(state: ScriptState, expr: String): List<Token> {
                         state, ScriptError.syntaxError, "Template expression has a number too large: '$text'.",
                     )
                 }
-                tokens.add(Token(TokenKind.number, text, value, start))
+                tokens.add(Token(TokenKind.number, text, value))
             }
             ch == '"' || ch == '\'' -> {
-                val start = i
                 i++ // opening quote
                 val sb = StringBuilder()
                 var closed = false
@@ -116,21 +145,21 @@ fun tokenize(state: ScriptState, expr: String): List<Token> {
                         state, ScriptError.syntaxError, "Template expression has an unterminated string literal.",
                     )
                 }
-                tokens.add(Token(TokenKind.text, sb.toString(), sb.toString(), start))
+                tokens.add(Token(TokenKind.text, sb.toString(), sb.toString()))
             }
             ch.isLetter() || ch == '_' -> {
                 val start = i
                 while (i < expr.length && (expr[i].isLetterOrDigit() || expr[i] == '_')) i++
-                tokens.add(Token(TokenKind.ident, expr.substring(start, i), null, start))
+                tokens.add(Token(TokenKind.ident, expr.substring(start, i), null))
             }
             else -> {
                 val two = if (i + 1 < expr.length) expr.substring(i, i + 2) else ""
                 val op = multiCharOps.firstOrNull { it == two }
                 if (op != null) {
-                    tokens.add(Token(TokenKind.op, op, null, i))
+                    tokens.add(Token(TokenKind.op, op, null))
                     i += 2
                 } else if (ch in singleCharOps) {
-                    tokens.add(Token(TokenKind.op, ch.toString(), null, i))
+                    tokens.add(Token(TokenKind.op, ch.toString(), null))
                     i++
                 } else {
                     throw mkScriptException(
@@ -140,7 +169,7 @@ fun tokenize(state: ScriptState, expr: String): List<Token> {
             }
         }
     }
-    tokens.add(Token(TokenKind.end, "", null, expr.length))
+    tokens.add(Token(TokenKind.end, "", null))
     return tokens
 }
 
@@ -181,6 +210,14 @@ class ElvisNode(val left: ScriptNode, val right: ScriptNode) : ScriptNode
 
 @KdrPrivate
 class TernaryNode(val cond: ScriptNode, val whenTrue: ScriptNode, val whenFalse: ScriptNode) : ScriptNode
+
+/**
+ * A fragment pull, `@t(key [, name: expr]*)` (issue #505). [key] is a full expression, so the key can be
+ * computed (`@t(chosenKey)`). [bindings] are the hermetic parameters: **empty means the pull inherits the
+ * caller's variables**, and any binding means it runs with *only* those, per the settled scope rule.
+ */
+@KdrPrivate
+class FragmentNode(val key: ScriptNode, val bindings: List<Pair<String, ScriptNode>>) : ScriptNode
 
 // --- parser -----------------------------------------------------------------
 
@@ -318,6 +355,60 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
         return CallNode(fn, args)
     }
 
+    /**
+     * Parses the fragment construct `@t(key [, name: expr]*)` (issue #505). Its own production rather than a
+     * function because it is effectful, and it keeps call shape because its key is a full expression -- a
+     * computed key (`@t(chosenKey)`) is the point of the dynamic-selection case.
+     */
+    fun parseFragment(depth: Int): ScriptNode {
+        take() // '@'
+        val name = peek()
+        if (name.kind != TokenKind.ident || name.text != SEXP.fragmentName) {
+            throw mkScriptException(
+                state, ScriptError.syntaxError,
+                "Template expression has '${SEXP.fragmentMark}' not followed by the fragment construct " +
+                    "'${SEXP.fragmentMark}${SEXP.fragmentName}'.",
+            )
+        }
+        take() // the construct name
+        expectOp("(")
+        val key = parseExpr(guard(depth))
+        val bindings = mutableListOf<Pair<String, ScriptNode>>()
+        while (atOp(",") != null) {
+            take()
+            val label = peek()
+            if (label.kind != TokenKind.ident) {
+                throw mkScriptException(
+                    state, ScriptError.syntaxError,
+                    "Template fragment '${SEXP.fragmentMark}${SEXP.fragmentName}' expected a parameter name " +
+                        "but found '${label.text.ifEmpty { "end of expression" }}'.",
+                )
+            }
+            // A word literal is not a name a fragment could ever read back: inside the fragment `${null}` is
+            // the literal, not a lookup. Refused here rather than binding a value nothing can reach.
+            if (label.text in wordLiterals) {
+                throw mkScriptException(
+                    state, ScriptError.syntaxError,
+                    "Template fragment parameter cannot be named '${label.text}': it is a word literal, so the " +
+                        "fragment could never read it back.",
+                )
+            }
+            // A duplicate would silently keep one of the two values, and which one is not something a reader
+            // should have to work out -- the same rule the fragment map builders apply to a repeated key.
+            if (bindings.any { it.first == label.text }) {
+                throw mkScriptException(
+                    state, ScriptError.syntaxError,
+                    "Template fragment parameter '${label.text}' is given twice; one value would silently win.",
+                )
+            }
+            take()
+            expectOp(":")
+            bindings.add(label.text to parseExpr(guard(depth)))
+        }
+        expectOp(")")
+        return FragmentNode(key, bindings)
+    }
+
     fun parsePrimary(depth: Int): ScriptNode {
         val t = peek()
         when {
@@ -325,6 +416,7 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
                 take()
                 return LiteralNode(t.value)
             }
+            atOp(SEXP.fragmentMark.toString()) != null -> return parseFragment(guard(depth))
             t.kind == TokenKind.ident -> {
                 // The three word-literals are reserved; anything else starts a path.
                 when (t.text) {
