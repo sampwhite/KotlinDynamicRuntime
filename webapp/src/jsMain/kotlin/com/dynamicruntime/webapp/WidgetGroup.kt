@@ -2,6 +2,8 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.util.FragmentResolver
+import com.dynamicruntime.common.util.resolveFragment
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
@@ -44,6 +46,17 @@ class Copy(private val byNamespace: Map<String, Map<String, String>>) {
 
     /** The value at [ns].[key], or null -- for copy whose *absence* means "render nothing here". */
     fun opt(ns: String, key: String): String? = byNamespace[ns]?.get(key)
+
+    /**
+     * A [FragmentResolver] over this copy, for evaluating a `@t("namespace.key")` pull against it (issue #505).
+     * It resolves through the kernel's [resolveFragment] -- the same rule the boot checker validates references
+     * with -- so a reference the checker blessed resolves here, and one it flagged resolves to nothing.
+     *
+     * This is a *frontend-pass* resolver: it sees one file (this delivered copy), so a `@t` key is the
+     * two-part `namespace.key`. Which file a string resolves against is named by the content element that
+     * carries the string, not by the string itself.
+     */
+    fun fragmentResolver(): FragmentResolver = FragmentResolver { key -> byNamespace.resolveFragment(key) }
 
     companion object {
         /** The copy of a group whose fragments have not arrived (or failed): every lookup falls back. */

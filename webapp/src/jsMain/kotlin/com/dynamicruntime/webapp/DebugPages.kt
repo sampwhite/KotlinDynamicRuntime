@@ -1,6 +1,13 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.test.TEP
+import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.a
@@ -11,6 +18,8 @@ import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.ul
+import react.useEffect
+import react.useState
 import web.cssom.ClassName
 
 // The frontend's debug pages (issue #227): a small area that exists only where the deployment permits it,
@@ -26,6 +35,9 @@ const val debugToolFault = "fault"
 
 /** The tool that dumps the app's resolved state. */
 const val debugToolState = "state"
+
+/** The tool that renders a server-provided content element whose text pulls a fragment on the frontend (#505). */
+const val debugToolFragment = "fragment"
 
 /**
  * Hash parameter that makes the **shell** fail (`#fault=shell`), rather than the page.
@@ -84,6 +96,7 @@ val DebugPage = FC<Props> {
     when (hashParams()[debugToolParam]) {
         debugToolFault -> DebugFault {}
         debugToolState -> DebugState {}
+        debugToolFragment -> DebugFragment {}
         else -> DebugIndex {}
     }
 }
@@ -112,6 +125,14 @@ val DebugIndex = FC<Props> {
                     +"Fault: fail this page"
                 }
                 +" — throws while rendering, so the page error boundary is seen to catch."
+            }
+            li {
+                a {
+                    href = "#page=debug&$debugToolParam=$debugToolFragment"
+                    +"Fragment pull"
+                }
+                +(" — renders a server-provided content element whose text pulls a fragment, resolved on the " +
+                    "frontend (issue #505).")
             }
             li {
                 a {
@@ -163,6 +184,68 @@ val DebugState = FC<Props> {
             className = ClassName("subtitle")
             +("$generation — bumped by navigation, by the idle timer, and by state changes; every mounted " +
                 "config consumer re-reads when it moves.")
+        }
+    }
+}
+
+/**
+ * Renders a **server-provided content element whose text pulls a fragment on the frontend** — the Phase 3
+ * vertical slice of issue #505.
+ *
+ * The flow is the whole point, so the page shows each step: it fetches the element (`{fileId, buildId, text}`)
+ * from the `fragmentDemo` fixture, then fetches *that file's* copy, builds a [Copy.fragmentResolver] over it,
+ * and evaluates `text` with that resolver. A `${@t("namespace.key")}` in the text resolves against the named
+ * file's copy — which the element names, because a content string is not itself a fragment file and so has no
+ * ambient file context. Both the raw template and the resolved Markdown are shown, so the substitution is
+ * visible rather than implied.
+ */
+private val debugFragmentScope = MainScope()
+
+val DebugFragment = FC<Props> {
+    var fileId by useState("")
+    var rawText by useState<String?>(null)
+    var resolved by useState<String?>(null)
+    var error by useState<String?>(null)
+    val generation = useRefreshGeneration()
+
+    useEffect(generation) {
+        debugFragmentScope.launch {
+            try {
+                val element = Http.getApi(TEP.fragmentDemo)[EP.results].toJsonMapOrEmpty()
+                val fid = element[UIC.fileId] as? String ?: ""
+                val buildId = element[UIC.buildId] as? String ?: ""
+                val text = element[TEP.demoText] as? String ?: ""
+                val copy = fetchCopy(FragmentRef(fid, buildId))
+                // The fragment pull resolves against the file's copy; `demoVar` shows a plain substitution too.
+                fileId = fid
+                rawText = text
+                resolved = text.evalTemplate(mapOf(TEP.demoVar to "42"), resolver = copy.fragmentResolver())
+                error = null
+            } catch (e: Throwable) {
+                error = "Could not render the fragment demo — is the runtime running with test endpoints? (${e.message})"
+            }
+        }
+    }
+
+    div {
+        className = ClassName("card wide")
+        h1 { +"Fragment pull" }
+        p {
+            className = ClassName("subtitle")
+            +("A content element from the server carries a fileId and a template string; the frontend fetches " +
+                "that file's copy and resolves the string's @t pull against it.")
+        }
+        if (error != null) {
+            p { className = ClassName("error"); +error!! }
+        } else if (rawText == null) {
+            p { className = ClassName("subtitle"); +"Loading…" }
+        } else {
+            h2 { +"Element" }
+            pre { className = ClassName("code"); +"fileId: $fileId" }
+            h2 { +"Template (as delivered)" }
+            pre { className = ClassName("code"); +rawText!! }
+            h2 { +"Resolved and rendered" }
+            Markdown { source = resolved ?: "" }
         }
     }
 }

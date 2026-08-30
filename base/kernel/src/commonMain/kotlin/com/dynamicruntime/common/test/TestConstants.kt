@@ -31,6 +31,20 @@ object TEP {
      * can read a verification code back. A `forTestingOnly` GET; the fields/type names are in [TSE].
      */
     const val simulatedEmails = "/fixture/simulatedEmails"
+
+    /**
+     * A content element demonstrating a **frontend** `@t` fragment pull (issue #505): a `forTestingOnly` GET
+     * returning `{fileId, buildId, text}`, where `text` is a template that pulls a fragment. The debug page
+     * that renders it fetches that file's copy and resolves the pull on the frontend -- the Phase 3 vertical
+     * slice. `fileId`/`buildId` reuse the `UIC` wire keys; the text field is [demoText].
+     */
+    const val fragmentDemo = "/fixture/fragmentDemo"
+
+    /** The template-string field of the [fragmentDemo] content element. */
+    const val demoText = "text"
+
+    /** A data variable the [fragmentDemo] text substitutes, to show `@t` and `${...}` in one string. */
+    const val demoVar = "demoVar"
 }
 
 /**

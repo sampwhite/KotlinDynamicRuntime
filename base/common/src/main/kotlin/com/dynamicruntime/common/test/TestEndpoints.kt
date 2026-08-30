@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.test
 
+import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -231,5 +234,28 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         },
     ) { _, req ->
         mapOf(TVB.verb to HttpMethod.DELETE.name, TVB.deleteOnly to req[TVB.deleteOnly])
+    }
+
+    // A content element that pulls a fragment on the frontend (issue #505, Phase 3). The `text` is a template
+    // whose `@t("portal.welcome")` resolves against the `sample` file's copy -- which the element names via
+    // `fileId`/`buildId`, since a content string is not itself a fragment file and so has no ambient context.
+    // The debug "fragment" tool fetches this, fetches that file's copy, and renders the resolved result.
+    type("FragmentDemoElement") {
+        type = SCT.kObject
+        property(UIC.fileId, "The fragment file this element's text resolves its @t pulls against.", required = true)
+        property(UIC.buildId, "That file's build id, so the frontend can fetch its copy.", required = true)
+        property(TEP.demoText, "A template string with an @t fragment pull and a plain substitution.", required = true)
+    }
+    generalEndpoint(
+        TEP.fragmentDemo,
+        "Demo: a content element whose text pulls a fragment, resolved on the frontend (issue #505).",
+        HttpMethod.GET, outputRef = "FragmentDemoElement", forTestingOnly = true,
+    ) { c, _ ->
+        mapOf(
+            UIC.fileId to FRAG.sample,
+            UIC.buildId to (MarkdownFragmentService.fragmentBuildId(c, FRAG.sample) ?: ""),
+            TEP.demoText to
+                $$"""Pulled on the frontend: **${@t("portal.welcome")}** — and a plain value: ${demoVar}.""",
+        )
     }
 }
