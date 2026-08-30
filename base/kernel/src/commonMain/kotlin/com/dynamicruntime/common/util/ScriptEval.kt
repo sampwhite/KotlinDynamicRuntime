@@ -73,21 +73,13 @@ fun evalNode(state: ScriptState, data: Map<String, Any?>, node: ScriptNode, tole
 /**
  * Pulls the fragment `@t(key, ...)` names and evaluates it (issue #505).
  *
- * The key is a full expression, so it may be computed. Absence is tolerated exactly where the grammar
- * tolerates it elsewhere: in a `?:` / ternary / null-test position an absent key **or** a not-found fragment
- * makes the whole pull null, so `@t("x") ?: "default"` uses the one default mechanism the grammar already has
- * rather than a second one. Outside such a position, a not-found fragment is a loud [ScriptError.fragmentNotFound].
- *
- * **Tolerance reaches inside the fragment, but only over absent data.** In a guarded position a pulled
- * fragment that reads a value nobody supplied yields null, so the `?:` default applies -- which is what
- * "tolerance flows down the whole subtree" has always meant, and a pull is part of that subtree. A fragment
- * that is *broken* rather than *unsupplied* -- a syntax error, a type mismatch, a cycle -- still throws, and
- * deliberately: a guard says what to do when a value is missing, not permission to hide a defect that would
- * then go unnoticed everywhere the fragment is used.
+ * The key is a full expression, so it may be computed. In a tolerant position (`?:`, a ternary condition, a
+ * null test) an absent key, a not-found fragment, or an absence *inside* the fragment all make the pull null,
+ * so `@t("x") ?: "default"` uses the grammar's one default mechanism; see [absenceErrors] for where that stops.
  *
  * Scope follows the settled rule: **no bindings inherits** the caller's [data]; **any binding is hermetic** --
  * the pulled fragment runs with only the bound values, so it cannot silently read a variable it was never
- * handed. Bindings are evaluated in the caller's scope, with the pull's own tolerance, before the fragment runs.
+ * handed. Bindings are evaluated in the caller's scope, before the fragment runs.
  */
 @KdrPrivate
 fun evalFragment(state: ScriptState, data: Map<String, Any?>, node: FragmentNode, tolerant: Boolean, depth: Int): Any? {
@@ -125,16 +117,15 @@ fun evalFragment(state: ScriptState, data: Map<String, Any?>, node: FragmentNode
     return try {
         evalFragmentText(state, key, text, scope)
     } catch (e: KdrException) {
-        // Guarded: an absence inside the fragment makes the pull absent, so the caller's default applies. A
-        // defect is rethrown -- see this function's KDoc for why a guard does not license hiding one.
         if (e.extraData[KdrException.errorCodeKey] in absenceErrors) null else throw e
     }
 }
 
 /**
- * The error codes that mean "the data was not there", as opposed to "the template is wrong". Only these are
- * absorbed by a guarded `@t`, which is what keeps `?:` a statement about missing values rather than a blanket
- * catch. [ScriptError.fragmentNotFound] is here too: a nested pull naming nothing is an absence like any other.
+ * The error codes a guarded `@t` absorbs: the ones meaning "the data was not there", never "the template is
+ * wrong". That line is what keeps `?:` a statement about a missing value rather than a blanket catch -- a
+ * fragment with a syntax error or a type mismatch still throws, or the defect would be hidden everywhere the
+ * fragment is used. [ScriptError.fragmentNotFound] counts as absence: a pull naming nothing is a missing value.
  */
 private val absenceErrors = setOf(
     ScriptError.missingKey,

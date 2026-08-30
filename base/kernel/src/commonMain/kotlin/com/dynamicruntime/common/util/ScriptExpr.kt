@@ -58,10 +58,11 @@ object SEXP {
 
     /**
      * Cap on how deeply `@t` may pull fragments that themselves pull fragments (issue #505). Distinct from
-     * [maxDepth], which bounds expression nesting *within one* template: a fragment include starts a fresh
-     * template evaluation, so a cycle (`a` pulls `b` pulls `a`) is bounded here rather than by [maxDepth]. A
-     * cycle among *literal* keys is caught statically by the boot checker; this is the runtime backstop for a
-     * *computed* key that the checker cannot see.
+     * [maxDepth], which bounds expression nesting *within one* template -- a pull starts a fresh evaluation,
+     * so neither cap covers the other.
+     *
+     * A *cycle* is not what this catches: `evalFragmentText` detects one by ancestry and names it. This bounds
+     * a chain that is long without repeating, which only computed keys can produce.
      */
     const val maxIncludeDepth = 16
 }
@@ -73,12 +74,8 @@ object SEXP {
 enum class TokenKind { number, text, ident, op, end }
 
 /**
- * One lexed token: its [kind], the source [text], and a literal [value] for numbers/strings.
- *
- * It carries **no position**. Every template error is reported against the start of the enclosing `${` block
- * (see `mkScriptException`), because the block is what an author sees in their document, so a within-expression
- * offset has no consumer. A token position was carried unused until issue #506; if a browser editor ever wants
- * to highlight the exact token, each lexing branch below still knows its own start and can supply it again.
+ * One lexed token: its [kind], the source [text], and a literal [value] for numbers/strings. No position --
+ * errors are reported against the enclosing `${` block, so a token offset has no consumer (issue #506).
  */
 @KdrPrivate
 class Token(val kind: TokenKind, val text: String, val value: Any?)

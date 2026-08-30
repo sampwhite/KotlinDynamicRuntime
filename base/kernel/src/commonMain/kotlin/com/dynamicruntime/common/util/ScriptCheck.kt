@@ -60,21 +60,12 @@ fun String.checkTemplateSyntax(prefix: Char = '$'): List<TemplateIssue> = analyz
  * `${c ? a : b}` are required though only one is evaluated, and the right of `&&` is required though it may be
  * short-circuited away -- because either could run, and a caller that cannot supply one of them has a latent
  * failure either way. Reading "required" as "referenced" is the honest description.
+ *
+ * What a `@t` pull's fragment reads is **not** included: seeing it means resolving the key against the
+ * fragment registry, which this text-only walk has no access to (Phase 2 of issue #505). So [missingFrom] can
+ * answer "nothing missing" for a template that still fails at render.
  */
 class TemplatePaths(val required: Set<String>, val optional: Set<String>)
-
-/**
- * **A `@t` pull's own paths are not included** (issue #505), and a caller must not read this as "nothing else
- * is needed". A pull with no bindings inherits the caller's data, so the fragment it names may read paths that
- * do not appear anywhere in this template's text -- and resolving the key to see them needs the fragment
- * registry, which this walk deliberately does not have (it works on text alone, so a browser can run it).
- *
- * The consequence to be aware of: [TemplatePaths.missingFrom] can answer "nothing missing" for a template that
- * still fails at render, because the absence is inside a fragment it pulled. That is a *narrower* answer, not
- * a wrong one -- everything it does report is genuinely required -- but it is why following literal-key pulls
- * belongs with the boot checker, which has the registry (Phase 2 of #505). A hermetically-bound pull is
- * already fully described here: its fragment can read only what the bindings supply, and those are collected.
- */
 
 /** A template's problems and its data requirements, from one parse. */
 class TemplateAnalysis(val issues: List<TemplateIssue>, val paths: TemplatePaths)
