@@ -77,7 +77,7 @@ fun String.parseMarkdownFragments(): Map<String, Map<String, String>> {
                     throw mkMarkdownException(
                         MarkdownError.dottedName,
                         "Key '$ns.$key' contains a '.' in its key name, which the two-tier format cannot " +
-                            "address: '\${$ns.$key}' would look for a third tier that does not exist.",
+                                $$"address: '${$$ns.$$key}' would look for a third tier that does not exist.",
                     )
                 }
                 val inline = if (wsIndex < 0) "" else rest.substring(wsIndex)
