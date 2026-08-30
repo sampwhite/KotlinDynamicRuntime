@@ -86,10 +86,12 @@ private val multiCharOps = listOf("?:", "==", "!=", "<=", ">=", "&&", "||")
 private val singleCharOps = "?:+-*/%<>!().~,@".toSet()
 
 /**
- * The reserved words, which are literals rather than the start of a path. Named once because two places must
- * agree about them: `parsePrimary` reads them as values, and a fragment parameter may not be called one.
+ * The reserved words and the values they stand for. One table because two places must agree about them:
+ * `parsePrimary` reads a word here as its value rather than as the start of a path, and a fragment parameter
+ * may not be named one (it could never be read back). Keyed lookup rather than a `when` at each site, so
+ * adding a word cannot reach one place and miss the other.
  */
-private val wordLiterals = setOf("true", "false", "null")
+private val wordLiterals: Map<String, Any?> = mapOf("true" to true, "false" to false, "null" to null)
 
 /**
  * Splits an expression into tokens. Errors carry [ScriptError.syntaxError] and, like every template error,
@@ -418,11 +420,10 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
             }
             atOp(SEXP.fragmentMark.toString()) != null -> return parseFragment(guard(depth))
             t.kind == TokenKind.ident -> {
-                // The three word-literals are reserved; anything else starts a path.
-                when (t.text) {
-                    "true" -> { take(); return LiteralNode(true) }
-                    "false" -> { take(); return LiteralNode(false) }
-                    "null" -> { take(); return LiteralNode(null) }
+                // A reserved word is its value; anything else starts a path.
+                if (wordLiterals.containsKey(t.text)) {
+                    take()
+                    return LiteralNode(wordLiterals[t.text])
                 }
                 val nameTok = take()
                 if (atOp("(") != null) return parseCall(guard(depth), nameTok.text)

@@ -50,6 +50,13 @@ fun String.parseMarkdownFragments(): Map<String, Map<String, String>> {
                 if (name.isEmpty()) {
                     throw mkMarkdownException(MarkdownError.emptyNamespace, "A '# @' namespace declaration has no name.")
                 }
+                if (name.contains('.')) {
+                    throw mkMarkdownException(
+                        MarkdownError.dottedName,
+                        "Namespace '$name' contains a '.', which the two-tier format cannot address: a value is " +
+                            "reached as 'namespace.key', so a dotted namespace can never be named.",
+                    )
+                }
                 namespace = name
                 result.getOrPut(name) { LinkedHashMap() }
                 i++
@@ -65,6 +72,13 @@ fun String.parseMarkdownFragments(): Map<String, Map<String, String>> {
                 val key = if (wsIndex < 0) rest else rest.substring(0, wsIndex)
                 if (key.isEmpty()) {
                     throw mkMarkdownException(MarkdownError.emptyKey, "A '# +' key declaration has no key name.")
+                }
+                if (key.contains('.')) {
+                    throw mkMarkdownException(
+                        MarkdownError.dottedName,
+                        "Key '$ns.$key' contains a '.' in its key name, which the two-tier format cannot " +
+                                $$"address: '${$$ns.$$key}' would look for a third tier that does not exist.",
+                    )
                 }
                 val inline = if (wsIndex < 0) "" else rest.substring(wsIndex)
                 val (value, next) = if (inline.isNotBlank()) {
@@ -106,6 +120,42 @@ enum class MarkdownError {
 
     /** A `# +` declaration had no key name. */
     emptyKey,
+
+    /**
+     * A `# @` namespace or `# +` key name contained a `.`, which the two-tier format cannot address. A name is
+     * reached as `namespace.key` -- by `${namespace.key}`, which walks dot-separated segments through the map,
+     * and by `@t("namespace.key")` -- so a dotted name is unreachable either way: `${ns.a.b}` would look for
+     * `map["ns"]["a"]["b"]` and find a String where it needs a map. Refused where it is written rather than
+     * left to fail as a puzzling `notAnObject` at render or a dangling reference at boot.
+     */
+    dottedName,
+}
+
+/**
+ * The value a **frontend-pass** `@t` fragment reference names in this one file's two-tier map, or null when it
+ * names none (issue #505).
+ *
+ * A frontend reference is `namespace.key` -- the shape `${namespace.key}` resolves, within one file, which is
+ * all a frontend has (its delivered copy). The map is exactly two tiers, so a well-formed key is exactly two
+ * dot-separated parts; anything else (one part, or three) names no value here and returns null. The boot
+ * checker validates a `${@t(...)}` reference with this, and the frontend `FragmentResolver` will resolve one
+ * with it at render time, so the two cannot disagree.
+ *
+ * The **backend pass** is a different rule and not this helper: `%{@t("fileId.namespace.key")}` resolves three
+ * parts across the *whole registry*, because the backend has every file where a frontend has only its own. That
+ * resolution, and the boot validation of it, arrive with the backend pass (Phase 4 of issue #505); nothing
+ * writes it yet.
+ */
+fun Map<String, Map<String, String>>.resolveFragment(key: String): String? {
+    val dot = key.indexOf('.')
+    if (dot <= 0 || dot >= key.length - 1) {
+        return null
+    }
+    // Exactly two parts: a second dot would name a third tier this map does not have.
+    if (key.indexOf('.', dot + 1) != -1) {
+        return null
+    }
+    return this[key.substring(0, dot)]?.get(key.substring(dot + 1))
 }
 
 // --- helpers ----------------------------------------------------------------

@@ -109,6 +109,18 @@ class MarkdownFragmentUtilTest : StringSpec({
         ex.extraData[KdrException.errorCodeKey] shouldBe MarkdownError.keyBeforeNamespace
     }
 
+    /**
+     * A dotted name is unreachable in a two-tier map: a value is addressed `namespace.key`, so `${ns.a.b}`
+     * would look for a third tier and `@t("ns.a.b")` would resolve nothing. Refused where it is written rather
+     * than left to surface as a puzzling `notAnObject` at render or a dangling reference at boot (issue #505).
+     */
+    "a dotted namespace or key name is refused" {
+        val ns = shouldThrow<KdrException> { "# @a.b\n# +k v".parseMarkdownFragments() }
+        ns.extraData[KdrException.errorCodeKey] shouldBe MarkdownError.dottedName
+        val key = shouldThrow<KdrException> { "# @ns\n# +a.b v".parseMarkdownFragments() }
+        key.extraData[KdrException.errorCodeKey] shouldBe MarkdownError.dottedName
+    }
+
     "a duplicate key within a namespace fails with duplicateKey" {
         val ex = shouldThrow<KdrException> { "# @ns\n# +k one\n# +k two".parseMarkdownFragments() }
         ex.extraData[KdrException.errorCodeKey] shouldBe MarkdownError.duplicateKey
