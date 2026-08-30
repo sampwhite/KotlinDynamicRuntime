@@ -21,7 +21,7 @@ import com.dynamicruntime.common.exception.KdrException
  *    zero is [ScriptError.divideByZero] rather than an infinity that would print.
  *  - **`~` joins text**, formatting each side with [fmt]. Separate from `+` so neither operator is ever
  *    ambiguous about what it is doing. Most templates need no operator at all -- `n=${count}` already
- *    concatenates by juxtaposition; `~` is for composing inside an expression, e.g. a ternary branch.
+ *    concatenates by juxtaposition; `~` is for composing inside an expression, e.g., a ternary branch.
  *  - **Numbers stay integral where they start.** Two `Long`s divide as integers (`7 / 2` is 3); one `Double`
  *    makes the result a `Double`.
  *  - **`< > <= >=`** compare two numbers numerically and two strings lexicographically. Mixed kinds are a type
@@ -94,7 +94,7 @@ fun evalFragment(state: ScriptState, data: Map<String, Any?>, node: FragmentNode
     val keyValue = evalNode(state, data, node.key, tolerant, depth)
     if (keyValue == null) {
         // Reachable non-null-throwing only under tolerance (an absent path there returns null); a literal
-        // `@t(null)` reaches here untolerant and is a real mistake.
+        // `@t(null)` reaches here intolerant and is a real mistake.
         if (tolerant) return null
         throw mkScriptException(state, ScriptError.nullValue, "Fragment reference '@t' has a null key.")
     }

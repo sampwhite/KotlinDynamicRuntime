@@ -10,7 +10,7 @@ import com.dynamicruntime.common.annotation.KdrPrivate
  * document deciding what is text and what is a block, while this parses one small language. Both are pure,
  * KMP-safe Kotlin, so the browser evaluates a template exactly as the backend does.
  *
- * Grammar, loosest binding first (each line binds tighter than the one above):
+ * Grammar, the loosest binding first (each line binds tighter than the one above):
  *
  * ```
  * expression     := ternary
@@ -72,9 +72,16 @@ object SEXP {
 @Suppress("EnumEntryName")
 enum class TokenKind { number, text, ident, op, end }
 
-/** One lexed token: its [kind], the source [text], a literal [value] for numbers/strings, and its position. */
+/**
+ * One lexed token: its [kind], the source [text], and a literal [value] for numbers/strings.
+ *
+ * It carries **no position**. Every template error is reported against the start of the enclosing `${` block
+ * (see `mkScriptException`), because the block is what an author sees in their document, so a within-expression
+ * offset has no consumer. A token position was carried unused until issue #506; if a browser editor ever wants
+ * to highlight the exact token, each lexing branch below still knows its own start and can supply it again.
+ */
 @KdrPrivate
-class Token(val kind: TokenKind, val text: String, val value: Any?, val pos: Int)
+class Token(val kind: TokenKind, val text: String, val value: Any?)
 
 /** The multi-character operators, longest first so `<=` is never read as `<` then `=`. */
 private val multiCharOps = listOf("?:", "==", "!=", "<=", ">=", "&&", "||")
@@ -115,10 +122,9 @@ fun tokenize(state: ScriptState, expr: String): List<Token> {
                         state, ScriptError.syntaxError, "Template expression has a number too large: '$text'.",
                     )
                 }
-                tokens.add(Token(TokenKind.number, text, value, start))
+                tokens.add(Token(TokenKind.number, text, value))
             }
             ch == '"' || ch == '\'' -> {
-                val start = i
                 i++ // opening quote
                 val sb = StringBuilder()
                 var closed = false
@@ -142,21 +148,21 @@ fun tokenize(state: ScriptState, expr: String): List<Token> {
                         state, ScriptError.syntaxError, "Template expression has an unterminated string literal.",
                     )
                 }
-                tokens.add(Token(TokenKind.text, sb.toString(), sb.toString(), start))
+                tokens.add(Token(TokenKind.text, sb.toString(), sb.toString()))
             }
             ch.isLetter() || ch == '_' -> {
                 val start = i
                 while (i < expr.length && (expr[i].isLetterOrDigit() || expr[i] == '_')) i++
-                tokens.add(Token(TokenKind.ident, expr.substring(start, i), null, start))
+                tokens.add(Token(TokenKind.ident, expr.substring(start, i), null))
             }
             else -> {
                 val two = if (i + 1 < expr.length) expr.substring(i, i + 2) else ""
                 val op = multiCharOps.firstOrNull { it == two }
                 if (op != null) {
-                    tokens.add(Token(TokenKind.op, op, null, i))
+                    tokens.add(Token(TokenKind.op, op, null))
                     i += 2
                 } else if (ch in singleCharOps) {
-                    tokens.add(Token(TokenKind.op, ch.toString(), null, i))
+                    tokens.add(Token(TokenKind.op, ch.toString(), null))
                     i++
                 } else {
                     throw mkScriptException(
@@ -166,7 +172,7 @@ fun tokenize(state: ScriptState, expr: String): List<Token> {
             }
         }
     }
-    tokens.add(Token(TokenKind.end, "", null, expr.length))
+    tokens.add(Token(TokenKind.end, "", null))
     return tokens
 }
 

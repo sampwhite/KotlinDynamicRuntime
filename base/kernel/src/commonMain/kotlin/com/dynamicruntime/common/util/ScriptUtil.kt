@@ -113,7 +113,7 @@ fun mkFragmentContext(key: String, cause: KdrException): KdrException {
         "In fragment '$key': ${cause.message}", cause, cause.code, cause.source, cause.activity,
     )
     ke.extraData.putAll(cause.extraData)
-    // The innermost fragment wins: a nested pull has already labelled itself, and that is the one to fix.
+    // The innermost fragment wins: a nested pull has already labeled itself, and that is the one to fix.
     if (!ke.extraData.containsKey(KdrException.fragmentKey)) {
         ke.extraData[KdrException.fragmentKey] = key
     }
@@ -141,7 +141,7 @@ enum class ScriptError {
     /** The expression could not be parsed: a stray character, an unterminated string, a missing operand. */
     syntaxError,
 
-    /** An operator was applied to a value it has no meaning for, e.g. multiplying an object. */
+    /** An operator was applied to a value it has no meaning for, e.g., multiplying an object. */
     typeMismatch,
 
     /** A `/` or `%` had a zero right-hand side. Reported rather than yielding an infinity that would print. */
