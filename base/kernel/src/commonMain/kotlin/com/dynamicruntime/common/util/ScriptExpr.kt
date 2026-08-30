@@ -24,8 +24,9 @@ import com.dynamicruntime.common.annotation.KdrPrivate
  * additive       := multiplicative { ('+' | '-') multiplicative }
  * multiplicative := unary { ('*' | '/' | '%') unary }
  * unary          := ('!' | '-') unary | primary
- * primary        := number | string | 'true' | 'false' | 'null' | call | path | '(' expression ')'
+ * primary        := number | string | 'true' | 'false' | 'null' | call | fragment | path | '(' expression ')'
  * call           := ident '(' [ expression { ',' expression } ] ')'
+ * fragment       := '@t' '(' expression { ',' ident ':' expression } ')'   // pull a fragment (issue #505)
  * path           := ident { '.' ident }
  * ```
  *
@@ -44,6 +45,25 @@ object SEXP {
      * `${((((...))))}` must report an error rather than exhaust the stack.
      */
     const val maxDepth = 32
+
+    /** The character that marks the fragment-pull construct `@t` (issue #505). */
+    const val fragmentMark = '@'
+
+    /**
+     * The name of the fragment-pull construct, so it is written `@t`. It echoes the frontend's `Copy.t`, but
+     * unlike a `scriptFunctions` entry it is **effectful** -- it pulls another fragment's text into scope --
+     * so it is parsed as its own production, marked with [fragmentMark], rather than being a function.
+     */
+    const val fragmentName = "t"
+
+    /**
+     * Cap on how deeply `@t` may pull fragments that themselves pull fragments (issue #505). Distinct from
+     * [maxDepth], which bounds expression nesting *within one* template: a fragment include starts a fresh
+     * template evaluation, so a cycle (`a` pulls `b` pulls `a`) is bounded here rather than by [maxDepth]. A
+     * cycle among *literal* keys is caught statically by the boot checker; this is the runtime backstop for a
+     * *computed* key that the checker cannot see.
+     */
+    const val maxIncludeDepth = 16
 }
 
 // --- tokens -----------------------------------------------------------------
@@ -59,7 +79,7 @@ class Token(val kind: TokenKind, val text: String, val value: Any?, val pos: Int
 /** The multi-character operators, longest first so `<=` is never read as `<` then `=`. */
 private val multiCharOps = listOf("?:", "==", "!=", "<=", ">=", "&&", "||")
 
-private val singleCharOps = "?:+-*/%<>!().~,".toSet()
+private val singleCharOps = "?:+-*/%<>!().~,@".toSet()
 
 /**
  * Splits an expression into tokens. Errors carry [ScriptError.syntaxError] and, like every template error,
@@ -181,6 +201,14 @@ class ElvisNode(val left: ScriptNode, val right: ScriptNode) : ScriptNode
 
 @KdrPrivate
 class TernaryNode(val cond: ScriptNode, val whenTrue: ScriptNode, val whenFalse: ScriptNode) : ScriptNode
+
+/**
+ * A fragment pull, `@t(key [, name: expr]*)` (issue #505). [key] is a full expression, so the key can be
+ * computed (`@t(chosenKey)`). [bindings] are the hermetic parameters: **empty means the pull inherits the
+ * caller's variables**, and any binding means it runs with *only* those, per the settled scope rule.
+ */
+@KdrPrivate
+class FragmentNode(val key: ScriptNode, val bindings: List<Pair<String, ScriptNode>>) : ScriptNode
 
 // --- parser -----------------------------------------------------------------
 
@@ -318,6 +346,43 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
         return CallNode(fn, args)
     }
 
+    /**
+     * Parses the fragment construct `@t(key [, name: expr]*)` (issue #505). Its own production rather than a
+     * function because it is effectful, and it keeps call shape because its key is a full expression -- a
+     * computed key (`@t(chosenKey)`) is the point of the dynamic-selection case.
+     */
+    fun parseFragment(depth: Int): ScriptNode {
+        take() // '@'
+        val name = peek()
+        if (name.kind != TokenKind.ident || name.text != SEXP.fragmentName) {
+            throw mkScriptException(
+                state, ScriptError.syntaxError,
+                "Template expression has '${SEXP.fragmentMark}' not followed by the fragment construct " +
+                    "'${SEXP.fragmentMark}${SEXP.fragmentName}'.",
+            )
+        }
+        take() // the construct name
+        expectOp("(")
+        val key = parseExpr(guard(depth))
+        val bindings = mutableListOf<Pair<String, ScriptNode>>()
+        while (atOp(",") != null) {
+            take()
+            val label = peek()
+            if (label.kind != TokenKind.ident) {
+                throw mkScriptException(
+                    state, ScriptError.syntaxError,
+                    "Template fragment '${SEXP.fragmentMark}${SEXP.fragmentName}' expected a parameter name " +
+                        "but found '${label.text.ifEmpty { "end of expression" }}'.",
+                )
+            }
+            take()
+            expectOp(":")
+            bindings.add(label.text to parseExpr(guard(depth)))
+        }
+        expectOp(")")
+        return FragmentNode(key, bindings)
+    }
+
     fun parsePrimary(depth: Int): ScriptNode {
         val t = peek()
         when {
@@ -325,6 +390,7 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
                 take()
                 return LiteralNode(t.value)
             }
+            atOp(SEXP.fragmentMark.toString()) != null -> return parseFragment(guard(depth))
             t.kind == TokenKind.ident -> {
                 // The three word-literals are reserved; anything else starts a path.
                 when (t.text) {

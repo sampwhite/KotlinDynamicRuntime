@@ -65,7 +65,52 @@ fun evalNode(state: ScriptState, data: Map<String, Any?>, node: ScriptNode, tole
             val cond = truthy(evalNode(state, data, node.cond, tolerant = true, depth = next))
             evalNode(state, data, if (cond) node.whenTrue else node.whenFalse, tolerant, next)
         }
+        is FragmentNode -> evalFragment(state, data, node, tolerant, next)
     }
+}
+
+/**
+ * Pulls the fragment `@t(key, ...)` names and evaluates it (issue #505).
+ *
+ * The key is a full expression, so it may be computed. Absence is tolerated exactly where the grammar
+ * tolerates it elsewhere: in a `?:` / ternary / null-test position an absent key **or** a not-found fragment
+ * makes the whole pull null, so `@t("x") ?: "default"` uses the one default mechanism the grammar already has
+ * rather than a second one. Outside such a position, a not-found fragment is a loud [ScriptError.fragmentNotFound].
+ *
+ * Scope follows the settled rule: **no bindings inherits** the caller's [data]; **any binding is hermetic** --
+ * the pulled fragment runs with only the bound values, so it cannot silently read a variable it was never
+ * handed. Bindings are evaluated in the caller's scope, with the pull's own tolerance, before the fragment runs.
+ */
+@KdrPrivate
+fun evalFragment(state: ScriptState, data: Map<String, Any?>, node: FragmentNode, tolerant: Boolean, depth: Int): Any? {
+    val keyValue = evalNode(state, data, node.key, tolerant, depth)
+    if (keyValue == null) {
+        // Reachable non-null-throwing only under tolerance (an absent path there returns null); a literal
+        // `@t(null)` reaches here untolerant and is a real mistake.
+        if (tolerant) return null
+        throw mkScriptException(state, ScriptError.nullValue, "Fragment reference '@t' has a null key.")
+    }
+    val key = keyValue as? String ?: throw mkScriptException(
+        state, ScriptError.typeMismatch,
+        "Fragment reference '@t' needs a text key but was given ${describeValue(keyValue)}.",
+    )
+    val resolver = state.resolver ?: throw mkScriptException(
+        state, ScriptError.noResolver,
+        "Fragment reference '@t(\"$key\")' cannot be resolved: this evaluation was given no fragment resolver.",
+    )
+    val text = resolver.resolve(key)
+    if (text == null) {
+        if (tolerant) return null
+        throw mkScriptException(
+            state, ScriptError.fragmentNotFound, "Fragment reference '@t(\"$key\")' names no fragment this node has.",
+        )
+    }
+    val scope = if (node.bindings.isEmpty()) {
+        data
+    } else {
+        node.bindings.associate { (name, expr) -> name to evalNode(state, data, expr, tolerant, depth) }
+    }
+    return evalFragmentText(state, text, scope)
 }
 
 /** Walks a dotted path through nested maps, keeping the pre-grammar error codes exactly as they were. */

@@ -170,6 +170,14 @@ fun collectPaths(
             collectPaths(node.whenTrue, tolerant, required, optional, next)
             collectPaths(node.whenFalse, tolerant, required, optional, next)
         }
+        is FragmentNode -> {
+            // The key and the binding values read the caller's data, with the pull's own tolerance -- exactly
+            // as `evalFragment` evaluates them. The *pulled* fragment's own internal paths are not visible from
+            // here (its text is resolved at runtime), and validating that the reference resolves is the boot
+            // checker's job in a later phase of issue #505, not this data-requirements walk.
+            collectPaths(node.key, tolerant, required, optional, next)
+            node.bindings.forEach { collectPaths(it.second, tolerant, required, optional, next) }
+        }
     }
 }
 
