@@ -109,6 +109,14 @@ class KdrException(
         const val lineColKey = "lineCol"
 
         /**
+         * The fragment a template error originated *inside*, when the failing text was pulled by `@t` rather
+         * than being the document the caller was evaluating (issue #505). Present only for such an error, and
+         * it is what makes the accompanying [offsetKey]/[lineKey] readable: they locate the problem within
+         * this fragment, not within the caller.
+         */
+        const val fragmentKey = "fragment"
+
+        /**
          * A bad-input (HTTP 400) error -- typically from schema validation. If a
          * [cause] is itself a [KdrException], its [source]/[activity] are carried
          * over; otherwise the error is attributed to deliberate code logic.

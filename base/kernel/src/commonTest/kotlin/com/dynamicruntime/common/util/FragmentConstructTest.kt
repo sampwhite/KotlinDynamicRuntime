@@ -120,13 +120,122 @@ class FragmentConstructTest {
     }
 
     @Test
-    fun aFragmentCycleIsBoundedRatherThanOverflowing() {
-        // A computed cycle the static checker cannot see: `a` pulls `a`. The include-depth cap stops it.
+    fun aDirectCycleIsNamedAsOne() {
         val r = resolverOf("a" to $$"""${@t("a")}""")
-        assertEquals(
-            ScriptError.fragmentCycleTooDeep,
-            errorCode { $$"""${@t("a")}""".evalTemplate(emptyMap(), resolver = r) },
+        val e = assertFailsWith<KdrException> { $$"""${@t("a")}""".evalTemplate(emptyMap(), resolver = r) }
+        assertEquals(ScriptError.fragmentCycle, e.extraData[KdrException.errorCodeKey])
+        // The path is the useful part -- it says which fragments form the loop.
+        assertTrue(e.message!!.contains("a -> a"), "should name the cycle path, was: ${e.message}")
+    }
+
+    @Test
+    fun anIndirectCycleIsNamedWithItsWholePath() {
+        val r = resolverOf(
+            "a" to $$"""${@t("b")}""",
+            "b" to $$"""${@t("c")}""",
+            "c" to $$"""${@t("a")}""",
         )
+        val e = assertFailsWith<KdrException> { $$"""${@t("a")}""".evalTemplate(emptyMap(), resolver = r) }
+        assertEquals(ScriptError.fragmentCycle, e.extraData[KdrException.errorCodeKey])
+        assertTrue(e.message!!.contains("a -> b -> c -> a"), "should name the path, was: ${e.message}")
+    }
+
+    @Test
+    fun oneFragmentPulledFromTwoBranchesIsReuseNotACycle() {
+        // The reason cycle detection tracks *ancestry* rather than a visited set: `shared` legitimately appears
+        // twice, on two different branches. A visited set would refuse this correct template.
+        val r = resolverOf(
+            "top" to $$"""${@t("left")}+${@t("right")}""",
+            "left" to $$"""L${@t("shared")}""",
+            "right" to $$"""R${@t("shared")}""",
+            "shared" to "S",
+        )
+        assertEquals("LS+RS", $$"""${@t("top")}""".evalTemplate(emptyMap(), resolver = r))
+    }
+
+    @Test
+    fun aDeepButAcyclicChainReportsDepthRatherThanACycle() {
+        // Distinct fragments all the way down: ancestry can never catch it, so the depth cap does -- and it
+        // must not accuse the author of a cycle that is not there.
+        val chain = (0..SEXP.maxIncludeDepth + 2).associate { i -> "f$i" to $$"""${@t("f$${i + 1}")}""" }
+        val r = FragmentResolver { key -> chain[key] }
+        val e = assertFailsWith<KdrException> { $$"""${@t("f0")}""".evalTemplate(emptyMap(), resolver = r) }
+        assertEquals(ScriptError.fragmentIncludeTooDeep, e.extraData[KdrException.errorCodeKey])
+        assertTrue(e.message!!.contains("rather than a cycle"), "was: ${e.message}")
+    }
+
+    @Test
+    fun anErrorInsideAFragmentNamesTheFragment() {
+        // Its position is an offset into the fragment's own text, so without the name it points at a place in
+        // the caller that need not exist. The caller here is 12 characters; the fragment's column is 4.
+        val r = resolverOf("g" to $$"""Hi ${who}""")
+        val e = assertFailsWith<KdrException> { $$"""${@t("g")}""".evalTemplate(emptyMap(), resolver = r) }
+        assertEquals(ScriptError.missingKey, e.extraData[KdrException.errorCodeKey])
+        assertEquals("g", e.extraData[KdrException.fragmentKey])
+        assertTrue(e.message!!.contains("In fragment 'g'"), "was: ${e.message}")
+    }
+
+    @Test
+    fun theInnermostFragmentIsTheOneNamed() {
+        // A nested failure should point at the fragment to fix, not the outermost one that merely pulled it.
+        val r = resolverOf("outer" to $$"""${@t("inner")}""", "inner" to $$"""${who}""")
+        val e = assertFailsWith<KdrException> { $$"""${@t("outer")}""".evalTemplate(emptyMap(), resolver = r) }
+        assertEquals("inner", e.extraData[KdrException.fragmentKey])
+    }
+
+    @Test
+    fun aGuardCoversAnAbsenceInsideTheFragment() {
+        // Tolerance flows into the pull: the fragment reads `who`, nobody supplied it, so the default applies.
+        val r = resolverOf("g" to $$"""Hi ${who}""")
+        assertEquals("fallback", $$"""${@t("g") ?: "fallback"}""".evalTemplate(emptyMap(), resolver = r))
+        // ...and when the data *is* there, the fragment renders normally.
+        assertEquals("Hi Ada", $$"""${@t("g") ?: "fallback"}""".evalTemplate(mapOf("who" to "Ada"), resolver = r))
+    }
+
+    @Test
+    fun aGuardDoesNotHideABrokenFragment() {
+        // A guard says what to do about a missing value, not permission to swallow a defect -- which would go
+        // unnoticed everywhere the fragment is used.
+        val broken = resolverOf("g" to $$"""${1 +}""")
+        assertEquals(
+            ScriptError.syntaxError,
+            errorCode { $$"""${@t("g") ?: "fallback"}""".evalTemplate(emptyMap(), resolver = broken) },
+        )
+        val mismatched = resolverOf("g" to $$"""${n * 2}""")
+        assertEquals(
+            ScriptError.typeMismatch,
+            errorCode {
+                $$"""${@t("g") ?: "fallback"}""".evalTemplate(mapOf("n" to "text"), resolver = mismatched)
+            },
+        )
+    }
+
+    @Test
+    fun aDuplicateBindingNameIsRefused() {
+        // One of the two values would silently win, and which is not something a reader should have to work out.
+        val r = resolverOf("g" to $$"""[${x}]""")
+        assertEquals(
+            ScriptError.syntaxError,
+            errorCode { $$"""${@t("g", x: "one", x: "two")}""".evalTemplate(emptyMap(), resolver = r) },
+        )
+    }
+
+    @Test
+    fun aBindingNamedForAWordLiteralIsRefused() {
+        // Inside the fragment `${null}` is the literal, so such a binding could never be read back.
+        val r = resolverOf("g" to "x")
+        for (reserved in listOf("null", "true", "false")) {
+            val template = $$"""${@t("g", $$reserved: 1)}"""
+            // Prove the interpolation built the template intended -- otherwise a syntax error from a
+            // mis-constructed string would let this pass for the wrong reason.
+            assertTrue(template.contains("$reserved: 1"), "template was: $template")
+            val e = assertFailsWith<KdrException> { template.evalTemplate(emptyMap(), resolver = r) }
+            assertEquals(ScriptError.syntaxError, e.extraData[KdrException.errorCodeKey])
+            assertTrue(
+                e.message!!.contains("word literal"),
+                "should refuse '$reserved' as a word literal, was: ${e.message}",
+            )
+        }
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.exception.KdrException
 
 /**
  * Evaluation and the value rules for the expression grammar in `ScriptExpr.kt`.
@@ -77,6 +78,13 @@ fun evalNode(state: ScriptState, data: Map<String, Any?>, node: ScriptNode, tole
  * makes the whole pull null, so `@t("x") ?: "default"` uses the one default mechanism the grammar already has
  * rather than a second one. Outside such a position, a not-found fragment is a loud [ScriptError.fragmentNotFound].
  *
+ * **Tolerance reaches inside the fragment, but only over absent data.** In a guarded position a pulled
+ * fragment that reads a value nobody supplied yields null, so the `?:` default applies -- which is what
+ * "tolerance flows down the whole subtree" has always meant, and a pull is part of that subtree. A fragment
+ * that is *broken* rather than *unsupplied* -- a syntax error, a type mismatch, a cycle -- still throws, and
+ * deliberately: a guard says what to do when a value is missing, not permission to hide a defect that would
+ * then go unnoticed everywhere the fragment is used.
+ *
  * Scope follows the settled rule: **no bindings inherits** the caller's [data]; **any binding is hermetic** --
  * the pulled fragment runs with only the bound values, so it cannot silently read a variable it was never
  * handed. Bindings are evaluated in the caller's scope, with the pull's own tolerance, before the fragment runs.
@@ -108,10 +116,32 @@ fun evalFragment(state: ScriptState, data: Map<String, Any?>, node: FragmentNode
     val scope = if (node.bindings.isEmpty()) {
         data
     } else {
+        // Parsing refuses a duplicate name, so building the map cannot silently drop a binding here.
         node.bindings.associate { (name, expr) -> name to evalNode(state, data, expr, tolerant, depth) }
     }
-    return evalFragmentText(state, text, scope)
+    if (!tolerant) {
+        return evalFragmentText(state, key, text, scope)
+    }
+    return try {
+        evalFragmentText(state, key, text, scope)
+    } catch (e: KdrException) {
+        // Guarded: an absence inside the fragment makes the pull absent, so the caller's default applies. A
+        // defect is rethrown -- see this function's KDoc for why a guard does not license hiding one.
+        if (e.extraData[KdrException.errorCodeKey] in absenceErrors) null else throw e
+    }
 }
+
+/**
+ * The error codes that mean "the data was not there", as opposed to "the template is wrong". Only these are
+ * absorbed by a guarded `@t`, which is what keeps `?:` a statement about missing values rather than a blanket
+ * catch. [ScriptError.fragmentNotFound] is here too: a nested pull naming nothing is an absence like any other.
+ */
+private val absenceErrors = setOf(
+    ScriptError.missingKey,
+    ScriptError.nullValue,
+    ScriptError.notAnObject,
+    ScriptError.fragmentNotFound,
+)
 
 /** Walks a dotted path through nested maps, keeping the pre-grammar error codes exactly as they were. */
 @KdrPrivate

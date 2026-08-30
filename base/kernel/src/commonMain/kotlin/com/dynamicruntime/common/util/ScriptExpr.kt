@@ -82,6 +82,12 @@ private val multiCharOps = listOf("?:", "==", "!=", "<=", ">=", "&&", "||")
 private val singleCharOps = "?:+-*/%<>!().~,@".toSet()
 
 /**
+ * The reserved words, which are literals rather than the start of a path. Named once because two places must
+ * agree about them: `parsePrimary` reads them as values, and a fragment parameter may not be called one.
+ */
+private val wordLiterals = setOf("true", "false", "null")
+
+/**
  * Splits an expression into tokens. Errors carry [ScriptError.syntaxError] and, like every template error,
  * point at the start of the enclosing `${` block rather than into the expression -- the block is what an
  * author sees in their document.
@@ -373,6 +379,23 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
                     state, ScriptError.syntaxError,
                     "Template fragment '${SEXP.fragmentMark}${SEXP.fragmentName}' expected a parameter name " +
                         "but found '${label.text.ifEmpty { "end of expression" }}'.",
+                )
+            }
+            // A word literal is not a name a fragment could ever read back: inside the fragment `${null}` is
+            // the literal, not a lookup. Refused here rather than binding a value nothing can reach.
+            if (label.text in wordLiterals) {
+                throw mkScriptException(
+                    state, ScriptError.syntaxError,
+                    "Template fragment parameter cannot be named '${label.text}': it is a word literal, so the " +
+                        "fragment could never read it back.",
+                )
+            }
+            // A duplicate would silently keep one of the two values, and which one is not something a reader
+            // should have to work out -- the same rule the fragment map builders apply to a repeated key.
+            if (bindings.any { it.first == label.text }) {
+                throw mkScriptException(
+                    state, ScriptError.syntaxError,
+                    "Template fragment parameter '${label.text}' is given twice; one value would silently win.",
                 )
             }
             take()
