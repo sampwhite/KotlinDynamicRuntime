@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.FCHK
 import com.dynamicruntime.common.content.FRAG
+import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ENV
@@ -98,6 +99,11 @@ class FragmentCheckTest : StringSpec({
         items.isNotEmpty() shouldBe true
         items.all { it[FCHK.found] == true } shouldBe true
         items.all { (it[FCHK.issueCount] as? Number)?.toInt() == 0 } shouldBe true
+        // Every file this instance ships is a delivered one, and no two bases disagree about that (issue
+        // #514). The second is the one worth asserting: a conflict resolves *safely* -- backend wins -- so it
+        // would take a file private without failing anything, and this is where that would show up.
+        items.all { it[FCHK.audience] == FragmentAudience.frontend.name } shouldBe true
+        items.all { it[FCHK.audienceConflict] == false } shouldBe true
 
         // Narrowed to one file, so an author fixing a single fragment can ask about just that one.
         val one = operator.getItems("/operator/fragments/check", mapOf(FCHK.fileId to FRAG.errors))

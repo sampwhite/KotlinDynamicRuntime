@@ -202,4 +202,61 @@ class FragmentLayerTest : StringSpec({
         // and a base declared by accident would replace content rather than adjust it.
         fragmentInline("home", origin = "test") { namespace("welcome") { key("title", "x") } }.isOverlay shouldBe true
     }
+
+    // --- audience (issue #514) ---------------------------------------------------------------------------
+
+    "a file's audience defaults to frontend" {
+        mergeFragmentLayers("home", listOf(base), client = null).audience shouldBe FragmentAudience.frontend
+    }
+
+    "a backend base makes the merged file backend" {
+        val backendBase = layer(content = mapOf("email" to mapOf("subject" to "Code"))).let {
+            FragmentSource(it.fileId, it.isOverlay, it.client, it.origin, FragmentAudience.backend, it.load)
+        }
+        mergeFragmentLayers("home", listOf(backendBase), client = null).audience shouldBe FragmentAudience.backend
+    }
+
+    "an overlay's audience does not change the file's -- the base decides" {
+        // Audience is a fact about the file, and the base is what supplies the file. An overlay marked backend
+        // over a frontend base is a confused declaration, not a reclassification: the file stays frontend.
+        val backendOverlay = FragmentSource(
+            "home", isOverlay = true, client = null, origin = "test", FragmentAudience.backend,
+        ) { mapOf("welcome" to mapOf("title" to "Overlaid")) }
+        mergeFragmentLayers("home", listOf(base, backendOverlay), client = null)
+            .audience shouldBe FragmentAudience.frontend
+    }
+
+    "any backend base makes the file backend -- the fail-safe direction, and the disagreement is kept" {
+        // Two components both claim the file, disagreeing on audience. Erring toward backend withholds a file
+        // that might have been public; erring the other way would *serve* one a base marked private. But the
+        // safe resolution is still somebody's mistake -- it takes a delivered file private without failing
+        // anything here -- so the conflict is recorded for the boot check to report at its cause.
+        val frontendBase = base
+        val backendBase = FragmentSource(
+            "home", isOverlay = false, client = null, origin = "test", FragmentAudience.backend,
+        ) { mapOf("email" to mapOf("subject" to "Code")) }
+        val merged = mergeFragmentLayers("home", listOf(frontendBase, backendBase), client = null)
+        merged.audience shouldBe FragmentAudience.backend
+        merged.audienceConflict shouldBe true
+    }
+
+    "bases that agree are no conflict, whichever way they agree" {
+        mergeFragmentLayers("home", listOf(base), client = null).audienceConflict shouldBe false
+        val backendBase = FragmentSource(
+            "home", isOverlay = false, client = null, origin = "test", FragmentAudience.backend,
+        ) { mapOf("email" to mapOf("subject" to "Code")) }
+        mergeFragmentLayers("home", listOf(backendBase), client = null).audienceConflict shouldBe false
+        // Two backend bases still agree -- it is disagreement that is the finding, not multiplicity.
+        mergeFragmentLayers("home", listOf(backendBase, backendBase), client = null)
+            .audienceConflict shouldBe false
+    }
+
+    "an overlay is not a base, so it cannot create a conflict" {
+        val backendOverlay = FragmentSource(
+            "home", isOverlay = true, client = null, origin = "test", FragmentAudience.backend,
+        ) { mapOf("welcome" to mapOf("title" to "Overlaid")) }
+        val merged = mergeFragmentLayers("home", listOf(base, backendOverlay), client = null)
+        merged.audience shouldBe FragmentAudience.frontend
+        merged.audienceConflict shouldBe false
+    }
 })

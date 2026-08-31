@@ -84,11 +84,19 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         val mode = fragmentCheckMode(cxt)
         if (mode == BootCheckMode.off) return
         val results = checkFragments(cxt)
-        val broken = results.filter { it.issues.isNotEmpty() || !it.found || it.orphans.isNotEmpty() }
+        val broken = results.filter {
+            it.issues.isNotEmpty() || !it.found || it.orphans.isNotEmpty() || it.audienceConflict
+        }
         val findings = broken.map { r ->
             val where = r.fileId + (r.client?.let { " (client '$it')" } ?: "")
             when {
                 !r.found -> "'$where' is declared but absent"
+                // Ahead of the issue list: a file that has gone private explains whatever else looks wrong
+                // about it, and it is the finding whose consequence lands somewhere else entirely -- every
+                // UI-config naming this file now fails, with nothing at that end saying why.
+                r.audienceConflict ->
+                    "'$where' is declared both frontend and backend by different bases, so the whole file is " +
+                        "treated as backend and is no longer delivered to any frontend"
                 r.issues.isNotEmpty() ->
                     "'$where': " + r.issues.joinToString(", ") { "${it.message} (line ${it.line})" }
                 // An orphan is a finding rather than a note, and strict mode therefore refuses to boot on one.
@@ -143,18 +151,46 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             }
             clients.map { client ->
                 val merged = mergeFragmentLayers(fileId, forFile, client)
+                val backend = merged.audience == FragmentAudience.backend
                 // One parse of each value yields all three answers (issue #505): the syntax issues, the `@t`
                 // reference/cycle issues, and the per-entry data requirements. A broken template contributes
                 // no references, so one defect is not reported twice.
-                val analysis = if (merged.found) merged.content.analyzeFragmentFile() else null
-                val entries = analysis?.entryPaths.orEmpty().map { e ->
+                //
+                // A backend file (issue #514) is parsed with the backend prefix, and only its **syntax** is
+                // kept. Its references are `%{@t("fileId.namespace.key")}` -- three-part and registry-wide,
+                // which this per-file walk cannot resolve (the two-part rule would call every one dangling), so
+                // that check is the backend-pass boot follow-up, not this. Its `${...}` are carried onward for
+                // the frontend to finish against a *different* element, so their requirements are not this
+                // file's to report either.
+                val prefix = if (backend) backendPassPrefix else '$'
+                val analysis = if (merged.found) merged.content.analyzeFragmentFile(prefix) else null
+                // ...but a backend file's `${...}` blocks still get a **syntax** check, from a second parse with
+                // the frontend prefix. Only the one pass would leave an unterminated `${` in a backend file
+                // entirely unexamined -- it is plain text to the `%` parser -- so a strict boot would pass it,
+                // and the frontend would fail on it later, which is exactly the reach this check exists to
+                // shorten. Each pass treats the other's blocks as ordinary text, so the two lists are disjoint
+                // rather than the same defect twice.
+                val carriedSyntax = if (backend && merged.found) {
+                    merged.content.analyzeFragmentFile().syntaxIssues
+                } else {
+                    emptyList()
+                }
+                val entries = if (backend) emptyList() else analysis?.entryPaths.orEmpty().map { e ->
                     FragmentEntryReport(e.entry, e.paths, data?.let { e.paths.missingFrom(it) } ?: emptyList())
                 }
+                val issues = analysis?.let {
+                    if (backend) it.syntaxIssues + carriedSyntax else it.syntaxIssues + it.referenceIssues
+                }.orEmpty()
                 FragmentCheckResult(
                     fileId, client, merged.found,
-                    issues = analysis?.let { it.syntaxIssues + it.referenceIssues }.orEmpty(),
+                    issues = issues,
                     entries = entries,
                     orphans = merged.orphans,
+                    audience = merged.audience,
+                    // On the shared row only: the conflict is a fact about the file's **bases**, which belong
+                    // to no client, so reporting it per variant would say one thing three times -- and a boot
+                    // refusal listing it three times reads as three broken files.
+                    audienceConflict = merged.audienceConflict && client == null,
                 )
             }
         }
@@ -189,7 +225,11 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         } else {
             effectiveFragments(cxt, fileId)
         }
-        if (effective == null || !effective.found) {
+        // A backend file is never delivered (issue #514): it exists to be pulled by a `%{@t(...)}`, and its
+        // values may be resolved per request, which the permanent cache on this response could not hold. It is
+        // refused as though absent -- the same 404, so a caller who names its URL cannot even tell it exists,
+        // which is the whole of "private".
+        if (effective == null || !effective.found || effective.audience == FragmentAudience.backend) {
             // Explicitly uncached: a stale URL from a redeploy lands here, and a cached 404 would keep
             // answering for a file that exists. The frontend's next UI-config call hands it a current ref.
             handler.setResponseHeader("Cache-Control", ContentResources.noStore)
@@ -367,9 +407,13 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
          * Per caller, because the id names merged content and a client's overlays change it. Handing every
          * caller the same id would be the whole bug: two clients would share one URL for two documents, and
          * the permanent cache on that response would settle which of them everybody got.
+         *
+         * Null for a [backend][FragmentAudience.backend] file (issue #514): it is never served, so it has no
+         * URL to bust -- and returning one would invite a fetch that [serve] then refuses.
          */
         fun fragmentBuildId(cxt: KdrCxt, fileId: String): String? =
-            get(cxt).effectiveFragments(cxt, fileId)?.takeIf { it.found }?.buildId
+            get(cxt).effectiveFragments(cxt, fileId)
+                ?.takeIf { it.found && it.audience == FragmentAudience.frontend }?.buildId
 
         /** Schema type name for a per-file check result. */
         const val checkTypeName = "FragmentCheck"
@@ -466,6 +510,21 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                     type = SCT.array
                     items { type = SCT.string }
                 }
+                property(
+                    FCHK.audience,
+                    "Who the file is for: 'frontend' (delivered to the browser) or 'backend' (private -- never " +
+                        "served, pulled server-side by a backend '%{@t(...)}').",
+                    required = true,
+                )
+                property(
+                    FCHK.audienceConflict,
+                    "Whether different bases declared this file both frontend and backend. It resolves to " +
+                        "backend, so the file stops being delivered to any frontend -- which breaks every " +
+                        "UI-config naming it, far from the declaration that caused it.",
+                    required = true,
+                ) {
+                    type = SCT.boolean
+                }
             }
             listEndpoint(
                 "/operator/fragments/check",
@@ -509,6 +568,10 @@ class FragmentCheckResult(
     val entries: List<FragmentEntryReport>,
     /** Overlay keys no base declares -- see `orphanedOverlayKeys`, and why silence is the failure mode. */
     val orphans: List<String>,
+    /** Who the file is for (issue #514); a backend file is never delivered to a frontend. */
+    val audience: FragmentAudience,
+    /** Whether its bases disagreed about [audience] -- see `EffectiveFragments.audienceConflict`. */
+    val audienceConflict: Boolean,
 ) : JsonMappable {
     override fun toJsonMap(): Map<String, Any?> {
         // An explicit map rather than `buildMap`: inside that block the receiver is a MutableMap, whose own
@@ -523,6 +586,8 @@ class FragmentCheckResult(
         out[FCHK.issues] = issues.map { it.toJsonMap() }
         out[FCHK.entries] = entries.map { it.toJsonMap() }
         out[FCHK.orphans] = orphans
+        out[FCHK.audience] = audience.name
+        out[FCHK.audienceConflict] = audienceConflict
         return out
     }
 }
