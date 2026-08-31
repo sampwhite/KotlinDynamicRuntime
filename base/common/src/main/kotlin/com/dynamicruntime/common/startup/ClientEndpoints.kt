@@ -100,5 +100,10 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         // what a client-specific surface should be.
         publicApi = endpoint.publicApi,
         tags = endpoint.tags,
+        // Likewise the list-paging flags (issue #499): the copy shares the output schema, so it must share
+        // whether the executor populates `numAvailable` / `hasMore` -- otherwise a client copy of a paged
+        // listing declares those fields but never fills them, failing validation (or silently dropping paging).
+        hasMore = endpoint.hasMore,
+        hasNumAvailable = endpoint.hasNumAvailable,
     )
 }

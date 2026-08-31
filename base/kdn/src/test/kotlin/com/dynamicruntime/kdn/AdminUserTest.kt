@@ -12,6 +12,7 @@ import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
@@ -131,6 +132,40 @@ class AdminUserTest : StringSpec({
 
         val plain = TestUser.create(cxt, "outsider@other.com")
         plain.expectError(EXC.notAuthorized, ADEP.users)
+    }
+
+    "the users listing trims to the limit but reports the full total in numAvailable (issue #499)" {
+        val cxt = Startup.mkTestBootCxt("adminNumAvail", "adminNumAvailTest")
+        val admin = TestUser.createFullAdmin(cxt, "chief@other.com")
+
+        fun total(): Int =
+            (admin.client.sendJsonGetRequest(ADEP.users, mapOf(EP.limit to 1000))[EP.numAvailable] as Number).toInt()
+
+        // Add exactly five accounts under a unique prefix, one created disabled -- the plain listing includes
+        // disabled accounts, which is the whole reason it stays on SQL rather than the enabled-only cache. The
+        // unfiltered total rises by exactly five (a delta, not a fixed count, since the instance may hold
+        // baseline users).
+        val before = total()
+        repeat(5) { i ->
+            admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "listtest$i@other.com", ADF.enabled to (i != 0)))
+        }
+        val expected = before + 5
+        total() shouldBe expected
+
+        // The unfiltered listing (no search): the page is trimmed to the limit, but numAvailable and hasMore
+        // describe the whole set. This is the branch whose total is a plain SQL row count.
+        val resp = admin.client.sendJsonGetRequest(ADEP.users, mapOf(EP.limit to 2))
+        resp[EP.items].toJsonListOfMaps() shouldHaveSize 2
+        (resp[EP.numItems] as Number).toInt() shouldBe 2
+        (resp[EP.numAvailable] as Number).toInt() shouldBe expected
+        resp[EP.hasMore] shouldBe true
+
+        // The filtered branch: a search narrows to exactly the five, and numAvailable reports that filtered
+        // total (not the whole table) while the page is still trimmed. Includes the one disabled account.
+        val searched = admin.client.sendJsonGetRequest(ADEP.users, mapOf(ADF.search to "listtest", EP.limit to 2))
+        searched[EP.items].toJsonListOfMaps() shouldHaveSize 2
+        (searched[EP.numAvailable] as Number).toInt() shouldBe 5
+        searched[EP.hasMore] shouldBe true
     }
 
     // --- the whole flow ------------------------------------------------------

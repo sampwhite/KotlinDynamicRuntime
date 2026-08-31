@@ -77,7 +77,8 @@ Every JSON output also carries `requestUri` (String) and `duration` (number, ms)
 - **`listEndpoint`** → payload list under **`items`**, with `numItems`; options `hasMore`,
   `hasNumAvailable`, `noLimit`, `clientShaped`. Method **defaults to `GET`**, and note the parameter order
   differs: `(path, description, outputRef, method = GET, …)` against general/item's
-  `(path, description, method, outputRef, …)`.
+  `(path, description, method, outputRef, …)`. See *List paging* below for `numAvailable` (on by default when
+  there is a `limit`) and how a handler reports the total.
 - **`fileUploadEndpoint`** / **`fileDownloadEndpoint`** → see *Files* below.
 
 ## Input is FLAT
@@ -206,8 +207,22 @@ non-2xx body is a standardized envelope (issue #103), built by `RequestHandler.e
 identity + `roles`. `cxt.request.responseMeta` is a mutable map a handler can add to; if non-empty it travels
 on the response under the off-contract `_meta` key.
 
-A `KdrResponse` accumulator (letting a list handler report `hasMore` / `numAvailable`) is **still not built** —
-those envelope fields are declared by the builder but not yet populated by execution.
+## List paging: `numAvailable` and `ListPage` (issue #499)
+
+A list endpoint reports **`numAvailable`** — the total across the whole scoped set, of which the returned page
+is a trimmed part — **by default whenever it has a `limit`** (`hasNumAvailable` resolves to `!noLimit`). A
+handler that pages a source it cannot count passes `hasNumAvailable = false`; a `noLimit` endpoint reports
+nothing extra, since there is nothing to trim by.
+
+Two ways a handler supplies it, and **usually you write neither**:
+
+- **Return the whole scoped set as a plain `List`.** The executor trims it to `limit`, and fills `numItems`
+  from the page, `numAvailable` from the untrimmed size, and `hasMore` (when declared) from whether it
+  trimmed. This is the common case and needs no handler code — the list you return is the total.
+- **Return a `ListPage(items, numAvailable, hasMore)`** when the handler paged *itself* (e.g. a `LIMIT`/`OFFSET`
+  SQL query, or the table cache): the page's own values are authoritative and the executor passes them through
+  verbatim. Reach for this when materializing the whole set to count it is the wrong cost; otherwise prefer the
+  plain list.
 
 ## Source
 

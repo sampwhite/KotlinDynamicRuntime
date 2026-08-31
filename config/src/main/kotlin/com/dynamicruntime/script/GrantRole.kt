@@ -115,7 +115,7 @@ object GrantRole {
         // user's own (nonexistent) rows. What entitles it is not a role but the shell: whoever can run this
         // already has the database credentials. That reasoning belongs at the call site, which is the point of
         // there being no default to fall through.
-        val rows = service.listUsers(cxt, search, listLimit, ReadScope.unrestricted)
+        val rows = service.listUsers(cxt, search, listLimit, ReadScope.unrestricted).rows
         if (rows.isEmpty()) {
             println("No users match '$search'.")
             return 0

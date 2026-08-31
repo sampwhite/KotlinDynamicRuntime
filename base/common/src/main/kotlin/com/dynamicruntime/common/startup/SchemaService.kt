@@ -561,8 +561,8 @@ class SchemaService : ServiceInitializer {
                 // richest form on a non-test node as a result; `/demo/schema/sample` is the groomed one that
                 // is meant to be seen.
                 forTestingOnly = true,
-                // hasMore / hasNumAvailable are intentionally omitted: the executor does not populate paging
-                // metadata yet (a TODO in buildEnvelope), so requiring them would fail output validation.
+                // numAvailable is on by default (it has a limit): complexItems returns the whole expanded chain
+                // as a plain list, so the executor trims it and reports the total for free (issue #499).
             ) { c, request -> complexItems(c, request) }
         }
 

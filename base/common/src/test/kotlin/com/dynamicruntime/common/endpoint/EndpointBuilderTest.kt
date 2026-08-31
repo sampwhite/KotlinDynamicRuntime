@@ -9,6 +9,7 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.typeRefPath
 import com.dynamicruntime.common.schema.validate
+import com.dynamicruntime.common.startup.buildClientEndpoints
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -121,8 +122,51 @@ class EndpointBuilderTest : StringSpec({
         val input = resolvedInput(m, "/xs")
         input.properties.keys.shouldBeEmpty()
         input.additionalProperties shouldBe false
+        // noLimit turns numAvailable off by default: nothing to trim by, so no total to report (issue #499).
+        ep.hasNumAvailable shouldBe false
         props(ep.outputSchema).keys shouldContainExactlyInAnyOrder
             listOf(EP.numItems, EP.requestUri, EP.duration, EP.contentHash, EP.webAppHash,EP.items) // no hasMore / numAvailable
+    }
+
+    "a list endpoint reports numAvailable by default when it has a limit (issue #499)" {
+        val m = schemaModule(cxt, "api") {
+            type("Out") { type = SCT.kObject; property("n", "n") }
+            // No paging flags and a limit (the default): numAvailable is declared, hasMore is not.
+            listEndpoint("/ys", "Ys list endpoint", outputRef = "Out") { _, _ -> emptyList<Any?>() }
+        }
+        val ep = m.endpoints.single()
+        ep.hasNumAvailable shouldBe true
+        ep.hasMore shouldBe false
+        props(ep.outputSchema).keys shouldContainExactlyInAnyOrder
+            listOf(EP.numItems, EP.requestUri, EP.duration, EP.contentHash, EP.webAppHash, EP.numAvailable, EP.items)
+    }
+
+    "a list endpoint can opt out of numAvailable even with a limit (issue #499)" {
+        val m = schemaModule(cxt, "api") {
+            type("Out") { type = SCT.kObject; property("n", "n") }
+            // A handler that pages a source it cannot count sets it false explicitly.
+            listEndpoint("/zs", "Zs list endpoint", outputRef = "Out", hasNumAvailable = false) { _, _ -> emptyList<Any?>() }
+        }
+        val ep = m.endpoints.single()
+        ep.hasNumAvailable shouldBe false
+        props(ep.outputSchema).keys shouldContainExactlyInAnyOrder
+            listOf(EP.numItems, EP.requestUri, EP.duration, EP.contentHash, EP.webAppHash, EP.items)
+    }
+
+    "a per-client copy carries the paging flags, so the executor still fills them (issues #455, #499)" {
+        val m = schemaModule(cxt, "api") {
+            type("Out") { type = SCT.kObject; property("n", "n") }
+            // A clientShaped list endpoint with both paging fields -- exactly the gedra listing's shape.
+            listEndpoint("/thing/list", "List things.", outputRef = "Out", hasMore = true, clientShaped = true) { _, _ ->
+                emptyList<Any?>()
+            }
+        }
+        val copy = buildClientEndpoints(cxt, m.endpoints, listOf("acme")).single()
+        // The copy is under the client's path but must keep the metadata the executor keys off -- otherwise it
+        // would declare numAvailable/hasMore in its (shared) output schema yet never populate them.
+        copy.path shouldBe "/thing/acme/list"
+        copy.hasNumAvailable shouldBe true
+        copy.hasMore shouldBe true
     }
 
     "an endpoint can declare explicit input fields instead of a named type" {

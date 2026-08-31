@@ -94,6 +94,17 @@ class SchemaComplexEndpointTest : StringSpec({
         list.first()[CX.mode] shouldBe CX.lenient
     }
 
+    "the limit trims the page while numAvailable reports the whole set (issue #499)" {
+        // This handler returns the full expanded chain (root, mid, leaf) as a plain list; the executor trims it
+        // to `limit` and -- since a list endpoint with a limit now reports numAvailable by default -- fills the
+        // total from the untrimmed size, with no change to the handler.
+        val q = validQuery().apply { put(EP.limit, 2) }
+        val resp = client("complexLimit").sendJsonPutRequest("/fixture/schema/complex", q)
+        items(resp).map { it[CX.name] } shouldBe listOf("root", "mid")
+        (resp[EP.numItems] as Number).toInt() shouldBe 2
+        (resp[EP.numAvailable] as Number).toInt() shouldBe 3
+    }
+
     "PUT /schema/complex coerces string-encoded scalars anywhere in the input" {
         val q = validQuery()
         val input = sub(q, CX.input)

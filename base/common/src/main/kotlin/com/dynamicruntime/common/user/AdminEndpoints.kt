@@ -84,13 +84,16 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         paths.users,
         "Lists users, newest first, optionally filtered by a search term over email, username, and name.",
         outputRef = ADTY.adminUser,
+        hasMore = true,
         inputFields = {
             field(ADF.search, "Case-insensitive substring to match against the email, username, or name.")
         },
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
-        userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, ReadScopeRules.forCaller(c))
-            .map { it.toAdminInfo() }
+        // listUsers trims to the page and reports the whole-set total (issue #499), so a truncated listing says
+        // how many there are. Only the page is mapped to admin info.
+        val page = userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, ReadScopeRules.forCaller(c))
+        ListPage(page.rows.map { it.toAdminInfo() }, numAvailable = page.numAvailable, hasMore = page.numAvailable > limit)
     }
 
     // A richer search than the plain listing above: brute force over the user cache (issue #411), with a
