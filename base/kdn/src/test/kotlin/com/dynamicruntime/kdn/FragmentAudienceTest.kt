@@ -4,11 +4,14 @@ import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.fragmentInline
+import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.util.ScriptError
 import com.dynamicruntime.common.util.jsonMap
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -98,5 +101,61 @@ class FragmentAudienceTest : StringSpec({
         }
         cxt.instanceConfig.put(FRAG.registryKey, listOf(back))
         service(cxt).checkFragments(cxt).flatMap { it.issues }.isNotEmpty() shouldBe true
+    }
+
+    "a malformed *frontend* block in a backend file is caught too" {
+        // The half a single backend-prefix parse would miss: `${` is plain text to the `%` parser, so without
+        // the second pass this file passes a strict boot and fails later at frontend render, an unbounded
+        // distance from the keyboard. A backend file's `${...}` is carried onward, not exempt from syntax.
+        val cxt = Startup.mkTestBootCxt("audCarried", "audCarriedTest")
+        val back = fragmentInline(
+            "audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend,
+        ) {
+            namespace("email") { key("subject", $$"""Hello ${unterminated""") }
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(back))
+        service(cxt).checkFragments(cxt).flatMap { it.issues }.isNotEmpty() shouldBe true
+    }
+
+    // --- the audience conflict ---------------------------------------------------------------------------
+
+    /**
+     * Two components declare one fileId and disagree. The merge resolves it safely -- backend wins, so nothing
+     * private is served -- but that safe resolution takes a **delivered** file private, and every UI-config
+     * naming it then fails somewhere else entirely. So the conflict is a boot finding, reported at its cause.
+     */
+    "bases disagreeing about audience is a boot finding, and a strict boot refuses" {
+        val cxt = Startup.mkTestBootCxt("audConflict", "audConflictTest")
+        val asFrontend = fragmentInline("audBoth", origin = "componentA", isOverlay = false) {
+            namespace("welcome") { key("title", "Public copy") }
+        }
+        val asBackend = fragmentInline(
+            "audBoth", origin = "componentB", isOverlay = false, audience = FragmentAudience.backend,
+        ) {
+            namespace("email") { key("subject", "Private copy") }
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(asFrontend, asBackend))
+
+        val shared = service(cxt).checkFragments(cxt).single { it.client == null }
+        shared.audienceConflict shouldBe true
+        shared.audience shouldBe FragmentAudience.backend
+
+        // mkTestBootCxt forces the unit environment, where the check is strict.
+        val ex = shouldThrow<KdrException> { service(cxt).checkFragmentsAtStartup(cxt) }
+        (ex.message ?: "") shouldContain "audBoth"
+        (ex.message ?: "") shouldContain "no longer delivered"
+    }
+
+    "a UI-config naming a backend file fails saying why, not 'not available'" {
+        // If the conflict above is ignored (production only warns), this is what the reader gets at the far
+        // end. It must name the audience: the file is loaded and present, so "not available" sends them
+        // hunting for a missing resource that is sitting right there.
+        val cxt = Startup.mkTestBootCxt("audRefs", "audRefsTest")
+        register(cxt)
+        val ex = shouldThrow<KdrException> { fragmentRefs(cxt, "audBack") }
+        ex.fullMessage() shouldContain "backend (private)"
+        // A genuinely absent file still reports as absent -- the two failures stay distinguishable.
+        shouldThrow<KdrException> { fragmentRefs(cxt, "audNoSuchFile") }
+            .fullMessage() shouldContain "is not available"
     }
 })

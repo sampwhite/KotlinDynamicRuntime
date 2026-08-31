@@ -50,6 +50,12 @@ object FCHK {
     /** Overlay keys no base declares (issue #456). */
     const val orphans = "orphans"
 
+    /** Who the file is for -- a [FragmentAudience] name (issue #514). */
+    const val audience = "audience"
+
+    /** Whether the file's bases disagreed about its audience (issue #514). */
+    const val audienceConflict = "audienceConflict"
+
     const val found = "found"
     const val issueCount = "issueCount"
     const val issues = "issues"

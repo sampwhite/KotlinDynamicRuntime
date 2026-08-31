@@ -35,8 +35,21 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  * response would let whichever was cached first be served to both.
  */
 fun fragmentRefs(cxt: KdrCxt, vararg fileIds: String): List<Map<String, Any?>> = fileIds.map { fileId ->
-    val buildId = MarkdownFragmentService.fragmentBuildId(cxt, fileId)
-        ?: throw KdrException("Markdown fragment file '$fileId' is not available.", code = EXC.internalError)
+    val buildId = MarkdownFragmentService.fragmentBuildId(cxt, fileId) ?: run {
+        // Two different deployment errors, and the message has to tell them apart. A **backend** file has no
+        // build id on purpose (issue #514) -- it is never delivered -- so a UI-config naming one is an audience
+        // mistake, not a missing resource: either this config names a private file, or some other component
+        // declared the same fileId as backend and took the whole file private. "Is not available" would send
+        // the reader hunting for a file that is sitting right there, fully loaded. The boot check reports the
+        // second case at its cause (`audienceConflict`); this is what the reader sees if it reaches here.
+        val effective = MarkdownFragmentService.get(cxt).effectiveFragments(cxt, fileId)
+        val why = if (effective != null && effective.found && effective.audience == FragmentAudience.backend) {
+            "is a backend (private) fragment file, which is never delivered to a frontend"
+        } else {
+            "is not available"
+        }
+        throw KdrException("Markdown fragment file '$fileId' $why.", code = EXC.internalError)
+    }
     mapOf(UIC.fileId to fileId, UIC.buildId to buildId)
 }
 
