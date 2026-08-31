@@ -3,6 +3,35 @@ package com.dynamicruntime.common.content
 import com.dynamicruntime.common.exception.KdrException
 
 /**
+ * Who a fragment file is *for* (issue #514) -- and, through that, which template pass resolves it.
+ *
+ * A fragment file used to be one thing: content the frontend fetches and renders. The backend `@t` pass
+ * (issue #505) added a second use -- a `%{@t("fileId.namespace.key")}` a handler resolves server-side before
+ * content ships -- and with it a file whose *only* reason to exist is to be pulled that way, never delivered.
+ * Audience is the file's own statement of which it is, so the two are not told apart by guesswork.
+ *
+ *  - [frontend] -- the ordinary case, and the default. The content server ships it, and the response is cached
+ *    `immutable` under a content-hash URL, so its values must be **stable**: a `${...}` in it is a frontend
+ *    block the delivered copy carries and the frontend finishes. It never gets a backend pass, so it must not
+ *    hold a `%{...}` block -- one would ship raw.
+ *  - [backend] -- a **private** file: never served, so a caller cannot fetch it however it names the URL. It
+ *    exists to be pulled by a backend `%{@t(...)}`, which is why it may hold `%{...}` freely, and it may also
+ *    carry `${...}` onward for the frontend to finish against whichever element the pulled text lands on.
+ *
+ * The distinction matters because a delivered file is cached forever against its content: a value resolved per
+ * request could not be delivered without breaking that cache, so anything request-resolved has to live in a
+ * file that is pulled rather than served. Audience draws that line where it can be declared and checked.
+ */
+@Suppress("EnumEntryName")
+enum class FragmentAudience {
+    /** Delivered to the frontend and cached against its content; the default. See [FragmentAudience]. */
+    frontend,
+
+    /** Never served; exists only to be pulled by a backend `%{@t(...)}`. See [FragmentAudience]. */
+    backend,
+}
+
+/**
  * One contribution to a fragment file's content (issue #456) -- a **layer**.
  *
  * A fragment file used to be exactly one classpath resource, so "the file" and "its content" were the same
@@ -47,6 +76,17 @@ class FragmentSource(
      */
     val origin: String,
     /**
+     * Who this file is for -- [FragmentAudience.frontend] (delivered, the default) or
+     * [FragmentAudience.backend] (private, pulled not served).
+     *
+     * It is a fact about the **file**, not the layer, so it is the **base** that decides: an overlay changes
+     * some values of a file whose audience is already settled, and its own value here is ignored (it defaults
+     * [FragmentAudience.frontend][FragmentAudience] and never has to be set). A file marked
+     * [backend][FragmentAudience] by any base is treated as backend -- the fail-safe direction, since the cost
+     * of getting it wrong is a private file served rather than a public one withheld.
+     */
+    val audience: FragmentAudience = FragmentAudience.frontend,
+    /**
      * Reads this layer's content, or null when its resource is absent.
      *
      * A function rather than a map so a classpath read stays lazy and an inline map needs no wrapper: both
@@ -78,10 +118,11 @@ fun fragmentInline(
     origin: String,
     isOverlay: Boolean = true,
     client: String? = null,
+    audience: FragmentAudience = FragmentAudience.frontend,
     build: FragmentMapBuilder.() -> Unit,
 ): FragmentSource {
     val content = FragmentMapBuilder().apply(build).build()
-    return FragmentSource(fileId, isOverlay, client, origin, load = { content })
+    return FragmentSource(fileId, isOverlay, client, origin, audience, load = { content })
 }
 
 /**

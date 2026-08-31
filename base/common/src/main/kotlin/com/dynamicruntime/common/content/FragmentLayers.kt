@@ -22,6 +22,11 @@ class EffectiveFragments(
     val found: Boolean,
     /** Overlay keys, as `namespace.key`, that no base layer declares -- see [orphanedOverlayKeys]. */
     val orphans: List<String>,
+    /**
+     * Who the file is for -- decided by its base layers (issue #514). [FragmentAudience.backend] means the
+     * content server must not deliver it: it is [content] a `%{@t(...)}` may pull, not a document to ship.
+     */
+    val audience: FragmentAudience,
 )
 
 /**
@@ -68,9 +73,17 @@ fun mergeFragmentLayers(fileId: String, sources: List<FragmentSource>, client: S
         content.forEach { (ns, keys) -> keys.keys.forEach { overlaid.add("$ns.$it") } }
     }
     val effective = merged.mapValues { it.value.toMap() }
+    // A file is backend if any base says so -- the fail-safe direction, since erring toward "backend" withholds
+    // a file that might have been public, while erring the other way *serves* one a base marked private.
+    val audience = if (bases.any { it.audience == FragmentAudience.backend }) {
+        FragmentAudience.backend
+    } else {
+        FragmentAudience.frontend
+    }
     return EffectiveFragments(
         fileId, client, effective, fragmentContentBuildId(effective), found,
         orphans = orphanedOverlayKeys(baseKeys, overlaid),
+        audience = audience,
     )
 }
 
