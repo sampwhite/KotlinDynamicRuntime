@@ -91,6 +91,13 @@ class TemplateAnalysis(
     val issues: List<TemplateIssue>,
     val paths: TemplatePaths,
     val refs: List<TemplateRef> = emptyList(),
+    /**
+     * How many `prefix{...}` blocks this text opened, well-formed or not (issue #514). Counted at the opener,
+     * so a malformed or unterminated block still counts -- the question it answers is "does this text use the
+     * pass for this `prefix` at all?", which is how a file declared for one audience is caught carrying the
+     * other's blocks. A doubled `prefix` escape and a lone `prefix` are not blocks and are not counted.
+     */
+    val blockCount: Int = 0,
 )
 
 /**
@@ -103,6 +110,7 @@ fun String.analyzeTemplate(prefix: Char = '$'): TemplateAnalysis {
     val required = mutableSetOf<String>()
     val optional = mutableSetOf<String>()
     val refs = mutableListOf<TemplateRef>()
+    var blocks = 0
     val state = ScriptState(this, prefix)
     while (state.offset < state.end) {
         val ch = this[state.offset]
@@ -113,6 +121,7 @@ fun String.analyzeTemplate(prefix: Char = '$'): TemplateAnalysis {
         val next = if (state.offset + 1 < state.end) this[state.offset + 1] else ' '
         when (next) {
             '{' -> {
+                blocks++
                 state.captureBlockStart()
                 state.advance(ch)
                 state.advance(this[state.offset])
@@ -121,7 +130,7 @@ fun String.analyzeTemplate(prefix: Char = '$'): TemplateAnalysis {
                 } catch (e: KdrException) {
                     // The block never closed: the rest of the document cannot be trusted to be text.
                     issues.add(issueOf(e, state))
-                    return TemplateAnalysis(issues, mkPaths(required, optional), refs)
+                    return TemplateAnalysis(issues, mkPaths(required, optional), refs, blocks)
                 }
                 if (expr.isBlank()) {
                     issues.add(
@@ -151,7 +160,7 @@ fun String.analyzeTemplate(prefix: Char = '$'): TemplateAnalysis {
             else -> state.advance(ch)
         }
     }
-    return TemplateAnalysis(issues, mkPaths(required, optional), refs)
+    return TemplateAnalysis(issues, mkPaths(required, optional), refs, blocks)
 }
 
 /** A path read in both a guarded and an unguarded place is required: the unguarded read is what decides. */

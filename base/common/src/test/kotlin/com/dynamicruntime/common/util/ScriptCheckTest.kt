@@ -182,4 +182,23 @@ class ScriptCheckTest : StringSpec({
         issue[TISS.line] shouldBe 1
         issue[TISS.col] shouldBe 1
     }
+
+    // --- block count (issue #514): "does this text use this prefix's pass at all?" ---------------------
+
+    "blockCount counts a prefix's blocks and ignores its escapes and literals" {
+        $$"plain text".analyzeTemplate().blockCount shouldBe 0
+        $$"${a} and ${b}".analyzeTemplate().blockCount shouldBe 2
+        // A doubled prefix is an escape and a lone one is literal -- neither is a block.
+        "100%% off, 50% more".analyzeTemplate('%').blockCount shouldBe 0
+        // Counted against the chosen prefix only: a ${...} is plain text to the % pass, and vice versa.
+        $$"${a} but %{b}".analyzeTemplate('%').blockCount shouldBe 1
+        $$"${a} but %{b}".analyzeTemplate().blockCount shouldBe 1
+    }
+
+    "a malformed or unterminated block still counts -- the opener is what is counted" {
+        // The point of the count is presence, so a block that opens and then goes wrong is still a block: an
+        // audience check that missed it would let exactly the broken cases through.
+        $$"${1 +} rest".analyzeTemplate().blockCount shouldBe 1   // opens, expression is malformed
+        $$"trailing ${unterminated".analyzeTemplate().blockCount shouldBe 1 // opens, never closes
+    }
 })
