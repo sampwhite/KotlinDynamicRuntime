@@ -17,6 +17,9 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.TemplateIssue
 import com.dynamicruntime.common.util.TemplatePaths
 import com.dynamicruntime.common.util.analyzeFragmentFile
+import com.dynamicruntime.common.util.FragmentResolver
+import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.resolveFragment
 import com.dynamicruntime.common.util.missingFrom
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toOptStr
@@ -271,9 +274,81 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     fun resolveFragment(cxt: KdrCxt, fileId: String, namespace: String, key: String): String? =
         effectiveFragments(cxt, fileId)?.content?.get(namespace)?.get(key)
 
+    /**
+     * A [FragmentResolver] for the **backend pass** (issue #505, Phase 4): it resolves a three-part
+     * `fileId.namespace.key` reference across the whole registry, for [cxt]'s client.
+     *
+     * Three parts, not two, because the backend has every file where a frontend has only its own delivered
+     * copy -- so a backend `%{@t(...)}` can pull cross-file. It composes the two rules already in place: the
+     * `fileId` selects a file's merged map, and the remaining `namespace.key` resolves through the same kernel
+     * [resolveFragment][com.dynamicruntime.common.util.resolveFragment] the frontend uses. Anything but a
+     * well-formed three-part key names nothing and returns null.
+     */
+    fun backendResolver(cxt: KdrCxt): FragmentResolver = FragmentResolver { key ->
+        val dot = key.indexOf('.')
+        if (dot <= 0 || dot >= key.length - 1) {
+            null
+        } else {
+            effectiveFragments(cxt, key.substring(0, dot))?.content?.resolveFragment(key.substring(dot + 1))
+        }
+    }
+
+    /**
+     * Runs the **backend pass** over [text] (issue #505, Phase 4): evaluates its `%{...}` blocks with the
+     * backend [backendResolver] and [data], and leaves `${...}` blocks untouched for the frontend to resolve
+     * later. This is how a `%{@t("otherFile.namespace.key")}` is resolved server-side before content ships.
+     *
+     * ### It throws, and there is no boot check behind it yet
+     *
+     * An unguarded reference to a fragment this node does not have raises, as everywhere in the template layer
+     * -- so a mistyped or renamed key fails the *caller*, which for an endpoint handler means a 500 over one
+     * piece of copy. That is louder than this file's own policy for fragments, which degrades rather than
+     * failing (see [checkFragmentsAtStartup]), and the reason is timing rather than intent: the boot check that
+     * would catch such a key before any request is registry-wide and does not exist yet (its own follow-up).
+     *
+     * Until it does, two ways to not be surprised: guard the pull (`%{@t("x.y.z") ?: "..."}`, which uses the
+     * grammar's one default mechanism), or catch around this call if the caller would rather degrade than
+     * fail. A caller that does neither is choosing the loud failure.
+     *
+     * ### What it splices keeps the *caller's* later context, not its source's
+     *
+     * A backend-composed string **may** carry `${...}` for the frontend to finish -- that is the two-pass model
+     * working as intended. What matters is that a surviving `${...}` is evaluated **later, by the frontend,
+     * against the element that carried the string**, never against the file the text came from. The two kinds
+     * of frontend block are affected very differently, and only one is a hazard:
+     *
+     *  - **A data substitution (`${count}`) is the ordinary case** and needs no file at all -- it reads the data
+     *    the frontend supplies for that element. In practice this is nearly all of it: a backend-composed string
+     *    does its *fragment* pulls on the backend and leaves only plain values for the frontend.
+     *  - **A frontend fragment pull (`${@t("ns.key")}`) resolves against the element's declared `fileId`.** So a
+     *    backend author writing one is asserting that whichever element carries this content names a file
+     *    holding `ns.key`. That assertion is theirs to get right: the binding between content and element
+     *    happens at request time, so no boot check can verify it (see the audience follow-up for what *can* be
+     *    checked -- notably that a backend pull names only a backend file).
+     *
+     * The trap to know: pulling something like `sample.email.body` (which reads `${code}`) into an element that
+     * supplies no `code` does not fail here -- it ships a `${code}` for the frontend to fail on. Prefer pulling
+     * text that is plain or whose `${...}` the carrying element genuinely supplies.
+     */
+    fun backendPass(cxt: KdrCxt, text: String, data: Map<String, Any?> = emptyMap()): String =
+        text.evalTemplate(data, prefix = backendPassPrefix, resolver = backendResolver(cxt))
+
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "MarkdownFragmentService"
+
+        /**
+         * The block prefix for the **backend pass** (issue #505): `%{...}` is resolved on the backend, `${...}`
+         * (the kernel default) on the frontend. `%` is free as a delimiter -- inside a block it is the modulo
+         * operator, but `%{` opens no block anywhere else, and `#` was rejected because it already begins a
+         * fragment-file directive line.
+         *
+         * Choosing it costs the two things every template prefix costs, and copy that runs a backend pass has
+         * to live with both: a **doubled `%%` is the escape**, so it collapses to a single `%` (`"100%% off"`
+         * renders `"100% off"` -- write `%%%` for a literal `%%`), and a stray **`%{` throws** as an
+         * unterminated block rather than passing through. A lone `%` is untouched, which is the common case.
+         */
+        const val backendPassPrefix = '%'
 
         /** The `md` path segment marking a Markdown-fragment request under the static root. */
         const val mdMarker = CMK.md

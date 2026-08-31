@@ -244,18 +244,30 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         type = SCT.kObject
         property(UIC.fileId, "The fragment file this element's text resolves its @t pulls against.", required = true)
         property(UIC.buildId, "That file's build id, so the frontend can fetch its copy.", required = true)
-        property(TEP.demoText, "A template string with an @t fragment pull and a plain substitution.", required = true)
+        property(
+            TEP.demoText,
+            "A template string, its backend %{@t(...)} pull already resolved, still carrying a frontend " +
+                "${'$'}{@t(...)} pull and a plain substitution.",
+            required = true,
+        )
     }
     generalEndpoint(
         TEP.fragmentDemo,
-        "Demo: a content element whose text pulls a fragment, resolved on the frontend (issue #505).",
+        "Demo: a content element whose text pulls a fragment on the backend and one on the frontend (#505).",
         HttpMethod.GET, outputRef = "FragmentDemoElement", forTestingOnly = true,
     ) { c, _ ->
+        val service = MarkdownFragmentService.get(c)
+        // Both passes in one string: the backend resolves `%{...}` now -- a three-part `fileId.namespace.key`
+        // across the registry -- and leaves `${...}` for the frontend to resolve against this file's copy. So
+        // the shipped text still carries the frontend pull, its backend pull already substituted.
+        val text = service.backendPass(
+            c,
+            $$"""Backend pulled *%{@t("$${FRAG.sample}.email.subject")}*; frontend pulls **${@t("portal.welcome")}** — plain value: ${demoVar}.""",
+        )
         mapOf(
             UIC.fileId to FRAG.sample,
             UIC.buildId to (MarkdownFragmentService.fragmentBuildId(c, FRAG.sample) ?: ""),
-            TEP.demoText to
-                $$"""Pulled on the frontend: **${@t("portal.welcome")}** — and a plain value: ${demoVar}.""",
+            TEP.demoText to text,
         )
     }
 }

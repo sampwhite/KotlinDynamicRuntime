@@ -391,11 +391,12 @@ fun Map<String, Map<String, String>>.checkFragmentSyntax(prefix: Char = '$'): Li
  * Only references that resolve become edges, so a dangling one is reported once (as a missing reference)
  * rather than twice (again as a broken cycle edge).
  *
- * The **backend pass** (`%{@t("fileId.namespace.key")}`) is not validated here. It uses different addressing --
- * three parts, across the whole registry, not one file -- and it is not built yet (its prefix is not even
- * settled). Its validation lands with the backend pass, Phase 4 of #505. The [prefix] parameter scans a chosen
- * block delimiter, but the resolution is the frontend one, so validating the backend pass needs more than a
- * different prefix here.
+ * The **backend pass** (`%{@t("fileId.namespace.key")}`) exists since Phase 4 of #505 and is **still not
+ * validated here**, deliberately: it addresses three parts across the whole registry, so checking it needs the
+ * registry, which this per-file walk does not have. The [prefix] parameter scans a chosen block delimiter, but
+ * the resolution is the frontend's two-part one -- so validating the backend pass needs more than a different
+ * prefix, and lands as its own follow-up. Until it does, a mistyped backend reference is a render-time
+ * failure rather than a boot finding.
  */
 fun Map<String, Map<String, String>>.checkFragmentReferences(prefix: Char = '$'): List<TemplateIssue> =
     analyzeFragmentFile(prefix).referenceIssues
