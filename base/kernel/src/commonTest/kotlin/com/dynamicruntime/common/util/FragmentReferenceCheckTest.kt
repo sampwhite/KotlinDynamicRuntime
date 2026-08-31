@@ -57,6 +57,37 @@ class FragmentReferenceCheckTest {
     }
 
     @Test
+    fun aGuardedReferenceToAnAbsentFragmentIsNotReported() {
+        // `?:` says what happens when the fragment is not there, so reporting it would refuse content that is
+        // deliberately optional -- and on a strict boot, refuse to start. The case that bites hardest is a base
+        // file referencing copy only a client overlay supplies.
+        val m = mapOf("wf" to mapOf("a" to $$"""${@t("wf.optional") ?: "default"}"""))
+        assertEquals(emptyList(), m.checkFragmentReferences())
+    }
+
+    @Test
+    fun aGuardedReferenceStillCountsAsACycleEdgeWhenItResolves() {
+        // Guarded only says what to do when absent. When it *is* there, render time follows it like any other,
+        // so the cycle is real and must still be reported.
+        val m = mapOf(
+            "wf" to mapOf(
+                "a" to $$"""${@t("wf.b") ?: "d"}""",
+                "b" to $$"""${@t("wf.a")}""",
+            ),
+        )
+        val cycles = m.checkFragmentReferences().filter { it.code == ScriptError.fragmentCycle }
+        assertEquals(1, cycles.size, "a resolvable guarded reference is still an edge")
+    }
+
+    @Test
+    fun aReferenceInATernaryBranchIsStillRequired() {
+        // Only the *condition* is a tolerant position; a branch is not -- mirroring collectPaths exactly.
+        val m = mapOf("wf" to mapOf("a" to $$"""${flag ? @t("wf.gone") : "x"}"""))
+        val issues = m.checkFragmentReferences()
+        assertEquals(1, issues.count { it.code == ScriptError.fragmentNotFound })
+    }
+
+    @Test
     fun aComputedKeyIsNotValidatedStatically() {
         // `@t(which)` names a fragment only at render time, so there is nothing to resolve here.
         val m = mapOf("wf" to mapOf("chooser" to $$"""${@t(which)}"""))

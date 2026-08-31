@@ -72,7 +72,19 @@ class TemplatePaths(val required: Set<String>, val optional: Set<String>)
  * A computed key (`@t(chosenKey)`) is not collected: it names a fragment only at evaluation time, so no static
  * check can resolve it -- the same over-approximation "required means referenced" already lives by.
  */
-class TemplateRef(val key: String, val offset: Int, val line: Int, val col: Int)
+class TemplateRef(
+    val key: String,
+    /**
+     * Whether the reference sits in a position that already handles absence -- the left of `?:`, a ternary
+     * condition, a null test. Such a reference is **not** reported when it resolves to nothing: the author said
+     * what happens instead. It still counts as an edge for cycle detection when it *does* resolve, because at
+     * render time it is followed like any other.
+     */
+    val tolerant: Boolean,
+    val offset: Int,
+    val line: Int,
+    val col: Int,
+)
 
 /** A template's problems, its data requirements, and its literal `@t` references, from one parse. */
 class TemplateAnalysis(
@@ -124,7 +136,9 @@ fun String.analyzeTemplate(prefix: Char = '$'): TemplateAnalysis {
                     val node = ScriptParser(state, tokenize(state, expr)).parseAll()
                     collectPaths(node, tolerant = false, required = required, optional = optional, depth = 0)
                     collectFragmentRefs(
-                        node, refs, state.blockOffset, state.blockLine + 1, state.blockCol + 1, depth = 0,
+                        node, refs, tolerant = false,
+                        offset = state.blockOffset, line = state.blockLine + 1, col = state.blockCol + 1,
+                        depth = 0,
                     )
                 } catch (e: KdrException) {
                     issues.add(issueOf(e, state))
@@ -203,11 +217,18 @@ fun collectPaths(
  * every template error is). A separate walk from [collectPaths] rather than a parameter on it, matching how
  * `evalNode` and `collectPaths` each walk the tree for their own concern -- the exhaustive `when` makes a new
  * node type a compile error in all three, so they cannot drift.
+ *
+ * It carries **tolerance exactly as [collectPaths] does**, and for the same reason: `${@t("a.b") ?: "x"}` says
+ * what to do when the fragment is not there, so reporting it as a missing reference would refuse content its
+ * author already handled -- and on a strict boot, refuse to start. The flag rides on the ref rather than
+ * dropping it here, because a *guarded* reference that does resolve is still a real edge at render time and
+ * must still be seen by the cycle walk.
  */
 @KdrPrivate
 fun collectFragmentRefs(
     node: ScriptNode,
     refs: MutableList<TemplateRef>,
+    tolerant: Boolean,
     offset: Int,
     line: Int,
     col: Int,
@@ -217,29 +238,32 @@ fun collectFragmentRefs(
     val next = depth + 1
     when (node) {
         is LiteralNode, is PathNode -> {}
-        is CallNode -> node.args.forEach { collectFragmentRefs(it, refs, offset, line, col, next) }
-        is UnaryNode -> collectFragmentRefs(node.operand, refs, offset, line, col, next)
+        is CallNode -> node.args.forEach { collectFragmentRefs(it, refs, tolerant, offset, line, col, next) }
+        is UnaryNode -> collectFragmentRefs(node.operand, refs, tolerant, offset, line, col, next)
         is BinaryNode -> {
-            collectFragmentRefs(node.left, refs, offset, line, col, next)
-            collectFragmentRefs(node.right, refs, offset, line, col, next)
+            val nullTest = (node.op == "==" || node.op == "!=") &&
+                (isNullLiteral(node.left) || isNullLiteral(node.right))
+            val t = tolerant || nullTest
+            collectFragmentRefs(node.left, refs, t, offset, line, col, next)
+            collectFragmentRefs(node.right, refs, t, offset, line, col, next)
         }
         is ElvisNode -> {
-            collectFragmentRefs(node.left, refs, offset, line, col, next)
-            collectFragmentRefs(node.right, refs, offset, line, col, next)
+            collectFragmentRefs(node.left, refs, tolerant = true, offset = offset, line = line, col = col, depth = next)
+            collectFragmentRefs(node.right, refs, tolerant, offset, line, col, next)
         }
         is TernaryNode -> {
-            collectFragmentRefs(node.cond, refs, offset, line, col, next)
-            collectFragmentRefs(node.whenTrue, refs, offset, line, col, next)
-            collectFragmentRefs(node.whenFalse, refs, offset, line, col, next)
+            collectFragmentRefs(node.cond, refs, tolerant = true, offset = offset, line = line, col = col, depth = next)
+            collectFragmentRefs(node.whenTrue, refs, tolerant, offset, line, col, next)
+            collectFragmentRefs(node.whenFalse, refs, tolerant, offset, line, col, next)
         }
         is FragmentNode -> {
             val k = node.key
             // Only a literal key is a static reference; a computed one is a runtime concern.
             if (k is LiteralNode && k.value is String) {
-                refs.add(TemplateRef(k.value, offset, line, col))
+                refs.add(TemplateRef(k.value, tolerant, offset, line, col))
             }
-            collectFragmentRefs(node.key, refs, offset, line, col, next)
-            node.bindings.forEach { collectFragmentRefs(it.second, refs, offset, line, col, next) }
+            collectFragmentRefs(node.key, refs, tolerant, offset, line, col, next)
+            node.bindings.forEach { collectFragmentRefs(it.second, refs, tolerant, offset, line, col, next) }
         }
     }
 }
@@ -272,42 +296,82 @@ private fun issueOf(e: KdrException, state: ScriptState): TemplateIssue = Templa
 class FragmentEntryPaths(val entry: String, val paths: TemplatePaths)
 
 /**
+ * Everything a fragment file's check needs, from **one parse of each value** ([analyzeFragmentFile]). The
+ * issue lists stay separate because they answer different questions and a caller may want one without the
+ * other; they are produced together because [analyzeTemplate] already yields all of it per value, and parsing
+ * three times was three chances to disagree about a value that only half-parses.
+ */
+class FragmentFileAnalysis(
+    /** Malformed templates, each message prefixed with the `namespace.key` that carries it. */
+    val syntaxIssues: List<TemplateIssue>,
+    /** Unresolved `@t` references and reference cycles; see [checkFragmentReferences]. */
+    val referenceIssues: List<TemplateIssue>,
+    /** Per-entry data requirements; entries that read nothing are dropped. */
+    val entryPaths: List<FragmentEntryPaths>,
+)
+
+/**
+ * Parses every value of a fragment file **once** and derives all three checks from it (issue #505).
+ *
+ * The reference rules are [checkFragmentReferences]'s; the path rules are [fragmentPaths]'s. Both, plus the
+ * syntax issues, come out of the single [analyzeTemplate] per value that already computes them.
+ */
+fun Map<String, Map<String, String>>.analyzeFragmentFile(prefix: Char = '$'): FragmentFileAnalysis {
+    val syntax = mutableListOf<TemplateIssue>()
+    val references = mutableListOf<TemplateIssue>()
+    val paths = mutableListOf<FragmentEntryPaths>()
+    val edges = LinkedHashMap<String, List<String>>()
+
+    for ((namespace, entries) in this) {
+        for ((key, value) in entries) {
+            val id = "$namespace.$key"
+            val analysis = value.analyzeTemplate(prefix)
+
+            for (issue in analysis.issues) {
+                syntax.add(TemplateIssue(issue.code, "$id: ${issue.message}", issue.offset, issue.line, issue.col))
+            }
+            if (analysis.paths.required.isNotEmpty() || analysis.paths.optional.isNotEmpty()) {
+                paths.add(FragmentEntryPaths(id, analysis.paths))
+            }
+
+            val resolvedTargets = mutableListOf<String>()
+            for (ref in analysis.refs) {
+                if (resolveFragment(ref.key) != null) {
+                    // A resolvable two-part key names exactly the entry `ref.key`, so it is an edge to it --
+                    // guarded or not, since at render time a guarded reference that resolves is still followed.
+                    resolvedTargets.add(ref.key)
+                } else if (!ref.tolerant) {
+                    references.add(
+                        TemplateIssue(
+                            ScriptError.fragmentNotFound,
+                            "$id: references fragment '${ref.key}', which is not defined.",
+                            ref.offset, ref.line, ref.col,
+                        ),
+                    )
+                }
+                // A tolerant reference that resolves to nothing is silent: `?:` already says what happens.
+            }
+            edges[id] = resolvedTargets
+        }
+    }
+    references.addAll(fragmentReferenceCycles(edges))
+    return FragmentFileAnalysis(syntax, references, paths)
+}
+
+/**
  * The data requirements of every entry in a parsed fragment file. Entries that read nothing are dropped: a
  * report listing every piece of static copy would bury the handful that actually depend on a caller.
  */
-fun Map<String, Map<String, String>>.fragmentPaths(prefix: Char = '$'): List<FragmentEntryPaths> {
-    val out = mutableListOf<FragmentEntryPaths>()
-    for ((namespace, entries) in this) {
-        for ((key, value) in entries) {
-            val paths = value.analyzeTemplate(prefix).paths
-            if (paths.required.isNotEmpty() || paths.optional.isNotEmpty()) {
-                out.add(FragmentEntryPaths("$namespace.$key", paths))
-            }
-        }
-    }
-    return out
-}
+fun Map<String, Map<String, String>>.fragmentPaths(prefix: Char = '$'): List<FragmentEntryPaths> =
+    analyzeFragmentFile(prefix).entryPaths
 
 /**
  * Checks every value of a parsed fragment file (`namespace -> key -> value`), returning the issues found with
  * each one's `namespace.key` prefixed onto the message -- a file-level check is only useful if it says *which*
  * entry is broken.
  */
-fun Map<String, Map<String, String>>.checkFragmentSyntax(prefix: Char = '$'): List<TemplateIssue> {
-    val issues = mutableListOf<TemplateIssue>()
-    for ((namespace, entries) in this) {
-        for ((key, value) in entries) {
-            for (issue in value.checkTemplateSyntax(prefix)) {
-                issues.add(
-                    TemplateIssue(
-                        issue.code, "$namespace.$key: ${issue.message}", issue.offset, issue.line, issue.col,
-                    ),
-                )
-            }
-        }
-    }
-    return issues
-}
+fun Map<String, Map<String, String>>.checkFragmentSyntax(prefix: Char = '$'): List<TemplateIssue> =
+    analyzeFragmentFile(prefix).syntaxIssues
 
 /**
  * Validates the **frontend-pass** (`${@t(...)}`) references in a parsed fragment file (issue #505). Two
@@ -319,9 +383,13 @@ fun Map<String, Map<String, String>>.checkFragmentSyntax(prefix: Char = '$'): Li
  *  - a **cycle** among entries connected by literal references (`a.x` pulls `b.y` pulls `a.x`), which at render
  *    time would only surface as the include-depth backstop firing.
  *
- * A *computed* key is out of scope here, as everywhere: it names a fragment only when it is evaluated. Only
- * references that both resolve and name an entry become edges, so a dangling one is reported once (as a missing
- * reference) rather than twice (again as a broken cycle edge).
+ * A *computed* key is out of scope here, as everywhere: it names a fragment only when it is evaluated. So is a
+ * **guarded** one (`${@t("a.b") ?: "x"}`): its author already said what happens when the fragment is absent, so
+ * reporting it would refuse content that is deliberately optional -- and on a strict boot, refuse to start. It
+ * still forms an edge when it *does* resolve, because render time follows it like any other.
+ *
+ * Only references that resolve become edges, so a dangling one is reported once (as a missing reference)
+ * rather than twice (again as a broken cycle edge).
  *
  * The **backend pass** (`%{@t("fileId.namespace.key")}`) is not validated here. It uses different addressing --
  * three parts, across the whole registry, not one file -- and it is not built yet (its prefix is not even
@@ -329,33 +397,8 @@ fun Map<String, Map<String, String>>.checkFragmentSyntax(prefix: Char = '$'): Li
  * block delimiter, but the resolution is the frontend one, so validating the backend pass needs more than a
  * different prefix here.
  */
-fun Map<String, Map<String, String>>.checkFragmentReferences(prefix: Char = '$'): List<TemplateIssue> {
-    val issues = mutableListOf<TemplateIssue>()
-    val edges = LinkedHashMap<String, List<String>>()
-    for ((namespace, entries) in this) {
-        for ((key, value) in entries) {
-            val id = "$namespace.$key"
-            val resolved = mutableListOf<String>()
-            for (ref in value.analyzeTemplate(prefix).refs) {
-                if (resolveFragment(ref.key) == null) {
-                    issues.add(
-                        TemplateIssue(
-                            ScriptError.fragmentNotFound,
-                            "$id: references fragment '${ref.key}', which is not defined.",
-                            ref.offset, ref.line, ref.col,
-                        ),
-                    )
-                } else {
-                    // A resolvable two-part key names exactly the entry `ref.key`, so it is an edge to it.
-                    resolved.add(ref.key)
-                }
-            }
-            edges[id] = resolved
-        }
-    }
-    issues.addAll(fragmentReferenceCycles(edges))
-    return issues
-}
+fun Map<String, Map<String, String>>.checkFragmentReferences(prefix: Char = '$'): List<TemplateIssue> =
+    analyzeFragmentFile(prefix).referenceIssues
 
 /**
  * Every distinct cycle in the reference graph [edges] (`entry -> entries it references`), each named by its

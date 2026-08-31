@@ -188,6 +188,8 @@ val DebugState = FC<Props> {
     }
 }
 
+private val debugFragmentScope = MainScope()
+
 /**
  * Renders a **server-provided content element whose text pulls a fragment on the frontend** — the Phase 3
  * vertical slice of issue #505.
@@ -199,8 +201,6 @@ val DebugState = FC<Props> {
  * ambient file context. Both the raw template and the resolved Markdown are shown, so the substitution is
  * visible rather than implied.
  */
-private val debugFragmentScope = MainScope()
-
 val DebugFragment = FC<Props> {
     var fileId by useState("")
     var rawText by useState<String?>(null)
@@ -211,11 +211,18 @@ val DebugFragment = FC<Props> {
     useEffect(generation) {
         debugFragmentScope.launch {
             try {
-                val element = Http.getApi(TEP.fragmentDemo)[EP.results].toJsonMapOrEmpty()
-                val fid = element[UIC.fileId] as? String ?: ""
-                val buildId = element[UIC.buildId] as? String ?: ""
-                val text = element[TEP.demoText] as? String ?: ""
-                val copy = fetchCopy(FragmentRef(fid, buildId))
+                suspend fun element(): Map<String, Any?> =
+                    Http.getApi(TEP.fragmentDemo)[EP.results].toJsonMapOrEmpty()
+                fun refOf(e: Map<String, Any?>) =
+                    FragmentRef(e[UIC.fileId] as? String ?: "", e[UIC.buildId] as? String ?: "")
+
+                val el = element()
+                val fid = el[UIC.fileId] as? String ?: ""
+                val text = el[TEP.demoText] as? String ?: ""
+                // Recover a stale build id the way every other copy fetch does (issue #469): a rolling deploy
+                // leaves this ref one deploy old, which 404s -- re-fetch the element for a fresh ref and retry
+                // once, rather than reporting the misleading "is the runtime running" below.
+                val copy = fetchCopyWithRetry(refOf(el)) { runCatching { refOf(element()) }.getOrNull() }
                 // The fragment pull resolves against the file's copy; `demoVar` shows a plain substitution too.
                 fileId = fid
                 rawText = text

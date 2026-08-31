@@ -16,9 +16,7 @@ import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.TemplateIssue
 import com.dynamicruntime.common.util.TemplatePaths
-import com.dynamicruntime.common.util.checkFragmentReferences
-import com.dynamicruntime.common.util.checkFragmentSyntax
-import com.dynamicruntime.common.util.fragmentPaths
+import com.dynamicruntime.common.util.analyzeFragmentFile
 import com.dynamicruntime.common.util.missingFrom
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toOptStr
@@ -142,21 +140,17 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             }
             clients.map { client ->
                 val merged = mergeFragmentLayers(fileId, forFile, client)
-                val entries = merged.content.fragmentPaths().map { e ->
+                // One parse of each value yields all three answers (issue #505): the syntax issues, the `@t`
+                // reference/cycle issues, and the per-entry data requirements. A broken template contributes
+                // no references, so one defect is not reported twice.
+                val analysis = if (merged.found) merged.content.analyzeFragmentFile() else null
+                val entries = analysis?.entryPaths.orEmpty().map { e ->
                     FragmentEntryReport(e.entry, e.paths, data?.let { e.paths.missingFrom(it) } ?: emptyList())
-                }
-                // Syntax and `@t` references both come from the merged content; a broken template stops the
-                // reference check for that value (analyzeTemplate returns no refs from a block it could not
-                // parse), so the two lists do not double-report one defect (issue #505).
-                val issues = if (merged.found) {
-                    merged.content.checkFragmentSyntax() + merged.content.checkFragmentReferences()
-                } else {
-                    emptyList()
                 }
                 FragmentCheckResult(
                     fileId, client, merged.found,
-                    issues = issues,
-                    entries = if (merged.found) entries else emptyList(),
+                    issues = analysis?.let { it.syntaxIssues + it.referenceIssues }.orEmpty(),
+                    entries = entries,
                     orphans = merged.orphans,
                 )
             }
