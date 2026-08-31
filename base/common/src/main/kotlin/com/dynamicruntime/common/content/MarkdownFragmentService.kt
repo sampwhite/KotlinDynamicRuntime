@@ -297,6 +297,30 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * Runs the **backend pass** over [text] (issue #505, Phase 4): evaluates its `%{...}` blocks with the
      * backend [backendResolver] and [data], and leaves `${...}` blocks untouched for the frontend to resolve
      * later. This is how a `%{@t("otherFile.namespace.key")}` is resolved server-side before content ships.
+     *
+     * ### It throws, and there is no boot check behind it yet
+     *
+     * An unguarded reference to a fragment this node does not have raises, as everywhere in the template layer
+     * -- so a mistyped or renamed key fails the *caller*, which for an endpoint handler means a 500 over one
+     * piece of copy. That is louder than this file's own policy for fragments, which degrades rather than
+     * failing (see [checkFragmentsAtStartup]), and the reason is timing rather than intent: the boot check that
+     * would catch such a key before any request is registry-wide and does not exist yet (its own follow-up).
+     *
+     * Until it does, two ways to not be surprised: guard the pull (`%{@t("x.y.z") ?: "..."}`, which uses the
+     * grammar's one default mechanism), or catch around this call if the caller would rather degrade than
+     * fail. A caller that does neither is choosing the loud failure.
+     *
+     * ### What it splices keeps the *caller's* later context, not its source's
+     *
+     * The subtle one, and it constrains what a backend pull may name. Pulled text is spliced into [text], so
+     * any `${...}` it carries is evaluated **later, by the frontend, against the element that carried the
+     * string** -- not against the file the text came from. Pulling `sample.email.body` (which reads `${code}`)
+     * into an element whose file is something else does not fail here; it ships a `${code}` that the frontend
+     * then resolves in the wrong context, or fails on.
+     *
+     * So a fragment named by a backend pull should be **plain text or backend-only** -- no `${...}` of its own.
+     * Nothing enforces that yet; it is the same registry-wide follow-up, which is the natural place for it
+     * because a check with the registry in hand can see both the reference and what it names.
      */
     fun backendPass(cxt: KdrCxt, text: String, data: Map<String, Any?> = emptyMap()): String =
         text.evalTemplate(data, prefix = backendPassPrefix, resolver = backendResolver(cxt))
@@ -310,6 +334,11 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
          * (the kernel default) on the frontend. `%` is free as a delimiter -- inside a block it is the modulo
          * operator, but `%{` opens no block anywhere else, and `#` was rejected because it already begins a
          * fragment-file directive line.
+         *
+         * Choosing it costs the two things every template prefix costs, and copy that runs a backend pass has
+         * to live with both: a **doubled `%%` is the escape**, so it collapses to a single `%` (`"100%% off"`
+         * renders `"100% off"` -- write `%%%` for a literal `%%`), and a stray **`%{` throws** as an
+         * unterminated block rather than passing through. A lone `%` is untouched, which is the common case.
          */
         const val backendPassPrefix = '%'
 

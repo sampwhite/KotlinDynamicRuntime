@@ -262,7 +262,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         // the shipped text still carries the frontend pull, its backend pull already substituted.
         val text = service.backendPass(
             c,
-            $$"""Backend pulled *%{@t("sample.email.subject")}*; frontend pulls **${@t("portal.welcome")}** — plain value: ${demoVar}.""",
+            $$"""Backend pulled *%{@t("$${FRAG.sample}.email.subject")}*; frontend pulls **${@t("portal.welcome")}** — plain value: ${demoVar}.""",
         )
         mapOf(
             UIC.fileId to FRAG.sample,

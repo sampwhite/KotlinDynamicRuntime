@@ -142,9 +142,10 @@ enum class MarkdownError {
  * with it at render time, so the two cannot disagree.
  *
  * The **backend pass** is a different rule and not this helper: `%{@t("fileId.namespace.key")}` resolves three
- * parts across the *whole registry*, because the backend has every file where a frontend has only its own. That
- * resolution, and the boot validation of it, arrive with the backend pass (Phase 4 of issue #505); nothing
- * writes it yet.
+ * parts across the *whole registry*, because the backend has every file where a frontend has only its own.
+ * `MarkdownFragmentService.backendResolver` does that (Phase 4 of issue #505), splitting off the `fileId` and
+ * then delegating the remaining two parts here -- so the two rules compose rather than duplicating. Boot
+ * validation of a backend reference does not exist yet and is its own follow-up.
  */
 fun Map<String, Map<String, String>>.resolveFragment(key: String): String? {
     val dot = key.indexOf('.')

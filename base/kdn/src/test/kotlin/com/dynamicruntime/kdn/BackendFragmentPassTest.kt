@@ -6,6 +6,8 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.exception.KdrException
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -46,6 +48,37 @@ class BackendFragmentPassTest : StringSpec({
         )
         // The backend pull is substituted; the frontend pull and its `${...}` block survive verbatim.
         out shouldBe $$"""be=Your verification code fe=${@t("portal.welcome")} v=${keep}"""
+    }
+
+    "choosing '%' makes '%%' an escape and a lone '%' literal" {
+        // The cost of any template prefix, documented on backendPassPrefix so copy running a backend pass can
+        // live with it: doubled is the escape, lone is untouched.
+        val cxt = Startup.mkTestBootCxt("bePct", "bePctTest")
+        val s = service(cxt)
+        s.backendPass(cxt, "100% off") shouldBe "100% off"       // a lone % is literal
+        s.backendPass(cxt, "100%% off") shouldBe "100% off"      // doubled escapes to one
+        s.backendPass(cxt, "100%%% off") shouldBe "100%% off"    // so a literal %% needs %%%
+    }
+
+    "an unguarded backend reference to a missing fragment throws, and a guarded one takes its default" {
+        // No boot check catches this yet (its own follow-up), so it is a render-time failure -- loud rather
+        // than a silently wrong string. `?:` is how an author opts into degrading instead.
+        val cxt = Startup.mkTestBootCxt("beMiss", "beMissTest")
+        val s = service(cxt)
+        shouldThrow<KdrException> { s.backendPass(cxt, $$"""x=%{@t("sample.email.gone")}""") }
+        s.backendPass(cxt, $$"""x=%{@t("sample.email.gone") ?: "fallback"}""") shouldBe "x=fallback"
+    }
+
+    "backend-pulled text keeps the caller's later context, which is why a pull should not carry \${...}" {
+        // The constraint documented on backendPass: a pulled `${...}` is spliced out unevaluated and is later
+        // resolved by the frontend against the *element's* file, not the source's. Demonstrated rather than
+        // asserted, because it is the trap an author would otherwise meet at render time.
+        val cxt = Startup.mkTestBootCxt("beSplice", "beSpliceTest")
+        // `sample.email.body` carries `${code}` / `${minutes}`.
+        val out = service(cxt).backendPass(cxt, $$"""%{@t("sample.email.body")}""")
+        out shouldContain $$"""${code}"""
+        // It survived the backend pass untouched -- so whatever evaluates this string next owns resolving it,
+        // in a context that has nothing to do with where the text came from.
     }
 
     "the fragmentDemo endpoint ships a backend-resolved, frontend-pending string" {
