@@ -126,7 +126,7 @@ class KdrEndpoint(
     val tags: Set<String> = emptySet(),
     /**
      * Whether this endpoint gets a **per-client copy** at a path naming the client (issue #455) --
-     * `/clientAdmin/cfacts` alongside `/clientAdmin/<client>/cfacts`.
+     * `/clientOperator/cfacts` alongside `/clientOperator/<client>/cfacts`.
      *
      * `buildClientEndpoints` copies the whole `gedra` section without being asked, because everything there
      * reads or writes one client's data. Its own note says the property is really "what this endpoint answers
@@ -293,13 +293,19 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         publicApi: Boolean = false,
         /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
         tags: Set<String> = emptySet(),
+        /**
+         * Gets a per-client copy at a path naming the client (issue #455); see [KdrEndpoint.clientShaped].
+         * Added here for the cfacts reference (issue #488), which answers differently per client -- the case
+         * [listEndpoint]'s own note anticipated one of the others would eventually want.
+         */
+        clientShaped: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.item, "The single resource item returned by the endpoint.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.item, namespace, description, fields, typeRef, false, output,
-                forTestingOnly, handler, publicApi = publicApi, tags = tags),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags, clientShaped = clientShaped),
         )
     }
 

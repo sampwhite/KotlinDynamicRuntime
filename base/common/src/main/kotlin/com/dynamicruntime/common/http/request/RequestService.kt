@@ -139,14 +139,21 @@ class RequestService : ServiceInitializer {
      * its cells. And within a client-scoped cell the caller's own scope may be narrower still -- an org within
      * the client -- which `ReadScopeRules.forCaller` resolves per request, not the section.)
      *
-     * `clientOperator` is **reserved, not built** -- the name is claimed here so the first client-scoped
-     * operator surface (client-scoped batch jobs are the expected first tenant) is not invented under another
-     * one. The bare `operator`/`admin` are the unmarked -- and *more* privileged -- half of each scope pair; if
-     * that reads backwards once `clientOperator` is real, the fix is to mark both ends
-     * (`deploymentOperator`/`deploymentAdmin`), deferred because nothing is deployed and those are the two paths
-     * used most.
+     * `clientOperator` is now **built** (issue #488, first tenant: the cfacts reference) -- see
+     * [clientOperatorSections]. The bare `operator`/`admin` are the unmarked -- and *more* privileged -- half of
+     * each scope pair; if that reads backwards now that `clientOperator` is real, the fix is to mark both ends
+     * (`deploymentOperator`/`deploymentAdmin`), deferred because those are the two paths used most.
      */
     val operatorSections: List<String> = listOf(SECT.operator)
+
+    /**
+     * Sections requiring [ROLE.operator] but **confined by the caller's scope** (issue #488) -- the operator
+     * counterpart of [scopedAdminSections], one rung down. Admits an `operator` or an `admin` (the ladder ranks
+     * admin above operator) **without** [ROLE.allClients], so a client's own operator reaches it and sees only
+     * their own scope, while the deployment-wide [operatorSections] takes the capability too. The
+     * client-scoped operator cell of the grid on [operatorSections].
+     */
+    val clientOperatorSections: List<String> = listOf(SECT.clientOperator)
 
     /**
      * Sections requiring [ROLE.admin] **and** the [ROLE.allClients] capability -- the **full-scope**
@@ -286,6 +293,8 @@ class RequestService : ServiceInitializer {
             s, needsLogin = true, requiredRole = ROLE.operator, requiredCapability = ROLE.allClients,
         )
         for (s in scopedAdminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.admin)
+        // Operator level, no capability: an operator or admin confined to their own scope (issue #488).
+        for (s in clientOperatorSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.operator)
         for (s in adminSections) {
             sectionRulesMap[s] = SectionRules(
                 s, needsLogin = true, requiredRole = ROLE.admin, requiredCapability = ROLE.allClients,
@@ -336,9 +345,9 @@ class RequestService : ServiceInitializer {
             throw KdrException(
                 "Refusing to start: the endpoint section(s) ${unruled.joinToString(", ") { "'$it'" }} have no " +
                     "access rules, so they would be served to anyone. Add each to anonSections, userSections, " +
-                    "operatorSections, scopedAdminSections or adminSections in RequestService -- a client-scoped " +
-                    "surface goes in scopedAdminSections, not adminSections (which requires the allClients " +
-                    "capability).",
+                    "operatorSections, clientOperatorSections, scopedAdminSections or adminSections in " +
+                    "RequestService -- a client-scoped surface goes in a client* list, not the deployment-wide " +
+                    "one (which requires the allClients capability).",
             )
         }
 

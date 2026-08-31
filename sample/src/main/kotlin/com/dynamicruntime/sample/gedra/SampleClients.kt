@@ -8,7 +8,11 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.cfact.CFACT
+import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.SCT
@@ -202,6 +206,19 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             items(SB.items) {
                 item { set(SB.id, SB.overview); set(SB.label, "Acme overview") }
                 item { set(SB.id, SB.siteAudits); set(SB.label, "Site audits"); set(UIB.displayOrder, 150) }
+            }
+        }
+
+        // --- suppressing a shared menu item (issue #488) ------------------------------------------------
+        //
+        // Acme hides the "Client facts" entry from the *home* menu, though every other qualifying caller keeps
+        // it: the overlay names the item by its id and sets its condition to `#never`, the documented way an
+        // overlay turns an item off without the merge having to learn to delete an element. The endpoint stays
+        // reachable -- this is presentation, not permission -- so an acme operator who navigates to it directly
+        // still sees the page; only the menu offer is withdrawn.
+        uiBlockOverlay(HMENU.block) {
+            items(HFLD.menu) {
+                menuItem(HMENU.cfactReference, cfactExpression = CFACT.neverName)
             }
         }
 

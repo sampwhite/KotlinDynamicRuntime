@@ -68,24 +68,27 @@ class HomeMenuTest : StringSpec({
         )
     }
 
-    "a client-scoped administrator gets Users, and not the deployment's Environment" {
-        // The pair that makes the two conditions distinguishable: `users` follows the admin level, while
-        // `envReference` follows the operator *section*, which has required `allClients` since #464.
+    "a client-scoped administrator gets Users and Client facts, and not the deployment's Environment" {
+        // The pair that makes the conditions distinguishable: `users` follows the admin level, `cfactReference`
+        // the `clientOperator` section (which an admin satisfies without `allClients`), while `envReference`
+        // follows the deployment `operator` section, which has required `allClients` since #464 (issue #488).
         val admin = TestUser.create(cxt, "menu-admin@example.com", level = ROLE.admin)
         menuIn(admin.getData(HEP.homeUiConfig)) shouldBe listOf(
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.users, "Users", HMENU.pageUsers),
+            page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
             page(HMENU.profile, "Profile", HMENU.pageProfile),
             call(HMENU.logout, "Log out", HACT.logout.name),
         )
     }
 
-    "a deployment operator gets Environment, and not Users" {
+    "a deployment operator gets Environment and Client facts, and not Users" {
         val operator = TestUser.createOperator(cxt, "menu-ops@example.com")
         menuIn(operator.getData(HEP.homeUiConfig)) shouldBe listOf(
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.envReference, "Environment", HMENU.pageEnv),
+            page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
             page(HMENU.profile, "Profile", HMENU.pageProfile),
             call(HMENU.logout, "Log out", HACT.logout.name),

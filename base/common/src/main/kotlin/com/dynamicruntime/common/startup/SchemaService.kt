@@ -144,7 +144,7 @@ class SchemaService : ServiceInitializer {
         // global ones under a longer name.
         //
         // "Varies something" is no longer "has a schema variant" (issue #455): a client whose config adds
-        // cfacts and no types still answers `/clientAdmin/cfacts` differently. Leaving it as the schema set
+        // cfacts and no types still answers `/clientOperator/cfacts` differently. Leaving it as the schema set
         // would have quietly made client-shapedness mean *client-shaped schema*, which is not what the
         // endpoints being copied are about -- and the client's copies would have gone missing rather than
         // failed, which is the shape of thing nobody reports.

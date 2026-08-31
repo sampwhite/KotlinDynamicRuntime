@@ -60,6 +60,15 @@ object SECT {
 
     /** Running the deployment (needs [ROLE.operator] **and** [ROLE.allClients] since #464); deployment-wide. */
     const val operator = "operator"
+
+    /**
+     * Client-scoped operator (needs [ROLE.operator], confined by scope); the operator counterpart of
+     * [clientAdmin], one rung down (issue #488). Admits an `operator` **or** an `admin` -- the ladder ranks
+     * admin above operator -- **without** the [ROLE.allClients] capability that the deployment-wide [operator]
+     * section requires, so a client's own operator reaches it and sees only their own scope. Reserved by #466;
+     * built for the first time by the cfacts reference it now serves.
+     */
+    const val clientOperator = "clientOperator"
 }
 
 /**

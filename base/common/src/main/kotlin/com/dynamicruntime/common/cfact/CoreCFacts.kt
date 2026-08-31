@@ -34,6 +34,9 @@ object CFACTS {
 
     /** The caller may reach the `operator` section -- level **and** deployment-wide scope. */
     const val isDeploymentOperator = "isDeploymentOperator"
+
+    /** The caller may reach the `clientOperator` section -- operator level, confined to their own scope (#488). */
+    const val isClientOperator = "isClientOperator"
 }
 
 /**
@@ -74,11 +77,12 @@ object CFACTS {
  * It arrives with the first thing that needs it, which is the cheap half -- the name is the part that would
  * have been expensive to change later.
  *
- * `isDeployment*` is a statement about **a section**, and carries a rule: **a cfact named after a section must
- * ask that section**, through `RequestService.sectionAdmits`. That is what keeps the name's promise true by
- * construction rather than by a description somebody has to remember to update -- and it is why there is no
- * `isClientOperator`: `/clientOperator` is reserved but has no rules registered, and an unregistered section
- * is served permissively, so such a cfact would quietly be true for everybody.
+ * `isDeployment*`, and [CFACTS.isClientOperator], are statements about **a section**, and carry a rule: **a
+ * cfact named after a section must ask that section**, through `RequestService.sectionAdmits`. That is what
+ * keeps the name's promise true by construction rather than by a description somebody has to remember to
+ * update. [CFACTS.isClientOperator] could not exist until issue #488: `/clientOperator` was reserved but had no
+ * rules registered, and an unregistered section is served permissively, so the cfact would quietly have been
+ * true for everybody. Now that the section is built, the cfact asks it like the others.
  */
 fun addCoreCFacts(collector: SchemaCollector) {
     // The profile the boot already computed, not a fresh `NodeProfile.of` off the config. Two reasons, and
@@ -138,6 +142,16 @@ fun addCoreCFacts(collector: SchemaCollector) {
         // invariant). Restating "operator and allClients" would be a second copy of a rule that has already
         // changed once.
     ) { RequestService.get(it).sectionAdmits(it.userProfile, SECT.operator) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.isClientOperator, CFGRP.caller,
+            "True when the caller may reach the `clientOperator` section -- the client-scoped operator surface " +
+                "(issue #488), which takes the operator level but **not** `allClients`, so an operator or an " +
+                "administrator confined to one client is one, unlike `${CFACTS.isDeploymentOperator}`.",
+        ),
+        // Asked of the dispatcher, like `isDeploymentOperator`: the menu item offering the cfacts page and the
+        // gate admitting a caller to it are then one answer.
+    ) { RequestService.get(it).sectionAdmits(it.userProfile, SECT.clientOperator) }
     collector.addCFact(
         CFactDef(
             CFACTS.hasAdminLevel, CFGRP.caller,

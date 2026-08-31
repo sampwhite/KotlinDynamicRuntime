@@ -62,8 +62,8 @@ fun buildClientEndpoints(
  * them wholesale would offer the same answer under several names.
  *
  * Elsewhere an endpoint says so for itself, with [KdrEndpoint.clientShaped] (issue #455). The two are the same
- * property declared at two granularities, which is what this note always implied: `/clientAdmin/cfacts` answers
- * with a registry a client's own config may have added to, so it is client-shaped while the rest of its
+ * property declared at two granularities, which is what this note always implied: `/clientOperator/cfacts`
+ * answers with a registry a client's own config may have added to, so it is client-shaped while the rest of its
  * section is not.
  */
 private const val CLIENT_SHAPED_SECTION = "gedra"
