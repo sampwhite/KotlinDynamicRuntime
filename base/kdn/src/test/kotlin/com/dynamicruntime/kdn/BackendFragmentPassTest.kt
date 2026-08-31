@@ -40,7 +40,7 @@ class BackendFragmentPassTest : StringSpec({
         r.resolve("${FRAG.sample}.gone.subject").shouldBeNull() // unknown namespace
     }
 
-    "the backend pass resolves %{...} and leaves \${...} for the frontend" {
+    $$"the backend pass resolves %{...} and leaves ${...} for the frontend" {
         val cxt = Startup.mkTestBootCxt("bePass", "bePassTest")
         val out = service(cxt).backendPass(
             cxt,
@@ -65,17 +65,17 @@ class BackendFragmentPassTest : StringSpec({
         // than a silently wrong string. `?:` is how an author opts into degrading instead.
         val cxt = Startup.mkTestBootCxt("beMiss", "beMissTest")
         val s = service(cxt)
-        shouldThrow<KdrException> { s.backendPass(cxt, $$"""x=%{@t("sample.email.gone")}""") }
-        s.backendPass(cxt, $$"""x=%{@t("sample.email.gone") ?: "fallback"}""") shouldBe "x=fallback"
+        shouldThrow<KdrException> { s.backendPass(cxt, """x=%{@t("sample.email.gone")}""") }
+        s.backendPass(cxt, """x=%{@t("sample.email.gone") ?: "fallback"}""") shouldBe "x=fallback"
     }
 
-    "a backend-composed string may carry \${...} onward, in the carrier's context rather than the source's" {
+    $$"a backend-composed string may carry ${...} onward, in the carrier's context rather than the source's" {
         // The two-pass model working as intended: a surviving `${...}` is for the frontend to finish. What it
         // resolves against is the *element* that carries the string, not the file the text came from -- which
         // is fine for a data substitution the carrier supplies, and is the author's assertion to get right for
         // a `${@t(...)}`. Demonstrated rather than asserted: `sample.email.body` carries `${code}`.
         val cxt = Startup.mkTestBootCxt("beSplice", "beSpliceTest")
-        val out = service(cxt).backendPass(cxt, $$"""%{@t("sample.email.body")}""")
+        val out = service(cxt).backendPass(cxt, """%{@t("sample.email.body")}""")
         out shouldContain $$"""${code}"""
         // Untouched by the backend pass, so whoever evaluates this next owns resolving it -- and owes it a
         // `code`. Nothing can check that binding statically; it is made at request time.
