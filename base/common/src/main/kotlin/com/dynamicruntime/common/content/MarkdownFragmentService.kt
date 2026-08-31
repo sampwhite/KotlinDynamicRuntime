@@ -17,6 +17,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.TemplateIssue
 import com.dynamicruntime.common.util.TemplatePaths
 import com.dynamicruntime.common.util.analyzeFragmentFile
+import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.FragmentResolver
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.resolveFragment
@@ -84,26 +85,47 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         val mode = fragmentCheckMode(cxt)
         if (mode == BootCheckMode.off) return
         val results = checkFragments(cxt)
-        val broken = results.filter {
-            it.issues.isNotEmpty() || !it.found || it.orphans.isNotEmpty() || it.audienceConflict
-        }
-        val findings = broken.map { r ->
-            val where = r.fileId + (r.client?.let { " (client '$it')" } ?: "")
-            when {
-                !r.found -> "'$where' is declared but absent"
-                // Ahead of the issue list: a file that has gone private explains whatever else looks wrong
-                // about it, and it is the finding whose consequence lands somewhere else entirely -- every
-                // UI-config naming this file now fails, with nothing at that end saying why.
-                r.audienceConflict ->
-                    "'$where' is declared both frontend and backend by different bases, so the whole file is " +
-                        "treated as backend and is no longer delivered to any frontend"
-                r.issues.isNotEmpty() ->
-                    "'$where': " + r.issues.joinToString(", ") { "${it.message} (line ${it.line})" }
-                // An orphan is a finding rather than a note, and strict mode therefore refuses to boot on one.
-                // It is the silent failure this check exists for: the overlay simply stops winning a lookup
-                // that no longer happens, nothing throws, and the customer's wording reverts to the default.
-                else -> "'$where': overlay keys no base declares: " + r.orphans.joinToString(", ")
+        fun where(r: FragmentCheckResult) = r.fileId + (r.client?.let { " (client '$it')" } ?: "")
+
+        // Every finding category a broken result carries, all of them -- a file can be wrong in more than one
+        // way, and reporting only the first would hide the rest until the first was fixed.
+        val findings = results.flatMap { r ->
+            val at = where(r)
+            if (!r.found) {
+                // Absent: nothing else can have been checked, so the other lists are empty and this stands alone.
+                listOf("'$at' is declared but absent")
+            } else {
+                buildList {
+                    // Ahead of the rest: a file that has gone private explains whatever else looks wrong about
+                    // it, and its consequence lands somewhere else entirely -- every UI-config naming it now
+                    // fails, with nothing at that end saying why.
+                    if (r.audienceConflict) {
+                        add(
+                            "'$at' is declared both frontend and backend by different bases, so the whole file is " +
+                                "treated as backend and is no longer delivered to any frontend",
+                        )
+                    }
+                    // Audience violations (issue #514): a frontend file with a backend block, or a backend pull
+                    // naming a non-backend file. Findings like the rest -- a strict boot refuses on them.
+                    r.audienceIssues.forEach { add("'$at': $it") }
+                    if (r.issues.isNotEmpty()) {
+                        add("'$at': " + r.issues.joinToString(", ") { "${it.message} (line ${it.line})" })
+                    }
+                    // An orphan is a finding rather than a note, and strict mode therefore refuses to boot on
+                    // one. It is a silent failure: the overlay stops winning a lookup that no longer happens,
+                    // nothing throws, and the customer's wording reverts to the default.
+                    if (r.orphans.isNotEmpty()) {
+                        add("'$at': overlay keys no base declares: " + r.orphans.joinToString(", "))
+                    }
+                }
             }
+        }
+        // Notes are surfaced but never refuse a boot (issue #514): a backend file carrying a frontend pull is
+        // not wrong, only resting on a human assertion. Logged so the fact is visible, and carried on the
+        // operator report for a running node.
+        val notes = results.flatMap { r -> r.notes.map { "'${where(r)}': $it" } }
+        if (notes.isNotEmpty()) {
+            LogStartup.info(cxt, "Markdown fragment notes: " + notes.joinToString("; "))
         }
         // Recorded before the refusal below, and unconditionally -- including when there is nothing to say.
         // A clean run is a fact the report needs (issue #303): "ran and found nothing" and "never ran" are
@@ -151,50 +173,146 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             }
             clients.map { client ->
                 val merged = mergeFragmentLayers(fileId, forFile, client)
-                val backend = merged.audience == FragmentAudience.backend
-                // One parse of each value yields all three answers (issue #505): the syntax issues, the `@t`
-                // reference/cycle issues, and the per-entry data requirements. A broken template contributes
-                // no references, so one defect is not reported twice.
-                //
-                // A backend file (issue #514) is parsed with the backend prefix, and only its **syntax** is
-                // kept. Its references are `%{@t("fileId.namespace.key")}` -- three-part and registry-wide,
-                // which this per-file walk cannot resolve (the two-part rule would call every one dangling), so
-                // that check is the backend-pass boot follow-up, not this. Its `${...}` are carried onward for
-                // the frontend to finish against a *different* element, so their requirements are not this
-                // file's to report either.
-                val prefix = if (backend) backendPassPrefix else '$'
-                val analysis = if (merged.found) merged.content.analyzeFragmentFile(prefix) else null
-                // ...but a backend file's `${...}` blocks still get a **syntax** check, from a second parse with
-                // the frontend prefix. Only the one pass would leave an unterminated `${` in a backend file
-                // entirely unexamined -- it is plain text to the `%` parser -- so a strict boot would pass it,
-                // and the frontend would fail on it later, which is exactly the reach this check exists to
-                // shorten. Each pass treats the other's blocks as ordinary text, so the two lists are disjoint
-                // rather than the same defect twice.
-                val carriedSyntax = if (backend && merged.found) {
-                    merged.content.analyzeFragmentFile().syntaxIssues
-                } else {
-                    emptyList()
-                }
-                val entries = if (backend) emptyList() else analysis?.entryPaths.orEmpty().map { e ->
-                    FragmentEntryReport(e.entry, e.paths, data?.let { e.paths.missingFrom(it) } ?: emptyList())
-                }
-                val issues = analysis?.let {
-                    if (backend) it.syntaxIssues + carriedSyntax else it.syntaxIssues + it.referenceIssues
-                }.orEmpty()
+                val findings = variantFindings(cxt, merged, data)
                 FragmentCheckResult(
                     fileId, client, merged.found,
-                    issues = issues,
-                    entries = entries,
+                    issues = findings.issues,
+                    entries = findings.entries,
                     orphans = merged.orphans,
                     audience = merged.audience,
                     // On the shared row only: the conflict is a fact about the file's **bases**, which belong
                     // to no client, so reporting it per variant would say one thing three times -- and a boot
                     // refusal listing it three times reads as three broken files.
                     audienceConflict = merged.audienceConflict && client == null,
+                    audienceIssues = findings.audienceIssues,
+                    notes = findings.notes,
                 )
             }
         }
     }
+
+    /** The per-variant checks, split by audience so a rule only runs where it means something. */
+    private class VariantFindings(
+        val issues: List<TemplateIssue>,
+        val entries: List<FragmentEntryReport>,
+        val audienceIssues: List<String>,
+        val notes: List<String>,
+    )
+
+    /**
+     * Runs the checks appropriate to [merged]'s audience over its content (issues #505, #514). An absent file
+     * has nothing to check; the two present cases differ enough that they are separate methods rather than one
+     * with branches, because almost every line would be behind an `if`.
+     */
+    private fun variantFindings(cxt: KdrCxt, merged: EffectiveFragments, data: Map<String, Any?>?): VariantFindings {
+        if (!merged.found) return VariantFindings(emptyList(), emptyList(), emptyList(), emptyList())
+        return if (merged.audience == FragmentAudience.backend) {
+            backendVariantFindings(cxt, merged.content)
+        } else {
+            frontendVariantFindings(merged.content, data)
+        }
+    }
+
+    /**
+     * A frontend file: the ordinary check (issue #505) -- syntax, `@t` reference and cycle issues, and the
+     * per-entry data requirements, all from the one `$`-prefix parse -- plus the audience rule that only a
+     * frontend file has (issue #514, check 1).
+     *
+     * **A frontend file must contain no `%{...}` backend block.** It is served with no backend pass, so a
+     * `%{...}` reaches the browser as literal text -- and because a `%{@t(...)}` is exactly how an author would
+     * *intend* a cross-file pull, this is the one that is written by mistake. Caught per entry with the block
+     * count from a `%`-prefix parse, which counts a real block and ignores a lone or doubled `%`.
+     */
+    private fun frontendVariantFindings(
+        content: Map<String, Map<String, String>>,
+        data: Map<String, Any?>?,
+    ): VariantFindings {
+        val analysis = content.analyzeFragmentFile()
+        val entries = analysis.entryPaths.map { e ->
+            FragmentEntryReport(e.entry, e.paths, data?.let { e.paths.missingFrom(it) } ?: emptyList())
+        }
+        val audienceIssues = content.flatMap { (ns, keys) ->
+            keys.mapNotNull { (key, value) ->
+                if (value.analyzeTemplate(backendPassPrefix).blockCount > 0) {
+                    "$ns.$key contains a ${backendPassPrefix}{...} backend block, but this is a frontend file: it " +
+                        "is served with no backend pass, so the block reaches the browser as literal text. Make it " +
+                        "a backend file, or a $frontendPassPrefix{...} frontend block."
+                } else {
+                    null
+                }
+            }
+        }
+        return VariantFindings(analysis.syntaxIssues + analysis.referenceIssues, entries, audienceIssues, emptyList())
+    }
+
+    /**
+     * A backend file (issue #514): private content pulled by a `%{@t(...)}`, never served. What is checkable
+     * here per file, and what is not:
+     *
+     *  - **Syntax, both passes.** A `%{...}` block is checked with the backend prefix; a `${...}` block it
+     *    carries onward is checked with the frontend prefix. Each parse treats the other's blocks as plain text,
+     *    so an unterminated block of *either* kind is caught, and the two are disjoint rather than double-counted.
+     *  - **Check 3 -- a backend pull names only a backend file.** A three-part `%{@t("fileId.ns.key")}` may pull
+     *    only another backend file; naming a *frontend* file would drag that file's `${...}` (authored to resolve
+     *    within its own delivery) into the carrier's context. One registry lookup per pull, no traversal.
+     *  - **Check 2 -- a carried `${@t(...)}` is a note, not a finding.** A backend file may legitimately carry a
+     *    frontend pull for the frontend to finish, but which file that resolves against is the *carrying element*
+     *    at request time, which no boot check can see. So it is named for a human rather than failed.
+     *
+     * What is still *not* here: resolving the three-part pull's own `ns.key` against the registry (the target
+     * file might lack it). That is the backend-pass reference validation, and it stays a follow-up -- this
+     * checks the pull's *audience*, which is the half that has a silent-misresolution failure mode.
+     */
+    private fun backendVariantFindings(cxt: KdrCxt, content: Map<String, Map<String, String>>): VariantFindings {
+        val issues = mutableListOf<TemplateIssue>()
+        val audienceIssues = mutableListOf<String>()
+        val notes = mutableListOf<String>()
+        for ((ns, keys) in content) {
+            for ((key, value) in keys) {
+                val id = "$ns.$key"
+                val byBackend = value.analyzeTemplate(backendPassPrefix)
+                val byFrontend = value.analyzeTemplate(frontendPassPrefix)
+                for (issue in byBackend.issues + byFrontend.issues) {
+                    issues.add(TemplateIssue(issue.code, "$id: ${issue.message}", issue.offset, issue.line, issue.col))
+                }
+                // Check 3: only three-part pulls name a file; a shorter one is a malformed backend reference,
+                // which the deferred reference validation owns, not this.
+                for (ref in byBackend.refs.filter { it.key.count { c -> c == '.' } == 2 }) {
+                    val target = ref.key.substringBefore('.')
+                    when (declaredAudience(cxt, target)) {
+                        FragmentAudience.backend -> {} // the one legal case
+                        FragmentAudience.frontend -> audienceIssues.add(
+                            "$id pulls ${backendPassPrefix}{@t(\"${ref.key}\")}, but '$target' is a frontend file. A " +
+                                "backend pull must name a backend file; pulling a frontend one drags its " +
+                                "$frontendPassPrefix{...} into the pulling element's context, where it resolves against " +
+                                "the wrong file.",
+                        )
+                        null -> audienceIssues.add(
+                            "$id pulls ${backendPassPrefix}{@t(\"${ref.key}\")}, but '$target' is not a declared " +
+                                "fragment file.",
+                        )
+                    }
+                }
+                // Check 2: a carried frontend pull, named as a note.
+                for (ref in byFrontend.refs) {
+                    notes.add(
+                        "$id carries a frontend pull ${frontendPassPrefix}{@t(\"${ref.key}\")}, which the frontend " +
+                            "resolves at request time against the element carrying this content -- not against this " +
+                            "file. That binding is the backend author's to get right; it cannot be checked here.",
+                    )
+                }
+            }
+        }
+        return VariantFindings(issues, emptyList(), audienceIssues, notes)
+    }
+
+    /**
+     * The audience [fileId] is declared with, or null when no source on this node declares it (issue #514).
+     * Read through [effectiveFragments] so it is exactly what a pull would resolve against, and so the
+     * "any backend base wins" rule is applied in one place rather than restated here.
+     */
+    fun declaredAudience(cxt: KdrCxt, fileId: String): FragmentAudience? =
+        effectiveFragments(cxt, fileId)?.audience
 
     @Suppress("DuplicatedCode")
     override fun serve(cxt: KdrCxt, handler: RequestHandler): Boolean {
@@ -390,6 +508,13 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
          */
         const val backendPassPrefix = '%'
 
+        /**
+         * The block prefix for the **frontend pass** -- the kernel [evalTemplate][String.evalTemplate] default.
+         * Named here so the audience checks (issue #514) can say "frontend block" in code and message rather
+         * than a bare `'$'` whose meaning a reader has to remember.
+         */
+        const val frontendPassPrefix = '$'
+
         /** The `md` path segment marking a Markdown-fragment request under the static root. */
         const val mdMarker = CMK.md
 
@@ -525,6 +650,26 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 ) {
                     type = SCT.boolean
                 }
+                property(
+                    FCHK.audienceIssues,
+                    "Audience-rule violations, as messages: a frontend file carrying a backend '%{...}' block, " +
+                        "or a backend pull naming a file that is not backend. Findings -- a strict boot refuses " +
+                        "on them.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(
+                    FCHK.notes,
+                    "Non-fatal observations, as messages: a backend file carrying a frontend '\${@t(...)}' pull, " +
+                        "whose correctness rests on the carrying element at request time and so cannot be checked " +
+                        "here. Never a boot refusal.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
             }
             listEndpoint(
                 "/operator/fragments/check",
@@ -572,6 +717,19 @@ class FragmentCheckResult(
     val audience: FragmentAudience,
     /** Whether its bases disagreed about [audience] -- see `EffectiveFragments.audienceConflict`. */
     val audienceConflict: Boolean,
+    /**
+     * Audience-rule violations (issue #514), as messages: a frontend file carrying a `%{...}` backend block, or
+     * a backend pull naming a file that is not backend. Findings like [issues] and [orphans] -- a strict boot
+     * refuses on them -- but a separate list because they are a fragment-file *deployment* fact, not a template
+     * parse problem, exactly as [orphans] is.
+     */
+    val audienceIssues: List<String>,
+    /**
+     * Non-fatal observations (issue #514): a backend file carrying a frontend `${@t(...)}` pull, whose
+     * correctness rests on the carrying element at request time and so cannot be checked at boot. Reported and
+     * logged, never a boot refusal -- the file is not wrong, only resting on a human assertion worth surfacing.
+     */
+    val notes: List<String>,
 ) : JsonMappable {
     override fun toJsonMap(): Map<String, Any?> {
         // An explicit map rather than `buildMap`: inside that block the receiver is a MutableMap, whose own
@@ -588,6 +746,8 @@ class FragmentCheckResult(
         out[FCHK.orphans] = orphans
         out[FCHK.audience] = audience.name
         out[FCHK.audienceConflict] = audienceConflict
+        out[FCHK.audienceIssues] = audienceIssues
+        out[FCHK.notes] = notes
         return out
     }
 }
