@@ -33,7 +33,7 @@ class EffectiveFragments(
      * Recorded because the resolution is deliberately lopsided -- any backend base makes the file backend --
      * so a component adding a backend base to a fileId somebody else ships frontend does not fail, it flips
      * the whole file private. Every UI-config that names it then breaks, far from the declaration that did it.
-     * The boot check turns this into a finding so the flip is reported where it was caused.
+     * The boot check turns this into a finding, so the flip is reported where it was caused.
      */
     val audienceConflict: Boolean,
 )
@@ -59,6 +59,7 @@ class EffectiveFragments(
  * A layer whose resource is absent contributes nothing and is not an error here; a *declared* file with no
  * base content is reported by [EffectiveFragments.found], which the boot check turns into a finding.
  */
+@Suppress("DuplicatedCode")
 fun mergeFragmentLayers(fileId: String, sources: List<FragmentSource>, client: String?): EffectiveFragments {
     val applicable = sources.filter { it.fileId == fileId && (it.client == null || it.client == client) }
     val bases = applicable.filter { !it.isOverlay }

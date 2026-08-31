@@ -166,7 +166,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 val analysis = if (merged.found) merged.content.analyzeFragmentFile(prefix) else null
                 // ...but a backend file's `${...}` blocks still get a **syntax** check, from a second parse with
                 // the frontend prefix. Only the one pass would leave an unterminated `${` in a backend file
-                // entirely unexamined -- it is plain text to the `%` parser -- so a strict boot would pass it
+                // entirely unexamined -- it is plain text to the `%` parser -- so a strict boot would pass it,
                 // and the frontend would fail on it later, which is exactly the reach this check exists to
                 // shorten. Each pass treats the other's blocks as ordinary text, so the two lists are disjoint
                 // rather than the same defect twice.

@@ -84,7 +84,7 @@ class FragmentAudienceTest : StringSpec({
         val back = fragmentInline(
             "audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend,
         ) {
-            namespace("email") { key("subject", $$"""%{@t("other.ns.key")}""") }
+            namespace("email") { key("subject", """%{@t("other.ns.key")}""") }
         }
         cxt.instanceConfig.put(FRAG.registryKey, listOf(back))
         val issues = service(cxt).checkFragments(cxt).flatMap { it.issues }
