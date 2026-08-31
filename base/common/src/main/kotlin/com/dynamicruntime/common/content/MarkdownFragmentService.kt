@@ -17,6 +17,9 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.TemplateIssue
 import com.dynamicruntime.common.util.TemplatePaths
 import com.dynamicruntime.common.util.analyzeFragmentFile
+import com.dynamicruntime.common.util.FragmentResolver
+import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.resolveFragment
 import com.dynamicruntime.common.util.missingFrom
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toOptStr
@@ -271,9 +274,44 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     fun resolveFragment(cxt: KdrCxt, fileId: String, namespace: String, key: String): String? =
         effectiveFragments(cxt, fileId)?.content?.get(namespace)?.get(key)
 
+    /**
+     * A [FragmentResolver] for the **backend pass** (issue #505, Phase 4): it resolves a three-part
+     * `fileId.namespace.key` reference across the whole registry, for [cxt]'s client.
+     *
+     * Three parts, not two, because the backend has every file where a frontend has only its own delivered
+     * copy -- so a backend `%{@t(...)}` can pull cross-file. It composes the two rules already in place: the
+     * `fileId` selects a file's merged map, and the remaining `namespace.key` resolves through the same kernel
+     * [resolveFragment][com.dynamicruntime.common.util.resolveFragment] the frontend uses. Anything but a
+     * well-formed three-part key names nothing and returns null.
+     */
+    fun backendResolver(cxt: KdrCxt): FragmentResolver = FragmentResolver { key ->
+        val dot = key.indexOf('.')
+        if (dot <= 0 || dot >= key.length - 1) {
+            null
+        } else {
+            effectiveFragments(cxt, key.substring(0, dot))?.content?.resolveFragment(key.substring(dot + 1))
+        }
+    }
+
+    /**
+     * Runs the **backend pass** over [text] (issue #505, Phase 4): evaluates its `%{...}` blocks with the
+     * backend [backendResolver] and [data], and leaves `${...}` blocks untouched for the frontend to resolve
+     * later. This is how a `%{@t("otherFile.namespace.key")}` is resolved server-side before content ships.
+     */
+    fun backendPass(cxt: KdrCxt, text: String, data: Map<String, Any?> = emptyMap()): String =
+        text.evalTemplate(data, prefix = backendPassPrefix, resolver = backendResolver(cxt))
+
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "MarkdownFragmentService"
+
+        /**
+         * The block prefix for the **backend pass** (issue #505): `%{...}` is resolved on the backend, `${...}`
+         * (the kernel default) on the frontend. `%` is free as a delimiter -- inside a block it is the modulo
+         * operator, but `%{` opens no block anywhere else, and `#` was rejected because it already begins a
+         * fragment-file directive line.
+         */
+        const val backendPassPrefix = '%'
 
         /** The `md` path segment marking a Markdown-fragment request under the static root. */
         const val mdMarker = CMK.md

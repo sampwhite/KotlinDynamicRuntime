@@ -239,8 +239,9 @@ val DebugFragment = FC<Props> {
         h1 { +"Fragment pull" }
         p {
             className = ClassName("subtitle")
-            +("A content element from the server carries a fileId and a template string; the frontend fetches " +
-                "that file's copy and resolves the string's @t pull against it.")
+            +("A content element from the server carries a fileId and a template string. Its backend %{@t(...)} " +
+                "pull is already resolved server-side; the frontend fetches that file's copy and resolves the " +
+                "remaining \${@t(...)} pull here.")
         }
         if (error != null) {
             p { className = ClassName("error"); +error!! }
@@ -249,7 +250,7 @@ val DebugFragment = FC<Props> {
         } else {
             h2 { +"Element" }
             pre { className = ClassName("code"); +"fileId: $fileId" }
-            h2 { +"Template (as delivered)" }
+            h2 { +"Template (as delivered — backend pull already resolved)" }
             pre { className = ClassName("code"); +rawText!! }
             h2 { +"Resolved and rendered" }
             Markdown { source = resolved ?: "" }
