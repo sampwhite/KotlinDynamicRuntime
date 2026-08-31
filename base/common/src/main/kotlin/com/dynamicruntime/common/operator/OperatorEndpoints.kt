@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.operator
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.startup.BCHK
@@ -135,6 +136,8 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
                 type = SCT.boolean
             }
         },
+        // Operations/introspection, not for an app to call (issue #489).
+        tags = setOf(ETAG.internal),
     ) { c, request -> systemInfo(c, collect = request[OSI.collect] == true) }
 
     BootCheckResult.defineInfoType(this)
@@ -145,6 +148,7 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
         // No `limit`: the checks are a fixed, small set registered at boot, and paging a report somebody
         // opened to find out whether anything is wrong would be a way to hide the answer on page two.
         noLimit = true,
+        tags = setOf(ETAG.internal),
     ) { c, _ ->
         BootCheckRegistry.get(c).results().map { it.toInfo() }
     }
@@ -163,6 +167,7 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
         "The environment variables this node declares, assembled as Markdown with each variable's resolved value here.",
         HttpMethod.GET,
         outputRef = OENV.referenceType,
+        tags = setOf(ETAG.internal),
     ) { c, _ -> mapOf(OENV.markdown to renderEnvVarReference(c)) }
 }
 

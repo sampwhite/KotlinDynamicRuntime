@@ -2,6 +2,7 @@ package com.dynamicruntime.common.node
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -185,6 +186,7 @@ class NodeService : ServiceInitializer {
                 "Basic health and identity of this node (uptime, node id, version, cluster membership).",
                 HttpMethod.GET,
                 outputRef = "Health",
+                tags = setOf(ETAG.internal),
             ) { c, _ ->
                 get(c).getHealth(c)
             }

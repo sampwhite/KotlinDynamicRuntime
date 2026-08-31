@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
@@ -182,7 +183,11 @@ class ClientScopedAdminTest : StringSpec({
      * required role makes holding it sufficient on its own. It has to qualify the level, not replace it.
      */
     "the capability alone does not open the admin surface" {
-        val cxt = Startup.mkTestBootCxt("demoted", "demotedCapabilityTest")
+        // Env-authed (issue #489): this asserts the *access* filter hides the admin surface, so the caller must
+        // see the whole catalog and privilege must be the only thing narrowing it. Without env auth the newer
+        // publicApi restriction would hide the admin paths regardless, and the assertions would pass for the
+        // wrong reason -- a guard against the #211/#237 defect that could no longer catch it.
+        val cxt = Startup.mkTestBootCxt("demoted", "demotedCapabilityTest", mapOf(ACFG.assumeEnvAuth to true))
 
         val demoted = TestUser.create(
             cxt, "demoted-cap@example.com", level = ROLE.user, capabilities = listOf(ROLE.allClients),

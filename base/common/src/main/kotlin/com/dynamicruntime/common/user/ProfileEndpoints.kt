@@ -7,6 +7,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.util.defaultDisplayLen
 import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -48,7 +49,7 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "profile") {
     // The manifest for building the profile page. Login-required (the `profile` section), so it always runs for
     // a real user; it loads that user's row for the password status and info.
     generalEndpoint(AEP.profileUiConfig, "Returns the config for constructing the profile page.",
-        HttpMethod.GET, outputRef = ATYPE.profileUiConfig) { c, _ ->
+        HttpMethod.GET, outputRef = ATYPE.profileUiConfig, tags = setOf(ETAG.frontend)) { c, _ ->
         val row = UserService.get(c).queryByUserId(c, c.userProfile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
         mapOf(

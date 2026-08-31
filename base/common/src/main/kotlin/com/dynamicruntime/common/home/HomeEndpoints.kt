@@ -15,6 +15,7 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.uiBlock
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -106,7 +107,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
     }
 
     generalEndpoint(HEP.homeUiConfig, "Returns the config for constructing the shell (layout, links, menu).",
-        HttpMethod.GET, outputRef = HTYPE.homeUiConfig) { c, _ ->
+        HttpMethod.GET, outputRef = HTYPE.homeUiConfig, tags = setOf(ETAG.frontend)) { c, _ ->
         // The menu says what this caller may reach, so it must be decided on live roles rather than the ones
         // their session cookie captured at login -- otherwise a revoked administrator keeps being offered a
         // page that now 401s, for as long as the cookie lives. The `admin` section is refreshed by the

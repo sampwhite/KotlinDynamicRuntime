@@ -9,6 +9,7 @@ import kotlinx.coroutines.await
 import kotlin.js.Promise
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 
 /**
  * The runtime's schema-catalog endpoints, under the `kda` API context root. In dev the webpack server proxies
@@ -22,6 +23,15 @@ private val apiRoot: String get() = apiContextRoot
 /** Binding to the browser's global `fetch` (named to avoid clashing with any wrapper `fetch`). */
 @JsName("fetch")
 private external fun browserFetch(input: String, init: dynamic = definedExternally): Promise<dynamic>
+
+/**
+ * The `limit` [SchemaCatalogApi.fetchCatalog] asks for: the whole catalog, not a page of it. The catalog is a
+ * fixed introspection surface (a few tens of endpoints), and the page shows and filters all of it -- deriving
+ * the tag-filter options or `findFormCreateEndpoint` from a truncated page would silently drop endpoints past
+ * the cut (issue #489). Left generous rather than exact so a growing surface never quietly re-hits the default
+ * `defaultListLimit` of 100; the backend simply `take`s this many.
+ */
+private const val fullCatalogLimit = 1000
 
 /**
  * Fetches endpoint schema from the runtime's `/schema/endpoints` catalog and parses it into the [Catalog]
@@ -39,18 +49,28 @@ object SchemaCatalogApi {
         val query = queryString(buildMap {
             namespace?.let { put(EI.namespace, it) }
             client?.let { put(EI.client, it) }
+            // Ask for the whole catalog, not the default first 100 -- the page filters over the full set.
+            put(EP.limit, fullCatalogLimit)
         })
         val results = getJson("$schemaBase/endpoints$query")[EP.results].toJsonMapOrEmpty()
-        val endpoints = results[EI.endpoints].toJsonListOfMaps().map { toEndpointInfo(it) }
-        return Catalog(endpoints, results[SCH.dDefs].toJsonMapOrEmpty())
+        return toCatalog(results)
     }
 
     /** GET a single endpoint by exact method + path, in the same shape as the full catalog. */
     suspend fun fetchEndpoint(method: String, path: String): Catalog {
         val results = getJson("$schemaBase/endpoint?${EI.method}=$method&${EI.path}=${encodeUriComponent(path)}")[EP.results].toJsonMapOrEmpty()
-        val endpoints = results[EI.endpoints].toJsonListOfMaps().map { toEndpointInfo(it) }
-        return Catalog(endpoints, results[SCH.dDefs].toJsonMapOrEmpty())
+        return toCatalog(results)
     }
+
+    /** The `results` map of `/schema/endpoints` (or `/schema/endpoint`) as a [Catalog]. One reader, so the two
+     *  feeds cannot drift in how they parse the shared shape (issue #489 added `filtersAvailable`). */
+    private fun toCatalog(results: Map<String, Any?>): Catalog = Catalog(
+        endpoints = results[EI.endpoints].toJsonListOfMaps().map { toEndpointInfo(it) },
+        defs = results[SCH.dDefs].toJsonMapOrEmpty(),
+        // Default true when the field is absent (an older node, a hand-built store): the safe reading is that
+        // filtering is allowed, and the endpoints the response already carries are what the page can show.
+        filtersAvailable = results[EI.filtersAvailable] as? Boolean ?: true,
+    )
 
     private fun toEndpointInfo(m: Map<String, Any?>): EndpointInfo = EndpointInfo(
         path = m[EI.path] as? String ?: "",
@@ -60,6 +80,8 @@ object SchemaCatalogApi {
         description = m[EI.description] as? String,
         inputSchema = m[EI.inputSchema].toJsonMapOrEmpty(),
         outputSchema = m[EI.outputSchema].toJsonMapOrEmpty(),
+        publicApi = m[EI.publicApi] as? Boolean ?: false,
+        tags = m[EI.tags].toJsonListOfStrings(),
     )
 
     /**

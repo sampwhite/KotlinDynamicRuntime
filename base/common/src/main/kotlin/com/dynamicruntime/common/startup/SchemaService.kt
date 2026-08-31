@@ -40,6 +40,7 @@ import com.dynamicruntime.common.schema.optionsSourceProblems
 import com.dynamicruntime.common.schema.resolveOptionsSources
 import com.dynamicruntime.common.util.addDays
 import com.dynamicruntime.common.util.formatDate
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMap
 
 /**
@@ -304,11 +305,19 @@ class SchemaService : ServiceInitializer {
                     "Show the surface of this client instead of your own -- its endpoints, and its schema. " +
                         "Requires the '" + ROLE.allClients + "' capability unless it names your own client.",
                 ) { clientAttribute() }
-                property(EI.tags, "Only endpoints carrying this tag.")
+                property(EI.tags, "Only endpoints carrying **any** of these tags (issue #489).") {
+                    type = SCT.array
+                    items { type = SCT.string }
+                    // A query param is text, so a comma-separated `?tags=internal,frontend` coerces to the list
+                    // (an array does not coerce from a string by default). The frontend filters client-side and
+                    // sends none of this; a direct caller (curl, a test) is who reaches it this way.
+                    allowCoerce = true
+                }
                 property(
                     EI.publicApi,
                     "Only endpoints in the published API -- the documented, supported set. This filters what " +
-                        "is *listed*; it grants nothing, and omitting it lists everything you may already see.",
+                        "is *listed*; it grants nothing, and omitting it lists everything you may already see. " +
+                        "A caller without env auth is served only these, whatever they ask (issue #489).",
                 ) {
                     type = SCT.boolean
                 }
@@ -330,6 +339,12 @@ class SchemaService : ServiceInitializer {
                 property(SCH.dDefs, "Every type referenced by the endpoints, keyed by name, for the client to resolve.", required = true) {
                     type = SCT.kObject
                 }
+                property(
+                    EI.filtersAvailable,
+                    "Whether this caller may slice the catalog (issue #489): true when env-authed. When false, " +
+                        "only the published endpoints are listed and the frontend offers no filters.",
+                    required = true,
+                ) { type = SCT.boolean }
             }
             generalEndpoint(
                 "/schema/endpoints",
@@ -660,11 +675,15 @@ class SchemaService : ServiceInitializer {
             val namespace = request[EI.namespace] as? String
             val method = (request[EI.method] as? String)?.uppercase()
             val pathRegex = (request[SS.pathRegex] as? String)?.let { Regex(it) }
-            // Catalog slicing (issue #433). Both narrow what is *listed* and neither grants anything: the
+            // Catalog slicing (issues #433, #489). Both narrow what is *listed* and neither grants anything: the
             // access decision below is unchanged, so a filter can only ever hide endpoints the caller could
-            // already have seen.
-            val tag = (request[EI.tags] as? String)?.trim()?.ifEmpty { null }
-            val publishedOnly = request[EI.publicApi] as? Boolean
+            // already have seen. `tags` is OR: an endpoint matches if it carries any of them.
+            val requestedTags = request[EI.tags].toJsonListOfStrings().filter { it.isNotBlank() }.toSet()
+            // A caller without env auth is confined to the published set and cannot lift that (issue #489): the
+            // catalog is a developer surface, so an ordinary production user sees only what is documented, and
+            // the request's `publicApi` cannot widen it. `isEnvAuthEffective` is the gate a suppressed session
+            // also fails, which is what makes the restriction previewable locally.
+            val publishedOnly = if (cxt.isEnvAuthEffective) request[EI.publicApi] as? Boolean else true
             val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
             refreshCallerRoles(cxt)
             val surface = catalogSurface(cxt, request)
@@ -682,7 +701,7 @@ class SchemaService : ServiceInitializer {
                     (namespace == null || ep.namespace == namespace) &&
                             (method == null || ep.method.name == method) &&
                             (pathRegex == null || pathRegex.containsMatchIn(ep.path)) &&
-                            (tag == null || tag in ep.tags) &&
+                            (requestedTags.isEmpty() || ep.tags.any { it in requestedTags }) &&
                             (publishedOnly == null || ep.publicApi == publishedOnly)
                 }
                 // collationKey is "path:method", so this sorts by path then method (the same path may be
@@ -709,7 +728,10 @@ class SchemaService : ServiceInitializer {
             // would be a one-call way around the hiding, and this endpoint exists to return the same shape.
             // Explained the same way too, so "it came back empty" can be told apart from "you may not see it",
             // which from the outside look identical.
+            // A caller without env auth may look up only a published endpoint, exactly as the listing shows them
+            // only those (issue #489) -- otherwise the single-lookup would be a one-call way past the restriction.
             val found = surface.schema.endpoints["$path:$method"]
+                ?.takeIf { cxt.isEnvAuthEffective || it.publicApi }
             val endpoint = found?.takeIf { isVisibleTo(cxt, it.path) }
             explainAccess(cxt, if (found != null && endpoint == null) listOf(found) else emptyList())
             val renderings = listOfNotNull(endpoint).map { renderEndpoint(it, surface.schema.defs) }
@@ -736,6 +758,10 @@ class SchemaService : ServiceInitializer {
             val result = linkedMapOf(
                 EI.endpoints to renderings,
                 SCH.dDefs to collectDefs(renderings, surface.schema.defs),
+                // Whether this caller may slice the catalog (issue #489). Emitted here, shared by both the
+                // listing and the single-lookup, so the two cannot disagree about it -- and read against the
+                // effective env auth, the same gate `endpointCatalog` restricts the listing by.
+                EI.filtersAvailable to cxt.isEnvAuthEffective,
             )
             // Read optionally, like the surface -- a store built by hand, outside a running dispatcher, has
             // no service to consult. But an absent service resolves against an **empty** registry rather than

@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.SCH
@@ -40,8 +41,15 @@ class SchemaEndpointsTest : StringSpec({
 
     // These tests all boot the same (default) instance and only read, so they share one instance -- its
     // component/schema init is cached by instance name and runs once -- and vary only the inexpensive context name.
+    //
+    // Env-authed, because the catalog is a developer/operator surface: without env auth a caller sees only the
+    // published endpoints (issue #489), which is a separate case the restriction test below covers on purpose.
+    // `assumeEnvAuth` makes this instance behave like a developer's own box (where env auth is auto-granted), so
+    // every caller browses the whole catalog -- rather than sprinkling the header on each.
     fun client(cxtName: String): TestHttpClient =
-        TestHttpClient(Startup.mkTestBootCxt(cxtName, "schemaEndpointsTest").instanceConfig)
+        TestHttpClient(
+            Startup.mkTestBootCxt(cxtName, "schemaEndpointsTest", mapOf(ACFG.assumeEnvAuth to true)).instanceConfig,
+        )
 
     $$"/schema/endpoints renders every endpoint and a shared $defs" {
         val client = client("schemaList")
@@ -136,7 +144,9 @@ class SchemaEndpointsTest : StringSpec({
     // The catalog answers per caller (issue #211), so this one boots its own instance and makes real users
     // rather than joining the shared read-only instance above.
     "the catalog shows an endpoint only to a caller who could actually call it" {
-        val cxt = Startup.mkTestBootCxt("schemaVisibility", "schemaVisibilityTest")
+        // Env-authed (issue #489): this test is about *access* filtering, so the caller must see the whole
+        // catalog and the access gate must be the only thing narrowing it -- not the publicApi restriction.
+        val cxt = Startup.mkTestBootCxt("schemaVisibility", "schemaVisibilityTest", mapOf(ACFG.assumeEnvAuth to true))
         fun pathsFor(client: TestHttpClient): List<Any?> =
             catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints")).map { it[EI.path] }
 
@@ -191,7 +201,7 @@ class SchemaEndpointsTest : StringSpec({
     // ---- _debug=explainAccess (issue #215) ----------------------------------
 
     "explainAccess names what the filter withheld, and the role each withheld section wants" {
-        val cxt = Startup.mkTestBootCxt("schemaExplain", "schemaExplainTest")
+        val cxt = Startup.mkTestBootCxt("schemaExplain", "schemaExplainTest", mapOf(ACFG.assumeEnvAuth to true))
         val plain = TestUser.create(cxt, "explain@other.com")
 
         val resp = plain.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess))
@@ -223,7 +233,7 @@ class SchemaEndpointsTest : StringSpec({
     }
 
     "explainAccess says nothing unless it is asked for" {
-        val cxt = Startup.mkTestBootCxt("schemaNoExplain", "schemaExplainTest")
+        val cxt = Startup.mkTestBootCxt("schemaNoExplain", "schemaExplainTest", mapOf(ACFG.assumeEnvAuth to true))
         val resp = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest("/schema/endpoints")
         resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe false
     }
@@ -236,7 +246,10 @@ class SchemaEndpointsTest : StringSpec({
      */
     "explainAccess is withheld on an instance that is not a test instance" {
         val cxt = Startup.mkTestBootCxt(
-            "schemaExplainProd", "schemaExplainProdTest", mapOf(ACFG.isTestInstance to false),
+            "schemaExplainProd", "schemaExplainProdTest",
+            // Not a test instance (the fence under test), but env-authed so the caller still sees the whole
+            // catalog -- otherwise the publicApi restriction, not the explainAccess fence, would hide /health.
+            mapOf(ACFG.isTestInstance to false, ACFG.assumeEnvAuth to true),
         )
         // Guard the premise: if this were still a test instance the assertion below would pass for the wrong
         // reason, and a fence test that cannot fail is worse than none.
@@ -275,28 +288,73 @@ class SchemaEndpointsTest : StringSpec({
     "the catalog reports publication and tags, and can be sliced by either" {
         val client = client("schemaTags")
 
-        val all = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints"))
+        val all = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.limit to 500)))
         val sample = all.first { it[EI.path] == "/demo/schema/sample" }
         sample[EI.tags].toJsonListOfStrings() shouldContainAll listOf(SS.demoTag, SS.schemaTag)
-        // Advertisement, not access: nothing is published yet, and everything is still reachable.
         sample[EI.publicApi] shouldBe false
 
-        val tagged = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.tags to SS.demoTag)))
-        tagged.map { it[EI.path] } shouldContain "/demo/schema/sample"
-        // A filter narrows the listing and grants nothing, so an untagged endpoint simply drops out.
-        tagged.map { it[EI.path] } shouldNotContain "/health"
+        // Several tags is an OR (issue #489): asking for the demo tag and the internal tag returns endpoints
+        // carrying either -- the demo sample and /health both come back. A query param carries the array as a
+        // comma-joined string, which the array field coerces back into a list.
+        val orTagged = catalogEndpoints(
+            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.tags to "${SS.demoTag},${ETAG.internal}", EP.limit to 500)),
+        ).map { it[EI.path] }
+        orTagged shouldContainAll listOf("/demo/schema/sample", "/health")
+        // A single tag still narrows to just its endpoints -- an endpoint with neither drops out.
+        val demoOnly = catalogEndpoints(
+            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.tags to SS.demoTag)),
+        ).map { it[EI.path] }
+        demoOnly shouldContain "/demo/schema/sample"
+        demoOnly shouldNotContain "/health"
 
         val unknown = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.tags to "noSuchTag")))
         unknown.shouldBeEmpty()
 
-        // Publication is reported on every rendering, and filterable. Nothing is published today, so asking
-        // for the published set is empty while asking for its complement is everything.
-        all.count { it[EI.publicApi] == true } shouldBe 0
+        // Publication is reported and filterable. Endpoints are published now (issue #489), so the published set
+        // is non-empty and its complement is everything else. This caller is anonymous (env auth is a channel,
+        // not a login), so the published endpoint it can see is auth self-info; the login-gated form endpoints
+        // are asserted by the restriction test below, which uses a logged-in caller.
+        val published = catalogEndpoints(
+            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.publicApi to true, EP.limit to 500)),
+        ).map { it[EI.path] }
+        published shouldContain "/auth/self/info"
+        published shouldNotContain "/health"
+        val unpublished = catalogEndpoints(
+            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.publicApi to false, EP.limit to 500)),
+        )
+        unpublished.size shouldBe all.size - published.size
+
+        // Env-authed here, so filtering is available -- the frontend draws its controls.
+        results(client.sendJsonGetRequest("/schema/endpoints"))[EI.filtersAvailable] shouldBe true
+    }
+
+    // The env-auth gate (issue #489): a caller without env auth -- an ordinary production user -- is served only
+    // the published endpoints, cannot lift that with the publicApi filter, and is told filtering is unavailable
+    // so the frontend drops its controls. A unit instance does not auto-assume env auth, so its caller is that
+    // ordinary user.
+    "without env auth the catalog serves only the published endpoints, and says filters are unavailable" {
+        // A logged-in ordinary user, not env-authed (a unit instance auto-assumes nothing) -- the production
+        // caller the restriction is for. Logged in, so the login-gated gedra surface is theirs to see; the
+        // restriction is what keeps them to its *published* part.
+        val cxt = Startup.mkTestBootCxt("schemaNoEnv", "schemaNoEnvTest")
+        val client = TestUser.create(cxt, "no-env@example.com").client
+
+        val resp = client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.limit to 500))
+        val paths = catalogEndpoints(resp).map { it[EI.path] }
+        // Only published endpoints, and the internal ones are gone; the published form surface remains.
+        catalogEndpoints(resp).all { it[EI.publicApi] == true } shouldBe true
+        paths shouldNotContain "/health"
+        paths.any { it.toString().startsWith("/gedra/") } shouldBe true
+        results(resp)[EI.filtersAvailable] shouldBe false
+
+        // Asking for the whole set cannot lift the restriction -- publicApi:false is ignored for such a caller.
         catalogEndpoints(
-            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.publicApi to true)),
+            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.publicApi to false, EP.limit to 500)),
+        ).all { it[EI.publicApi] == true } shouldBe true
+
+        // The single-lookup is restricted the same way: a non-published endpoint is not found for this caller.
+        catalogEndpoints(
+            client.sendJsonGetRequest("/schema/endpoint", mapOf(EI.method to "GET", EI.path to "/health")),
         ).shouldBeEmpty()
-        catalogEndpoints(
-            client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.publicApi to false, EP.limit to 200)),
-        ).size shouldBe all.size
     }
 })

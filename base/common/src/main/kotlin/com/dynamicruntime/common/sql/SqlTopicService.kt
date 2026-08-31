@@ -3,6 +3,7 @@ package com.dynamicruntime.common.sql
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
@@ -149,6 +150,7 @@ class SqlTopicService : ServiceInitializer {
                 "/operator/db/tables",
                 "Lists the database tables registered for this instance.",
                 outputRef = KdrTable.infoTypeName,
+                tags = setOf(ETAG.internal),
             ) { c, _ -> listTables(c) }
         }
 

@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -25,8 +26,10 @@ import io.kotest.matchers.shouldBe
  */
 class SchemaComplexEndpointTest : StringSpec({
 
+    // assumeEnvAuth so the catalog lookup is unrestricted (issue #489): /fixture/schema/complex is not a
+    // published endpoint, so a non-env-authed caller would be handed an empty result instead of its definition.
     fun client(cxtName: String): TestHttpClient =
-        TestHttpClient(Startup.mkTestBootCxt(cxtName, "schemaComplexTest").instanceConfig)
+        TestHttpClient(Startup.mkTestBootCxt(cxtName, "schemaComplexTest", mapOf(ACFG.assumeEnvAuth to true)).instanceConfig)
 
     fun items(resp: Map<String, Any?>): List<Map<String, Any?>> =
         resp[EP.items].toJsonListOfMaps()

@@ -72,6 +72,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         // The sent shape, not the stored one: they differ by `allowAdditionalTraits`, which is an instruction
         // about this write and has no place in what a document *is* (issue #379).
         inputRef = GU.inputName(formDoc),
+        // The form surface a client's own application calls, so it is part of the published API (issue #489);
+        // the per-client copies inherit this. Marks are on the five here at once, so the set reads as one
+        // decision.
+        publicApi = true,
     ) { c, request ->
         val entries = request[GDF.entries].toJsonListOfMaps()
         GedraDataService.get(c)
@@ -87,6 +91,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         inputFields = {
             field(GDF.gedraId, "Id of the form document to fetch.", required = true)
         },
+        publicApi = true,
     ) { c, request ->
         val fullId = request[GDF.gedraId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.gedraId} is required.")
@@ -117,6 +122,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         inputFields = {
             field(GDF.gedraId, "Id of the form document to delete.", required = true)
         },
+        publicApi = true,
     ) { c, request ->
         val fullId = request[GDF.gedraId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.gedraId} is required.")
@@ -148,6 +154,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
                 default = 0
             }
         },
+        publicApi = true,
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
         val offset = (request[EP.offset] as? Number)?.toInt() ?: 0
@@ -223,6 +230,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
             }
             field(GDF.allowAdditionalTraits, ADDITIONAL_TRAITS_HINT) { type = SCT.boolean }
         },
+        publicApi = true,
     ) { c, request ->
         val gedraService = GedraService.get(c)
         val byKind = LinkedHashMap<GedraDataType, List<GedraPatchTarget>>()

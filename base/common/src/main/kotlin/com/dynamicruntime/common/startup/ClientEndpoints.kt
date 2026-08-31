@@ -94,5 +94,11 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
             shared(bound, request)
         },
         client = client,
+        // The copy is the same endpoint under a client's path, so it carries the same catalog metadata: a
+        // client copy of a published endpoint is published, and one of a tagged endpoint keeps the tag (issue
+        // #489). Omitting these silently un-published every client-dynamic endpoint, which is the opposite of
+        // what a client-specific surface should be.
+        publicApi = endpoint.publicApi,
+        tags = endpoint.tags,
     )
 }

@@ -397,12 +397,18 @@ class RequestService : ServiceInitializer {
         // A third hand-rolled instance of this rule, which is exactly what #303 exists to absorb into a
         // registry plus an operator endpoint -- so a warning nobody was watching for can still be asked about
         // on a running node. Kept minimal here (no mode override of its own) to leave that less to unpick.
+        // The user sections plus `auth` (issue #489): the published set is the *user-facing* surface, and the
+        // anonymous auth section (register/login/self-info) is as much a part of that as the login-required
+        // user/profile/gedra sections -- an integrator authenticates through it. What the rule still keeps
+        // publicApi out of is the privileged and internal sections (admin, operator, node, clientAdmin,
+        // clientOperator), where a published mark would hide the very thing the audit exists to surface.
+        val publishableSections = userSections + "auth"
         val published = cxt.getSchema().endpoints.values.filter { it.publicApi }
-        val misplaced = published.filter { sectionOf(it.path) !in userSections }.map { it.path }.sorted()
+        val misplaced = published.filter { sectionOf(it.path) !in publishableSections }.map { it.path }.sorted()
         if (misplaced.isNotEmpty()) {
             val problem = "${misplaced.joinToString(", ") { "'$it'" }} " +
-                "${if (misplaced.size == 1) "is" else "are"} marked publicApi but sit outside the user " +
-                "sections ($userSections). Publish a twin under a user section instead, or drop the mark."
+                "${if (misplaced.size == 1) "is" else "are"} marked publicApi but sit outside the publishable " +
+                "sections ($publishableSections). Publish a twin under one instead, or drop the mark."
             if (cxt.instanceConfig.env == ENV.prod) {
                 LogRequest.warn(cxt, "Published endpoints are misplaced, and the catalog will say so: $problem")
             } else {
