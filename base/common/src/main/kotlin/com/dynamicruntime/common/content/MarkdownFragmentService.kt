@@ -312,15 +312,23 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      *
      * ### What it splices keeps the *caller's* later context, not its source's
      *
-     * The subtle one, and it constrains what a backend pull may name. Pulled text is spliced into [text], so
-     * any `${...}` it carries is evaluated **later, by the frontend, against the element that carried the
-     * string** -- not against the file the text came from. Pulling `sample.email.body` (which reads `${code}`)
-     * into an element whose file is something else does not fail here; it ships a `${code}` that the frontend
-     * then resolves in the wrong context, or fails on.
+     * A backend-composed string **may** carry `${...}` for the frontend to finish -- that is the two-pass model
+     * working as intended. What matters is that a surviving `${...}` is evaluated **later, by the frontend,
+     * against the element that carried the string**, never against the file the text came from. The two kinds
+     * of frontend block are affected very differently, and only one is a hazard:
      *
-     * So a fragment named by a backend pull should be **plain text or backend-only** -- no `${...}` of its own.
-     * Nothing enforces that yet; it is the same registry-wide follow-up, which is the natural place for it
-     * because a check with the registry in hand can see both the reference and what it names.
+     *  - **A data substitution (`${count}`) is the ordinary case** and needs no file at all -- it reads the data
+     *    the frontend supplies for that element. In practice this is nearly all of it: a backend-composed string
+     *    does its *fragment* pulls on the backend and leaves only plain values for the frontend.
+     *  - **A frontend fragment pull (`${@t("ns.key")}`) resolves against the element's declared `fileId`.** So a
+     *    backend author writing one is asserting that whichever element carries this content names a file
+     *    holding `ns.key`. That assertion is theirs to get right: the binding between content and element
+     *    happens at request time, so no boot check can verify it (see the audience follow-up for what *can* be
+     *    checked -- notably that a backend pull names only a backend file).
+     *
+     * The trap to know: pulling something like `sample.email.body` (which reads `${code}`) into an element that
+     * supplies no `code` does not fail here -- it ships a `${code}` for the frontend to fail on. Prefer pulling
+     * text that is plain or whose `${...}` the carrying element genuinely supplies.
      */
     fun backendPass(cxt: KdrCxt, text: String, data: Map<String, Any?> = emptyMap()): String =
         text.evalTemplate(data, prefix = backendPassPrefix, resolver = backendResolver(cxt))
