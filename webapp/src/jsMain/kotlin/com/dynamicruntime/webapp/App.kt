@@ -142,6 +142,7 @@ val App = FC<Props> {
                             pageProfile -> Profile {}
                             pageUsers -> Users {}
                             pageEnv -> EnvReferencePage {}
+                            pageCfacts -> CFactReferencePage {}
                             pageNewForm -> NewFormPage {}
                             pageForms -> FormsPage {}
                             pageEditForm -> EditFormPage {}
@@ -173,6 +174,11 @@ private const val pageUsers = HMENU.pageUsers
 // without the role -- reported honestly by the page rather than hidden.
 private const val pageEnv = HMENU.pageEnv
 
+// The cfact reference (issue #488). Same route policy as the environment reference: present unconditionally,
+// offered in the menu only to a client-scoped operator or admin (and suppressible by a client), and the
+// endpoint refuses a caller who reaches it without the role -- reported honestly by the page rather than hidden.
+private const val pageCfacts = HMENU.pageCfacts
+
 // The create-a-form page (issue #408). Login-gated on the backend (the `gedra` section), but the route exists
 // unconditionally like the others -- the menu, built server-side, is what decides whether it is offered.
 private const val pageNewForm = HMENU.pageNewForm
@@ -199,6 +205,7 @@ private fun currentPage(): String {
         params[HP.page] == pageProfile -> pageProfile
         params[HP.page] == pageUsers -> pageUsers
         params[HP.page] == pageEnv -> pageEnv
+        params[HP.page] == pageCfacts -> pageCfacts
         params[HP.page] == pageNewForm -> pageNewForm
         params[HP.page] == pageForms -> pageForms
         params[HP.page] == pageEditForm -> pageEditForm

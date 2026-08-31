@@ -2,6 +2,8 @@ package com.dynamicruntime.sample.uiblock
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.uiblock.UIB
@@ -11,6 +13,8 @@ import com.dynamicruntime.sample.SampleComponent
 import com.dynamicruntime.sample.gedra.SB
 import com.dynamicruntime.sample.gedra.SC
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 
 /**
@@ -84,5 +88,17 @@ class UiBlockResolveTest : StringSpec({
 
     "a block nothing registers resolves to nothing" {
         service.resolve(asUser("plain2", null, ROLE.user), "noSuchBlock") shouldBe null
+    }
+
+    fun homeMenuIds(scope: KdrCxt): List<String?> =
+        (service.resolve(scope, HMENU.block)?.get(HFLD.menu) as? List<*>)
+            ?.map { (it as Map<*, *>)[HFLD.id] as String? } ?: emptyList()
+
+    "acme suppresses the Client facts menu item that other clients keep (issue #488)" {
+        // The cfacts page is offered to a client-scoped operator; acme's overlay sets that item's condition to
+        // `#never`, so an acme operator does not see it while a non-acme operator does. Presentation only -- the
+        // endpoint stays reachable, which is why suppressing the menu item is a client's to decide.
+        homeMenuIds(asUser("op", null, ROLE.user, ROLE.operator)) shouldContain HMENU.cfactReference
+        homeMenuIds(asUser("acmeOp", SC.acme, ROLE.user, ROLE.operator)) shouldNotContain HMENU.cfactReference
     }
 })

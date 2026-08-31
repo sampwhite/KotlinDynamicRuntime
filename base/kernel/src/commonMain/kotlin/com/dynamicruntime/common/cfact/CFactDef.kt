@@ -2,32 +2,29 @@ package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.SECT
-import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.schema.SchTypesBuilder
 
-/** Field (JSON key) names of a [CFactDef]'s [CFactDef.toInfo] dump, and the type that describes it. */
+/** Path and response field names for the cfact reference endpoint (issues #455, #488). */
 @Suppress("ConstPropertyName")
 object CFD {
-    const val name = "name"
-    const val group = "group"
-    const val description = "description"
-
     /**
-     * The discovery endpoint's path. In the kernel beside the field names for the reason #393 moved the gedra
-     * paths there: the page that presents this list is built from the same string the backend serves it
+     * The cfacts reference endpoint's path. In the kernel beside the field names for the reason #393 moved the
+     * gedra paths there: the page that presents this is built from the same string the backend serves it
      * under, and a path spelled twice is a rename that empties a page.
      *
-     * The `clientAdmin` section (issue #466), not `operator`. Both admit an administrator today -- the ladder
-     * ranks admin above operator -- but they say different things, and the difference will outlive the ladder:
-     * `operator` is for somebody running the *deployment*, while reading what a cfact means is what a
-     * **client's own** administrator does while authoring their configuration, exactly as they read the schema
-     * catalog. Being a scoped-admin section also brings the confinement this needs, since one client must not
-     * be able to read what another declared.
+     * The `clientOperator` section (issue #488), moved down from `clientAdmin`. Reading what a cfact means --
+     * and what it currently evaluates to -- is what somebody keeping a *client's* deployment running does, not
+     * only a config author, so it belongs a rung below admin: `clientOperator` admits an operator **or** an
+     * admin, still confined by scope, which is the confinement this needs since one client must not read what
+     * another declared. The bare `operator` section would be wrong for the opposite reason `clientAdmin` was:
+     * it is for somebody running the *deployment* and takes `allClients`, which a client's own operator lacks.
      */
-    const val cfactsPath = "/${SECT.clientAdmin}/cfacts"
+    const val cfactsPath = "/${SECT.clientOperator}/cfacts"
 
-    /** Schema type name for the [CFactDef.toInfo] dump. */
-    const val infoTypeName = "CFactInfo"
+    /** The one field of the [CFactDef] reference's response: the assembled Markdown document. */
+    const val markdown = "markdown"
+
+    /** Schema type name for the reference response ({ [markdown] }). */
+    const val referenceType = "CFactReference"
 }
 
 /**
@@ -92,25 +89,5 @@ class CFactDef(
         }
     }
 
-    /** A JSON-friendly dump of this declaration, for the discovery listing; shaped by [defineInfoType]. */
-    fun toInfo(): Map<String, Any?> = linkedMapOf(
-        CFD.name to name,
-        CFD.group to group,
-        CFD.description to description,
-    )
-
     override fun toString(): String = name
-
-    companion object {
-        /** The shape of the [toInfo] dump. */
-        fun defineInfoType(builder: SchTypesBuilder) {
-            builder.type(CFD.infoTypeName) {
-                type = SCT.kObject
-                description = "A cfact this deployment knows about, as it was declared."
-                property(CFD.name, "The name an expression writes.", required = true)
-                property(CFD.group, "The thematic group it presents under; a label, with no other effect.", required = true)
-                property(CFD.description, "What makes it true.", required = true)
-            }
-        }
-    }
 }

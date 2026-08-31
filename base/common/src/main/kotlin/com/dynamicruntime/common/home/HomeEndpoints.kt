@@ -182,6 +182,12 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
             HMENU.envReference, "Environment", UiRoute(HMENU.pageEnv),
             cfactExpression = CFACTS.isDeploymentOperator,
         )
+        // Offered to a client-scoped operator or admin (issue #488) -- the same caller the `clientOperator`
+        // section admits, asked as a cfact so the menu offer and the gate cannot drift.
+        menuItem(
+            HMENU.cfactReference, "Client facts", UiRoute(HMENU.pageCfacts),
+            cfactExpression = "${CFACTS.isClientOperator},${BOOT.app}",
+        )
         // Forms are login-gated only (the `gedra` section), so every signed-in caller is offered the list; how
         // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"
         // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
