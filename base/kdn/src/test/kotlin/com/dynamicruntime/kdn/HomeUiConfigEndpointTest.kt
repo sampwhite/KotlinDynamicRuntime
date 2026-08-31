@@ -5,6 +5,7 @@ import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.home.HCFG
 import com.dynamicruntime.common.home.HDOC
+import com.dynamicruntime.common.home.HDOCENV
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
@@ -13,6 +14,7 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -51,11 +53,51 @@ class HomeUiConfigEndpointTest : StringSpec({
         val client = TestHttpClient(cxt.instanceConfig)
 
         val links = results(client.sendJsonGetRequest(HEP.homeUiConfig)).obj(UIC.state).list(HFLD.links)
-        val readme = links.map { it!!.toJsonMap() }.single { it[HFLD.id] == HDOC.readme }
+            .map { it!!.toJsonMap() }
+        val readme = links.single { it[HFLD.id] == HDOC.readme }
         readme[HFLD.docId] shouldBe HDOC.readme
         // The build id is what makes the document's URL cache-immutable, so it must be present.
         (readme[HFLD.buildId] as String).isNotEmpty() shouldBe true
         (readme[HFLD.label] as String).isNotEmpty() shouldBe true
+        // The source path is what the frontend resolves the document's interior links against (issue #492).
+        readme[HFLD.sourcePath] shouldBe "README.md"
+
+        // The repo docs the README links to are registered too, each with its own source path, so a link to one
+        // resolves to an in-app document (issue #492). This also proves the build copied them onto the classpath.
+        val codeGuide = links.single { it[HFLD.id] == HDOC.codeGuide }
+        codeGuide[HFLD.sourcePath] shouldBe "code-guide.md"
+        (codeGuide[HFLD.buildId] as String).isNotEmpty() shouldBe true
+    }
+
+    // Guards the three-places-in-step footgun (HDOC ids, the homeDocs registry, and the build's md-docs copy):
+    // a registered document whose resource was not packaged is dropped silently by homeLinks, vanishing from
+    // the list and -- worse -- from the link-resolution map. Enumerating the expected ids turns that into a
+    // named failure. Keep this list in step when registering a document (issue #492).
+    "every registered document is served -- registry, build copy, and HDOC ids in step" {
+        val cxt = Startup.mkTestBootCxt("uiHomeAll", "uiHomeAllTest")
+        val links = results(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig))
+            .obj(UIC.state).list(HFLD.links).map { it!!.toJsonMap() }
+        val ids = links.map { it[HFLD.id] }
+        ids shouldContainAll listOf(
+            HDOC.readme, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
+            HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraPatch, HDOC.uiBlock,
+        )
+        // Each carries the source path the resolver needs, so none is served without it.
+        links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
+    }
+
+    "source repo base is absent by default and configured from the env var" {
+        val plain = Startup.mkTestBootCxt("uiHomeNoRepo", "uiHomeNoRepoTest")
+        val plainState = results(TestHttpClient(plain.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)).obj(UIC.state)
+        // Unconfigured: the field is simply absent, which is how the frontend leaves a non-document link alone.
+        plainState.containsKey(HFLD.sourceRepoBase) shouldBe false
+
+        val cxt = Startup.mkTestBootCxt("uiHomeRepo", "uiHomeRepoTest")
+        cxt.instanceConfig.put(HDOCENV.sourceRepoUrl.name, "https://github.com/o/r")
+        cxt.instanceConfig.put(HDOCENV.sourceRepoBranch.name, "trunk")
+        val state = results(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)).obj(UIC.state)
+        // Assembled as the blob base the frontend prefixes a repo link with -- branch honored.
+        state[HFLD.sourceRepoBase] shouldBe "https://github.com/o/r/blob/trunk"
     }
 
     "layout flags come from the deployment's instance config" {
@@ -89,7 +131,7 @@ class HomeUiConfigEndpointTest : StringSpec({
         val markdown = resp.rptResponseData ?: ""
         markdown shouldContain "# KotlinDynamicRuntime"
         val html = markdown.renderMarkdown()
-        html shouldContain "<h1>KotlinDynamicRuntime</h1>"
+        html shouldContain "<h1 id=\"kotlindynamicruntime\">KotlinDynamicRuntime</h1>"
         html shouldContain "<pre><code"
     }
 

@@ -58,6 +58,9 @@ object HP {
     /** Forms page: the gedra id of the form document open in the read-only view, or absent in the list view. */
     const val gedra = "g"
 
+    /** Home page: the id of the open Markdown document, or absent for the welcome copy. */
+    const val doc = "doc"
+
     // The Users page's *search* (filters, range, sort) is also kept in the hash so a search is shareable, a
     // pasted link reproduces it, and Back/Forward step through it (issue #411). It has no constants here on
     // purpose: those keys ARE the endpoint's own arg names (`email`, `updatedAfter`, `sortBy`, … from `USF`),
@@ -152,6 +155,14 @@ fun applyHashWrite(params: List<Pair<String, String>>, identity: Set<String>, cu
         HashWrite.push -> pushHash(params)
     }
 }
+
+/**
+ * A **relative** hash href for [params] -- `#k=v&…`, or `#` when empty -- for an `<a href>` that navigates
+ * within the app (a same-document fragment link, so no reload). Uses the same key=value percent-encoding as
+ * [hashUrl]/[navigateHash], so a link built here and the state [hashParams] reads back cannot drift.
+ */
+fun hashHref(params: List<Pair<String, String>>): String =
+    "#" + params.joinToString("&") { (k, v) -> "$k=${encodeUriComponent(v)}" }
 
 /** The absolute URL for [params] as a hash; empty [params] clears the hash. */
 private fun hashUrl(params: List<Pair<String, String>>): String {

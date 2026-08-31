@@ -96,7 +96,12 @@ Never write `as` / `@Suppress("UNCHECKED_CAST")` — route through `toT()`/`toJs
   supply — the missing-key half of a render failure, with no evaluation. Reported per fragment entry by
   `GET /operator/fragments/check`, which also takes an optional `data` JSON object.
 - `MarkdownFragmentUtil` — parses a Markdown **fragment file** into `namespace -> key -> value`.
-- `MarkdownRenderUtil` — `String.renderMarkdown()`, escaping all HTML. Frontend and backend render the same.
+- `MarkdownRenderUtil` — `String.renderMarkdown()`, escaping all HTML. Frontend and backend render the same. It
+  takes an optional `resolveUrl: ((String) -> String)?` applied to each link target before the URL safety check
+  (null = use links as written); a served **document** passes one so its repo-relative interior links resolve
+  from inside the app.
+- `DocLinkUtil` — `resolveDocLink(...)`, that resolver for a document (issue #492): a repo-relative link becomes
+  an in-app document link or a source-repo link, per the doc registry and configured repo base.
 - `CollectionUtil` — `Map.deepClone()` (depth-capped).
 
 Both Markdown utilities belong to the static-content story; see `webapp/CLAUDE.md`.

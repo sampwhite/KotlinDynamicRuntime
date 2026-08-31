@@ -22,8 +22,11 @@ import web.cssom.ClassName
 /** Coroutine scope for firing the suspend home calls from React effects/handlers. */
 private val homeScope = MainScope()
 
-/** The hash key naming the open document, so a doc page survives a refresh and can be linked to. */
-private const val docParam = "doc"
+/**
+ * The hash key naming the open document, so a doc page survives a refresh and can be linked to. Shared as
+ * [HP.doc] so an in-document link the resolver mints (`#doc=<id>`) and the state read back here use one key.
+ */
+private const val docParam = HP.doc
 
 /**
  * The home page — assembled from data rather than hardcoded. It fetches its UI-config (the "construction
@@ -139,7 +142,15 @@ val Home = FC<Props> {
                             +"← ${copy.t("nav", "homeLabel", "Home")}"
                         }
                         h1 { +doc.label }
-                        docText?.let { Markdown { source = it } }
+                        docText?.let { text ->
+                            Markdown {
+                                source = text
+                                // A document's interior repo-relative links are rewritten to an in-app document
+                                // or the source repo as it renders (issue #492). The welcome copy below gets no
+                                // resolver -- it is app copy, not a repo file.
+                                linkResolver = docLinkResolver(doc.sourcePath, links, current?.sourceRepoBase)
+                            }
+                        }
                     }
                     // The welcome page: copy from the fragment file, and optionally the links inline.
                     current != null -> {

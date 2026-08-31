@@ -56,6 +56,15 @@ val embedDocs by tasks.registering(Copy::class) {
     from(layout.projectDirectory.file("../../README.md")) {
         rename { "readme.md" }
     }
+    // The repo docs the README links to (issue #492): served in-app so those interior links resolve to a
+    // document rather than the source repository. Their file names are their doc ids (code-guide.md ->
+    // docId "code-guide"); keep this list in step with the HDOC registry in HomeEndpoints.
+    from(layout.projectDirectory.dir("../..")) {
+        include(
+            "code-guide.md", "client-definition.md", "deferred-work.md",
+            "gedra-config-and-data.md", "gedra-entry.md", "gedra-patch.md", "ui-block.md",
+        )
+    }
     into(layout.buildDirectory.dir("docResources/md-docs"))
 }
 

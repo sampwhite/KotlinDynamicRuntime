@@ -22,8 +22,15 @@ import com.dynamicruntime.common.exception.KdrException
  * All text is HTML-escaped, and link URLs are restricted to http/https/mailto or a relative path
  * (see [safeUrl]) -- a `javascript:` URL renders inert. Content today is our own resources, but it is served
  * to a browser, so it is treated as untrusted.
+ *
+ * ## Link resolution
+ * [resolveUrl] is an optional hook, applied to each link's raw target *before* [safeUrl] (so it can never
+ * reintroduce an unsafe scheme). When null, a link's URL is used as written -- the default, and what fragment
+ * copy and other in-app Markdown want. A *document* served to the frontend passes a resolver (see
+ * [resolveDocLink]) that rewrites the file's repo-relative interior links to an in-app document or the source
+ * repository, since a relative href written for a Git checkout points nowhere from inside the app (issue #492).
  */
-fun String.renderMarkdown(): String {
+fun String.renderMarkdown(resolveUrl: ((String) -> String)? = null): String {
     val lines = this.replace("\r\n", "\n").replace('\r', '\n').split('\n')
     val sb = StringBuilder()
     var i = 0
@@ -32,12 +39,12 @@ fun String.renderMarkdown(): String {
         i = when {
             isBlankLine(line) -> i + 1
             fenceMarker(line) != null -> appendFencedCode(sb, lines, i)
-            headingLevel(line) > 0 -> appendHeading(sb, line, i)
+            headingLevel(line) > 0 -> appendHeading(sb, line, i, resolveUrl)
             isHorizontalRule(line) -> appendHr(sb, i)
-            bulletContent(line) != null -> appendList(sb, lines, i, ordered = false)
-            orderedContent(line) != null -> appendList(sb, lines, i, ordered = true)
-            isQuoteLine(line) -> appendQuote(sb, lines, i)
-            else -> appendParagraph(sb, lines, i)
+            bulletContent(line) != null -> appendList(sb, lines, i, ordered = false, resolveUrl)
+            orderedContent(line) != null -> appendList(sb, lines, i, ordered = true, resolveUrl)
+            isQuoteLine(line) -> appendQuote(sb, lines, i, resolveUrl)
+            else -> appendParagraph(sb, lines, i, resolveUrl)
         }
     }
     return sb.toString()
@@ -52,7 +59,7 @@ fun String.renderMarkdown(): String {
  * Same safety as [renderMarkdown] -- it shares the renderer -- so all text is escaped and link URLs are
  * restricted. Block syntax is not interpreted: a leading `#` or `-` is simply text.
  */
-fun String.renderMarkdownInline(): String = renderInline(this, 0)
+fun String.renderMarkdownInline(resolveUrl: ((String) -> String)? = null): String = renderInline(this, 0, resolveUrl)
 
 // --- block constructs -------------------------------------------------------------------------------------
 
@@ -106,14 +113,42 @@ fun headingLevel(line: String): Int {
 }
 
 @KdrPrivate
-fun appendHeading(sb: StringBuilder, line: String, index: Int): Int {
+fun appendHeading(sb: StringBuilder, line: String, index: Int, resolveUrl: ((String) -> String)? = null): Int {
     val level = headingLevel(line)
     // Trailing hashes are a closing sequence in ATX headings; drop them.
     val text = line.substring(level).trim().trimEnd('#').trim()
-    sb.append("<h").append(level).append('>')
-        .append(renderInline(text, 0))
+    // An id per heading so a same-document `#anchor` link (a doc's table of contents) has something to target.
+    // The slug matches the anchors an authored document already carries, since those were minted from the same
+    // headings (issue #492).
+    val slug = headingSlug(text)
+    sb.append("<h").append(level)
+    if (slug.isNotEmpty()) {
+        sb.append(" id=\"").append(escapeHtml(slug)).append('"')
+    }
+    sb.append('>')
+        .append(renderInline(text, 0, resolveUrl))
         .append("</h").append(level).append(">\n")
     return index + 1
+}
+
+/**
+ * A heading's anchor slug, matching the GitHub scheme documents are authored against: lower-cased, every
+ * character that is not a letter, digit, hyphen, or underscore dropped (Markdown emphasis/code markers with
+ * them), and spaces turned to hyphens. So `## Validation happens` -> `validation-happens`, which lines up with
+ * the `#validation-happens` link a table of contents already carries. A heading with unusual inline markup can
+ * slug imperfectly; the cost is a link that scrolls nowhere, never one that misbehaves.
+ */
+@KdrPrivate
+fun headingSlug(text: String): String {
+    val sb = StringBuilder(text.length)
+    for (c in text.lowercase()) {
+        when {
+            c.isLetterOrDigit() || c == '-' || c == '_' -> sb.append(c)
+            c == ' ' -> sb.append('-')
+            // else: punctuation and inline-markup characters are dropped
+        }
+    }
+    return sb.toString()
 }
 
 /** Whether [line] is a horizontal rule: three or more `-`, `*`, or `_` and nothing else. */
@@ -159,7 +194,7 @@ fun orderedContent(line: String): String? {
 
 /** Emits a flat list of consecutive items (nesting is not supported); returns the resume index. */
 @KdrPrivate
-fun appendList(sb: StringBuilder, lines: List<String>, start: Int, ordered: Boolean): Int {
+fun appendList(sb: StringBuilder, lines: List<String>, start: Int, ordered: Boolean, resolveUrl: ((String) -> String)? = null): Int {
     val tag = if (ordered) "ol" else "ul"
     sb.append('<').append(tag).append(">\n")
     var i = start
@@ -175,7 +210,7 @@ fun appendList(sb: StringBuilder, lines: List<String>, start: Int, ordered: Bool
             parts.add(lines[j].trim())
             j++
         }
-        sb.append("<li>").append(renderInline(parts.joinToString(" "), 0)).append("</li>\n")
+        sb.append("<li>").append(renderInline(parts.joinToString(" "), 0, resolveUrl)).append("</li>\n")
         i = j
     }
     sb.append("</").append(tag).append(">\n")
@@ -187,27 +222,27 @@ fun isQuoteLine(line: String): Boolean = line.trimStart().startsWith(">")
 
 /** Emits a blockquote from consecutive `>` lines; returns the resume index. */
 @KdrPrivate
-fun appendQuote(sb: StringBuilder, lines: List<String>, start: Int): Int {
+fun appendQuote(sb: StringBuilder, lines: List<String>, start: Int, resolveUrl: ((String) -> String)? = null): Int {
     val parts = mutableListOf<String>()
     var i = start
     while (i < lines.size && isQuoteLine(lines[i])) {
         parts.add(lines[i].trimStart().removePrefix(">").trim())
         i++
     }
-    sb.append("<blockquote>").append(renderInline(parts.joinToString(" "), 0)).append("</blockquote>\n")
+    sb.append("<blockquote>").append(renderInline(parts.joinToString(" "), 0, resolveUrl)).append("</blockquote>\n")
     return i
 }
 
 /** Emits a paragraph: consecutive lines until a blank line or the start of another block. */
 @KdrPrivate
-fun appendParagraph(sb: StringBuilder, lines: List<String>, start: Int): Int {
+fun appendParagraph(sb: StringBuilder, lines: List<String>, start: Int, resolveUrl: ((String) -> String)? = null): Int {
     val parts = mutableListOf(lines[start].trim())
     var i = start + 1
     while (i < lines.size && !startsBlock(lines[i])) {
         parts.add(lines[i].trim())
         i++
     }
-    sb.append("<p>").append(renderInline(parts.joinToString(" "), 0)).append("</p>\n")
+    sb.append("<p>").append(renderInline(parts.joinToString(" "), 0, resolveUrl)).append("</p>\n")
     return i
 }
 
@@ -222,7 +257,7 @@ private const val maxInlineDepth = 20
  * a `*` inside `` `code` `` is never emphasis. [depth] bounds the nesting of links/emphasis.
  */
 @KdrPrivate
-fun renderInline(text: String, depth: Int): String {
+fun renderInline(text: String, depth: Int, resolveUrl: ((String) -> String)? = null): String {
     if (depth > maxInlineDepth) {
         throw KdrException.mkConv("Markdown inline nesting exceeded $maxInlineDepth levels.")
     }
@@ -232,8 +267,8 @@ fun renderInline(text: String, depth: Int): String {
         val c = text[i]
         val consumed = when (c) {
             '`' -> appendCodeSpan(sb, text, i)
-            '[' -> appendLink(sb, text, i, depth)
-            '*', '_' -> appendEmphasis(sb, text, i, depth)
+            '[' -> appendLink(sb, text, i, depth, resolveUrl)
+            '*', '_' -> appendEmphasis(sb, text, i, depth, resolveUrl)
             else -> 0
         }
         if (consumed > 0) {
@@ -259,7 +294,7 @@ fun appendCodeSpan(sb: StringBuilder, text: String, start: Int): Int {
 
 /** Emits a `[label](url)` link; returns the characters consumed, or 0 when [start] opens no complete link. */
 @KdrPrivate
-fun appendLink(sb: StringBuilder, text: String, start: Int, depth: Int): Int {
+fun appendLink(sb: StringBuilder, text: String, start: Int, depth: Int, resolveUrl: ((String) -> String)? = null): Int {
     val close = text.indexOf(']', start + 1)
     if (close < 0 || close + 1 >= text.length || text[close + 1] != '(') {
         return 0
@@ -270,8 +305,11 @@ fun appendLink(sb: StringBuilder, text: String, start: Int, depth: Int): Int {
     }
     // A link title (`[t](url "title")`) is accepted and dropped; only the URL is used.
     val url = text.substring(close + 2, paren).trim().substringBefore(' ')
-    sb.append("<a href=\"").append(escapeHtml(safeUrl(url))).append("\">")
-        .append(renderInline(text.substring(start + 1, close), depth + 1))
+    // The resolver (if any) rewrites the target for where this is *rendered*; safeUrl still guards the result,
+    // so a resolver can never turn a link into an executable scheme.
+    val resolved = resolveUrl?.invoke(url) ?: url
+    sb.append("<a href=\"").append(escapeHtml(safeUrl(resolved))).append("\">")
+        .append(renderInline(text.substring(start + 1, close), depth + 1, resolveUrl))
         .append("</a>")
     return paren - start + 1
 }
@@ -281,7 +319,7 @@ fun appendLink(sb: StringBuilder, text: String, start: Int, depth: Int): Int {
  * opens no closed run. An `_` run must start at a word boundary, so `snake_case_names` stays literal.
  */
 @KdrPrivate
-fun appendEmphasis(sb: StringBuilder, text: String, start: Int, depth: Int): Int {
+fun appendEmphasis(sb: StringBuilder, text: String, start: Int, depth: Int, resolveUrl: ((String) -> String)? = null): Int {
     val c = text[start]
     if (c == '_' && start > 0 && isWordChar(text[start - 1])) {
         return 0 // intra word underscore: not emphasis
@@ -301,7 +339,7 @@ fun appendEmphasis(sb: StringBuilder, text: String, start: Int, depth: Int): Int
     }
     val tag = if (double) "strong" else "em"
     sb.append('<').append(tag).append('>')
-        .append(renderInline(text.substring(from, end), depth + 1))
+        .append(renderInline(text.substring(from, end), depth + 1, resolveUrl))
         .append("</").append(tag).append('>')
     return end + marker.length - start
 }
