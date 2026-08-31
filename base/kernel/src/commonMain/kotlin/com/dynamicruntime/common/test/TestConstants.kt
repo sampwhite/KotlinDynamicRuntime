@@ -73,6 +73,7 @@ object TCLK {
 
 /** The operations [TCLK.op] accepts (issue #160). The names are the wire values; the schema choice list and
  *  the endpoint's `when` are both driven off this enum. */
+@Suppress("EnumEntryName")
 enum class ClockOp { advance, set, freeze, unfreeze, reset }
 
 /** Fields and type names of the [TEP.simulatedEmails] endpoint. */
@@ -109,7 +110,7 @@ object TENV {
 /**
  * The operations [TENV.op] accepts (issue #360).
  *
- * [clear] drops the pretence and returns the session to whatever the channel really is. It is **not**
+ * [clear] drops the pretense and returns the session to whatever the channel really is. It is **not**
  * `EnvAuthOp.suppress`, which overrides a real env auth; the two coincide only where no edge is in front,
  * which is the case that makes conflating them tempting and wrong.
  */
@@ -125,7 +126,7 @@ enum class EnvAuthFixtureOp { assert, clear }
  * on that same path was then validated against *them*. Nothing noticed while no two endpoints shared a URL.
  *
  * The fields are deliberately **disjoint**: input types are closed to undeclared properties, so if the memo
- * ever collides again each verb starts rejecting the other's field and the test says so. The output types
+ * ever collides again, each verb starts rejecting the other's field and the test says so. The output types
  * differ for the same reason, on the response side.
  */
 @Suppress("ConstPropertyName")
