@@ -31,6 +31,20 @@ object TEP {
      * can read a verification code back. A `forTestingOnly` GET; the fields/type names are in [TSE].
      */
     const val simulatedEmails = "/fixture/simulatedEmails"
+
+    /**
+     * A content element demonstrating a **frontend** `@t` fragment pull (issue #505): a `forTestingOnly` GET
+     * returning `{fileId, buildId, text}`, where `text` is a template that pulls a fragment. The debug page
+     * that renders it fetches that file's copy and resolves the pull on the frontend -- the Phase 3 vertical
+     * slice. `fileId`/`buildId` reuse the `UIC` wire keys; the text field is [demoText].
+     */
+    const val fragmentDemo = "/fixture/fragmentDemo"
+
+    /** The template-string field of the [fragmentDemo] content element. */
+    const val demoText = "text"
+
+    /** A data variable the [fragmentDemo] text substitutes, to show `@t` and `${...}` in one string. */
+    const val demoVar = "demoVar"
 }
 
 /**
@@ -59,6 +73,7 @@ object TCLK {
 
 /** The operations [TCLK.op] accepts (issue #160). The names are the wire values; the schema choice list and
  *  the endpoint's `when` are both driven off this enum. */
+@Suppress("EnumEntryName")
 enum class ClockOp { advance, set, freeze, unfreeze, reset }
 
 /** Fields and type names of the [TEP.simulatedEmails] endpoint. */
@@ -95,7 +110,7 @@ object TENV {
 /**
  * The operations [TENV.op] accepts (issue #360).
  *
- * [clear] drops the pretence and returns the session to whatever the channel really is. It is **not**
+ * [clear] drops the pretense and returns the session to whatever the channel really is. It is **not**
  * `EnvAuthOp.suppress`, which overrides a real env auth; the two coincide only where no edge is in front,
  * which is the case that makes conflating them tempting and wrong.
  */
@@ -111,7 +126,7 @@ enum class EnvAuthFixtureOp { assert, clear }
  * on that same path was then validated against *them*. Nothing noticed while no two endpoints shared a URL.
  *
  * The fields are deliberately **disjoint**: input types are closed to undeclared properties, so if the memo
- * ever collides again each verb starts rejecting the other's field and the test says so. The output types
+ * ever collides again, each verb starts rejecting the other's field and the test says so. The output types
  * differ for the same reason, on the response side.
  */
 @Suppress("ConstPropertyName")
