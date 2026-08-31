@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.sql.cache
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -533,6 +534,7 @@ class SqlTableCacheService : ServiceInitializer {
                 "Reports this node's in-memory table caches and the change dates all nodes share.",
                 HttpMethod.GET,
                 outputRef = reportTypeName,
+                tags = setOf(ETAG.internal),
             ) { c, _ -> cacheReport(c) }
         }
 

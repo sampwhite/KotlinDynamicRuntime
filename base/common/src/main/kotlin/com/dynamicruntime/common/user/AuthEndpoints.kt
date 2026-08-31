@@ -5,6 +5,7 @@ import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -173,7 +174,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     // A manifest for building the auth flow (issue #70). Under the anonymous `auth` section, so a logged-out
     // caller can bootstrap the register/login UI; the returned state carries the (anonymous or real) user info.
     generalEndpoint(AEP.authUiConfig, "Returns the config for constructing the auth (register/login) UI.",
-        HttpMethod.GET, outputRef = ATYPE.authUiConfig) { c, _ ->
+        HttpMethod.GET, outputRef = ATYPE.authUiConfig, tags = setOf(ETAG.frontend)) { c, _ ->
         mapOf(
             UIC.fragments to fragmentRefs(c, AFRAG.auth),
             UIC.features to mapOf(
@@ -192,7 +193,10 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     // their profile (freshly loaded for the display name), a logged-out caller gets the anonymous profile.
     // (Renamed from `/user/self/info`; per CRDR/cedar, self-info should be callable without a login.)
     generalEndpoint(AEP.selfInfo, "Returns the caller's user info (anonymous when not logged in).",
-        HttpMethod.GET, outputRef = UserProfile.infoTypeName) { c, _ -> currentUserInfo(c) }
+        // Auth self-info: part of the published API (issue #489) and consumed by the frontend auth flow.
+        HttpMethod.GET, outputRef = UserProfile.infoTypeName, publicApi = true, tags = setOf(ETAG.frontend)) { c, _ ->
+        currentUserInfo(c)
+    }
 
     // Log out: flag the request so the auth hook clears the session cookie.
     generalEndpoint(AEP.logout, "Logs the current user out (clears the session cookie).",

@@ -58,6 +58,32 @@ object EI {
 
     /** The `/schema/endpoints` response's list of rendered endpoints (alongside the shared `$defs`). */
     const val endpoints = "endpoints"
+
+    /**
+     * Whether this caller may slice the catalog at all (issue #489) -- true when they are env-authed. A caller
+     * who is not is served **only** the [publicApi] endpoints and offered no filters, so the frontend reads
+     * this to decide whether to draw the filter controls at all. It gates *display*; the restriction itself is
+     * enforced server-side, so a frontend ignoring this still sees only the public set.
+     */
+    const val filtersAvailable = "filtersAvailable"
+}
+
+/**
+ * The tag names this codebase applies to its own endpoints (issue #489), so a declaration and a test spell them
+ * once. `tags` is an **open** set with no runtime effect -- a client or a later endpoint may coin its own -- so
+ * these are the shared few, not an enum: the vocabulary a reader slices the catalog by.
+ *
+ * `publicApi` is deliberately **not** here: it is a boolean axis of its own ([EI.publicApi]), not a tag, because
+ * it is the one the env-auth restriction keys on and a boolean says "published or not" without a spelling to
+ * mistype.
+ */
+@Suppress("ConstPropertyName")
+object ETAG {
+    /** Operations and introspection -- health, system info, node identity, cache state. Not for an app to call. */
+    const val internal = "internal"
+
+    /** Consumed by a frontend widget-group rather than by an integrator -- the UI-config and auth-flow endpoints. */
+    const val frontend = "frontend"
 }
 
 /**

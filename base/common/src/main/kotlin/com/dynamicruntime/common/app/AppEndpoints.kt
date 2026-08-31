@@ -4,6 +4,7 @@ import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.user.EnvAuthRules
+import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -73,7 +74,7 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
     }
 
     generalEndpoint(APP.uiConfig, "Returns deployment-wide app config visible to the entire frontend.",
-        HttpMethod.GET, outputRef = appUiConfigType) { c, _ ->
+        HttpMethod.GET, outputRef = appUiConfigType, tags = setOf(ETAG.frontend)) { c, _ ->
         mapOf(
             UIC.features to mapOf(
                 APP.obfuscateSensitiveErrors to RequestHandler.obfuscateSensitiveErrors(c.instanceConfig),

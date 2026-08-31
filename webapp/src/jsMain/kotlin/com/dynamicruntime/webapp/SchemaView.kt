@@ -30,6 +30,10 @@ class EndpointInfo(
     val description: String?,
     val inputSchema: Map<String, Any?>,
     val outputSchema: Map<String, Any?>,
+    /** Whether the endpoint is part of the published API (issue #489); a filterable axis in the catalog. */
+    val publicApi: Boolean = false,
+    /** The endpoint's catalog tags (issue #489), e.g. `internal`/`frontend`; the multi-select filter's options. */
+    val tags: List<String> = emptyList(),
 ) {
     /** Stable identity for a `method:path` endpoint (used as a table row key). */
     val key: String get() = "$method:$path"
@@ -44,7 +48,16 @@ private const val anonOutputName = "#endpointOutput"
  * in. The `$defs` are parsed once (lazily) into resolved [SchType]s — refs bound, self-referential types like
  * `TreeNode` forming a safe object-graph cycle rather than infinite expansion.
  */
-class Catalog(val endpoints: List<EndpointInfo>, val defs: Map<String, Any?>) {
+class Catalog(
+    val endpoints: List<EndpointInfo>,
+    val defs: Map<String, Any?>,
+    /**
+     * Whether this caller may slice the catalog (issue #489): true when env-authed. When false the backend has
+     * already limited the response to the published endpoints, so the page offers no filters -- there is nothing
+     * to toggle, and re-offering a publicApi filter that is forced on would only mislead.
+     */
+    val filtersAvailable: Boolean = true,
+) {
     /** The shared `$defs` parsed once into resolved kernel [SchType]s (refs bound). */
     val defTypes: Map<String, SchType> by lazy { parseSchemaTypes(defs) }
 

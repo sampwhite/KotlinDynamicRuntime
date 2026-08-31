@@ -84,6 +84,12 @@ val EndpointCatalog = FC<Props> {
     var selectedClient by useState<String?>(null)
     var clientChoices by useState<List<ClientChoice>>(emptyList())
 
+    // Catalog slicing (issue #489), client-side over the already-fetched list. Offered only when the response
+    // says filtering is available (an env-authed caller); a caller without env auth is served only the
+    // published endpoints and sees no controls, since there is nothing to toggle.
+    var publicOnly by useState(false)
+    var selectedTags by useState<Set<String>>(emptySet())
+
     // The request-JSON textarea, so a parse failure can put the caret on the offending character.
     val rawRef = useRef<HTMLTextAreaElement>(null)
 
@@ -230,6 +236,43 @@ val EndpointCatalog = FC<Props> {
                     +"Show a client's endpoints, each form built from that client's schema. Clear to return to your own surface."
                 }
             }
+            // The publicApi + tag filters (issue #489), drawn only for a caller who may slice the catalog.
+            // Without env auth the backend already limited the list to the published set, so there is nothing
+            // to filter and the controls would only mislead.
+            if (cat != null && cat.filtersAvailable) {
+                val tagOptions = availableTags(cat.endpoints)
+                div {
+                    className = ClassName("row")
+                    Checkbox {
+                        checked = publicOnly
+                        onChange = { e -> publicOnly = e.target.checked }
+                        +"Public API only"
+                    }
+                    if (tagOptions.isNotEmpty()) {
+                        span {
+                            className = ClassName("field-label")
+                            +"Tags"
+                        }
+                        Select {
+                            asDynamic()["mode"] = "multiple"
+                            value = selectedTags.toTypedArray()
+                            options = tagOptions.map { tag ->
+                                val o: dynamic = js("({})")
+                                o.label = tag
+                                o.value = tag
+                                o
+                            }.toTypedArray()
+                            placeholder = "Any tag"
+                            allowClear = true
+                            style = js("({ minWidth: 260 })")
+                            // Multi-select is OR: an endpoint shows if it carries any selected tag.
+                            onChange = { v ->
+                                selectedTags = (v as? Array<*>)?.mapNotNull { it as? String }?.toSet() ?: emptySet()
+                            }
+                        }
+                    }
+                }
+            }
             when {
                 error != null -> p {
                     className = ClassName("error-text")
@@ -240,7 +283,7 @@ val EndpointCatalog = FC<Props> {
                     +"Loading…"
                 }
                 else -> EndpointTable {
-                    endpoints = cat.endpoints
+                    endpoints = filterEndpoints(cat.endpoints, publicOnly, selectedTags)
                     onSelect = { ep ->
                         selected = ep
                         values = emptyMap()
@@ -820,6 +863,25 @@ private fun reachable(params: Map<String, String>, catalog: Catalog?): Boolean {
  * everything filled in but the file to pick again.
  */
 private fun Map<String, Any?>.withoutFiles(): Map<String, Any?> = filterValues { !isBrowserFile(it) }
+
+/** The distinct tags across [endpoints], sorted -- the options the catalog tag filter offers (issue #489). */
+fun availableTags(endpoints: List<EndpointInfo>): List<String> =
+    endpoints.flatMap { it.tags }.distinct().sorted()
+
+/**
+ * [endpoints] narrowed by the catalog filters (issue #489): [publicOnly] keeps only published endpoints, and
+ * [selectedTags] keeps an endpoint carrying **any** of them (OR) -- an empty tag set does not filter. Pure, and
+ * covered under `jsNodeTest`; the env-auth restriction is enforced server-side, so this only ever hides
+ * endpoints already in hand.
+ */
+fun filterEndpoints(
+    endpoints: List<EndpointInfo>,
+    publicOnly: Boolean,
+    selectedTags: Set<String>,
+): List<EndpointInfo> =
+    endpoints.filter { ep ->
+        (!publicOnly || ep.publicApi) && (selectedTags.isEmpty() || ep.tags.any { it in selectedTags })
+    }
 
 /**
  * One raw schema document, pretty-printed into the same inset well the read-only views already use.

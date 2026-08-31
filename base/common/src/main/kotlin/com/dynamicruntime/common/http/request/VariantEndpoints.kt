@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.http.request
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -63,6 +64,8 @@ fun variantSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "fixture") {
         inputFields = {
             field(VBH.scenario, "The configured scenario to activate.", required = true)
         },
+        // A diagnostic/test facility, not an app-facing surface (issue #489).
+        tags = setOf(ETAG.internal),
     ) { c, req ->
         val name = req.getOptStr(VBH.scenario)
             ?: throw KdrException.mkInput("'${VBH.scenario}' is required.")
@@ -87,6 +90,7 @@ fun variantSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "fixture") {
         "Test-only (issue #471): clear the request-variant cookie, returning this session to ordinary behavior.",
         HttpMethod.POST,
         outputRef = VEP.stateType,
+        tags = setOf(ETAG.internal),
     ) { c, _ ->
         c.request?.webRequest?.addResponseCookie(VBH.cookieName, "", Instant.fromEpochMilliseconds(0))
         variantState(c, "")

@@ -101,6 +101,27 @@ A list endpoint appends a **`limit`** field (default 100) as a plain sibling, un
 input type is always closed to undeclared properties (`additionalProperties = false`); off-contract `_`/`$`
 keys stay exempt.
 
+## Catalog metadata: `publicApi` and `tags` (issues #433, #489)
+
+Every builder takes two optional catalog attributes. Both are **advertisement, not access** — they change
+what `/schema/endpoints` *lists* and grant nothing; the section gate is still the only thing that decides who
+may call an endpoint.
+
+- **`publicApi = true`** marks the endpoint as part of the documented, supported API. The catalog is
+  filterable by it, and a caller **without env auth** (an ordinary production user) is served *only* the
+  `publicApi` set — so a client-facing endpoint should carry it and an internal one must not. A published mark
+  is only allowed in the user-facing sections (`user`/`profile`/`gedra`/`auth`); `RequestService` refuses to
+  boot if one sits in a privileged/internal section (`admin`/`operator`/`node`/…), since that would publish
+  the very surface the audit exists to hide.
+- **`tags = setOf(ETAG.internal)`** attaches free-form tags, filterable in the catalog by **any-of** (OR). The
+  shared vocabulary is the `ETAG` object (`base/kernel`, `endpoint/EndpointConstants.kt`): `internal`
+  (ops/introspection — health, system info, cache state) and `frontend` (consumed by a UI widget-group — the
+  UI-config endpoints). The set is open; a client or a later endpoint may coin its own. `publicApi` is
+  **not** a tag — it is its own boolean axis, the one the env-auth restriction keys on.
+
+A `clientShaped` per-client copy **inherits** both, so a published client-dynamic endpoint stays published on
+its `/gedra/<client>/…` copies.
+
 **Query-verb gotcha.** On a GET or DELETE the input arrives as query-string *text*, and the schema layer only
 coerces numeric and date-format types by default (`allowCoerce`, see `kdr-schema-builder`). So a non-numeric
 field on such an endpoint — a `boolean`, an `array` — needs `allowCoerce = true` set on it, or `?flag=true`
