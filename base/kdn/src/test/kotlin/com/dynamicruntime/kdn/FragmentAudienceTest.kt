@@ -11,6 +11,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.util.ScriptError
 import com.dynamicruntime.common.util.jsonMap
+import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -157,5 +158,80 @@ class FragmentAudienceTest : StringSpec({
         // A genuinely absent file still reports as absent -- the two failures stay distinguishable.
         shouldThrow<KdrException> { fragmentRefs(cxt, "audNoSuchFile") }
             .fullMessage() shouldContain "is not available"
+    }
+
+    // --- check 1: a frontend file must contain no %{...} backend block ------------------------------------
+
+    "a frontend file carrying a backend block is a finding, and a strict boot refuses" {
+        val cxt = Startup.mkTestBootCxt("chk1", "chk1Test")
+        // A %{@t(...)} in a frontend file is the mistake this catches: it is served with no backend pass, so it
+        // reaches the browser as the literal text `%{@t(...)}`.
+        val front = fragmentInline("audFront", origin = "test", isOverlay = false) {
+            namespace("welcome") { key("title", $$"""Welcome %{@t("other.ns.key")}""") }
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(front))
+
+        val shared = service(cxt).checkFragments(cxt).single { it.client == null }
+        shared.audienceIssues.any { it.contains("welcome.title") && it.contains("backend block") } shouldBe true
+        // Not double-reported as a reference problem: the $ pass sees `%{...}` as plain text.
+        shared.issues.any { it.code == ScriptError.fragmentNotFound } shouldBe false
+
+        val ex = shouldThrow<KdrException> { service(cxt).checkFragmentsAtStartup(cxt) }
+        ex.message.orEmpty() shouldContain "backend block"
+    }
+
+    // --- check 3: a backend pull may name only a backend file ---------------------------------------------
+
+    "a backend pull naming a frontend file is a finding" {
+        val cxt = Startup.mkTestBootCxt("chk3fe", "chk3feTest")
+        val front = fragmentInline("audFront", origin = "test", isOverlay = false) {
+            namespace("welcome") { key("title", "Hi") }
+        }
+        val back = fragmentInline("audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
+            namespace("email") { key("subject", $$"""%{@t("audFront.welcome.title")}""") }
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(front, back))
+        val issues = service(cxt).checkFragments(cxt).flatMap { it.audienceIssues }
+        issues.any { it.contains("audFront") && it.contains("must name a backend file") } shouldBe true
+    }
+
+    "a backend pull naming another backend file is clean" {
+        val cxt = Startup.mkTestBootCxt("chk3be", "chk3beTest")
+        val data = fragmentInline("audData", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
+            namespace("email") { key("subject", "Your code") }
+        }
+        val back = fragmentInline("audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
+            namespace("email") { key("body", $$"""Subject: %{@t("audData.email.subject")}""") }
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(data, back))
+        service(cxt).checkFragments(cxt).flatMap { it.audienceIssues } shouldBe emptyList()
+    }
+
+    "a backend pull naming an undeclared file is a finding" {
+        val cxt = Startup.mkTestBootCxt("chk3none", "chk3noneTest")
+        val back = fragmentInline("audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
+            namespace("email") { key("subject", $$"""%{@t("audNope.a.b")}""") }
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(back))
+        service(cxt).checkFragments(cxt).flatMap { it.audienceIssues }
+            .any { it.contains("audNope") && it.contains("not a declared") } shouldBe true
+    }
+
+    // --- check 2: a carried frontend pull is a note, not a finding ----------------------------------------
+
+    "a backend file carrying a frontend pull is a note, and does not fail a strict boot" {
+        val cxt = Startup.mkTestBootCxt("chk2", "chk2Test")
+        // The deliberate case the design revived: a backend template carries a `${@t(...)}` for the frontend to
+        // finish against whatever element carries the composed string. Unverifiable here, so it is named, not failed.
+        val back = fragmentInline("audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
+            namespace("email") { key("subject", $$"""Hello ${@t("greeting.hello")}""") }
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(back))
+
+        val shared = service(cxt).checkFragments(cxt).single { it.client == null }
+        shared.notes.any { it.contains("greeting.hello") && it.contains("carries a frontend pull") } shouldBe true
+        shared.audienceIssues shouldBe emptyList()
+        // A note never refuses a boot, even in strict (unit) mode.
+        shouldNotThrowAny { service(cxt).checkFragmentsAtStartup(cxt) }
     }
 })
