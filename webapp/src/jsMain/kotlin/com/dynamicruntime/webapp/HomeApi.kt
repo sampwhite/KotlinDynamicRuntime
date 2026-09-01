@@ -7,11 +7,15 @@ import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiAction
 import com.dynamicruntime.common.uiblock.parseUiAction
+import com.dynamicruntime.common.util.resolveDocLink
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
-/** One navigable Markdown document offered by the home page, already carrying its cache-busting build id. */
-class HomeLink(val id: String, val label: String, val docId: String, val buildId: String)
+/**
+ * One navigable Markdown document offered by the home page, already carrying its cache-busting build id.
+ * [sourcePath] is its repo-relative source, used to resolve the document's interior links (issue #492).
+ */
+class HomeLink(val id: String, val label: String, val docId: String, val buildId: String, val sourcePath: String)
 
 /** Which of the three link presentations this deployment enabled. Independent toggles: any combination. */
 class HomeLayout(val topBar: Boolean, val leftBar: Boolean, val inlineLinks: Boolean)
@@ -37,6 +41,11 @@ class HomeConfig(
     val user: UserProfile,
     /** Whether the caller may create and edit other users (drives the Users page, not just the menu). */
     val canManageUsers: Boolean,
+    /**
+     * The source repository's blob base (`.../blob/<branch>`) for rewriting a document's interior links, or
+     * null when the deployment configured none -- then a non-document interior link is left as written (#492).
+     */
+    val sourceRepoBase: String?,
 )
 
 /**
@@ -51,6 +60,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
             label = link[HFLD.label] as? String ?: "",
             docId = link[HFLD.docId] as? String ?: "",
             buildId = link[HFLD.buildId] as? String ?: "",
+            sourcePath = link[HFLD.sourcePath] as? String ?: "",
         )
     }
     val menu = config.state[HFLD.menu].toJsonListOfMaps().map { entry ->
@@ -73,7 +83,27 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         menu = menu,
         user = UserProfile.fromUserInfo(config.state[HFLD.userInfo].toJsonMapOrEmpty()),
         canManageUsers = config.features[HFEAT.canManageUsers] == true,
+        sourceRepoBase = config.state[HFLD.sourceRepoBase] as? String,
     )
+}
+
+/**
+ * The repo source path -> in-app link id map (issue #492): how a document's interior link to a repo file is
+ * recognized as naming another document the app serves. Built from every home link that declares a source path.
+ * Pure, covered by `jsNodeTest`.
+ */
+fun docKeyByPath(links: List<HomeLink>): Map<String, String> =
+    links.filter { it.sourcePath.isNotEmpty() }.associate { it.sourcePath to it.id }
+
+/**
+ * A link resolver for rendering the document at [currentSourcePath], to hand to [Markdown] (issue #492): its
+ * interior relative links become in-app document links (`#doc=<id>`, via [hashHref] so the format cannot drift
+ * from what [hashParams] reads) or links into the source repo, per the kernel's [resolveDocLink]. A null
+ * [sourceRepoBase] leaves non-document relative links as written. Pure over its inputs; covered by `jsNodeTest`.
+ */
+fun docLinkResolver(currentSourcePath: String, links: List<HomeLink>, sourceRepoBase: String?): (String) -> String {
+    val byPath = docKeyByPath(links)
+    return { raw -> resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase) { key -> hashHref(listOf(HP.doc to key)) } }
 }
 
 /**

@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.renderMarkdownInline
+import kotlinx.browser.document
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
@@ -15,15 +16,43 @@ import web.cssom.ClassName
  *
  * Injecting the result is safe by construction: the renderer escapes every piece of text, never passes raw
  * HTML through, and neutralizes non-http(s)/mailto link URLs.
+ *
+ * [MarkdownProps.linkResolver], when set, rewrites each link's target as it is rendered -- how a *document*
+ * served to the frontend retargets its repo-relative interior links (issue #492; see [docLinkResolver]). The
+ * renderer still runs the result through its URL safety check, so a resolver can only retarget a link.
  */
 external interface MarkdownProps : Props {
     var source: String
+    var linkResolver: ((String) -> String)?
 }
 
 val Markdown = FC<MarkdownProps> { props ->
     div {
         className = ClassName("markdown")
-        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdown())
+        // A same-document `#anchor` (a table-of-contents link) scrolls in-page rather than letting the app's
+        // hash router consume it (issue #492); everything else, including an in-app `#doc=` route link, is
+        // left to the browser.
+        onClick = { e -> scrollSameDocAnchorIntoView(e) }
+        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdown(props.linkResolver))
+    }
+}
+
+/**
+ * If a click landed on a same-document anchor link, scroll its target heading into view and stop the browser
+ * navigating (issue #492). A same-document anchor is a `#…` href that is not one of the app's route links --
+ * those carry `key=value` params -- so a `#doc=…` in-app document link and every off-page link fall through
+ * untouched. A slug that matches no heading simply scrolls nowhere, never reloads.
+ */
+private fun scrollSameDocAnchorIntoView(e: dynamic) {
+    val anchor = e.target.closest("a") ?: return
+    val href = anchor.getAttribute("href") as? String ?: return
+    if (!href.startsWith("#") || href.contains("=")) {
+        return
+    }
+    e.preventDefault()
+    val id = href.substring(1)
+    if (id.isNotEmpty()) {
+        document.getElementById(id)?.asDynamic()?.scrollIntoView(js("({ block: 'start' })"))
     }
 }
 

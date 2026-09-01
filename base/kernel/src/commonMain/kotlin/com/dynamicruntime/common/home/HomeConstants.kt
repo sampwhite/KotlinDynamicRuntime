@@ -65,6 +65,20 @@ object HFLD {
 
     /** The document's cache-busting content hash. */
     const val buildId = "buildId"
+
+    /**
+     * `state.links[].sourcePath`: the document's repo-relative source path (e.g. `"README.md"`). The frontend
+     * resolves the document's interior relative links against it, and builds the repo->in-app-document map from
+     * every link's pair of this and [id] (issue #492).
+     */
+    const val sourcePath = "sourcePath"
+
+    /**
+     * `state.sourceRepoBase`: the source repository's blob base (`.../blob/<branch>`), or absent when the
+     * deployment did not configure one. Interior links to files that are *not* served as in-app documents are
+     * rewritten under it; without it they are left as written (issue #492).
+     */
+    const val sourceRepoBase = "sourceRepoBase"
 }
 
 /** Home schema type names (the backend's output type refs; also useful to the frontend). */
@@ -175,8 +189,19 @@ object HFRAG {
     const val home = "home"
 }
 
-/** Markdown *document* ids the home page links to (served whole, rendered as a page). */
+/**
+ * Markdown *document* ids the home page links to (served whole, rendered as a page). The README is the entry
+ * point; the rest are the repo docs it links to, registered so those interior links resolve to an in-app
+ * document rather than the source repository (issue #492). Each id is also the `md-docs/<id>.md` resource name.
+ */
 @Suppress("ConstPropertyName")
 object HDOC {
     const val readme = "readme"
+    const val codeGuide = "code-guide"
+    const val clientDefinition = "client-definition"
+    const val deferredWork = "deferred-work"
+    const val gedraConfigAndData = "gedra-config-and-data"
+    const val gedraEntry = "gedra-entry"
+    const val gedraPatch = "gedra-patch"
+    const val uiBlock = "ui-block"
 }

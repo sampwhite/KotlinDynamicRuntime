@@ -6,6 +6,8 @@ import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.BOOT
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.UiBlockService
@@ -47,6 +49,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
         property(HFLD.label, "Display label for the link.", required = true)
         property(HFLD.docId, "Markdown document id, fetched at /<staticRoot>/<appId>/doc/<docId:buildId>.", required = true)
         property(HFLD.buildId, "Cache-busting content hash for the document.", required = true)
+        property(HFLD.sourcePath, "The document's repo-relative source path, used to resolve its interior links.", required = true)
     }
 
     // One app-bar menu item: an id the frontend can recognize, a label to show, and either a page to navigate
@@ -103,6 +106,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
             property(HFLD.userInfo, "Who the caller is (the anonymous profile when signed out).", required = true) {
                 ref(UserProfile.infoTypeName)
             }
+            property(
+                HFLD.sourceRepoBase,
+                "The source repository's blob base (.../blob/<branch>) for rewriting a document's interior " +
+                    "links; absent when the deployment configured no source repo.",
+            )
         }
     }
 
@@ -123,11 +131,14 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
                 HFEAT.inlineLinks to c.layoutFlag(HCFG.homeInlineLinks, default = false),
                 HFEAT.canManageUsers to AdminRules.canManageUsers(c),
             ),
-            UIC.state to mapOf(
-                HFLD.links to homeLinksFor(c),
-                HFLD.menu to resolvedMenu(c),
-                HFLD.userInfo to c.userProfile.toUserInfo(),
-            ),
+            UIC.state to buildMap {
+                put(HFLD.links, homeLinksFor(c))
+                put(HFLD.menu, resolvedMenu(c))
+                put(HFLD.userInfo, c.userProfile.toUserInfo())
+                // Only when configured -- an absent field says "no source repo", which is how the frontend
+                // leaves a non-document interior link as written (issue #492).
+                sourceRepoBase(c)?.let { put(HFLD.sourceRepoBase, it) }
+            },
         )
     }
 }
@@ -214,9 +225,15 @@ private fun KdrCxt.layoutFlag(key: String, default: Boolean): Boolean =
  * frontend fetches an immutably cacheable URL. A document whose resource is absent (its owning module is not
  * in the deployment) is simply left out, rather than offered as a link that would 404.
  */
-private fun homeLinks(): List<Map<String, Any?>> = homeDocs.mapNotNull { (id, label, docId) ->
-    val buildId = MarkdownDocService.docBuildId(docId) ?: return@mapNotNull null
-    mapOf(HFLD.id to id, HFLD.label to label, HFLD.docId to docId, HFLD.buildId to buildId)
+private fun homeLinks(): List<Map<String, Any?>> = homeDocs.mapNotNull { doc ->
+    val buildId = MarkdownDocService.docBuildId(doc.docId) ?: return@mapNotNull null
+    mapOf(
+        HFLD.id to doc.id,
+        HFLD.label to doc.label,
+        HFLD.docId to doc.docId,
+        HFLD.buildId to buildId,
+        HFLD.sourcePath to doc.sourcePath,
+    )
 }
 
 /**
@@ -237,10 +254,59 @@ private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
     return if (onAnonymousEdgeLanding) emptyList() else homeLinks()
 }
 
-/** The home page's link table: `(id, label, docId)`. Grows as more documents are published. */
-private val homeDocs: List<Triple<String, String, String>> = listOf(
-    Triple(HDOC.readme, "Read me", HDOC.readme),
+/** One row of the home page's document registry: how it is addressed and labelled, and where it came from. */
+private class HomeDocDef(val id: String, val label: String, val docId: String, val sourcePath: String)
+
+/**
+ * The home page's document registry (issue #492): the README plus the repo docs it links to. Registering a
+ * target here does two things at once -- it is offered in the Documents list, and its repo source path lets the
+ * frontend rewrite a link *to* it (from any document) into an in-app link rather than a link into the source
+ * repository. A doc whose resource is not in the deployment is simply dropped by [homeLinks]. Grows as more
+ * documents are published.
+ */
+private val homeDocs: List<HomeDocDef> = listOf(
+    HomeDocDef(HDOC.readme, "Read me", HDOC.readme, "README.md"),
+    HomeDocDef(HDOC.codeGuide, "Code guide", HDOC.codeGuide, "code-guide.md"),
+    HomeDocDef(HDOC.clientDefinition, "Client definition", HDOC.clientDefinition, "client-definition.md"),
+    HomeDocDef(HDOC.deferredWork, "Deferred work", HDOC.deferredWork, "deferred-work.md"),
+    HomeDocDef(HDOC.gedraConfigAndData, "Gedra config and data", HDOC.gedraConfigAndData, "gedra-config-and-data.md"),
+    HomeDocDef(HDOC.gedraEntry, "Gedra entry", HDOC.gedraEntry, "gedra-entry.md"),
+    HomeDocDef(HDOC.gedraPatch, "Gedra patch", HDOC.gedraPatch, "gedra-patch.md"),
+    HomeDocDef(HDOC.uiBlock, "UI block", HDOC.uiBlock, "ui-block.md"),
 )
+
+/**
+ * The source repository's blob base for this deployment (`.../blob/<branch>`), or null when
+ * [HDOCENV.sourceRepoUrl] is unset. A document's interior link to a repo file that is not itself served in-app
+ * is rewritten under this; unset, such a link is left as written (issue #492).
+ */
+private fun sourceRepoBase(cxt: KdrCxt): String? {
+    val repoUrl = cxt.getEnvVar(HDOCENV.sourceRepoUrl)?.trim()?.ifEmpty { null } ?: return null
+    val branch = cxt.getEnvVar(HDOCENV.sourceRepoBranch)?.trim()?.ifEmpty { null } ?: HDOCENV.defaultBranch
+    return "${repoUrl.trimEnd('/')}/blob/$branch"
+}
+
+/** Environment variables for linking a served document back to its source repository (issue #492). */
+@Suppress("ConstPropertyName")
+object HDOCENV {
+    /** The branch a source-repo link points at when [sourceRepoBranch] is unset. */
+    const val defaultBranch = "main"
+
+    val sourceRepoUrl = EnvVarDef(
+        "KDR_SOURCE_REPO_URL", group = ENVGRP.content, defaultDoc = "unset",
+        description = "The web base URL of the deployment's source repository, e.g. " +
+            "'https://github.com/owner/repo'. When set, a served Markdown document's interior links to repo " +
+            "files that are not themselves served in-app are rewritten to '<this>/blob/<branch>/<path>' " +
+            "(issue #492). Unset (the default) and such links are left exactly as written -- the documents " +
+            "still render, but their repo-relative interior links do not resolve from inside the app.",
+    )
+
+    val sourceRepoBranch = EnvVarDef(
+        "KDR_SOURCE_REPO_BRANCH", group = ENVGRP.content, defaultDoc = "'main'",
+        description = "The branch that source-repository document links point at (see KDR_SOURCE_REPO_URL). " +
+            "Defaults to 'main'. Has no effect unless KDR_SOURCE_REPO_URL is set.",
+    )
+}
 
 /**
  * Instance-config keys for the home layout (backend-only -- the frontend receives the resolved [HFEAT] flags,

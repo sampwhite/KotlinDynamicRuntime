@@ -12,11 +12,23 @@ import io.kotest.matchers.string.shouldNotContain
 class MarkdownRenderUtilTest : StringSpec({
 
     "renders ATX headings at their level, ignoring a closing hash run" {
-        "# Title".renderMarkdown() shouldBe "<h1>Title</h1>\n"
-        "### Sub ###".renderMarkdown() shouldBe "<h3>Sub</h3>\n"
+        // Each heading carries a slug id, so a same-document `#anchor` link can target it (issue #492).
+        "# Title".renderMarkdown() shouldBe "<h1 id=\"title\">Title</h1>\n"
+        "### Sub ###".renderMarkdown() shouldBe "<h3 id=\"sub\">Sub</h3>\n"
         // Seven hashes is not a heading, and `#foo` (no space) is ordinary text.
         "####### Nope".renderMarkdown() shouldContain "<p>"
         "#NoSpace".renderMarkdown() shouldBe "<p>#NoSpace</p>\n"
+    }
+
+    "gives a heading a github-style slug id matching an authored anchor (issue #492)" {
+        // Spaces to hyphens, punctuation and emphasis markers dropped, lower-cased -- so the id lines up with
+        // the `#the-shape` / `#soft-validation...` links a table of contents already carries.
+        headingSlug("The shape") shouldBe "the-shape"
+        headingSlug("Soft validation, and the trap next to it") shouldBe "soft-validation-and-the-trap-next-to-it"
+        headingSlug("A **bold** word") shouldBe "a-bold-word"
+        "## The **shape**".renderMarkdown() shouldContain "id=\"the-shape\""
+        // A heading that slugs to nothing gets no id rather than an empty one.
+        "## ...".renderMarkdown() shouldBe "<h2>...</h2>\n"
     }
 
     "joins wrapped lines into one paragraph and separates on a blank line" {
@@ -83,5 +95,19 @@ class MarkdownRenderUtilTest : StringSpec({
         "a * b".renderMarkdown() shouldBe "<p>a * b</p>\n"
         "an [unclosed link".renderMarkdown() shouldBe "<p>an [unclosed link</p>\n"
         "a ` tick".renderMarkdown() shouldBe "<p>a ` tick</p>\n"
+    }
+
+    "applies a link resolver to targets, then still runs safeUrl on the result (issue #492)" {
+        // The resolver rewrites the target; unrelated text and other inline constructs are unaffected.
+        val upper = { url: String -> "https://x/" + url.uppercase() }
+        "see [d](code-guide.md)".renderMarkdown(upper) shouldBe
+            "<p>see <a href=\"https://x/CODE-GUIDE.MD\">d</a></p>\n"
+        // The resolver runs at every link site, including inside a list item.
+        "- [a](x)\n- [b](y)".renderMarkdown(upper) shouldContain "href=\"https://x/X\""
+        // safeUrl still guards the resolver's output, so a resolver cannot introduce an executable scheme.
+        val toJs = { _: String -> "javascript:alert(1)" }
+        val html = "[click](anything.md)".renderMarkdown(toJs)
+        html shouldContain ">click</a>"
+        html shouldNotContain "javascript:"
     }
 })
