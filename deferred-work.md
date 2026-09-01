@@ -336,3 +336,34 @@ clear an edge's Google gate is staff, and the gate is the whole of the decision.
   cost of waiting is one line plus whatever the answer turns out to need. Note that `allClients` is already
   withheld — it is a capability rather than a rung, so the full-scope admin sections stay closed to an
   env-authed caller, which is the natural first thing to revisit rather than the last.
+
+## When a client's workflows reference its own content indirectly
+
+The point at which a client needs custom workflows that both **own copy** and **select among it by reference**
+-- a workflow choosing which fragment to show by a key rather than inlining the text. That is what makes a
+client-owned fragment file and a declarative selector worth building; until then a client overlays existing
+component copy and that is enough. Design and full rationale live in the fragment design doc,
+`kd2-design/thoughts-on-fragments.md` (private `sampwhite/Actions`).
+
+- **Client-defined template (fragment) files** *(from the "client-declared fragments" iteration in the design
+  doc).* Let a client declare its own **base** fragment files -- new fileIds, not just overlays of
+  component-shipped ones -- via a `GedraConfigBuilder.fragmentFile(...)` beside the existing `fragmentOverlay`.
+  New fileIds are clientId-namespaced so they cannot collide with component ids (separator sub-decision: only
+  `-`/`_` pass `isSafeFileId` today and both already occur in ids, while `.`/`:`/`/` are each reserved
+  elsewhere -- so this needs either a widened `isSafeFileId` with one dedicated char or a structural clientId
+  field). **Prerequisite, not a follow-up:** the audience boot checks must resolve a pull's target audience in
+  the *variant's* client view, not the boot view (today `declaredAudience` uses the boot `cxt`) -- it fails
+  *silently* for a client's own backend pulls, so it must land with this, not after. No cross-client
+  references; reuse across clients is an in-source **clone-and-own** "include", never a live lookup.
+
+- **Structured descriptor content form** *(Phase 5 of #505).* A `{template, by, default}` alternative to a
+  bare string in a content field -- a schema `String | descriptor` union that normalizes to the *same* resolved
+  outcome as the string form. It buys two things the string form cannot: a **statically knowable pull-set**
+  (`by` enumerates the choices, so they can be validated and preloaded, where a computed `${@t(chosenKey)}` is
+  opaque), and a **declarative shape** friendlier to content authored or generated as data than embedded
+  `@t`/`?:` syntax -- which is exactly the indirect-reference case this trigger describes. Deferred because it
+  duplicates the proven string/`@t` form (Phases 1-4) and is **purely additive** -- widening a field to accept
+  a second shape breaks no existing string content and needs no migration -- so it costs nothing to add when a
+  consumer exists, and building it now would be a second way to do a solved thing. Ripples into `SchType`, the
+  UiBlock merge, and both render paths when built. Revisit sooner if component content (not just a client's) is
+  ever authored as data, or a preload/bundling path needs the static pull-set.
