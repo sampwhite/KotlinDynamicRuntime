@@ -32,6 +32,12 @@ class AppConfig(
      */
     val allowDebugPages: Boolean,
     /**
+     * Whether this is a genuine **test instance** (issue #517) -- distinct from [allowDebugPages], which an
+     * env-debug operator now turns on too. A debug tool that demos a `forTestingOnly` fixture is offered only
+     * where this is true, so an env-debug operator on a real deployment is never handed a tool that can only fail.
+     */
+    val isTestInstance: Boolean,
+    /**
      * Whether this session is **currently acting** env-authed (issue #360) -- reached the deployment through
      * an authenticating edge, and has not suppressed it. Anything that varies with env auth reads this.
      */
@@ -61,6 +67,9 @@ class AppConfig(
             // not be the reason internals appear on a real deployment's screen.
             showErrorDetail = false,
             allowDebugPages = false,
+            // Not a test instance until the backend says so; a test-only debug tool must not be offered before
+            // the config that confirms the fixtures exist has loaded (issue #517).
+            isTestInstance = false,
             // Assume neither until the backend says so, for the same reason as showErrorDetail: a fetch that
             // has not happened must not be why an internal affordance appears.
             isEnvAuthed = false,
@@ -88,6 +97,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
         ?: APP.defaultIdleBumpIntervalMs,
     showErrorDetail = config.features[APP.showErrorDetail] == true,
     allowDebugPages = config.features[APP.allowDebugPages] == true,
+    isTestInstance = config.features[APP.isTestInstance] == true,
     isEnvAuthed = config.features[APP.isEnvAuthed] == true,
     envAuthSuppressible = config.features[APP.envAuthSuppressible] == true,
     envAuthDebug = config.features[APP.envAuthDebug] == true,

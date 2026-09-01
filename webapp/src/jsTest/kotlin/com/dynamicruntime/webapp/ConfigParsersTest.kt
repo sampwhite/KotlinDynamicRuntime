@@ -49,6 +49,7 @@ class ConfigParsersTest {
                     APP.obfuscateSensitiveErrors to true,
                     APP.showErrorDetail to true,
                     APP.allowDebugPages to true,
+                    APP.isTestInstance to true,
                     APP.isEnvAuthed to true,
                     APP.envAuthDebug to true,
                 ),
@@ -58,6 +59,7 @@ class ConfigParsersTest {
         assertTrue(cfg.obfuscateSensitiveErrors)
         assertTrue(cfg.showErrorDetail)
         assertTrue(cfg.allowDebugPages)
+        assertTrue(cfg.isTestInstance)
         assertTrue(cfg.isEnvAuthed)
         assertTrue(cfg.envAuthDebug)
         assertEquals(30_000, cfg.idleBumpIntervalMs)
@@ -73,6 +75,8 @@ class ConfigParsersTest {
         // Off until the backend says otherwise: a route that breaks the app on purpose must never appear
         // because a config fetch had not landed yet (issue #227).
         assertFalse(cfg.allowDebugPages)
+        // Not a test instance until the backend says so, so a test-only debug tool is not offered early (issue #517).
+        assertFalse(cfg.isTestInstance)
         // The debug state, likewise off until the backend authorizes it (issue #517).
         assertFalse(cfg.envAuthDebug)
         assertEquals(APP.defaultIdleBumpIntervalMs, cfg.idleBumpIntervalMs)

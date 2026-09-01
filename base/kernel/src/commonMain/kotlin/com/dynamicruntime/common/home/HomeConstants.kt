@@ -118,6 +118,13 @@ object HMENU {
     const val login = "login"
     const val register = "register"
     const val logout = "logout"
+    // Debug (issue #517), offered only in an env-authed session. `debugEnable` (a top-level call) turns debug
+    // on; once on, `debug` is a parent item whose children -- the debug pages and `debugOff` -- drill down
+    // under it via [UIB.parentId]. `debugEnable` and `debug` are mutually exclusive by cfact.
+    const val debugEnable = "debugEnable"
+    const val debug = "debug"
+    const val debugPages = "debugPages"
+    const val debugOff = "debugOff"
 
     // Frontend page ids, carried in a menu item's `action` as a string; the frontend maps them onto its
     // own routing (issue #483).
@@ -130,6 +137,7 @@ object HMENU {
     const val pageProfile = "profile"
     const val pageLogin = "login"
     const val pageRegister = "register"
+    const val pageDebug = "debug"
 }
 
 /** Frontend functions a UiBlock may call, declared so both sides share the vocabulary (issue #483). */
@@ -141,6 +149,14 @@ object HACT {
      * see [UiActionDef].
      */
     val logout = UiActionDef("logout")
+
+    /**
+     * Turn this session's debug behaviors on or off (issue #517). One parameter, the boolean as a string
+     * (`"true"`/`"false"`): the "Enable debug" item passes `true` and "Turn off debug" passes `false`. A call
+     * rather than a route because it changes session state via the env-auth endpoint and re-reads the config,
+     * exactly as [logout] does its own side effect.
+     */
+    val setEnvDebug = UiActionDef("setEnvDebug", arity = 1)
 
     /**
      * Signing out of an **environment** (issue #486): the edge's counterpart to [logout], contributed to the

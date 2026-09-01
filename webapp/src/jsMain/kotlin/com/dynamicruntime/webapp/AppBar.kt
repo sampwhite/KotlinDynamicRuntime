@@ -101,8 +101,6 @@ external interface AppBarProps : Props {
     var envAuthSuppressible: Boolean
     /** Whether the session is currently *acting* env-authed -- decides what the control says. */
     var envAuthActing: Boolean
-    /** Whether the session is in the debug state (issue #517) -- the third state the control cycles to. */
-    var envAuthDebug: Boolean
 }
 
 /**
@@ -213,6 +211,15 @@ val AppBar = FC<AppBarProps> { props ->
             open = false
             leaveAppTo(path)
         },
+        // Turn debug on/off (issue #517): move the session to debug or plain-on through the env-auth endpoint,
+        // then re-read the config and bump so the menu (and the badge) redraw for the new state.
+        setEnvDebug = { on ->
+            open = false
+            appBarScope.launch {
+                setEnvAuthOp(if (on) EnvAuthOp.debug else EnvAuthOp.restore)
+                bump()
+            }
+        },
     )
 
     // The bar takes on the elevated-privilege look while the caller holds administrative rights. It reads the
@@ -272,26 +279,19 @@ val AppBar = FC<AppBarProps> { props ->
             // a keyboard user must be able to reach. It names the *state*, not the action, so the bar reads as
             // a description of where you are rather than a row of commands.
             if (props.envAuthSuppressible) {
-                // The click keeps its established meaning (issue #360): the suppress/restore toggle -- acting ->
-                // off ("browse as an ordinary user"), off -> on. It does **not** enter debug, so an operator's
-                // muscle memory cannot turn on the widened debug surface by accident; debug is reached
-                // deliberately from the Debug menu (issue #517, slice 2). The label still shows the third state
-                // when it is on, so the bar reads as where you are.
+                // A plain on/off toggle (issues #360, #517): acting -> off ("browse as an ordinary user"),
+                // off -> on. Debug is **not** the badge's concern -- it is owned by the Debug menu, which shows
+                // the state and offers "Turn off debug" with a label. So the badge no longer carries a third
+                // state: it would only duplicate the menu, and a badge that could reach debug is the accidental-
+                // activation path slice 1's review flagged. Suppressing here still clears debug on the backend
+                // (debug requires effective env auth), so on -> off from either surface leaves the same state.
                 val acting = props.envAuthActing
                 button {
-                    className = ClassName(
-                        "bar-badge env-badge" + when {
-                            !acting -> " off"
-                            props.envAuthDebug -> " debug"
-                            else -> ""
-                        },
-                    )
-                    title = when {
-                        !acting -> "Environment access is suppressed for this session. Click to restore it."
-                        props.envAuthDebug ->
-                            "Debug behaviors are on. Click to browse as an ordinary user (which also turns debug off)."
-                        else ->
-                            "You reached this deployment through an authenticated environment. Click to browse as an ordinary user."
+                    className = ClassName("bar-badge env-badge" + if (acting) "" else " off")
+                    title = if (acting) {
+                        "You reached this deployment through an authenticated environment. Click to browse as an ordinary user."
+                    } else {
+                        "Environment access is suppressed for this session. Click to restore it."
                     }
                     onClick = {
                         appBarScope.launch {
@@ -299,11 +299,7 @@ val AppBar = FC<AppBarProps> { props ->
                             bump()
                         }
                     }
-                    +when {
-                        !acting -> "Env off"
-                        props.envAuthDebug -> "Env debug"
-                        else -> "Env"
-                    }
+                    +if (acting) "Env" else "Env off"
                 }
             }
             // Spelled out, not just colored: a hue on its own tells a colourblind user nothing, and this is
@@ -352,41 +348,30 @@ val AppBar = FC<AppBarProps> { props ->
                     // so a label here only repeated the same string a few pixels away. The menu is for
                     // actions; saying who you are is the bar's job.
 
-                    // The items themselves, exactly as the backend composed them for this caller.
-                    for (menuItem in config?.menu.orEmpty()) {
-                        // A route is a link and a call is a button, which is the whole of the dispatch: the
-                        // backend already decided *whether* this caller sees the item, and the shape of the
-                        // action says how to render it (issue #483).
-                        when (val action = menuItem.action) {
-                            is UiRoute -> menuLink("#page=${action.page}", menuItem.label) { open = false }
-                            is UiCall -> button {
-                                className = ClassName("app-menu-item")
-                                // An `openPath` call leaves the SPA for a server path (issue #493). The cue is
-                                // derived from the action kind, not a field on the item -- leaving the app is
-                                // inherent to what `openPath` does. The ↗ glyph below is decorative; the
-                                // accessible name states the departure in words, and says "leaves this app"
-                                // rather than the reflexive "opens in a new tab", which would be a lie -- this
-                                // is a same-window full-page navigation.
-                                val leavesApp = action.def.name == HACT.openPath.name
-                                if (leavesApp) {
-                                    asDynamic()["aria-label"] = "${menuItem.label} (leaves this app)"
-                                }
-                                onClick = {
-                                    open = false
-                                    // An unimplemented name closes the menu and does nothing else, which is
-                                    // what the startup check exists to stop ever reaching a person.
-                                    frontendActions.run(action.def.name, action.args)
-                                }
-                                +menuItem.label
-                                if (leavesApp) {
-                                    span {
-                                        className = ClassName("app-menu-external")
-                                        asDynamic()["aria-hidden"] = true
-                                        +" ↗"
-                                    }
-                                }
+                    // The items themselves, exactly as the backend composed them for this caller, nested into a
+                    // drill-down where an item names a parent (issue #517).
+                    for (node in menuTree(config?.menu.orEmpty())) {
+                        if (node.children.isEmpty()) {
+                            menuItemView(node.item, frontendActions) { open = false }
+                        } else {
+                            // A parent: its label is a header, and its children drill down indented under it.
+                            // The parent carries no action of its own -- the backend `collectParentIssues` boot
+                            // check refuses one, precisely because this render would discard it (issue #517) --
+                            // so drawing it as a plain header loses nothing. The header labels the child group
+                            // for assistive tech via `aria-labelledby`, matching the `role="group"` below.
+                            val headerId = "menu-parent-${node.item.id}"
+                            div {
+                                // id/aria via asDynamic to match this file's idiom (see menuItemView below).
+                                asDynamic()["id"] = headerId
+                                className = ClassName("app-menu-parent")
+                                +node.item.label
                             }
-                            null -> Unit
+                            div {
+                                className = ClassName("app-menu-children")
+                                asDynamic()["role"] = "group"
+                                asDynamic()["aria-labelledby"] = headerId
+                                for (child in node.children) menuItemView(child, frontendActions) { open = false }
+                            }
                         }
                     }
                 }
@@ -433,5 +418,50 @@ private fun ChildrenBuilder.menuLink(href: String, label: String, onClick: () ->
         this.href = href
         this.onClick = { onClick() }
         +label
+    }
+}
+
+/** A top-level menu item together with the items that name it as their [MenuItem.parentId] (issue #517). */
+class MenuNode(val item: MenuItem, val children: List<MenuItem>)
+
+/**
+ * Groups a flat menu into a one-level drill-down (issue #517): each top-level item (no [MenuItem.parentId])
+ * paired with the items that name it as their parent, in the order the backend sent them. A child whose named
+ * parent is absent (its cfact dropped it) is dropped too, so an orphan never renders parentless. Pure, covered
+ * by `jsNodeTest`.
+ */
+fun menuTree(items: List<MenuItem>): List<MenuNode> {
+    val childrenByParent = items.filter { it.parentId != null }.groupBy { it.parentId }
+    return items.filter { it.parentId == null }.map { MenuNode(it, childrenByParent[it.id].orEmpty()) }
+}
+
+/** Renders one leaf menu item -- a route as a link, a call as a button (issue #483); a null action renders
+ *  nothing (a parent's label is drawn by the drill-down, not here). [onNavigate] closes the menu. */
+private fun ChildrenBuilder.menuItemView(item: MenuItem, actions: FrontendActions, onNavigate: () -> Unit) {
+    when (val action = item.action) {
+        is UiRoute -> menuLink("#page=${action.page}", item.label) { onNavigate() }
+        is UiCall -> button {
+            className = ClassName("app-menu-item")
+            // An `openPath` call leaves the SPA for a server path (issue #493); its accessible name says so.
+            val leavesApp = action.def.name == HACT.openPath.name
+            if (leavesApp) {
+                asDynamic()["aria-label"] = "${item.label} (leaves this app)"
+            }
+            onClick = {
+                onNavigate()
+                // An unimplemented name closes the menu and does nothing else, which is what the startup check
+                // exists to stop ever reaching a person.
+                actions.run(action.def.name, action.args)
+            }
+            +item.label
+            if (leavesApp) {
+                span {
+                    className = ClassName("app-menu-external")
+                    asDynamic()["aria-hidden"] = true
+                    +" ↗"
+                }
+            }
+        }
+        null -> Unit
     }
 }

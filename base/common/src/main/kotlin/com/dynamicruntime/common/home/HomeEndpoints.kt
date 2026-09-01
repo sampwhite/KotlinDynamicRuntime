@@ -58,12 +58,13 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
         type = SCT.kObject
         property(HFLD.id, "Stable id for this item (see HMENU); the frontend keys behavior off it.", required = true)
         property(HFLD.label, "Display label.", required = true)
+        property(UIB.parentId, "The parent item this drills down under (issue #517); absent for a top-level item.")
         property(
             UIB.action,
             "What the item does when chosen: a **string** is a frontend page id to navigate to, an **array** " +
                 "is a call whose first element names a registered frontend function and whose rest are its " +
-                "parameters (issue #483).",
-            required = true,
+                "parameters (issue #483). Absent on a drill-down **parent** (issue #517), which is drawn as a " +
+                "group header rather than an action -- the boot check refuses a parent that also names one.",
         ) {
             // Unconstrained, because the layer cannot yet say "string or array": `SchParser` does not model
             // `anyOf`. Declaring either type alone would be a schema that rejects half the values this
@@ -209,6 +210,18 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         menuItem(HMENU.logout, "Log out", UiCall(HACT.logout), cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
         menuItem(HMENU.login, "Log in", UiRoute(HMENU.pageLogin), cfactExpression = "${CFACTS.anonymous},${BOOT.app}")
         menuItem(HMENU.register, "Register", UiRoute(HMENU.pageRegister), cfactExpression = "${CFACTS.anonymous},${BOOT.app}")
+
+        // Debug (issue #517), offered only in an env-authed session. Not in debug yet: one top-level call to
+        // turn it on. In debug: a "Debug" parent whose children drill down under it via parentId -- the debug
+        // pages (which list the usable tools), and the switch back off. The two "Debug" entries are mutually
+        // exclusive by cfact, so only ever one shows.
+        menuItem(HMENU.debugEnable, "Debug", UiCall(HACT.setEnvDebug, listOf("true")),
+            cfactExpression = "${CFACTS.canEnableDebug},${BOOT.app}")
+        menuItem(HMENU.debug, "Debug", cfactExpression = "${CFACTS.isEnvDebug},${BOOT.app}")
+        menuItem(HMENU.debugPages, "Debug pages", UiRoute(HMENU.pageDebug),
+            cfactExpression = "${CFACTS.isEnvDebug},${BOOT.app}", parentId = HMENU.debug)
+        menuItem(HMENU.debugOff, "Turn off debug", UiCall(HACT.setEnvDebug, listOf("false")),
+            cfactExpression = "${CFACTS.isEnvDebug},${BOOT.app}", parentId = HMENU.debug)
     }
 }
 

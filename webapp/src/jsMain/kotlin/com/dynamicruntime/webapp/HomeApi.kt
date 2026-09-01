@@ -28,7 +28,7 @@ class HomeLayout(val topBar: Boolean, val leftBar: Boolean, val inlineLinks: Boo
  * [action] is **one** value, a route or a call (issue #483), where it was once a `page` and an `action` that
  * could be both or neither.
  */
-class MenuItem(val id: String, val label: String, val action: UiAction?)
+class MenuItem(val id: String, val label: String, val action: UiAction?, val parentId: String? = null)
 
 /** The home page's construction manifest: where its copy lives, how to lay it out, and what to link to. */
 class HomeConfig(
@@ -70,6 +70,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
             // Read by the kernel's own parser, so the side that writes the union and the side that acts on
             // it cannot come to disagree about what a given shape meant.
             action = parseUiAction(entry[UIB.action]),
+            parentId = entry[UIB.parentId] as? String,
         )
     }
     return HomeConfig(

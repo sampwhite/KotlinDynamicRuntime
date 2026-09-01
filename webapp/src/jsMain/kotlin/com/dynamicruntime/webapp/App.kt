@@ -54,7 +54,6 @@ val App = FC<Props> {
     // config, because that config arrives asynchronously and its module cache re-renders nothing on its own.
     var envAuthSuppressible by useState(false)
     var envAuthActing by useState(false)
-    var envAuthDebug by useState(false)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
         onWebAppStale { updateAvailable = true }
@@ -78,7 +77,6 @@ val App = FC<Props> {
             debugAllowed = appConfig().allowDebugPages
             envAuthSuppressible = appConfig().envAuthSuppressible
             envAuthActing = appConfig().isEnvAuthed
-            envAuthDebug = appConfig().envAuthDebug
         }
     }
 
@@ -122,7 +120,6 @@ val App = FC<Props> {
                 AppBar {
                     this.envAuthSuppressible = envAuthSuppressible
                     this.envAuthActing = envAuthActing
-                    this.envAuthDebug = envAuthDebug
                 }
                 div {
                     className = ClassName("app-content")
@@ -193,7 +190,7 @@ private const val pageForms = HMENU.pageForms
 
 // The debug area (issue #227). Present in the router unconditionally; whether it *renders* is gated on the
 // deployment's `allowDebugPages`, checked at render time where the config is known.
-private const val pageDebug = "debug"
+private const val pageDebug = HMENU.pageDebug
 
 /**
  * Resolves the page from the hash: `page=catalog` (or an endpoint deep-link carrying `m=`) shows the catalog,

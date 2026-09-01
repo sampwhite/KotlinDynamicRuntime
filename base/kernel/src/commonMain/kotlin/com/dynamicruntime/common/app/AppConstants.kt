@@ -32,12 +32,22 @@ object APP {
      * Feature flag: whether the frontend's **debug pages** exist at all (issue #227) -- the fault route that
      * makes the app throw on demand, and whatever diagnostic views join it.
      *
-     * Separate from [showErrorDetail] on purpose, though both derive from the backend's `isTestInstance`
-     * today. They authorize different things -- seeing internals versus *manufacturing a failure* -- and a
-     * flag named for disclosure must not silently confer injection. Kept apart so they can diverge later
-     * without one quietly widening the other.
+     * Separate from [showErrorDetail] on purpose. They authorize different things -- seeing internals versus
+     * *manufacturing a failure* -- and a flag named for disclosure must not silently confer injection. Kept
+     * apart so they can diverge later without one quietly widening the other. Since issue #517 both are
+     * `isTestInstance || isEnvDebug`, so an env-debug operator on a real deployment gets the debug pages too.
      */
     const val allowDebugPages = "allowDebugPages"
+
+    /**
+     * Feature flag: whether this is a genuine **test instance**, distinct from [allowDebugPages] since issue
+     * #517 opened the debug pages to an env-debug operator on a real deployment. Some debug tools are
+     * diagnostics that work anywhere (config state, the deliberate fault); others are *demos of a test-only
+     * fixture* (the fragment-pull tool calls a `forTestingOnly` endpoint that a real deployment does not
+     * register). The latter are offered only where this is true, so an env-debug operator is never handed a
+     * tool that can only fail. Set straight from the backend's `isTestInstance`.
+     */
+    const val isTestInstance = "isTestInstance"
 
     /**
      * Feature flag: whether this request is **currently acting** env-authed (issues #348, #360) -- the

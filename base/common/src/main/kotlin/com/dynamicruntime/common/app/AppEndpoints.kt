@@ -53,6 +53,11 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 required = true,
             ) { type = SCT.boolean }
             property(
+                APP.isTestInstance,
+                "Whether this is a genuine test instance (test-only fixtures present), separate from allowDebugPages.",
+                required = true,
+            ) { type = SCT.boolean }
+            property(
                 APP.isEnvAuthed,
                 "Whether this request is currently acting env-authed (false when suppressed by the session).",
                 required = true,
@@ -91,6 +96,10 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 // Same fence, separate flag (issue #227): a route that manufactures a failure is a different
                 // power from showing a stack, even where both happen to be permitted by the same instance.
                 APP.allowDebugPages to (c.instanceConfig.isTestInstance || c.isEnvDebug),
+                // The raw test-instance truth (issue #517), which allowDebugPages no longer implies: a debug
+                // tool that demos a forTestingOnly fixture is offered only where the fixture is registered, so
+                // an env-debug operator on a real deployment is never handed a tool that can only fail.
+                APP.isTestInstance to c.instanceConfig.isTestInstance,
                 // Per-request, unlike its neighbors (issue #348): the answer depends on how this particular
                 // request reached the node, not on how the deployment is configured. Read off the context
                 // rather than the header, so the dispatcher's decision and the frontend's view are one answer.

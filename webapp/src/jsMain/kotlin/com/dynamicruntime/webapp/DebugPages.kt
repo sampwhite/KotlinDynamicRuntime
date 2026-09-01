@@ -96,7 +96,10 @@ val DebugPage = FC<Props> {
     when (hashParams()[debugToolParam]) {
         debugToolFault -> DebugFault {}
         debugToolState -> DebugState {}
-        debugToolFragment -> DebugFragment {}
+        // The fragment demo calls a `forTestingOnly` fixture endpoint that a real deployment does not register,
+        // so it works only on a test instance -- offer it nowhere else, even to an env-debug operator who can
+        // reach this page (issue #517). A hand-typed URL falls back to the index rather than a guaranteed error.
+        debugToolFragment -> if (appConfig().isTestInstance) DebugFragment {} else DebugIndex {}
         else -> DebugIndex {}
     }
 }
@@ -126,13 +129,18 @@ val DebugIndex = FC<Props> {
                 }
                 +" — throws while rendering, so the page error boundary is seen to catch."
             }
-            li {
-                a {
-                    href = "#page=debug&$debugToolParam=$debugToolFragment"
-                    +"Fragment pull"
+            // Offered only on a genuine test instance: it demos a forTestingOnly fixture endpoint absent from a
+            // real deployment, so an env-debug operator who reaches this page is not shown a tool that can only
+            // fail (issue #517).
+            if (appConfig().isTestInstance) {
+                li {
+                    a {
+                        href = "#page=debug&$debugToolParam=$debugToolFragment"
+                        +"Fragment pull"
+                    }
+                    +(" — renders a server-provided content element whose text pulls a fragment, resolved on the " +
+                        "frontend (issue #505).")
                 }
-                +(" — renders a server-provided content element whose text pulls a fragment, resolved on the " +
-                    "frontend (issue #505).")
             }
             li {
                 a {
@@ -177,6 +185,9 @@ val DebugState = FC<Props> {
                 "idleBumpIntervalMs" to config.idleBumpIntervalMs,
                 "showErrorDetail" to config.showErrorDetail,
                 "allowDebugPages" to config.allowDebugPages,
+                "isTestInstance" to config.isTestInstance,
+                "isEnvAuthed" to config.isEnvAuthed,
+                "envAuthDebug" to config.envAuthDebug,
             ).toJsonStr()
         }
         h2 { +"Refresh generation" }

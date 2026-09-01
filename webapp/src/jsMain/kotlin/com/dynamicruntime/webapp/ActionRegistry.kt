@@ -20,6 +20,7 @@ class FrontendActions(
     private val logout: () -> Unit,
     private val envLogout: (List<String>) -> Unit,
     private val openPath: (String) -> Unit,
+    private val setEnvDebug: (Boolean) -> Unit,
 ) {
     // Every URL an item supplies is guarded here, in the one place item data becomes a navigation. A menu item
     // is data a client may overlay, so an unguarded argument that reaches a full-window navigation is an open
@@ -39,6 +40,9 @@ class FrontendActions(
         },
         // openPath leaves the SPA for a same-origin server path. See `HACT.openPath`.
         HACT.openPath.name to { args -> sameOriginPath(args.firstOrNull())?.let { openPath(it) } },
+        // Turn debug behaviors on or off (issue #517); the arg is the boolean as a string. No URL to guard --
+        // it moves session state through the env-auth endpoint, which the backend still gates on env auth.
+        HACT.setEnvDebug.name to { args -> setEnvDebug(args.firstOrNull() == "true") },
     )
 
     /** Runs [name] with [args], or returns false when nothing implements it. */

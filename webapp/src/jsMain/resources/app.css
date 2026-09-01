@@ -173,14 +173,6 @@ body {
     color: var(--text-dim);
 }
 
-/* The third state (issue #517): env auth active plus debug behaviors. Set apart from plain "on" -- a solid,
-   warmer accent -- so the operator can see at a glance that the deployment is showing its debug surfaces. */
-.env-badge.debug {
-    border-color: var(--warning, #d97706);
-    background: rgba(217, 119, 6, .16);
-    color: var(--text);
-}
-
 /* The elevated-privilege chip: an outline against the admin-tinted bar, where a fill would blend into it. */
 .admin-badge {
     border-color: var(--border-admin);
@@ -262,6 +254,17 @@ body {
     cursor: pointer;
 }
 .app-menu-item:hover { background: var(--border); }
+
+/* A drill-down parent (issue #517): a non-interactive header, with its children indented under it so the
+   nesting reads as a group rather than a flat list. */
+.app-menu-parent {
+    padding: 12px 16px 4px;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.app-menu-children .app-menu-item { padding-left: 32px; }
 
 /* The ↗ affordance on a menu item whose action leaves the app (issue #493) -- a quiet trailing glyph, not a
    second control. Decorative: the accessible name already says "leaves this app". */

@@ -149,9 +149,75 @@ fun uiBlockProblems(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<S
                     problems.add("UiBlock '$where': ${it.message}")
                 }
             }
+            // Parenting is a property of the merged structure, not the caller (cfacts have not been applied
+            // yet, so every item is present) -- but a client overlay can add an item with a bad parent, so it
+            // is checked per client like the expressions above.
+            problems.addAll(collectParentIssues(merged, client))
         }
     }
     return problems
+}
+
+/**
+ * Every parenting problem in [merged] (issue #517) -- the boot check behind [UIB.parentId], the mirror of
+ * `ClientCheck`'s one-level extension rule for menu-style drill-downs.
+ *
+ * Walked over each array the base keys by a primary field ([MergedUiBlock.arrayKeys]), so it is general over
+ * any keyed array rather than knowing about menus. For each item that names a [UIB.parentId]:
+ *  - the named parent must be **another item in that same array** (a typo or a dropped-elsewhere id is refused,
+ *    not silently rendered parentless);
+ *  - it must not name **itself**;
+ *  - the parent must be **top-level** -- carry no parentId of its own, since nesting is one level.
+ *
+ * And separately: an item that **is** a parent (some sibling names it) must carry no [UIB.action], because a
+ * drill-down draws a parent as a group header and would silently discard its route or call.
+ */
+fun collectParentIssues(merged: MergedUiBlock, client: String? = null): List<String> {
+    val problems = mutableListOf<String>()
+    val where = merged.blockId + (client?.let { " (client '$it')" } ?: "")
+    for ((path, keyField) in merged.arrayKeys) {
+        val items = (arrayAtPath(merged.content, path) ?: continue)
+            .filterIsInstance<Map<*, *>>().map { asObject(it) }
+        val byId = items.associateBy { it[keyField].toOptStr() }
+        // An item is a parent iff some sibling names it; such an item must not also carry an action of its own.
+        val referencedParents = items.mapNotNull { it[UIB.parentId].toOptStr() }.toSet()
+        for (item in items) {
+            val id = item[keyField].toOptStr()
+            if (id != null && id in referencedParents && item[UIB.action] != null) {
+                problems.add(
+                    "UiBlock '$where': item '$id' in array '$path' has children and its own action. A parent " +
+                        "is drawn as a group header, so its action would be silently discarded -- give the " +
+                        "action to a child, or drop the children.",
+                )
+            }
+            val parentId = item[UIB.parentId].toOptStr() ?: continue
+            val parent = byId[parentId]
+            when {
+                parent == null -> problems.add(
+                    "UiBlock '$where': item '$id' in array '$path' names parent '$parentId', which no item in " +
+                        "that array declares. A child whose parent is absent would render parentless.",
+                )
+                parentId == id -> problems.add(
+                    "UiBlock '$where': item '$id' in array '$path' names itself as its parent.",
+                )
+                parent[UIB.parentId].toOptStr() != null -> problems.add(
+                    "UiBlock '$where': item '$id' in array '$path' nests under '$parentId', which itself has a " +
+                        "parent. Nesting is one level: a child is drawn under a top-level item, not under " +
+                        "another child.",
+                )
+            }
+        }
+    }
+    return problems
+}
+
+/** The array at a dotted [path] from [content]'s root (`"nav.items"`), or null if the path names no array. */
+private fun arrayAtPath(content: Map<String, Any?>, path: String): List<*>? {
+    var node: Any? = content
+    for (segment in path.split(".")) {
+        node = (node as? Map<*, *>)?.get(segment) ?: return null
+    }
+    return node as? List<*>
 }
 
 /**
