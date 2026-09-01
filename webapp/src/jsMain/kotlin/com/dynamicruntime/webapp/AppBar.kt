@@ -330,7 +330,9 @@ val AppBar = FC<AppBarProps> { props ->
                 input {
                     className = ClassName("bar-badge env-debug-input" + if (valid) "" else " invalid")
                     value = debugTags
-                    placeholder = EP.debug
+                    // A hint at what to type, not the wire key: "_debug" as a placeholder read as a mystery
+                    // label. The exact key still appears in the tooltip and the accessible name below.
+                    placeholder = "debug tag"
                     asDynamic()["aria-label"] = "Debug request tags, sent as ${EP.debug} on every request"
                     asDynamic()["aria-invalid"] = !valid
                     title = if (valid) {

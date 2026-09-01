@@ -173,37 +173,58 @@ body {
     color: var(--text-dim);
 }
 
-/* The persistent `_debug` box (issue #517, slice 3): a .bar-badge-shaped input beside the env badge, shown
-   only in debug. Overrides the chip's uppercase and transparent border so it reads as an editable field, and
-   widens on focus so a longer tag list is comfortable to edit without taking bar width the rest of the time. */
+/* The persistent `_debug` box (issue #517, slice 3): a small text field beside the env badge, shown only in
+   debug. It shares the .bar-badge chip shape for size but is deliberately styled as an editable field -- an
+   inset page-surface background and a left-aligned, non-uppercase value -- so it reads as somewhere to type
+   rather than a button. Wide enough to show a typical tag (`explainAccess`) without truncating, and it does
+   NOT animate on focus: a box that resizes when clicked reads as "something happened" when nothing did. */
 .env-debug-input {
-    /* Override the global `input` rule (flex: 1; min-width: 180px), or the box grows to fill the bar and the
-       fixed width / focus expansion below never take effect. */
+    /* Override the global `input` rule (flex: 1; min-width: 180px), or the box grows to fill the bar. */
     flex: 0 0 auto;
     min-width: 0;
-    width: 8ch;
-    border-color: var(--border);
-    background: transparent;
+    width: 16ch;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-page);
     color: var(--text);
     text-transform: none;
     letter-spacing: normal;
+    font-size: 12px;
     font-weight: 500;
-    transition: width 0.15s ease;
 }
 .env-debug-input::placeholder {
-    color: var(--text-dim);
+    color: var(--text-faint);
     text-transform: none;
+    letter-spacing: normal;
 }
 .env-debug-input:focus {
     outline: none;
-    border-color: var(--border-admin);
-    width: 20ch;
+    border-color: var(--accent-bright);
 }
 /* Not-applied state: the value fails the variable-name/length rule, so it is neither stored nor sent. Flagged
    rather than silently dropped, matching aria-invalid on the element. */
 .env-debug-input.invalid {
-    border-color: var(--danger, #d9534f);
+    border-color: var(--danger);
 }
+
+/* The debug index's tool links (issue #227): plain <a>s otherwise fall to the browser's default blue, which is
+   near-unreadable on the dark card. Use the same bright accent the Markdown links use. */
+.debug-index a {
+    color: var(--accent-bright);
+    text-decoration: none;
+}
+.debug-index a:hover { text-decoration: underline; }
+
+/* The "back to the debug index" link atop each tool page (issue #517 follow-up). */
+.debug-back {
+    display: inline-block;
+    margin-bottom: 12px;
+    color: var(--accent-bright);
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+.debug-back:hover { text-decoration: underline; }
 
 /* The elevated-privilege chip: an outline against the admin-tinted bar, where a fill would blend into it. */
 .admin-badge {
@@ -474,6 +495,21 @@ input {
     border: 1px solid var(--danger);
     background: rgba(248, 113, 113, .06);
 }
+/* The fallback's escape actions (issue #517 follow-up): Home (primary) to leave the broken page, Reload (ghost)
+   to retry it. A row so they sit together beneath the copy. */
+.error-panel-actions { display: flex; gap: 12px; margin-top: 16px; }
+/* An <a> that reads as the primary button -- Home is a navigation, so it stays a link, but looks actionable. */
+.button-link {
+    display: inline-block;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+    text-decoration: none;
+}
+.button-link:hover { background: var(--accent-bright); }
 
 /* The schema display engine: one field per row, label + widget or read-only value. */
 .schema-form { width: 100%; }

@@ -8,6 +8,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.a
@@ -66,17 +67,20 @@ fun shouldFailShell(): Boolean =
     appConfig().allowDebugPages && hashParams()[shellFaultParam] == shellFaultValue
 
 /**
- * Reloads with any fault parameter stripped, which is what the shell fallback's reload does.
+ * Reloads with any fault trigger stripped, which is what both fallbacks' reload does.
  *
- * The shell fallback is the one fallback a debug fault can put on screen, and a plain reload would re-read the
- * URL that caused the failure -- offering an action that cannot work, forever. Stripping first makes the
- * offer honest.
+ * A fallback that a debug fault put on screen is the one place a plain reload would re-read the URL that caused
+ * the failure -- offering an action that cannot work, forever. Stripping first makes the offer honest. Both
+ * triggers are removed: the shell fault (`fault=shell`) and the page fault (`tool=fault`). Other `tool=` values
+ * (App state, Fragment pull) are kept, so reloading one of those retries the same tool.
  */
 fun reloadWithoutFault() {
     js(
         """
         var hash = window.location.hash.replace(/^#/, '');
-        var kept = hash.split('&').filter(function (p) { return p.indexOf('fault=') !== 0; }).join('&');
+        var kept = hash.split('&').filter(function (p) {
+            return p.indexOf('fault=') !== 0 && p !== 'tool=fault';
+        }).join('&');
         // replaceState rewrites the address WITHOUT navigating, so the reload below re-reads the cleaned URL.
         // location.replace() would not do: a change of hash alone is not a navigation, so the reload that
         // followed it re-read the original address and faulted straight back -- observed, not theorised.
@@ -115,6 +119,7 @@ val DebugIndex = FC<Props> {
                 "permits it — on a real deployment the route resolves to the home page instead.")
         }
         ul {
+            className = ClassName("debug-index")
             li {
                 a {
                     href = "#page=debug&$debugToolParam=$debugToolState"
@@ -154,6 +159,19 @@ val DebugIndex = FC<Props> {
 }
 
 /**
+ * A link back to the debug index, shown atop each tool page so there is always a way back to the listing
+ * without relying on the browser's back button (issue #517 follow-up). Routes to `#page=debug` with no tool,
+ * which [DebugPage] dispatches to [DebugIndex].
+ */
+private fun ChildrenBuilder.debugBackLink() {
+    a {
+        className = ClassName("debug-back")
+        href = "#page=debug"
+        +"← Debug"
+    }
+}
+
+/**
  * Throws while rendering. That is its whole job.
  *
  * A dedicated component rather than a conditional inside a real page: real pages stay clean, and a test that
@@ -176,6 +194,7 @@ val DebugState = FC<Props> {
     val generation = useRefreshGeneration()
     div {
         className = ClassName("card wide")
+        debugBackLink()
         h1 { +"App state" }
         h2 { +"Resolved app config" }
         pre {
@@ -247,6 +266,7 @@ val DebugFragment = FC<Props> {
 
     div {
         className = ClassName("card wide")
+        debugBackLink()
         h1 { +"Fragment pull" }
         p {
             className = ClassName("subtitle")

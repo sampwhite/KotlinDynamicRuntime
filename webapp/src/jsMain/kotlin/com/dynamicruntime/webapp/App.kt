@@ -134,8 +134,13 @@ val App = FC<Props> {
                     // own, so without this the fallback would survive the navigation it invites you to make, and
                     // every later page would show the earlier page's failure. The key remounts it on a page
                     // change, which is exactly when the failure stops being relevant.
+                    //
+                    // The debug tools are the one place `page` alone is too coarse: they all share `page=debug`
+                    // and differ only by the `tool` hash param (issue #517), so a faulted `tool=fault` would
+                    // otherwise keep showing its fallback after a `back` to the index -- the very outliving this
+                    // key exists to prevent. Folding the tool in remounts the boundary when it changes.
                     ErrorBoundary {
-                        key = page.unsafeCast<Key>()
+                        key = (page + (hashParams()[debugToolParam]?.let { ":$it" } ?: "")).unsafeCast<Key>()
                         fallback = ErrorFallback
                         onError = ::reportRenderFailure
                         when (page) {
