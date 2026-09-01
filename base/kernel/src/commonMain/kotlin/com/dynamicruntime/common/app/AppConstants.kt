@@ -78,6 +78,15 @@ object APP {
     const val envAuthSuppressible = "envAuthSuppressible"
 
     /**
+     * Feature flag: whether this session has turned on **debug behaviors** (issue #517) -- the third state of
+     * the env control (off / on / debug). True implies [isEnvAuthed]; it is the operator opt-in that turns on
+     * the debug pages, on-screen error detail, and diagnostic `_debug` tags on any deployment, gated on env
+     * auth being effective. Per-request like [isEnvAuthed]. The frontend derives the tri-state from the three:
+     * hidden unless [envAuthSuppressible], then off (`!isEnvAuthed`) / on / debug.
+     */
+    const val envAuthDebug = "envAuthDebug"
+
+    /**
      * The endpoint a session uses to suppress its own env auth, or restore it ([EnvAuthOp]). Anonymous and
      * **not** test-only: this is live behavior in a deployed environment, because seeing the application as an
      * ordinary user sees it is a real thing to want, not merely a testing affordance.
@@ -117,6 +126,9 @@ object APP {
  * [suppress] is different from clearing a test fixture's assertion: suppressing **overrides** a real env auth,
  * while clearing merely stops pretending and returns the session to whatever the channel actually is. With no
  * edge in front, the two look identical, which is exactly why they do not share a name.
+ *
+ * [debug] is the third state (issue #517): env auth active *plus* debug behaviors. It clears any suppression
+ * (debug requires env active) and sets the debug cookie; [restore] returns to plain-on (clearing both).
  */
 @Suppress("EnumEntryName")
-enum class EnvAuthOp { suppress, restore }
+enum class EnvAuthOp { suppress, restore, debug }

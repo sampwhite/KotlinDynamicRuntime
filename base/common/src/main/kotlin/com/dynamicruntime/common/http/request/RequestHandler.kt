@@ -202,6 +202,7 @@ class RequestHandler : WebRequest {
             val envAuth = EnvAuthRules.resolve(config, getRequestHeader(ENVA.header), getRequestCookies(), forwardedFor)
             cxt.envAuthEmail = envAuth.email
             cxt.envAuthSuppressed = envAuth.suppressed
+            cxt.envAuthDebug = envAuth.debug
             createdCxt = cxt
             // Read optionally, not through the throwing get(): "this node does not serve endpoints" is a
             // protocol answer about the node (501), not an internal fault, and the accessor's generic throw
@@ -400,7 +401,10 @@ class RequestHandler : WebRequest {
     private fun errorExtraData(cxt: KdrCxt?, kdrE: KdrException?): Map<String, Any?>? {
         val base = kdrE?.extraData
         val msg = kdrE?.msg
-        if (msg == null || cxt?.hasDebug(explainError) != true) {
+        // Fenced like explainAccess (issue #517): this exposes a fragment's fileId/namespace/key/params, and
+        // `_debug` is an off-contract key anyone can send, so it must not answer on an ordinary production
+        // request -- only a test instance or a session in ENV DEBUG.
+        if (msg == null || cxt?.hasDebugDiagnostic(explainError) != true) {
             return base
         }
         val merged = LinkedHashMap<String, Any?>(base ?: emptyMap())

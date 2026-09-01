@@ -62,6 +62,11 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 "Whether env auth is available on this channel at all, whatever the session is acting as.",
                 required = true,
             ) { type = SCT.boolean }
+            property(
+                APP.envAuthDebug,
+                "Whether this session has turned on debug behaviors (issue #517); implies isEnvAuthed.",
+                required = true,
+            ) { type = SCT.boolean }
         }
         property(UIC.settings, "Deployment-wide tuning values (non-flag) visible to the whole frontend.", required = true) {
             type = SCT.kObject
@@ -78,13 +83,14 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
         mapOf(
             UIC.features to mapOf(
                 APP.obfuscateSensitiveErrors to RequestHandler.obfuscateSensitiveErrors(c.instanceConfig),
-                // Reuses the test-instance fence rather than inventing a second notion of "a development
-                // build" (issue #223): the flag is already audited, and a node claiming to be a test instance
-                // outside local/unit refuses to start, so a real deployment cannot turn this on by accident.
-                APP.showErrorDetail to c.instanceConfig.isTestInstance,
+                // The test-instance fence (issue #223), now also opened by a session in ENV DEBUG (issue #517):
+                // an env-authed operator may turn these on for their own session on any deployment. The flag is
+                // still audited -- a node claiming to be a test instance outside local/unit refuses to start,
+                // and ENV DEBUG requires effective env auth -- so a real deployment cannot turn it on by accident.
+                APP.showErrorDetail to (c.instanceConfig.isTestInstance || c.isEnvDebug),
                 // Same fence, separate flag (issue #227): a route that manufactures a failure is a different
                 // power from showing a stack, even where both happen to be permitted by the same instance.
-                APP.allowDebugPages to c.instanceConfig.isTestInstance,
+                APP.allowDebugPages to (c.instanceConfig.isTestInstance || c.isEnvDebug),
                 // Per-request, unlike its neighbors (issue #348): the answer depends on how this particular
                 // request reached the node, not on how the deployment is configured. Read off the context
                 // rather than the header, so the dispatcher's decision and the frontend's view are one answer.
@@ -96,6 +102,9 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
                 // it is honored, so they cannot come to disagree.
                 APP.envAuthSuppressible to
                     (c.envAuthEmail != null && EnvAuthRules.suppressionOffered(c.instanceConfig)),
+                // The third state (issue #517): whether debug behaviors are on for this session. Implies
+                // isEnvAuthed, since debug requires env auth to be effective.
+                APP.envAuthDebug to c.isEnvDebug,
             ),
             UIC.settings to mapOf(
                 // Always served, defaulting when the deployment did not tune it (a custom-config override, not
@@ -119,14 +128,16 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
             required = true) { type = SCT.boolean }
         property(APP.envAuthSuppressible, "Whether this caller may suppress their own env auth.",
             required = true) { type = SCT.boolean }
+        property(APP.envAuthDebug, "Whether debug behaviors are on after the operation (issue #517).",
+            required = true) { type = SCT.boolean }
     }
     generalEndpoint(
         APP.envAuthPath,
-        "Suppress this session's env auth, or restore it.",
+        "Set this session's env-auth state: off (suppress), on (restore), or debug (issue #517).",
         HttpMethod.POST, outputRef = APP.envAuthStateType,
         inputFields = {
-            field(APP.envAuthOp, "Whether to suppress env auth for this session or restore it.",
-                required = true) { options(EnvAuthOp.entries) }
+            field(APP.envAuthOp, "Which state to move to: '${EnvAuthOp.suppress}' (off), '${EnvAuthOp.restore}' " +
+                "(on), or '${EnvAuthOp.debug}'.", required = true) { options(EnvAuthOp.entries) }
         },
     ) { c, req ->
         // The op is choice-constrained above, so validation already rejected anything but an EnvAuthOp name.
@@ -136,17 +147,28 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
         // under a real browser and the in-process test client. Safe here because the endpoint handler runs
         // before the response is sent; a cookie set afterward would be silently dropped.
         val web = c.request?.webRequest
+        val set = { name: String -> web?.addResponseCookie(name, "1", null) }
+        val clear = { name: String -> web?.addResponseCookie(name, "", Instant.fromEpochMilliseconds(0)) }
         when (op) {
-            // A session cookie (no expiry): the downgrade lasts as long as the browser session and no longer,
-            // so nobody is left in the reduced view weeks later wondering why.
-            EnvAuthOp.suppress -> web?.addResponseCookie(ENVA.suppressCookie, "1", null)
-            EnvAuthOp.restore -> web?.addResponseCookie(ENVA.suppressCookie, "", Instant.fromEpochMilliseconds(0))
+            // A session cookie (no expiry): the state lasts as long as the browser session and no longer, so
+            // nobody is left in a reduced or debug view weeks later wondering why. The two cookies are the tri-
+            // state: off sets suppress and clears debug; on clears both; debug clears suppress and sets debug.
+            EnvAuthOp.suppress -> { set(ENVA.suppressCookie); clear(ENVA.debugCookie) }
+            EnvAuthOp.restore -> { clear(ENVA.suppressCookie); clear(ENVA.debugCookie) }
+            EnvAuthOp.debug -> { clear(ENVA.suppressCookie); set(ENVA.debugCookie) }
         }
         // The state as it will be on the NEXT request: this request already resolved its own env auth before
-        // the cookie changed, so reporting c.isEnvAuthEffective here would echo the state being left behind.
+        // the cookies changed, so reporting c.isEnvAuthEffective/isEnvDebug here would echo the state being left.
         val suppressed = op == EnvAuthOp.suppress
+        val available = c.envAuthEmail != null
         // Same rule as the config above: the control is offered exactly where the cookie is honored.
-        val suppressible = c.envAuthEmail != null && EnvAuthRules.suppressionOffered(c.instanceConfig)
-        mapOf(APP.isEnvAuthed to (c.envAuthEmail != null && !suppressed), APP.envAuthSuppressible to suppressible)
+        val offered = EnvAuthRules.suppressionOffered(c.instanceConfig)
+        mapOf(
+            APP.isEnvAuthed to (available && !suppressed),
+            APP.envAuthSuppressible to (available && offered),
+            // Gated by `offered` too, since the debug cookie is only honored where the env controls are (an edge
+            // ignores both): otherwise this would report a debug state the next request's resolve would deny.
+            APP.envAuthDebug to (available && !suppressed && op == EnvAuthOp.debug && offered),
+        )
     }
 }

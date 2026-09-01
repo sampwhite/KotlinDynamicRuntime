@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.app.EnvAuthOp
 import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.uiblock.UiRoute
@@ -100,6 +101,8 @@ external interface AppBarProps : Props {
     var envAuthSuppressible: Boolean
     /** Whether the session is currently *acting* env-authed -- decides what the control says. */
     var envAuthActing: Boolean
+    /** Whether the session is in the debug state (issue #517) -- the third state the control cycles to. */
+    var envAuthDebug: Boolean
 }
 
 /**
@@ -269,20 +272,38 @@ val AppBar = FC<AppBarProps> { props ->
             // a keyboard user must be able to reach. It names the *state*, not the action, so the bar reads as
             // a description of where you are rather than a row of commands.
             if (props.envAuthSuppressible) {
+                // The click keeps its established meaning (issue #360): the suppress/restore toggle -- acting ->
+                // off ("browse as an ordinary user"), off -> on. It does **not** enter debug, so an operator's
+                // muscle memory cannot turn on the widened debug surface by accident; debug is reached
+                // deliberately from the Debug menu (issue #517, slice 2). The label still shows the third state
+                // when it is on, so the bar reads as where you are.
+                val acting = props.envAuthActing
                 button {
-                    className = ClassName(if (props.envAuthActing) "bar-badge env-badge" else "bar-badge env-badge off")
-                    title = if (props.envAuthActing) {
-                        "You reached this deployment through an authenticated environment. Click to browse as an ordinary user."
-                    } else {
-                        "Environment access is suppressed for this session. Click to restore it."
+                    className = ClassName(
+                        "bar-badge env-badge" + when {
+                            !acting -> " off"
+                            props.envAuthDebug -> " debug"
+                            else -> ""
+                        },
+                    )
+                    title = when {
+                        !acting -> "Environment access is suppressed for this session. Click to restore it."
+                        props.envAuthDebug ->
+                            "Debug behaviors are on. Click to browse as an ordinary user (which also turns debug off)."
+                        else ->
+                            "You reached this deployment through an authenticated environment. Click to browse as an ordinary user."
                     }
                     onClick = {
                         appBarScope.launch {
-                            setEnvAuthSuppressed(props.envAuthActing)
+                            setEnvAuthOp(if (acting) EnvAuthOp.suppress else EnvAuthOp.restore)
                             bump()
                         }
                     }
-                    +(if (props.envAuthActing) "Env" else "Env off")
+                    +when {
+                        !acting -> "Env off"
+                        props.envAuthDebug -> "Env debug"
+                        else -> "Env"
+                    }
                 }
             }
             // Spelled out, not just colored: a hue on its own tells a colourblind user nothing, and this is

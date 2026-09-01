@@ -42,6 +42,11 @@ class AppConfig(
      * restores it must stay on screen, or there is no way back.
      */
     val envAuthSuppressible: Boolean,
+    /**
+     * Whether this session has turned on **debug behaviors** (issue #517) -- the third state of the env control.
+     * Implies [isEnvAuthed]. Turns on the debug pages, on-screen error detail, and the debug menu.
+     */
+    val envAuthDebug: Boolean,
 ) {
     companion object {
         /** The assumed config before the first fetch (and if a fetch fails): the safe, closed defaults, and the
@@ -60,6 +65,9 @@ class AppConfig(
             // has not happened must not be why an internal affordance appears.
             isEnvAuthed = false,
             envAuthSuppressible = false,
+            // Off until the backend says otherwise -- a debug affordance must not appear before the config that
+            // authorizes it has loaded (issue #517).
+            envAuthDebug = false,
         )
     }
 }
@@ -82,6 +90,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
     allowDebugPages = config.features[APP.allowDebugPages] == true,
     isEnvAuthed = config.features[APP.isEnvAuthed] == true,
     envAuthSuppressible = config.features[APP.envAuthSuppressible] == true,
+    envAuthDebug = config.features[APP.envAuthDebug] == true,
 )
 
 object AppApi {
@@ -93,15 +102,15 @@ object AppApi {
 }
 
 /**
- * Suppresses this session's env auth, or restores it (issue #360), then re-reads the app config so the
- * indicator reflects the new state.
+ * Moves this session to an env-auth state -- off ([EnvAuthOp.suppress]), on ([EnvAuthOp.restore]), or debug
+ * ([EnvAuthOp.debug], issue #517) -- then re-reads the app config so the indicator and the debug affordances
+ * reflect the new state.
  *
- * The switch is a **backend** call rather than local state on purpose: remembering "off" in the browser would
- * leave the two sides disagreeing -- the backend still reporting env-authed while the screen pretends
+ * The switch is a **backend** call rather than local state on purpose: remembering the state in the browser
+ * would leave the two sides disagreeing -- the backend still reporting env-authed while the screen pretends
  * otherwise -- and the first thing that ever varies with env auth would quietly follow the wrong one.
  */
-suspend fun setEnvAuthSuppressed(suppressed: Boolean) {
-    val op = if (suppressed) EnvAuthOp.suppress else EnvAuthOp.restore
+suspend fun setEnvAuthOp(op: EnvAuthOp) {
     runCatching { Http.sendApi("POST", APP.envAuthPath, mapOf(APP.envAuthOp to op.name)) }
     AppApi.load()
 }

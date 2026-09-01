@@ -67,6 +67,18 @@ object ENVA {
     const val suppressCookie = "kdrEnvOff"
 
     /**
+     * Session cookie by which an env-authed caller turns on **debug behaviors** for their own session (issue
+     * #517) -- the debug pages, on-screen error detail, and the diagnostic `_debug` tags -- on any deployment,
+     * not only a test node. The third state of the app-bar's env control (off / on / debug).
+     *
+     * Orthogonal to [suppressCookie], and only ever *adds* where env auth is already effective: its effect is
+     * gated by [EnvAuthState.isDebugEffective] (env active **and** not suppressed), so a debug cookie without
+     * env auth -- or alongside a suppression -- is inert. That is the "not allowed unless env-authed" rule the
+     * toggle's presence already follows, enforced by the same predicate rather than a second check.
+     */
+    const val debugCookie = "kdrEnvDebug"
+
+    /**
      * Session cookie by which the `forTestingOnly` fixture **asserts** env auth no edge granted, so the
      * env-authed UI can be driven in a browser before an edge exists.
      *
@@ -205,6 +217,10 @@ object EnvAuthRules {
         // that restores; a browser drops it eventually, which would have made this intermittent rather than
         // absent.) The same reasoning covers the assert cookie below, where an empty value fails to sanitize.
         val suppressed = suppressionOffered(config) && !cookies[ENVA.suppressCookie].isNullOrEmpty()
+        // Read like suppression -- by value, where the app-level controls are offered -- but its effect is gated
+        // by isDebugEffective (env active and not suppressed), so it is safe to read even where env auth is not
+        // in play (issue #517).
+        val debug = suppressionOffered(config) && !cookies[ENVA.debugCookie].isNullOrEmpty()
 
         // Independent of trust, because inventing a claim and believing one are different questions. Only for
         // a request that did not come through a proxy: on a developer's box that is what separates "through
@@ -212,14 +228,14 @@ object EnvAuthRules {
         val assumed = if (forwardedFor == null && assumesEnvAuth(config)) ENVA.assumedAddress else null
 
         if (!isTrusted(config)) {
-            return EnvAuthState(assumed, suppressed)
+            return EnvAuthState(assumed, suppressed, debug)
         }
         // The fixture's assertion stands in for the header, so it passes the same trust gate -- and then one
         // more that the header does not need. See ENVA.assertCookie for why this check lives here.
         val asserted = if (config.isTestInstance) sanitizeAddress(cookies[ENVA.assertCookie]) else null
         // Precedence: a real edge is never shadowed, a deliberate assertion beats a default, and the
         // assumption only ever fills silence.
-        return EnvAuthState(sanitizeAddress(rawHeader) ?: asserted ?: assumed, suppressed)
+        return EnvAuthState(sanitizeAddress(rawHeader) ?: asserted ?: assumed, suppressed, debug)
     }
 
     /**
@@ -268,12 +284,18 @@ object EnvAuthRules {
  * control that restores a suppressed session, which has to remain visible while suppressed or there is no way
  * back.
  */
-class EnvAuthState(val email: String?, val suppressed: Boolean) {
+class EnvAuthState(val email: String?, val suppressed: Boolean, val debug: Boolean = false) {
     /** Whether an edge vouched for this request at all, regardless of what the session is acting as. */
     val isAvailable: Boolean get() = email != null
 
     /** Whether the request is *acting* env-authed: vouched for, and not suppressed by its own session. */
     val isEffective: Boolean get() = isAvailable && !suppressed
+
+    /**
+     * Whether the session has turned on **debug behaviors** (issue #517): env-authed *and* not suppressed *and*
+     * the debug cookie set. Env auth active is the whole gate -- a debug cookie alone grants nothing.
+     */
+    val isDebugEffective: Boolean get() = isEffective && debug
 
     companion object {
         /** No edge, no suppression -- what a request on a node not behind an edge always resolves to. */

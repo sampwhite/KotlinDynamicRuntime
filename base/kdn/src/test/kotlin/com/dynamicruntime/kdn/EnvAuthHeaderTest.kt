@@ -134,6 +134,66 @@ class EnvAuthHeaderTest : StringSpec({
         f[APP.envAuthSuppressible] shouldBe false
     }
 
+    // ---- the tri-state debug state (issue #517) ----------------------------
+
+    "the env control cycles through off, on, and debug" {
+        val cxt = Startup.mkTestBootCxt("envDebugCycle", "envDebugCycleTest")
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.setHeader(ENVA.header, "envauth.dev@gyassa.com")
+
+        // on -> debug: acting env-authed, and now with debug behaviors.
+        client.sendJsonPostRequest(APP.envAuthPath, mapOf(APP.envAuthOp to EnvAuthOp.debug.name))
+        val dbg = features(client.sendJsonGetRequest(APP.uiConfig))
+        dbg[APP.isEnvAuthed] shouldBe true
+        dbg[APP.envAuthDebug] shouldBe true
+
+        // debug -> off: suppression clears debug too.
+        client.sendJsonPostRequest(APP.envAuthPath, mapOf(APP.envAuthOp to EnvAuthOp.suppress.name))
+        val off = features(client.sendJsonGetRequest(APP.uiConfig))
+        off[APP.isEnvAuthed] shouldBe false
+        off[APP.envAuthDebug] shouldBe false
+
+        // off -> on: restore returns to plain-on, debug still off.
+        client.sendJsonPostRequest(APP.envAuthPath, mapOf(APP.envAuthOp to EnvAuthOp.restore.name))
+        val on = features(client.sendJsonGetRequest(APP.uiConfig))
+        on[APP.isEnvAuthed] shouldBe true
+        on[APP.envAuthDebug] shouldBe false
+    }
+
+    "debug opens the debug behaviors on a node that is not a test instance" {
+        // Not a test instance, so allowDebugPages/showErrorDetail are off by default -- but env auth is assumed
+        // (the local-box path), so an env-authed operator can turn debug on for their own session (issue #517).
+        val cxt = Startup.mkTestBootCxt(
+            "envDebugProd", "envDebugProdTest",
+            mapOf(ACFG.isTestInstance to false, ACFG.assumeEnvAuth to true),
+        )
+        val client = TestHttpClient(cxt.instanceConfig)
+
+        val before = features(client.sendJsonGetRequest(APP.uiConfig))
+        before[APP.isEnvAuthed] shouldBe true // assumed
+        before[APP.envAuthDebug] shouldBe false
+        before[APP.allowDebugPages] shouldBe false
+        before[APP.showErrorDetail] shouldBe false
+
+        client.sendJsonPostRequest(APP.envAuthPath, mapOf(APP.envAuthOp to EnvAuthOp.debug.name))
+        val after = features(client.sendJsonGetRequest(APP.uiConfig))
+        after[APP.envAuthDebug] shouldBe true
+        after[APP.allowDebugPages] shouldBe true
+        after[APP.showErrorDetail] shouldBe true
+    }
+
+    "the debug cookie grants nothing without env auth" {
+        // A plain unit node assumes no env auth, so a session that sets the debug cookie is still not env-authed
+        // -- and debug requires effective env auth, the same rule the toggle's presence follows.
+        val cxt = Startup.mkTestBootCxt("envDebugNoAuth", "envDebugNoAuthTest")
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.sendJsonPostRequest(APP.envAuthPath, mapOf(APP.envAuthOp to EnvAuthOp.debug.name))
+
+        val f = features(client.sendJsonGetRequest(APP.uiConfig))
+        f[APP.isEnvAuthed] shouldBe false
+        f[APP.envAuthDebug] shouldBe false
+    }
+
     /**
      * The fixture is how a browser reaches the env-authed view at all, since it cannot attach a request
      * header. Note `clear` is not `suppress`: it stops pretending and returns the session to the truth, which

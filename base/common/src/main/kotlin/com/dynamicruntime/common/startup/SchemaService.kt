@@ -796,7 +796,10 @@ class SchemaService : ServiceInitializer {
          */
         @KdrPrivate
         fun explainAccess(cxt: KdrCxt, withheld: List<KdrEndpoint>) {
-            if (!cxt.hasDebug(SS.explainAccess) || !cxt.instanceConfig.isTestInstance) {
+            // Fenced to a test node or a session in ENV DEBUG (issues #215, #517): an env-authed operator may
+            // ask why a caller cannot see an endpoint on any deployment. Off a test node and outside a debug
+            // session the key is simply absent -- an error would confirm the tag exists.
+            if (!cxt.hasDebugDiagnostic(SS.explainAccess)) {
                 return
             }
             // Read optionally, not through the throwing get(): explainAccess also runs while a store is built
@@ -861,8 +864,9 @@ class SchemaService : ServiceInitializer {
                 throw KdrException("An off-contract '$' annotation key leaked into the endpoint input.")
             }
 
-            // With _debug=explainInput, echo the evaluated request parameters back under _meta.
-            if (cxt.hasDebug(SS.explainInput)) {
+            // With _debug=explainInput, echo the evaluated request parameters back under _meta. Fenced to a
+            // test node or ENV DEBUG like its sibling tags (issue #517), so the diagnostic vocabulary is one gate.
+            if (cxt.hasDebugDiagnostic(SS.explainInput)) {
                 cxt.request?.responseMeta?.put(SS.paramsEvaluated, query)
             }
 

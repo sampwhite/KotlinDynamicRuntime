@@ -173,6 +173,14 @@ body {
     color: var(--text-dim);
 }
 
+/* The third state (issue #517): env auth active plus debug behaviors. Set apart from plain "on" -- a solid,
+   warmer accent -- so the operator can see at a glance that the deployment is showing its debug surfaces. */
+.env-badge.debug {
+    border-color: var(--warning, #d97706);
+    background: rgba(217, 119, 6, .16);
+    color: var(--text);
+}
+
 /* The elevated-privilege chip: an outline against the admin-tinted bar, where a fill would blend into it. */
 .admin-badge {
     border-color: var(--border-admin);

@@ -901,7 +901,9 @@ class GedraDataService : ServiceInitializer {
      * higher) than expected, which is not something anybody notices.
      */
     private fun explainScope(cxt: KdrCxt, scope: ReadScope, statementName: String, rowCount: Int) {
-        if (!cxt.hasDebug(GDBG.explainScope)) {
+        // Fenced to a test node or ENV DEBUG (issue #517): it names the SQL statement and the scope shape, and
+        // shares the one diagnostic gate its `explain*` siblings use so the vocabulary cannot drift.
+        if (!cxt.hasDebugDiagnostic(GDBG.explainScope)) {
             return
         }
         cxt.request?.responseMeta?.put(

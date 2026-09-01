@@ -54,6 +54,7 @@ val App = FC<Props> {
     // config, because that config arrives asynchronously and its module cache re-renders nothing on its own.
     var envAuthSuppressible by useState(false)
     var envAuthActing by useState(false)
+    var envAuthDebug by useState(false)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
         onWebAppStale { updateAvailable = true }
@@ -77,6 +78,7 @@ val App = FC<Props> {
             debugAllowed = appConfig().allowDebugPages
             envAuthSuppressible = appConfig().envAuthSuppressible
             envAuthActing = appConfig().isEnvAuthed
+            envAuthDebug = appConfig().envAuthDebug
         }
     }
 
@@ -120,6 +122,7 @@ val App = FC<Props> {
                 AppBar {
                     this.envAuthSuppressible = envAuthSuppressible
                     this.envAuthActing = envAuthActing
+                    this.envAuthDebug = envAuthDebug
                 }
                 div {
                     className = ClassName("app-content")
