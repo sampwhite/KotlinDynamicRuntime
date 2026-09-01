@@ -1,5 +1,6 @@
 package com.dynamicruntime.appui
 
+import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -104,15 +105,10 @@ object AUI {
     /** The de-facto type every browser uses for an ICO (rather than the registered `image/vnd.microsoft.icon`). */
     const val icoMimeType = "image/x-icon"
 
-    /**
-     * Cache forever, for an asset requested at a content-hashed URL (`webapp.js:<hash>`): the hash *is* the
-     * cache key, so a change is a new URL and busts the cache automatically (issue #137). Matches the content
-     * services' header. Bare (unhashed) URLs get no such header, so they revalidate.
-     */
-    const val immutableCacheControl = "public, max-age=31536000, immutable"
-
-    /** The HTML shell is never cached: it must always be re-fetched so the browser sees the current hashed
-     *  asset URLs after a deployment (issue #137). `no-cache` = revalidate before use. */
+    /** The HTML shell must be **revalidated before every use**, so the browser sees the current hashed asset
+     *  URLs after a deployment (issue #137). `no-cache` permits storing the shell but requires that
+     *  revalidation — deliberately distinct from [ContentResources.noStore] (`no-store`), which forbids storing
+     *  at all. The permanent header for a hashed asset is [ContentResources.cacheControl]. */
     const val shellCacheControl = "no-cache"
 
     /**
@@ -243,8 +239,11 @@ class AppUiService : ServiceInitializer, ContentServer {
             return false
         }
         // An asset URL carries a `:<hash>` cache-busting suffix (issue #137, mirroring the content services);
-        // strip it to resolve the resource, and remember whether one was present -- a hashed request is served
-        // immutably (the hash is the cache key), a bare one revalidates.
+        // strip it to resolve the resource, and remember whether one was present -- a request that carries a
+        // suffix is served with the permanent header (the hash is the cache key), a bare one with no cache
+        // header at all. (Note: the suffix's presence is what is checked, not that it matches the asset's hash;
+        // and a bare asset gets no header rather than `no-store`. Both diverge from the content services'
+        // content-addressed rule -- pre-existing, tracked in #529, out of scope for the #504 centralization.)
         val bareAppPath = handler.appPath.substringBefore(':')
         val versioned = bareAppPath.length != handler.appPath.length
         return when (bareAppPath) {
@@ -304,7 +303,8 @@ class AppUiService : ServiceInitializer, ContentServer {
     }
 
     /** Serves an embedded **text** resource (the shell's stylesheet, the bundle, an SVG), decoded as UTF-8. When
-     *  [versioned] (requested at a content-hashed URL), it is cached immutably (issue #137). */
+     *  [versioned] (the URL carried a `:<hash>` suffix), it gets the permanent cache header,
+     *  [ContentResources.cacheControl] (issue #137, #504). */
     private fun serveTextResource(
         cxt: KdrCxt,
         handler: RequestHandler,
@@ -313,7 +313,7 @@ class AppUiService : ServiceInitializer, ContentServer {
         versioned: Boolean,
     ): Boolean {
         val body = readResource(cxt, handler, resourcePath) ?: return false
-        if (versioned) handler.setResponseHeader("Cache-Control", AUI.immutableCacheControl)
+        if (versioned) handler.setResponseHeader("Cache-Control", ContentResources.cacheControl)
         handler.sendStringResponse(body.toString(Charsets.UTF_8), EXC.ok, mimeType)
         return true
     }
@@ -322,6 +322,8 @@ class AppUiService : ServiceInitializer, ContentServer {
      * Serves an embedded **binary** resource (a PNG, the ICO) — the bytes are written straight out, never
      * decoded to a String. Going through [RequestHandler.sendStringResponse] would corrupt them: it is UTF-8
      * only, so every byte that is not valid UTF-8 would come back out as U+FFFD.
+     *
+     * Caching matches [serveTextResource]: a [versioned] request gets [ContentResources.cacheControl].
      */
     private fun serveBinaryResource(
         cxt: KdrCxt,
@@ -331,7 +333,7 @@ class AppUiService : ServiceInitializer, ContentServer {
         versioned: Boolean,
     ): Boolean {
         val body = readResource(cxt, handler, resourcePath) ?: return false
-        if (versioned) handler.setResponseHeader("Cache-Control", AUI.immutableCacheControl)
+        if (versioned) handler.setResponseHeader("Cache-Control", ContentResources.cacheControl)
         handler.sendBytesResponse(body, EXC.ok, mimeType)
         return true
     }
