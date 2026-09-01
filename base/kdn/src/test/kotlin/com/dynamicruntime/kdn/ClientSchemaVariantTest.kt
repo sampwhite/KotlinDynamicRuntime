@@ -6,7 +6,6 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
-import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
@@ -97,7 +96,7 @@ class ClientSchemaVariantTest : StringSpec({
     // has not declared any yet, and one the union has to be able to express.
     // Looped over **every** entry kind rather than written for `formDoc`, which is the guard the drift needed:
     // the global pass and the per-client pass kept their own lists of kinds, and when `wfData` was added to
-    // one and not the other every client silently kept the global workflow-data union. One shared list now,
+    // one and not the other, every client silently kept the global workflow-data union. One shared list now,
     // and this fails if a kind is ever regenerated globally and not per client.
     "a client supporting no traits gets a union that recognizes none, for every entry kind" {
         val service = schema(boot("variantTest"))

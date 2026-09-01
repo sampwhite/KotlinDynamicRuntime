@@ -28,7 +28,7 @@ import com.dynamicruntime.common.endpoint.EP
  *
  * The point that the whole feature rests on is the second test: two entries that would share a key are refused,
  * because nothing could address them afterward. The rest show the ordinary lifecycle -- coexist, add, edit one
- * without touching its neighbour, and delete one by naming its key.
+ * without touching its neighbor, and delete one by naming its key.
  */
 class YearlyTraitTest : StringSpec({
 

@@ -20,6 +20,7 @@ import org.eclipse.jetty.util.Callback
  * Each request builds a Jetty-mode [RequestHandler] that processes it and completes the [Callback].
  * SSL/HTTPS, virtual-host proxying, and connector tuning are deferred (TODO).
  */
+@Suppress("VariableInitializerIsRedundant2")
 object HttpServer {
     /** Starts the server on the node's port and blocks until it stops. */
     fun launch(cxt: KdrCxt) {

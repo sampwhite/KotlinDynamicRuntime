@@ -117,7 +117,7 @@ class EnvAuthLoginTest : StringSpec({
         // on top of the level.
         profile.roles.contains(ROLE.allClients) shouldBe false
         // No row stands behind them, which is what stops refreshActingRoles going after CL.systemUserId.
-        profile?.isRowBacked shouldBe false
+        profile.isRowBacked shouldBe false
         // And the address reaches the log line the same way it would on a backend told by header.
         handler.createdCxt?.envAuthEmail shouldBe "dana@gyassa.com"
     }

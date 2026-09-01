@@ -121,7 +121,7 @@ class ClientVariantTest : StringSpec({
     "a purpose outside the suggestions is accepted, while a country outside the list is not" {
         create(everyone, visit("gb", purpose = "something nobody listed")).shouldNotBeNull()
         create(everyone, visit("gb", purpose = ST.purposes.first())).shouldNotBeNull()
-        // The refusal names the closed field and only it -- so the same payload that was rejected for its
+        // The refusal names the closed field and only it -- so the same payload rejected for its
         // country was not also rejected for a purpose nobody listed.
         val complaint = refused(everyone, visit("zz", purpose = "something nobody listed"))
         complaint shouldContainIgnoringCase ST.country

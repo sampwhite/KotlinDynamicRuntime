@@ -18,7 +18,7 @@ import kotlin.time.TimeSource
  * proves the whole `launch -> config -> kdn -> common` graph is linked.
  */
 fun main() {
-    // Time the whole of main (from here, i.e. excluding JVM startup) to gauge how much work the body does.
+    // Time the whole of main (from here, i.e., excluding JVM startup) to gauge how much work the body does.
     val started = TimeSource.Monotonic.markNow()
 
     // Install the logging configuration first, before anything logs in earnest. This does not boot an

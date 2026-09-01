@@ -109,7 +109,7 @@ class ContentDataTest : StringSpec({
             .contentDispositionHeader() shouldBe "attachment; filename=\"system.ini\""
     }
 
-    // A non-ASCII name cannot travel in the plain `filename` at all, so RFC 6266's extended form carries it
+    // A non-ASCII name cannot travel in the plain `filename` at all, so RFC 6266's extended form carries it,
     // and the plain one keeps a degraded ASCII version for whatever ignores that.
     "a non-ASCII filename travels in the RFC 6266 extended form as well" {
         ContentData(byteArrayOf(1), "application/pdf", saveAsFilename = "naïve.pdf", inLine = false)

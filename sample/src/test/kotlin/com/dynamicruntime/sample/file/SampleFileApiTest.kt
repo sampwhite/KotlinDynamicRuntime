@@ -19,7 +19,7 @@ import io.kotest.matchers.string.shouldContain
  * file interface exists for, driven through the in-process [TestHttpClient].
  *
  * The store writes to `<workspace>/sampleFiles`, so these use a temporary workspace via the `kdr.workspaceDir`
- * system property ([com.dynamicruntime.common.sql.AppPaths]) rather than scribbling in the real one.
+ * system property ([com.dynamicruntime.common.context.AppPaths]) rather than scribbling in the real one.
  */
 class SampleFileApiTest : StringSpec({
 
