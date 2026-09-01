@@ -60,7 +60,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 // Recover a stale build id (a rolling deploy) rather than erroring on a healthy runtime (#469).
                 copy = fetchCopyWithRetry(c.fragment) { runCatching { AuthApi.fetchConfig().fragment }.getOrNull() }
             } catch (e: Throwable) {
-                error = DisplayError.expected("Could not load the sign-in page. (${e.message})")
+                error = userFacingError(e)
             }
         }
     }

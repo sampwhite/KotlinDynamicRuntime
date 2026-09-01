@@ -69,9 +69,9 @@ val EndpointCatalog = FC<Props> {
     var rawEdited by useState(false)
     var rawError by useState<String?>(null)
     var response by useState<Map<String, Any?>?>(null)
-    var runError by useState<String?>(null)
+    var runError by useState<DisplayError?>(null)
     var running by useState(false)
-    var error by useState<String?>(null)
+    var error by useState<DisplayError?>(null)
     // True, once the initial URL-hash restore has run; until then the URL is not written back (so the
     // mount-time sync effect can't clobber a hash we are about to read).
     var restored by useState(false)
@@ -121,7 +121,7 @@ val EndpointCatalog = FC<Props> {
                     }
                 }
             } catch (e: Throwable) {
-                error = "Catalog fetch failed — is `./gradlew :launch:run` running? (${e.message})"
+                error = userFacingError(e)
             } finally {
                 restored = true
             }
@@ -274,10 +274,7 @@ val EndpointCatalog = FC<Props> {
                 }
             }
             when {
-                error != null -> p {
-                    className = ClassName("error-text")
-                    +error!!
-                }
+                error != null -> errorText("Couldn't load the catalog.", error!!)
                 cat == null -> p {
                     className = ClassName("subtitle")
                     +"Loading…"
@@ -498,7 +495,7 @@ val EndpointCatalog = FC<Props> {
                                             multipart = cat.hasFileInput(current),
                                         )
                                     } catch (e: Throwable) {
-                                        runError = e.message
+                                        runError = userFacingError(e)
                                     } finally {
                                         running = false
                                     }
@@ -620,12 +617,7 @@ val EndpointCatalog = FC<Props> {
                 }
             }
 
-            runError?.let {
-                p {
-                    className = ClassName("error-text")
-                    +"Request failed: $it"
-                }
-            }
+            runError?.let { errorText("The request failed.", it) }
 
             response?.let { resp ->
                 h2 { +"Response" }

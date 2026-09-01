@@ -44,10 +44,13 @@ class AppConfig(
     val envAuthSuppressible: Boolean,
 ) {
     companion object {
-        /** The assumed config before the first fetch (and if a fetch fails): do not suppress (matching dev),
-         *  and the shared default interval. */
+        /** The assumed config before the first fetch (and if a fetch fails): the safe, closed defaults, and the
+         *  shared interval. */
         val default = AppConfig(
-            obfuscateSensitiveErrors = false,
+            // Obfuscate until the backend says otherwise (issue #519). If the config never loads -- most likely
+            // because the backend is the thing failing -- a raw internal (5xx) message must not be why internals
+            // appear on a real deployment's screen. Same fail-closed reasoning as showErrorDetail below.
+            obfuscateSensitiveErrors = true,
             idleBumpIntervalMs = APP.defaultIdleBumpIntervalMs,
             // Withhold detail until the backend says otherwise. A fetch that has not happened (or failed) must
             // not be the reason internals appear on a real deployment's screen.

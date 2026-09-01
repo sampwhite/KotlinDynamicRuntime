@@ -18,35 +18,65 @@ class ApiError(
 ) : Throwable(message)
 
 /**
- * What to show the user for an error: the [text], and whether it is a raw [internal] error. An internal error is
- * styled distinctly and shown as plain text (it is not designed copy); an expected one is shown as Markdown.
+ * What to show the user for an error (issues #111, #519): the [text] and how to present it ([kind]).
+ *
+ *  - [Kind.designed] -- frontend-authored or fragment-sourced copy: Markdown-rendered, ordinary error styling.
+ *  - [Kind.message]  -- a real backend message that is safe to show (a 4xx, or any error where the deployment
+ *    does not obfuscate): plain text (it is *not* designed copy, so it is never Markdown-interpreted) under the
+ *    same ordinary styling, so the user reads what failed without it looking like a crash.
+ *  - [Kind.fault]    -- a raw internal message on a non-obfuscating (dev) deployment: plain text, set apart in a
+ *    boxed/monospaced style so it reads as an unexpected, developer-facing detail rather than designed copy.
  */
-class DisplayError(val text: String, val internal: Boolean) {
+class DisplayError(val text: String, val kind: Kind) {
+    @Suppress("EnumEntryName")
+    enum class Kind { designed, message, fault }
+
     companion object {
         /** An expected, frontend-authored message (a validation hint, a "could not load" note): shown normally. */
-        fun expected(text: String): DisplayError = DisplayError(text, internal = false)
+        fun expected(text: String): DisplayError = DisplayError(text, Kind.designed)
     }
 }
 
 /**
- * Turns a caught throwable into what to show the user (issue #111). A **fragment**-sourced message is designed
- * copy -> shown as an expected error (the caller Markdown-renders it). Anything else is **raw/internal**: the
- * deployment's policy ([AppConfig.obfuscateSensitiveErrors], from the app config) decides whether the user sees
- * a generic stand-in (an obfuscating/prod deployment) or the raw message clearly marked (dev). Either way the
- * raw detail is logged to the browser console with the trace id, so a developer can still diagnose it when the
- * user is shown only the generic message.
+ * Turns a caught throwable into what to show the user (issues #111, #519). A **fragment**-sourced message is
+ * designed copy -> shown as an expected error (the caller Markdown-renders it). Anything else is **raw**, and by
+ * default its message *is shown* so the user can see what failed: the backend is the authority on what is safe,
+ * and it has already replaced a `sensitive` error's message with a generic one before it reached us (see
+ * `RequestHandler`).
+ *
+ * The one thing still withheld is an **internal (5xx) message under an obfuscating deployment** ([obfuscate]):
+ * those are not yet redacted server-side (a later phase of #97), so a raw 500 could carry a stack detail. A 4xx
+ * -- bad input, not found, not authorized -- is the caller's own fault and safe to show, obfuscating or not. A
+ * throwable that is not an [ApiError] (a network failure, a client-side bug) has no status, so it is treated as
+ * internal and withheld under obfuscation too.
+ *
+ * Either way the raw detail is logged to the browser console with the trace id, so a developer can diagnose it
+ * even when the user is shown only the generic stand-in.
  */
-fun userFacingError(e: Throwable): DisplayError {
+fun userFacingError(e: Throwable, obfuscate: Boolean = appConfig().obfuscateSensitiveErrors): DisplayError {
     val api = e as? ApiError
     if (api?.fromFragment == true) {
         return DisplayError.expected(api.message)
     }
     logToConsole(e, api)
     val ref = api?.traceId?.let { " (ref: $it)" } ?: ""
-    return if (appConfig().obfuscateSensitiveErrors) {
-        DisplayError("Something went wrong. Please try again.$ref", internal = true)
+    // A throwable that never reached the backend -- a network failure, a client-side bug -- has no ApiError and
+    // no useful message to show (typically "Failed to fetch"); say so plainly. The raw cause is on the console.
+    if (api == null) {
+        return DisplayError("The server could not be reached. Please try again.$ref", DisplayError.Kind.message)
+    }
+    // A 4xx is the caller's own fault -- bad input, not found, not authorized -- and safe to show, obfuscating or
+    // not: the backend has already replaced any `sensitive` message with a generic one (issue #519).
+    val isInternal = (api.status ?: 500) >= 500
+    if (!isInternal) {
+        return DisplayError(api.message + ref, DisplayError.Kind.message)
+    }
+    // An internal (5xx) message is not yet redacted server-side (a later phase of #97). Where the deployment
+    // obfuscates, withhold it behind a generic apology; otherwise (dev) show the raw detail, set apart as a fault.
+    return if (obfuscate) {
+        DisplayError("Something went wrong. Please try again.$ref", DisplayError.Kind.message)
     } else {
-        DisplayError((api?.message ?: e.message ?: "Something went wrong.") + ref, internal = true)
+        DisplayError(api.message + ref, DisplayError.Kind.fault)
     }
 }
 

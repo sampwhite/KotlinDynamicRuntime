@@ -44,7 +44,7 @@ val Home = FC<Props> {
     var copy by useState(Copy.empty)
     var openDoc by useState(hashParams()[docParam])
     var docText by useState<String?>(null)
-    var error by useState<String?>(null)
+    var error by useState<DisplayError?>(null)
 
     val generation = useRefreshGeneration()
 
@@ -63,7 +63,7 @@ val Home = FC<Props> {
                 }
                 error = null
             } catch (e: Throwable) {
-                error = "Could not load the home page — is the runtime running? (${e.message})"
+                error = userFacingError(e)
             }
         }
     }
@@ -85,7 +85,7 @@ val Home = FC<Props> {
                     docText = HomeApi.fetchDoc(link.docId, link.buildId)
                     error = null
                 } catch (e: Throwable) {
-                    error = "Could not load '${link.label}'. (${e.message})"
+                    error = userFacingError(e)
                 }
             }
         }
@@ -130,10 +130,7 @@ val Home = FC<Props> {
                 className = ClassName("home-main")
                 val doc = links.firstOrNull { it.id == openDoc }
                 when {
-                    error != null -> p {
-                        className = ClassName("error-text")
-                        +error!!
-                    }
+                    error != null -> errorText("Couldn't load this page.", error!!)
                     // A document page: its rendered Markdown, plus a way back to the welcome copy.
                     doc != null -> {
                         button {
