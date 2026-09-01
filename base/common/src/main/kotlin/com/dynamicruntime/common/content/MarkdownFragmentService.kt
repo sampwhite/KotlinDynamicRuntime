@@ -14,8 +14,10 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.util.ScriptError
 import com.dynamicruntime.common.util.TemplateIssue
 import com.dynamicruntime.common.util.TemplatePaths
+import com.dynamicruntime.common.util.findReferenceCycles
 import com.dynamicruntime.common.util.analyzeFragmentFile
 import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.FragmentResolver
@@ -161,6 +163,11 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     ): List<FragmentCheckResult> {
         val sources = registeredFragmentSources(cxt)
         val fileIds = if (only != null) listOf(only) else sources.map { it.fileId }.distinct()
+        // Cross-file backend cycles are a whole-registry fact, so they are found once here rather than per
+        // file, and attached below to the shared row of each cycle's entry-point file (issue #505). Computed
+        // over the full registry even when `only` narrows the report -- a cycle can pass through the named
+        // file without starting in it; the narrowed view then shows it only if that file is the entry point.
+        val backendCycles = backendReferenceCycles(cxt)
         return fileIds.flatMap { fileId ->
             val forFile = sources.filter { it.fileId == fileId }
             // A base layer belongs to no client, so a file whose base is absent, is absent for everybody. One
@@ -186,9 +193,12 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             clients.map { client ->
                 val merged = mergeFragmentLayers(fileId, forFile, client)
                 val findings = variantFindings(cxt, merged, data)
+                // Cross-file cycle findings ride on the shared (client-null) row of their entry-point file --
+                // the cycle is a property of the base content, not of any client's overlay.
+                val cycleIssues = if (client == null) backendCycles[fileId].orEmpty() else emptyList()
                 FragmentCheckResult(
                     fileId, client, merged.found,
-                    issues = findings.issues,
+                    issues = findings.issues + cycleIssues,
                     entries = findings.entries,
                     orphans = merged.orphans,
                     audience = merged.audience,
@@ -284,12 +294,26 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 for (issue in byBackend.issues + byFrontend.issues) {
                     issues.add(TemplateIssue(issue.code, "$id: ${issue.message}", issue.offset, issue.line, issue.col))
                 }
-                // Check 3: only three-part pulls name a file; a shorter one is a malformed backend reference,
-                // which the deferred reference validation owns, not this.
+                // Backend pulls (three-part; a shorter one is malformed and caught as syntax). Two checks:
+                // the target's **audience** (check 3 of issue #514 -- a pull must name a backend file), and,
+                // when it does, whether the pulled key actually **resolves** there (issue #505).
                 for (ref in byBackend.refs.filter { it.key.count { c -> c == '.' } == 2 }) {
                     val target = ref.key.substringBefore('.')
+                    val rest = ref.key.substringAfter('.')
                     when (declaredAudience(cxt, target)) {
-                        FragmentAudience.backend -> {} // the one legal case
+                        // Names a backend file -- now does the pulled `namespace.key` exist in it? A guarded
+                        // pull that resolves to nothing is left to its `?:`, exactly as a frontend one is.
+                        FragmentAudience.backend ->
+                            if (!ref.tolerant && effectiveFragments(cxt, target)?.content?.resolveFragment(rest) == null) {
+                                issues.add(
+                                    TemplateIssue(
+                                        ScriptError.fragmentNotFound,
+                                        "$id: backend pull ${backendPassPrefix}{@t(\"${ref.key}\")} names no fragment " +
+                                            "'$rest' in '$target'.",
+                                        ref.offset, ref.line, ref.col,
+                                    ),
+                                )
+                            }
                         FragmentAudience.frontend -> audienceIssues.add(
                             "$id pulls ${backendPassPrefix}{@t(\"${ref.key}\")}, but '$target' is a frontend file. A " +
                                 "backend pull must name a backend file; pulling a frontend one drags its " +
@@ -322,6 +346,52 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      */
     fun declaredAudience(cxt: KdrCxt, fileId: String): FragmentAudience? =
         effectiveFragments(cxt, fileId)?.audience
+
+    /**
+     * Cross-file backend reference cycles (issue #505), keyed by the fileId of each cycle's entry point so
+     * [checkFragments] can attach the finding to a real file's row. A cycle among backend files -- `a` pulls
+     * `b` pulls `a` -- would recurse without end at render; it is caught here, across the whole registry, which
+     * the per-file walk in [backendVariantFindings] cannot see.
+     *
+     * The graph's nodes are three-part `fileId.namespace.key`, and only a **resolvable** backend edge takes
+     * part -- a backend target whose key exists. A dangling pull (missing key) or a wrong-audience one is
+     * already its own finding and is not also an edge, so it cannot manufacture or hide a cycle. Guarded (`?:`)
+     * pulls that *do* resolve are edges like any other, matching the frontend walk: at render a guarded
+     * reference that resolves is still followed.
+     */
+    private fun backendReferenceCycles(cxt: KdrCxt): Map<String, List<TemplateIssue>> {
+        val backendFiles = registeredFragmentSources(cxt).map { it.fileId }.distinct()
+            .filter { declaredAudience(cxt, it) == FragmentAudience.backend }
+        val edges = LinkedHashMap<String, List<String>>()
+        for (fileId in backendFiles) {
+            val content = effectiveFragments(cxt, fileId)?.content ?: continue
+            for ((ns, keys) in content) {
+                for ((key, value) in keys) {
+                    val targets = value.analyzeTemplate(backendPassPrefix).refs
+                        .filter { it.key.count { c -> c == '.' } == 2 }
+                        .filter { ref ->
+                            val tf = ref.key.substringBefore('.')
+                            declaredAudience(cxt, tf) == FragmentAudience.backend &&
+                                effectiveFragments(cxt, tf)?.content?.resolveFragment(ref.key.substringAfter('.')) != null
+                        }
+                        .map { it.key }
+                    if (targets.isNotEmpty()) edges["$fileId.$ns.$key"] = targets
+                }
+            }
+        }
+        val byFile = LinkedHashMap<String, MutableList<TemplateIssue>>()
+        for (cycle in findReferenceCycles(edges)) {
+            val fileId = cycle.first().substringBefore('.')
+            byFile.getOrPut(fileId) { mutableListOf() }.add(
+                TemplateIssue(
+                    ScriptError.fragmentCycle,
+                    "backend reference cycle: ${cycle.joinToString(" -> ")}.",
+                    0, 1, 1,
+                ),
+            )
+        }
+        return byFile
+    }
 
     @Suppress("DuplicatedCode")
     override fun serve(cxt: KdrCxt, handler: RequestHandler): Boolean {
@@ -465,17 +535,19 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * backend [backendResolver] and [data], and leaves `${...}` blocks untouched for the frontend to resolve
      * later. This is how a `%{@t("otherFile.namespace.key")}` is resolved server-side before content ships.
      *
-     * ### It throws, and there is no boot check behind it yet
+     * ### It throws, and a boot check now catches the static cases
      *
      * An unguarded reference to a fragment this node does not have raises, as everywhere in the template layer
      * -- so a mistyped or renamed key fails the *caller*, which for an endpoint handler means a 500 over one
-     * piece of copy. That is louder than this file's own policy for fragments, which degrades rather than
-     * failing (see [checkFragmentsAtStartup]), and the reason is timing rather than intent: the boot check that
-     * would catch such a key before any request is registry-wide and does not exist yet (its own follow-up).
+     * piece of copy. Most such keys are now caught **before** any request: [checkFragments] validates every
+     * literal backend pull registry-wide (issue #505) -- the target file's audience, that the pulled
+     * `namespace.key` resolves there, and that no backend files form a reference cycle -- and a strict boot
+     * refuses on a finding. What it cannot see is a **computed** key (`%{@t(chosenKey)}`), which names a
+     * fragment only at evaluation time; that is what the runtime throw still backstops.
      *
-     * Until it does, two ways to not be surprised: guard the pull (`%{@t("x.y.z") ?: "..."}`, which uses the
-     * grammar's one default mechanism), or catch around this call if the caller would rather degrade than
-     * fail. A caller that does neither is choosing the loud failure.
+     * So two ways to not be surprised by a computed miss: guard the pull (`%{@t(x) ?: "..."}`, the grammar's
+     * one default mechanism), or catch around this call if the caller would rather degrade than fail. A caller
+     * that does neither is choosing the loud failure.
      *
      * ### What it splices keeps the *caller's* later context, not its source's
      *
@@ -490,8 +562,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      *  - **A frontend fragment pull (`${@t("ns.key")}`) resolves against the element's declared `fileId`.** So a
      *    backend author writing one is asserting that whichever element carries this content names a file
      *    holding `ns.key`. That assertion is theirs to get right: the binding between content and element
-     *    happens at request time, so no boot check can verify it (see the audience follow-up for what *can* be
-     *    checked -- notably that a backend pull names only a backend file).
+     *    happens at request time, so no boot check can verify it. (A *backend* pull -- `%{@t(...)}` -- is
+     *    different: it names its file outright, so [checkFragments] does validate it.)
      *
      * The trap to know: pulling something like `sample.email.body` (which reads `${code}`) into an element that
      * supplies no `code` does not fail here -- it ships a `${code}` for the frontend to fail on. Prefer pulling

@@ -400,24 +400,29 @@ fun Map<String, Map<String, String>>.checkFragmentSyntax(prefix: Char = '$'): Li
  * Only references that resolve become edges, so a dangling one is reported once (as a missing reference)
  * rather than twice (again as a broken cycle edge).
  *
- * The **backend pass** (`%{@t("fileId.namespace.key")}`) exists since Phase 4 of #505 and is **still not
- * validated here**, deliberately: it addresses three parts across the whole registry, so checking it needs the
- * registry, which this per-file walk does not have. The [prefix] parameter scans a chosen block delimiter, but
- * the resolution is the frontend's two-part one -- so validating the backend pass needs more than a different
- * prefix, and lands as its own follow-up. Until it does, a mistyped backend reference is a render-time
- * failure rather than a boot finding.
+ * The **backend pass** (`%{@t("fileId.namespace.key")}`) is deliberately **not validated here**: it addresses
+ * three parts across the whole registry, so checking it needs the registry, which this per-file walk does not
+ * have. Its validation (target audience, key resolution, and cross-file cycles) therefore lives in
+ * `MarkdownFragmentService.checkFragments`, which does have the registry -- reusing [findReferenceCycles] for
+ * the cross-file graph. The [prefix] parameter here only scans a chosen block delimiter; the resolution stays
+ * the frontend's two-part one.
  */
 fun Map<String, Map<String, String>>.checkFragmentReferences(prefix: Char = '$'): List<TemplateIssue> =
     analyzeFragmentFile(prefix).referenceIssues
 
 /**
- * Every distinct cycle in the reference graph [edges] (`entry -> entries it references`), each named by its
- * path (`a.x -> b.y -> a.x`). Ancestry-based, the same shape as the runtime cycle guard: a back-edge into the
- * path currently being walked is a cycle, while an entry reached twice down different branches is reuse.
- * Deduped by the set of entries involved, so one cycle reachable from several roots is reported once.
+ * Every distinct cycle in the reference graph [edges] (`node -> nodes it references`), each returned as its
+ * path -- the nodes from where the back-edge closed, ending with that node repeated (`[a.x, b.y, a.x]`).
+ * Ancestry-based, the same shape as the runtime cycle guard: a back-edge into the path currently being walked
+ * is a cycle, while a node reached twice down different branches is reuse. Deduped by the set of nodes
+ * involved, so one cycle reachable from several roots is reported once.
+ *
+ * Generic over what a node **is**: within one file the frontend uses `namespace.key`; across the whole registry
+ * the backend uses `fileId.namespace.key` (issue #505). The caller turns a path into a positioned issue --
+ * `fragmentReferenceCycles` here for the frontend, `MarkdownFragmentService` for the cross-file backend graph.
  */
-private fun fragmentReferenceCycles(edges: Map<String, List<String>>): List<TemplateIssue> {
-    val issues = mutableListOf<TemplateIssue>()
+fun findReferenceCycles(edges: Map<String, List<String>>): List<List<String>> {
+    val cycles = mutableListOf<List<String>>()
     val done = mutableSetOf<String>()
     val onPath = mutableSetOf<String>()
     val path = ArrayDeque<String>()
@@ -430,13 +435,7 @@ private fun fragmentReferenceCycles(edges: Map<String, List<String>>): List<Temp
             if (target in onPath) {
                 val cycle = path.toList().subList(path.indexOf(target), path.size) + target
                 if (reported.add(cycle.dropLast(1).toSet())) {
-                    issues.add(
-                        TemplateIssue(
-                            ScriptError.fragmentCycle,
-                            "Fragment reference cycle: ${cycle.joinToString(" -> ")}.",
-                            0, 1, 1,
-                        ),
-                    )
+                    cycles.add(cycle)
                 }
             } else if (target !in done) {
                 walk(target)
@@ -452,5 +451,11 @@ private fun fragmentReferenceCycles(edges: Map<String, List<String>>): List<Temp
             walk(node)
         }
     }
-    return issues
+    return cycles
 }
+
+/** The cycles in [edges] as positioned [TemplateIssue]s (issue #59) -- the frontend's within-file formatting. */
+private fun fragmentReferenceCycles(edges: Map<String, List<String>>): List<TemplateIssue> =
+    findReferenceCycles(edges).map { cycle ->
+        TemplateIssue(ScriptError.fragmentCycle, "Fragment reference cycle: ${cycle.joinToString(" -> ")}.", 0, 1, 1)
+    }

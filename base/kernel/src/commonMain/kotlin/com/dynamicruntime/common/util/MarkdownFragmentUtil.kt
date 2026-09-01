@@ -145,7 +145,9 @@ enum class MarkdownError {
  * parts across the *whole registry*, because the backend has every file where a frontend has only its own.
  * `MarkdownFragmentService.backendResolver` does that (Phase 4 of issue #505), splitting off the `fileId` and
  * then delegating the remaining two parts here -- so the two rules compose rather than duplicating. Boot
- * validation of a backend reference does not exist yet and is its own follow-up.
+ * validation of a backend reference is registry-wide for the same reason and so lives there too, in
+ * `MarkdownFragmentService.checkFragments` (target audience, key resolution, and cross-file cycles), not in
+ * this per-file walk.
  */
 fun Map<String, Map<String, String>>.resolveFragment(key: String): String? {
     val dot = key.indexOf('.')
