@@ -104,17 +104,22 @@ object SchemaCatalogApi {
             // same query-string treatment but is not the default.
             val init: dynamic = js("({})")
             init.method = endpoint.method
+            val headers: dynamic = js("({})")
+            applyRequestHeaders(headers)
+            init.headers = headers
             browserFetch(url + queryString(body), init).await()
         } else {
             val init: dynamic = js("({})")
             init.method = endpoint.method
+            val headers: dynamic = js("({})")
+            applyRequestHeaders(headers)
             if (multipart) {
                 // An upload: the body is form parts, one of them the file itself. Deliberately no
                 // Content-Type header -- the browser must set it, because only it knows the multipart
                 // boundary it generated. Setting it by hand here produces a body the server cannot parse.
+                init.headers = headers
                 init.body = formData(body)
             } else {
-                val headers: dynamic = js("({})")
                 headers["Content-Type"] = "application/json"
                 init.headers = headers
                 init.body = body.toJsonStr(compact = true)
@@ -152,7 +157,13 @@ object SchemaCatalogApi {
     }
 
     private suspend fun getJson(url: String): Map<String, Any?> {
-        val response = browserFetch(url).await()
+        val init: dynamic = js("({})")
+        val headers: dynamic = js("({})")
+        // The standard request headers (issue #105, #517), so the catalog's own GETs carry the trace id and the
+        // env-debug `_debug` tag exactly as `Http` does -- the two tags this box is most useful for reach here.
+        applyRequestHeaders(headers)
+        init.headers = headers
+        val response = browserFetch(url, init).await()
         if (!(response.ok as Boolean)) {
             error("GET $url failed with status ${response.status}")
         }

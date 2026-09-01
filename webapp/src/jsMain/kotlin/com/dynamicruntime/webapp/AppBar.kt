@@ -1,9 +1,12 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.app.EnvAuthOp
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.uiblock.UiRoute
+import com.dynamicruntime.common.util.isVariableName
+import com.dynamicruntime.common.util.splitComma
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -14,6 +17,7 @@ import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.header
 import react.dom.html.ReactHTML.img
+import react.dom.html.ReactHTML.input
 import react.dom.html.ReactHTML.span
 import react.useEffect
 import react.useRef
@@ -101,6 +105,11 @@ external interface AppBarProps : Props {
     var envAuthSuppressible: Boolean
     /** Whether the session is currently *acting* env-authed -- decides what the control says. */
     var envAuthActing: Boolean
+    /**
+     * Whether the session is in the debug state (issue #517). Not read by the badge -- that is a plain on/off
+     * toggle -- but it gates the persistent `_debug` box, which is shown only while debug is on.
+     */
+    var envAuthDebug: Boolean
 }
 
 /**
@@ -127,6 +136,10 @@ val AppBar = FC<AppBarProps> { props ->
     }
     var open by useState(false)
     var config by useState<HomeConfig?>(null)
+    // The persistent `_debug` box's value (issue #517, slice 3), seeded from this browser's storage. A hook, so
+    // it is declared unconditionally here even though the box renders only in debug -- and hiding the box (on
+    // leaving debug) never clears it, so the value is still here when debug returns.
+    var debugTags by useState { debugRequestTags() }
     // The brand's three-state, held directly (issue #469): the effect knows which of loading/ready/failed
     // happened, so it writes the state rather than the bar inferring it from an empty [copy] -- which is
     // ambiguous, since a deployment that names no brand is *also* empty.
@@ -300,6 +313,44 @@ val AppBar = FC<AppBarProps> { props ->
                         }
                     }
                     +if (acting) "Env" else "Env off"
+                }
+            }
+            // The persistent `_debug` box (issue #517, slice 3), beside the badge and shown only in debug. Its
+            // value rides the `X-Kdr-Debug` header on every request (see `Http`), so an operator turns on a
+            // diagnostic tag -- `explainAccess`, `explainScope` -- without editing URLs. A change persists to
+            // this browser's storage immediately (so a reload keeps it) and bumps the refresh generation, so a
+            // mounted view re-fetches with the new tag rather than waiting for the next navigation.
+            if (props.envAuthDebug) {
+                // Valid when blank (blank clears it) or every comma-separated entry is a variable name within
+                // the length cap -- the *same* rules the backend applies, run here through the kernel's own
+                // `splitComma`/`isVariableName` (compiled to JS) so a typo shows as invalid rather than being
+                // silently dropped server-side with no sign anything is wrong.
+                val valid = debugTags.length <= EP.debugMaxLength &&
+                    (debugTags.isBlank() || debugTags.splitComma().all { it.isVariableName() })
+                input {
+                    className = ClassName("bar-badge env-debug-input" + if (valid) "" else " invalid")
+                    value = debugTags
+                    placeholder = EP.debug
+                    asDynamic()["aria-label"] = "Debug request tags, sent as ${EP.debug} on every request"
+                    asDynamic()["aria-invalid"] = !valid
+                    title = if (valid) {
+                        "Comma-separated ${EP.debug} tags (e.g. explainAccess) sent on every request. " +
+                            "Kept for this browser session; hidden but not cleared when you leave debug."
+                    } else {
+                        "Not applied: each tag must be a variable name (letters, digits, underscore), " +
+                            "${EP.debugMaxLength} characters at most."
+                    }
+                    onChange = { e -> debugTags = e.target.value }
+                    // Persist and apply on commit rather than per keystroke: a half-typed tag should not ride a
+                    // request, and re-fetching on every character would be noise. Only when the value actually
+                    // changed and is valid -- an unchanged blur must not bump the refresh generation, and an
+                    // invalid value is left showing (so it can be fixed) but neither stored nor sent.
+                    onBlur = {
+                        if (valid && debugTags.trim() != debugRequestTags()) {
+                            setDebugRequestTags(debugTags)
+                            bump()
+                        }
+                    }
                 }
             }
             // Spelled out, not just colored: a hue on its own tells a colourblind user nothing, and this is

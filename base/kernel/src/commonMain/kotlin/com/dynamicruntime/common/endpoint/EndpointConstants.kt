@@ -221,6 +221,12 @@ object EP {
 
     // Off-contract keys (underscore-prefixed): allowed regardless of additionalProperties, kept in data.
     const val debug = "_debug" // request: comma-separated debug tags -> KdrCxt.debug
+    // The header alternate for [debug] (issue #517, slice 3), so an env-debug operator's app-bar box can ride
+    // its tags on *every* request without editing URLs -- the same header/param duality as RID's ids. An
+    // explicit `_debug` query or body wins over it (a per-request override of the persistent baseline).
+    const val debugHeader = "X-Kdr-Debug"
+    // The cap on a `_debug` value, in one place so the backend's validation and the frontend box's agree.
+    const val debugMaxLength = 40
     const val meta = "_meta" // response: handler-injected extra structure (KdrRequest.responseMeta)
 }
 

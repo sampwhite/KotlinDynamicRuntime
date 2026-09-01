@@ -173,6 +173,38 @@ body {
     color: var(--text-dim);
 }
 
+/* The persistent `_debug` box (issue #517, slice 3): a .bar-badge-shaped input beside the env badge, shown
+   only in debug. Overrides the chip's uppercase and transparent border so it reads as an editable field, and
+   widens on focus so a longer tag list is comfortable to edit without taking bar width the rest of the time. */
+.env-debug-input {
+    /* Override the global `input` rule (flex: 1; min-width: 180px), or the box grows to fill the bar and the
+       fixed width / focus expansion below never take effect. */
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 8ch;
+    border-color: var(--border);
+    background: transparent;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 500;
+    transition: width 0.15s ease;
+}
+.env-debug-input::placeholder {
+    color: var(--text-dim);
+    text-transform: none;
+}
+.env-debug-input:focus {
+    outline: none;
+    border-color: var(--border-admin);
+    width: 20ch;
+}
+/* Not-applied state: the value fails the variable-name/length rule, so it is neither stored nor sent. Flagged
+   rather than silently dropped, matching aria-invalid on the element. */
+.env-debug-input.invalid {
+    border-color: var(--danger, #d9534f);
+}
+
 /* The elevated-privilege chip: an outline against the admin-tinted bar, where a fill would blend into it. */
 .admin-badge {
     border-color: var(--border-admin);

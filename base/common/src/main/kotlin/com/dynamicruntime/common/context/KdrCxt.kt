@@ -106,8 +106,10 @@ class KdrCxt(
 
     /**
      * Optional debug tag(s) for this request: a validated, comma-separated list of variable names supplied
-     * via the off-contract `_debug` request key. When present it is prefixed onto every log message and can
-     * gate diagnostic behavior (e.g., the sample endpoint's `explainInput`). Carried down to sub contexts.
+     * via the off-contract `_debug` request key -- a query/body param, or the `X-Kdr-Debug` header the app-bar
+     * box rides on every request (issue #517), which the param overrides when both are present. When set it is
+     * prefixed onto every log message and can gate diagnostic behavior (e.g., the sample endpoint's
+     * `explainInput`). Carried down to sub contexts.
      *
      * Test membership with [hasDebug], never `debug.contains(...)`: the latter is a substring match, so a check
      * for `foo` would fire on `_debug=foobar`.
