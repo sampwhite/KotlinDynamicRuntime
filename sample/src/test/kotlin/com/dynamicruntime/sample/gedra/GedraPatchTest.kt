@@ -11,7 +11,6 @@ import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -41,8 +40,7 @@ class GedraPatchTest : StringSpec({
 
     // As in GedraEntryFixtureTest: the ServiceLoader entry that finds the component in a deployment does not
     // reach the test classpath, and `KDR_LOAD_SAMPLE` forces `isLoaded` past the developer-environment gate.
-    InstanceRegistry.register(listOf(SampleComponent()))
-    val cxt = Startup.mkTestBootCxt("gedraPatch", "gedraPatchTest", mapOf("KDR_LOAD_SAMPLE" to "true"))
+    val cxt = Startup.mkTestBootCxt("gedraPatch", "gedraPatchTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
 
     val alice = TestUser.create(cxt, "alice@patch.test")
     val bob = TestUser.create(cxt, "bob@patch.test")

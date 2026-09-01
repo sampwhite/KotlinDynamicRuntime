@@ -11,7 +11,6 @@ import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.appui.AppUiComponent
 import com.dynamicruntime.common.startup.ComponentDefinition
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.startup.KdrProvider
 import com.dynamicruntime.config.AppConfigApplier
 import com.dynamicruntime.config.AppConfigBuilder
@@ -62,7 +61,7 @@ fun bootInstance(
     val preBootConfig = KdrInstanceConfig.preBootLoadConfig(bootRole)
     val preBootCxt = KdrCxt.mkSimpleCxt("preBoot", preBootConfig)
 
-    LogSetup.initFromEnv(getEnv = preBootCxt::getEnvVar)
+    LogSetup.ensureInit(preBootConfig.env, preBootCxt::getEnvVar)
 
     // Say what the workspace defaults file did, at the first moment there is anywhere to say it (issue #380).
     // It is read before logging exists, so the report is held and emitted here. Worth a line of its own: an
@@ -70,10 +69,11 @@ fun bootInstance(
     // seen looked exactly like one whose defaults happened to change nothing.
     LogStartup.info(preBootCxt, "Workspace defaults: ${KdrInstanceConfig.lastLoadReport}")
 
-    // The webapp host serves the self-contained front end under its own context root (e.g., /wa). Register it
-    // unconditionally before booting (schema/services are wired during boot) -- it is a real feature, not a
-    // demo, and the shell serves regardless of which optional components a deployment loads.
-    InstanceRegistry.register(listOf(AppUiComponent()))
+    // The webapp host serves the self-contained front end under its own context root (e.g., /wa). Included
+    // unconditionally -- it is a real feature, not a demo, and the shell serves regardless of which optional
+    // components a deployment loads. Gathered here and handed to mkBootCxt below with the discovered
+    // components (issue #524), rather than registered into VM-global state.
+    val appUiComponent = AppUiComponent()
 
     // Discover deployment-injected providers via the JVM ServiceLoader (issue #171). A single pass over the
     // KdrProvider base finds every provider kind the deployment put on the runtime classpath; each subset is
@@ -105,11 +105,12 @@ fun bootInstance(
         )
     }
 
-    // Register discovered components (schema + services) before booting; each self-gates at boot via its
-    // isLoaded/isActive. The `sample` module is the first component discovered this way -- its demo file
+    // The discovered components (schema + services), handed to mkBootCxt below; each self-gates at boot via
+    // its isLoaded/isActive. The `sample` module is the first component discovered this way -- its demo file
     // endpoints load only in developer environments (see SampleComponent.isLoaded), so no explicit
-    // shouldLoadSample gate is needed here anymore.
-    InstanceRegistry.register(providers.filterIsInstance<ComponentDefinition>().sortedBy { it.loadPriority() })
+    // shouldLoadSample gate is needed here anymore. (getOrCreateInstanceConfig sorts by loadPriority, so the
+    // list is passed unsorted.)
+    val discoveredComponents = providers.filterIsInstance<ComponentDefinition>()
 
     // App config appliers run pre-boot so they can shape how the instance starts. They are SELECTED, not
     // composed: competing full profiles (e.g., the developer's KdrConfig and Claude's ClaudeConfig) would
@@ -142,7 +143,10 @@ fun bootInstance(
 
     // Boot with the loaded config as the overlay. At startup the instance name aligns with the environment.
     val instanceName = appConfig.data[ACFG.env] as? String ?: ENV.local
-    val cxt = Startup.mkBootCxt(cxtName, instanceName, appConfig.data)
+    val cxt = Startup.mkBootCxt(
+        cxtName, instanceName, appConfig.data,
+        additionalComponents = listOf(appUiComponent) + discoveredComponents,
+    )
 
     LogStartup.info(cxt, "Booted instance '$instanceName' with app config: ${appConfig.data}")
     val schema = cxt.getSchema()

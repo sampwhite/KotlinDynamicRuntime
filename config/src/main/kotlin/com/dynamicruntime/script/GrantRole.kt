@@ -102,8 +102,10 @@ object GrantRole {
     private fun bootCxt(): KdrCxt {
         val preBoot = KdrInstanceConfig.preBootLoadConfig()
         val cxt = KdrCxt.mkSimpleCxt("preBoot", preBoot)
-        LogSetup.initFromEnv(getEnv = cxt::getEnvVar)
         val env = cxt.getEnvVar(KdrInstanceConfig.envName) ?: ENV.local
+        // Init logging before mkBootCxt (which also calls ensureInit, then a no-op), passing the cxt so the
+        // defaults file is honored for KDR_LOG_LEVEL (issue #524).
+        LogSetup.ensureInit(env, cxt::getEnvVar)
         return Startup.mkBootCxt("grantRole", env, preBoot.entries().toMap())
     }
 

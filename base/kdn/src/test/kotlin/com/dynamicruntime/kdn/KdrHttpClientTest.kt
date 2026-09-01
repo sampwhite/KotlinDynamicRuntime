@@ -22,7 +22,7 @@ import io.kotest.matchers.string.shouldContain
 class KdrHttpClientTest : StringSpec({
 
     val cxt = Startup.mkTestBootCxt("kdrHttpClient", "kdrHttpClientTest")
-    val server = TestHttpServer(cxt.instanceConfig.instanceName)
+    val server = TestHttpServer(cxt.instanceConfig)
     val client = KdrHttpClient("test")
 
     afterSpec {

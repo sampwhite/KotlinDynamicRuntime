@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -20,7 +22,8 @@ import kotlin.time.Instant
  */
 class RequestHandlerSentGuardTest : StringSpec({
 
-    fun handler() = RequestHandler("sentGuardTest", "GET", "/kda/thing", emptyMap(), mutableMapOf())
+    fun handler() =
+        RequestHandler(KdrInstanceConfig("sentGuardTest", ENV.unit, ENV.liveSource), "GET", "/kda/thing", emptyMap(), mutableMapOf())
 
     /** A handler whose response has gone out -- the state every test below starts from. */
     fun sentHandler() = handler().also { it.sendJsonResponse(mapOf("ok" to true), 200) }

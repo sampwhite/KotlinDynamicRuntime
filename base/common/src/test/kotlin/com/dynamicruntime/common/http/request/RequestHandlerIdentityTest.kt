@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.endpoint.RID
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -12,7 +14,7 @@ import io.kotest.matchers.shouldBe
 class RequestHandlerIdentityTest : StringSpec({
 
     fun handler(headers: Map<String, List<String>> = emptyMap()) =
-        RequestHandler("idTest", "GET", "/kda/x", headers, mutableMapOf())
+        RequestHandler(KdrInstanceConfig("idTest", ENV.unit, ENV.liveSource), "GET", "/kda/x", headers, mutableMapOf())
 
     "appId and traceId come from their headers" {
         val h = handler(

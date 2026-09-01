@@ -3,7 +3,6 @@ package com.dynamicruntime.sample.file
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.http.request.TestHttpClient
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.kdn.Startup
@@ -24,7 +23,6 @@ import io.kotest.matchers.string.shouldContain
  */
 class SampleFileApiTest : StringSpec({
 
-    InstanceRegistry.register(listOf(SampleComponent()))
 
     val tempWorkspace = createTempDir()
 
@@ -36,7 +34,7 @@ class SampleFileApiTest : StringSpec({
 
     fun client(cxtName: String): TestHttpClient =
         // Force SampleComponent.isLoaded on: it otherwise gates to developer envs, and mkTestBootCxt uses unit.
-        TestHttpClient(Startup.mkTestBootCxt(cxtName, "sampleFileTest", mapOf("KDR_LOAD_SAMPLE" to "true")).instanceConfig)
+        TestHttpClient(Startup.mkTestBootCxt(cxtName, "sampleFileTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent())).instanceConfig)
 
     // A PNG header: the bytes are deliberately not valid UTF-8, so a round trip that survives them proves the
     // content never went through the text path.

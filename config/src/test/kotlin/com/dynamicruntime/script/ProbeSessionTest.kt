@@ -26,7 +26,7 @@ import io.kotest.matchers.string.shouldContain
 class ProbeSessionTest : StringSpec({
 
     val cxt = Startup.mkTestBootCxt("probe", "probeSessionTest")
-    val server = TestHttpServer(cxt.instanceConfig.instanceName)
+    val server = TestHttpServer(cxt.instanceConfig)
     val baseUrl = "http://localhost:${server.port}"
 
     afterSpec { server.close() }

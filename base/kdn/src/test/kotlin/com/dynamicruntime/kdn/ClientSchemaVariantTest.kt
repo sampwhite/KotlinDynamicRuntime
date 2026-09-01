@@ -16,7 +16,6 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -37,8 +36,7 @@ import io.kotest.matchers.types.shouldBeSameInstanceAs
 class ClientSchemaVariantTest : StringSpec({
 
     fun boot(name: String): KdrCxt {
-        InstanceRegistry.register(listOf(VariantFixtureComponent()))
-        return Startup.mkTestBootCxt("variants", name, mapOf(VariantFixtureComponent.loadFlag.name to "true"))
+        return Startup.mkTestBootCxt("variants", name, mapOf(VariantFixtureComponent.loadFlag.name to "true"), additionalComponents = listOf(VariantFixtureComponent()))
     }
 
     fun schema(cxt: KdrCxt): SchemaService =
@@ -87,8 +85,7 @@ class ClientSchemaVariantTest : StringSpec({
     // that is invalid to everybody else.
     "an alteration that widens refuses the boot" {
         val ex = shouldThrow<KdrException> {
-            InstanceRegistry.register(listOf(WideningFixtureComponent()))
-            Startup.mkTestBootCxt("widening", "wideningVariantTest", mapOf(WideningFixtureComponent.loadFlag.name to "true"))
+            Startup.mkTestBootCxt("widening", "wideningVariantTest", mapOf(WideningFixtureComponent.loadFlag.name to "true"), additionalComponents = listOf(WideningFixtureComponent()))
         }
         val message = ex.fullMessage()
         message shouldContain "does not narrow"

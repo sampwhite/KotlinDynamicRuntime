@@ -8,7 +8,6 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.http.request.TestHttpClient
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
 import com.dynamicruntime.common.schema.SchFailCode
@@ -40,8 +39,7 @@ class GedraEntryFixtureTest : StringSpec({
     // Registered here rather than discovered: the ServiceLoader entry that finds the component in a running
     // deployment does not reach the test classpath. And `KDR_LOAD_SAMPLE` forces `isLoaded`, which otherwise
     // gates to developer environments while `mkTestBootCxt` uses `unit`.
-    InstanceRegistry.register(listOf(SampleComponent()))
-    val cxt = Startup.mkTestBootCxt("gedraFixture", "gedraFixtureTest", mapOf("KDR_LOAD_SAMPLE" to "true"))
+    val cxt = Startup.mkTestBootCxt("gedraFixture", "gedraFixtureTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
     val fillOut = "/fixture/gedra/formDocEntries/fillOut"
     val unionName = "${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"
 

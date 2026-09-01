@@ -4,7 +4,6 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.TestHttpClient
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.ADMR
 import com.dynamicruntime.common.user.GOOG
 import com.dynamicruntime.common.user.JwtKeySource
@@ -40,7 +39,6 @@ class EdgeContentPathsTest : StringSpec({
             if (kid == testKid) keyPair.public as RSAPublicKey else null
     }
 
-    InstanceRegistry.register(listOf(EdgeComponent()))
 
     fun bootEdge(name: String) = Startup.mkTestBootCxt(
         name, name,
@@ -50,6 +48,7 @@ class EdgeContentPathsTest : StringSpec({
             GOOG.googleKeySource to keySource,
             ADMR.adminEmailDomainEnvVar.name to "gyassa.com",
         ),
+        additionalComponents = listOf(EdgeComponent()),
     )
 
     fun credential(email: String): String {

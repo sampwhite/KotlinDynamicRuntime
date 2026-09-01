@@ -8,7 +8,6 @@ import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -33,8 +32,7 @@ import com.dynamicruntime.common.endpoint.EP
  */
 class YearlyTraitTest : StringSpec({
 
-    InstanceRegistry.register(listOf(SampleComponent()))
-    val cxt = Startup.mkTestBootCxt("yearlyTrait", "yearlyTraitTest", mapOf("KDR_LOAD_SAMPLE" to "true"))
+    val cxt = Startup.mkTestBootCxt("yearlyTrait", "yearlyTraitTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
     val alice = TestUser.create(cxt, "alice@yearly.test")
 
     fun yearly(year: Int, note: String? = null): Map<String, Any?> =

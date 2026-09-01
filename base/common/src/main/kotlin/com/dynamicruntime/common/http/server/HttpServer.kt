@@ -24,13 +24,13 @@ object HttpServer {
     /** Starts the server on the node's port and blocks until it stops. */
     fun launch(cxt: KdrCxt) {
         val nodeId = NodeUtil.extractNodeId(cxt)
-        val instanceName = cxt.instanceConfig.instanceName
+        val instanceConfig = cxt.instanceConfig
         val server = Server(nodeId.port)
         // The dispatcher, and always last: it answers every request that reaches it, including the terse 404
         // for an unrecognized context root, so nothing can usefully sit behind it.
         val dispatcher = object : Handler.Abstract() {
             override fun handle(request: Request, response: Response, callback: Callback): Boolean {
-                RequestHandler(instanceName, request, response, callback).handleRequest()
+                RequestHandler(instanceConfig, request, response, callback).handleRequest()
                 return true
             }
         }
