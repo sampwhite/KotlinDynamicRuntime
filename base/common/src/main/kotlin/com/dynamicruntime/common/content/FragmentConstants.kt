@@ -56,7 +56,15 @@ object FCHK {
     /** Whether the file's bases disagreed about its audience (issue #514). */
     const val audienceConflict = "audienceConflict"
 
+    /** Audience-rule violations, as messages -- findings, like [orphans] (issue #514). */
+    const val audienceIssues = "audienceIssues"
+
+    /** Non-fatal observations, as messages -- notes, not findings (issue #514). */
+    const val notes = "notes"
+
     const val found = "found"
+
+    /** Findings of every kind, not just template [issues] -- see `FragmentCheckResult.findingCount`. */
     const val issueCount = "issueCount"
     const val issues = "issues"
 
