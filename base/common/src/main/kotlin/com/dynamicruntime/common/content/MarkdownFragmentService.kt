@@ -163,11 +163,40 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     ): List<FragmentCheckResult> {
         val sources = registeredFragmentSources(cxt)
         val fileIds = if (only != null) listOf(only) else sources.map { it.fileId }.distinct()
-        // Cross-file backend cycles are a whole-registry fact, so they are found once here rather than per
-        // file, and attached below to the shared row of each cycle's entry-point file (issue #505). Computed
-        // over the full registry even when `only` narrows the report -- a cycle can pass through the named
-        // file without starting in it; the narrowed view then shows it only if that file is the entry point.
-        val backendCycles = backendReferenceCycles(cxt)
+        // Cross-file backend cycles are a whole-registry fact, so they are found once per *client* here rather
+        // than per file, and attached below to the shared row of each cycle's entry-point file (issue #505).
+        // Computed over the full registry even when `only` narrows the report -- a cycle can pass through the
+        // named file without starting in it; the narrowed view then shows it only if that file is the entry
+        // point.
+        //
+        // Per client, not per caller: an overlay can replace a base value with a pull and so close a cycle that
+        // exists for that client alone. Scanning only the ambient client would miss it *and* make the operator
+        // endpoint answer differently depending on who asked -- the check must not depend on its own caller.
+        val sharedCycles = backendReferenceCycles(cxt, null)
+        // Only clients that actually overlay a backend file can change the graph; everyone else merges to the
+        // shared content, whose cycles are already covered above.
+        val backendClients = sources
+            .filter { it.client != null && declaredAudience(cxt, it.fileId, it.client) == FragmentAudience.backend }
+            .mapNotNull { it.client }.distinct()
+        // A client's rows carry only the cycles that are *theirs*: one already reported on the shared row is
+        // the same defect, and a boot refusal repeating it per client reads as several broken files. Compared
+        // by the cycle path itself rather than its rendered message, which carries the client name.
+        val sharedPaths = sharedCycles.values.flatten().toSet()
+        // Every cycle reports on the **shared** row of its entry-point file, with the client named in the
+        // message when it is that client's own. Not on the client's row, deliberately: the entry point may be a
+        // file that client does not overlay (they closed the loop from the other end), so no such row exists
+        // and the finding would be silently dropped -- the one outcome this whole check family exists to
+        // prevent. The shared row always exists, and the message carries which variant is broken.
+        val cycleFindings = LinkedHashMap<String, MutableList<TemplateIssue>>()
+        for ((fileId, cycles) in sharedCycles) {
+            cycles.forEach { cycleFindings.getOrPut(fileId) { mutableListOf() }.add(cycleIssue(it, null)) }
+        }
+        for (c in backendClients) {
+            for ((fileId, cycles) in backendReferenceCycles(cxt, c)) {
+                cycles.filterNot { it in sharedPaths }
+                    .forEach { cycleFindings.getOrPut(fileId) { mutableListOf() }.add(cycleIssue(it, c)) }
+            }
+        }
         return fileIds.flatMap { fileId ->
             val forFile = sources.filter { it.fileId == fileId }
             // A base layer belongs to no client, so a file whose base is absent, is absent for everybody. One
@@ -193,9 +222,11 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             clients.map { client ->
                 val merged = mergeFragmentLayers(fileId, forFile, client)
                 val findings = variantFindings(cxt, merged, data)
-                // Cross-file cycle findings ride on the shared (client-null) row of their entry-point file --
-                // the cycle is a property of the base content, not of any client's overlay.
-                val cycleIssues = if (client == null) backendCycles[fileId].orEmpty() else emptyList()
+                // Cross-file cycle findings ride on the row of their entry-point file: the shared row for a
+                // cycle in the shared content, and a client's own row for one only that client's overlays
+                // close. The message names the client in the latter case, so a finding read on its own still
+                // says which variant is broken.
+                val cycleIssues = if (client == null) cycleFindings[fileId].orEmpty() else emptyList()
                 FragmentCheckResult(
                     fileId, client, merged.found,
                     issues = findings.issues + cycleIssues,
@@ -226,7 +257,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     private fun variantFindings(cxt: KdrCxt, merged: EffectiveFragments, data: Map<String, Any?>?): VariantFindings {
         if (!merged.found) return VariantFindings(emptyList(), emptyList(), emptyList(), emptyList())
         return if (merged.audience == FragmentAudience.backend) {
-            backendVariantFindings(cxt, merged.content)
+            // The variant's own client, so a pull's target resolves in the same view its content came from.
+            backendVariantFindings(cxt, merged.content, merged.client)
         } else {
             frontendVariantFindings(merged.content, data)
         }
@@ -282,7 +314,11 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * file might lack it). That is the backend-pass reference validation, and it stays a follow-up -- this
      * checks the pull's *audience*, which is the half that has a silent-misresolution failure mode.
      */
-    private fun backendVariantFindings(cxt: KdrCxt, content: Map<String, Map<String, String>>): VariantFindings {
+    private fun backendVariantFindings(
+        cxt: KdrCxt,
+        content: Map<String, Map<String, String>>,
+        client: String?,
+    ): VariantFindings {
         val issues = mutableListOf<TemplateIssue>()
         val audienceIssues = mutableListOf<String>()
         val notes = mutableListOf<String>()
@@ -300,11 +336,13 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 for (ref in byBackend.refs.filter { it.key.count { c -> c == '.' } == 2 }) {
                     val target = ref.key.substringBefore('.')
                     val rest = ref.key.substringAfter('.')
-                    when (declaredAudience(cxt, target)) {
+                    when (declaredAudience(cxt, target, client)) {
                         // Names a backend file -- now does the pulled `namespace.key` exist in it? A guarded
                         // pull that resolves to nothing is left to its `?:`, exactly as a frontend one is.
                         FragmentAudience.backend ->
-                            if (!ref.tolerant && effectiveFragments(cxt, target)?.content?.resolveFragment(rest) == null) {
+                            if (!ref.tolerant &&
+                                effectiveFragmentsFor(cxt, target, client)?.content?.resolveFragment(rest) == null
+                            ) {
                                 issues.add(
                                     TemplateIssue(
                                         ScriptError.fragmentNotFound,
@@ -344,14 +382,16 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * Read through [effectiveFragments] so it is exactly what a pull would resolve against, and so the
      * "any backend base wins" rule is applied in one place rather than restated here.
      */
-    fun declaredAudience(cxt: KdrCxt, fileId: String): FragmentAudience? =
-        effectiveFragments(cxt, fileId)?.audience
+    fun declaredAudience(cxt: KdrCxt, fileId: String, client: String? = cxt.client): FragmentAudience? =
+        effectiveFragmentsFor(cxt, fileId, client)?.audience
 
     /**
      * Cross-file backend reference cycles (issue #505), keyed by the fileId of each cycle's entry point so
      * [checkFragments] can attach the finding to a real file's row. A cycle among backend files -- `a` pulls
-     * `b` pulls `a` -- would recurse without end at render; it is caught here, across the whole registry, which
-     * the per-file walk in [backendVariantFindings] cannot see.
+     * `b` pulls `a` -- does not recurse without end at render (the evaluator's `includeChain` guard catches an
+     * ancestor and throws `fragmentCycle`), but it fails the *request*, and only for whoever hits that copy.
+     * Caught here instead, before any request, across the whole registry -- which the per-file walk in
+     * [backendVariantFindings] cannot see.
      *
      * The graph's nodes are three-part `fileId.namespace.key`, and only a **resolvable** backend edge takes
      * part -- a backend target whose key exists. A dangling pull (missing key) or a wrong-audience one is
@@ -359,39 +399,40 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * pulls that *do* resolve are edges like any other, matching the frontend walk: at render a guarded
      * reference that resolves is still followed.
      */
-    private fun backendReferenceCycles(cxt: KdrCxt): Map<String, List<TemplateIssue>> {
+    private fun backendReferenceCycles(cxt: KdrCxt, client: String?): Map<String, List<List<String>>> {
         val backendFiles = registeredFragmentSources(cxt).map { it.fileId }.distinct()
-            .filter { declaredAudience(cxt, it) == FragmentAudience.backend }
+            .filter { declaredAudience(cxt, it, client) == FragmentAudience.backend }
         val edges = LinkedHashMap<String, List<String>>()
         for (fileId in backendFiles) {
-            val content = effectiveFragments(cxt, fileId)?.content ?: continue
+            val content = effectiveFragmentsFor(cxt, fileId, client)?.content ?: continue
             for ((ns, keys) in content) {
                 for ((key, value) in keys) {
                     val targets = value.analyzeTemplate(backendPassPrefix).refs
                         .filter { it.key.count { c -> c == '.' } == 2 }
                         .filter { ref ->
                             val tf = ref.key.substringBefore('.')
-                            declaredAudience(cxt, tf) == FragmentAudience.backend &&
-                                effectiveFragments(cxt, tf)?.content?.resolveFragment(ref.key.substringAfter('.')) != null
+                            declaredAudience(cxt, tf, client) == FragmentAudience.backend &&
+                                effectiveFragmentsFor(cxt, tf, client)
+                                    ?.content?.resolveFragment(ref.key.substringAfter('.')) != null
                         }
                         .map { it.key }
                     if (targets.isNotEmpty()) edges["$fileId.$ns.$key"] = targets
                 }
             }
         }
-        val byFile = LinkedHashMap<String, MutableList<TemplateIssue>>()
+        val byFile = LinkedHashMap<String, MutableList<List<String>>>()
         for (cycle in findReferenceCycles(edges)) {
-            val fileId = cycle.first().substringBefore('.')
-            byFile.getOrPut(fileId) { mutableListOf() }.add(
-                TemplateIssue(
-                    ScriptError.fragmentCycle,
-                    "backend reference cycle: ${cycle.joinToString(" -> ")}.",
-                    0, 1, 1,
-                ),
-            )
+            byFile.getOrPut(cycle.first().substringBefore('.')) { mutableListOf() }.add(cycle)
         }
         return byFile
     }
+
+    /** One cycle path as a reported finding; [client] is named when the cycle is that client's own. */
+    private fun cycleIssue(cycle: List<String>, client: String?): TemplateIssue = TemplateIssue(
+        ScriptError.fragmentCycle,
+        "backend reference cycle${client?.let { " for client '$it'" } ?: ""}: ${cycle.joinToString(" -> ")}.",
+        0, 1, 1,
+    )
 
     @Suppress("DuplicatedCode")
     override fun serve(cxt: KdrCxt, handler: RequestHandler): Boolean {
@@ -468,16 +509,27 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * anonymous visitor has no client, so a client's overlays reach its **signed-in** people and nobody else.
      * The mechanism is right; the missing half is domain-to-client routing, not this.
      */
-    fun effectiveFragments(cxt: KdrCxt, fileId: String): EffectiveFragments? {
+    fun effectiveFragments(cxt: KdrCxt, fileId: String): EffectiveFragments? =
+        effectiveFragmentsFor(cxt, fileId, cxt.client)
+
+    /**
+     * The content [fileId] has **for [client]**, or null when nothing declares that file.
+     *
+     * The explicit-client form (issue #505). [effectiveFragments] is this with the *ambient* client, which is
+     * what a request wants -- but a **check** must not read its own caller's client, or the same node answers
+     * differently depending on who asked, and a client's own content is never examined at boot at all. So
+     * `checkFragments` resolves each variant through here, with the client that variant is for.
+     */
+    fun effectiveFragmentsFor(cxt: KdrCxt, fileId: String, client: String?): EffectiveFragments? {
         val sources = registeredFragmentSources(cxt).filter { it.fileId == fileId }
         if (sources.isEmpty()) {
             return null
         }
         // A client with no overlay of its own merges to the shared content, so it is not given a variant --
         // which is what keeps one cache entry serving everybody who is not being treated differently.
-        val client = cxt.client.takeIf { c -> sources.any { it.client == c } }
-        return effectiveCache.getOrPut("$fileId|${client ?: ""}") {
-            mergeFragmentLayers(fileId, sources, client).also { byBuildId["$fileId|${it.buildId}"] = it }
+        val forClient = client.takeIf { c -> sources.any { it.client == c } }
+        return effectiveCache.getOrPut("$fileId|${forClient ?: ""}") {
+            mergeFragmentLayers(fileId, sources, forClient).also { byBuildId["$fileId|${it.buildId}"] = it }
         }
     }
 

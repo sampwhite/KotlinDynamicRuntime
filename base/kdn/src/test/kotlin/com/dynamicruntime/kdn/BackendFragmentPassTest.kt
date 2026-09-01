@@ -61,8 +61,9 @@ class BackendFragmentPassTest : StringSpec({
     }
 
     "an unguarded backend reference to a missing fragment throws, and a guarded one takes its default" {
-        // No boot check catches this yet (its own follow-up), so it is a render-time failure -- loud rather
-        // than a silently wrong string. `?:` is how an author opts into degrading instead.
+        // A *literal* missing key like this is now a boot finding too (issue #505), so it would not reach a
+        // running node; this pins the runtime behavior that still backstops a **computed** key, which no
+        // static check can resolve -- loud rather than a silently wrong string. `?:` opts into degrading.
         val cxt = Startup.mkTestBootCxt("beMiss", "beMissTest")
         val s = service(cxt)
         shouldThrow<KdrException> { s.backendPass(cxt, """x=%{@t("sample.email.gone")}""") }
