@@ -39,6 +39,19 @@ object UIB {
      */
     const val action = "action"
 
+    /**
+     * The item this one drills down under (issue #517): the value of a sibling's key field, within the same
+     * keyed array. Absent for a top-level item.
+     *
+     * A UiBlock key rather than a menu one, for the same reason as [action]: one item nesting under another is
+     * a general tree shape, not a menu fact -- a workflow's sub-steps under a step are the same construct. The
+     * rules it must obey are enforced at boot by `collectParentIssues`: the named parent must exist in the
+     * array, must itself be top-level (nesting is **one level**, which also catches an item naming itself), and
+     * a parent must carry no [action] of its own, since a parent is drawn as a group header and its action
+     * would otherwise be silently discarded.
+     */
+    const val parentId = "parentId"
+
     /** The spacing convention for [displayOrder]: room for 99 later arrivals between any two items. */
     const val orderStep = 100
 

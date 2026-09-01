@@ -85,6 +85,26 @@ class EnvAuthRulesTest : StringSpec({
         nothing.isEffective shouldBe false
     }
 
+    "the debug cookie is effective only with env auth, and never while suppressed (issue #517)" {
+        val c = config(ENV.local).apply { put(ACFG.trustEnvAuthHeader, true) }
+
+        // Env-authed and the debug cookie set: debug is on.
+        val debug = resolve(c, "sam@gyassa.com", mapOf(ENVA.debugCookie to "1"))
+        debug.isEffective shouldBe true
+        debug.isDebugEffective shouldBe true
+
+        // Suppressed **and** the debug cookie hand-set -- the only bypass a hand-set cookie could try, and one no
+        // op transition produces (suppress clears debug). Env auth is not effective, so debug is inert.
+        val suppressedDebug = resolve(
+            c, "sam@gyassa.com", mapOf(ENVA.suppressCookie to "1", ENVA.debugCookie to "1"),
+        )
+        suppressedDebug.isEffective shouldBe false
+        suppressedDebug.isDebugEffective shouldBe false
+
+        // A debug cookie with no env auth at all grants nothing.
+        resolve(c, null, mapOf(ENVA.debugCookie to "1")).isDebugEffective shouldBe false
+    }
+
     "suppression applies even where the node refuses the assertion, because subtracting is always safe" {
         val untrusted = config(ENV.local).apply { put(ACFG.trustEnvAuthHeader, false) }
         val state = resolve(untrusted, "sam@gyassa.com", mapOf(ENVA.suppressCookie to "1"))

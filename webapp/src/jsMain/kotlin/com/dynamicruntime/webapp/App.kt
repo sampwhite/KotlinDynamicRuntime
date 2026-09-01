@@ -54,6 +54,7 @@ val App = FC<Props> {
     // config, because that config arrives asynchronously and its module cache re-renders nothing on its own.
     var envAuthSuppressible by useState(false)
     var envAuthActing by useState(false)
+    var envAuthDebug by useState(false)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
         onWebAppStale { updateAvailable = true }
@@ -77,6 +78,7 @@ val App = FC<Props> {
             debugAllowed = appConfig().allowDebugPages
             envAuthSuppressible = appConfig().envAuthSuppressible
             envAuthActing = appConfig().isEnvAuthed
+            envAuthDebug = appConfig().envAuthDebug
         }
     }
 
@@ -120,6 +122,7 @@ val App = FC<Props> {
                 AppBar {
                     this.envAuthSuppressible = envAuthSuppressible
                     this.envAuthActing = envAuthActing
+                    this.envAuthDebug = envAuthDebug
                 }
                 div {
                     className = ClassName("app-content")
@@ -131,8 +134,13 @@ val App = FC<Props> {
                     // own, so without this the fallback would survive the navigation it invites you to make, and
                     // every later page would show the earlier page's failure. The key remounts it on a page
                     // change, which is exactly when the failure stops being relevant.
+                    //
+                    // The debug tools are the one place `page` alone is too coarse: they all share `page=debug`
+                    // and differ only by the `tool` hash param (issue #517), so a faulted `tool=fault` would
+                    // otherwise keep showing its fallback after a `back` to the index -- the very outliving this
+                    // key exists to prevent. Folding the tool in remounts the boundary when it changes.
                     ErrorBoundary {
-                        key = page.unsafeCast<Key>()
+                        key = (page + (hashParams()[debugToolParam]?.let { ":$it" } ?: "")).unsafeCast<Key>()
                         fallback = ErrorFallback
                         onError = ::reportRenderFailure
                         when (page) {
@@ -190,7 +198,7 @@ private const val pageForms = HMENU.pageForms
 
 // The debug area (issue #227). Present in the router unconditionally; whether it *renders* is gated on the
 // deployment's `allowDebugPages`, checked at render time where the config is known.
-private const val pageDebug = "debug"
+private const val pageDebug = HMENU.pageDebug
 
 /**
  * Resolves the page from the hash: `page=catalog` (or an endpoint deep-link carrying `m=`) shows the catalog,

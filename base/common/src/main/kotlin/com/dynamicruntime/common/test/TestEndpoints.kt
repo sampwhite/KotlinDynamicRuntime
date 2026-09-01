@@ -194,6 +194,9 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         mapOf(
             APP.isEnvAuthed to (available && !c.envAuthSuppressed),
             APP.envAuthSuppressible to (available && EnvAuthRules.suppressionOffered(c.instanceConfig)),
+            // This fixture does not touch the debug cookie, so debug carries the session's current state
+            // (issue #517).
+            APP.envAuthDebug to (available && !c.envAuthSuppressed && c.envAuthDebug),
         )
     }
 

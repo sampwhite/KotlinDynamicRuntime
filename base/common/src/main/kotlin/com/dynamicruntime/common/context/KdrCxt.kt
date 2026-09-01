@@ -106,8 +106,10 @@ class KdrCxt(
 
     /**
      * Optional debug tag(s) for this request: a validated, comma-separated list of variable names supplied
-     * via the off-contract `_debug` request key. When present it is prefixed onto every log message and can
-     * gate diagnostic behavior (e.g., the sample endpoint's `explainInput`). Carried down to sub contexts.
+     * via the off-contract `_debug` request key -- a query/body param, or the `X-Kdr-Debug` header the app-bar
+     * box rides on every request (issue #517), which the param overrides when both are present. When set it is
+     * prefixed onto every log message and can gate diagnostic behavior (e.g., the sample endpoint's
+     * `explainInput`). Carried down to sub contexts.
      *
      * Test membership with [hasDebug], never `debug.contains(...)`: the latter is a substring match, so a check
      * for `foo` would fire on `_debug=foobar`.
@@ -154,11 +156,26 @@ class KdrCxt(
     var envAuthSuppressed: Boolean = false
 
     /**
+     * Whether this session has turned on **debug behaviors** (issue #517) through the app-level env control --
+     * the debug pages, on-screen error detail, and the diagnostic `_debug` tags, on any deployment. Gated by
+     * [isEnvDebug] on env auth being effective, so this flag alone confers nothing. Set from
+     * `EnvAuthRules.resolve`.
+     */
+    var envAuthDebug: Boolean = false
+
+    /**
      * Whether the request is *acting* env-authed: an edge vouched for it and the session has not suppressed
      * it. **The question anything gating behavior or display should ask** -- reading [envAuthEmail] directly
      * for that purpose would silently ignore a suppression.
      */
     val isEnvAuthEffective: Boolean get() = envAuthEmail != null && !envAuthSuppressed
+
+    /**
+     * Whether **debug behaviors** are in effect for this request (issue #517): env auth is effective *and* the
+     * session opted into debug. The single predicate the debug pages, error-detail, and diagnostic-tag fences
+     * ask, so a debug cookie without env auth -- the "not allowed unless env-authed" rule -- grants nothing.
+     */
+    val isEnvDebug: Boolean get() = isEnvAuthEffective && envAuthDebug
 
     /**
      * The request being processed, or null when this context is not handling one (startup, background
@@ -204,6 +221,11 @@ class KdrCxt(
         sub.schemaStore = schemaStore
         sub.clientFromPath = clientFromPath
         sub.forwardedFor = forwardedFor
+        // The channel's env auth is a fact about the request, so it travels with a sub context of it -- the
+        // acting person (for the log) and whether they are effective / in debug (for gating) alike.
+        sub.envAuthEmail = envAuthEmail
+        sub.envAuthSuppressed = envAuthSuppressed
+        sub.envAuthDebug = envAuthDebug
         sub.debug = debug // debug tags travel with the request
         sub.appId = appId // request identity travels with the request...
         sub.traceId = traceId // ...so a sub context's log lines carry the same trace id
@@ -263,6 +285,17 @@ class KdrCxt(
      * gate diagnostic behavior on a `_debug` tag; use this rather than `debug?.contains(name)`.
      */
     fun hasDebug(name: String): Boolean = debug?.splitComma()?.contains(name) == true
+
+    /**
+     * Whether the diagnostic `_debug` tag [name] is both **requested** ([hasDebug]) and **permitted** on this
+     * request: a test instance, or a session in ENV DEBUG (issue #517). The single fence every diagnostic tag
+     * that surfaces internal detail (`explainAccess`, `explainError`, `explainScope`, `explainInput`) asks, so
+     * they cannot drift -- `_debug` is an off-contract key any caller can send, so a leak-shaped tag must not
+     * answer on an ordinary production request. A plain diagnostic that only echoes the caller's own request may
+     * still use [hasDebug] directly.
+     */
+    fun hasDebugDiagnostic(name: String): Boolean =
+        hasDebug(name) && (instanceConfig.isTestInstance || isEnvDebug)
 
     /** Duration since this context was created, in milliseconds. */
     fun durationMs(): Double = (System.nanoTime() - nanoTime) / 1_000_000.0

@@ -5,6 +5,7 @@ import react.ComponentType
 import react.FC
 import react.Props
 import react.PropsWithChildren
+import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h2
@@ -105,8 +106,25 @@ val ErrorFallback = FC<ErrorFallbackProps> { props ->
         h2 { +"This section could not be displayed" }
         p {
             className = ClassName("subtitle")
-            +("Something went wrong while drawing this page. The rest of the app is still working — use the " +
-                "navigation above to go elsewhere, or reload to try again.")
+            +("Something went wrong while drawing this page. The rest of the app is still working — go back to " +
+                "home, or reload to try again.")
+        }
+        // Actions so a reader is not left reaching for the browser's Back button (issue #517 follow-up). Home
+        // always escapes -- it changes the page, which remounts this boundary -- and works for a deliberate
+        // fault demo too. Reload retries the same page, stripping any fault trigger first so a fault page does
+        // not simply re-fault (see reloadWithoutFault).
+        div {
+            className = ClassName("error-panel-actions")
+            a {
+                className = ClassName("button-link")
+                href = "#"
+                +"Home"
+            }
+            button {
+                className = ClassName("ghost")
+                onClick = { reloadWithoutFault() }
+                +"Reload"
+            }
         }
         detailWhenPermitted(props)
     }

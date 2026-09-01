@@ -199,6 +199,7 @@ class RequestHandler : WebRequest {
             val envAuth = EnvAuthRules.resolve(config, getRequestHeader(ENVA.header), getRequestCookies(), forwardedFor)
             cxt.envAuthEmail = envAuth.email
             cxt.envAuthSuppressed = envAuth.suppressed
+            cxt.envAuthDebug = envAuth.debug
             createdCxt = cxt
             // Read optionally, not through the throwing get(): "this node does not serve endpoints" is a
             // protocol answer about the node (501), not an internal fault, and the accessor's generic throw
@@ -242,18 +243,34 @@ class RequestHandler : WebRequest {
             postData = readMultipartParts()
         }
 
-        // Extract the off-contract `_debug` tag (query or body): <= 40 chars, comma-separated variable names.
-        val debugRaw = (queryParams[EP.debug] ?: postData?.get(EP.debug)) as? String
-        if (debugRaw != null) {
-            if (debugRaw.length > 40) {
-                throw KdrException.mkInput("_debug value exceeds the maximum of 40 characters.")
+        // Extract the off-contract `_debug` tag: at most EP.debugMaxLength chars, comma-separated variable
+        // names. An explicit query/body value overrides the X-Kdr-Debug header, which is the persistent baseline
+        // the app-bar box sends on every request (issue #517, slice 3).
+        val debugFromRequest = (queryParams[EP.debug] ?: postData?.get(EP.debug)) as? String
+        if (debugFromRequest != null) {
+            // An explicit, per-request value: a bad one is the caller's own doing, so it fails loudly.
+            if (debugFromRequest.length > EP.debugMaxLength) {
+                throw KdrException.mkInput("_debug value exceeds the maximum of ${EP.debugMaxLength} characters.")
             }
-            for (name in debugRaw.splitComma()) {
+            for (name in debugFromRequest.splitComma()) {
                 if (!name.isVariableName()) {
                     throw KdrException.mkInput("_debug entry '$name' is not a valid variable name.")
                 }
             }
-            debug = debugRaw
+            debug = debugFromRequest
+        } else {
+            // The header baseline rides on *every* request, so a stale malformed value must not brick the
+            // session -- it is dropped rather than thrown, the way a bad appId/traceId is (issue #105). And its
+            // presence makes the response depend on a header, so a shared cache must key on it: emit `Vary`
+            // whenever the header is present (a query param needs none -- it is already part of the cache key).
+            getRequestHeader(EP.debugHeader)?.let { raw ->
+                addResponseHeader("Vary", EP.debugHeader)
+                // isNotBlank guards the vacuous case: a blank value splits to an empty list, which `all {}`
+                // would pass, leaving whitespace to become the log prefix.
+                if (raw.isNotBlank() && raw.length <= EP.debugMaxLength && raw.splitComma().all(String::isVariableName)) {
+                    debug = raw
+                }
+            }
         }
     }
 
@@ -397,7 +414,10 @@ class RequestHandler : WebRequest {
     private fun errorExtraData(cxt: KdrCxt?, kdrE: KdrException?): Map<String, Any?>? {
         val base = kdrE?.extraData
         val msg = kdrE?.msg
-        if (msg == null || cxt?.hasDebug(explainError) != true) {
+        // Fenced like explainAccess (issue #517): this exposes a fragment's fileId/namespace/key/params, and
+        // `_debug` is an off-contract key anyone can send, so it must not answer on an ordinary production
+        // request -- only a test instance or a session in ENV DEBUG.
+        if (msg == null || cxt?.hasDebugDiagnostic(explainError) != true) {
             return base
         }
         val merged = LinkedHashMap<String, Any?>(base ?: emptyMap())

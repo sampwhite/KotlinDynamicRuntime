@@ -18,13 +18,13 @@ class FrontendActionsTest {
 
     @Test
     fun everyDeclaredActionIsImplemented() {
-        assertEquals(emptyList(), FrontendActions(logout = {}, envLogout = {}, openPath = {}).missing())
+        assertEquals(emptyList(), FrontendActions(logout = {}, envLogout = {}, openPath = {}, setEnvDebug = {}).missing())
     }
 
     @Test
     fun runsTheImplementationAndReportsAnUnknownName() {
         var loggedOut = false
-        val actions = FrontendActions(logout = { loggedOut = true }, envLogout = {}, openPath = {})
+        val actions = FrontendActions(logout = { loggedOut = true }, envLogout = {}, openPath = {}, setEnvDebug = {})
         assertTrue(actions.run("logout", emptyList()))
         assertTrue(loggedOut)
         // False rather than throwing: a name nothing implements must not break the shell it is rendered in.
@@ -35,7 +35,7 @@ class FrontendActionsTest {
     fun envLogoutReceivesItsCallArgumentsWhenBothAreSameOrigin() {
         // The two URLs the edge supplies reach the implementation when they are same-origin paths (issue #486).
         var received: List<String>? = null
-        val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {})
+        val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {}, setEnvDebug = {})
         assertTrue(actions.run("envLogout", listOf("/ea/auth/env/logout", "/ew")))
         assertEquals(listOf("/ea/auth/env/logout", "/ew"), received)
     }
@@ -45,7 +45,7 @@ class FrontendActionsTest {
         // The landing URL reaches a full-window navigation, so an overlaid off-site value would be an open
         // redirect. Authority is not trust: the edge supplies these, but they are still guarded (issue #498).
         var received: List<String>? = null
-        val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {})
+        val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {}, setEnvDebug = {})
 
         // The name is implemented, so run() reports true -- but nothing is handed on.
         assertTrue(actions.run("envLogout", listOf("/ea/auth/env/logout", "//evil.example.com")))
@@ -61,11 +61,29 @@ class FrontendActionsTest {
     }
 
     @Test
+    fun setEnvDebugParsesItsBooleanArgumentFromTheCall() {
+        // The call carries the boolean as a string (issue #517): "true" turns debug on, anything else off, so
+        // the "Debug"/"Turn off debug" menu items reach the same implementation with opposite arguments.
+        var received: Boolean? = null
+        val actions = FrontendActions(logout = {}, envLogout = {}, openPath = {}, setEnvDebug = { received = it })
+
+        assertTrue(actions.run("setEnvDebug", listOf("true")))
+        assertEquals(true, received)
+
+        assertTrue(actions.run("setEnvDebug", listOf("false")))
+        assertEquals(false, received)
+
+        // A missing argument is not "true", so it is treated as off rather than throwing.
+        assertTrue(actions.run("setEnvDebug", emptyList()))
+        assertEquals(false, received)
+    }
+
+    @Test
     fun openPathNavigatesOnlyToAGuardedSameOriginPath() {
         // A menu item's action is data a client may overlay, so every argument that becomes a navigation is
         // dropped unless it is a same-origin path, rather than being followed (issue #493).
         var navigated: String? = null
-        val actions = FrontendActions(logout = {}, envLogout = {}, openPath = { navigated = it })
+        val actions = FrontendActions(logout = {}, envLogout = {}, openPath = { navigated = it }, setEnvDebug = {})
         assertTrue(actions.run("openPath", listOf("/wa")))
         assertEquals("/wa", navigated)
         // An off-site protocol-relative target runs (the name is implemented) but navigates nowhere.

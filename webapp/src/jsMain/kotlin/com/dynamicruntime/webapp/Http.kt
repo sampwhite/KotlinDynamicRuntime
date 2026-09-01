@@ -37,6 +37,68 @@ private fun rootFor(focus: String, fallback: String): String {
 private val apiRoot: String by lazy { rootFor("api", "/kda") }
 private val staticRoot: String by lazy { rootFor("static", "/st") }
 
+/**
+ * The `_debug` request tags an env-debug operator sets in the app bar (issue #517, slice 3), riding the
+ * `X-Kdr-Debug` header on every request the frontend makes -- turning on a diagnostic tag (`explainAccess`,
+ * `explainScope`, ...) without editing URLs. The backend treats the header as a baseline an explicit `_debug`
+ * param can override per request.
+ *
+ * Held in **`sessionStorage`, not `localStorage`**, on purpose: it accompanies the `kdrEnvDebug` session
+ * cookie, which dies with the browser session, so the tags must not outlive the debug state that authorizes
+ * them. It still survives a reload -- what the issue's "hides it but does not erase it" asks -- since a reload
+ * is the same session.
+ */
+private const val debugTagsStorageKey = "kdrDebugTags"
+
+/** The tags currently set, or "" -- read wherever a request is built and wherever the box initializes. */
+fun debugRequestTags(): String = sessionStorageGet(debugTagsStorageKey)?.trim() ?: ""
+
+/** Persist the tags for this session; "" (or blank) clears them so no header is sent. */
+fun setDebugRequestTags(value: String) = sessionStorageSet(debugTagsStorageKey, value.trim())
+
+// `sessionStorage` throws in a private window or when site data is blocked. A debug convenience must never be
+// the thing that breaks a page, so a failure is caught and recovered from -- but it is *reported*, not
+// swallowed (webapp/CLAUDE.md): a quietly missing store is exactly the kind of thing a `[kdr]` console line
+// exists to make visible. The raw `js(...)` accessors let the JS exception reach a Kotlin `try`.
+private fun sessionStorageGet(key: String): String? =
+    try {
+        js("window.sessionStorage.getItem(key)") as? String
+    } catch (e: Throwable) {
+        console.warn("$errorLogPrefix could not read debug tags from sessionStorage: ${e.message}")
+        null
+    }
+
+private fun sessionStorageSet(key: String, value: String) {
+    try {
+        js("window.sessionStorage.setItem(key, value)")
+    } catch (e: Throwable) {
+        console.warn("$errorLogPrefix could not persist debug tags to sessionStorage: ${e.message}")
+    }
+}
+
+/**
+ * Applies the headers every frontend request carries onto [headers]: the app id and a fresh trace id (issue
+ * #105), and -- only while the session is in debug -- the env-debug operator's `_debug` tags (issue #517).
+ *
+ * Shared so a caller that builds its own `fetch` (the endpoint catalog's `SchemaCatalogApi`) sends exactly what
+ * [Http] does, rather than each request path deciding for itself which of these it remembers.
+ *
+ * The debug flag is checked **before** the store is read: an ordinary session never touches `sessionStorage`
+ * on the request path, and the tags are read only when they can actually be sent.
+ *
+ * Returns the fresh trace id it minted, so a caller that reports an error can correlate it (see [Http]).
+ */
+fun applyRequestHeaders(headers: dynamic): String {
+    val traceId = nextTraceId()
+    headers[RID.appIdHeader] = Http.appId
+    headers[RID.traceIdHeader] = traceId
+    if (appConfig().envAuthDebug) {
+        val debugTags = debugRequestTags()
+        if (debugTags.isNotEmpty()) headers[EP.debugHeader] = debugTags
+    }
+    return traceId
+}
+
 /** The API root, for code outside this file that builds its own paths. */
 val apiContextRoot: String get() = apiRoot
 
@@ -152,13 +214,10 @@ object Http {
         init.method = method
         // Same-origin credentials so the session cookie is sent and stored (the API and the app share an origin).
         init.credentials = "same-origin"
-        // Client identity on every call (issue #105): the app id (content selection) and a fresh trace id (so
-        // this call can be followed into the backend log). The backend also accepts these as `_appId`/`_traceId`
-        // params, but the frontend always sends headers.
-        val traceId = nextTraceId()
+        // The identity + diagnostic headers every call carries (issue #105, #517): app id, a fresh trace id,
+        // and the operator's `_debug` tags while in debug. Shared with the catalog's own fetch, so both agree.
         val headers: dynamic = js("({})")
-        headers[RID.appIdHeader] = appId
-        headers[RID.traceIdHeader] = traceId
+        val traceId = applyRequestHeaders(headers)
         init.headers = headers
         if (body != null) {
             headers["Content-Type"] = "application/json"

@@ -35,6 +35,8 @@ fun UiBlockItemsBuilder.menuItem(
     cfactExpression: String? = null,
     /** Where it sorts. Absent lets a base's items take their written order, and an overlay must state it. */
     displayOrder: Int? = null,
+    /** The parent item this drills down under (issue #517); absent for a top-level item. See [UIB.parentId]. */
+    parentId: String? = null,
 ) {
     item {
         set(HFLD.id, id)
@@ -42,5 +44,6 @@ fun UiBlockItemsBuilder.menuItem(
         if (action != null) set(UIB.action, action.toJson())
         if (cfactExpression != null) set(UIB.cfactExpression, cfactExpression)
         if (displayOrder != null) set(UIB.displayOrder, displayOrder)
+        if (parentId != null) set(UIB.parentId, parentId)
     }
 }

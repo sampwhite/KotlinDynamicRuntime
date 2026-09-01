@@ -94,4 +94,56 @@ class UiBlockCheckTest : StringSpec({
         val orphan = uiBlockOverlay("noSuchBlock", origin = "a", client = null) { set("title", "x") }
         uiBlockProblems(listOf(block("isAdmn"), orphan), everywhere(emptySet())).size shouldBe 2
     }
+
+    // --- parenting / drill-down (issue #517) ------------------------------------------------------------
+
+    // A block whose items may name a [UIB.parentId] and/or carry an action -- (id, parentId, action).
+    fun parented(vararg specs: Triple<String, String?, Any?>) =
+        uiBlock(menu, origin = "core", arrayKeys = mapOf("items" to "id")) {
+            items("items") {
+                for ((id, parentId, action) in specs) item {
+                    set("id", id)
+                    if (parentId != null) set(UIB.parentId, parentId)
+                    if (action != null) set(UIB.action, action)
+                }
+            }
+        }
+
+    "a top-level parent with action-bearing children reports nothing" {
+        uiBlockProblems(
+            listOf(
+                parented(
+                    Triple("debug", null, null),
+                    Triple("pages", "debug", "debugPage"),
+                    Triple("off", "debug", listOf(HACT.logout.name)),
+                ),
+            ),
+            everywhere(emptySet()),
+        ).shouldBeEmpty()
+    }
+
+    "a child naming a parent no item declares is reported" {
+        uiBlockProblems(listOf(parented(Triple("pages", "missing", "debugPage"))), everywhere(emptySet()))
+            .single() shouldContain "which no item in that array declares"
+    }
+
+    "an item naming itself as its parent is reported" {
+        uiBlockProblems(listOf(parented(Triple("loop", "loop", null))), everywhere(emptySet()))
+            .single() shouldContain "names itself as its parent"
+    }
+
+    "a second nesting level is refused -- nesting is one level" {
+        uiBlockProblems(
+            listOf(parented(Triple("a", null, null), Triple("b", "a", null), Triple("c", "b", null))),
+            everywhere(emptySet()),
+        ).single() shouldContain "Nesting is one level"
+    }
+
+    "a parent that also carries its own action is refused" {
+        // The silent failure this catches (the render draws a parent as a header): its route would vanish.
+        uiBlockProblems(
+            listOf(parented(Triple("reports", null, "reportsPage"), Triple("weekly", "reports", "weeklyPage"))),
+            everywhere(emptySet()),
+        ).single() shouldContain "has children and its own action"
+    }
 })

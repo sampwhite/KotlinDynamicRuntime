@@ -232,6 +232,57 @@ class SchemaEndpointsTest : StringSpec({
         shown intersect hidden shouldBe emptySet()
     }
 
+    "the X-Kdr-Debug header carries the tag the same as the _debug param (issue #517, slice 3)" {
+        val cxt = Startup.mkTestBootCxt("schemaExplainHdr", "schemaExplainHdrTest", mapOf(ACFG.assumeEnvAuth to true))
+        val client = TestUser.create(cxt, "explain-hdr@other.com").client
+        client.setHeader(EP.debugHeader, SS.explainAccess)
+
+        // No `_debug` param anywhere -- the tag rode in on the header, which is the app-bar box's channel.
+        val resp = client.sendJsonGetRequest("/schema/endpoints")
+        resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe true
+    }
+
+    "an explicit _debug param overrides the header for that request" {
+        val cxt = Startup.mkTestBootCxt("schemaExplainOver", "schemaExplainOverTest", mapOf(ACFG.assumeEnvAuth to true))
+        val client = TestUser.create(cxt, "explain-over@other.com").client
+        client.setHeader(EP.debugHeader, SS.explainAccess)
+
+        // The param names a different tag, so the header's explainAccess does not apply: the per-request value
+        // wins over the persistent baseline. (`explainInput` is a valid tag name; /schema/endpoints ignores it.)
+        val resp = client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainInput))
+        resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe false
+    }
+
+    "a malformed or blank X-Kdr-Debug header is dropped, not fatal, and the request is served normally" {
+        val cxt = Startup.mkTestBootCxt("schemaHdrBad", "schemaHdrBadTest", mapOf(ACFG.assumeEnvAuth to true))
+        // Each bad shape a header can take: over the length cap, a non-variable-name, and blank (the vacuous
+        // `all {}` case). None throws -- unlike an explicit param -- and none turns the tag on.
+        for (bad in listOf("x".repeat(EP.debugMaxLength + 1), "not a name!", "   ")) {
+            val client = TestUser.create(cxt, "hdr-bad-${bad.hashCode()}@other.com").client
+            client.setHeader(EP.debugHeader, bad)
+            val resp = client.sendJsonGetRequest("/schema/endpoints")
+            // Served (endpoints came back), and the diagnostic did not fire.
+            catalogEndpoints(resp).map { it[EI.path] } shouldContain "/health"
+            resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe false
+        }
+    }
+
+    "the header tag is fenced on an instance that is not a test instance" {
+        // The same fence as the param (issue #215): a real node must not answer explainAccess however it is
+        // asked -- header or query. Env-authed so the caller still sees the whole catalog.
+        val cxt = Startup.mkTestBootCxt(
+            "schemaHdrProd", "schemaHdrProdTest",
+            mapOf(ACFG.isTestInstance to false, ACFG.assumeEnvAuth to true),
+        )
+        cxt.instanceConfig.isTestInstance shouldBe false // guard the premise
+        val client = TestUser.create(cxt, "hdr-prod@other.com").client
+        client.setHeader(EP.debugHeader, SS.explainAccess)
+
+        val resp = client.sendJsonGetRequest("/schema/endpoints")
+        resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe false
+        catalogEndpoints(resp).map { it[EI.path] } shouldContain "/health"
+    }
+
     "explainAccess says nothing unless it is asked for" {
         val cxt = Startup.mkTestBootCxt("schemaNoExplain", "schemaExplainTest", mapOf(ACFG.assumeEnvAuth to true))
         val resp = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest("/schema/endpoints")

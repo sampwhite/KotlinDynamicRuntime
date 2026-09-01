@@ -8,6 +8,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.a
@@ -66,17 +67,20 @@ fun shouldFailShell(): Boolean =
     appConfig().allowDebugPages && hashParams()[shellFaultParam] == shellFaultValue
 
 /**
- * Reloads with any fault parameter stripped, which is what the shell fallback's reload does.
+ * Reloads with any fault trigger stripped, which is what both fallbacks' reload does.
  *
- * The shell fallback is the one fallback a debug fault can put on screen, and a plain reload would re-read the
- * URL that caused the failure -- offering an action that cannot work, forever. Stripping first makes the
- * offer honest.
+ * A fallback that a debug fault put on screen is the one place a plain reload would re-read the URL that caused
+ * the failure -- offering an action that cannot work, forever. Stripping first makes the offer honest. Both
+ * triggers are removed: the shell fault (`fault=shell`) and the page fault (`tool=fault`). Other `tool=` values
+ * (App state, Fragment pull) are kept, so reloading one of those retries the same tool.
  */
 fun reloadWithoutFault() {
     js(
         """
         var hash = window.location.hash.replace(/^#/, '');
-        var kept = hash.split('&').filter(function (p) { return p.indexOf('fault=') !== 0; }).join('&');
+        var kept = hash.split('&').filter(function (p) {
+            return p.indexOf('fault=') !== 0 && p !== 'tool=fault';
+        }).join('&');
         // replaceState rewrites the address WITHOUT navigating, so the reload below re-reads the cleaned URL.
         // location.replace() would not do: a change of hash alone is not a navigation, so the reload that
         // followed it re-read the original address and faulted straight back -- observed, not theorised.
@@ -96,7 +100,10 @@ val DebugPage = FC<Props> {
     when (hashParams()[debugToolParam]) {
         debugToolFault -> DebugFault {}
         debugToolState -> DebugState {}
-        debugToolFragment -> DebugFragment {}
+        // The fragment demo calls a `forTestingOnly` fixture endpoint that a real deployment does not register,
+        // so it works only on a test instance -- offer it nowhere else, even to an env-debug operator who can
+        // reach this page (issue #517). A hand-typed URL falls back to the index rather than a guaranteed error.
+        debugToolFragment -> if (appConfig().isTestInstance) DebugFragment {} else DebugIndex {}
         else -> DebugIndex {}
     }
 }
@@ -112,6 +119,7 @@ val DebugIndex = FC<Props> {
                 "permits it — on a real deployment the route resolves to the home page instead.")
         }
         ul {
+            className = ClassName("debug-index")
             li {
                 a {
                     href = "#page=debug&$debugToolParam=$debugToolState"
@@ -126,13 +134,18 @@ val DebugIndex = FC<Props> {
                 }
                 +" — throws while rendering, so the page error boundary is seen to catch."
             }
-            li {
-                a {
-                    href = "#page=debug&$debugToolParam=$debugToolFragment"
-                    +"Fragment pull"
+            // Offered only on a genuine test instance: it demos a forTestingOnly fixture endpoint absent from a
+            // real deployment, so an env-debug operator who reaches this page is not shown a tool that can only
+            // fail (issue #517).
+            if (appConfig().isTestInstance) {
+                li {
+                    a {
+                        href = "#page=debug&$debugToolParam=$debugToolFragment"
+                        +"Fragment pull"
+                    }
+                    +(" — renders a server-provided content element whose text pulls a fragment, resolved on the " +
+                        "frontend (issue #505).")
                 }
-                +(" — renders a server-provided content element whose text pulls a fragment, resolved on the " +
-                    "frontend (issue #505).")
             }
             li {
                 a {
@@ -142,6 +155,19 @@ val DebugIndex = FC<Props> {
                 +" — throws in the app bar, so the backstop boundary is seen to catch."
             }
         }
+    }
+}
+
+/**
+ * A link back to the debug index, shown atop each tool page so there is always a way back to the listing
+ * without relying on the browser's back button (issue #517 follow-up). Routes to `#page=debug` with no tool,
+ * which [DebugPage] dispatches to [DebugIndex].
+ */
+private fun ChildrenBuilder.debugBackLink() {
+    a {
+        className = ClassName("debug-back")
+        href = "#page=debug"
+        +"← Debug"
     }
 }
 
@@ -168,6 +194,7 @@ val DebugState = FC<Props> {
     val generation = useRefreshGeneration()
     div {
         className = ClassName("card wide")
+        debugBackLink()
         h1 { +"App state" }
         h2 { +"Resolved app config" }
         pre {
@@ -177,6 +204,9 @@ val DebugState = FC<Props> {
                 "idleBumpIntervalMs" to config.idleBumpIntervalMs,
                 "showErrorDetail" to config.showErrorDetail,
                 "allowDebugPages" to config.allowDebugPages,
+                "isTestInstance" to config.isTestInstance,
+                "isEnvAuthed" to config.isEnvAuthed,
+                "envAuthDebug" to config.envAuthDebug,
             ).toJsonStr()
         }
         h2 { +"Refresh generation" }
@@ -236,6 +266,7 @@ val DebugFragment = FC<Props> {
 
     div {
         className = ClassName("card wide")
+        debugBackLink()
         h1 { +"Fragment pull" }
         p {
             className = ClassName("subtitle")

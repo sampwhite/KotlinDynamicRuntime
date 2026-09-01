@@ -37,6 +37,12 @@ object CFACTS {
 
     /** The caller may reach the `clientOperator` section -- operator level, confined to their own scope (#488). */
     const val isClientOperator = "isClientOperator"
+
+    /** The session is in ENV DEBUG (issue #517): env auth effective, and debug behaviors on. */
+    const val isEnvDebug = "isEnvDebug"
+
+    /** The session may **turn debug on**: env auth is effective and debug is not already on (issue #517). */
+    const val canEnableDebug = "canEnableDebug"
 }
 
 /**
@@ -160,4 +166,23 @@ fun addCoreCFacts(collector: SchemaCollector) {
                 "`/admin` section, which takes the `allClients` capability too.",
         ),
     ) { RoleLadder.satisfies(it.userProfile.roles, ROLE.admin) }
+
+    // The env-debug pair (issue #517), read off the context so the menu offer and the fence cannot drift: the
+    // debug items appear exactly where `KdrCxt.isEnvDebug` is true, and the "Enable debug" item exactly where a
+    // session could turn it on. Two positive facts rather than one plus a `~`, the convention `anonymous`
+    // follows -- an expression by exclusion admits every state invented later.
+    collector.addCFact(
+        CFactDef(
+            CFACTS.isEnvDebug, CFGRP.caller,
+            "True when the session is in ENV DEBUG (issue #517): env auth is effective and it turned debug on. " +
+                "The debug menu items are offered on it.",
+        ),
+    ) { it.isEnvDebug }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.canEnableDebug, CFGRP.caller,
+            "True when the session may **turn debug on** (issue #517): env auth is effective and debug is not " +
+                "already on -- so the 'Enable debug' item is offered exactly to a session that could act on it.",
+        ),
+    ) { it.isEnvAuthEffective && !it.isEnvDebug }
 }
