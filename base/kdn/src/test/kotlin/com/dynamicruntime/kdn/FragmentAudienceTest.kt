@@ -1,7 +1,9 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.FCHK
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentAudience
+import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.content.fragmentRefs
@@ -14,6 +16,7 @@ import com.dynamicruntime.common.util.jsonMap
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -145,6 +148,95 @@ class FragmentAudienceTest : StringSpec({
         val ex = shouldThrow<KdrException> { service(cxt).checkFragmentsAtStartup(cxt) }
         (ex.message ?: "") shouldContain "audBoth"
         (ex.message ?: "") shouldContain "no longer delivered"
+    }
+
+    "a conflict a client alone has is reported on that client's row" {
+        // The shared content is consistent, and only this client's own base disagrees -- so the file goes
+        // private *for them alone*, and nothing on the shared row can say so. Suppressing the flag by
+        // `client == null` would swallow exactly that.
+        //
+        // Built with FragmentSource directly because no builder can currently produce a client-scoped base:
+        // `GedraConfigBuilder.fragmentOverlay` is the only thing that sets a client and it cannot set
+        // `isOverlay`. `mergeFragmentLayers` admits one regardless (it filters by client before splitting bases
+        // from overlays), so this guards the day such a builder is added.
+        val cxt = Startup.mkTestBootCxt("audClientConf", "audClientConfTest")
+        val sharedBase = FragmentSource("audCli", isOverlay = false, client = null, origin = "componentA") {
+            mapOf("welcome" to mapOf("title" to "Public copy"))
+        }
+        val acmeBase = FragmentSource(
+            "audCli", isOverlay = false, client = "acme", origin = "acmeConfig", audience = FragmentAudience.backend,
+        ) {
+            mapOf("email" to mapOf("subject" to "Acme private"))
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(sharedBase, acmeBase))
+
+        val rows = service(cxt).checkFragments(cxt)
+        // The shared content has one consistent base, so it is clean and frontend...
+        val shared = rows.single { it.client == null }
+        shared.audienceConflict shouldBe false
+        shared.audience shouldBe FragmentAudience.frontend
+        // ...while acme's variant is in conflict, and says so on its own row.
+        val acme = rows.single { it.client == "acme" }
+        acme.audienceConflict shouldBe true
+        acme.audience shouldBe FragmentAudience.backend
+
+        val ex = shouldThrow<KdrException> { service(cxt).checkFragmentsAtStartup(cxt) }
+        ex.message.orEmpty() shouldContain "client 'acme'"
+    }
+
+    "a conflict the shared content already has is not repeated per client" {
+        // The other half: the suppression still does its original job. The conflict is in the shared bases, so
+        // every client inherits it -- reporting it per row would say one thing N times, and a boot refusal
+        // listing it three times reads as three broken files.
+        val cxt = Startup.mkTestBootCxt("audDupConf", "audDupConfTest")
+        val frontBase = FragmentSource("audCli", isOverlay = false, client = null, origin = "componentA") {
+            mapOf("welcome" to mapOf("title" to "Public"))
+        }
+        val backBase = FragmentSource(
+            "audCli", isOverlay = false, client = null, origin = "componentB", audience = FragmentAudience.backend,
+        ) {
+            mapOf("email" to mapOf("subject" to "Private"))
+        }
+        val acmeOverlay = FragmentSource("audCli", isOverlay = true, client = "acme", origin = "acmeConfig") {
+            mapOf("welcome" to mapOf("title" to "Acme"))
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(frontBase, backBase, acmeOverlay))
+
+        val rows = service(cxt).checkFragments(cxt)
+        rows.single { it.client == null }.audienceConflict shouldBe true
+        rows.single { it.client == "acme" }.audienceConflict shouldBe false
+        // Said once, not once per variant.
+        rows.count { it.audienceConflict } shouldBe 1
+    }
+
+    // --- the finding count ------------------------------------------------------------------------------
+
+    "issueCount counts every kind of finding, not just template issues" {
+        // The 'is this file clean?' column. A file a strict boot refuses on must never report 0 here -- which
+        // is exactly what it did while the count was `issues.size`.
+        val cxt = Startup.mkTestBootCxt("audCount", "audCountTest")
+        val front = fragmentInline("audFront", origin = "test", isOverlay = false) {
+            namespace("welcome") { key("title", $$"""Hi %{@t("other.ns.key")}""") }
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(front))
+
+        val row = service(cxt).checkFragments(cxt).single { it.client == null }
+        row.issues.shouldBeEmpty()          // no *template* problem...
+        row.audienceIssues.size shouldBe 1  // ...but an audience violation...
+        row.findingCount shouldBe 1         // ...which the count must include.
+        row.toJsonMap()[FCHK.issueCount] shouldBe 1
+    }
+
+    "a note is not counted as a finding" {
+        val cxt = Startup.mkTestBootCxt("audCount2", "audCount2Test")
+        val back = fragmentInline("audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
+            namespace("email") { key("subject", $$"""Hello ${@t("greeting.hello")}""") }
+        }
+        cxt.instanceConfig.put(FRAG.registryKey, listOf(back))
+
+        val row = service(cxt).checkFragments(cxt).single { it.client == null }
+        row.notes.size shouldBe 1
+        row.findingCount shouldBe 0   // nothing here refuses a boot
     }
 
     "a UI-config naming a backend file fails saying why, not 'not available'" {

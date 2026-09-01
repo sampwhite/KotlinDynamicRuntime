@@ -171,6 +171,18 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             } else {
                 listOf<String?>(null) + forFile.mapNotNull { it.client }.distinct()
             }
+            // Whether the content everybody shares is already in conflict. A client row repeats that same fact,
+            // and a boot refusal saying it once per client reads as several broken files -- so a client row
+            // reports the conflict only when it is that client's *own*, i.e. not already said on the shared row.
+            //
+            // Scoped to the duplicate rather than to `client == null`, which is what it looks like it should be.
+            // Client layers are all overlays today (only `GedraConfigBuilder.fragmentOverlay` sets a client, and
+            // it cannot set `isOverlay`), so no client can currently declare a base and no client-only conflict
+            // can arise. But `mergeFragmentLayers` does admit a client-scoped base -- it filters by client
+            // before splitting bases from overlays -- so the day a client base becomes declarable, suppressing
+            // by client would silently swallow exactly the case this check exists for: a file going private for
+            // one client, with their UI-config failing and nothing at boot saying why.
+            val sharedConflict = mergeFragmentLayers(fileId, forFile, null).audienceConflict
             clients.map { client ->
                 val merged = mergeFragmentLayers(fileId, forFile, client)
                 val findings = variantFindings(cxt, merged, data)
@@ -180,10 +192,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                     entries = findings.entries,
                     orphans = merged.orphans,
                     audience = merged.audience,
-                    // On the shared row only: the conflict is a fact about the file's **bases**, which belong
-                    // to no client, so reporting it per variant would say one thing three times -- and a boot
-                    // refusal listing it three times reads as three broken files.
-                    audienceConflict = merged.audienceConflict && client == null,
+                    audienceConflict = merged.audienceConflict && !(client != null && sharedConflict),
                     audienceIssues = findings.audienceIssues,
                     notes = findings.notes,
                 )
@@ -613,7 +622,14 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 property(FCHK.found, "Whether the declared file was actually present.", required = true) {
                     type = SCT.boolean
                 }
-                property(FCHK.issueCount, "How many problems were found in it.", required = true) {
+                property(
+                    FCHK.issueCount,
+                    "How many findings this file has, across every kind: template issues, orphaned overlay " +
+                        "keys, audience violations, and an audience conflict. This is the 'is it clean?' " +
+                        "column, so it counts everything a strict boot would refuse to start on -- but not " +
+                        "'notes', which are never findings.",
+                    required = true,
+                ) {
                     type = SCT.integer
                 }
                 property(FCHK.issues, "The problems, each with its position in the file.", required = true) {
@@ -731,6 +747,18 @@ class FragmentCheckResult(
      */
     val notes: List<String>,
 ) : JsonMappable {
+    /**
+     * How many **findings** this variant has -- everything a strict boot would refuse to start on, across all
+     * of them: [issues], [orphans], [audienceIssues], and [audienceConflict] (which counts as one).
+     *
+     * Deliberately not `issues.size`. The counted column is what a reader scans to answer "is this file clean?",
+     * and a count covering only the *template* problems answers that question wrongly for a file broken in any
+     * of the other ways -- reporting 0 for a file the boot refuses on. [notes] are excluded, because they are
+     * explicitly not findings: nothing refuses a boot over one.
+     */
+    val findingCount: Int =
+        issues.size + orphans.size + audienceIssues.size + (if (audienceConflict) 1 else 0)
+
     override fun toJsonMap(): Map<String, Any?> {
         // An explicit map rather than `buildMap`: inside that block the receiver is a MutableMap, whose own
         // `entries` shadows this class's -- so `entries.map { ... }` silently means the wrong thing.
@@ -740,7 +768,9 @@ class FragmentCheckResult(
         // and a column of nulls is how a reader stops noticing the rows that do have one.
         if (client != null) out[FCHK.client] = client
         out[FCHK.found] = found
-        out[FCHK.issueCount] = issues.size
+        // Every finding, not just the template ones -- see [findingCount]. A reader scanning this column for
+        // "is this file clean?" must not be told 0 about a file a strict boot would refuse to start on.
+        out[FCHK.issueCount] = findingCount
         out[FCHK.issues] = issues.map { it.toJsonMap() }
         out[FCHK.entries] = entries.map { it.toJsonMap() }
         out[FCHK.orphans] = orphans

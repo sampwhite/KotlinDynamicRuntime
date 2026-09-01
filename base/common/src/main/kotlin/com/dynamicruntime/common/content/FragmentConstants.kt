@@ -63,6 +63,8 @@ object FCHK {
     const val notes = "notes"
 
     const val found = "found"
+
+    /** Findings of every kind, not just template [issues] -- see `FragmentCheckResult.findingCount`. */
     const val issueCount = "issueCount"
     const val issues = "issues"
 
