@@ -139,6 +139,14 @@ class KdrEndpoint(
      * section gate is what decides who may read it either way.
      */
     val clientShaped: Boolean = false,
+    /**
+     * (List endpoints only.) Whether the output declares `hasMore` / `numAvailable`, so the executor knows to
+     * populate them (issue #499). For a handler that returns a plain `List` the executor fills them from the
+     * uncapped size; a [ListPage] supplies its own. `numAvailable` defaults **on** when the endpoint has a
+     * `limit` (see `listEndpoint`), which is the paging total a trimmed listing should report.
+     */
+    val hasMore: Boolean = false,
+    val hasNumAvailable: Boolean = false,
 ) {
     init {
         if (inputFields != null && inputTypeRef != null) {
@@ -322,7 +330,14 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         inputRef: String? = null,
         inputFields: (InputFieldsBuilder.() -> Unit)? = null,
         hasMore: Boolean = false,
-        hasNumAvailable: Boolean = false,
+        /**
+         * Whether to report `numAvailable` -- the total across the whole scoped set, of which this page is a
+         * trimmed part (issue #499). Null (the default) resolves to **on whenever the endpoint has a `limit`**
+         * (`!noLimit`): a listing that trims should say how many there are. A handler that cannot know the total
+         * -- it pages a source that does not count -- passes `false`. When on, the executor fills the field from
+         * a plain `List` handler's uncapped size, or from a [ListPage]'s own `numAvailable`.
+         */
+        hasNumAvailable: Boolean? = null,
         noLimit: Boolean = false,
         forTestingOnly: Boolean = false,
         /** Part of the published API (issue #433). Advertisement, never access -- see [KdrEndpoint.publicApi]. */
@@ -339,11 +354,14 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         clientShaped: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
-        val output = listOutput(outputRef, hasMore, hasNumAvailable)
+        // Default numAvailable on when there is a `limit` to trim by; a caller can still force it either way.
+        val reportsNumAvailable = hasNumAvailable ?: !noLimit
+        val output = listOutput(outputRef, hasMore, reportsNumAvailable)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output,
-                forTestingOnly, handler, publicApi = publicApi, tags = tags, clientShaped = clientShaped),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags, clientShaped = clientShaped,
+                hasMore = hasMore, hasNumAvailable = reportsNumAvailable),
         )
     }
 

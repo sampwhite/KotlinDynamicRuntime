@@ -664,25 +664,26 @@ class RequestService : ServiceInitializer {
             }
             EndpointKind.list -> {
                 // A handler that paged itself returns a ListPage: its items are the page as-is (already limited),
-                // and it carries the hasMore / numAvailable its output type declared. A plain List is the
-                // unpaged case, capped here at `limit` as a backstop for a handler that returned more.
+                // and it carries an authoritative hasMore / numAvailable. A plain List is the whole scoped set,
+                // which the executor trims here to `limit` -- and can then report the paging metadata *for* the
+                // handler, since it still holds the untrimmed list (issue #499, retiring the old TODO here).
                 val page = inner as? ListPage
-                val limited: List<*> = if (page != null) {
-                    page.items
-                } else {
-                    val list = (inner as? List<*>) ?: emptyList<Any?>()
-                    val limit = (requestData[EP.limit] as? Number)?.toInt()
-                    if (limit != null && list.size > limit) list.subList(0, limit) else list
-                }
+                val full = (inner as? List<*>) ?: emptyList<Any?>()
+                val limit = (requestData[EP.limit] as? Number)?.toInt()
+                val trimmed = limit != null && page == null && full.size > limit
+                val limited: List<*> = if (page != null) page.items else if (trimmed) full.subList(0, limit!!) else full
                 env[EP.numItems] = limited.size
                 env[EP.requestUri] = handler.logRequestUri
                 env[EP.duration] = cxt.durationMs()
                 env[EP.items] = limited
-                // Paging metadata only when the handler reported it; an endpoint that declared these fields is
-                // held to supplying them by the response validator, and one that did not must not carry them.
-                if (page != null) {
-                    env[EP.hasMore] = page.hasMore
-                    env[EP.numAvailable] = page.numAvailable
+                // Paging metadata only for a field the output actually declares -- the validator holds an
+                // endpoint that declared one to supplying it, and one that did not must not carry it. A ListPage
+                // gives the values; a plain List's total is its untrimmed size, and "more" is whether it trimmed.
+                if (endpoint.hasNumAvailable) {
+                    env[EP.numAvailable] = page?.numAvailable ?: full.size
+                }
+                if (endpoint.hasMore) {
+                    env[EP.hasMore] = page?.hasMore ?: trimmed
                 }
                 limited
             }

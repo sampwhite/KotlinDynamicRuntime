@@ -124,10 +124,10 @@ class ClientScopedAdminTest : StringSpec({
         // The context a script boots with: the system profile, holding no roles.
         val systemCxt = KdrCxt("scriptCase", cxt.instanceConfig, null)
         ReadScopeRules.forCaller(systemCxt).isUnrestricted shouldBe false
-        users(cxt).listUsers(systemCxt, null, 50, ReadScopeRules.forCaller(systemCxt)).isEmpty() shouldBe true
+        users(cxt).listUsers(systemCxt, null, 50, ReadScopeRules.forCaller(systemCxt)).rows.isEmpty() shouldBe true
 
         // Stated explicitly, the same call reaches the row -- what `--list` depends on.
-        users(cxt).listUsers(systemCxt, null, 50, ReadScope.unrestricted)
+        users(cxt).listUsers(systemCxt, null, 50, ReadScope.unrestricted).rows
             .map { it.primaryId } shouldContain "script-visible@acme.com"
     }
 
@@ -481,7 +481,7 @@ class ClientScopedAdminTest : StringSpec({
         seedUserInClient(cxt, "insider@example.com", CL.public)
         seedUserInClient(cxt, "outsider@acme.com", otherClient)
 
-        fun addresses(scope: ReadScope) = service.listUsers(cxt, null, 100, scope).map { it.primaryId }
+        fun addresses(scope: ReadScope) = service.listUsers(cxt, null, 100, scope).rows.map { it.primaryId }
 
         // Both rows exist; the scope is the only difference between the two answers.
         addresses(ReadScope.unrestricted).containsAll(
@@ -499,9 +499,9 @@ class ClientScopedAdminTest : StringSpec({
         seedUserInClient(cxt, "hidden@acme.com", otherClient)
 
         // The exact address of a user in another client still finds nothing...
-        service.listUsers(cxt, "hidden@acme.com", 100, ReadScope.ofClient(CL.public)).isEmpty() shouldBe true
+        service.listUsers(cxt, "hidden@acme.com", 100, ReadScope.ofClient(CL.public)).rows.isEmpty() shouldBe true
         // ...while the same term unrestricted finds them, so the emptiness is the scope and not the search.
-        service.listUsers(cxt, "hidden@acme.com", 100, ReadScope.unrestricted).size shouldBe 1
+        service.listUsers(cxt, "hidden@acme.com", 100, ReadScope.unrestricted).rows.size shouldBe 1
     }
 
     /**
@@ -522,7 +522,7 @@ class ClientScopedAdminTest : StringSpec({
         entity.name = "Umbrella Logistics"
         service.updateUser(cxt, entity)
 
-        fun emails(term: String) = service.listUsers(cxt, term, 100, ReadScope.unrestricted).map { it.primaryId }
+        fun emails(term: String) = service.listUsers(cxt, term, 100, ReadScope.unrestricted).rows.map { it.primaryId }
 
         // A substring of the business name finds the entity, and only the entity...
         emails("umbrella") shouldBe listOf("contact@example.com")

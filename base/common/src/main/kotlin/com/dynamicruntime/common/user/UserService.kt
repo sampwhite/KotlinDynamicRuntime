@@ -136,20 +136,28 @@ class UserService : ServiceInitializer {
     }
 
     /**
-     * Lists `AuthUsers` rows for the admin console, newest first, capped at [limit]. A non-blank [search] is a
-     * case-insensitive substring match against `primaryId`, `username`, **or** the account's `name` (a
-     * person's full name or a business's).
+     * A page of admin user rows plus the total across the whole scope-matched set (issue #499): [rows] is the
+     * page (already trimmed to the requested limit), [numAvailable] the count the caller reports so a truncated
+     * listing can say how many there are.
+     */
+    class UserPage(val rows: List<AuthUserRow>, val numAvailable: Int)
+
+    /**
+     * Lists `AuthUsers` rows for the admin console, newest first, trimmed to [limit] with the whole-set total in
+     * [UserPage.numAvailable] (issue #499). A non-blank [search] is a case-insensitive substring match against
+     * `primaryId`, `username`, **or** the account's `name` (a person's full name or a business's).
      *
      * The match is applied in Kotlin after extraction, not in SQL, because `name` lives in `authUserData`
-     * -- the same JSON blob as `org`, and unqueryable in SQL for the same reason (see the org note below). The
-     * query carries no SQL `LIMIT` anyway; the cap is `.take(limit)` here, and the newest-first default view
-     * already selects every scoped row, so evaluating the term in Kotlin only lifts a typed search to that same
-     * baseline rather than introducing a new full scan.
+     * -- the same JSON blob as `org`, and unqueryable in SQL for the same reason (see the org note below).
      *
-     * The filter is applied in SQL (not by loading the table and filtering in Kotlin), so the cap is a real one:
-     * a deployment's user table is the one table guaranteed to outgrow any page size. `lower(...) like ?` will
-     * not use the plain unique indexes, which is acceptable for an admin-only, human-paced screen; a
-     * case-insensitive index is the fix if it ever matters.
+     * **The total costs an extraction only when a post-query filter is active.** `org` and `search` are the two
+     * filters applied in Kotlin; when neither narrows -- no search term, and a scope that does not pin an `org`
+     * -- the SQL result *is* the scoped set, so the total is its row count and only the page is extracted. With
+     * a filter, every matching row must be extracted to count it, which is the price of a true total on a
+     * deployment's largest table; the endpoint still maps only the page it keeps.
+     *
+     * `lower(...) like ?` would not use the plain unique indexes, which is acceptable for an admin-only,
+     * human-paced screen; a case-insensitive index is the fix if it ever matters.
      *
      * [scope] is **required, with no default** (issue #225). It defaulted to
      * [ReadScope.unrestricted], which is the fail-open shape this whole seam exists to remove: forgetting the
@@ -162,7 +170,7 @@ class UserService : ServiceInitializer {
         search: String?,
         limit: Int,
         scope: ReadScope,
-    ): List<AuthUserRow> {
+    ): UserPage {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUsersTable(cxt)
         val term = search?.trim()?.lowercase()?.ifEmpty { null }
@@ -196,17 +204,22 @@ class UserService : ServiceInitializer {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
         }
         // The organization is the one part of the scope that cannot be a predicate: a user's is held in
-        // `authUserData`, and querying inside a JSON blob is PostgreSQL-specific and absent from H2. So it is
-        // applied here, after extraction -- which is also why `limit` is taken *after* the filter rather than
-        // in SQL: capping first would return short pages made of rows the caller may not see. The cap
-        // therefore costs more rows read than returned under an org scope; acceptable on a human-paced admin
-        // screen, and the reason content gets a real column instead.
-        return rows.asSequence()
-            .map { AuthUserRow.extract(it) }
+        // `authUserData`, and querying inside a JSON blob is PostgreSQL-specific and absent from H2. So org (and
+        // the name-matching search) are applied here, after extraction.
+        //
+        // When neither post-query filter narrows -- no search term, and a scope that pins no org (admitsOrg is
+        // then always true) -- the SQL rows already *are* the scoped set: the total is their count, and only the
+        // page is extracted rather than the whole (possibly enormous) table. With a filter, every matching row
+        // must be extracted to count it -- the price of a true total.
+        val extracted = rows.asSequence().map { AuthUserRow.extract(it) }
+        if (term == null && scope.org == null) {
+            return UserPage(extracted.take(limit).toList(), rows.size)
+        }
+        val matched = extracted
             .filter { scope.admitsOrg(it.org) }
             .filter { term == null || it.matchesSearch(term) }
-            .take(limit)
             .toList()
+        return UserPage(matched.take(limit), matched.size)
     }
 
     /**
