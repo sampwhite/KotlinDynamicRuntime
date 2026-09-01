@@ -31,7 +31,7 @@ private val envScope = MainScope()
  */
 val EnvReferencePage = FC<Props> {
     var markdown by useState<String?>(null)
-    var error by useState<String?>(null)
+    var error by useState<DisplayError?>(null)
     val generation = useRefreshGeneration()
 
     useEffect(generation) {
@@ -40,7 +40,7 @@ val EnvReferencePage = FC<Props> {
                 markdown = EnvReferenceApi.fetch()
                 error = null
             } catch (e: Throwable) {
-                error = "Could not load the environment reference. (${e.message})"
+                error = userFacingError(e)
             }
         }
     }
@@ -50,10 +50,7 @@ val EnvReferencePage = FC<Props> {
         main {
             className = ClassName("home-main")
             when {
-                error != null -> p {
-                    className = ClassName("error-text")
-                    +error!!
-                }
+                error != null -> errorText("Couldn't load the environment reference.", error!!)
                 markdown == null -> p {
                     className = ClassName("subtitle")
                     +"Loading…"

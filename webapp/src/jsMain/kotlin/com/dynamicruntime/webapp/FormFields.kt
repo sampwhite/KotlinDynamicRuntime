@@ -77,16 +77,30 @@ fun ChildrenBuilder.textField(
 }
 
 /**
- * Renders a [DisplayError] the way every widget-group shows one (issue #111): designed, fragment-sourced copy
- * is Markdown-rendered (the backend sanitizes it), while a raw/internal message is shown as plain text under a
- * distinct class so it never passes for designed copy.
+ * Renders a [DisplayError] the way every widget-group shows one (issues #111, #519): designed copy is
+ * Markdown-rendered (the backend sanitizes it); a real backend `message` is plain text under the ordinary error
+ * style, so it reads as a legible failure rather than a crash; and a raw `fault` (a dev-only internal detail) is
+ * plain text set apart in the boxed/monospaced style so it never passes for designed copy.
  *
- * Shared rather than repeated per group: the whole point of the internal/expected split is that the two look
- * different everywhere, which three hand-copied renderings would quietly stop guaranteeing.
+ * Shared rather than repeated per group: the whole point of the split is that the kinds look consistent
+ * everywhere, which hand-copied renderings would quietly stop guaranteeing.
  */
 fun ChildrenBuilder.errorText(error: DisplayError) {
     p {
-        className = ClassName(if (error.internal) "internal-error" else "error-text")
-        if (error.internal) +error.text else MarkdownInline { source = error.text }
+        className = ClassName(if (error.kind == DisplayError.Kind.fault) "internal-error" else "error-text")
+        if (error.kind == DisplayError.Kind.designed) MarkdownInline { source = error.text } else +error.text
+    }
+}
+
+/**
+ * As [errorText], but prefixed with a short [lead] naming the operation that failed -- "Couldn't load your
+ * forms." -- so a terse backend detail is legible in context (issue #519). The lead and the detail share one
+ * paragraph and the detail's styling; a `designed` detail is still Markdown-rendered, after the plain lead.
+ */
+fun ChildrenBuilder.errorText(lead: String, error: DisplayError) {
+    p {
+        className = ClassName(if (error.kind == DisplayError.Kind.fault) "internal-error" else "error-text")
+        +"$lead "
+        if (error.kind == DisplayError.Kind.designed) MarkdownInline { source = error.text } else +error.text
     }
 }

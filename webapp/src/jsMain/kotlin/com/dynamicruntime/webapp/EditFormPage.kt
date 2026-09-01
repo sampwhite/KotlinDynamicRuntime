@@ -59,10 +59,10 @@ val EditFormPage = FC<Props> {
     var revalidate by useState(false)
     var focusRequest by useState(0)
     var running by useState(false)
-    var runError by useState<String?>(null)
+    var runError by useState<DisplayError?>(null)
     // The applied-trait labels the patch reported, set on a successful save; drives the confirmation screen.
     var appliedLabels by useState<List<String>?>(null)
-    var loadError by useState<String?>(null)
+    var loadError by useState<DisplayError?>(null)
     // The open form could not be loaded (absent, or not this caller's) -- a deep link to a form that is not theirs.
     var notFound by useState(false)
     // Named to avoid the `Button { loading = running }` collision that loops the render (issues #408, #417).
@@ -116,7 +116,7 @@ val EditFormPage = FC<Props> {
                 // A 404 (absent, or out of the caller's scope) is the "not yours" case, shown as not-found; any
                 // other failure is the "is the server up?" case.
                 if (e is ApiError && e.status == 404) notFound = true
-                else loadError = "Could not load the form to edit — is `./gradlew :launch:run` running? (${e.message})"
+                else loadError = userFacingError(e)
             } finally {
                 loadingSchema = false
             }
@@ -142,10 +142,7 @@ val EditFormPage = FC<Props> {
                 className = ClassName("subtitle")
                 +"Loading…"
             }
-            loadError != null -> p {
-                className = ClassName("error-text")
-                +loadError!!
-            }
+            loadError != null -> errorText("Couldn't load the form to edit.", loadError!!)
             id == null -> p {
                 className = ClassName("subtitle")
                 +"No form was named to edit."
@@ -225,7 +222,7 @@ val EditFormPage = FC<Props> {
                                         val union = entriesUnionOf(getEndpoint?.let { cat.payloadType(it) })
                                         appliedLabels = appliedTraitLabels(patched, union)
                                     } catch (e: Throwable) {
-                                        runError = e.message
+                                        runError = userFacingError(e)
                                     } finally {
                                         running = false
                                     }
@@ -265,12 +262,7 @@ val EditFormPage = FC<Props> {
                     }
                 }
 
-                runError?.let {
-                    p {
-                        className = ClassName("error-text")
-                        +"Could not save the form: $it"
-                    }
-                }
+                runError?.let { errorText("Couldn't save the form.", it) }
             }
         }
     }

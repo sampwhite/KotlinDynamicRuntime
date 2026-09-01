@@ -47,11 +47,11 @@ val NewFormPage = FC<Props> {
     // effect on `failures`, so clearing a failure by editing does not steal focus out of the field being fixed.
     var focusRequest by useState(0)
     var running by useState(false)
-    var runError by useState<String?>(null)
+    var runError by useState<DisplayError?>(null)
     // The stored row the create call returned, kept whole so the success screen can say what was made, not only
     // its id (issue #408).
     var createdItem by useState<Map<String, Any?>?>(null)
-    var loadError by useState<String?>(null)
+    var loadError by useState<DisplayError?>(null)
     // Named to avoid colliding with the `Button { loading = running }` prop below: an unqualified `loading`
     // inside that builder resolves to this local and fires its setter on every render — an infinite loop.
     var loadingSchema by useState(true)
@@ -66,7 +66,7 @@ val NewFormPage = FC<Props> {
                 endpoint = findFormCreateEndpoint(fetched.endpoints)
                 loadError = null
             } catch (e: Throwable) {
-                loadError = "Could not load the form schema — is `./gradlew :launch:run` running? (${e.message})"
+                loadError = userFacingError(e)
             } finally {
                 loadingSchema = false
             }
@@ -92,10 +92,7 @@ val NewFormPage = FC<Props> {
                 className = ClassName("subtitle")
                 +"Loading…"
             }
-            loadError != null -> p {
-                className = ClassName("error-text")
-                +loadError!!
-            }
+            loadError != null -> errorText("Couldn't load the form.", loadError!!)
             cat == null || ep == null -> p {
                 className = ClassName("subtitle")
                 +("This account's surface has no form to create. A client defines the traits its forms are " +
@@ -213,7 +210,7 @@ val NewFormPage = FC<Props> {
                                         val response = SchemaCatalogApi.invoke(ep, payload)
                                         createdItem = response[EP.item].toJsonMapOrEmpty()
                                     } catch (e: Throwable) {
-                                        runError = e.message
+                                        runError = userFacingError(e)
                                     } finally {
                                         running = false
                                     }
@@ -255,12 +252,7 @@ val NewFormPage = FC<Props> {
                     }
                 }
 
-                runError?.let {
-                    p {
-                        className = ClassName("error-text")
-                        +"Could not create the form: $it"
-                    }
-                }
+                runError?.let { errorText("Couldn't create the form.", it) }
             }
         }
     }

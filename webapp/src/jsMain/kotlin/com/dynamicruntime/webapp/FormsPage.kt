@@ -61,7 +61,7 @@ val FormsPage = FC<Props> {
     // The first index of the page on screen; paging moves it by [formsPageSize].
     var offset by useState(0)
     var listLoading by useState(true)
-    var error by useState<String?>(null)
+    var error by useState<DisplayError?>(null)
     // True once the initial hash restore has run; until then the sync effect stays quiet so it cannot overwrite
     // a `g=` we are about to read (the same gate the Users page uses).
     var restored by useState(false)
@@ -74,17 +74,20 @@ val FormsPage = FC<Props> {
     var viewLoading by useState(false)
     // Set when the open id names no form the caller may see -- an old link, or one belonging to someone else.
     var viewMissing by useState(false)
+    // A real failure opening the form (a server error, or the server unreachable) -- distinct from viewMissing,
+    // which is the "not yours to see" case (issue #519 review).
+    var viewError by useState<DisplayError?>(null)
 
     // Delete of the open form: a two-step confirm, then the call and back to the list (issue #408).
     var confirmingDelete by useState(false)
     var deleting by useState(false)
-    var deleteError by useState<String?>(null)
+    var deleteError by useState<DisplayError?>(null)
 
     // Delete from the list itself (issue #417): the row whose inline confirm is armed, the one whose delete is
     // in flight, and any error from it. Per-id rather than a single flag so the confirm belongs to its own row.
     var rowConfirmDeleteId by useState<String?>(null)
     var rowDeletingId by useState<String?>(null)
-    var rowDeleteError by useState<String?>(null)
+    var rowDeleteError by useState<DisplayError?>(null)
 
     /** Loads the page at [off] from [ep], replacing the rows and the total. Flips [listLoading] off when done. */
     fun loadPage(ep: EndpointInfo, off: Int) {
@@ -100,7 +103,7 @@ val FormsPage = FC<Props> {
                 numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
                 error = null
             } catch (e: Throwable) {
-                error = "Could not load your forms — is `./gradlew :launch:run` running? (${e.message})"
+                error = userFacingError(e)
             } finally {
                 listLoading = false
             }
@@ -130,7 +133,7 @@ val FormsPage = FC<Props> {
                 }
                 error = null
             } catch (e: Throwable) {
-                error = "Could not load your forms — is `./gradlew :launch:run` running? (${e.message})"
+                error = userFacingError(e)
             } finally {
                 listLoading = false
             }
@@ -152,6 +155,7 @@ val FormsPage = FC<Props> {
     useEffect(viewingId, restored) {
         val id = viewingId
         viewMissing = false
+        viewError = null
         // A confirm belongs to the form it was opened on; moving to another form (or the list) drops it. Both
         // the view's own confirm and any armed row confirm in the list -- opening a form must not leave a primed
         // "Yes" behind on the list under it (issue #417).
@@ -181,9 +185,10 @@ val FormsPage = FC<Props> {
                 val item = SchemaCatalogApi.invoke(ge, mapOf(GDF.gedraId to id))[EP.item].toJsonMapOrEmpty()
                 if (item.isEmpty()) viewMissing = true else viewRow = item
             } catch (e: Throwable) {
-                // A 404 (absent, or out of the caller's scope) surfaces here as a thrown error, which is the
-                // same "not yours to see" the list would express by omission.
-                viewMissing = true
+                // A client (4xx) failure -- absent, or out of the caller's scope -- is the same "not yours to
+                // see" the list expresses by omission. A server (5xx) or network failure is a real error, and
+                // must not masquerade as "this form is gone" (issue #519 review).
+                if (e is ApiError && (e.status ?: 500) < 500) viewMissing = true else viewError = userFacingError(e)
             } finally {
                 viewLoading = false
             }
@@ -217,10 +222,7 @@ val FormsPage = FC<Props> {
                 className = ClassName("subtitle")
                 +"Loading…"
             }
-            error != null -> p {
-                className = ClassName("error-text")
-                +error!!
-            }
+            error != null -> errorText("Couldn't load your forms.", error!!)
             cat == null || ep == null -> p {
                 className = ClassName("subtitle")
                 +"This account has no forms to list."
@@ -234,6 +236,7 @@ val FormsPage = FC<Props> {
                         className = ClassName("subtitle")
                         +"Loading…"
                     }
+                    viewError != null -> errorText("Couldn't open the form.", viewError!!)
                     viewRow == null -> p {
                         className = ClassName("subtitle")
                         +(if (viewMissing) "That form is not in your list." else "Loading…")
@@ -288,7 +291,7 @@ val FormsPage = FC<Props> {
                                                         offset = 0
                                                         loadPage(ep, 0)
                                                     } catch (e: Throwable) {
-                                                        deleteError = "Could not delete the form: ${e.message}"
+                                                        deleteError = userFacingError(e)
                                                     } finally {
                                                         deleting = false
                                                     }
@@ -303,12 +306,7 @@ val FormsPage = FC<Props> {
                                     }
                                 }
                             }
-                            deleteError?.let {
-                                p {
-                                    className = ClassName("error-text")
-                                    +it
-                                }
-                            }
+                            deleteError?.let { errorText("Couldn't delete the form.", it) }
                         }
                     }
                 }
@@ -378,19 +376,14 @@ val FormsPage = FC<Props> {
                                     offset = newOffset
                                     loadPage(ep, newOffset)
                                 } catch (e: Throwable) {
-                                    rowDeleteError = "Could not delete the form: ${e.message}"
+                                    rowDeleteError = userFacingError(e)
                                     rowDeletingId = null
                                 }
                             }
                         }
                     }
                 }
-                rowDeleteError?.let {
-                    p {
-                        className = ClassName("error-text")
-                        +it
-                    }
-                }
+                rowDeleteError?.let { errorText("Couldn't delete the form.", it) }
             }
         }
     }
