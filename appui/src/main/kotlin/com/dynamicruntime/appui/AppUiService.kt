@@ -92,6 +92,11 @@ object AUI {
      * **at the origin root**, which is not this app's root — the runtime 404s an unknown context root — so
      * nothing asks for it here unless a deployment fronts the app at the origin root. The SVG and PNG links
      * are what actually cover browsers; see the webapp's resources README.
+     *
+     * Unlike its siblings it is addressed by **nothing** at a hashed URL — no shell `<link>` (those cover
+     * browsers with the SVG/PNG) and no bootstrap entry (the browser, not the frontend, picks this URL) — so it
+     * can only ever be served bare, under `no-store` (issue #529). Accepted rather than fixed: it is
+     * near-never requested here (see above), and a browser-chosen fixed URL cannot be content-addressed anyway.
      */
     const val faviconIcoFile = "favicon.ico"
 
@@ -238,28 +243,38 @@ class AppUiService : ServiceInitializer, ContentServer {
         if (handler.focus != ContextFocus.app) {
             return false
         }
-        // An asset URL carries a `:<hash>` cache-busting suffix (issue #137, mirroring the content services);
-        // strip it to resolve the resource, and remember whether one was present -- a request that carries a
-        // suffix is served with the permanent header (the hash is the cache key), a bare one with no cache
-        // header at all. (Note: the suffix's presence is what is checked, not that it matches the asset's hash;
-        // and a bare asset gets no header rather than `no-store`. Both diverge from the content services'
-        // content-addressed rule -- pre-existing, tracked in #529, out of scope for the #504 centralization.)
-        val bareAppPath = handler.appPath.substringBefore(':')
-        val versioned = bareAppPath.length != handler.appPath.length
+        // An asset URL carries a `:<hash>` cache-busting suffix (issue #137, mirroring the content servers).
+        // Split it off the **last path segment only, and only after a non-empty name**, then carry the hash
+        // down so the cache header follows the content-addressed rule (ContentResources.buildId): the permanent
+        // header only when the hash matches the asset's own, else no-store (never "no header", which would leave
+        // a wrong-hash URL to the browser's heuristic cache). Requiring a name before the colon is what stops a
+        // leading-colon path like `/:bogus` collapsing to `"/"` and being served the shell -- a whole-path
+        // `substringBefore(':')` did that, answering 200 for any `/wa/:anything` (issue #529).
+        val path = handler.appPath
+        val colon = path.indexOf(':', startIndex = path.lastIndexOf('/') + 2)
+        val bareAppPath = if (colon < 0) path else path.substring(0, colon)
+        val suppliedHash = if (colon < 0) "" else path.substring(colon + 1)
         return when (bareAppPath) {
             "/" -> {
-                // The shell is never cached, so a reload always fetches the current hashed asset URLs.
+                // The shell is not content-addressed: it always revalidates so a reload picks up the current
+                // hashed asset URLs after a deploy (never no-store -- it may be stored, just not used stale).
                 handler.setResponseHeader("Cache-Control", AUI.shellCacheControl)
                 val html = AppUiPage.render(bootstrapJson(cxt), handler.contextRoot, ::versionedName)
                 handler.sendStringResponse(html, EXC.ok, AUI.htmlMimeType)
                 true
             }
-            AUI.bundlePath -> serveTextResource(cxt, handler, AUI.bundleResource, AUI.jsMimeType, versioned)
-            AUI.bundleMapPath -> serveTextResource(cxt, handler, AUI.bundleMapResource, AUI.jsonMimeType, versioned)
-            AUI.stylesheetPath -> serveTextResource(cxt, handler, AUI.stylesheetResource, AUI.cssMimeType, versioned)
-            else -> serveBranding(cxt, handler, bareAppPath, versioned)
+            AUI.bundlePath -> serveTextResource(cxt, handler, AUI.bundleResource, AUI.jsMimeType, suppliedHash)
+            AUI.bundleMapPath -> serveTextResource(cxt, handler, AUI.bundleMapResource, AUI.jsonMimeType, suppliedHash)
+            AUI.stylesheetPath -> serveTextResource(cxt, handler, AUI.stylesheetResource, AUI.cssMimeType, suppliedHash)
+            else -> serveBranding(cxt, handler, bareAppPath, suppliedHash)
         }
     }
+
+    /** The cache header for an asset response: the shared content-addressed decision ([ContentResources.cacheHeaderFor]),
+     *  driven by whether the URL's [suppliedHash] matches this resource's own CRC32 hash (issues #137, #529). An
+     *  empty (absent) or wrong hash does not match, so it gets [ContentResources.noStore]. */
+    private fun assetCacheHeader(suppliedHash: String, resourcePath: String): String =
+        ContentResources.cacheHeaderFor(suppliedHash.isNotEmpty() && suppliedHash == assetHash(resourcePath))
 
     /**
      * The application filename with its content-hash suffix (`webapp.js:1a2b3c`), for the shell to link so the
@@ -292,28 +307,28 @@ class AppUiService : ServiceInitializer, ContentServer {
      * that is was settled at init by [resolveBranding], so a deployment's override and the built-in are the
      * same code path here — only the bytes differ.
      */
-    private fun serveBranding(cxt: KdrCxt, handler: RequestHandler, bareAppPath: String, versioned: Boolean): Boolean {
+    private fun serveBranding(cxt: KdrCxt, handler: RequestHandler, bareAppPath: String, suppliedHash: String): Boolean {
         val asset = AUI.brandingAssets.firstOrNull { it.appPath == bareAppPath } ?: return false
         val resource = brandingResources[asset.file] ?: return false
         return if (asset.binary) {
-            serveBinaryResource(cxt, handler, resource, asset.mimeType, versioned)
+            serveBinaryResource(cxt, handler, resource, asset.mimeType, suppliedHash)
         } else {
-            serveTextResource(cxt, handler, resource, asset.mimeType, versioned)
+            serveTextResource(cxt, handler, resource, asset.mimeType, suppliedHash)
         }
     }
 
-    /** Serves an embedded **text** resource (the shell's stylesheet, the bundle, an SVG), decoded as UTF-8. When
-     *  [versioned] (the URL carried a `:<hash>` suffix), it gets the permanent cache header,
-     *  [ContentResources.cacheControl] (issue #137, #504). */
+    /** Serves an embedded **text** resource (the shell's stylesheet, the bundle, an SVG), decoded as UTF-8. The
+     *  cache header follows the content-addressed rule via [assetCacheHeader]: permanent on a matched
+     *  [suppliedHash], `no-store` otherwise (issues #137, #529). */
     private fun serveTextResource(
         cxt: KdrCxt,
         handler: RequestHandler,
         resourcePath: String,
         mimeType: String,
-        versioned: Boolean,
+        suppliedHash: String,
     ): Boolean {
         val body = readResource(cxt, handler, resourcePath) ?: return false
-        if (versioned) handler.setResponseHeader("Cache-Control", ContentResources.cacheControl)
+        handler.setResponseHeader("Cache-Control", assetCacheHeader(suppliedHash, resourcePath))
         handler.sendStringResponse(body.toString(Charsets.UTF_8), EXC.ok, mimeType)
         return true
     }
@@ -323,17 +338,17 @@ class AppUiService : ServiceInitializer, ContentServer {
      * decoded to a String. Going through [RequestHandler.sendStringResponse] would corrupt them: it is UTF-8
      * only, so every byte that is not valid UTF-8 would come back out as U+FFFD.
      *
-     * Caching matches [serveTextResource]: a [versioned] request gets [ContentResources.cacheControl].
+     * Caching matches [serveTextResource]: the header is [assetCacheHeader] over the [suppliedHash].
      */
     private fun serveBinaryResource(
         cxt: KdrCxt,
         handler: RequestHandler,
         resourcePath: String,
         mimeType: String,
-        versioned: Boolean,
+        suppliedHash: String,
     ): Boolean {
         val body = readResource(cxt, handler, resourcePath) ?: return false
-        if (versioned) handler.setResponseHeader("Cache-Control", ContentResources.cacheControl)
+        handler.setResponseHeader("Cache-Control", assetCacheHeader(suppliedHash, resourcePath))
         handler.sendBytesResponse(body, EXC.ok, mimeType)
         return true
     }
@@ -363,7 +378,17 @@ class AppUiService : ServiceInitializer, ContentServer {
     private fun bootstrapJson(cxt: KdrCxt): String {
         val base = RequestService.get(cxt).frontendConfig()
         val hash = cxt.instanceConfig.get(EP.webAppHash) as? String
-        val cfg = if (hash.isNullOrEmpty()) base else base + (EP.webAppHash to hash)
+        // The brand mark is fetched by the frontend itself (not linked in the shell head), so it needs its
+        // content-addressed name here to build a hashed URL and be cached immutably rather than refetched every
+        // load (#529). `versionedName` supplies the whole `brand-mark.svg:<hash>`, so the frontend appends no
+        // suffix of its own -- the `:` grammar stays one fact, owned by `versionedName`. Absent when the mark is
+        // unhashed (no bytes to bust); the frontend then serves it bare, which is exactly the dev-server case.
+        val markName = versionedName(AUI.brandMarkFile)
+        val cfg = buildMap {
+            putAll(base)
+            if (!hash.isNullOrEmpty()) put(EP.webAppHash, hash)
+            if (markName != AUI.brandMarkFile) put(EP.brandMarkName, markName)
+        }
         return cfg.toJsonStr()
     }
 
