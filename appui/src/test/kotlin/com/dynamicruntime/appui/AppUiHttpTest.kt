@@ -1,5 +1,6 @@
 package com.dynamicruntime.appui
 
+import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
@@ -47,7 +48,9 @@ class AppUiHttpTest : StringSpec({
         body shouldContain "href=\"/wa/favicon-32.png:"
         body shouldContain "href=\"/wa/apple-touch-icon.png:"
         body shouldContain "href=\"/wa/app.css:"
-        // The shell itself is never cached, so a reload always fetches the current hashed asset URLs.
+        // The shell itself is never cached, so a reload always fetches the current hashed asset URLs. Pinned to
+        // the literal deliberately: this is what actually goes on the wire, and `no-cache` must not silently
+        // become `no-store` -- the flattening issue #504 called out as an inviting mistake.
         resp.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe "no-cache"
     }
 
@@ -60,7 +63,7 @@ class AppUiHttpTest : StringSpec({
         val hashed = c.sendGetRequestRaw("/wa/$versioned")
         hashed.rptStatusCode shouldBe 200
         hashed.rptResponseMimeType shouldBe "application/javascript; charset=utf-8"
-        hashed.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe "public, max-age=31536000, immutable"
+        hashed.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe ContentResources.cacheControl
 
         // The bare URL still serves the same resource, but without the immutable header (it can go stale).
         val bare = c.sendGetRequestRaw("/wa/webapp.js")
