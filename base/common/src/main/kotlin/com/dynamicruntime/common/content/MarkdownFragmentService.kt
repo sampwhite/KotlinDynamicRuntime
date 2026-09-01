@@ -173,7 +173,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             }
             // Whether the content everybody shares is already in conflict. A client row repeats that same fact,
             // and a boot refusal saying it once per client reads as several broken files -- so a client row
-            // reports the conflict only when it is that client's *own*, i.e. not already said on the shared row.
+            // reports the conflict only when it is that client's *own*, i.e., not already said on the shared row.
             //
             // Scoped to the duplicate rather than to `client == null`, which is what it looks like it should be.
             // Client layers are all overlays today (only `GedraConfigBuilder.fragmentOverlay` sets a client, and
@@ -678,7 +678,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 }
                 property(
                     FCHK.notes,
-                    "Non-fatal observations, as messages: a backend file carrying a frontend '\${@t(...)}' pull, " +
+                    $$"Non-fatal observations, as messages: a backend file carrying a frontend '${@t(...)}' pull, " +
                         "whose correctness rests on the carrying element at request time and so cannot be checked " +
                         "here. Never a boot refusal.",
                     required = true,

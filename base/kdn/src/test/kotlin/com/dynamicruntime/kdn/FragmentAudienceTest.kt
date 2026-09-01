@@ -216,7 +216,7 @@ class FragmentAudienceTest : StringSpec({
         // is exactly what it did while the count was `issues.size`.
         val cxt = Startup.mkTestBootCxt("audCount", "audCountTest")
         val front = fragmentInline("audFront", origin = "test", isOverlay = false) {
-            namespace("welcome") { key("title", $$"""Hi %{@t("other.ns.key")}""") }
+            namespace("welcome") { key("title", """Hi %{@t("other.ns.key")}""") }
         }
         cxt.instanceConfig.put(FRAG.registryKey, listOf(front))
 
@@ -259,7 +259,7 @@ class FragmentAudienceTest : StringSpec({
         // A %{@t(...)} in a frontend file is the mistake this catches: it is served with no backend pass, so it
         // reaches the browser as the literal text `%{@t(...)}`.
         val front = fragmentInline("audFront", origin = "test", isOverlay = false) {
-            namespace("welcome") { key("title", $$"""Welcome %{@t("other.ns.key")}""") }
+            namespace("welcome") { key("title", """Welcome %{@t("other.ns.key")}""") }
         }
         cxt.instanceConfig.put(FRAG.registryKey, listOf(front))
 
@@ -280,7 +280,7 @@ class FragmentAudienceTest : StringSpec({
             namespace("welcome") { key("title", "Hi") }
         }
         val back = fragmentInline("audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
-            namespace("email") { key("subject", $$"""%{@t("audFront.welcome.title")}""") }
+            namespace("email") { key("subject", """%{@t("audFront.welcome.title")}""") }
         }
         cxt.instanceConfig.put(FRAG.registryKey, listOf(front, back))
         val issues = service(cxt).checkFragments(cxt).flatMap { it.audienceIssues }
@@ -293,7 +293,7 @@ class FragmentAudienceTest : StringSpec({
             namespace("email") { key("subject", "Your code") }
         }
         val back = fragmentInline("audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
-            namespace("email") { key("body", $$"""Subject: %{@t("audData.email.subject")}""") }
+            namespace("email") { key("body", """Subject: %{@t("audData.email.subject")}""") }
         }
         cxt.instanceConfig.put(FRAG.registryKey, listOf(data, back))
         service(cxt).checkFragments(cxt).flatMap { it.audienceIssues } shouldBe emptyList()
@@ -302,7 +302,7 @@ class FragmentAudienceTest : StringSpec({
     "a backend pull naming an undeclared file is a finding" {
         val cxt = Startup.mkTestBootCxt("chk3none", "chk3noneTest")
         val back = fragmentInline("audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
-            namespace("email") { key("subject", $$"""%{@t("audNope.a.b")}""") }
+            namespace("email") { key("subject", """%{@t("audNope.a.b")}""") }
         }
         cxt.instanceConfig.put(FRAG.registryKey, listOf(back))
         service(cxt).checkFragments(cxt).flatMap { it.audienceIssues }

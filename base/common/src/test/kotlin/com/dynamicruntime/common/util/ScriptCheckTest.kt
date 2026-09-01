@@ -96,7 +96,7 @@ class ScriptCheckTest : StringSpec({
     "a path the template already guards is optional, not required" {
         $$"""${user.name ?: "there"}""".analyzeTemplate().paths.required shouldBe emptySet()
         $$"""${user.name ?: "there"}""".analyzeTemplate().paths.optional shouldBe setOf("user.name")
-        // A ternary condition, and a null test, are the other two guarded positions.
+        // A ternary condition and a null test are the other two guarded positions.
         $$"""${admin ? "yes" : "no"}""".analyzeTemplate().paths.required shouldBe emptySet()
         $$"""${a.b == null ? "none" : "some"}""".analyzeTemplate().paths.required shouldBe emptySet()
     }
@@ -186,7 +186,7 @@ class ScriptCheckTest : StringSpec({
     // --- block count (issue #514): "does this text use this prefix's pass at all?" ---------------------
 
     "blockCount counts a prefix's blocks and ignores its escapes and literals" {
-        $$"plain text".analyzeTemplate().blockCount shouldBe 0
+        "plain text".analyzeTemplate().blockCount shouldBe 0
         $$"${a} and ${b}".analyzeTemplate().blockCount shouldBe 2
         // A doubled prefix is an escape and a lone one is literal -- neither is a block.
         "100%% off, 50% more".analyzeTemplate('%').blockCount shouldBe 0
