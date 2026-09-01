@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.logging
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
@@ -42,6 +43,40 @@ object LogSetup {
 
     /** The async sink currently installed (kept so a re-init or shutdown can flush it). */
     private var asyncSink: AsyncLogSink? = null
+
+    /** Whether [ensureInit] has already run in this process; see it for why the first caller wins. */
+    private var initialized = false
+
+    /**
+     * The do-once, per-process logging init every boot sequence calls (issue #524). The **first** caller in a
+     * JVM wins and sets the level for the whole run -- deliberately, because [LogConfig.appLevel] is a single
+     * VM-wide value that cannot vary per instance. Later calls (a second test instance, a boot after a pre-boot
+     * init) are no-ops.
+     *
+     * The default level is chosen by [env]: [LogLevel.info] for a [unit][ENV.unit] test -- so a test run is not
+     * buried in debug, but backend logging is on (it is off entirely today, because a unit test installs no
+     * sink) -- and [LogLevel.debug] otherwise. `KDR_LOG_LEVEL` overrides it as always, read through [getEnv] so
+     * a deployment's defaults file is still honored when the booter passes `cxt::getEnvVar`.
+     *
+     * `@Synchronized` because the check-and-set is otherwise a race: nothing runs boots concurrently in one JVM
+     * today (Gradle forks one test JVM per module, kotest runs specs sequentially), but the day a test config
+     * turns on concurrency, an unguarded version would let two threads both enter [init] -- reconfiguring log4j
+     * at the same time and briefly clearing `LogSinks` mid-`init`, a window `StartupTest` asserts against. The
+     * lock is uncontended after the first boot, so it costs nothing on the ~one-per-boot path.
+     */
+    @Synchronized
+    fun ensureInit(env: String, getEnv: (EnvVarDef) -> String? = { System.getenv(it.name) }) {
+        if (initialized) return
+        initialized = true
+        initFromEnv(defaultAppLevel = defaultAppLevel(env), getEnv = getEnv)
+    }
+
+    /**
+     * The default app log level for [env] absent a `KDR_LOG_LEVEL`: [LogLevel.info] for a [unit][ENV.unit] test,
+     * [LogLevel.debug] otherwise. Split out from [ensureInit] so the policy is testable without the do-once
+     * guard (which the first boot in the JVM has already tripped by the time any test runs).
+     */
+    fun defaultAppLevel(env: String): LogLevel = if (env == ENV.unit) LogLevel.info else LogLevel.debug
 
     /**
      * Reads [appLogLevelEnvVar] / [rootLogLevelEnvVar] / [asyncEnvVar] via [getEnv] and applies [init], using

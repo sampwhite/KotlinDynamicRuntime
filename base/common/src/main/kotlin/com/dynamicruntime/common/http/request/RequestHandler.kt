@@ -43,7 +43,13 @@ import kotlin.time.Instant
  * serves both real HTTP and in-process endpoint tests.
  */
 class RequestHandler : WebRequest {
-    val instanceName: String
+    /**
+     * The instance this request runs against, handed in at construction (issue #524). Previously the handler
+     * held only the instance *name* and resolved the config from the VM-global registry on dispatch; with the
+     * registry no longer holding components, the caller (the server, or a test) supplies the already-built
+     * config directly.
+     */
+    val instanceConfig: KdrInstanceConfig
 
     private val jettyRequest: Request?
     private val jettyResponse: Response?
@@ -74,14 +80,6 @@ class RequestHandler : WebRequest {
     override var userAgent: String? = null
     override var forwardedFor: String? = null
     var isFromLoadBalancer: Boolean = false
-
-    /**
-     * The instance config, bound once [handleRequest] resolves it, so [addResponseCookie] can decide `Secure`
-     * from the deployment's own configuration rather than a caller-controlled header (issue #431). Null before
-     * a request is dispatched (a hand-built handler in a test); the cookie then defaults to `Secure`, the safe
-     * side.
-     */
-    var boundConfig: KdrInstanceConfig? = null
 
     var queryParams: MutableMap<String, Any?> = LinkedHashMap()
     var postData: MutableMap<String, Any?>? = null
@@ -126,8 +124,8 @@ class RequestHandler : WebRequest {
     var createdCxt: KdrCxt? = null
 
     /** Jetty-mode constructor. */
-    constructor(instanceName: String, request: Request, response: Response, callback: Callback) {
-        this.instanceName = instanceName
+    constructor(instanceConfig: KdrInstanceConfig, request: Request, response: Response, callback: Callback) {
+        this.instanceConfig = instanceConfig
         this.jettyRequest = request
         this.jettyResponse = response
         this.jettyCallback = callback
@@ -149,13 +147,13 @@ class RequestHandler : WebRequest {
 
     /** Test-mode constructor (no HTTP). */
     constructor(
-        instanceName: String,
+        instanceConfig: KdrInstanceConfig,
         method: String,
         target: String,
         headers: Map<String, List<String>>,
         cookies: MutableMap<String, String>,
     ) {
-        this.instanceName = instanceName
+        this.instanceConfig = instanceConfig
         this.jettyRequest = null
         this.jettyResponse = null
         this.jettyCallback = null
@@ -188,8 +186,7 @@ class RequestHandler : WebRequest {
             // query is inexpensive and already in the URL; the request *body* stays gated behind the context-root
             // check (a probe submits no *body* for parsing).
             parseQueryParams()
-            val config = InstanceRegistry.getOrCreateInstanceConfig(instanceName)
-            boundConfig = config
+            val config = instanceConfig
             cxt = InstanceRegistry.createCxt("request", config)
             cxt.forwardedFor = forwardedFor
             cxt.appId = appId()
@@ -538,8 +535,8 @@ class RequestHandler : WebRequest {
         parts.add("Path=/")
         // `Secure` from the node's own configuration, not read off `X-Forwarded-For` -- a request header rather
         // than a fact about how the node is served (issue #431); and `SameSite` stated rather than left to
-        // browser defaults. Null config -- a hand-built handler outside a request -- defaults to Secure, safe.
-        if (boundConfig?.let { CookieRules.isSecure(it) } != false) {
+        // browser defaults. The config is always present now (handed in at construction, issue #524).
+        if (CookieRules.isSecure(instanceConfig)) {
             parts.add("Secure")
         }
         parts.add("HttpOnly")

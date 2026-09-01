@@ -2,10 +2,24 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.logging.LogConfig
+import com.dynamicruntime.common.logging.LogLevel
+import com.dynamicruntime.common.logging.LogSinks
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.shouldBe
+
+/** A do-nothing component that marks the instance it is loaded into, so a test can see where it did (not) go. */
+private const val fixtureMarker = "startupTestFixtureLoaded"
+
+private class MarkerFixtureComponent : ComponentDefinition {
+    override fun applyInstanceConfig(cxt: KdrCxt) {
+        cxt.instanceConfig.put(fixtureMarker, true)
+    }
+}
 
 /**
  * Boots real instances through [Startup.mkTestBootCxt] and checks the
@@ -34,6 +48,26 @@ class StartupTest : StringSpec({
         schema.endpoints shouldContainKey "/health:GET"
         // The store the context exposes is the one the service compiled.
         cxt.getSchema() shouldBe service.schemaStore
+
+        // Logging is on in a unit test now (issue #524): a sink is installed and info-level is enabled, where
+        // a unit boot previously installed no sink and dropped every backend log call.
+        LogSinks.sinks.isNotEmpty() shouldBe true
+        LogConfig.isEnabled("startup", LogLevel.info) shouldBe true
+    }
+
+    // The isolation win (issue #524): the component set is a per-boot parameter, not VM-global state, so a
+    // component handed to one instance cannot appear in another. Under the old registry, a `register`ed
+    // component persisted for the JVM and would load into every later instance its gates admitted.
+    "a component given to one instance does not leak into another" {
+        val withFixture = Startup.mkTestBootCxt(
+            "wf", "isoWithFixture", additionalComponents = listOf(MarkerFixtureComponent()),
+        )
+        val without = Startup.mkTestBootCxt("wo", "isoWithoutFixture")
+
+        // It loaded where it was named...
+        withFixture.instanceConfig.get(fixtureMarker) shouldBe true
+        // ...and is entirely absent from an instance that did not name it -- booted second, so a leak would show.
+        without.instanceConfig.get(fixtureMarker) shouldBe null
     }
 
     "booting the same instance twice reuses the cached instance config" {

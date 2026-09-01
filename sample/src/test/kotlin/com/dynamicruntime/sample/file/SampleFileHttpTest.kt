@@ -1,7 +1,6 @@
 package com.dynamicruntime.sample.file
 
 import com.dynamicruntime.common.http.server.TestHttpServer
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.kdn.Startup
@@ -34,7 +33,6 @@ import java.nio.file.Files
  */
 class SampleFileHttpTest : StringSpec({
 
-    InstanceRegistry.register(listOf(SampleComponent()))
 
     val tempWorkspace = Files.createTempDirectory("kdrSampleFileHttpTest").toFile()
     lateinit var server: TestHttpServer
@@ -44,8 +42,8 @@ class SampleFileHttpTest : StringSpec({
         // Boot the instance so its endpoints are registered, then serve them on a real socket.
         val instanceName = "sampleFileHttpTest"
         // Force SampleComponent.isLoaded on: it otherwise gates to developer envs, and mkTestBootCxt uses unit.
-        Startup.mkTestBootCxt("httpBoot", instanceName, mapOf("KDR_LOAD_SAMPLE" to "true"))
-        server = TestHttpServer(instanceName)
+        val cxt = Startup.mkTestBootCxt("httpBoot", instanceName, mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
+        server = TestHttpServer(cxt.instanceConfig)
     }
 
     afterSpec {

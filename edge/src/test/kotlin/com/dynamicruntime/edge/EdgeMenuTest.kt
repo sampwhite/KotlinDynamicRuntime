@@ -14,7 +14,6 @@ import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ContextRoot
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.kdn.Startup
@@ -38,8 +37,7 @@ import io.kotest.matchers.shouldBe
  */
 class EdgeMenuTest : StringSpec({
 
-    InstanceRegistry.register(listOf(EdgeComponent()))
-    val cxt = Startup.mkTestBootCxt("edgeMenu", "edgeMenuTest", mapOf(ACFG.bootRole to BOOT.edge))
+    val cxt = Startup.mkTestBootCxt("edgeMenu", "edgeMenuTest", mapOf(ACFG.bootRole to BOOT.edge), additionalComponents = listOf(EdgeComponent()))
 
     fun menuIdsFor(profile: UserProfile): List<String?> {
         val scope: KdrCxt = cxt.mkSubContext("edgeCaller")

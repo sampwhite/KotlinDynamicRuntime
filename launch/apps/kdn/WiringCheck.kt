@@ -1,5 +1,6 @@
 package kdn
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.logging.LogStartup
@@ -17,11 +18,12 @@ import kotlin.time.TimeSource
  * proves the whole `launch -> config -> kdn -> common` graph is linked.
  */
 fun main() {
-    // Time the whole of main (from here, i.e. excluding JVM startup) to gauge how much work the body does.
+    // Time the whole of main (from here, i.e., excluding JVM startup) to gauge how much work the body does.
     val started = TimeSource.Monotonic.markNow()
 
-    // Install the logging configuration first, before anything logs in earnest.
-    LogSetup.initFromEnv()
+    // Install the logging configuration first, before anything logs in earnest. This does not boot an
+    // instance, so it inits logging itself (issue #524); local is the right default for a dev smoke test.
+    LogSetup.ensureInit(ENV.local)
 
     val cxt = KdrCxt.mkSimpleCxt("wiringCheck")
     LogStartup.info(cxt, "Dependency wiring check:")

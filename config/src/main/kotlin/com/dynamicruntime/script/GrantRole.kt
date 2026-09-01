@@ -34,6 +34,7 @@ import kotlin.system.exitProcess
  * The environment decides which database it edits: it must match the deployment's (`KDR_ENV`, `KDR_DB_*`). It
  * refuses to run against an in-memory database, where the grant would be discarded on exit.
  */
+@Suppress("ConstPropertyName")
 object GrantRole {
     /** Flags the script accepts. */
     @Suppress("ConstPropertyName")
@@ -76,7 +77,7 @@ object GrantRole {
             revoke && !had -> return report(row, "already lacks the '$role' role; nothing to do")
             !revoke && had -> return report(row, "already has the '$role' role; nothing to do")
             revoke -> row.roles = row.roles.filter { it != role }
-            else -> row.roles = row.roles + role
+            else -> row.roles += role
         }
         service.updateUser(cxt, row)
         val verb = if (revoke) "Revoked" else "Granted"
@@ -102,12 +103,15 @@ object GrantRole {
     private fun bootCxt(): KdrCxt {
         val preBoot = KdrInstanceConfig.preBootLoadConfig()
         val cxt = KdrCxt.mkSimpleCxt("preBoot", preBoot)
-        LogSetup.initFromEnv(getEnv = cxt::getEnvVar)
         val env = cxt.getEnvVar(KdrInstanceConfig.envName) ?: ENV.local
+        // Init logging before mkBootCxt (which also calls ensureInit, then a no-op), passing the cxt so the
+        // defaults file is honored for KDR_LOG_LEVEL (issue #524).
+        LogSetup.ensureInit(env, cxt::getEnvVar)
         return Startup.mkBootCxt("grantRole", env, preBoot.entries().toMap())
     }
 
     /** `--list`: shows the users matching [search], so an operator can find the right loginId. */
+    @Suppress("SameReturnValue")
     private fun listUsers(cxt: KdrCxt, service: UserService, search: String): Int {
         // Unrestricted, stated rather than defaulted (issue #225). This script is the escape hatch out of the
         // chicken-and-egg problem -- it is how a fresh deployment gets its first administrator -- so it runs

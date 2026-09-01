@@ -6,7 +6,6 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
-import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
@@ -16,7 +15,6 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -37,8 +35,7 @@ import io.kotest.matchers.types.shouldBeSameInstanceAs
 class ClientSchemaVariantTest : StringSpec({
 
     fun boot(name: String): KdrCxt {
-        InstanceRegistry.register(listOf(VariantFixtureComponent()))
-        return Startup.mkTestBootCxt("variants", name, mapOf(VariantFixtureComponent.loadFlag.name to "true"))
+        return Startup.mkTestBootCxt("variants", name, mapOf(VariantFixtureComponent.loadFlag.name to "true"), additionalComponents = listOf(VariantFixtureComponent()))
     }
 
     fun schema(cxt: KdrCxt): SchemaService =
@@ -87,8 +84,7 @@ class ClientSchemaVariantTest : StringSpec({
     // that is invalid to everybody else.
     "an alteration that widens refuses the boot" {
         val ex = shouldThrow<KdrException> {
-            InstanceRegistry.register(listOf(WideningFixtureComponent()))
-            Startup.mkTestBootCxt("widening", "wideningVariantTest", mapOf(WideningFixtureComponent.loadFlag.name to "true"))
+            Startup.mkTestBootCxt("widening", "wideningVariantTest", mapOf(WideningFixtureComponent.loadFlag.name to "true"), additionalComponents = listOf(WideningFixtureComponent()))
         }
         val message = ex.fullMessage()
         message shouldContain "does not narrow"
@@ -100,7 +96,7 @@ class ClientSchemaVariantTest : StringSpec({
     // has not declared any yet, and one the union has to be able to express.
     // Looped over **every** entry kind rather than written for `formDoc`, which is the guard the drift needed:
     // the global pass and the per-client pass kept their own lists of kinds, and when `wfData` was added to
-    // one and not the other every client silently kept the global workflow-data union. One shared list now,
+    // one and not the other, every client silently kept the global workflow-data union. One shared list now,
     // and this fails if a kind is ever regenerated globally and not per client.
     "a client supporting no traits gets a union that recognizes none, for every entry kind" {
         val service = schema(boot("variantTest"))

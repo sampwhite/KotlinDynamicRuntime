@@ -5,7 +5,6 @@ import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.NodeService
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -18,8 +17,7 @@ import io.kotest.matchers.shouldBe
  */
 class EnvAuthLogoutTest : StringSpec({
 
-    InstanceRegistry.register(listOf(EdgeComponent()))
-    val cxt = Startup.mkTestBootCxt("envLogout", "envLogoutTest", mapOf(ACFG.bootRole to BOOT.edge))
+    val cxt = Startup.mkTestBootCxt("envLogout", "envLogoutTest", mapOf(ACFG.bootRole to BOOT.edge), additionalComponents = listOf(EdgeComponent()))
     val node = NodeService.get(cxt)
 
     fun seedSession(client: TestHttpClient, email: String) {

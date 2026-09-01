@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.http.server
 
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.http.request.RequestHandler
 import org.eclipse.jetty.server.Handler
 import org.eclipse.jetty.server.Request
@@ -9,8 +10,8 @@ import org.eclipse.jetty.server.ServerConnector
 import org.eclipse.jetty.util.Callback
 
 /**
- * Runs the runtime's HTTP stack on a real socket, for tests that need the wire itself. Serves [instanceName]'s
- * endpoints exactly as [HttpServer] does — a core Jetty [Handler] building a Jetty-mode [RequestHandler] — but
+ * Runs the runtime's HTTP stack on a real socket, for tests that need the wire itself. Serves
+ * [instanceConfig]'s endpoints exactly as [HttpServer] does — a core Jetty [Handler] building a Jetty-mode [RequestHandler] — but
  * on an ephemeral [port] and without blocking, so a test can start one, make requests, and stop it.
  *
  * It is the counterpart of [com.dynamicruntime.common.http.request.TestHttpClient], and exists because that
@@ -26,12 +27,12 @@ import org.eclipse.jetty.util.Callback
  * `implementation` dependency of this module and does not reach a dependent module's test classpath.
  *
  * ```
- * TestHttpServer("myInstance").use { server ->
+ * TestHttpServer(cxt.instanceConfig).use { server ->
  *     val response = client.send(HttpRequest.newBuilder(URI(server.url("/kda/health"))).build(), ...)
  * }
  * ```
  */
-class TestHttpServer(val instanceName: String) : AutoCloseable {
+class TestHttpServer(val instanceConfig: KdrInstanceConfig) : AutoCloseable {
     private val server = Server()
     private val connector = ServerConnector(server)
 
@@ -44,7 +45,7 @@ class TestHttpServer(val instanceName: String) : AutoCloseable {
         server.addConnector(connector)
         server.handler = object : Handler.Abstract() {
             override fun handle(request: Request, response: Response, callback: Callback): Boolean {
-                RequestHandler(instanceName, request, response, callback).handleRequest()
+                RequestHandler(instanceConfig, request, response, callback).handleRequest()
                 return true
             }
         }

@@ -1,7 +1,6 @@
 package com.dynamicruntime.appui
 
 import com.dynamicruntime.common.http.request.TestHttpClient
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -23,10 +22,9 @@ import io.kotest.matchers.string.shouldNotContain
  */
 class AppUiBrandingTest : StringSpec({
 
-    InstanceRegistry.register(listOf(AppUiComponent()))
 
     fun client(instanceName: String, config: Map<String, Any?>): TestHttpClient =
-        TestHttpClient(Startup.mkTestBootCxt("branding", instanceName, config).instanceConfig)
+        TestHttpClient(Startup.mkTestBootCxt("branding", instanceName, config, additionalComponents = listOf(AppUiComponent())).instanceConfig)
 
     /** A client for an instance whose deployment supplies `testBranding/`. */
     fun branded(): TestHttpClient = client("appUiBranded", mapOf(AUIC.appUiBrandingDir to "testBranding"))

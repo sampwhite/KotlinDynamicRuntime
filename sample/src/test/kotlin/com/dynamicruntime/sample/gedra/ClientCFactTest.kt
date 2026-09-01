@@ -6,7 +6,6 @@ import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toOptStr
@@ -30,8 +29,7 @@ import io.kotest.matchers.string.shouldNotContain
  */
 class ClientCFactTest : StringSpec({
 
-    InstanceRegistry.register(listOf(SampleComponent()))
-    val cxt = Startup.mkTestBootCxt("clientCFact", "clientCFactTest", mapOf("KDR_LOAD_SAMPLE" to "true"))
+    val cxt = Startup.mkTestBootCxt("clientCFact", "clientCFactTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
 
     // The endpoint's answer depends on *which* caller asks. `acmeAdmin` and `globexAdmin` are each confined to
     // their own client -- the ordinary customer administrator, and who this surface is for -- while `crossClient`

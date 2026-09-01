@@ -8,7 +8,6 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.TestHttpClient
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -35,8 +34,7 @@ import io.kotest.matchers.shouldNotBe
  */
 class FragmentOverlayTest : StringSpec({
 
-    InstanceRegistry.register(listOf(SampleComponent()))
-    val cxt = Startup.mkTestBootCxt("fragOverlay", "fragOverlayTest", mapOf("KDR_LOAD_SAMPLE" to "true"))
+    val cxt = Startup.mkTestBootCxt("fragOverlay", "fragOverlayTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
 
     val service = MarkdownFragmentService.get(cxt)
     val acmeCxt = cxt.mkSubContext("acme", SC.acme)

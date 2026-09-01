@@ -14,7 +14,6 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.startup.ComponentDefinition
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.http.request.ROLE
@@ -41,8 +40,7 @@ import io.kotest.matchers.shouldBe
 class ClientRegistryTest : StringSpec({
 
     fun boot(name: String): KdrCxt {
-        InstanceRegistry.register(listOf(OffsiteClientComponent()))
-        return Startup.mkTestBootCxt("clients", name, mapOf(OffsiteClientComponent.loadFlag.name to "true"))
+        return Startup.mkTestBootCxt("clients", name, mapOf(OffsiteClientComponent.loadFlag.name to "true"), additionalComponents = listOf(OffsiteClientComponent()))
     }
 
     "the clients every deployment has are present, with what they declared" {

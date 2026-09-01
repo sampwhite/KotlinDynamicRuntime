@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.logging
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -91,5 +92,13 @@ class KdrLoggerTest : StringSpec({
         LogSetup.logLevelOf("DEBUG") shouldBe LogLevel.debug
         LogSetup.logLevelOf(" info ") shouldBe LogLevel.info
         LogSetup.logLevelOf("bogus") shouldBe null
+    }
+
+    // The env-based default level (issue #524): quieter for tests, verbose for a running node. Split out from
+    // the do-once `ensureInit` precisely so it is testable -- the guard has already tripped by now.
+    "the default log level is info for a unit test and debug otherwise" {
+        LogSetup.defaultAppLevel(ENV.unit) shouldBe LogLevel.info
+        LogSetup.defaultAppLevel(ENV.local) shouldBe LogLevel.debug
+        LogSetup.defaultAppLevel(ENV.prod) shouldBe LogLevel.debug
     }
 })

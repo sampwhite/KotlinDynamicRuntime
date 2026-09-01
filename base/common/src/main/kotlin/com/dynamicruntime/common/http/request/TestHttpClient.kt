@@ -42,7 +42,7 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
 
     /** Sends a GET to a raw, unrouted path (no context root prepended) -- for exercising the context-root gate. */
     fun sendGetRequestRaw(path: String, args: Map<String, Any?>? = null): RequestHandler {
-        val handler = RequestHandler(instanceConfig.instanceName, "GET", path, curHeaders, cookies)
+        val handler = RequestHandler(instanceConfig, "GET", path, curHeaders, cookies)
         handler.queryStr = if (args != null) HttpUtil.encodeArgs(args) else ""
         execute(handler)
         return handler
@@ -64,7 +64,7 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
         data: Map<String, Any?>?,
         method: HttpMethod,
     ): RequestHandler {
-        val handler = RequestHandler(instanceConfig.instanceName, method.name, routed(endpoint), curHeaders, cookies)
+        val handler = RequestHandler(instanceConfig, method.name, routed(endpoint), curHeaders, cookies)
         handler.queryStr = if (args != null) HttpUtil.encodeArgs(args) else ""
         handler.testPostData = data?.toJsonStr() ?: ""
         execute(handler)
@@ -76,7 +76,7 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
      * but poorly handled by intermediaries -- so there is no `data` here to pass.
      */
     fun sendDeleteRequest(endpoint: String, args: Map<String, Any?>? = null): RequestHandler {
-        val handler = RequestHandler(instanceConfig.instanceName, HttpMethod.DELETE.name, routed(endpoint), curHeaders, cookies)
+        val handler = RequestHandler(instanceConfig, HttpMethod.DELETE.name, routed(endpoint), curHeaders, cookies)
         handler.queryStr = if (args != null) HttpUtil.encodeArgs(args) else ""
         execute(handler)
         return handler
@@ -97,7 +97,7 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
         method: HttpMethod = HttpMethod.POST,
     ): RequestHandler {
         val handler = RequestHandler(
-            instanceConfig.instanceName,
+            instanceConfig,
             method.name,
             routed(endpoint),
             curHeaders + mapOf("content-type" to listOf(RequestHandler.multipartFormData)),

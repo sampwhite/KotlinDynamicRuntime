@@ -15,8 +15,8 @@ import kotlin.time.Instant
  */
 class RequestHandlerCookieTest : StringSpec({
 
-    fun handler(env: String) = RequestHandler("cookieTest", "GET", "/kda/thing", emptyMap(), mutableMapOf())
-        .also { it.boundConfig = KdrInstanceConfig("cookie-$env", env, ENV.liveSource) }
+    fun handler(env: String) =
+        RequestHandler(KdrInstanceConfig("cookie-$env", env, ENV.liveSource), "GET", "/kda/thing", emptyMap(), mutableMapOf())
 
     fun setCookieOf(h: RequestHandler): String = h.rptResponseHeaders["set-cookie"]!!.single()
 

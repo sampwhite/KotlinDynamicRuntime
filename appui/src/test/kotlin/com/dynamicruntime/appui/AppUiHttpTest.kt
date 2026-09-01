@@ -1,7 +1,6 @@
 package com.dynamicruntime.appui
 
 import com.dynamicruntime.common.http.request.TestHttpClient
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -20,12 +19,11 @@ class AppUiHttpTest : StringSpec({
 
     // Register the webapp host with the VM-global registry before any instance is booted, so the instance's
     // service tier includes it. Registration is idempotent, so repeated spec runs are harmless.
-    InstanceRegistry.register(listOf(AppUiComponent()))
 
     // One shared instance (component/schema/service init is cached by instance name); each test varies only
     // the inexpensive context name.
     fun client(cxtName: String): TestHttpClient =
-        TestHttpClient(Startup.mkTestBootCxt(cxtName, "appUiHttpTest").instanceConfig)
+        TestHttpClient(Startup.mkTestBootCxt(cxtName, "appUiHttpTest", additionalComponents = listOf(AppUiComponent())).instanceConfig)
 
     // The embedded resource a request should serve, read from the classpath the same way AppUiService does --
     // so a byte comparison against it proves the response path preserved the file exactly.

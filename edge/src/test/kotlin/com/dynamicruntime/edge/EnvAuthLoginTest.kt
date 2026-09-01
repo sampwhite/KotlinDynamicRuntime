@@ -9,7 +9,6 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.http.request.TestHttpClient
-import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.ADMR
 import com.dynamicruntime.common.user.GOOG
 import com.dynamicruntime.common.user.JwtKeySource
@@ -43,7 +42,6 @@ class EnvAuthLoginTest : StringSpec({
             if (kid == testKid) keyPair.public as RSAPublicKey else null
     }
 
-    InstanceRegistry.register(listOf(EdgeComponent()))
 
     /**
      * An edge instance with Google sign-in configured against this test's signing key. [adminDomain] is the
@@ -57,6 +55,7 @@ class EnvAuthLoginTest : StringSpec({
             put(GOOG.googleKeySource, keySource)
             if (adminDomain != null) put(ADMR.adminEmailDomainEnvVar.name, adminDomain)
         },
+        additionalComponents = listOf(EdgeComponent()),
     )
 
     // `hostedDomain` defaults to the configured admin domain, so an ordinary call mints a real Workspace token
@@ -118,7 +117,7 @@ class EnvAuthLoginTest : StringSpec({
         // on top of the level.
         profile.roles.contains(ROLE.allClients) shouldBe false
         // No row stands behind them, which is what stops refreshActingRoles going after CL.systemUserId.
-        profile?.isRowBacked shouldBe false
+        profile.isRowBacked shouldBe false
         // And the address reaches the log line the same way it would on a backend told by header.
         handler.createdCxt?.envAuthEmail shouldBe "dana@gyassa.com"
     }

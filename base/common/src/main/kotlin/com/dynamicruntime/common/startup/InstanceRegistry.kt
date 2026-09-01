@@ -17,15 +17,13 @@ import com.dynamicruntime.common.logging.LogStartup
  * synchronization because enforcement genuinely matters here (a guide-sanctioned
  * exception to the minimize-`private` rule).
  *
- * Typical use is via a module boot helper (e.g., kdn's `Startup`): [register] the
- * components, then [getOrCreateInstanceConfig] to build the instance, then
- * [createCxt] for a context bound to it. Ported from dn's `InstanceRegistry`,
- * reflection-free (services are factories, not `Class` tokens).
+ * Typical use is via a module boot helper (e.g., kdn's `Startup`): pass the components to
+ * [getOrCreateInstanceConfig] to build the instance, then [createCxt] for a context bound to it. The component
+ * set is a **parameter, not VM-global state** (issue #524) -- so a test builds an instance from exactly the
+ * components it names, and one test's fixture component cannot leak into another's instance. Ported from dn's
+ * `InstanceRegistry`, reflection-free (services are factories, not `Class` tokens).
  */
 object InstanceRegistry {
-    // VM-global: registered once, shared by every instance. Different instances may
-    // later choose which of these is active.
-    private val componentDefinitions = LinkedHashMap<String, ComponentDefinition>()
     private val instanceConfigs = HashMap<String, KdrInstanceConfig>()
     private var shutdownHookInstalled = false
 
@@ -34,27 +32,22 @@ object InstanceRegistry {
     private val shutdownCloseables = mutableListOf<AutoCloseable>()
 
     /**
-     * Registers component definitions (idempotent by [ComponentDefinition.providerName])
-     * and installs the JVM shutdown hook on first call. Call during VM startup.
+     * Registers an [AutoCloseable] to be closed on the JVM shutdown hook, installing the hook on first use. For
+     * a long-lived resource that holds threads and is created lazily, so nothing but its owner has to remember
+     * to stop it (issue #420).
+     *
+     * The hook is installed here, lazily, rather than at a fixed boot step (issue #524): its only job is to
+     * drain these closeables, so a run that registers none -- a unit test with no outbound client -- installs
+     * no hook at all.
      */
-    fun register(components: List<ComponentDefinition>) {
-        synchronized(componentDefinitions) {
+    fun registerForShutdown(closeable: AutoCloseable) {
+        synchronized(shutdownCloseables) {
             if (!shutdownHookInstalled) {
                 shutdownHookInstalled = true
                 Runtime.getRuntime().addShutdownHook(ShutdownThread())
             }
-            for (component in components) {
-                componentDefinitions.putIfAbsent(component.providerName, component)
-            }
+            shutdownCloseables.add(closeable)
         }
-    }
-
-    /**
-     * Registers an [AutoCloseable] to be closed on the JVM shutdown hook. For a long-lived resource that holds
-     * threads and is created lazily, so nothing but its owner has to remember to stop it (issue #420).
-     */
-    fun registerForShutdown(closeable: AutoCloseable) {
-        synchronized(shutdownCloseables) { shutdownCloseables.add(closeable) }
     }
 
     /** Closes everything [registerForShutdown] collected. Called once by [ShutdownThread]; failures are swallowed. */
@@ -66,10 +59,15 @@ object InstanceRegistry {
     /**
      * Returns the instance config for [instanceName], creating and fully initializing
      * it (schema gathered and compiled, services created and initialized) on first
-     * request. Subsequent calls return the cached config without re-initializing.
+     * request from [components]. Subsequent calls return the cached config without re-initializing.
+     *
+     * [components] is used **only when the instance is first created** (issue #524) -- like [overlay], it is
+     * ignored on a cache hit, because the instance is already built. So a reused [instanceName] returns the
+     * earlier instance and its earlier component set, which is why the house rule is a unique name per test.
      */
     fun getOrCreateInstanceConfig(
         instanceName: String,
+        components: List<ComponentDefinition>,
         overlay: Map<String, Any?> = emptyMap(),
     ): KdrInstanceConfig {
         synchronized(instanceConfigs) {
@@ -96,14 +94,14 @@ object InstanceRegistry {
             val collector = SchemaCollector(node)
             config.put(SchemaCollector.key, collector)
 
-            val components = componentDefinitions.values.sortedBy { it.loadPriority() }
+            val sortedComponents = components.sortedBy { it.loadPriority() }
             // Decided once, then reused: `isLoaded` is a predicate and was being asked twice, which quietly
             // made it a place where an effect would run twice too.
             //
             // Presence first, then isLoaded: the declaration decides, and the predicate may only narrow
             // further. A component excluded by role or tag is never asked, so its `isLoaded` cannot resurrect
             // it -- which is what makes the declarations answerable by reading them.
-            val loaded = components.filter { it.presence(cxt).admits(node) && it.isLoaded(cxt) }
+            val loaded = sortedComponents.filter { it.presence(cxt).admits(node) && it.isLoaded(cxt) }
 
             // Components contribute their own instance config before anything reads it (issue #386) -- ahead
             // of schema collection and of every service, including the startup tier that fixes node identity.

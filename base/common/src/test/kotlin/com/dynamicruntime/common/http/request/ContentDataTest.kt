@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -107,7 +109,7 @@ class ContentDataTest : StringSpec({
             .contentDispositionHeader() shouldBe "attachment; filename=\"system.ini\""
     }
 
-    // A non-ASCII name cannot travel in the plain `filename` at all, so RFC 6266's extended form carries it
+    // A non-ASCII name cannot travel in the plain `filename` at all, so RFC 6266's extended form carries it,
     // and the plain one keeps a degraded ASCII version for whatever ignores that.
     "a non-ASCII filename travels in the RFC 6266 extended form as well" {
         ContentData(byteArrayOf(1), "application/pdf", saveAsFilename = "naïve.pdf", inLine = false)
@@ -138,7 +140,7 @@ class ContentDataTest : StringSpec({
     // the part a caller depends on. A test-mode handler captures into its rpt* fields rather than a socket.
 
     "sending binary content sets the type, the disposition, and the bytes" {
-        val handler = RequestHandler("contentDataTest", "GET", "/cp/chart.png", emptyMap(), mutableMapOf())
+        val handler = RequestHandler(KdrInstanceConfig("contentDataTest", ENV.unit, ENV.liveSource), "GET", "/cp/chart.png", emptyMap(), mutableMapOf())
         val body = byteArrayOf(1, 2, 3)
         handler.sendContentResponse(
             ContentData(body, "image/png", saveAsFilename = "chart.png", inLine = false),
@@ -156,7 +158,7 @@ class ContentDataTest : StringSpec({
     }
 
     "sending text content captures text, not bytes" {
-        val handler = RequestHandler("contentDataTest", "GET", "/cp/report.csv", emptyMap(), mutableMapOf())
+        val handler = RequestHandler(KdrInstanceConfig("contentDataTest", ENV.unit, ENV.liveSource), "GET", "/cp/report.csv", emptyMap(), mutableMapOf())
         handler.sendContentResponse(
             ContentData("a,b,c", "text/csv", saveAsFilename = "report.csv", inLine = false),
             200,
@@ -170,7 +172,7 @@ class ContentDataTest : StringSpec({
     }
 
     "sending with a bare mime type sets no disposition -- the existing callers are unchanged" {
-        val handler = RequestHandler("contentDataTest", "GET", "/cp/page", emptyMap(), mutableMapOf())
+        val handler = RequestHandler(KdrInstanceConfig("contentDataTest", ENV.unit, ENV.liveSource), "GET", "/cp/page", emptyMap(), mutableMapOf())
         handler.sendStringResponse("hello", 200, "text/plain")
 
         handler.rptResponseMimeType shouldBe "text/plain"
