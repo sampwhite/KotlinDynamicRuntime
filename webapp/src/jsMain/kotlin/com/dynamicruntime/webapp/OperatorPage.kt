@@ -29,6 +29,7 @@ import react.dom.html.ReactHTML.tr
 import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useEffectOnce
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 
@@ -70,6 +71,8 @@ val OperatorListPage = FC<OperatorListPageProps> { props ->
     var error by useState<DisplayError?>(null)
     var asOf by useState<String?>(null)
     val generation = useRefreshGeneration()
+    // Monotonic token so an out-of-order data response is dropped rather than overwriting newer data (below).
+    val latestDataRun = useRef(0)
 
     // The output schema (parsed by the shared kernel parser), fetched once. An **empty** catalog is not an
     // error here: it means the caller cannot see this endpoint, and the data fetch below surfaces that refusal
@@ -89,13 +92,21 @@ val OperatorListPage = FC<OperatorListPageProps> { props ->
     // The response rows, re-fetched on every refresh generation. A list endpoint puts its items at the top
     // level of the envelope.
     useEffect(generation) {
+        // `operatorScope` is a module-global scope, so a launch outlives this effect. A superseded (out-of-order)
+        // response must not overwrite a newer one nor stamp it with a newer "as of": each run claims a token,
+        // and a result applies only while its token is still the latest.
+        val token = (latestDataRun.current ?: 0) + 1
+        latestDataRun.current = token
         operatorScope.launch {
             try {
-                items = Http.getApi(props.path)[EP.items].toJsonListOrEmpty()
-                asOf = nowTimeString()
-                error = null
+                val loaded = Http.getApi(props.path)[EP.items].toJsonListOrEmpty()
+                if (latestDataRun.current == token) {
+                    items = loaded
+                    asOf = nowTimeString()
+                    error = null
+                }
             } catch (e: Throwable) {
-                error = userFacingError(e)
+                if (latestDataRun.current == token) error = userFacingError(e)
             }
         }
     }
@@ -169,17 +180,27 @@ val OperatorObjectPage = FC<OperatorObjectPageProps> { props ->
     var error by useState<DisplayError?>(null)
     var asOf by useState<String?>(null)
     val generation = useRefreshGeneration()
+    // Monotonic token so an out-of-order response is dropped rather than overwriting newer data (below).
+    val latestRun = useRef(0)
 
     useEffect(generation) {
+        // `operatorScope` is a module-global scope, so a launch outlives this effect. A superseded (out-of-order)
+        // response must not overwrite a newer one nor stamp it with a newer "as of": each run claims a token,
+        // and a result applies only while its token is still the latest.
+        val token = (latestRun.current ?: 0) + 1
+        latestRun.current = token
         operatorScope.launch {
             try {
                 // A general endpoint wraps its object under `results` (a list endpoint uses `items`); read that,
                 // so the view shows the diagnostic map and not the envelope's own bookkeeping fields.
-                obj = Http.getApi(props.path)[EP.results].toJsonMapOrEmpty()
-                asOf = nowTimeString()
-                error = null
+                val loaded = Http.getApi(props.path)[EP.results].toJsonMapOrEmpty()
+                if (latestRun.current == token) {
+                    obj = loaded
+                    asOf = nowTimeString()
+                    error = null
+                }
             } catch (e: Throwable) {
-                error = userFacingError(e)
+                if (latestRun.current == token) error = userFacingError(e)
             }
         }
     }

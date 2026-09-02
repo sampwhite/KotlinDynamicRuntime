@@ -582,14 +582,18 @@ input {
 .op-table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
 .op-table-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
 .op-table-scroll::-webkit-scrollbar-track { background: rgba(255, 255, 255, .04); border-radius: 5px; }
-/* The header stays put while a tall table scrolls vertically within its box. Scoped to the top-level table so
-   a nested sub-table's header does not also stick. Needs a solid background to cover the rows sliding under. */
+/* The header stays put while a tall table scrolls vertically within its box. Needs a solid background to cover
+   the rows sliding under. */
 .op-table-scroll > .op-table > thead > tr > th {
     position: sticky;
     top: 0;
     background: var(--surface-raised);
     z-index: 1;
 }
+/* But a *nested* sub-table's header must NOT stick: its scroll box has `overflow: visible`, so its sticky
+   header resolves against the outer scroll box and would pin over the main header while scrolling. Higher
+   specificity (the extra `.op-table` ancestor) than the rule above, so it wins for nested tables only. */
+.op-table .op-table-scroll > .op-table > thead > tr > th { position: static; }
 /* A nested sub-table (a cell's columns/indexes) gets no box of its own: no height cap, no inner scrollbar --
    it just widens its cell, and the outer box does the scrolling. */
 .op-table .op-table-scroll { max-height: none; overflow: visible; margin: 0; }

@@ -623,7 +623,7 @@ private fun ChildrenBuilder.renderField(
             vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) },
             // A hint declared at *this* use site wins over one on the (shared) target type -- the same
             // per-site precedence `title` takes (issue #540).
-            presentation = prop.presentation ?: vt.presentation,
+            presentation = prop.presentation ?: vt.presentation, opts = opts,
         ) { newValue ->
             errors.noteEdit(path)
             emit(newValue)
@@ -920,7 +920,7 @@ private fun ChildrenBuilder.renderScalarList(
             // inside a list (removing an element is the remove control's job), which is what a boolean
             // element asks about (issue #261).
             if (elementType != null) {
-                widget(elementType, element, required = true, editable = true) { replace(it) }
+                widget(elementType, element, required = true, editable = true, opts = opts) { replace(it) }
             } else {
                 Input {
                     this.value = displayValue(element)
@@ -983,11 +983,11 @@ private fun ChildrenBuilder.removeControl(what: String, onRemove: () -> Unit) {
  */
 private fun ChildrenBuilder.widget(
     vt: SchType, value: Any?, required: Boolean, editable: Boolean, describedBy: String? = null,
-    presentation: String? = vt.presentation,
+    presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
     emit: (Any?) -> Unit,
 ) {
     if (!editable) {
-        readOnlyValue(vt, value, presentation)
+        readOnlyValue(vt, value, presentation, opts)
         return
     }
     val arrayOptions = if (vt.jsonType == SCT.array) vt.itemType?.options else null
@@ -1311,14 +1311,16 @@ fun parseJsonField(text: String): JsonFieldParse {
  * Read-only presentation of a field: its value as text (nothing when absent) followed by the field's type
  * named in words. No form control — this is a value being shown, not an input.
  */
-private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?, presentation: String? = vt.presentation) {
+private fun ChildrenBuilder.readOnlyValue(
+    vt: SchType, value: Any?, presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
+) {
     // A structured array -- its elements are objects with declared fields -- reads far better as a nested table
     // (a sub-table inside the cell) than as raw JSON (issue #540): this is what turns a database-tables row's
     // `columns`/`indexes` into readable sub-tables rather than a JSON blob. A free-form array (no element
     // fields) still falls to the JSON view below.
     val elementType = vt.itemType
     if (vt.jsonType == SCT.array && elementType != null && elementType.properties.isNotEmpty() && value is List<*>) {
-        schemaTable(elementType, value)
+        schemaTable(elementType, value, opts)
         return
     }
     // A JSON structure (a generic object, or an array with structured elements) reads far better as pretty
@@ -1341,7 +1343,7 @@ private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?, presentation
         }
         span {
             className = ClassName("field-value op-list")
-            for (element in value) readOnlyValue(vt.itemType!!, element, itemPresentation)
+            for (element in value) readOnlyValue(vt.itemType!!, element, itemPresentation, opts)
         }
         return
     }
@@ -1438,7 +1440,7 @@ fun ChildrenBuilder.schemaTable(elementType: SchType, elements: List<Any?>, opts
                     tr {
                         for (col in inlineCols) td {
                             // A per-site column hint wins over one on the column's (shared) target type.
-                            readOnlyValue(col.valueType, row[col.name], col.presentation ?: col.valueType.presentation)
+                            readOnlyValue(col.valueType, row[col.name], col.presentation ?: col.valueType.presentation, opts)
                         }
                     }
                     // The detail arrays for this element, each a labelled sub-table on a full-width row under it.
