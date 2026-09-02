@@ -19,7 +19,7 @@ import io.kotest.matchers.string.shouldContain
 
 /**
  * The workflow wiring on a real boot (issue #533): the two sample creation workflows arrive through the
- * component, pass the checks against the real clients, schema and fragment registry, and land in the right
+ * component, pass the checks against the real clients, schema, and fragment registry, and land in the right
  * scopes. The refusals themselves are covered over plain data in `WorkflowRegistryTest`; this is the smoke
  * that the pieces are connected.
  */

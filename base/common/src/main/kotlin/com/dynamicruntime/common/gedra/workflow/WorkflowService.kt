@@ -68,6 +68,7 @@ class WorkflowService : ServiceInitializer {
     /** The registry [client] sees; see [WorkflowRegistries.forClient]. */
     fun forClient(client: String?): WorkflowRegistry = registries.forClient(client)
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "WorkflowService"
 

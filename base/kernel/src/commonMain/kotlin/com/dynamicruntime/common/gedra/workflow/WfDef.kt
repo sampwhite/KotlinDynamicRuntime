@@ -315,7 +315,7 @@ object WfDefSchema {
     }
 
     // Parsed once and kept: the schema is a constant of the runtime, and a definition arriving mid-run should
-    // not re-parse it. A benign race on first use produces the same value twice.
+    // not reparse it. A benign race on first use produces the same value twice.
     private var parsed: Map<String, SchType>? = null
 
     /** The compiled types, keyed by qualified name (`wfdef.WfDef`). */
