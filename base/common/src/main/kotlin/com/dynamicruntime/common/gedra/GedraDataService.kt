@@ -66,7 +66,7 @@ object GDBG {
  *
  * A gedra holds at most one entry per trait, **unless** the trait declares a `g-primaryKey` -- then one per
  * distinct value of that key ([checkEntryKeys]). A keyed entry is addressed by `(traitId, data[<keyField>])`,
- * which an edit carries in its own data, so the same rule names an entry to add, merge, replace or delete.
+ * which an edit carries in its own data, so the same rule names an entry to add, merge, replace, or delete.
  */
 @Suppress("DuplicatedCode")
 class GedraDataService : ServiceInitializer {
