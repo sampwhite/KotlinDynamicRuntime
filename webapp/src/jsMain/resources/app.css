@@ -421,6 +421,10 @@ body {
     padding: 6px 10px;
     border-bottom: 1px solid var(--border);
     vertical-align: top;
+    /* `.markdown` sets `overflow-wrap: anywhere`, which zeroes a cell's min-content width so table auto-layout
+       collapses a column below its longest word and then splits the word (issue #547). `break-word` wraps only
+       when a word genuinely cannot fit, so an ordinary word stays whole. */
+    overflow-wrap: break-word;
 }
 .markdown th { color: var(--text-dim); font-weight: 600; }
 /* A delimiter-driven alignment (`:--`/`--:`/`:-:`) rides an inline `style` on the cell, which already wins over

@@ -110,6 +110,7 @@ class MarkdownRenderUtilTest : StringSpec({
         html shouldContain ">click</a>"
         html shouldNotContain "javascript:"
     }
+
     // --- tables (issue #547) ------------------------------------------------------------------------------
 
     "renders a github-style pipe table with a header and body rows" {
