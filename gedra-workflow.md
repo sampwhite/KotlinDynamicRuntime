@@ -1,5 +1,15 @@
 # The Gedra Workflow
 
+**Status: superseded.** Phase 1 of this design shipped as issue #381 and was **retired under issue #533**
+before phases 2–4 were built; the replacement is tracked by issue #532, with its design notes in the private
+`sampwhite/Actions` repo (`kd2-design/thoughts-workflow-poc.md`, `kd2-design/thoughts-gedra-states.md`). Two
+ideas carry forward: the **soft-validation seam** — a completeness gate stops an advance and never fails a
+write; see the soft-validation section of `gedra-patch.md` — and completeness as **presence of an entry, not a
+judgment of its content**. The rest of this document is left as written, as the record of a design that was
+tried, so its arguments are not re-derived.
+
+---
+
 The design of the workflow: a stateful gedra that a **user** fills in, hands to an **advisor**, and moves
 through a sequence of states until it is done — collecting form entries along the way. This is a **declaration
 of intent**, written before the code, in the manner of [`gedra-entry.md`](gedra-entry.md).
@@ -121,11 +131,11 @@ the workflow moves to a user-held state showing exactly those steps as needing a
 status is therefore derived, not stored: `changesRequested` if the advisor reopened it, else `complete` if its
 required traits are present, else `pending`. **The owner moving the workflow forward — a transition leaving a
 user-held state — clears the overlay**, so a resubmission is reviewed afresh: the advisor's ask ("this number
-looks wrong") is a judgement the system cannot see as addressed, only the advisor can. Other transitions — an
+looks wrong") is a judgment the system cannot see as addressed, only the advisor can. Other transitions — an
 advisor-side claim or triage move — **preserve** it, so no unrelated move can erase the notes the user is
 still reading. That is the same division of labour the soft-validation seam draws: the system checks
 *presence*, a person checks *correctness* — and for the same reason, a task's completeness is **presence** of
-its required traits (an entry with a data value, however shaped, even empty), never a judgement of content: a
+its required traits (an entry with a data value, however shaped, even empty), never a judgment of content: a
 trait whose payload is legitimately empty must be able to satisfy a gate, or the submit is blocked forever.
 
 So "send it back to the assets step" is: the advisor's `return` names the `assets` task; the user sees that one

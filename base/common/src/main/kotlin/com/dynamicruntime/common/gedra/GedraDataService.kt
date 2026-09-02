@@ -65,7 +65,7 @@ object GDBG {
  * ### Keyed traits (issue #487)
  *
  * A gedra holds at most one entry per trait, **unless** the trait declares a `g-primaryKey` -- then one per
- * distinct value of that key ([checkEntryKeys]). A keyed entry is addressed by `(traitId, data[primaryKey])`,
+ * distinct value of that key ([checkEntryKeys]). A keyed entry is addressed by `(traitId, data[<keyField>])`,
  * which an edit carries in its own data, so the same rule names an entry to add, merge, replace or delete.
  */
 @Suppress("DuplicatedCode")
@@ -145,12 +145,11 @@ class GedraDataService : ServiceInitializer {
     /**
      * The scoped single-gedra update statement every write path here shares: `update GedraData set [setSql]
      * where gedraId = :gedraId and enabled = true and <the scope's own conditions>` -- named
-     * `[stmtNamePrefix]<shapeKey>`, since the scope's shape changes the SQL and statements are cached by name.
+     * `<stmtNamePrefix><shapeKey>`, since the scope's shape changes the SQL and statements are cached by name.
      *
      * One builder rather than a copy per caller because the where clause **is the write-side authorization**:
-     * the patch, the delete and the workflow move must always agree on what "a row this caller may write"
-     * means, and a scope dimension added here reaches all of them at once. [bind] receives the scope's bind
-     * values; the caller adds its own.
+     * the patch and the delete must always agree on what "a row this caller may write" means, and a scope
+     * dimension added here reaches both at once. [bind] receives the scope's bind values; the caller adds its own.
      */
     internal fun mkScopedGedraUpdate(
         sqlCxt: SqlCxt,
@@ -172,38 +171,15 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * Applies [edits] to [entries] and validates the result -- the by-trait fold `applyToOne` performs,
-     * shared so the workflow transition can run the identical edit semantics inside its own transaction
-     * (`GedraWorkflow`). Returns the new entry list; throws on an edit or validation failure, in which case
-     * nothing should be written.
-     */
-    internal fun applyEditsToEntries(
-        cxt: KdrCxt,
-        kind: GedraDataType,
-        edits: List<GedraEdit>,
-        entries: List<Map<String, Any?>>,
-    ): List<Map<String, Any?>> {
-        val pkFieldsOf = pkFieldsOf(cxt, kind)
-        val byKey = keyEntries(entries, pkFieldsOf)
-        val now = cxt.instanceNow()
-        for (edit in edits) {
-            applyEdit(cxt, edit, byKey, pkFieldsOf(edit.traitId), now)
-        }
-        val result = byKey.values.toList()
-        checkStoredEntries(cxt, kind, result)
-        return result
-    }
-
-    /**
-     * The order a patch applies kinds in (issue #337).
+     * The order a patch applies kinds in (issue #337): declaration order, which is arbitrary but **fixed**. What
+     * matters is that the server chooses it, so a caller cannot reorder the phases by reordering their request.
      *
-     * Only the first entry is a decision: a **workflow is edited before the forms it governs**, because it is
-     * where "has this already been done?" is recorded and so has to see a "submit" first. The rest follow in
-     * declaration order, which is arbitrary but fixed -- what matters is that the server chooses, so a caller
-     * cannot reorder the phases by reordering their request.
+     * `wfData` used to be hoisted first, because the #381 workflow recorded "has this already been done?" there
+     * and had to see a submit before the forms it governed. That machine was retired (issue #533) and nothing
+     * now reads a `wfData` gedra during a patch, so the hoist went with it; the replacement design (issue #532)
+     * keeps workflow state in a companion table rather than in a gedra's entries.
      */
-    private val kindApplyOrder: List<GedraDataType> =
-        listOf(GedraDataType.wfData) + GedraDataType.entries.filter { it != GedraDataType.wfData }
+    private val kindApplyOrder: List<GedraDataType> = GedraDataType.entries
 
     /**
      * Creates a gedra of [kind] owned by the calling context, carrying [entries], and returns it as stored.
@@ -392,12 +368,13 @@ class GedraDataService : ServiceInitializer {
      *
      * **Then apply, one topic transaction per target.** Atomicity is per target: each succeeds or fails alone,
      * and the answer says which. That is the arrangement rather than a first cut -- recovery from a partial
-     * patch is by replay, since a workflow records what it has already done and a retry skips it. See
-     * `gedra-patch.md`.
+     * patch is by **replay**, which is safe because every edit is idempotent by value: a `deleteOrNoOp` of an
+     * absent entry is a no-op, an `addOrMerge` refolded over its own result is unchanged, and an
+     * `addOrReplace` takes the supplied entry whole (see `applyEdit`). A retry re-applies what already landed
+     * and changes nothing but the audit stamps. See `gedra-patch.md`.
      *
-     * Kinds are applied in a fixed order with `wfData` first, because a workflow is the thing that guards
-     * against a double submit and has to see the edit before the forms it governs do. The server chooses that
-     * order rather than honoring the request's, so a caller cannot subvert it by sending forms first.
+     * Kinds are applied in a fixed order the server chooses (`kindApplyOrder`) rather than the request's, so a
+     * caller cannot reorder the phases by reordering their targets.
      *
      * The row is read again inside the transaction. The admit-phase read cannot be reused: it happened outside
      * the lock, and a merge has to work from what is stored now rather than from what was stored a moment ago.

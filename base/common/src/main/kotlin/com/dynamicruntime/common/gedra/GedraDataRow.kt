@@ -15,16 +15,6 @@ import kotlin.time.Instant
 // read `entries`/`gedraId` off a response by name too (issue #393). References here resolve unchanged.
 
 /**
- * What the `allowAdditionalTraits` field says, written once so the type and the patch endpoint cannot come to
- * describe the same flag differently.
- */
-@Suppress("ConstPropertyName")
-const val ADDITIONAL_TRAITS_HINT =
-    "Whether this call may write traits the client does not support. Defaults to false, so a misspelled " +
-        "trait id -- or one belonging to another client -- is refused rather than stored as an unrecognized " +
-        "shape. Reads are unaffected."
-
-/**
  * One row of [GDT.gedraData], extracted into typed fields (issue #310) -- the richer aggregate the vocabulary
  * calls a *gedra*, as against the storage map it came from.
  *
@@ -68,7 +58,11 @@ class GedraDataRow(
     /** The gedra's entries, each an instance of the trait its `traitId` names. */
     var entries: List<Map<String, Any?>> = emptyList()
 
-    /** Whatever else the stored [GD.data] map held, [GD.entries] promoted out. Empty today. */
+    /**
+     * Whatever else the stored [GD.data] map held, [GD.entries] promoted out. Nothing writes a key here yet, and
+     * the patch still carries it through **unchanged** -- that is the forward-compatibility promise above, and
+     * it is kept by a test rather than by a producer, so that the merge is not "simplified" away as dead.
+     */
     var extra: Map<String, Any?> = emptyMap()
 
     var createdAt: Instant? = null
@@ -86,7 +80,19 @@ class GedraDataRow(
         GDF.updatedAt to updatedAt,
     )
 
+    @Suppress("ConstPropertyName")
     companion object {
+        /**
+         * What the `allowAdditionalTraits` field says, written once so the type ([defineType]) and the patch
+         * endpoint cannot come to describe the same flag differently. Beside the type that owns the field, as a
+         * `const` so it inlines at both sites; not a key, so it belongs to this type rather than to an acronym
+         * vocabulary.
+         */
+        const val additionalTraitsHint =
+            "Whether this call may write traits the client does not support. Defaults to false, so a misspelled " +
+                "trait id -- or one belonging to another client -- is refused rather than stored as an unrecognized " +
+                "shape. Reads are unaffected."
+
         /**
          * Defines the schema types for gedras of one [kind] -- `FormDoc` for [GedraDataType.formDoc] -- on
          * [builder], beside the [toJsonMap] they describe so the three cannot drift: **the stored shape, and
@@ -141,7 +147,7 @@ class GedraDataRow(
                 }
                 // An instruction about the write, so it belongs to the sent shape and to nothing else.
                 if (forInput) {
-                    property(GDF.allowAdditionalTraits, ADDITIONAL_TRAITS_HINT) { type = SCT.boolean }
+                    property(GDF.allowAdditionalTraits, additionalTraitsHint) { type = SCT.boolean }
                 }
                 property(GDF.createdAt, "When the gedra was created.", required = true) {
                     dateTime()
