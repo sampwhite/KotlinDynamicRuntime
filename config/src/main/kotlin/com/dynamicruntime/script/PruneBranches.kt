@@ -23,11 +23,19 @@ import kotlin.time.Instant
  * *committer* date being at least [minWeeks] week(s) old, so a branch is judged by its last activity rather
  * than by when it was created, which git does not record either.
  *
- * Two things are refused rather than deleted, because both destroy work that exists nowhere else. A branch not
- * merged into the remote's default branch is kept unless `--include-unmerged` says otherwise, and the default
- * branch itself is never a candidate. Everything actually deleted is written to a restore file first -- one
- * `git push` per branch, resurrecting it at the exact commit -- since a deleted remote branch is otherwise
- * recoverable only from someone's local clone.
+ * Three things are refused rather than deleted, because each destroys work or attention that exists nowhere
+ * else. A branch with an **open pull request** is kept whatever its age says, since deleting it closes the PR
+ * and takes the review conversation's diff with it; that check needs the GitHub CLI, and rather than guess
+ * when `gh` cannot answer, the command stops and offers `--skip-pr-check`. A branch not merged into the
+ * remote's default branch is kept unless `--include-unmerged` says otherwise. The default branch itself is
+ * never a candidate. Everything actually deleted is written to a restore file first -- one `git push` per
+ * branch, resurrecting it at the exact commit -- since a deleted remote branch is otherwise recoverable only
+ * from someone's local clone.
+ *
+ * Deleting is local as well as remote: `git push --delete` drops the remote-tracking ref by itself, and this
+ * follows it with a prune and with `git branch -D` for each local branch still sitting on the deleted commit,
+ * so a prune does not leave a checkout full of branches tracking things that are gone. A local branch that has
+ * moved on from the remote's commit, or that is checked out, is kept and reported.
  *
  * It is a **Kotlin** command per the code guide's "clever Kotlin, dumb shell": `bin/kdr-prune-branches` only
  * locates the checkout and hands off. Nothing here needs the runtime, so it boots none of it -- this talks to
@@ -41,6 +49,8 @@ object PruneBranches {
         const val dryRun = "--dry-run"
         const val yes = "--yes"
         const val includeUnmerged = "--include-unmerged"
+        const val skipPrCheck = "--skip-pr-check"
+        const val keepLocal = "--keep-local"
         const val remote = "--remote"
         const val repo = "--repo"
         const val email = "--email"
@@ -78,6 +88,20 @@ object PruneBranches {
     /** How much of a sha the listing shows. */
     const val shaDisplayLength = 8
 
+    /** Fields [prListArgs] emits, tab separated. */
+    const val prFieldCount = 2
+
+    /**
+     * Asks the GitHub CLI for every open pull request raised from a branch *in this repository*, as
+     * `<number>\t<branch>` lines. Cross-repository pull requests are dropped: their head branch lives in a
+     * fork, so a same-named branch here is a different branch and protecting it would be a false positive.
+     */
+    val prListArgs = listOf(
+        "gh", "pr", "list", "--state", "open", "--limit", "1000",
+        "--json", "number,headRefName,isCrossRepository",
+        "--jq", ".[] | select(.isCrossRepository|not) | \"\\(.number)\\t\\(.headRefName)\"",
+    )
+
     /** A remote branch, as `git for-each-ref` reports it. */
     data class RemoteBranch(
         /** Short name with no remote prefix, e.g. `issue-13-logging` (it may itself contain slashes). */
@@ -105,6 +129,8 @@ object PruneBranches {
         val dryRun: Boolean,
         val assumeYes: Boolean,
         val includeUnmerged: Boolean,
+        val skipPrCheck: Boolean,
+        val keepLocal: Boolean,
         val extraEmails: Set<String>,
         val extraProtected: Set<String>,
     )
@@ -140,14 +166,27 @@ object PruneBranches {
                     "logged in. Set one, or name yourself with ${PBF.email} <address>.",
             )
         }
+        val openPrs = if (options.skipPrCheck) {
+            mapOf()
+        } else {
+            openPrBranches(repoDir) ?: return fail(
+                "Could not ask GitHub which pull requests are open -- is `gh` installed and logged in? Try " +
+                    "`gh auth status`.\nNot deleting anything: a branch under review is exactly what this " +
+                    "check exists to save. Re-run with ${PBF.skipPrCheck} to prune without it.",
+            )
+        }
         val cutoff = Clock.System.now().addDays(-daysPerWeek * options.weeks)
         println("Identity:   ${identities.joinToString(", ")}")
         println("Cutoff:     ${cutoff.formatDayPart()} (${options.weeks} week(s) ago)")
+        println(
+            "Open PRs:   " +
+                if (options.skipPrCheck) "not checked (${PBF.skipPrCheck})" else "${openPrs.size} in this repo",
+        )
         println()
 
         val branches = readBranches(repoDir, options.remote, defaultBranch)
         val protectedNames = alwaysProtected + defaultBranch + options.extraProtected
-        val plan = plan(branches, identities, cutoff, protectedNames, options.includeUnmerged)
+        val plan = plan(branches, identities, cutoff, protectedNames, options.includeUnmerged, openPrs)
 
         report(plan, options)
         if (plan.doomed.isEmpty()) {
@@ -164,7 +203,7 @@ object PruneBranches {
             println("Aborted; nothing was deleted.")
             return 0
         }
-        return delete(repoDir, options.remote, plan.doomed)
+        return delete(repoDir, options.remote, plan.doomed, options.keepLocal)
     }
 
     // --- the decisions, kept pure so a test can drive them ------------------------------------------------
@@ -179,9 +218,13 @@ object PruneBranches {
 
     /**
      * Sorts [branches] into the ones to delete and the ones to keep. A branch survives if it is protected, is
-     * not the caller's, is newer than [cutoff], or carries unmerged work while [includeUnmerged] is false --
-     * tested in that order, so the reason reported is the most important one rather than the first accident of
-     * iteration.
+     * the head of an open pull request in [openPrs], is not the caller's, is newer than [cutoff], or carries
+     * unmerged work while [includeUnmerged] is false -- tested in that order, so the reason reported is the
+     * most important one rather than the first accident of iteration.
+     *
+     * An open pull request outranks every reason but an explicit protection: a review in flight is the one
+     * state where deleting the branch breaks something a person is actively looking at, whatever the branch's
+     * age or merge status says.
      */
     fun plan(
         branches: List<RemoteBranch>,
@@ -189,12 +232,14 @@ object PruneBranches {
         cutoff: Instant,
         protectedNames: Set<String>,
         includeUnmerged: Boolean,
+        openPrs: Map<String, Int> = mapOf(),
     ): PrunePlan {
         val doomed = mutableListOf<RemoteBranch>()
         val kept = mutableListOf<KeptBranch>()
         for (branch in branches.sortedBy { it.lastCommit }) {
             val reason = when {
                 branch.name in protectedNames -> "protected"
+                openPrs.containsKey(branch.name) -> "open PR #${openPrs[branch.name]}"
                 !owns(identities, branch) -> "not yours (${branch.authorEmail})"
                 branch.lastCommit >= cutoff -> "worked on since the cutoff"
                 !branch.merged && !includeUnmerged -> "not merged into the default branch"
@@ -210,6 +255,25 @@ object PruneBranches {
         branch.authorEmail.lowercase() in identities
 
     /**
+     * Why the existing local branch [name] must be kept after its remote counterpart was deleted, or null when
+     * it is safe to delete. [currentBranch] is the checked-out branch, if any.
+     *
+     * The rule is deliberately strict: the local branch goes only when it sits on the *exact* commit the
+     * remote did, which is the one case where deleting it can lose nothing -- that commit is in the restore
+     * file, and anything else a local branch might hold is by definition not on the remote at all.
+     */
+    fun localBranchKeepReason(
+        name: String,
+        localSha: String,
+        remoteSha: String,
+        currentBranch: String?,
+    ): String? = when {
+        name == currentBranch -> "it is checked out"
+        localSha != remoteSha -> "it holds a commit the deleted remote branch did not"
+        else -> null
+    }
+
+    /**
      * Reads the arguments into [Options], or null when they do not parse. The wrapper passes its own `--repo`
      * first and a caller's own copy arrives later, so the last one given wins.
      */
@@ -220,6 +284,8 @@ object PruneBranches {
         var dryRun = false
         var assumeYes = false
         var includeUnmerged = false
+        var skipPrCheck = false
+        var keepLocal = false
         val emails = mutableSetOf<String>()
         val protectedNames = mutableSetOf<String>()
 
@@ -241,6 +307,8 @@ object PruneBranches {
                 arg == PBF.dryRun -> dryRun = true
                 arg == PBF.yes || arg == "-y" -> assumeYes = true
                 arg == PBF.includeUnmerged -> includeUnmerged = true
+                arg == PBF.skipPrCheck -> skipPrCheck = true
+                arg == PBF.keepLocal -> keepLocal = true
                 arg.startsWith("-") -> return null
                 weeks != null -> return null
                 else -> weeks = arg.toIntOrNull() ?: return null
@@ -254,6 +322,8 @@ object PruneBranches {
             dryRun = dryRun,
             assumeYes = assumeYes,
             includeUnmerged = includeUnmerged,
+            skipPrCheck = skipPrCheck,
+            keepLocal = keepLocal,
             extraEmails = emails,
             extraProtected = protectedNames,
         )
@@ -283,6 +353,31 @@ object PruneBranches {
             authorEmail = rawEmail.removePrefix("<").removeSuffix(">"),
             merged = name in mergedNames,
         )
+    }
+
+    /**
+     * Parses the `<number>\t<branch>` lines [prListArgs] produces into branch name -> PR number. A branch with
+     * more than one open PR keeps the lowest number, which is the oldest and so the one a reader is most
+     * likely to be looking at.
+     */
+    fun parsePrLines(output: String): Map<String, Int> {
+        val prs = mutableMapOf<String, Int>()
+        for (line in output.lineSequence()) {
+            val fields = line.split("\t")
+            if (fields.size != prFieldCount) {
+                continue
+            }
+            val number = fields[0].trim().toIntOrNull() ?: continue
+            val branch = fields[1].trim()
+            if (branch.isEmpty()) {
+                continue
+            }
+            val existing = prs[branch]
+            if (existing == null || number < existing) {
+                prs[branch] = number
+            }
+        }
+        return prs
     }
 
     /** Parses `git branch -r --merged`, dropping the `origin/HEAD -> origin/main` symref line. */
@@ -352,7 +447,17 @@ object PruneBranches {
         return found
     }
 
-    private fun delete(repoDir: File, remote: String, doomed: List<RemoteBranch>): Int {
+    /**
+     * Branch name -> open PR number for this repository, or null when the GitHub CLI could not answer at all.
+     * Null is not "there are no open pull requests": it is "we do not know", which the caller has to treat as
+     * a reason to stop rather than as a green light.
+     */
+    private fun openPrBranches(repoDir: File): Map<String, Int>? {
+        val result = capture(repoDir, *prListArgs.toTypedArray())
+        return if (result.failed) null else parsePrLines(result.out)
+    }
+
+    private fun delete(repoDir: File, remote: String, doomed: List<RemoteBranch>, keepLocal: Boolean): Int {
         var deleted = 0
         for (batch in doomed.chunked(deleteBatchSize)) {
             val cmd = listOf("git", "push", remote, "--delete") + batch.map { it.name }
@@ -361,13 +466,54 @@ object PruneBranches {
                     "git push failed after deleting $deleted branch(es); the rest were left alone. " +
                         "Re-run to continue.",
                 )
+                cleanUpLocal(repoDir, remote, doomed.take(deleted), keepLocal)
                 return failureExit
             }
             deleted += batch.size
         }
         println()
         println("Deleted $deleted branch(es) from $remote.")
+        cleanUpLocal(repoDir, remote, doomed, keepLocal)
         return 0
+    }
+
+    /**
+     * Clears what the deletion leaves behind locally. `git push --delete` already drops the
+     * `refs/remotes/<remote>/<branch>` tracking ref, so the prune is belt and braces -- though it does also
+     * clear refs for branches somebody else deleted meanwhile. The local *branches* are the real leftovers: a
+     * push never touches `refs/heads`, so without this they linger, tracking a remote branch that is gone.
+     */
+    private fun cleanUpLocal(repoDir: File, remote: String, deleted: List<RemoteBranch>, keepLocal: Boolean) {
+        if (deleted.isEmpty()) {
+            return
+        }
+        val pruned = capture(repoDir, "git", "remote", "prune", remote)
+        if (pruned.failed) {
+            System.err.println("Could not prune ${remote}'s remote-tracking refs: ${pruned.out}")
+        } else {
+            println("Pruned ${remote}'s remote-tracking refs.")
+        }
+        if (keepLocal) {
+            println("${PBF.keepLocal}: local branches left alone.")
+            return
+        }
+        val current = currentBranch(repoDir)
+        var removed = 0
+        for (branch in deleted) {
+            val localSha = revParse(repoDir, "refs/heads/${branch.name}") ?: continue
+            val keep = localBranchKeepReason(branch.name, localSha, branch.sha, current)
+            if (keep != null) {
+                println("  kept local branch ${branch.name} -- $keep")
+                continue
+            }
+            val result = capture(repoDir, "git", "branch", "-D", branch.name)
+            if (result.failed) {
+                System.err.println("  could not delete local branch ${branch.name}: ${result.out}")
+            } else {
+                removed++
+            }
+        }
+        println("Deleted $removed local branch(es) that tracked them.")
     }
 
     // --- output -------------------------------------------------------------------------------------------
@@ -434,11 +580,14 @@ object PruneBranches {
             Usage: kdr-prune-branches <weeks> [options]
 
             Deletes remote branches whose tip commit you authored and which have not been touched for at
-            least <weeks> weeks (minimum $minWeeks). Unmerged branches and the default branch are kept.
+            least <weeks> weeks (minimum $minWeeks). Branches with an open pull request, unmerged branches,
+            and the default branch are kept. The local branches that tracked the deleted ones go too.
 
               ${PBF.includeUnmerged}  also delete branches not merged into the default branch
               ${PBF.dryRun}           show what would be deleted and stop
               ${PBF.yes}, -y          do not ask for confirmation
+              ${PBF.skipPrCheck}    prune without asking GitHub about open pull requests
+              ${PBF.keepLocal}        delete only on the remote; leave local branches alone
               ${PBF.remote} <name>    the remote to prune (default 'origin')
               ${PBF.repo} <dir>       the checkout to work in (default: the one holding this script)
               ${PBF.email} <addr>     also treat this address as yours (repeatable)
@@ -485,6 +634,18 @@ object PruneBranches {
             System.err.println("could not run ${cmd.firstOrNull()}: ${e.message}")
             false
         }
+
+    /** The checked-out branch, or null on a detached HEAD. */
+    private fun currentBranch(repoDir: File): String? {
+        val result = capture(repoDir, "git", "symbolic-ref", "--quiet", "--short", "HEAD")
+        return if (result.failed || result.out.isEmpty()) null else result.out
+    }
+
+    /** The commit [ref] resolves to, or null when there is no such ref. */
+    private fun revParse(repoDir: File, ref: String): String? {
+        val result = capture(repoDir, "git", "rev-parse", "--verify", "--quiet", ref)
+        return if (result.failed || result.out.isEmpty()) null else result.out
+    }
 
     /** The root of the working tree holding [dir], or null when it is not in a repository. */
     private fun topLevel(dir: File): File? {

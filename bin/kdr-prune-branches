@@ -7,8 +7,9 @@
 # Usage:
 #   kdr-prune-branches <weeks> [--dry-run] [--yes] [--include-unmerged] [--remote origin]
 #
-# Start with --dry-run. Unmerged branches and the remote's default branch are kept unless you say otherwise,
-# and every deletion is written to a restore file first.
+# Start with --dry-run. Branches with an open pull request are always kept; unmerged branches and the remote's
+# default branch are kept unless you say otherwise; and every deletion is written to a restore file first. The
+# local branches that tracked the deleted ones are removed too, unless they hold a commit the remote did not.
 #
 # A "dumb" wrapper, per the code guide: it resolves which checkout to act on -- the same rule kdr-run uses, so
 # KDR_WORKSPACE_DIR (and therefore kdr-use) redirects this command exactly like the others -- and hands every

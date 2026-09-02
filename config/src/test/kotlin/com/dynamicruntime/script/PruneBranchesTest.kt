@@ -45,12 +45,23 @@ class PruneBranchesTest : StringSpec({
     }
 
     "parseArgs reads the week count and the flags" {
-        val options = PruneBranches.parseArgs(listOf("3", "--dry-run", "--include-unmerged")).shouldNotBeNull()
+        val options = PruneBranches.parseArgs(
+            listOf("3", "--dry-run", "--include-unmerged", "--skip-pr-check", "--keep-local"),
+        ).shouldNotBeNull()
         options.weeks shouldBe 3
         options.dryRun shouldBe true
         options.includeUnmerged shouldBe true
+        options.skipPrCheck shouldBe true
+        options.keepLocal shouldBe true
         options.assumeYes shouldBe false
         options.remote shouldBe "origin"
+    }
+
+    "parseArgs leaves the safety checks on by default" {
+        val options = PruneBranches.parseArgs(listOf("3")).shouldNotBeNull()
+        options.skipPrCheck shouldBe false
+        options.keepLocal shouldBe false
+        options.includeUnmerged shouldBe false
     }
 
     "parseArgs collects repeatable values and takes the last --repo" {
@@ -120,6 +131,60 @@ class PruneBranchesTest : StringSpec({
         val plan = PruneBranches.plan(listOf(exactly), identities, cutoff, setOf(), includeUnmerged = false)
         plan.doomed shouldBe listOf()
         plan.kept.single().reason shouldBe "worked on since the cutoff"
+    }
+
+    // --- open pull requests -----------------------------------------------------------------
+
+    "plan keeps a branch with an open PR, however stale and merged it looks" {
+        val branches = listOf(branch("under-review", daysOld = 400))
+        val plan = PruneBranches.plan(
+            branches, identities, cutoff, setOf(), includeUnmerged = true, openPrs = mapOf("under-review" to 344),
+        )
+        plan.doomed shouldBe listOf()
+        plan.kept.single().reason shouldBe "open PR #344"
+    }
+
+    "an open PR on someone else's branch reports the PR, which is the more useful reason" {
+        val branches = listOf(branch("evas", daysOld = 400, email = "ecordes@gyassa.com"))
+        val plan = PruneBranches.plan(
+            branches, identities, cutoff, setOf(), includeUnmerged = true, openPrs = mapOf("evas" to 12),
+        )
+        plan.kept.single().reason shouldBe "open PR #12"
+    }
+
+    "an open PR does not save a branch that was explicitly protected from deletion anyway" {
+        // Protection is the caller's own instruction, so it outranks everything, including this.
+        val branches = listOf(branch("release", daysOld = 400))
+        val plan = PruneBranches.plan(
+            branches, identities, cutoff, setOf("release"), includeUnmerged = true, openPrs = mapOf("release" to 7),
+        )
+        plan.kept.single().reason shouldBe "protected"
+    }
+
+    "parsePrLines reads gh's number/branch pairs and keeps the oldest PR per branch" {
+        PruneBranches.parsePrLines("344\tfix-skill-example-path\n546\tissue-533-task-model") shouldBe
+            mapOf("fix-skill-example-path" to 344, "issue-533-task-model" to 546)
+        PruneBranches.parsePrLines("99\tsame-branch\n12\tsame-branch") shouldBe mapOf("same-branch" to 12)
+    }
+
+    "parsePrLines survives empty and malformed output" {
+        PruneBranches.parsePrLines("") shouldBe mapOf()
+        PruneBranches.parsePrLines("not a pr line\n\t\nxyz\tbranch") shouldBe mapOf()
+    }
+
+    // --- the local branches left behind -----------------------------------------------------
+
+    "localBranchKeepReason deletes only a local branch sitting on the deleted commit" {
+        PruneBranches.localBranchKeepReason("old", "abc123", "abc123", "main") shouldBe null
+    }
+
+    "localBranchKeepReason keeps a local branch that moved on, or is checked out" {
+        PruneBranches.localBranchKeepReason("old", "def456", "abc123", "main").shouldNotBeNull()
+        PruneBranches.localBranchKeepReason("old", "abc123", "abc123", "old").shouldNotBeNull()
+    }
+
+    "localBranchKeepReason copes with a detached HEAD" {
+        PruneBranches.localBranchKeepReason("old", "abc123", "abc123", null) shouldBe null
     }
 
     "owns compares addresses without regard to case" {
