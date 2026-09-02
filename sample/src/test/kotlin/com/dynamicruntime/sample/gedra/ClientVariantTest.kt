@@ -75,10 +75,9 @@ class ClientVariantTest : StringSpec({
 
     // --- every kind that carries entries, not just form documents ------------------
     //
-    // Schema-level, because nothing edits workflow data through an endpoint yet -- the workflow engine writes
-    // those entries itself. That is exactly why the per-client pass could miss the kind entirely (#390) and
-    // nothing complained: the global pass and the per-client pass kept separate lists of kinds, and only the
-    // shared one gained `wfData`.
+    // Schema-level, because nothing edits workflow data through an endpoint yet. That is exactly why the
+    // per-client pass could miss the kind entirely (#390) and nothing complained: the global pass and the
+    // per-client pass kept separate lists of kinds, and only the shared one gained `wfData`.
     //
     // `name` is the trait that makes this observable: it binds to **both** kinds, and acme never included it.
 

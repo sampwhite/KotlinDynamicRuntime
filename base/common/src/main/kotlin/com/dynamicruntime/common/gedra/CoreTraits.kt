@@ -51,8 +51,8 @@ fun coreTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, GT.coreTraits, GCFG.
      *
      * Bound to form documents **and workflow data**: it means the same thing on both, which is exactly why
      * `appliesTo` is a set and this is one trait rather than a `name` beside a `wfDataName` meaning the same
-     * thing. The workflow binding arrived with workflow data itself (`gedra-workflow.md`) — the "when there is
-     * workflow data to bind it to" this comment used to promise.
+     * thing. The workflow binding arrived with workflow data itself — the "when there is workflow data to bind
+     * it to" this comment used to promise. (The workflow design has since moved: see issue #532.)
      */
     trait(
         GT.nameEntry,

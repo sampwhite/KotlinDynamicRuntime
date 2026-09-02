@@ -45,35 +45,6 @@ object GD {
 
     /** Under [data]: the gedra's entries, each an instance of the trait its `traitId` names. */
     const val entries = "entries"
-
-    /**
-     * Under [data], for a `wfData` gedra: the workflow state a run is in, by state name (`gedra-workflow.md`).
-     * Absent is read as the definition's initial state, so a freshly created workflow needs no state write.
-     *
-     * **Deliberately a [data] key, not a column.** Workflow state is exactly the kind of thing that will
-     * change shape as the design grows, and a column would lock that shape into a migration; the [data] map
-     * absorbs a new key for free (the push-down [data] exists for). Where a *query* over this is needed -- the
-     * advisor queue -- it is served by a **computed index on the gedra cache**, read in memory from the value
-     * here, the same way `listGedras` is served from the `clientKind` index. The cache is where derived,
-     * queryable state belongs; the column is where it would ossify.
-     */
-    const val wfStatus = "wfStatus"
-
-    /**
-     * Under [data], for a `wfData` gedra: who may act on it now -- a map `{kind, value}` naming a **role**, a
-     * **group** or a single **user** (`WfAssignment`). Absent means "derive it from the current state's
-     * holder" -- an advisor-held state is, by default, the whole advisor role's to pick up. A [data] key, not
-     * a column, and for a second reason beyond flexibility: a single `assigneeId` *cannot express* a role or a
-     * group, so the column would have locked the actor model to one user before we knew we wanted more.
-     */
-    const val wfAssignment = "wfAssignment"
-
-    /**
-     * Under [data], for a `wfData` gedra: the tasks the advisor has sent back for changes, as a map of task
-     * id -> the note explaining why (`gedra-workflow.md`, the reopenable task set). A "request changes" to a
-     * particular step writes here; a submit or resubmit that moves the workflow forward clears it.
-     */
-    const val wfReopened = "wfReopened"
 }
 
 /**
@@ -126,10 +97,9 @@ fun gedraDataTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
     table(GDT.gedraData, "The content of one gedra: its entries, and whatever else it comes to hold.") {
         column(GD.gedraId, "Id of the gedra.", required = true)
         column(GD.gedraKind, "Which kind of gedra this is, by name (e.g. 'formDoc').", required = true)
-        column(GD.data, "Everything the gedra holds; its entries, and for a workflow its state.") { type = SCT.kObject }
-        // Workflow state lives inside `data` (see GD.wfStatus / wfAssignment / wfReopened), not in columns of
-        // its own: it changes shape as the design grows, and the advisor queue that needs to *find* a workflow
-        // is served by a computed index on the gedra cache rather than a database column. No new column here.
+        column(GD.data, "A JSON map: the entries, plus whatever keys later capabilities add with no migration.") {
+            type = SCT.kObject
+        }
         primaryKey(GD.gedraId)
         forUsers()
         forOrg()

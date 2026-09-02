@@ -228,7 +228,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
             field(GPF.targets, "The gedras to change, grouped by kind.", required = true) {
                 ref(GEP.patchTargets)
             }
-            field(GDF.allowAdditionalTraits, ADDITIONAL_TRAITS_HINT) { type = SCT.boolean }
+            field(GDF.allowAdditionalTraits, GedraDataRow.additionalTraitsHint) { type = SCT.boolean }
         },
         publicApi = true,
     ) { c, request ->

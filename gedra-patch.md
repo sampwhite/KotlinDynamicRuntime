@@ -341,6 +341,15 @@ incorrect when half-applied; that is the trigger, and it has not appeared yet.
 
 ### The workflow is what makes per-target atomicity safe
 
+> **Status of this section (issue #533).** The ledger described here shipped as the #381 workflow's `wfStatus`
+> and was retired with it; the replacement design (issue #532) keeps workflow state in a companion table, not in
+> a gedra's entries, so no target is a coordinator today. Per-target replay stays safe on a different footing:
+> every edit is **idempotent by value** — a `deleteOrNoOp` of an absent entry is a no-op, an `addOrMerge`
+> refolded over its own result is unchanged, and an `addOrReplace` takes the supplied entry whole — so a retry
+> re-applies what already landed and moves only the audit stamps. The open question below ("declared or
+> derived?") is answered for now by the server deriving a fixed declaration order (`GedraDataService.kindApplyOrder`).
+> The Cedar account is kept as the record of where the shape came from.
+
 Also from Cedar, and it is the missing half of the argument above rather than a detail. The real transaction
 edited **the workflow first, then the forms** — and only the forms were multi-threaded. The workflow edit
 checked the workflow's own state to see whether the work had already been done, which is what protected against
