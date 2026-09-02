@@ -93,6 +93,7 @@ class HomeMenuTest : StringSpec({
         menuIn(operator.getData(HEP.homeUiConfig)) shouldBe listOf(
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.envReference, "Environment", HMENU.pageEnv),
+            page(HMENU.bootChecks, "Boot checks", HMENU.pageBootChecks),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
             page(HMENU.profile, "Profile", HMENU.pageProfile),

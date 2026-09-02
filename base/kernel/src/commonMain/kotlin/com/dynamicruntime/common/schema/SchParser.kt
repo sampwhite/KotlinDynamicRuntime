@@ -349,6 +349,8 @@ fun parseNode(
         maxBound = map[maxBoundKeyword(jsonType)].toOptDouble(),
         // Ordered, so a composite key keeps the order it was declared in (issue #487).
         primaryKey = (map[SCH.primaryKey] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList(),
+        // A display hint only (issue #540): carried through unread by validation, for a read-only renderer.
+        presentation = map[SCH.presentation].toOptStr(),
     )
     if (itemRefName != null) {
         pendingItemRefs.add(PendingItemRef(schType, itemRefName))

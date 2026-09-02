@@ -163,6 +163,13 @@ open class SchTypeBuilder(
     var derived: Any? by SchAttr(data, SCH.derived)
 
     /**
+     * A read-only **presentation hint** (issue #540): a [PRES] value saying how a display surface should show
+     * this type/field (`status`/`table`/`identifier`). Advisory only -- it never touches validation. Set as
+     * `presentation = PRES.table`, mirroring how the wire keyword ([SCH.presentation]) reads.
+     */
+    var presentation: String? by SchAttr(data, SCH.presentation)
+
+    /**
      * JSON Schema `const`: the one value this field admits.
      *
      * Its everyday use is a union branch declaring which branch it is — and there it is what makes the branch

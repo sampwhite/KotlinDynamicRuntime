@@ -264,6 +264,19 @@ object SCH {
 
     /** Stored value of an [options] entry; bare for the same reason as [label]. */
     const val value = "value"
+
+    /**
+     * A **presentation hint** for a read-only surface: how a value of this type/field should be *displayed*,
+     * with no effect on validation (issue #540). Carries a value from [PRES] -- `status` (colour by verdict),
+     * `table` (render an array of the type as rows/columns), `identifier` (monospace). Purely advisory: a
+     * renderer that does not recognize the hint falls back to its ordinary rendering, and validation ignores it
+     * entirely, so an endpoint declaring one still validates exactly as before.
+     *
+     * The point is that an endpoint declares *how it wants to be read* beside its schema, so a diagnostic page
+     * is not a hand-coded per-endpoint view that drifts when a field is renamed -- the display follows the
+     * schema the same way the catalog's outline already does. Surfaced on `SchType.presentation`.
+     */
+    const val presentation = "g-presentation"
 }
 
 /** Values of the JSON Schema `type` keyword (object/null collide with Kotlin
@@ -304,4 +317,40 @@ object SFMT {
      * something this schema layer already models.
      */
     const val binary = "binary"
+}
+
+/**
+ * Values of the [SCH.presentation] hint (issue #540): how a read-only surface should display a value. Advisory
+ * only -- a renderer that does not know a value renders ordinarily, and validation never consults these.
+ */
+@Suppress("ConstPropertyName", "unused")
+object PRES {
+    /** A verdict field, coloured by its [PSTAT] value (green/blue/amber/red) rather than shown as plain text. */
+    const val status = "status"
+
+    /** A type whose array is rendered as a table -- one row per element, its properties the columns. */
+    const val table = "table"
+
+    /** A value shown monospaced: an id, a hash, a path, an env-var name -- something scanned character by character. */
+    const val identifier = "identifier"
+}
+
+/**
+ * Values a [PRES.status] field may carry, in increasing severity, each with a conventional colour a renderer
+ * maps (issue #540). A shared vocabulary so the server states the verdict and the frontend colours it the same
+ * way, rather than each side inventing its own strings.
+ */
+@Suppress("ConstPropertyName", "unused")
+object PSTAT {
+    /** Nothing wrong: green. */
+    const val ok = "ok"
+
+    /** Worth noting, not a problem: blue/neutral. */
+    const val info = "info"
+
+    /** Attention: amber. */
+    const val warning = "warning"
+
+    /** A failure: red. */
+    const val error = "error"
 }

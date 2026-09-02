@@ -195,6 +195,12 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
             HMENU.envReference, "Environment", UiRoute(HMENU.pageEnv),
             cfactExpression = CFACTS.isDeploymentOperator,
         )
+        // Operator diagnostics surfaced via the schema-driven renderer (issue #540); same deployment-operator
+        // gate as Environment. Grouping these under an "Operator" sub-menu is Part B of #540.
+        menuItem(
+            HMENU.bootChecks, "Boot checks", UiRoute(HMENU.pageBootChecks),
+            cfactExpression = CFACTS.isDeploymentOperator,
+        )
         // Offered to a client-scoped operator or admin (issue #488) -- the same caller the `clientOperator`
         // section admits, asked as a cfact so the menu offer and the gate cannot drift.
         menuItem(

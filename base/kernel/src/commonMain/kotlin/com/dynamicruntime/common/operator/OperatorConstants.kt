@@ -19,3 +19,14 @@ object OENV {
     /** Schema type name for the endpoint's output object. */
     const val referenceType = "EnvVarReference"
 }
+
+/**
+ * Operator endpoint **paths** the frontend routes to (issue #540). Only the path is shared: each page is
+ * rendered from the endpoint's own output schema and its `g-presentation` hints, so no field-name constants
+ * cross the boundary -- a renamed field changes the schema the page already follows, not code here.
+ */
+@Suppress("ConstPropertyName")
+object OPS {
+    /** Reports every boot check this node ran, its mode, verdict, and findings. */
+    const val bootChecksPath = "/${SECT.operator}/boot/checks"
+}

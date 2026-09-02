@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.schema.PRES
+import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchFailure
@@ -28,7 +30,13 @@ import react.dom.html.ReactHTML.input
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.table
+import react.dom.html.ReactHTML.tbody
+import react.dom.html.ReactHTML.td
 import react.dom.html.ReactHTML.textarea
+import react.dom.html.ReactHTML.th
+import react.dom.html.ReactHTML.thead
+import react.dom.html.ReactHTML.tr
 import react.useState
 import web.cssom.ClassName
 import web.html.InputType
@@ -573,6 +581,13 @@ private fun ChildrenBuilder.renderField(
     val vt = prop.valueType
     val elementType = objectElementType(vt)
     if (elementType != null) {
+        // A read-only array whose element type declares `presentation: table` (issue #540) renders as a real
+        // table -- one row per element, its properties the columns -- rather than a stack of nested field
+        // blocks. Editing still uses the block form (a table is not an editing affordance here).
+        if (!editable && elementType.presentation == PRES.table) {
+            renderTable(name, prop, value, elementType, path, errors, opts)
+            return
+        }
         renderObjectList(name, prop, required, value, elementType, seen, editable, path, errors, emit, omit, opts)
         return
     }
@@ -1287,6 +1302,19 @@ private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
         return
     }
     val text = displayValue(value)
+    // Presentation hints (issue #540), read-only only: a verdict shows as a coloured chip, an identifier as
+    // monospace -- and both drop the "(type)" annotation, which documents the wire for the catalog outline but
+    // is noise on a value a person is reading. An unknown hint falls through to ordinary text.
+    when (vt.presentation) {
+        PRES.status -> {
+            if (text.isNotEmpty()) statusChip(text)
+            return
+        }
+        PRES.identifier -> {
+            if (text.isNotEmpty()) span { className = ClassName("field-value op-identifier"); +text }
+            return
+        }
+    }
     if (text.isNotEmpty()) {
         span {
             className = ClassName("field-value")
@@ -1296,6 +1324,59 @@ private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
     span {
         className = ClassName("field-type")
         +"(${typeWord(vt)})"
+    }
+}
+
+/** A [PSTAT] verdict as a coloured chip. An unrecognized value still shows, in the neutral (`info`) colour, so
+ *  a status the frontend has not learned yet reads as text rather than vanishing. */
+private fun ChildrenBuilder.statusChip(value: String) {
+    val known = value in setOf(PSTAT.ok, PSTAT.info, PSTAT.warning, PSTAT.error)
+    span {
+        className = ClassName("op-status " + if (known) value else PSTAT.info)
+        +value
+    }
+}
+
+/**
+ * A read-only array rendered as a table (issue #540): the field frame (its label + description) above the
+ * shared [schemaTable]. Used for a `presentation: table` array inside a form's read-only view.
+ */
+private fun ChildrenBuilder.renderTable(
+    name: String,
+    prop: SchProperty,
+    value: Any?,
+    elementType: SchType,
+    path: String,
+    errors: FieldErrors,
+    opts: FormOpts,
+) {
+    fieldFrame(name, prop, false, path, errors.messagesAt(path), opts)
+    schemaTable(elementType, value.toJsonListOrEmpty())
+}
+
+/**
+ * The table markup for an array of [elementType] (issue #540): its properties are the columns, [elements] the
+ * rows, and each cell is the ordinary [readOnlyValue] -- so a per-field hint (a `status` chip, an `identifier`
+ * monospace) applies inside a cell exactly as it would anywhere else. Package-visible so an operator page can
+ * render a bare result list directly, with its own heading rather than a field label.
+ */
+fun ChildrenBuilder.schemaTable(elementType: SchType, elements: List<Any?>) {
+    if (elements.isEmpty()) {
+        p { className = ClassName("type-hint"); +"(none)" }
+        return
+    }
+    val columns = elementType.properties.values.toList()
+    table {
+        className = ClassName("op-table")
+        thead {
+            tr { for (col in columns) th { +col.name } }
+        }
+        tbody {
+            for (element in elements) {
+                val row = element.toJsonMapOrEmpty()
+                tr { for (col in columns) td { readOnlyValue(col.valueType, row[col.name]) } }
+            }
+        }
     }
 }
 

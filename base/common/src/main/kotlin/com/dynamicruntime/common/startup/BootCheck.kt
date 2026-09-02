@@ -3,6 +3,8 @@ package com.dynamicruntime.common.startup
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.schema.PRES
+import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.util.toOptBool
@@ -72,6 +74,10 @@ object BCHK {
     const val mode = "mode"
     const val findings = "findings"
 
+    /** The server-computed verdict for one check (a [com.dynamicruntime.common.schema.PSTAT] value), so the
+     *  page colours it rather than re-deriving "is this bad?" from findings + mode. */
+    const val status = "status"
+
     /** Schema type name for one check's entry in the report. */
     const val infoTypeName = "BootCheckInfo"
 }
@@ -90,8 +96,22 @@ class BootCheckResult(
     val mode: BootCheckMode,
     val findings: List<String>,
 ) {
+    /**
+     * The verdict, computed here because the server owns the findings+mode semantics (issue #540): nothing
+     * found is [PSTAT.ok]; a finding is as bad as its mode makes it -- ignored ([BootCheckMode.off] -> info),
+     * logged ([BootCheckMode.warn] -> warning), or fatal ([BootCheckMode.strict] -> error, which normally would
+     * have refused the boot, so it is the "started only because drift was force-allowed" case).
+     */
+    val status: String get() = when {
+        findings.isEmpty() -> PSTAT.ok
+        mode == BootCheckMode.strict -> PSTAT.error
+        mode == BootCheckMode.warn -> PSTAT.warning
+        else -> PSTAT.info
+    }
+
     fun toInfo(): Map<String, Any?> = linkedMapOf(
         BCHK.name to name,
+        BCHK.status to status,
         BCHK.envVar to envVar,
         BCHK.mode to mode.name,
         BCHK.findings to findings,
@@ -103,8 +123,15 @@ class BootCheckResult(
             builder.type(BCHK.infoTypeName) {
                 type = SCT.kObject
                 description = "One boot check, the mode it ran in, and what it found."
-                property(BCHK.name, "The check's name.", required = true)
-                property(BCHK.envVar, "The environment variable that overrides this check's mode.", required = true)
+                // A list of these renders as a table (issue #540): one row per check, verdict-coloured.
+                presentation = PRES.table
+                property(BCHK.name, "The check's name.", required = true) { presentation = PRES.identifier }
+                property(BCHK.status, "The verdict: ok, info, warning, or error.", required = true) {
+                    presentation = PRES.status
+                }
+                property(BCHK.envVar, "The environment variable that overrides this check's mode.", required = true) {
+                    presentation = PRES.identifier
+                }
                 property(BCHK.mode, "What a finding did at startup.", required = true) {
                     options(BootCheckMode.entries)
                 }

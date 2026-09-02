@@ -151,4 +151,11 @@ class SchType(
      * stored (`checkEntryKeys`), not by this type against one value.
      */
     val primaryKey: List<String> = emptyList(),
+    /**
+     * Custom `g-presentation` keyword (resolved): how a read-only surface should display this type/field
+     * (issue #540) -- a [PRES] value (`status`/`table`/`identifier`), or null for ordinary rendering. Advisory
+     * only: it never affects validation, and a renderer that does not recognize the value ignores it. Surfaced
+     * here so the frontend reads the hint off the same parsed model it reads every other schema fact from.
+     */
+    val presentation: String? = null,
 )

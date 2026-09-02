@@ -124,6 +124,31 @@ in an extension on the builder, beside the Kotlin class that owns the concept �
 `ClientDef` and is called from every field naming a client. The *name* and the *description* stay at each
 site: those objects are the key sets of different surfaces, and the descriptions genuinely differ.
 
+## Presentation hints (read-only display)
+
+A type or field may declare **how a read-only surface should display it** (issue #540) — advisory only, with
+**no effect on validation**. Set it with `presentation = <a PRES value>` in the build block, and read it back
+off `SchType.presentation`:
+
+- `PRES.status` — a verdict field, coloured by its `PSTAT` value (`ok`/`info`/`warning`/`error`).
+- `PRES.table` — a **type** whose array is rendered as a table (its properties the columns, one row per element).
+- `PRES.identifier` — a value shown monospaced (an id, hash, path, env-var name).
+
+```kotlin
+type("BootCheckInfo") {
+    type = SCT.kObject
+    presentation = PRES.table                                    // a list of these renders as a table
+    property("name", "The check's name.", required = true) { presentation = PRES.identifier }
+    property("status", "The verdict.", required = true) { presentation = PRES.status }
+}
+```
+
+The point is that an endpoint declares how it wants to be read *beside its schema*, so a diagnostic page
+follows the schema (the frontend's `SchemaForm` read-only path and its operator pages honor these) rather than
+being hand-coded per endpoint and drifting when a field is renamed. A renderer that does not recognize a value
+falls back to ordinary rendering, and the validator never consults it — an endpoint declaring a hint still
+validates exactly as before.
+
 ## Validation & coercion
 
 Parse the built `$defs` map into resolved types, then validate/coerce data:

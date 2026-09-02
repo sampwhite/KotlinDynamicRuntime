@@ -519,6 +519,40 @@ input {
 .field-type { color: var(--text-faint); font-style: italic; font-size: .85rem; }
 .json-value { flex: 1 1 100%; margin: 4px 0 0; white-space: pre; }
 .nested { margin: 4px 0 8px 16px; padding-left: 12px; border-left: 2px solid var(--border); }
+
+/* Operator diagnostic pages (issue #540): the schema-driven presentation hints. */
+.op-verdict { font-weight: 600; margin: 8px 0 2px; }
+.op-asof { color: var(--text-faint); font-size: .85rem; margin: 0 0 12px; }
+
+/* presentation:identifier -- an id/hash/path/env-var name, scanned character by character. */
+.op-identifier { font-family: monospace; }
+
+/* presentation:status -- a verdict chip, coloured by its PSTAT value. */
+.op-status {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.op-status.ok { background: rgba(74, 222, 128, .16); color: var(--success); }
+.op-status.info { background: rgba(129, 140, 248, .16); color: var(--accent-bright); }
+.op-status.warning { background: rgba(217, 119, 6, .18); color: var(--border-admin); }
+.op-status.error { background: rgba(248, 113, 113, .16); color: var(--danger); }
+
+/* presentation:table -- an array rendered as rows/columns. */
+.op-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.op-table th, .op-table td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+.op-table th { color: var(--text-dim); font-weight: 600; font-size: .85rem; }
+/* A cell shows the value, not the wire's "(type)" annotation the catalog outline wants. */
+.op-table td .field-type { display: none; }
 .type-hint { color: var(--text-faint); font-style: italic; margin: 2px 0; }
 .form-ok { color: var(--success); margin-top: 12px; }
 /* "Edited since the last check": neither pass nor fail but unknown, so neither the success green nor the
