@@ -142,8 +142,11 @@ object SCH {
      * few carrying a standard equivalent: [options] becomes `enum`; [emptyIsAbsent] becomes `minLength: 1`
      * but *only* on a required property (we read `""` as absent, while `required` is about key presence, and
      * an optional property accepts `""` -- so an unconditional `minLength` would reject what we allow);
-     * [allowCoerce] is dropped, since JSON Schema cannot say "a string is also accepted here". Stripping by
-     * default is exhaustive by construction: a keyword nobody remembered to consider never escapes. And where
+     * [allowCoerce] is dropped, since JSON Schema cannot say "a string is also accepted here"; [visibleOnly]
+     * is dropped too, because its nearest spelling (`pattern` over `\p{C}` and `\p{Z}` classes) is honored by
+     * some regex engines and not others, so it would be stricter for one consumer and meaningless for the
+     * next. Stripping by default is exhaustive by construction: a keyword nobody remembered to consider never
+     * escapes. And where
      * a conversion cannot be exact, the export must be **stricter than us, never looser** -- a stricter export
      * means clients send a subset of what we accept, while a looser one manufactures rejections at the
      * boundary, with the client's own tooling calling a payload valid and us returning a 400.
@@ -157,6 +160,26 @@ object SCH {
 
     /** Whether an empty (or null) value for a property means the property was not supplied at all. */
     const val emptyIsAbsent = "g-emptyIsAbsent"
+
+    /**
+     * Whether a string may hold only characters with a clearly visible rendering (issue #543): the ordinary
+     * space, or anything outside Unicode's `C` (control, format, surrogate, private-use, unassigned) and `Z`
+     * (space, line and paragraph separator) categories. Off unless declared; only a plain string type may
+     * declare it.
+     *
+     * The worry it answers is a value that renders as one thing and *is* another: a bidi override that makes
+     * text read backwards, a zero-width space splitting a word, a no-break space that looks like a space and
+     * compares unequal, a tab in a name. The ordinary space is the single exception because it is the only
+     * whitespace a user types on purpose; the rest arrive by paste or autocorrect. Not addressed, on purpose:
+     * a Cyrillic letter standing in for a Latin one. Both are visible, and telling them apart is script-mixing
+     * detection (UTS #39), a different and larger job.
+     *
+     * A known cost, accepted for now: Persian and several Indic scripts spell some words with the zero-width
+     * non-joiner (U+200C) or joiner (U+200D), and both are format characters this refuses. Carve out U+200C
+     * alone if a user in those scripts ever hits it -- the joiner is also the classic glue of a homoglyph
+     * attack, so it stays out.
+     */
+    const val visibleOnly = "g-visibleOnly"
 
     /**
      * Marks a property the client does not supply -- something else produces it (issue #254).

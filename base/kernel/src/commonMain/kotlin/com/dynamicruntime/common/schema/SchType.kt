@@ -34,6 +34,12 @@ class SchType(
      */
     val emptyIsAbsent: Boolean,
     /**
+     * Custom `g-visibleOnly` keyword (resolved): whether every character of a string value must have a visible
+     * rendering (issue #543) -- see [SCH.visibleOnly] for what that admits and why. Off unless declared, and
+     * only ever true on a plain string type; the parser refuses it elsewhere.
+     */
+    val visibleOnly: Boolean = false,
+    /**
      * The JSON Schema `format` value (e.g. [SFMT.date] / [SFMT.dateTime]) for a string type, or null.
      * A recognized date format makes a string field validate as a date and default [allowCoerce] to true.
      */

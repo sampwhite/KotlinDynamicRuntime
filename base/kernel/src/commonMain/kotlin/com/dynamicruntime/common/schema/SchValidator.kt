@@ -311,9 +311,15 @@ fun validateValue(
         // has to fail. Coercion runs in both modes (only its result is discarded when validating), so this
         // reports identically whether the caller asked for the coerced value or not.
         val coerced = coerceMismatch(type, value, path, coerce, failures, opts)
+        checkVisible(type, coerced, path, failures)
         checkBounds(type, coerced, path, failures)
         return coerced
     }
+
+    // Character rules run on every string that reached here, ahead of `const` and `options`: a value that is
+    // one of the listed choices yet carries an invisible character is a broken list, and saying so beats
+    // letting the list vouch for it.
+    checkVisible(type, value, path, failures)
 
     // `const`: the type admits one value. Checked before options, and separately from them, because it is a
     // statement about the shape rather than a choice being offered -- most often a union branch saying which
@@ -947,6 +953,87 @@ fun measureFor(jsonType: String?, value: Any?): Double? = when {
     jsonType == SCT.kObject -> (value as? Map<*, *>)?.size?.toDouble()
     else -> null
 }
+
+/**
+ * The custom `g-visibleOnly` rule (issue #543): a [SchFailCode.badValue] naming the first character of a
+ * string [value] that has no visible rendering, or nothing when every character does. The rule is one test on
+ * the Unicode General Category -- allow U+0020, refuse any other character in a `C` or `Z` category -- and
+ * [firstInvisible] is where it lives.
+ *
+ * Reported in validate-only mode too: this is validation, not coercion, so there is no "transformed value" to
+ * withhold. Its interplay with `emptyIsAbsent` is worth knowing: a value made *entirely* of invisible
+ * characters (a run of no-break spaces) reads as blank, so where that rule is on the container treats it as
+ * not supplied before this ever sees it -- missing if required, dropped otherwise. That is the right answer
+ * either way; the value the user meant to send was nothing.
+ *
+ * The message names the code point in `U+XXXX` form and its 1-based position in **characters** (code points,
+ * as `minLength` counts them), because the user cannot see what is wrong: the whole point of the character is
+ * that it renders as nothing, or as something else.
+ */
+@KdrPrivate
+fun checkVisible(type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>) {
+    if (!type.visibleOnly || value !is String) {
+        return
+    }
+    val hit = firstInvisible(value) ?: return
+    failures.add(
+        type.failure(
+            path, SchFailCode.badValue,
+            "Character ${hit.second} at position ${hit.first} is not a visible character.",
+        )
+    )
+}
+
+/**
+ * The first character of [s] that fails the `g-visibleOnly` rule, as (1-based position in code points,
+ * `U+XXXX` spelling), or null when every character passes.
+ *
+ * Walked by **code point**, not by `Char`: a supplementary character (a rare ideograph, an emoji) is a
+ * surrogate pair, and both halves report [CharCategory.SURROGATE], so a `Char`-wise test would refuse every
+ * one of them. A properly paired surrogate is a real character; a lone one is not, and is refused as such.
+ *
+ * Common Kotlin cannot ask the category of a supplementary code point (there is no code-point type, only
+ * `Char`), so those are admitted -- with two exceptions named by range because they are the deceptive ones:
+ * the **tag characters** (U+E0000 to U+E007F, format characters used to hide text inside emoji sequences and,
+ * lately, inside prompts) and the two **private-use planes** (U+F0000 to U+10FFFF), which have no defined
+ * rendering at all. The handful of invisible characters that live in *visible* categories (variation
+ * selectors, the Hangul fillers, the Braille blank) are deliberately not chased here; the issue lists them as
+ * a possible follow-up.
+ */
+@KdrPrivate
+fun firstInvisible(s: String): Pair<Int, String>? {
+    var i = 0
+    var position = 0
+    while (i < s.length) {
+        position++
+        val ch = s[i]
+        if (ch.isHighSurrogate() && i + 1 < s.length && s[i + 1].isLowSurrogate()) {
+            val codePoint = 0x10000 + ((ch.code - 0xD800) shl 10) + (s[i + 1].code - 0xDC00)
+            if (codePoint in 0xE0000..0xE007F || codePoint >= 0xF0000) {
+                return position to codePointName(codePoint)
+            }
+            i += 2
+            continue
+        }
+        if (ch != ' ' && (ch.isSurrogate() || ch.category in invisibleCategories)) {
+            return position to codePointName(ch.code)
+        }
+        i++
+    }
+    return null
+}
+
+/** The Unicode General Categories with no visible rendering: the `C` family and the `Z` family. */
+@KdrPrivate
+val invisibleCategories: Set<CharCategory> = setOf(
+    CharCategory.CONTROL, CharCategory.FORMAT, CharCategory.SURROGATE, CharCategory.PRIVATE_USE,
+    CharCategory.UNASSIGNED, CharCategory.SPACE_SEPARATOR, CharCategory.LINE_SEPARATOR,
+    CharCategory.PARAGRAPH_SEPARATOR,
+)
+
+/** The conventional `U+XXXX` spelling of a code point: at least four uppercase hex digits. */
+@KdrPrivate
+fun codePointName(codePoint: Int): String = "U+" + codePoint.toString(16).uppercase().padStart(4, '0')
 
 /**
  * The number of Unicode code points in [s], which is what JSON Schema's `minLength`/`maxLength` count —

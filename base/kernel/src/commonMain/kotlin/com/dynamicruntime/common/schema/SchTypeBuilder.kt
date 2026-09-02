@@ -112,6 +112,17 @@ open class SchTypeBuilder(
      */
     var emptyIsAbsent: Boolean? by SchAttr(data, SCH.emptyIsAbsent)
 
+    /**
+     * Custom `g-visibleOnly` keyword (issue #543): every character of this string must render visibly. Admits
+     * the ordinary space and refuses controls (tab, newline), format characters (zero-width and bidi marks),
+     * and every other whitespace (no-break space, line separator). Off unless set; only a plain string field
+     * may set it -- the parser refuses it on any other type, where it would constrain nothing.
+     *
+     * Reach for it on a name, a code, an identifier: anything a person types and another person reads, where
+     * an invisible character is never intended and a look-alike one is the point of an attack.
+     */
+    var visibleOnly: Boolean? by SchAttr(data, SCH.visibleOnly)
+
     /** Whether undeclared properties are allowed. When unset, the parser defaults it (false when the type
      *  has declared properties, true when it has none). Set explicitly to allow extras on a defined type. */
     var additionalProperties: Boolean? by SchAttr(data, SCH.additionalProperties)
