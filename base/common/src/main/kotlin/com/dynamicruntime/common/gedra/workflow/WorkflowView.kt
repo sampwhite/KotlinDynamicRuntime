@@ -4,7 +4,6 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GedraTrait
-import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.filterByCFacts
@@ -28,7 +27,7 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * [entriesByTask] supplies the entries a running workflow already holds, so a task's completeness is real; a
  * creation workflow has none, so it defaults empty. The resolver stays a pure function of the definition,
- * the client's schema and its fragments -- no gedra is read here.
+ * the client's schema, and its fragments -- no gedra is read here.
  */
 fun resolveWorkflowView(
     cxt: KdrCxt,
@@ -43,7 +42,7 @@ fun resolveWorkflowView(
     val traitsById: Map<String, GedraTrait> =
         SchemaService.get(cxt).gedraTraitsFor(client).associateBy { it.traitId }
     // The request-scoped cfacts, computed once: they are the same for every task, so only each task's own
-    // target facts are unioned onto them below (each cfact source can do real work -- e.g. a section check).
+    // target facts are unioned onto them below (each cfact source can do real work -- e.g., a section check).
     val requestFacts = cfacts.assemble(cxt)
 
     fun label(text: String): String = fragments.backendPass(cxt, text)
@@ -60,7 +59,7 @@ fun resolveWorkflowView(
         // would dangle. `GedraTrait.dataSchema` is always a `$ref` -- the author's own, or the one generated
         // for inline data -- so it is the pointer in both authoring styles.
         val dataRef = trait.dataSchema[SCH.dRef].toOptStr()
-            ?: throw KdrException("Trait '${ref.traitId}' has no data \$ref to render against.")
+            ?: throw KdrException($$"Trait '$${ref.traitId}' has no data $ref to render against.")
         return linkedMapOf(
             WFD.traitId to ref.traitId,
             WFD.required to ref.required,

@@ -69,7 +69,7 @@ object GDF {
     const val allowAdditionalTraits = "allowAdditionalTraits"
     const val gedraId = "gedraId"
 
-    /** Names a workflow to act on, e.g. the input of the view endpoint (issue #534). */
+    /** Names a workflow to act on, e.g., the input of the view endpoint (issue #534). */
     const val workflowId = "workflowId"
     const val gedraKind = "gedraKind"
     const val client = "client"
