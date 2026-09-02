@@ -6,12 +6,16 @@ import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -89,6 +93,22 @@ class WorkflowViewTest : StringSpec({
         val v = everyone.getData(GEP.workflowView)
         v[WVF.found] shouldBe false
         v.containsKey(WFD.tasks) shouldBe false
+    }
+
+    "the view carries a self-contained \$defs: the trait data types it references, and no more" {
+        // globex: the one data type its `name` trait renders against, present in the response's own \$defs so a
+        // page resolves the ref without a second fetch. The schemaRef names exactly that key.
+        val g = creationView(globex, SC.globex)
+        val gDefs = g[SCH.dDefs].toJsonMapOrEmpty()
+        gDefs.keys shouldContain "globalconfig.NameData"
+        val gRef = g[WFD.tasks].toJsonListOfMaps().single()[WFD.traits].toJsonListOfMaps().single()[WVF.schemaRef] as String
+        gDefs.keys.any { gRef.endsWith(it) } shouldBe true
+
+        // acme: exactly the two data types its workflow collects -- and NOT a type it merely supports but its
+        // workflow does not touch (SiteVisit / SiteAddress), which is the point of a closure over the catalog.
+        val aDefs = creationView(acme, SC.acme)[SCH.dDefs].toJsonMapOrEmpty()
+        aDefs.keys shouldContainAll listOf("sampleconfig.ExpenseReportData", "sampleconfig.QuestionnaireData")
+        aDefs.keys.any { it.contains("SiteVisit") || it.contains("SiteAddress") } shouldBe false
     }
 
     "an unknown workflow id is a 404" {

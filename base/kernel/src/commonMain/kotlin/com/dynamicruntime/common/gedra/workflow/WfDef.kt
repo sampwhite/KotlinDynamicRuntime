@@ -61,8 +61,8 @@ object WFD {
  * #534) -- the shape the creation page renders. It reuses [WFD]'s names where the meaning is the same
  * (`workflowId`, `entry`, `tasks`, `id`, `label`, `traits`, `traitId`, `required`, `saves`, `kind`, `layout`,
  * `order`, `edit`), and adds only what resolution produces: whether a workflow was found, the workflow's
- * stored [WfRef], each trait's data `$ref` into this client's schema ([schemaRef]), whether the task list shows,
- * and the target
+ * stored [WfRef], each trait's data `$ref` ([schemaRef]) into the `$defs` the view **carries** (a closure of
+ * just the types it references), whether the task list shows, and the target
  * facts assembled about each task.
  */
 @Suppress("ConstPropertyName")

@@ -5,6 +5,8 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.collectDefClosure
+import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.filterByCFacts
 import com.dynamicruntime.common.util.toOptStr
@@ -25,6 +27,12 @@ import com.dynamicruntime.common.util.toOptStr
  *    single-set filter over the whole view could not be: "this shows when the task is complete" is a fact
  *    about one task, and the first row's answer must not decide the second's.
  *
+ * The view is **self-contained**: each trait's `schemaRef` resolves against a `$defs` the view carries, a
+ * closure of exactly the types the workflow references and their dependencies ([collectDefClosure]) -- not the
+ * client's endpoint catalog. That is what lets a page render a workflow with one call rather than fetching
+ * hundreds of unrelated endpoint types to resolve a few fields, and it is what a workflow that **narrows** a
+ * trait's schema will need: the reachable body is then the workflow's own, with nowhere else it could live.
+ *
  * [entriesByTask] supplies the entries a running workflow already holds, so a task's completeness is real; a
  * creation workflow has none, so it defaults empty. The resolver stays a pure function of the definition,
  * the client's schema, and its fragments -- no gedra is read here.
@@ -41,6 +49,11 @@ fun resolveWorkflowView(
     // so this map is total over the workflow's traits.
     val traitsById: Map<String, GedraTrait> =
         SchemaService.get(cxt).gedraTraitsFor(client).associateBy { it.traitId }
+    // The client's raw `$defs` (its variant, so a narrowed type is that client's) -- what the returned closure
+    // is drawn from. The trait pointers the view hands out are resolved against this subset, not the catalog.
+    val clientDefs = SchemaService.get(cxt).storeFor(client).defs
+    // The trait data types the workflow references, collected as they are rendered; the seeds of the closure.
+    val seedRefs = LinkedHashSet<String>()
     // The request-scoped cfacts, computed once: they are the same for every task, so only each task's own
     // target facts are unioned onto them below (each cfact source can do real work -- e.g., a section check).
     val requestFacts = cfacts.assemble(cxt)
@@ -60,6 +73,7 @@ fun resolveWorkflowView(
         // for inline data -- so it is the pointer in both authoring styles.
         val dataRef = trait.dataSchema[SCH.dRef].toOptStr()
             ?: throw KdrException($$"Trait '$${ref.traitId}' has no data $ref to render against.")
+        refName(dataRef)?.let { seedRefs.add(it) }
         return linkedMapOf(
             WFD.traitId to ref.traitId,
             WFD.required to ref.required,
@@ -87,13 +101,17 @@ fun resolveWorkflowView(
         return filterByCFacts(raw, requestFacts + taskFacts, cfacts::parse)
     }
 
+    // Tasks first: rendering them collects the trait refs the closure needs.
+    val taskViews = declared.def.tasks.map { taskView(it) }
     return linkedMapOf(
         WVF.found to true,
         WFD.workflowId to declared.def.workflowId,
         WVF.ref to declared.ref.text,
         WFD.entry to declared.def.entry.name,
         WVF.showTaskList to declared.def.showTaskList,
-        WFD.tasks to declared.def.tasks.map { taskView(it) },
+        WFD.tasks to taskViews,
+        // The self-contained schema: exactly the types the trait refs reach, and their dependencies.
+        SCH.dDefs to collectDefClosure(seedRefs, clientDefs),
     )
 }
 
