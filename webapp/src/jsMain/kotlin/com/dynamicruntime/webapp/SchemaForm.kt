@@ -1312,6 +1312,15 @@ fun parseJsonField(text: String): JsonFieldParse {
  * named in words. No form control — this is a value being shown, not an input.
  */
 private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?, presentation: String? = vt.presentation) {
+    // A structured array -- its elements are objects with declared fields -- reads far better as a nested table
+    // (a sub-table inside the cell) than as raw JSON (issue #540): this is what turns a database-tables row's
+    // `columns`/`indexes` into readable sub-tables rather than a JSON blob. A free-form array (no element
+    // fields) still falls to the JSON view below.
+    val elementType = vt.itemType
+    if (vt.jsonType == SCT.array && elementType != null && elementType.properties.isNotEmpty() && value is List<*>) {
+        schemaTable(elementType, value)
+        return
+    }
     // A JSON structure (a generic object, or an array with structured elements) reads far better as pretty
     // JSON than a flattened toString; the kernel's JsonUtil formats it (indented, non-compact by default).
     if (value is Map<*, *> || (value is List<*> && value.any { it is Map<*, *> || it is List<*> })) {
@@ -1404,19 +1413,49 @@ fun ChildrenBuilder.schemaTable(elementType: SchType, elements: List<Any?>, opts
     // Friendly mode drops a derived column and labels the rest by title -- exactly what the field form does --
     // so a table inside a friendly form matches its surroundings; the catalog (default opts) keeps every
     // column and labels by key, because it documents the wire.
-    val columns = elementType.properties.values.filterNot { opts.friendly && it.valueType.derived }
-    table {
-        className = ClassName("op-table")
-        thead {
-            tr { for (col in columns) th { +fieldLabel(col.name, col, opts) } }
-        }
-        tbody {
-            for (element in elements) {
-                val row = element.toJsonMapOrEmpty()
-                tr {
-                    for (col in columns) td {
-                        // A per-site column hint wins over one on the column's (shared) target type.
-                        readOnlyValue(col.valueType, row[col.name], col.presentation ?: col.valueType.presentation)
+    val shown = elementType.properties.values.filterNot { opts.friendly && it.valueType.derived }
+    // A column marked `presentation: detail` (issue #540) is an array of objects that reads better as its own
+    // sub-table beneath the row than crammed into an inline cell -- master-detail, for a heavy nested array
+    // like a database table's `columns`. It only qualifies when it really is a structured array; otherwise it
+    // stays an ordinary inline column.
+    fun isDetail(col: SchProperty): Boolean =
+        (col.presentation ?: col.valueType.presentation) == PRES.detail &&
+            col.valueType.itemType?.properties?.isNotEmpty() == true
+    val detailCols = shown.filter { isDetail(it) }
+    val inlineCols = shown.filterNot { isDetail(it) }
+    // A wide table (many columns, or a JSON/sub-table cell) scrolls inside this box rather than pushing past
+    // the card and out of the window (issue #540).
+    div {
+        className = ClassName("op-table-scroll")
+        table {
+            className = ClassName("op-table")
+            thead {
+                tr { for (col in inlineCols) th { +fieldLabel(col.name, col, opts) } }
+            }
+            tbody {
+                for (element in elements) {
+                    val row = element.toJsonMapOrEmpty()
+                    tr {
+                        for (col in inlineCols) td {
+                            // A per-site column hint wins over one on the column's (shared) target type.
+                            readOnlyValue(col.valueType, row[col.name], col.presentation ?: col.valueType.presentation)
+                        }
+                    }
+                    // The detail arrays for this element, each a labelled sub-table on a full-width row under it.
+                    if (detailCols.isNotEmpty()) {
+                        tr {
+                            className = ClassName("op-detail-row")
+                            td {
+                                asDynamic()["colSpan"] = inlineCols.size.coerceAtLeast(1)
+                                for (col in detailCols) {
+                                    div {
+                                        className = ClassName("op-detail")
+                                        div { className = ClassName("op-detail-label"); +fieldLabel(col.name, col, opts) }
+                                        schemaTable(col.valueType.itemType!!, row[col.name].toJsonListOrEmpty(), opts)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

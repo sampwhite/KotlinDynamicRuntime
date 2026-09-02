@@ -64,21 +64,21 @@ class HomeMenuTest : StringSpec({
 
     "a signed-out visitor is offered only what they can open" {
         anonymousMenu() shouldBe listOf(
-            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             header(HMENU.account, "Account"),
             page(HMENU.login, "Log in", HMENU.pageLogin, HMENU.account),
             page(HMENU.register, "Register", HMENU.pageRegister, HMENU.account),
+            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
         )
     }
 
     "an ordinary signed-in user gets the forms and profile entries, and logout as an action" {
         val user = TestUser.create(cxt, "menu-user@example.com")
         menuIn(user.getData(HEP.homeUiConfig)) shouldBe listOf(
-            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
-            page(HMENU.forms, "My forms", HMENU.pageForms),
             header(HMENU.account, "Account"),
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
+            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
+            page(HMENU.forms, "My forms", HMENU.pageForms),
         )
     }
 
@@ -88,19 +88,22 @@ class HomeMenuTest : StringSpec({
         // follows the deployment `operator` section, which has required `allClients` since #464 (issue #488).
         val admin = TestUser.create(cxt, "menu-admin@example.com", level = ROLE.admin)
         menuIn(admin.getData(HEP.homeUiConfig)) shouldBe listOf(
+            header(HMENU.account, "Account"),
+            page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
+            call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.users, "Users", HMENU.pageUsers),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
-            header(HMENU.account, "Account"),
-            page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
-            call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
         )
     }
 
     "a deployment operator gets Environment and Client facts, and not Users" {
         val operator = TestUser.createOperator(cxt, "menu-ops@example.com")
         menuIn(operator.getData(HEP.homeUiConfig)) shouldBe listOf(
+            header(HMENU.account, "Account"),
+            page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
+            call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             header(HMENU.operator, "Operator"),
             page(HMENU.operatorOverview, "Overview", HMENU.pageOperator, HMENU.operator),
@@ -111,9 +114,6 @@ class HomeMenuTest : StringSpec({
             page(HMENU.fragmentsCheck, "Fragments check", HMENU.pageFragmentsCheck, HMENU.operator),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
-            header(HMENU.account, "Account"),
-            page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
-            call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
         )
     }
 

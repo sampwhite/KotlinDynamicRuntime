@@ -243,10 +243,14 @@ private fun ChildrenBuilder.genericTable(elements: List<*>) {
         return
     }
     val columns = LinkedHashSet<String>().apply { rows.forEach { addAll(it.keys) } }.toList()
-    table {
-        className = ClassName("op-table")
-        thead { tr { for (col in columns) th { +humanizeFieldName(col) } } }
-        tbody { for (row in rows) tr { for (col in columns) td { +scalarText(row[col]) } } }
+    // Scrolls inside its own box rather than pushing past the card, like the schema-driven table (issue #540).
+    div {
+        className = ClassName("op-table-scroll")
+        table {
+            className = ClassName("op-table")
+            thead { tr { for (col in columns) th { +humanizeFieldName(col) } } }
+            tbody { for (row in rows) tr { for (col in columns) td { +scalarText(row[col]) } } }
+        }
     }
 }
 

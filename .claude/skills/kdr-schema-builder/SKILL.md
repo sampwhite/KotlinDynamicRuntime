@@ -133,6 +133,10 @@ off `SchType.presentation`:
 - `PRES.status` — a verdict field, coloured by its `PSTAT` value (`ok`/`info`/`warning`/`error`).
 - `PRES.table` — a **type** whose array is rendered as a table (its properties the columns, one row per element).
 - `PRES.identifier` — a value shown monospaced (an id, hash, path, env-var name).
+- `PRES.detail` — on a **property** that is an array of objects, inside a `table`-rendered row: render that
+  array as its own labelled sub-table on a full-width row *beneath* the main row (master-detail), rather than
+  as an inline cell. For a heavy nested array (a database table's `columns`) that would otherwise force the row
+  very wide. Ignored on a property that is not a structured array.
 
 ```kotlin
 type("BootCheckInfo") {

@@ -134,6 +134,8 @@ class KdrTable(
                     items { type = SCT.string }
                 }
                 property(TI.indexes, "The secondary indexes.") {
+                    // Shown as its own sub-table beneath the table's row (issue #540), not an inline cell.
+                    presentation = PRES.detail
                     type = SCT.array
                     items {
                         type = SCT.kObject
@@ -146,6 +148,8 @@ class KdrTable(
                     }
                 }
                 property(TI.columns, "The table columns and their per-column JSON schema.", required = true) {
+                    // The heavy one: shown as its own sub-table beneath the table's row (issue #540).
+                    presentation = PRES.detail
                     type = SCT.array
                     items {
                         type = SCT.kObject

@@ -333,6 +333,12 @@ object PRES {
 
     /** A value shown monospaced: an id, a hash, a path, an env-var name -- something scanned character by character. */
     const val identifier = "identifier"
+
+    /** On a **property** whose value is an array of objects, inside a [table]-rendered row: render that array as
+     *  its own labelled sub-table on a full-width row *beneath* the main row, rather than as an inline cell.
+     *  Master-detail -- for a heavy nested array (a database table's `columns`) that would otherwise force the
+     *  row very wide. Ignored on a property that is not a structured array. */
+    const val detail = "detail"
 }
 
 /**
