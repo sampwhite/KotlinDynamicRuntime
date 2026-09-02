@@ -557,6 +557,12 @@ input {
 /* A cell shows the value, not the wire's "(type)" annotation the catalog outline wants. */
 .op-table td .field-type { display: none; }
 .type-hint { color: var(--text-faint); font-style: italic; margin: 2px 0; }
+
+/* A free-form operator object (issue #540): titled sections and key/value rows. */
+.op-section-label { font-weight: 600; color: var(--text-dim); margin: 10px 0 2px; }
+.op-kv { display: flex; gap: 10px; padding: 2px 0; }
+.op-kv-key { min-width: 180px; color: var(--text-dim); }
+.op-kv-val { color: var(--text); word-break: break-word; }
 .form-ok { color: var(--success); margin-top: 12px; }
 /* "Edited since the last check": neither pass nor fail but unknown, so neither the success green nor the
    danger red -- a dim tone that reads as a prompt rather than a verdict, in the same slot as the other two so

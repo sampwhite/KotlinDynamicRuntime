@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.SchType
@@ -9,12 +10,23 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import react.ChildrenBuilder
 import react.FC
 import react.Props
+import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.pre
+import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.table
+import react.dom.html.ReactHTML.tbody
+import react.dom.html.ReactHTML.td
+import react.dom.html.ReactHTML.th
+import react.dom.html.ReactHTML.thead
+import react.dom.html.ReactHTML.tr
+import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useEffectOnce
 import react.useState
@@ -134,5 +146,153 @@ fun operatorVerdict(itemType: SchType?, items: List<Any?>): String? {
         total == 0 -> "Nothing to report."
         attention == 0 -> "All $total OK."
         else -> "$attention of $total need attention."
+    }
+}
+
+/**
+ * A generic operator diagnostic page for an endpoint whose output is a **single free-form object** (issue
+ * #540) -- system/info is the case: a nested diagnostic map the endpoint deliberately declares no schema for.
+ * It fetches the object and renders it value-driven ([objectView]); an endpoint that *does* declare fields and
+ * presentation hints uses the schema-driven [OperatorListPage] / SchemaForm path instead.
+ *
+ * Re-fetched on the refresh generation and stamped, for the same reason the list page is: operator data is
+ * volatile. A caller who cannot see the endpoint gets the endpoint's own refusal, reported not blanked.
+ */
+external interface OperatorObjectPageProps : Props {
+    var path: String
+    var title: String
+    var description: String?
+}
+
+val OperatorObjectPage = FC<OperatorObjectPageProps> { props ->
+    var obj by useState<Map<String, Any?>?>(null)
+    var error by useState<DisplayError?>(null)
+    var asOf by useState<String?>(null)
+    val generation = useRefreshGeneration()
+
+    useEffect(generation) {
+        operatorScope.launch {
+            try {
+                // A general endpoint wraps its object under `results` (a list endpoint uses `items`); read that,
+                // so the view shows the diagnostic map and not the envelope's own bookkeeping fields.
+                obj = Http.getApi(props.path)[EP.results].toJsonMapOrEmpty()
+                asOf = nowTimeString()
+                error = null
+            } catch (e: Throwable) {
+                error = userFacingError(e)
+            }
+        }
+    }
+
+    div {
+        className = ClassName("card wide")
+        h1 { +props.title }
+        props.description?.let { desc ->
+            p { className = ClassName("subtitle"); +desc }
+        }
+        val current = obj
+        when {
+            error != null -> errorText("Couldn't load ${props.title.lowercase()}.", error!!)
+            current == null -> p { className = ClassName("subtitle"); +"Loading…" }
+            else -> {
+                asOf?.let { p { className = ClassName("op-asof"); +"as of $it" } }
+                objectView(current)
+            }
+        }
+    }
+}
+
+/**
+ * A read-only view of a free-form JSON object (issue #540): nested objects become titled sections, a list of
+ * objects a generic table (its columns the union of the rows' keys), a list of scalars a joined line, and a
+ * scalar a key/value row. Value-driven precisely because there is no schema to follow -- the counterpart to
+ * SchemaForm's schema-driven read-only path, used where the endpoint declared no fields.
+ *
+ * [depth] guards the recursion over external data (a convention here): past a shallow cap the sub-tree is
+ * shown as raw JSON rather than recursing further, which no real diagnostic map reaches.
+ */
+private fun ChildrenBuilder.objectView(obj: Map<String, Any?>, depth: Int = 0) {
+    if (depth > 8) {
+        pre { className = ClassName("code json-value"); +obj.toJsonStr() }
+        return
+    }
+    for ((key, value) in obj) {
+        when {
+            value is Map<*, *> -> {
+                p { className = ClassName("op-section-label"); +humanizeFieldName(key) }
+                div { className = ClassName("nested"); objectView(value.toJsonMapOrEmpty(), depth + 1) }
+            }
+            value is List<*> && value.any { it is Map<*, *> } -> {
+                p { className = ClassName("op-section-label"); +humanizeFieldName(key) }
+                div { className = ClassName("nested"); genericTable(value) }
+            }
+            else -> div {
+                className = ClassName("op-kv")
+                span { className = ClassName("op-kv-key"); +humanizeFieldName(key) }
+                span { className = ClassName("op-kv-val"); +scalarText(value) }
+            }
+        }
+    }
+}
+
+/** A schemaless list of objects as a table: the columns are the union of the rows' keys, in first-seen order. */
+private fun ChildrenBuilder.genericTable(elements: List<*>) {
+    val rows = elements.map { it.toJsonMapOrEmpty() }
+    if (rows.isEmpty()) {
+        p { className = ClassName("type-hint"); +"(none)" }
+        return
+    }
+    val columns = LinkedHashSet<String>().apply { rows.forEach { addAll(it.keys) } }.toList()
+    table {
+        className = ClassName("op-table")
+        thead { tr { for (col in columns) th { +humanizeFieldName(col) } } }
+        tbody { for (row in rows) tr { for (col in columns) td { +scalarText(row[col]) } } }
+    }
+}
+
+/** One value as read-only text: a nested structure as compact JSON, anything else as its plain string. */
+private fun scalarText(value: Any?): String = when (value) {
+    null -> ""
+    is Map<*, *>, is List<*> -> value.toJsonStr()
+    else -> value.toString()
+}
+
+/**
+ * The Operator landing page (issue #540), mirroring the Debug index: a discoverable listing of the operator
+ * diagnostics with a one-line explanation of each, reached from the "Overview" entry of the Operator menu
+ * group. The menu also offers each tool directly (operators use them repeatedly); this page is the explainer.
+ */
+val OperatorIndex = FC<Props> {
+    div {
+        className = ClassName("card wide")
+        h1 { +"Operator" }
+        p {
+            className = ClassName("subtitle")
+            +("Diagnostics for this running node. Each page reads a live operator endpoint and re-reads it as " +
+                "the app refreshes, so it answers about this node right now.")
+        }
+        ul {
+            className = ClassName("operator-index")
+            li {
+                a { href = "#page=${HMENU.pageEnv}"; +"Environment" }
+                +" \u2014 the environment variables this node declares, with each one's resolved value here."
+            }
+            li {
+                a { href = "#page=${HMENU.pageSystemInfo}"; +"System info" }
+                +" \u2014 this node's identity, uptime, and JVM statistics."
+            }
+            li {
+                a { href = "#page=${HMENU.pageBootChecks}"; +"Boot checks" }
+                +" \u2014 every check this node ran at startup, its mode, and what it found."
+            }
+            li {
+                a { href = "#page=${HMENU.pageDbTables}"; +"Database tables" }
+                +" \u2014 every database table registered for this instance."
+            }
+            li {
+                a { href = "#page=${HMENU.pageFragmentsCheck}"; +"Fragments check" }
+                +" \u2014 the Markdown fragment files this node carries, and any problems found."
+            }
+        }
     }
 }

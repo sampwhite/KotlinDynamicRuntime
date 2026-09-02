@@ -29,4 +29,13 @@ object OENV {
 object OPS {
     /** Reports every boot check this node ran, its mode, verdict, and findings. */
     const val bootChecksPath = "/${SECT.operator}/boot/checks"
+
+    /** Reports this node's identity, uptime and JVM statistics (a free-form diagnostic map). */
+    const val systemInfoPath = "/${SECT.operator}/system/info"
+
+    /** Lists the database tables registered for this instance. */
+    const val dbTablesPath = "/${SECT.operator}/db/tables"
+
+    /** Syntax-checks this instance's Markdown fragment files, reporting problems and per-entry data reads. */
+    const val fragmentsCheckPath = "/${SECT.operator}/fragments/check"
 }

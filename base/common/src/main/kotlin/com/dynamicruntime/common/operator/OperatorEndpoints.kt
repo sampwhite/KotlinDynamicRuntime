@@ -123,7 +123,7 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
         type = SCT.kObject
     }
     generalEndpoint(
-        "/operator/system/info",
+        OPS.systemInfoPath,
         "Reports this node's identity, uptime and JVM statistics, optionally requesting a garbage collection first.",
         HttpMethod.GET,
         outputRef = systemInfoType,

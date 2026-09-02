@@ -13,7 +13,10 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.schema.JsonMappable
+import com.dynamicruntime.common.schema.PRES
+import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.operator.OPS
 import com.dynamicruntime.common.util.ScriptError
 import com.dynamicruntime.common.util.TemplateIssue
 import com.dynamicruntime.common.util.TemplatePaths
@@ -742,7 +745,16 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             }
             type(checkTypeName) {
                 type = SCT.kObject
-                property(FCHK.fileId, "The fragment file checked.", required = true)
+                // A list of these renders as a table (issue #540), verdict-coloured, one row per file.
+                presentation = PRES.table
+                property(FCHK.fileId, "The fragment file checked.", required = true) {
+                    presentation = PRES.identifier
+                }
+                property(FCHK.status, "The verdict for this file.", required = true) {
+                    presentation = PRES.status
+                    // The closed vocabulary, from the one kernel list, so response-schema validation enforces it.
+                    for (v in PSTAT.all) option(v)
+                }
                 property(FCHK.found, "Whether the declared file was actually present.", required = true) {
                     type = SCT.boolean
                 }
@@ -812,7 +824,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 }
             }
             listEndpoint(
-                "/operator/fragments/check",
+                OPS.fragmentsCheckPath,
                 "Syntax-checks this instance's Markdown fragment files, reporting problems with positions, and " +
                     "reports the data each entry reads. With 'data', also reports required paths it lacks; that " +
                     "is a presence check and does not detect a value of the wrong type.",
@@ -883,11 +895,24 @@ class FragmentCheckResult(
     val findingCount: Int =
         issues.size + orphans.size + audienceIssues.size + (if (audienceConflict) 1 else 0)
 
+    /**
+     * The verdict for this file (issue #540), computed here because the server owns the found/findings
+     * semantics. A declared-but-missing file is [PSTAT.error] -- it breaks every UI-config naming it; a file
+     * present with any finding is [PSTAT.warning]; a present, clean file is [PSTAT.ok]. Notes are not findings
+     * and never move the verdict.
+     */
+    val status: String get() = when {
+        !found -> PSTAT.error
+        findingCount > 0 -> PSTAT.warning
+        else -> PSTAT.ok
+    }
+
     override fun toJsonMap(): Map<String, Any?> {
         // An explicit map rather than `buildMap`: inside that block the receiver is a MutableMap, whose own
         // `entries` shadows this class's -- so `entries.map { ... }` silently means the wrong thing.
         val out = LinkedHashMap<String, Any?>()
         out[FCHK.fileId] = fileId
+        out[FCHK.status] = status
         // Omitted rather than null for the shared variant: "this row is about a client" is the unusual case,
         // and a column of nulls is how a reader stops noticing the rows that do have one.
         if (client != null) out[FCHK.client] = client

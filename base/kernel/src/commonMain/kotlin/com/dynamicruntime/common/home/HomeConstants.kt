@@ -112,10 +112,19 @@ object HMENU {
     const val envReference = "envReference"
     /** Operator boot-checks page (issue #540). */
     const val bootChecks = "bootChecks"
+
+    /** Operator group parent, its overview child, and its remaining pages (issue #540). */
+    const val operator = "operator"
+    const val operatorOverview = "operatorOverview"
+    const val systemInfo = "systemInfo"
+    const val dbTables = "dbTables"
+    const val fragmentsCheck = "fragmentsCheck"
     const val cfactReference = "cfactReference"
     // No `newForm` item id: creating a form is reached from the "My forms" list, not a menu entry (issue #417).
     // The `pageNewForm` route below still exists -- the list's "New form" button navigates to it.
     const val forms = "forms"
+    /** Account group parent (issue #540): identity/session items nest under it. */
+    const val account = "account"
     const val profile = "profile"
     const val login = "login"
     const val register = "register"
@@ -134,6 +143,11 @@ object HMENU {
     const val pageUsers = "users"
     const val pageEnv = "env"
     const val pageBootChecks = "bootChecks"
+    const val pageSystemInfo = "systemInfo"
+    const val pageDbTables = "dbTables"
+    const val pageFragmentsCheck = "fragmentsCheck"
+    /** The Operator index/landing page (issue #540), mirroring the Debug index. */
+    const val pageOperator = "operator"
     const val pageCfacts = "cfacts"
     const val pageNewForm = "newForm"
     const val pageForms = "forms"

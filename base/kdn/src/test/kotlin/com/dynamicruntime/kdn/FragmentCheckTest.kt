@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.content.FCHK
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentAudience
+import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ENV
@@ -99,6 +100,9 @@ class FragmentCheckTest : StringSpec({
         items.isNotEmpty() shouldBe true
         items.all { it[FCHK.found] == true } shouldBe true
         items.all { (it[FCHK.issueCount] as? Number)?.toInt() == 0 } shouldBe true
+        // The server-computed verdict the operator page colours (issue #540): a present, clean file is `ok`.
+        // It is derived here (found + issueCount), so a page never re-derives "is this file alright?".
+        items.all { it[FCHK.status] == PSTAT.ok } shouldBe true
         // Every file this instance ships is a delivered one, and no two bases disagree about that (issue
         // #514). The second is the one worth asserting: a conflict resolves *safely* -- backend wins -- so it
         // would take a file private without failing anything, and this is where that would show up.

@@ -191,15 +191,35 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
     items(HFLD.menu) {
         menuItem(HMENU.catalog, "Endpoint catalog", UiRoute(HMENU.pageCatalog))
         menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = "${CFACTS.hasAdminLevel},${BOOT.app}")
+        // The Operator group (issue #540): a parent header and the deployment-operator diagnostic pages under
+        // it, plus an "Overview" landing page that explains each. Parent and children share the one cfact
+        // (isDeploymentOperator), so a non-operator sees neither the header nor an orphaned child, and the
+        // header never renders bare -- filtering removes the whole group together. Client facts stays
+        // top-level: its gate is client-operator, a different axis, so it does not belong under this header.
+        menuItem(HMENU.operator, "Operator", cfactExpression = CFACTS.isDeploymentOperator)
+        menuItem(
+            HMENU.operatorOverview, "Overview", UiRoute(HMENU.pageOperator),
+            cfactExpression = CFACTS.isDeploymentOperator, parentId = HMENU.operator,
+        )
         menuItem(
             HMENU.envReference, "Environment", UiRoute(HMENU.pageEnv),
-            cfactExpression = CFACTS.isDeploymentOperator,
+            cfactExpression = CFACTS.isDeploymentOperator, parentId = HMENU.operator,
         )
-        // Operator diagnostics surfaced via the schema-driven renderer (issue #540); same deployment-operator
-        // gate as Environment. Grouping these under an "Operator" sub-menu is Part B of #540.
+        menuItem(
+            HMENU.systemInfo, "System info", UiRoute(HMENU.pageSystemInfo),
+            cfactExpression = CFACTS.isDeploymentOperator, parentId = HMENU.operator,
+        )
         menuItem(
             HMENU.bootChecks, "Boot checks", UiRoute(HMENU.pageBootChecks),
-            cfactExpression = CFACTS.isDeploymentOperator,
+            cfactExpression = CFACTS.isDeploymentOperator, parentId = HMENU.operator,
+        )
+        menuItem(
+            HMENU.dbTables, "Database tables", UiRoute(HMENU.pageDbTables),
+            cfactExpression = CFACTS.isDeploymentOperator, parentId = HMENU.operator,
+        )
+        menuItem(
+            HMENU.fragmentsCheck, "Fragments check", UiRoute(HMENU.pageFragmentsCheck),
+            cfactExpression = CFACTS.isDeploymentOperator, parentId = HMENU.operator,
         )
         // Offered to a client-scoped operator or admin (issue #488) -- the same caller the `clientOperator`
         // section admits, asked as a cfact so the menu offer and the gate cannot drift.
@@ -212,10 +232,20 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
         // "New form" button rather than a second, redundant nav item (issue #417).
         menuItem(HMENU.forms, "My forms", UiRoute(HMENU.pageForms), cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
-        menuItem(HMENU.profile, "Profile", UiRoute(HMENU.pageProfile), cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
-        menuItem(HMENU.logout, "Log out", UiCall(HACT.logout), cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
-        menuItem(HMENU.login, "Log in", UiRoute(HMENU.pageLogin), cfactExpression = "${CFACTS.anonymous},${BOOT.app}")
-        menuItem(HMENU.register, "Register", UiRoute(HMENU.pageRegister), cfactExpression = "${CFACTS.anonymous},${BOOT.app}")
+
+        // The Account group (issue #540 Part B): identity/session items under one header. The parent is gated
+        // on the app boot role alone, so it shows to any app caller -- logged in or anonymous -- and always has
+        // at least one surviving child (a caller is one or the other), so it never renders bare. The children
+        // keep their own loggedIn/anonymous gates, so the group shows Profile+Log out or Log in+Register.
+        menuItem(HMENU.account, "Account", cfactExpression = BOOT.app)
+        menuItem(HMENU.profile, "Profile", UiRoute(HMENU.pageProfile),
+            cfactExpression = "${CFACTS.loggedIn},${BOOT.app}", parentId = HMENU.account)
+        menuItem(HMENU.logout, "Log out", UiCall(HACT.logout),
+            cfactExpression = "${CFACTS.loggedIn},${BOOT.app}", parentId = HMENU.account)
+        menuItem(HMENU.login, "Log in", UiRoute(HMENU.pageLogin),
+            cfactExpression = "${CFACTS.anonymous},${BOOT.app}", parentId = HMENU.account)
+        menuItem(HMENU.register, "Register", UiRoute(HMENU.pageRegister),
+            cfactExpression = "${CFACTS.anonymous},${BOOT.app}", parentId = HMENU.account)
 
         // Debug (issue #517), offered only in an env-authed session. Not in debug yet: one top-level call to
         // turn it on. In debug: a "Debug" parent whose children drill down under it via parentId -- the debug
