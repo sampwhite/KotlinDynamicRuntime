@@ -86,6 +86,17 @@ format means adding a helper and a predicate — not special-casing at each call
   content's shape is the MIME type's business, not JSON Schema's). See `kdr-endpoint-builder` for the file
   endpoints built on it.
 
+## Character rules: `visibleOnly`
+
+A string field can refuse characters that have no clearly visible rendering with `visibleOnly = true` (the
+custom `g-visibleOnly` keyword, issue #543). The rule is one test on the Unicode General Category: the
+ordinary space is allowed, and any other character in a `C` (control, format, private-use, unassigned, lone
+surrogate) or `Z` (other spaces, line and paragraph separators) category fails as `badValue`, with a message
+naming the code point and its position. That catches a tab or newline, a zero-width space, a bidi override,
+and a no-break space that looks like a space and compares unequal. It does **not** catch a look-alike letter
+from another script; that is a different problem. Off unless set, and only a plain string may set it -- the
+parser refuses it on any other type, and on a date or binary format, where it would constrain nothing.
+
 ## Choice lists: written down, or sourced at render time
 
 `option(value, label)` writes the choices into the document, and they then **bind**: the validator rejects

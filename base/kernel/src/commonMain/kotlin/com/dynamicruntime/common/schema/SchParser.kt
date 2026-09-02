@@ -326,6 +326,7 @@ fun parseNode(
         // Scalars read an empty value as "not supplied"; arrays/objects opt in, and an untyped field -- which
         // constrains nothing -- is left alone.
         emptyIsAbsent = (map[SCH.emptyIsAbsent] as? Boolean) ?: isScalarType(jsonType),
+        visibleOnly = parseVisibleOnly(map[SCH.visibleOnly], name, jsonType, format),
         format = format,
         title = map[SCH.title].toOptStr(),
         description = map[SCH.description].toOptStr(),
@@ -388,6 +389,33 @@ fun maxBoundKeyword(jsonType: String?): String = when {
     jsonType == SCT.array -> SCH.maxItems
     jsonType == SCT.kObject -> SCH.maxProperties
     else -> ""
+}
+
+/**
+ * Reads the custom `g-visibleOnly` keyword (issue #543): absent is off, `true`/`false` say so, and anything
+ * else fails the parse.
+ *
+ * **Strict where the standard keywords are lenient**, on the same reasoning as `g-errors`: this keyword is
+ * ours to define, so a document a stock validator accepts is not at stake, and the failure it prevents is the
+ * silent kind. A `"yes"` read as off would leave a field believing it was protected; so would `true` on an
+ * integer, where the check never runs because no integer is a string. Both are refused by name at boot rather
+ * than left to constrain nothing. A date-format or binary-format string is refused with the non-strings: its
+ * value is parsed as a date, or is not text at all, so there are no characters for the rule to see.
+ */
+@KdrPrivate
+fun parseVisibleOnly(raw: Any?, typeName: String?, jsonType: String?, format: String?): Boolean {
+    if (raw == null) return false
+    val where = typeName?.let { " on '$it'" } ?: ""
+    val on = raw as? Boolean
+        ?: throw KdrException.mkConv("'${SCH.visibleOnly}'$where must be true or false, not '$raw'.")
+    if (on && (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format))) {
+        val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
+        throw KdrException.mkConv(
+            "'${SCH.visibleOnly}'$where applies to a plain string, and this type is $actual. It would " +
+                "constrain nothing there."
+        )
+    }
+    return on
 }
 
 /** Whether a JSON Schema type is one of the numeric types (the [SCH.allowCoerce] default). */
