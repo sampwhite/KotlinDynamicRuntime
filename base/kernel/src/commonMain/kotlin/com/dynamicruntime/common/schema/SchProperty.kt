@@ -24,6 +24,13 @@ class SchProperty(
      * fragment. See [SCH.optionalContents].
      */
     val optionalContents: Boolean = false,
+    /**
+     * `g-presentation` declared **at this use site** (issue #540): a display hint, advisory only. On the
+     * property, not read off [valueType], for the same reason as [title] -- a `$ref` field's [valueType] is the
+     * *shared* target instance, so a hint written beside the `$ref` would otherwise be lost, and two fields
+     * referencing one type could not be hinted differently. Null falls back to [valueType]'s own hint.
+     */
+    val presentation: String? = null,
 ) {
     /** Resolved value schema. Set once during parsing (see class doc). */
     lateinit var valueType: SchType

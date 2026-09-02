@@ -3,6 +3,8 @@ package com.dynamicruntime.common.startup
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.schema.PRES
+import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.util.toOptBool
@@ -72,6 +74,10 @@ object BCHK {
     const val mode = "mode"
     const val findings = "findings"
 
+    /** The server-computed verdict for one check (a [com.dynamicruntime.common.schema.PSTAT] value), so the
+     *  page colours it rather than re-deriving "is this bad?" from findings + mode. */
+    const val status = "status"
+
     /** Schema type name for one check's entry in the report. */
     const val infoTypeName = "BootCheckInfo"
 }
@@ -90,8 +96,25 @@ class BootCheckResult(
     val mode: BootCheckMode,
     val findings: List<String>,
 ) {
+    /**
+     * The verdict, computed here because the server owns the findings+mode semantics (issue #540).
+     *
+     * `off` is tested first: a disabled check is recorded with no findings (so it stays visible in the report),
+     * but empty findings there mean *not checked*, never a clean bill -- so it is [PSTAT.info], not [PSTAT.ok].
+     * A check that ran (warn/strict) with nothing found is [PSTAT.ok]. A check that ran and found something is
+     * [PSTAT.warning] -- worth attention, but not [PSTAT.error]: a *fatal* strict finding throws before it is
+     * ever recorded (the node would not have booted), and force-allowed drift is downgraded to `warn`, so no
+     * finding that reaches this report was fatal to this node.
+     */
+    val status: String get() = when {
+        mode == BootCheckMode.off -> PSTAT.info
+        findings.isEmpty() -> PSTAT.ok
+        else -> PSTAT.warning
+    }
+
     fun toInfo(): Map<String, Any?> = linkedMapOf(
         BCHK.name to name,
+        BCHK.status to status,
         BCHK.envVar to envVar,
         BCHK.mode to mode.name,
         BCHK.findings to findings,
@@ -103,8 +126,18 @@ class BootCheckResult(
             builder.type(BCHK.infoTypeName) {
                 type = SCT.kObject
                 description = "One boot check, the mode it ran in, and what it found."
-                property(BCHK.name, "The check's name.", required = true)
-                property(BCHK.envVar, "The environment variable that overrides this check's mode.", required = true)
+                // A list of these renders as a table (issue #540): one row per check, verdict-coloured.
+                presentation = PRES.table
+                property(BCHK.name, "The check's name.", required = true) { presentation = PRES.identifier }
+                property(BCHK.status, "The verdict for this check.", required = true) {
+                    presentation = PRES.status
+                    // The closed vocabulary, from the one kernel list -- so response-schema validation enforces
+                    // it (like `mode` below) rather than the set living only in prose.
+                    for (s in PSTAT.all) option(s)
+                }
+                property(BCHK.envVar, "The environment variable that overrides this check's mode.", required = true) {
+                    presentation = PRES.identifier
+                }
                 property(BCHK.mode, "What a finding did at startup.", required = true) {
                     options(BootCheckMode.entries)
                 }

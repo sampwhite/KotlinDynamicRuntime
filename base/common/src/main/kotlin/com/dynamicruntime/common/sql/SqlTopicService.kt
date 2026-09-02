@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.operator.OPS
 import com.dynamicruntime.common.exception.KdrException
 // Referenced from checkReady's documentation: it is the gate that decides which components' tables exist.
 import com.dynamicruntime.common.startup.ComponentDefinition
@@ -147,7 +148,7 @@ class SqlTopicService : ServiceInitializer {
             // The TableInfo type is owned by KdrTable, alongside its serialization (toJsonMap).
             KdrTable.defineInfoType(this)
             listEndpoint(
-                "/operator/db/tables",
+                OPS.dbTablesPath,
                 "Lists the database tables registered for this instance.",
                 outputRef = KdrTable.infoTypeName,
                 tags = setOf(ETAG.internal),

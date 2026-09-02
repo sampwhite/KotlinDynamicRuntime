@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 // The antd `theme` export, aliased: inside the ConfigProvider builder block, `theme` is its prop.
 import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.operator.OPS
 import com.dynamicruntime.webapp.theme as antdTheme
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -150,6 +151,30 @@ val App = FC<Props> {
                             pageProfile -> Profile {}
                             pageUsers -> Users {}
                             pageEnv -> EnvReferencePage {}
+                            pageOperator -> OperatorIndex {}
+                            pageBootChecks -> OperatorListPage {
+                                method = "GET"
+                                path = OPS.bootChecksPath
+                                title = "Boot checks"
+                                description = "Every check this node ran at startup, its mode, and what it found."
+                            }
+                            pageSystemInfo -> OperatorObjectPage {
+                                path = OPS.systemInfoPath
+                                title = "System info"
+                                description = "This node's identity, uptime, and JVM statistics."
+                            }
+                            pageDbTables -> OperatorListPage {
+                                method = "GET"
+                                path = OPS.dbTablesPath
+                                title = "Database tables"
+                                description = "Every database table registered for this instance."
+                            }
+                            pageFragmentsCheck -> OperatorListPage {
+                                method = "GET"
+                                path = OPS.fragmentsCheckPath
+                                title = "Fragments check"
+                                description = "The Markdown fragment files this node carries, and any problems found."
+                            }
                             pageCfacts -> CFactReferencePage {}
                             pageNewForm -> NewFormPage {}
                             pageForms -> FormsPage {}
@@ -182,6 +207,21 @@ private const val pageUsers = HMENU.pageUsers
 // without the role -- reported honestly by the page rather than hidden.
 private const val pageEnv = HMENU.pageEnv
 
+// The operator boot-checks diagnostic page (issue #540): present unconditionally like the other operator pages;
+// the endpoint is deployment-operator-gated and the menu offer is too, so a caller without the role reaching
+// the route sees the page report the refusal rather than a hidden route.
+private const val pageBootChecks = HMENU.pageBootChecks
+
+// The remaining tier-1 operator diagnostic pages (issue #540, slice 2): same route policy as boot checks --
+// present unconditionally, offered in the menu only to a deployment operator, the endpoint refusing a caller
+// who reaches the route without the role (reported by the page, not a hidden route).
+private const val pageSystemInfo = HMENU.pageSystemInfo
+private const val pageDbTables = HMENU.pageDbTables
+private const val pageFragmentsCheck = HMENU.pageFragmentsCheck
+// The Operator index/landing page (issue #540, Part B): mirrors the Debug index; reached from the Operator
+// menu group's "Overview" entry. Present unconditionally; the tools it links to each refuse without the role.
+private const val pageOperator = HMENU.pageOperator
+
 // The cfact reference (issue #488). Same route policy as the environment reference: present unconditionally,
 // offered in the menu only to a client-scoped operator or admin (and suppressible by a client), and the
 // endpoint refuses a caller who reaches it without the role -- reported honestly by the page rather than hidden.
@@ -213,6 +253,11 @@ private fun currentPage(): String {
         params[HP.page] == pageProfile -> pageProfile
         params[HP.page] == pageUsers -> pageUsers
         params[HP.page] == pageEnv -> pageEnv
+        params[HP.page] == pageBootChecks -> pageBootChecks
+        params[HP.page] == pageSystemInfo -> pageSystemInfo
+        params[HP.page] == pageDbTables -> pageDbTables
+        params[HP.page] == pageFragmentsCheck -> pageFragmentsCheck
+        params[HP.page] == pageOperator -> pageOperator
         params[HP.page] == pageCfacts -> pageCfacts
         params[HP.page] == pageNewForm -> pageNewForm
         params[HP.page] == pageForms -> pageForms

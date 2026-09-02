@@ -135,6 +135,10 @@ val AppBar = FC<AppBarProps> { props ->
         error("Deliberate shell fault from the debug page (issue #227).")
     }
     var open by useState(false)
+    // Which drill-down groups are expanded (issue #540). Collapsed by default -- a group's children show on
+    // demand, keeping a long menu short -- and remembered per browser, so an operator who opens the Operator
+    // group finds it open next time. Held as the set of expanded parent ids.
+    var expandedGroups by useState { readExpandedGroups() }
     var config by useState<HomeConfig?>(null)
     // The persistent `_debug` box's value (issue #517, slice 3), seeded from this browser's storage. A hook, so
     // it is declared unconditionally here even though the box renders only in debug -- and hiding the box (on
@@ -413,23 +417,67 @@ val AppBar = FC<AppBarProps> { props ->
                             // so drawing it as a plain header loses nothing. The header labels the child group
                             // for assistive tech via `aria-labelledby`, matching the `role="group"` below.
                             val headerId = "menu-parent-${node.item.id}"
-                            div {
+                            val expanded = node.item.id in expandedGroups
+                            button {
                                 // id/aria via asDynamic to match this file's idiom (see menuItemView below).
                                 asDynamic()["id"] = headerId
                                 className = ClassName("app-menu-parent")
-                                +node.item.label
+                                // A real toggle now: aria-expanded states it, and the children below render
+                                // only when open, so the group collapses to a single line until asked for.
+                                asDynamic()["aria-expanded"] = expanded
+                                onClick = {
+                                    val next = if (expanded) expandedGroups - node.item.id
+                                        else expandedGroups + node.item.id
+                                    expandedGroups = next
+                                    writeExpandedGroups(next)
+                                }
+                                // Label on the left, a dropdown-style chevron on the right: down when it can be
+                                // opened, up when it can be closed.
+                                span { +node.item.label }
+                                span { className = ClassName("app-menu-caret"); +(if (expanded) "\u25b2" else "\u25bc") }
                             }
-                            div {
-                                className = ClassName("app-menu-children")
-                                asDynamic()["role"] = "group"
-                                asDynamic()["aria-labelledby"] = headerId
-                                for (child in node.children) menuItemView(child, frontendActions) { open = false }
+                            if (expanded) {
+                                div {
+                                    className = ClassName("app-menu-children")
+                                    asDynamic()["role"] = "group"
+                                    asDynamic()["aria-labelledby"] = headerId
+                                    for (child in node.children) menuItemView(child, frontendActions) { open = false }
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** The menu groups the caller has expanded (issue #540), remembered per browser under [expandedGroupsStorageKey].
+ *  Absent/blank -> every group collapsed, which is the default (children on demand). */
+private const val expandedGroupsStorageKey = "kdrMenuExpandedGroups"
+
+private fun readExpandedGroups(): Set<String> =
+    (localStorageGet(expandedGroupsStorageKey)?.splitComma() ?: emptyList()).toSet()
+
+private fun writeExpandedGroups(ids: Set<String>) =
+    localStorageSet(expandedGroupsStorageKey, ids.joinToString(","))
+
+// `localStorage` (not sessionStorage): the choice should outlive the tab, like a remembered filter. It throws
+// in a private window or when site data is blocked, so a failure is caught and *reported* -- never swallowed
+// (webapp/CLAUDE.md) -- and the menu falls back to all-collapsed rather than breaking.
+private fun localStorageGet(key: String): String? =
+    try {
+        js("window.localStorage.getItem(key)") as? String
+    } catch (e: Throwable) {
+        console.warn("$errorLogPrefix could not read menu state from localStorage: ${e.message}")
+        null
+    }
+
+private fun localStorageSet(key: String, value: String) {
+    try {
+        js("window.localStorage.setItem(key, value)")
+    } catch (e: Throwable) {
+        console.warn("$errorLogPrefix could not persist menu state to localStorage: ${e.message}")
     }
 }
 

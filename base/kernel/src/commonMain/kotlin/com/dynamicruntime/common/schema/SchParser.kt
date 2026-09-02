@@ -350,6 +350,8 @@ fun parseNode(
         maxBound = map[maxBoundKeyword(jsonType)].toOptDouble(),
         // Ordered, so a composite key keeps the order it was declared in (issue #487).
         primaryKey = (map[SCH.primaryKey] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList(),
+        // A display hint only (issue #540): carried through unread by validation, for a read-only renderer.
+        presentation = map[SCH.presentation].toOptStr(),
     )
     if (itemRefName != null) {
         pendingItemRefs.add(PendingItemRef(schType, itemRefName))
@@ -522,13 +524,17 @@ fun parseProperty(
     val title = map[SCH.title].toOptStr()
     // Read before the $ref/inline split so an edit's `data` -- a $ref -- carries it too (issue #487).
     val optionalContents = map[SCH.optionalContents] == true
+    // Read before the split too (issue #540): a hint beside a `$ref` belongs to the site, not the shared target.
+    val presentation = map[SCH.presentation].toOptStr()
     val ref = map[SCH.dRef].toOptStr()
     if (ref != null) {
-        val prop = SchProperty(name, description, refTargetName(ref), title, optionalContents)
+        val prop = SchProperty(name, description, refTargetName(ref), title, optionalContents, presentation)
         pendingRefs.add(prop) // valueType bound in the resolution pass
         return prop
     }
-    val prop = SchProperty(name, description, refName = null, title = title, optionalContents = optionalContents)
+    val prop = SchProperty(
+        name, description, refName = null, title = title, optionalContents = optionalContents, presentation = presentation,
+    )
     prop.valueType = parseNode(null, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1)
     return prop
 }

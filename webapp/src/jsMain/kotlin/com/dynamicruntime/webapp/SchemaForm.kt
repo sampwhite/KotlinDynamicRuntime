@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.schema.PRES
+import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchFailure
@@ -13,6 +15,7 @@ import com.dynamicruntime.common.schema.childPath
 import com.dynamicruntime.common.schema.indexPath
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
+import com.dynamicruntime.common.schema.isPathAtOrBelow
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptBool
@@ -28,7 +31,13 @@ import react.dom.html.ReactHTML.input
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.table
+import react.dom.html.ReactHTML.tbody
+import react.dom.html.ReactHTML.td
 import react.dom.html.ReactHTML.textarea
+import react.dom.html.ReactHTML.th
+import react.dom.html.ReactHTML.thead
+import react.dom.html.ReactHTML.tr
 import react.useState
 import web.cssom.ClassName
 import web.html.InputType
@@ -201,6 +210,13 @@ class FieldErrors(private val all: List<SchFailure>, val noteEdit: (String) -> U
      */
     fun undeclaredBelow(path: String, declared: Set<String>): Map<String, List<SchFailure>> =
         all.filter { f -> childKeyOf(f.path, path)?.let { it !in declared } == true }.byPath()
+
+    /**
+     * Any failure reported strictly *below* [path] -- an element or a cell of an array, not the array field
+     * itself (which the field frame already shows). A table has no per-cell slot for these, so their presence
+     * is what sends an array to the block form instead (issue #540).
+     */
+    fun anyUnder(path: String): Boolean = all.any { it.path != path && isPathAtOrBelow(it.path, path) }
 }
 
 /**
@@ -573,6 +589,19 @@ private fun ChildrenBuilder.renderField(
     val vt = prop.valueType
     val elementType = objectElementType(vt)
     if (elementType != null) {
+        // A read-only array whose element type declares `presentation: table` (issue #540) renders as a real
+        // table -- one row per element, its properties the columns -- rather than a stack of nested field
+        // blocks. Editing still uses the block form (a table is not an editing affordance here). A table has
+        // no per-cell error slot, so it is used only when it can tell the whole story: the element type has
+        // columns to draw, and nothing failed *under* this array that the table would swallow. A union element
+        // type (empty `properties`) or an element/cell failure falls through to the block form, which draws
+        // each element and carries its failures.
+        if (!editable && elementType.presentation == PRES.table &&
+            elementType.properties.isNotEmpty() && !errors.anyUnder(path)
+        ) {
+            renderTable(name, prop, required, value, elementType, path, errors, opts)
+            return
+        }
         renderObjectList(name, prop, required, value, elementType, seen, editable, path, errors, emit, omit, opts)
         return
     }
@@ -590,7 +619,12 @@ private fun ChildrenBuilder.renderField(
 
     val messages = errors.messagesAt(path)
     fieldFrame(name, prop, required, path, messages, opts) {
-        widget(vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) }) { newValue ->
+        widget(
+            vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) },
+            // A hint declared at *this* use site wins over one on the (shared) target type -- the same
+            // per-site precedence `title` takes (issue #540).
+            presentation = prop.presentation ?: vt.presentation, opts = opts,
+        ) { newValue ->
             errors.noteEdit(path)
             emit(newValue)
         }
@@ -886,7 +920,7 @@ private fun ChildrenBuilder.renderScalarList(
             // inside a list (removing an element is the remove control's job), which is what a boolean
             // element asks about (issue #261).
             if (elementType != null) {
-                widget(elementType, element, required = true, editable = true) { replace(it) }
+                widget(elementType, element, required = true, editable = true, opts = opts) { replace(it) }
             } else {
                 Input {
                     this.value = displayValue(element)
@@ -949,10 +983,11 @@ private fun ChildrenBuilder.removeControl(what: String, onRemove: () -> Unit) {
  */
 private fun ChildrenBuilder.widget(
     vt: SchType, value: Any?, required: Boolean, editable: Boolean, describedBy: String? = null,
+    presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
     emit: (Any?) -> Unit,
 ) {
     if (!editable) {
-        readOnlyValue(vt, value)
+        readOnlyValue(vt, value, presentation, opts)
         return
     }
     val arrayOptions = if (vt.jsonType == SCT.array) vt.itemType?.options else null
@@ -1276,7 +1311,18 @@ fun parseJsonField(text: String): JsonFieldParse {
  * Read-only presentation of a field: its value as text (nothing when absent) followed by the field's type
  * named in words. No form control — this is a value being shown, not an input.
  */
-private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
+private fun ChildrenBuilder.readOnlyValue(
+    vt: SchType, value: Any?, presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
+) {
+    // A structured array -- its elements are objects with declared fields -- reads far better as a nested table
+    // (a sub-table inside the cell) than as raw JSON (issue #540): this is what turns a database-tables row's
+    // `columns`/`indexes` into readable sub-tables rather than a JSON blob. A free-form array (no element
+    // fields) still falls to the JSON view below.
+    val elementType = vt.itemType
+    if (vt.jsonType == SCT.array && elementType != null && elementType.properties.isNotEmpty() && value is List<*>) {
+        schemaTable(elementType, value, opts)
+        return
+    }
     // A JSON structure (a generic object, or an array with structured elements) reads far better as pretty
     // JSON than a flattened toString; the kernel's JsonUtil formats it (indented, non-compact by default).
     if (value is Map<*, *> || (value is List<*> && value.any { it is Map<*, *> || it is List<*> })) {
@@ -1286,7 +1332,35 @@ private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
         }
         return
     }
+    // A read-only scalar array whose *items* carry a hint (issue #540) renders each element with that hint -- a
+    // row of status chips, a column of identifiers -- rather than the comma-joined line below, which would drop
+    // it. An unhinted list still reads better joined.
+    val itemPresentation = vt.itemType?.presentation
+    if (vt.jsonType == SCT.array && itemPresentation != null && value is List<*>) {
+        if (value.isEmpty()) {
+            span { className = ClassName("field-type"); +"(empty list)" }
+            return
+        }
+        span {
+            className = ClassName("field-value op-list")
+            for (element in value) readOnlyValue(vt.itemType!!, element, itemPresentation, opts)
+        }
+        return
+    }
     val text = displayValue(value)
+    // Presentation hints (issue #540), read-only only: a verdict shows as a coloured chip, an identifier as
+    // monospace -- and both drop the "(type)" annotation, which documents the wire for the catalog outline but
+    // is noise on a value a person is reading. An unknown hint falls through to ordinary text.
+    when (presentation) {
+        PRES.status -> {
+            if (text.isNotEmpty()) statusChip(text)
+            return
+        }
+        PRES.identifier -> {
+            if (text.isNotEmpty()) span { className = ClassName("field-value op-identifier"); +text }
+            return
+        }
+    }
     if (text.isNotEmpty()) {
         span {
             className = ClassName("field-value")
@@ -1296,6 +1370,98 @@ private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
     span {
         className = ClassName("field-type")
         +"(${typeWord(vt)})"
+    }
+}
+
+/** A [PSTAT] verdict as a coloured chip. An unrecognized value still shows, in the neutral (`info`) colour, so
+ *  a status the frontend has not learned yet reads as text rather than vanishing. */
+private fun ChildrenBuilder.statusChip(value: String) {
+    val known = value in PSTAT.all
+    span {
+        className = ClassName("op-status " + if (known) value else PSTAT.info)
+        +value
+    }
+}
+
+/**
+ * A read-only array rendered as a table (issue #540): the field frame (its label + description) above the
+ * shared [schemaTable]. Used for a `presentation: table` array inside a form's read-only view.
+ */
+private fun ChildrenBuilder.renderTable(
+    name: String,
+    prop: SchProperty,
+    required: Boolean,
+    value: Any?,
+    elementType: SchType,
+    path: String,
+    errors: FieldErrors,
+    opts: FormOpts,
+) {
+    fieldFrame(name, prop, required, path, errors.messagesAt(path), opts)
+    schemaTable(elementType, value.toJsonListOrEmpty(), opts)
+}
+
+/**
+ * The table markup for an array of [elementType] (issue #540): its properties are the columns, [elements] the
+ * rows, and each cell is the ordinary [readOnlyValue] -- so a per-field hint (a `status` chip, an `identifier`
+ * monospace) applies inside a cell exactly as it would anywhere else. Package-visible so an operator page can
+ * render a bare result list directly, with its own heading rather than a field label.
+ */
+fun ChildrenBuilder.schemaTable(elementType: SchType, elements: List<Any?>, opts: FormOpts = FormOpts()) {
+    if (elements.isEmpty()) {
+        p { className = ClassName("type-hint"); +"(none)" }
+        return
+    }
+    // Friendly mode drops a derived column and labels the rest by title -- exactly what the field form does --
+    // so a table inside a friendly form matches its surroundings; the catalog (default opts) keeps every
+    // column and labels by key, because it documents the wire.
+    val shown = elementType.properties.values.filterNot { opts.friendly && it.valueType.derived }
+    // A column marked `presentation: detail` (issue #540) is an array of objects that reads better as its own
+    // sub-table beneath the row than crammed into an inline cell -- master-detail, for a heavy nested array
+    // like a database table's `columns`. It only qualifies when it really is a structured array; otherwise it
+    // stays an ordinary inline column.
+    fun isDetail(col: SchProperty): Boolean =
+        (col.presentation ?: col.valueType.presentation) == PRES.detail &&
+            col.valueType.itemType?.properties?.isNotEmpty() == true
+    val detailCols = shown.filter { isDetail(it) }
+    val inlineCols = shown.filterNot { isDetail(it) }
+    // A wide table (many columns, or a JSON/sub-table cell) scrolls inside this box rather than pushing past
+    // the card and out of the window (issue #540).
+    div {
+        className = ClassName("op-table-scroll")
+        table {
+            className = ClassName("op-table")
+            thead {
+                tr { for (col in inlineCols) th { +fieldLabel(col.name, col, opts) } }
+            }
+            tbody {
+                for (element in elements) {
+                    val row = element.toJsonMapOrEmpty()
+                    tr {
+                        for (col in inlineCols) td {
+                            // A per-site column hint wins over one on the column's (shared) target type.
+                            readOnlyValue(col.valueType, row[col.name], col.presentation ?: col.valueType.presentation, opts)
+                        }
+                    }
+                    // The detail arrays for this element, each a labelled sub-table on a full-width row under it.
+                    if (detailCols.isNotEmpty()) {
+                        tr {
+                            className = ClassName("op-detail-row")
+                            td {
+                                asDynamic()["colSpan"] = inlineCols.size.coerceAtLeast(1)
+                                for (col in detailCols) {
+                                    div {
+                                        className = ClassName("op-detail")
+                                        div { className = ClassName("op-detail-label"); +fieldLabel(col.name, col, opts) }
+                                        schemaTable(col.valueType.itemType!!, row[col.name].toJsonListOrEmpty(), opts)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

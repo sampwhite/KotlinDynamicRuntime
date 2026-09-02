@@ -39,13 +39,20 @@ class HomeMenuTest : StringSpec({
 
     val cxt = Startup.mkTestBootCxt("homeMenu", "homeMenuTest")
 
-    /** A route item. Since #483 the field is `action` and a **string** is what makes it a navigation. */
-    fun page(id: String, label: String, page: String) =
-        mapOf(HFLD.id to id, HFLD.label to label, UIB.action to page)
+    /** A group header (a parent, issue #517/#540): id and label only -- no action, and the cfact is stripped
+     *  by resolution. Drawn as the header its children drill down under. */
+    fun header(id: String, label: String) = mapOf(HFLD.id to id, HFLD.label to label)
+
+    /** A route item. Since #483 the field is `action` and a **string** is what makes it a navigation. A
+     *  [parentId] is present only for a child that drills down under a group header. */
+    fun page(id: String, label: String, page: String, parentId: String? = null) =
+        if (parentId == null) mapOf(HFLD.id to id, HFLD.label to label, UIB.action to page)
+        else mapOf(HFLD.id to id, HFLD.label to label, UIB.action to page, UIB.parentId to parentId)
 
     /** A call item: an **array**, whose head names a registered frontend function. */
-    fun call(id: String, label: String, function: String, vararg args: String) =
-        mapOf(HFLD.id to id, HFLD.label to label, UIB.action to listOf(function) + args.toList())
+    fun call(id: String, label: String, function: String, parentId: String? = null, vararg args: String) =
+        (mapOf(HFLD.id to id, HFLD.label to label, UIB.action to listOf(function) + args.toList()) +
+            (if (parentId != null) mapOf(UIB.parentId to parentId) else emptyMap()))
 
     /** The menu out of a `results` map. */
     fun menuIn(results: Map<String, Any?>): List<Map<String, Any?>> =
@@ -57,19 +64,21 @@ class HomeMenuTest : StringSpec({
 
     "a signed-out visitor is offered only what they can open" {
         anonymousMenu() shouldBe listOf(
+            header(HMENU.account, "Account"),
+            page(HMENU.login, "Log in", HMENU.pageLogin, HMENU.account),
+            page(HMENU.register, "Register", HMENU.pageRegister, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
-            page(HMENU.login, "Log in", HMENU.pageLogin),
-            page(HMENU.register, "Register", HMENU.pageRegister),
         )
     }
 
     "an ordinary signed-in user gets the forms and profile entries, and logout as an action" {
         val user = TestUser.create(cxt, "menu-user@example.com")
         menuIn(user.getData(HEP.homeUiConfig)) shouldBe listOf(
+            header(HMENU.account, "Account"),
+            page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
+            call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.forms, "My forms", HMENU.pageForms),
-            page(HMENU.profile, "Profile", HMENU.pageProfile),
-            call(HMENU.logout, "Log out", HACT.logout.name),
         )
     }
 
@@ -79,24 +88,32 @@ class HomeMenuTest : StringSpec({
         // follows the deployment `operator` section, which has required `allClients` since #464 (issue #488).
         val admin = TestUser.create(cxt, "menu-admin@example.com", level = ROLE.admin)
         menuIn(admin.getData(HEP.homeUiConfig)) shouldBe listOf(
+            header(HMENU.account, "Account"),
+            page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
+            call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.users, "Users", HMENU.pageUsers),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
-            page(HMENU.profile, "Profile", HMENU.pageProfile),
-            call(HMENU.logout, "Log out", HACT.logout.name),
         )
     }
 
     "a deployment operator gets Environment and Client facts, and not Users" {
         val operator = TestUser.createOperator(cxt, "menu-ops@example.com")
         menuIn(operator.getData(HEP.homeUiConfig)) shouldBe listOf(
+            header(HMENU.account, "Account"),
+            page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
+            call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
-            page(HMENU.envReference, "Environment", HMENU.pageEnv),
+            header(HMENU.operator, "Operator"),
+            page(HMENU.operatorOverview, "Overview", HMENU.pageOperator, HMENU.operator),
+            page(HMENU.envReference, "Environment", HMENU.pageEnv, HMENU.operator),
+            page(HMENU.systemInfo, "System info", HMENU.pageSystemInfo, HMENU.operator),
+            page(HMENU.bootChecks, "Boot checks", HMENU.pageBootChecks, HMENU.operator),
+            page(HMENU.dbTables, "Database tables", HMENU.pageDbTables, HMENU.operator),
+            page(HMENU.fragmentsCheck, "Fragments check", HMENU.pageFragmentsCheck, HMENU.operator),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
-            page(HMENU.profile, "Profile", HMENU.pageProfile),
-            call(HMENU.logout, "Log out", HACT.logout.name),
         )
     }
 

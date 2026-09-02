@@ -123,7 +123,7 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
         type = SCT.kObject
     }
     generalEndpoint(
-        "/operator/system/info",
+        OPS.systemInfoPath,
         "Reports this node's identity, uptime and JVM statistics, optionally requesting a garbage collection first.",
         HttpMethod.GET,
         outputRef = systemInfoType,
@@ -142,7 +142,7 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
 
     BootCheckResult.defineInfoType(this)
     listEndpoint(
-        "/operator/boot/checks",
+        OPS.bootChecksPath,
         "Reports every boot check this node ran: the mode each resolved to, and what each found.",
         outputRef = BCHK.infoTypeName,
         // No `limit`: the checks are a fixed, small set registered at boot, and paging a report somebody

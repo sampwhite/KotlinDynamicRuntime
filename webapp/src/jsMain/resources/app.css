@@ -308,15 +308,26 @@ body {
 }
 .app-menu-item:hover { background: var(--border); }
 
-/* A drill-down parent (issue #517): a non-interactive header, with its children indented under it so the
-   nesting reads as a group rather than a flat list. */
+/* A drill-down parent (issue #517, collapsible since #540): a clickable group header that toggles its
+   children, which are indented under it so the nesting reads as a group rather than a flat list. It reads like
+   an ordinary menu item -- same font and colour -- with a right-hand chevron marking it expandable, the way a
+   dropdown does; it is a real <button>, so the chrome is reset and it gets the same hover as an item. */
 .app-menu-parent {
-    padding: 12px 16px 4px;
-    color: var(--text-dim);
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    text-align: left;
+    padding: 12px 16px;
+    color: var(--text);
+    font: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
 }
+.app-menu-parent:hover { background: var(--border); }
+/* The right-hand expand/collapse chevron -- a dropdown-style caret, sized to be clearly visible. */
+.app-menu-caret { margin-left: 12px; font-size: 0.8em; color: var(--accent-bright); opacity: 0.85; }
 .app-menu-children .app-menu-item { padding-left: 32px; }
 
 /* The ↗ affordance on a menu item whose action leaves the app (issue #493) -- a quiet trailing glyph, not a
@@ -519,7 +530,98 @@ input {
 .field-type { color: var(--text-faint); font-style: italic; font-size: .85rem; }
 .json-value { flex: 1 1 100%; margin: 4px 0 0; white-space: pre; }
 .nested { margin: 4px 0 8px 16px; padding-left: 12px; border-left: 2px solid var(--border); }
+
+/* Operator diagnostic pages (issue #540): the schema-driven presentation hints. */
+.op-verdict { font-weight: 600; margin: 8px 0 2px; }
+.op-asof { color: var(--text-faint); font-size: .85rem; margin: 0 0 12px; }
+
+/* presentation:identifier -- an id/hash/path/env-var name, scanned character by character. */
+.op-identifier { font-family: monospace; }
+
+/* A read-only scalar array whose items carry a hint (issue #540): the hinted elements laid out inline. */
+.op-list { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* presentation:status -- a verdict chip, coloured by its PSTAT value. */
+.op-status {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.op-status.ok { background: rgba(74, 222, 128, .16); color: var(--success); }
+.op-status.info { background: rgba(129, 140, 248, .16); color: var(--accent-bright); }
+.op-status.warning { background: rgba(217, 119, 6, .18); color: var(--border-admin); }
+.op-status.error { background: rgba(248, 113, 113, .16); color: var(--danger); }
+
+/* presentation:table -- an array rendered as rows/columns. */
+.op-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.op-table th, .op-table td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+.op-table th { color: var(--text-dim); font-weight: 600; font-size: .85rem; }
+/* A cell shows the value, not the wire's "(type)" annotation the catalog outline wants. */
+.op-table td .field-type { display: none; }
+/* A wide/tall table scrolls inside this box rather than pushing past the card (issue #540). The height is
+   capped so a tall table's horizontal scrollbar stays on screen -- otherwise it sits far below the fold and a
+   table wider than the box just looks truncated. The scrollbar is kept visible (not the platform's
+   hide-until-scroll overlay) so "there is more to the right/below" is advertised rather than hidden. */
+.op-table-scroll {
+    overflow: auto;
+    max-width: 100%;
+    max-height: 70vh;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+}
+.op-table-scroll::-webkit-scrollbar { height: 10px; width: 10px; }
+.op-table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+.op-table-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+.op-table-scroll::-webkit-scrollbar-track { background: rgba(255, 255, 255, .04); border-radius: 5px; }
+/* The header stays put while a tall table scrolls vertically within its box. Needs a solid background to cover
+   the rows sliding under. */
+.op-table-scroll > .op-table > thead > tr > th {
+    position: sticky;
+    top: 0;
+    background: var(--surface-raised);
+    z-index: 1;
+}
+/* But a *nested* sub-table's header must NOT stick: its scroll box has `overflow: visible`, so its sticky
+   header resolves against the outer scroll box and would pin over the main header while scrolling. Higher
+   specificity (the extra `.op-table` ancestor) than the rule above, so it wins for nested tables only. */
+.op-table .op-table-scroll > .op-table > thead > tr > th { position: static; }
+/* A nested sub-table (a cell's columns/indexes) gets no box of its own: no height cap, no inner scrollbar --
+   it just widens its cell, and the outer box does the scrolling. */
+.op-table .op-table-scroll { max-height: none; overflow: visible; margin: 0; }
+/* A JSON cell (a free-form value) wraps and is width-capped, so one blob does not force the table enormously
+   wide before the scroll box even helps. */
+.op-table td .json-value { white-space: pre-wrap; max-width: 300px; margin: 0; }
+/* A nested sub-table (a structured-array cell, e.g. a table's columns/indexes) is a touch tighter. */
+.op-table td .op-table { margin-top: 0; font-size: .92em; }
+
+/* A master-detail row (issue #540): a `presentation: detail` array shown as its own labelled sub-table on a
+   full-width row beneath the main row, so a heavy nested array does not force the main row very wide. */
+.op-detail-row > td { padding: 4px 10px 14px 24px; background: rgba(255, 255, 255, .02); }
+.op-detail { margin-top: 8px; }
+.op-detail:first-child { margin-top: 2px; }
+.op-detail-label { color: var(--text-dim); font-size: .85rem; font-weight: 600; margin-bottom: 2px; }
 .type-hint { color: var(--text-faint); font-style: italic; margin: 2px 0; }
+
+/* The Operator overview's tool list (issue #540): readable accent links, like the debug index. */
+.operator-index { margin: 8px 0 0; padding-left: 22px; }
+.operator-index li { margin: 6px 0; }
+.operator-index a { color: var(--accent-bright); text-decoration: none; }
+.operator-index a:hover { text-decoration: underline; }
+
+/* A free-form operator object (issue #540): titled sections and key/value rows. */
+.op-section-label { font-weight: 600; color: var(--text-dim); margin: 10px 0 2px; }
+.op-kv { display: flex; gap: 10px; padding: 2px 0; }
+.op-kv-key { min-width: 180px; color: var(--text-dim); }
+.op-kv-val { color: var(--text); word-break: break-word; }
 .form-ok { color: var(--success); margin-top: 12px; }
 /* "Edited since the last check": neither pass nor fail but unknown, so neither the success green nor the
    danger red -- a dim tone that reads as a prompt rather than a verdict, in the same slot as the other two so

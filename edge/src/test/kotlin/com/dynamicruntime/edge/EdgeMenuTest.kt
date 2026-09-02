@@ -125,7 +125,7 @@ class EdgeMenuTest : StringSpec({
         scope.userProfile = UserProfile(authId = "someone@example.com")
         val ids = (UiBlockService.get(scope).resolve(scope, HMENU.block)?.get(HFLD.menu) as? List<*>)
             ?.map { (it as Map<*, *>)[HFLD.id] as String? }
-        ids shouldBe listOf(HMENU.catalog, HMENU.forms, HMENU.profile, HMENU.logout)
+        ids shouldBe listOf(HMENU.account, HMENU.profile, HMENU.logout, HMENU.catalog, HMENU.forms)
     }
 
     "the endpoint an edge does serve reports the same menu, and no Documents for the anonymous landing" {

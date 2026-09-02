@@ -44,6 +44,10 @@ object FRAG {
 object FCHK {
     const val fileId = "fileId"
 
+    /** Server-computed verdict for the row (a [com.dynamicruntime.common.schema.PSTAT] value), so the page
+     *  colours it rather than re-deriving "is this file alright?" from found + issueCount (issue #540). */
+    const val status = "status"
+
     /** The client a check row is about; absent on the shared one (issue #456). */
     const val client = "client"
 

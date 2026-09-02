@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.sql
 
 import com.dynamicruntime.common.schema.JsonMappable
+import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
 
@@ -113,9 +114,16 @@ class KdrTable(
         fun defineInfoType(builder: SchTypesBuilder) {
             builder.type(infoTypeName) {
                 type = SCT.kObject
-                property(TI.tableName, "The database table name.", required = true)
-                property(TI.namespace, "The namespace the table was declared in.", required = true)
-                property(TI.topic, "The topic (database grouping) the table belongs to.", required = true)
+                // A list of these renders as a table (issue #540): one row per table. The identifying columns
+                // are monospaced; the rest read as ordinary cells.
+                presentation = PRES.table
+                property(TI.tableName, "The database table name.", required = true) { presentation = PRES.identifier }
+                property(TI.namespace, "The namespace the table was declared in.", required = true) {
+                    presentation = PRES.identifier
+                }
+                property(TI.topic, "The topic (database grouping) the table belongs to.", required = true) {
+                    presentation = PRES.identifier
+                }
                 property(TI.description, "Human description of the table.", required = true)
                 property(TI.features, "The features the table opted into.") {
                     type = SCT.array
@@ -126,6 +134,8 @@ class KdrTable(
                     items { type = SCT.string }
                 }
                 property(TI.indexes, "The secondary indexes.") {
+                    // Shown as its own sub-table beneath the table's row (issue #540), not an inline cell.
+                    presentation = PRES.detail
                     type = SCT.array
                     items {
                         type = SCT.kObject
@@ -138,6 +148,8 @@ class KdrTable(
                     }
                 }
                 property(TI.columns, "The table columns and their per-column JSON schema.", required = true) {
+                    // The heavy one: shown as its own sub-table beneath the table's row (issue #540).
+                    presentation = PRES.detail
                     type = SCT.array
                     items {
                         type = SCT.kObject

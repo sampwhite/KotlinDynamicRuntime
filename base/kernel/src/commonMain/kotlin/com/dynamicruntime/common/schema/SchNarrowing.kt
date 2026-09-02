@@ -60,6 +60,9 @@ private val presentationKeys = setOf(
     // different source cannot change what this node accepts. A client swapping a *declared* list is a
     // different matter and stays under the narrowing rule below.
     SCH.optionsSource,
+    // A presentation hint (issue #540) is display-only and never consulted by validation, so a client may set
+    // or change it as freely as a label. Absent from this list it would be refused as a validation change.
+    SCH.presentation,
 )
 
 /** The keys that may differ by narrowing; every other validating key must match the base exactly. */
