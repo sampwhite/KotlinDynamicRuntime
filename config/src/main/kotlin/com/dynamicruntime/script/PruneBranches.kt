@@ -148,7 +148,7 @@ object PruneBranches {
         println("Remote:     ${options.remote} (${remoteUrl.out})")
 
         // Refresh first. Acting on stale refs is how this would offer to delete a branch somebody else removed
-        // last week, or miss one pushed this morning -- and the prune keeps the local view honest afterwards.
+        // last week, or miss one pushed this morning -- and the prune keeps the local view honest afterward.
         println("Fetching ${options.remote} ...")
         if (!inherit(repoDir, "git", "fetch", "--prune", options.remote)) {
             return fail("git fetch failed; nothing was deleted.")
