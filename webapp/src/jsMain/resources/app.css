@@ -411,6 +411,25 @@ body {
 }
 .markdown hr { border: none; border-top: 1px solid var(--border); }
 
+/* Markdown pipe tables (issue #547): the same look as an operator `.op-table` -- collapsed borders, left-aligned
+   header/cells, a row rule, top-aligned cells -- and wrapped in an overflow-x box so a wide table scrolls inside
+   the page rather than pushing it sideways. Emitted by the renderer as `<div class="md-table-scroll"><table>`. */
+.md-table-scroll { overflow-x: auto; max-width: 100%; margin: 12px 0; }
+.markdown table { border-collapse: collapse; width: 100%; }
+.markdown th, .markdown td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    /* `.markdown` sets `overflow-wrap: anywhere`, which zeroes a cell's min-content width so table auto-layout
+       collapses a column below its longest word and then splits the word (issue #547). `break-word` wraps only
+       when a word genuinely cannot fit, so an ordinary word stays whole. */
+    overflow-wrap: break-word;
+}
+.markdown th { color: var(--text-dim); font-weight: 600; }
+/* A delimiter-driven alignment (`:--`/`--:`/`:-:`) rides an inline `style` on the cell, which already wins over
+   the left default above -- no extra rule needed. */
+
 .card {
     width: min(560px, 92vw);
     padding: 32px 36px;
