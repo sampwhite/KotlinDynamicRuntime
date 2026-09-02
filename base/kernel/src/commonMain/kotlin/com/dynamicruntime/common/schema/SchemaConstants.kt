@@ -353,4 +353,15 @@ object PSTAT {
 
     /** A failure: red. */
     const val error = "error"
+
+    /** Every status, ordered by increasing severity -- the one place the vocabulary and its order live, so the
+     *  schema (an `options` list), the chip colours, and any severity test read the same set rather than a copy. */
+    val all: List<String> = listOf(ok, info, warning, error)
+
+    /** Whether a status calls for attention: at or above [warning] in [all]. Anything the list does not know
+     *  is treated as not-attention (it is shown, but not counted against the "all clear" verdict). */
+    fun needsAttention(status: String): Boolean {
+        val i = all.indexOf(status)
+        return i >= all.indexOf(warning)
+    }
 }

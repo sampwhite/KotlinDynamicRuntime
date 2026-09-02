@@ -97,16 +97,19 @@ class BootCheckResult(
     val findings: List<String>,
 ) {
     /**
-     * The verdict, computed here because the server owns the findings+mode semantics (issue #540): nothing
-     * found is [PSTAT.ok]; a finding is as bad as its mode makes it -- ignored ([BootCheckMode.off] -> info),
-     * logged ([BootCheckMode.warn] -> warning), or fatal ([BootCheckMode.strict] -> error, which normally would
-     * have refused the boot, so it is the "started only because drift was force-allowed" case).
+     * The verdict, computed here because the server owns the findings+mode semantics (issue #540).
+     *
+     * `off` is tested first: a disabled check is recorded with no findings (so it stays visible in the report),
+     * but empty findings there mean *not checked*, never a clean bill -- so it is [PSTAT.info], not [PSTAT.ok].
+     * A check that ran (warn/strict) with nothing found is [PSTAT.ok]. A check that ran and found something is
+     * [PSTAT.warning] -- worth attention, but not [PSTAT.error]: a *fatal* strict finding throws before it is
+     * ever recorded (the node would not have booted), and force-allowed drift is downgraded to `warn`, so no
+     * finding that reaches this report was fatal to this node.
      */
     val status: String get() = when {
+        mode == BootCheckMode.off -> PSTAT.info
         findings.isEmpty() -> PSTAT.ok
-        mode == BootCheckMode.strict -> PSTAT.error
-        mode == BootCheckMode.warn -> PSTAT.warning
-        else -> PSTAT.info
+        else -> PSTAT.warning
     }
 
     fun toInfo(): Map<String, Any?> = linkedMapOf(
@@ -126,8 +129,11 @@ class BootCheckResult(
                 // A list of these renders as a table (issue #540): one row per check, verdict-coloured.
                 presentation = PRES.table
                 property(BCHK.name, "The check's name.", required = true) { presentation = PRES.identifier }
-                property(BCHK.status, "The verdict: ok, info, warning, or error.", required = true) {
+                property(BCHK.status, "The verdict for this check.", required = true) {
                     presentation = PRES.status
+                    // The closed vocabulary, from the one kernel list -- so response-schema validation enforces
+                    // it (like `mode` below) rather than the set living only in prose.
+                    for (s in PSTAT.all) option(s)
                 }
                 property(BCHK.envVar, "The environment variable that overrides this check's mode.", required = true) {
                     presentation = PRES.identifier

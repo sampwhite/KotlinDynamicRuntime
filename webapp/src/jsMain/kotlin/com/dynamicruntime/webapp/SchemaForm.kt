@@ -15,6 +15,7 @@ import com.dynamicruntime.common.schema.childPath
 import com.dynamicruntime.common.schema.indexPath
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
+import com.dynamicruntime.common.schema.isPathAtOrBelow
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptBool
@@ -209,6 +210,13 @@ class FieldErrors(private val all: List<SchFailure>, val noteEdit: (String) -> U
      */
     fun undeclaredBelow(path: String, declared: Set<String>): Map<String, List<SchFailure>> =
         all.filter { f -> childKeyOf(f.path, path)?.let { it !in declared } == true }.byPath()
+
+    /**
+     * Any failure reported strictly *below* [path] -- an element or a cell of an array, not the array field
+     * itself (which the field frame already shows). A table has no per-cell slot for these, so their presence
+     * is what sends an array to the block form instead (issue #540).
+     */
+    fun anyUnder(path: String): Boolean = all.any { it.path != path && isPathAtOrBelow(it.path, path) }
 }
 
 /**
@@ -583,9 +591,15 @@ private fun ChildrenBuilder.renderField(
     if (elementType != null) {
         // A read-only array whose element type declares `presentation: table` (issue #540) renders as a real
         // table -- one row per element, its properties the columns -- rather than a stack of nested field
-        // blocks. Editing still uses the block form (a table is not an editing affordance here).
-        if (!editable && elementType.presentation == PRES.table) {
-            renderTable(name, prop, value, elementType, path, errors, opts)
+        // blocks. Editing still uses the block form (a table is not an editing affordance here). A table has
+        // no per-cell error slot, so it is used only when it can tell the whole story: the element type has
+        // columns to draw, and nothing failed *under* this array that the table would swallow. A union element
+        // type (empty `properties`) or an element/cell failure falls through to the block form, which draws
+        // each element and carries its failures.
+        if (!editable && elementType.presentation == PRES.table &&
+            elementType.properties.isNotEmpty() && !errors.anyUnder(path)
+        ) {
+            renderTable(name, prop, required, value, elementType, path, errors, opts)
             return
         }
         renderObjectList(name, prop, required, value, elementType, seen, editable, path, errors, emit, omit, opts)
@@ -605,7 +619,12 @@ private fun ChildrenBuilder.renderField(
 
     val messages = errors.messagesAt(path)
     fieldFrame(name, prop, required, path, messages, opts) {
-        widget(vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) }) { newValue ->
+        widget(
+            vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) },
+            // A hint declared at *this* use site wins over one on the (shared) target type -- the same
+            // per-site precedence `title` takes (issue #540).
+            presentation = prop.presentation ?: vt.presentation,
+        ) { newValue ->
             errors.noteEdit(path)
             emit(newValue)
         }
@@ -964,10 +983,11 @@ private fun ChildrenBuilder.removeControl(what: String, onRemove: () -> Unit) {
  */
 private fun ChildrenBuilder.widget(
     vt: SchType, value: Any?, required: Boolean, editable: Boolean, describedBy: String? = null,
+    presentation: String? = vt.presentation,
     emit: (Any?) -> Unit,
 ) {
     if (!editable) {
-        readOnlyValue(vt, value)
+        readOnlyValue(vt, value, presentation)
         return
     }
     val arrayOptions = if (vt.jsonType == SCT.array) vt.itemType?.options else null
@@ -1291,7 +1311,7 @@ fun parseJsonField(text: String): JsonFieldParse {
  * Read-only presentation of a field: its value as text (nothing when absent) followed by the field's type
  * named in words. No form control — this is a value being shown, not an input.
  */
-private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
+private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?, presentation: String? = vt.presentation) {
     // A JSON structure (a generic object, or an array with structured elements) reads far better as pretty
     // JSON than a flattened toString; the kernel's JsonUtil formats it (indented, non-compact by default).
     if (value is Map<*, *> || (value is List<*> && value.any { it is Map<*, *> || it is List<*> })) {
@@ -1301,11 +1321,26 @@ private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
         }
         return
     }
+    // A read-only scalar array whose *items* carry a hint (issue #540) renders each element with that hint -- a
+    // row of status chips, a column of identifiers -- rather than the comma-joined line below, which would drop
+    // it. An unhinted list still reads better joined.
+    val itemPresentation = vt.itemType?.presentation
+    if (vt.jsonType == SCT.array && itemPresentation != null && value is List<*>) {
+        if (value.isEmpty()) {
+            span { className = ClassName("field-type"); +"(empty list)" }
+            return
+        }
+        span {
+            className = ClassName("field-value op-list")
+            for (element in value) readOnlyValue(vt.itemType!!, element, itemPresentation)
+        }
+        return
+    }
     val text = displayValue(value)
     // Presentation hints (issue #540), read-only only: a verdict shows as a coloured chip, an identifier as
     // monospace -- and both drop the "(type)" annotation, which documents the wire for the catalog outline but
     // is noise on a value a person is reading. An unknown hint falls through to ordinary text.
-    when (vt.presentation) {
+    when (presentation) {
         PRES.status -> {
             if (text.isNotEmpty()) statusChip(text)
             return
@@ -1330,7 +1365,7 @@ private fun ChildrenBuilder.readOnlyValue(vt: SchType, value: Any?) {
 /** A [PSTAT] verdict as a coloured chip. An unrecognized value still shows, in the neutral (`info`) colour, so
  *  a status the frontend has not learned yet reads as text rather than vanishing. */
 private fun ChildrenBuilder.statusChip(value: String) {
-    val known = value in setOf(PSTAT.ok, PSTAT.info, PSTAT.warning, PSTAT.error)
+    val known = value in PSTAT.all
     span {
         className = ClassName("op-status " + if (known) value else PSTAT.info)
         +value
@@ -1344,14 +1379,15 @@ private fun ChildrenBuilder.statusChip(value: String) {
 private fun ChildrenBuilder.renderTable(
     name: String,
     prop: SchProperty,
+    required: Boolean,
     value: Any?,
     elementType: SchType,
     path: String,
     errors: FieldErrors,
     opts: FormOpts,
 ) {
-    fieldFrame(name, prop, false, path, errors.messagesAt(path), opts)
-    schemaTable(elementType, value.toJsonListOrEmpty())
+    fieldFrame(name, prop, required, path, errors.messagesAt(path), opts)
+    schemaTable(elementType, value.toJsonListOrEmpty(), opts)
 }
 
 /**
@@ -1360,21 +1396,29 @@ private fun ChildrenBuilder.renderTable(
  * monospace) applies inside a cell exactly as it would anywhere else. Package-visible so an operator page can
  * render a bare result list directly, with its own heading rather than a field label.
  */
-fun ChildrenBuilder.schemaTable(elementType: SchType, elements: List<Any?>) {
+fun ChildrenBuilder.schemaTable(elementType: SchType, elements: List<Any?>, opts: FormOpts = FormOpts()) {
     if (elements.isEmpty()) {
         p { className = ClassName("type-hint"); +"(none)" }
         return
     }
-    val columns = elementType.properties.values.toList()
+    // Friendly mode drops a derived column and labels the rest by title -- exactly what the field form does --
+    // so a table inside a friendly form matches its surroundings; the catalog (default opts) keeps every
+    // column and labels by key, because it documents the wire.
+    val columns = elementType.properties.values.filterNot { opts.friendly && it.valueType.derived }
     table {
         className = ClassName("op-table")
         thead {
-            tr { for (col in columns) th { +col.name } }
+            tr { for (col in columns) th { +fieldLabel(col.name, col, opts) } }
         }
         tbody {
             for (element in elements) {
                 val row = element.toJsonMapOrEmpty()
-                tr { for (col in columns) td { readOnlyValue(col.valueType, row[col.name]) } }
+                tr {
+                    for (col in columns) td {
+                        // A per-site column hint wins over one on the column's (shared) target type.
+                        readOnlyValue(col.valueType, row[col.name], col.presentation ?: col.valueType.presentation)
+                    }
+                }
             }
         }
     }

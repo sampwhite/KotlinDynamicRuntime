@@ -53,9 +53,17 @@ class PresentationHintTest : StringSpec({
     }
 
     "the boot-check status is the verdict, computed from findings and mode (issue #540)" {
+        // A check that ran and found nothing is a clean bill.
         BootCheckResult("clean", "ENV", BootCheckMode.warn, emptyList()).status shouldBe PSTAT.ok
+        // A check that ran and found something is worth attention -- but never `error`: a *fatal* strict
+        // finding throws before it is ever recorded (the node would not have booted), and force-allowed drift
+        // is downgraded to `warn` before recording, so no finding that reaches a result was fatal to this node.
+        // A warn check and a recorded strict check therefore both land on `warning`, not `error`.
         BootCheckResult("noisy", "ENV", BootCheckMode.warn, listOf("a finding")).status shouldBe PSTAT.warning
+        BootCheckResult("drift", "ENV", BootCheckMode.strict, listOf("a finding")).status shouldBe PSTAT.warning
+        // `off` is tested first: a disabled check records an empty findings list so it stays visible, but that
+        // means *not checked*, not a clean bill -- so it is `info`, findings present or not.
         BootCheckResult("ignored", "ENV", BootCheckMode.off, listOf("a finding")).status shouldBe PSTAT.info
-        BootCheckResult("fatal", "ENV", BootCheckMode.strict, listOf("a finding")).status shouldBe PSTAT.error
+        BootCheckResult("ignored-clean", "ENV", BootCheckMode.off, emptyList()).status shouldBe PSTAT.info
     }
 })

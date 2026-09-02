@@ -527,6 +527,9 @@ input {
 /* presentation:identifier -- an id/hash/path/env-var name, scanned character by character. */
 .op-identifier { font-family: monospace; }
 
+/* A read-only scalar array whose items carry a hint (issue #540): the hinted elements laid out inline. */
+.op-list { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
 /* presentation:status -- a verdict chip, coloured by its PSTAT value. */
 .op-status {
     display: inline-block;
