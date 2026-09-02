@@ -1,6 +1,7 @@
 package com.dynamicruntime.script
 
 import com.dynamicruntime.common.util.addDays
+import com.dynamicruntime.script.PruneBranches.MergeState
 import com.dynamicruntime.script.PruneBranches.RemoteBranch
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -25,14 +26,14 @@ class PruneBranchesTest : StringSpec({
         name: String,
         daysOld: Int,
         email: String = me,
-        merged: Boolean = true,
+        mergeState: PruneBranches.MergeState = MergeState.reachable,
     ) = RemoteBranch(
         name = name,
         sha = "0123456789abcdef",
         lastCommit = now.addDays(-daysOld),
         authorName = "Samuel White",
         authorEmail = email,
-        merged = merged,
+        mergeState = mergeState,
     )
 
     // --- the age argument -------------------------------------------------------------------
@@ -90,7 +91,7 @@ class PruneBranchesTest : StringSpec({
     "plan deletes only old, merged branches of the caller's own" {
         val branches = listOf(
             branch("old-merged", daysOld = 30),
-            branch("old-unmerged", daysOld = 30, merged = false),
+            branch("old-unmerged", daysOld = 30, mergeState = MergeState.unmerged),
             branch("fresh", daysOld = 2),
             branch("evas", daysOld = 30, email = "ecordes@gyassa.com"),
             branch("main", daysOld = 1),
@@ -106,9 +107,37 @@ class PruneBranchesTest : StringSpec({
     }
 
     "plan takes unmerged branches only when asked" {
-        val branches = listOf(branch("old-unmerged", daysOld = 30, merged = false))
+        val branches = listOf(branch("old-unmerged", daysOld = 30, mergeState = MergeState.unmerged))
         PruneBranches.plan(branches, identities, cutoff, setOf(), includeUnmerged = true)
             .doomed.map { it.name } shouldBe listOf("old-unmerged")
+    }
+
+    // --- merged by patch-id, not by reachability --------------------------------------------
+
+    "plan deletes a branch whose commits were rebased in, which reachability alone calls unmerged" {
+        val branches = listOf(branch("rebased-in", daysOld = 30, mergeState = MergeState.appliedUpstream))
+        PruneBranches.plan(branches, identities, cutoff, setOf(), includeUnmerged = false)
+            .doomed.map { it.name } shouldBe listOf("rebased-in")
+    }
+
+    "merged is true by either route into the default branch" {
+        branch("a", 1, mergeState = MergeState.reachable).merged shouldBe true
+        branch("a", 1, mergeState = MergeState.appliedUpstream).merged shouldBe true
+        branch("a", 1, mergeState = MergeState.unmerged).merged shouldBe false
+    }
+
+    "everyCommitApplied is true only when git cherry has nothing outstanding" {
+        PruneBranches.everyCommitApplied("- abc123\n- def456") shouldBe true
+        // No lines at all is a branch whose only commits are merges, which git cherry does not consider.
+        PruneBranches.everyCommitApplied("") shouldBe true
+        PruneBranches.everyCommitApplied("+ abc123") shouldBe false
+        PruneBranches.everyCommitApplied("- abc123\n+ def456") shouldBe false
+    }
+
+    "parseBranchLine reports unmerged for anything the cheap check did not list" {
+        val line = "abc\t1754000000\t<swhite@gyassa.com>\tSamuel White\torigin/x"
+        PruneBranches.parseBranchLine(line, "origin", setOf("x"))!!.mergeState shouldBe MergeState.reachable
+        PruneBranches.parseBranchLine(line, "origin", setOf())!!.mergeState shouldBe MergeState.unmerged
     }
 
     "plan protects a branch even when it is otherwise a candidate" {
@@ -127,7 +156,7 @@ class PruneBranchesTest : StringSpec({
     "a branch exactly at the cutoff is kept, not deleted" {
         // The boundary decides whether "two weeks" includes the commit made two weeks ago to the second; it
         // does not, because the safe side of an off-by-one here is the one that keeps a branch.
-        val exactly = RemoteBranch("edge", "abc", cutoff, "Samuel White", me, merged = true)
+        val exactly = RemoteBranch("edge", "abc", cutoff, "Samuel White", me, MergeState.reachable)
         val plan = PruneBranches.plan(listOf(exactly), identities, cutoff, setOf(), includeUnmerged = false)
         plan.doomed shouldBe listOf()
         plan.kept.single().reason shouldBe "worked on since the cutoff"

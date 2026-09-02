@@ -27,8 +27,10 @@ import kotlin.time.Instant
  * else. A branch with an **open pull request** is kept whatever its age says, since deleting it closes the PR
  * and takes the review conversation's diff with it; that check needs the GitHub CLI, and rather than guess
  * when `gh` cannot answer, the command stops and offers `--skip-pr-check`. A branch not merged into the
- * remote's default branch is kept unless `--include-unmerged` says otherwise. The default branch itself is
- * never a candidate. Everything actually deleted is written to a restore file first -- one `git push` per
+ * remote's default branch is kept unless `--include-unmerged` says otherwise -- and "merged" here means the
+ * *work* is in the default branch, not merely that the branch tip is reachable from it, since a rebased or
+ * cherry-picked branch keeps its own shas and would otherwise look unmerged forever. The default branch itself
+ * is never a candidate. Everything actually deleted is written to a restore file first -- one `git push` per
  * branch, resurrecting it at the exact commit -- since a deleted remote branch is otherwise recoverable only
  * from someone's local clone.
  *
@@ -102,6 +104,17 @@ object PruneBranches {
         "--jq", ".[] | select(.isCrossRepository|not) | \"\\(.number)\\t\\(.headRefName)\"",
     )
 
+    /**
+     * How a branch's work reached the default branch, if it did.
+     *
+     * The state that earns its keep is [MergeState.appliedUpstream]. A branch whose commits were rebased or
+     * cherry-picked in keeps its *own* shas, so nothing on it is reachable from the default branch and
+     * `git branch --merged` calls it unmerged forever -- although every line of it landed. Reachability alone
+     * is what leaves a repository accumulating old branches nobody dares delete, each looking like the one
+     * that might still hold something.
+     */
+    enum class MergeState { reachable, appliedUpstream, unmerged }
+
     /** A remote branch, as `git for-each-ref` reports it. */
     data class RemoteBranch(
         /** Short name with no remote prefix, e.g. `issue-13-logging` (it may itself contain slashes). */
@@ -111,9 +124,11 @@ object PruneBranches {
         val lastCommit: Instant,
         val authorName: String,
         val authorEmail: String,
-        /** Whether the tip is reachable from the remote's default branch. */
-        val merged: Boolean,
-    )
+        val mergeState: MergeState,
+    ) {
+        /** Whether its work is in the default branch at all, by whichever route. */
+        val merged: Boolean get() = mergeState != MergeState.unmerged
+    }
 
     /** A branch the plan leaves alone, with the reason to show. */
     data class KeptBranch(val branch: RemoteBranch, val reason: String)
@@ -250,6 +265,13 @@ object PruneBranches {
         return PrunePlan(doomed, kept)
     }
 
+    /** How a [MergeState] reads in the listing, wide enough that the column lines up. */
+    fun describe(state: MergeState): String = when (state) {
+        MergeState.reachable -> "merged   "
+        MergeState.appliedUpstream -> "applied  "
+        MergeState.unmerged -> "UNMERGED "
+    }
+
     /** Whether [branch]'s tip was authored by one of [identities] (addresses compared case-insensitively). */
     fun owns(identities: Set<String>, branch: RemoteBranch): Boolean =
         branch.authorEmail.lowercase() in identities
@@ -351,9 +373,21 @@ object PruneBranches {
             lastCommit = Instant.fromEpochSeconds(seconds),
             authorName = authorName,
             authorEmail = rawEmail.removePrefix("<").removeSuffix(">"),
-            merged = name in mergedNames,
+            // Only the cheap, whole-repo answer is available here. A branch that lands as `unmerged` is asked
+            // about individually afterwards, since that is the answer that can still be wrong.
+            mergeState = if (name in mergedNames) MergeState.reachable else MergeState.unmerged,
         )
     }
+
+    /**
+     * Whether `git cherry <default> <branch>` reports nothing outstanding: every line it prints is `-`, meaning
+     * git found a commit upstream with the same patch-id. No lines at all counts too -- that is a branch whose
+     * only commits are merges, which `git cherry` does not consider and which carry no work of their own.
+     *
+     * A `+` line is a commit whose change exists nowhere upstream, and one is enough to keep the branch.
+     */
+    fun everyCommitApplied(output: String): Boolean =
+        output.lineSequence().none { it.trimStart().startsWith("+") }
 
     /**
      * Parses the `<number>\t<branch>` lines [prListArgs] produces into branch name -> PR number. A branch with
@@ -394,7 +428,34 @@ object PruneBranches {
         val merged = capture(repoDir, "git", "branch", "-r", "--merged", "$remote/$defaultBranch")
         val mergedNames = parseMergedNames(merged.out, remote)
         val refs = capture(repoDir, "git", "for-each-ref", "--format=$refFormat", "refs/remotes/$remote/")
-        return refs.out.lineSequence().mapNotNull { parseBranchLine(it, remote, mergedNames) }.toList()
+        val branches = refs.out.lineSequence().mapNotNull { parseBranchLine(it, remote, mergedNames) }.toList()
+        return branches.map {
+            if (it.mergeState == MergeState.unmerged) askPatchIds(repoDir, remote, defaultBranch, it) else it
+        }
+    }
+
+    /**
+     * Re-asks whether [branch] is merged, by patch-id rather than by reachability, and upgrades it to
+     * [MergeState.appliedUpstream] when every commit on it already exists in the default branch under some
+     * other sha. This is the second opinion for a rebased or cherry-picked branch, which the cheap
+     * whole-repository check can only ever call unmerged.
+     *
+     * It costs one `git cherry` per branch, so it runs *only* for the branches that failed the cheap check --
+     * in a healthy repository a handful, not the hundred-odd that are plainly merged. A failure to ask leaves
+     * the branch unmerged, which is the answer that keeps it.
+     */
+    private fun askPatchIds(
+        repoDir: File,
+        remote: String,
+        defaultBranch: String,
+        branch: RemoteBranch,
+    ): RemoteBranch {
+        val cherry = capture(repoDir, "git", "cherry", "$remote/$defaultBranch", "$remote/${branch.name}")
+        return if (!cherry.failed && everyCommitApplied(cherry.out)) {
+            branch.copy(mergeState = MergeState.appliedUpstream)
+        } else {
+            branch
+        }
     }
 
     /** The remote's default branch (`main`, usually), from its HEAD symref. */
@@ -532,9 +593,8 @@ object PruneBranches {
         val unmergedNote = if (options.includeUnmerged) " (including unmerged work)" else ""
         println("Deleting ${plan.doomed.size} branch(es) from ${options.remote}$unmergedNote:")
         for (branch in plan.doomed) {
-            val merged = if (branch.merged) "merged" else "UNMERGED"
             val sha = branch.sha.take(shaDisplayLength)
-            println("  ${branch.lastCommit.formatDayPart()}  $sha  $merged  ${branch.name}")
+            println("  ${branch.lastCommit.formatDayPart()}  $sha  ${describe(branch.mergeState)}  ${branch.name}")
         }
         println()
     }
