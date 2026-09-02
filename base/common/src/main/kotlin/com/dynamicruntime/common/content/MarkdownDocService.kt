@@ -67,7 +67,7 @@ class MarkdownDocService : ServiceInitializer, ContentServer {
         // mismatch (unlike fragments): a user recovers current prose by navigating away and back, so a 404
         // would turn cosmetic staleness into a visible failure (#472).
         val matched = requestedBuildId.isNotEmpty() && requestedBuildId == docBuildId(docId)
-        handler.setResponseHeader("Cache-Control", if (matched) ContentResources.cacheControl else ContentResources.noStore)
+        handler.setResponseHeader("Cache-Control", ContentResources.cacheHeaderFor(matched))
         handler.sendStringResponse(text, EXC.ok, contentType)
         return true
     }

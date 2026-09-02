@@ -480,7 +480,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         // cross-client poisoning the build id exists to prevent (#456) -- the first requester's copy served to
         // every client behind the cache. Answered rather than refused, because it is reachable without malice:
         // a hand-driven `curl`, or a frontend whose UI-config gave it no build id.
-        handler.setResponseHeader("Cache-Control", if (versioned) ContentResources.cacheControl else ContentResources.noStore)
+        handler.setResponseHeader("Cache-Control", ContentResources.cacheHeaderFor(versioned))
         handler.sendJsonResponse(effective.content, EXC.ok)
         return true
     }

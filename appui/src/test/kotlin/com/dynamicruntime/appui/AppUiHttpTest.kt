@@ -1,6 +1,8 @@
 package com.dynamicruntime.appui
 
 import com.dynamicruntime.common.content.ContentResources
+import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
@@ -43,6 +45,9 @@ class AppUiHttpTest : StringSpec({
         // The frontend bootstrap: context roots by focus, including this new `app` focus.
         body shouldContain "window.kdrCfg"
         body shouldContain "\"app\":\"wa\""
+        // The brand mark's content-addressed name rides the bootstrap so the frontend can address it at a
+        // hashed URL and have it cached immutably rather than refetched every load (issue #529).
+        body shouldContain "\"${EP.brandMarkName}\":\"brand-mark.svg:"
         // The icons and stylesheet, like the bundle, are referenced by absolute, hash-suffixed paths.
         body shouldContain "href=\"/wa/favicon.svg:"
         body shouldContain "href=\"/wa/favicon-32.png:"
@@ -54,21 +59,54 @@ class AppUiHttpTest : StringSpec({
         resp.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe "no-cache"
     }
 
-    "a hash-suffixed asset URL serves the resource and is cached immutably; the bare URL is not (issue #137)" {
+    "an asset is cached immutably only at a URL whose hash matches its bytes (issues #137, #529)" {
         val c = client("appCache")
         // The shell names the versioned bundle URL; pull the exact suffix out and fetch it.
         val shell = c.sendGetRequestRaw("/wa").rptResponseData!!
         val versioned = Regex("src=\"/wa/(webapp\\.js:[0-9a-f]+)\"").find(shell)!!.groupValues[1]
 
+        // A matched content-addressed URL: the permanent header.
         val hashed = c.sendGetRequestRaw("/wa/$versioned")
         hashed.rptStatusCode shouldBe 200
         hashed.rptResponseMimeType shouldBe "application/javascript; charset=utf-8"
         hashed.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe ContentResources.cacheControl
 
-        // The bare URL still serves the same resource, but without the immutable header (it can go stale).
-        val bare = c.sendGetRequestRaw("/wa/webapp.js")
-        bare.rptStatusCode shouldBe 200
-        bare.rptResponseHeaders["cache-control"] shouldBe null
+        // Every URL that does NOT name these exact bytes still serves the resource, but under no-store so a
+        // shared cache cannot pin the wrong content to it (issue #529): a bare URL, a wrong hash, and an empty
+        // suffix all fail the match. Previously a bare URL got no header at all and a garbage suffix got the
+        // permanent one -- the two divergences #529 fixed.
+        for (path in listOf("/wa/webapp.js", "/wa/webapp.js:deadbeef", "/wa/webapp.js:")) {
+            val r = c.sendGetRequestRaw(path)
+            r.rptStatusCode shouldBe 200
+            r.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe ContentResources.noStore
+        }
+
+        // A **binary** asset takes the same rule through serveBinaryResource (its own code path, changed by
+        // #529): the hashed PNG icon the shell head names is cached immutably, the bare URL is no-store.
+        val png = Regex("href=\"/wa/(favicon-32\\.png:[0-9a-f]+)\"").find(shell)!!.groupValues[1]
+        val pngHashed = c.sendGetRequestRaw("/wa/$png")
+        pngHashed.rptStatusCode shouldBe 200
+        pngHashed.rptResponseMimeType shouldBe "image/png"
+        pngHashed.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe ContentResources.cacheControl
+        c.sendGetRequestRaw("/wa/favicon-32.png").rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe
+            ContentResources.noStore
+
+        // The brand mark reaches the frontend through the bootstrap, not a shell link, so the property the fix
+        // actually delivers -- the bootstrap's name resolving to an immutably-cached asset -- needs its own
+        // check (issue #529). Pull the exact name the bootstrap published and fetch it.
+        val markName = Regex("\"${EP.brandMarkName}\":\"(brand-mark\\.svg:[0-9a-f]+)\"").find(shell)!!.groupValues[1]
+        val markHashed = c.sendGetRequestRaw("/wa/$markName")
+        markHashed.rptStatusCode shouldBe 200
+        markHashed.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe ContentResources.cacheControl
+    }
+
+    "a leading-colon path does not collapse to the shell (issue #529)" {
+        // `/wa/:bogus` once reduced to `"/"` (whole-path substringBefore(':')) and served the full 200 shell,
+        // so an unbounded set of URLs answered as the app root. It must 404 like any other unknown asset.
+        val c = client("appColon")
+        c.sendGetRequestRaw("/wa/:bogus").rptStatusCode shouldBe EXC.notFound
+        // The real shell is still reachable, and it alone.
+        c.sendGetRequestRaw("/wa").rptStatusCode shouldBe 200
     }
 
     // The two shells (this one and the dev server's index.html) must not carry their own CSS -- that is how

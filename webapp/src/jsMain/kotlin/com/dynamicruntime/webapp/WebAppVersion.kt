@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EP
+
 /**
  * Detects when a newer web app has been deployed than the one this browser tab is running (issue #136).
  *
@@ -16,7 +18,7 @@ package com.dynamicruntime.webapp
  */
 
 /** The hash of the bundle this tab is running, from the page bootstrap; empty in dev, which disables the check. */
-private val ownWebAppHash: String = js("(window.kdrCfg && window.kdrCfg.webAppHash) || ''") as String
+private val ownWebAppHash: String = bootstrapValue(EP.webAppHash)
 
 /**
  * Whether this tab is running the **readable** (development) bundle rather than the minified one -- what

@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EP
+
 /**
  * Where the app's own static assets live, resolved at runtime rather than hardcoded.
  *
@@ -26,5 +28,27 @@ fun appRootPrefix(): String {
     return if (root.isEmpty()) "" else "/$root"
 }
 
-/** The brand mark (`brand-mark.svg` in the webapp's resources): the app bar's logo and the home page's hero. */
-val brandMarkUrl: String get() = appRootPrefix() + "/brand-mark.svg"
+/**
+ * A flat value the page injected into `window.kdrCfg`, or "" when there is none (a dev shell injects nothing).
+ * Module-visible so the frontend has one place the bootstrap-lookup + empty-fallback semantics live, rather
+ * than a hand-rolled `js("... || ''")` per reader.
+ */
+internal fun bootstrapValue(key: String): String = js("(window.kdrCfg && window.kdrCfg[key]) || ''") as String
+
+/** The file name the dev server serves the mark under (no bootstrap there); the one literal the tiers share. */
+private const val brandMarkFile = "brand-mark.svg"
+
+/**
+ * The brand mark (`brand-mark.svg` in the webapp's resources): the app bar's logo and the home page's hero.
+ *
+ * Content-addressed under `appui` (issue #529): the bootstrap carries the mark's whole versioned name
+ * ([EP.brandMarkName], e.g. `brand-mark.svg:1a2b3c`) — built by the backend's `versionedName`, so the frontend
+ * never spells the `:hash` grammar — and the mark is cached immutably instead of refetched every load. The dev
+ * server injects no bootstrap, so the name is absent and the mark is served bare from the origin root.
+ */
+val brandMarkUrl: String get() = brandMarkUrlFrom(appRootPrefix(), bootstrapValue(EP.brandMarkName))
+
+/** Pure ([appConfigFrom]-style) so both branches are covered by `jsNodeTest` (issue #529): the bootstrap's
+ *  content-addressed name when appui supplied one, else the bare [brandMarkFile] the dev server serves. */
+fun brandMarkUrlFrom(rootPrefix: String, versionedName: String): String =
+    "$rootPrefix/" + versionedName.ifEmpty { brandMarkFile }

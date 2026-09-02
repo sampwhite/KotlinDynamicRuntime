@@ -36,6 +36,19 @@ object ContentResources {
      */
     const val noStore = "no-store"
 
+    /**
+     * The cache header for a response, given whether the request was a **matched content-addressed URL** --
+     * i.e. it supplied a build id that names exactly the bytes being returned: [cacheControl] if so, [noStore]
+     * otherwise. The single home for [buildId]'s rule *as a decision*, so every server that serves hashed
+     * content chooses the same way. Every branch is covered -- there is no "no header" answer -- which is what
+     * keeps a bare or mismatched URL out of a shared cache rather than left to the browser's heuristics.
+     *
+     * The caller computes [matched] because *what* makes a URL content-addressed varies: a straight
+     * `supplied == actual` equality for a document or an embedded asset, content **selection** for a
+     * per-caller fragment (#456). The consequence -- which of the two headers -- is what lives here.
+     */
+    fun cacheHeaderFor(matched: Boolean): String = if (matched) cacheControl else noStore
+
     /** A content file id must be a plain file-name token (guards the classpath lookup against traversal). */
     fun isSafeFileId(fileId: String): Boolean =
         fileId.isNotEmpty() && fileId.all { it.isLetterOrDigit() || it == '-' || it == '_' }
@@ -57,11 +70,13 @@ object ContentResources {
      * only when the content changes -- so an unchanged file keeps its URL across rebuilds. Computed once per
      * file per process; handed to a component as `fileId:buildId` by the UI-config endpoints.
      *
-     * **The rule a build id exists to enforce** (both content servers turn on it, so it lives here, where the
-     * id is minted): *do not return [cacheControl] -- the permanent, shared-cache header -- unless the caller
+     * **The rule a build id exists to enforce** (this function mints the ids for both content servers, so it
+     * lives here): *do not return [cacheControl] -- the permanent, shared-cache header -- unless the caller
      * supplied a build id and it matches what this node has for that resource.* The general form is a
      * **content-addressed URL**: a permanently-cacheable URL must be derived from the bytes it returns, the
-     * same idea as a hashed asset filename. The precise invariant is *the URL identifies exactly one immutable
+     * same idea as a hashed asset filename -- literally so for `appui`, which serves its embedded assets under
+     * the same rule with its own CRC32 hash rather than this function (#529). The three servers make the same
+     * *decision* through [cacheHeaderFor]. The precise invariant is *the URL identifies exactly one immutable
      * resource* -- not "the id is the current one", which stops being well-defined the moment content can vary
      * by caller (as fragment overlays made it, #456). An absent or unmatched id still gets the content, under
      * [noStore]; only the header is withheld.

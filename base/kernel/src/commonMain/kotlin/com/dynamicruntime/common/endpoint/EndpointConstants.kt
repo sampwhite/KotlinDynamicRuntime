@@ -133,6 +133,13 @@ object EP {
     // newer app has been deployed than the one this tab is running, and the tab offers a (non-forced) reload.
     const val webAppHash = "webAppHash"
 
+    // The brand mark's content-addressed name (`brand-mark.svg:<hash>`), injected into the frontend bootstrap
+    // (`window.kdrCfg.brandMarkName`, the same key) so the app addresses the mark at a hashed URL and has it
+    // cached immutably rather than refetched (issue #529). The whole name -- not just the hash -- so the
+    // frontend appends no `:` grammar of its own. Absent on a dev server (no bootstrap) or when unhashed, where
+    // the mark is served bare.
+    const val brandMarkName = "brandMarkName"
+
     // Output, list endpoints.
     const val numItems = "numItems"
     const val hasMore = "hasMore"
