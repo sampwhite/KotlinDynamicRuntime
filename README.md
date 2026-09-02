@@ -161,6 +161,7 @@ invoke them by path. `kdr-help` lists them with these same one-line descriptions
 ```
 kdr-install        Idempotently set up or update this deployment to run the kdr commands.
 kdr-backend        Run the backend server (StartKt) via :launch:run.
+kdr-edge           Run the edge server (StartEdgeKt) beside an ordinary backend.
 kdr-webapp         Start the Kotlin/JS webapp dev server on http://localhost:8080.
 kdr-tests          Run every module's tests (the `check` task across every subproject).
 kdr-probe          Drive a running instance as a chosen caller: scenarios, or a single call.
