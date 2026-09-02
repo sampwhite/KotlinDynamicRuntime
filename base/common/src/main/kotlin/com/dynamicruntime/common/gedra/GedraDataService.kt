@@ -551,7 +551,7 @@ class GedraDataService : ServiceInitializer {
                 cxt, stmt,
                 bind + mapOf(
                     GD.gedraId to target.gedraId.fullId,
-                    GD.data to (row.extra + linkedMapOf<String, Any?>(GD.entries to entries)),
+                    GD.data to row.storedData(entries),
                     PF.updatedAt to now,
                     PF.updatedBy to cxt.userProfile.userId,
                 ),

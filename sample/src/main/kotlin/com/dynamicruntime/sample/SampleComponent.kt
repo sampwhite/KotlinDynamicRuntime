@@ -10,6 +10,7 @@ import com.dynamicruntime.sample.gedra.SF
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.backendFragmentFiles
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.content.fragmentOverlayFile
@@ -75,6 +76,8 @@ class SampleComponent : ComponentDefinition {
     override fun fragments(cxt: KdrCxt): List<FragmentSource> =
         fragmentFiles(SF.content) +
             fragmentOverlayFile(SF.content) +
+            // Acme's workflow copy (issue #533): a backend file, pulled by its creation workflow's labels.
+            backendFragmentFiles(SF.acmeWf) +
             // In code rather than in a file, which is the case a small change should not need a resource for.
             // Applied after the overlay file above, so this is what a reader of `footer.copyright` gets.
             fragmentInline(SF.content, origin = "SampleComponent") {

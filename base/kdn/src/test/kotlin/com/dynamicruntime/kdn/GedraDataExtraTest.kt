@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.gedra.GD
+import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GDT
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
@@ -13,11 +14,15 @@ import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.GedraPatchTarget
 import com.dynamicruntime.common.gedra.GedraService
 import com.dynamicruntime.common.gedra.gedraDataTopic
+import com.dynamicruntime.common.gedra.workflow.WfRef
+import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -96,5 +101,51 @@ class GedraDataExtraTest : StringSpec({
         after.entries.single()[GE.data].toString() shouldContain "After patch"
         after.extra[stray] shouldBe strayValue
         after.extra.containsKey(GD.entries) shouldBe false
+    }
+
+    "the creation workflow reference is promoted out of extra and carried through a patch" {
+        val id = service().createGedra(
+            asOwner(), kind,
+            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Made by a workflow"))),
+        ).gedraId.fullId
+        val stored = service().queryGedra(cxt, id, kind, scope).shouldNotBeNull()
+        stored.creationWorkflowId.shouldBeNull()
+
+        // Nothing writes the key yet (the save endpoint, #535, will), so it is planted the way a stray key is.
+        val ref = WfRef(GedraId.of(GedraConfigType.configDoc, client, "gextraForms", "3"), "createForm")
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val table = cxt.getSchema().tables.getValue(GDT.gedraData)
+        val plant = SqlStmtUtil.prepareSql(
+            sqlCxt, "plantCreationRef", table.columns,
+            "update t:${GDT.gedraData} set c:${GD.data} = :${GD.data}, c:${PF.updatedAt} = :${PF.updatedAt} " +
+                "where c:${GD.gedraId} = :${GD.gedraId}",
+        )
+        sqlCxt.sqlDb.withSession(cxt) {
+            sqlCxt.sqlDb.executeStatement(
+                cxt, plant,
+                mapOf(
+                    GD.gedraId to id,
+                    GD.data to mapOf(GD.entries to stored.entries, GD.creationWorkflowId to ref.text),
+                    PF.updatedAt to SqlTopicUtil.nextUpdatedAt(cxt, stored.updatedAt),
+                ),
+            ) shouldBe 1
+        }
+        service().dataCache.shouldNotBeNull().checkRefresh(cxt)
+
+        // Typed on the row, absent from `extra`, and on the wire as its text.
+        val planted = service().queryGedra(cxt, id, kind, scope).shouldNotBeNull()
+        planted.creationWorkflowId shouldBe ref
+        planted.extra.containsKey(GD.creationWorkflowId) shouldBe false
+        planted.toJsonMap()[GDF.creationWorkflowId] shouldBe ref.text
+
+        // A patch reassembles the stored map through the row, so the promoted key rides along.
+        val target = GedraPatchTarget(
+            GedraService.get(cxt).readId(id),
+            listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.name to "Renamed"))),
+        )
+        service().patchGedras(cxt, mapOf(kind to listOf(target)), scope)
+        val after = service().queryGedra(cxt, id, kind, scope).shouldNotBeNull()
+        after.creationWorkflowId shouldBe ref
+        after.entries.single()[GE.data].toString() shouldContain "Renamed"
     }
 })

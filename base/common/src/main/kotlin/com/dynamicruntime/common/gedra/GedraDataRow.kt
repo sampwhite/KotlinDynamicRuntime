@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WfRef
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.sql.PF
@@ -59,6 +60,16 @@ class GedraDataRow(
     var entries: List<Map<String, Any?>> = emptyList()
 
     /**
+     * The creation workflow that made this gedra, or null when none did (issue #533) -- configuration
+     * lineage: which definition, at which bundle revision, decided this document's shape. Promoted out of
+     * [extra] like [entries], so a writer reassembles the map through [storedData] rather than by hand.
+     *
+     * Read **leniently**: a stored value that is not a reference reads as null rather than failing the row,
+     * because an audit field must never make a document unreadable.
+     */
+    var creationWorkflowId: WfRef? = null
+
+    /**
      * Whatever else the stored [GD.data] map held, [GD.entries] promoted out. Nothing writes a key here yet, and
      * the patch still carries it through **unchanged** -- that is the forward-compatibility promise above, and
      * it is kept by a test rather than by a producer, so that the merge is not "simplified" away as dead.
@@ -76,9 +87,22 @@ class GedraDataRow(
         GDF.userId to userId,
         GDF.org to org,
         GDF.entries to entries,
+        GDF.creationWorkflowId to creationWorkflowId?.text,
         GDF.createdAt to createdAt,
         GDF.updatedAt to updatedAt,
     )
+
+    /**
+     * The [GD.data] map to store for this row with [entries] in place of the current ones: the keys this node
+     * does not know ([extra]), the ones it promoted out ([creationWorkflowId]), and the entries. The one place
+     * the stored map is assembled, so promoting a key out of [extra] cannot quietly drop it on the next write.
+     */
+    fun storedData(entries: List<Map<String, Any?>>): Map<String, Any?> {
+        val out = LinkedHashMap<String, Any?>(extra)
+        creationWorkflowId?.let { out[GD.creationWorkflowId] = it.text }
+        out[GD.entries] = entries
+        return out
+    }
 
     @Suppress("ConstPropertyName")
     companion object {
@@ -145,6 +169,12 @@ class GedraDataRow(
                     type = SCT.array
                     items { ref(entryRef) }
                 }
+                property(
+                    GDF.creationWorkflowId,
+                    "The creation workflow that made this gedra, as a workflow reference; absent when none did.",
+                ) {
+                    derived = true
+                }
                 // An instruction about the write, so it belongs to the sent shape and to nothing else.
                 if (forInput) {
                     property(GDF.allowAdditionalTraits, additionalTraitsHint) { type = SCT.boolean }
@@ -176,7 +206,8 @@ class GedraDataRow(
             row.enabled = data[PF.enabled] == true
             val stored = data[GD.data].toJsonMapOrEmpty()
             row.entries = stored[GD.entries].toJsonListOfMaps()
-            row.extra = stored - GD.entries
+            row.creationWorkflowId = WfRef.parseOrNull(stored[GD.creationWorkflowId].toOptStr())
+            row.extra = stored - GD.entries - GD.creationWorkflowId
             row.createdAt = data[PF.createdAt].toOptInstant()
             row.updatedAt = data[PF.updatedAt].toOptInstant()
             return row

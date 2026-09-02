@@ -45,6 +45,14 @@ object GD {
 
     /** Under [data]: the gedra's entries, each an instance of the trait its `traitId` names. */
     const val entries = "entries"
+
+    /**
+     * Under [data]: the `WfRef` text of the creation workflow that made this gedra, when one did (issue
+     * #533). Written once with the row and never rewritten; absent for a gedra created any other way. The
+     * first key beside [entries], and the push-down working as designed: no column, no migration. Spelled
+     * the same as its wire name in `GDF`, as [entries] is.
+     */
+    const val creationWorkflowId = "creationWorkflowId"
 }
 
 /**

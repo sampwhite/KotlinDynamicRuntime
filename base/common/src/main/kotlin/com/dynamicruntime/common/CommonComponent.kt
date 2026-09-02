@@ -1,6 +1,9 @@
 package com.dynamicruntime.common
 
 import com.dynamicruntime.common.cfact.addCoreCFacts
+import com.dynamicruntime.common.gedra.workflow.WfDefSchema
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
 import com.dynamicruntime.common.cfact.cfactSchema
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
@@ -73,6 +76,11 @@ class CommonComponent : ComponentDefinition {
         // an expression may name has to be declared on every node that could serve the data naming it, or
         // shared data would parse on some nodes and refuse the boot on others.
         addCoreCFacts(collector)
+        // The two workflow target facts (issue #533), declared everywhere for the reason the core ones are.
+        addWorkflowCFacts(collector)
+        // The workflow definition schema, published so the types a definition is validated against are the
+        // same ones a catalog or a frontend can read.
+        collector.defs.putAll(WfDefSchema.defs(cxt))
         // Endpoints/types live with the services that own them; the component just wires them in.
         collector.addModule(NodeService.schema(cxt))
         collector.addModule(SchemaService.schema(cxt))
@@ -196,6 +204,8 @@ class CommonComponent : ComponentDefinition {
             // SchemaService -- which its boot check reads for each client's cfact vocabulary -- is already
             // compiled by the time this initializes.
             service(::UiBlockService),
+            // After the schema, client and fragment services it checks against (issue #533).
+            service(::WorkflowService),
             service(::InstanceConfigService),
             // Application-only, matching the schema they serve (issues #432, #433). An edge keeps the
             // dispatcher, the content servers and the instance config -- everything it needs to answer for

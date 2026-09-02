@@ -69,6 +69,14 @@ object GDF {
     const val entries = "entries"
     const val createdAt = "createdAt"
     const val updatedAt = "updatedAt"
+
+    /**
+     * The workflow reference a gedra was created under, when a creation workflow made it (issue #533): a
+     * `WfRef` text -- bundle id and workflow id. Configuration lineage, recorded once and never rewritten;
+     * absent for a gedra created any other way. A key in the gedra's `data` map, not a trait, so every trait
+     * stays user-editable.
+     */
+    const val creationWorkflowId = "creationWorkflowId"
 }
 
 /** Field names for a patch's request and its answer (issue #337). Each name matches its value. */
