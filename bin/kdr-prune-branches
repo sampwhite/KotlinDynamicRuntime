@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# @desc: Delete your own remote branches that have gone untouched for N weeks.
+#
+# Remote branch cleanup: deletes the branches on a remote whose tip commit you authored and which nobody has
+# touched for at least <weeks> weeks. Runnable from any directory.
+#
+# Usage:
+#   kdr-prune-branches <weeks> [--dry-run] [--yes] [--include-unmerged] [--remote origin]
+#
+# Start with --dry-run. Branches with an open pull request are always kept; unmerged branches and the remote's
+# default branch are kept unless you say otherwise; and every deletion is written to a restore file first. The
+# local branches that tracked the deleted ones are removed too, unless they hold a commit the remote did not.
+#
+# A "dumb" wrapper, per the code guide: it resolves which checkout to act on -- the same rule kdr-run uses, so
+# KDR_WORKSPACE_DIR (and therefore kdr-use) redirects this command exactly like the others -- and hands every
+# decision to Kotlin (PruneBranches.kt). Passing --repo yourself overrides what we work out here, since the
+# Kotlin side takes the last one given.
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_name="$(basename "$(cd "$script_dir/.." && pwd)")"   # the checkout directory name (e.g. KotlinDynamicRuntime)
+if [ -n "${KDR_WORKSPACE_DIR:-}" ]; then
+    root_dir="$( { cd -P "$KDR_WORKSPACE_DIR" 2>/dev/null && pwd; } || true )"
+    if [ -z "$root_dir" ]; then
+        echo "kdr-prune-branches: KDR_WORKSPACE_DIR=$KDR_WORKSPACE_DIR does not exist" >&2
+        exit 1
+    fi
+else
+    root_dir="$(cd "$script_dir/../.." && pwd)"           # the workspace directory (the dir holding the checkout)
+fi
+
+exec "$script_dir/kdr-run" com.dynamicruntime.script.PruneBranchesKt --repo "$root_dir/$repo_name" "$@"

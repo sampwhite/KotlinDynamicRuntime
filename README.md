@@ -161,12 +161,14 @@ invoke them by path. `kdr-help` lists them with these same one-line descriptions
 ```
 kdr-install        Idempotently set up or update this deployment to run the kdr commands.
 kdr-backend        Run the backend server (StartKt) via :launch:run.
+kdr-edge           Run the edge server (StartEdgeKt) beside an ordinary backend.
 kdr-webapp         Start the Kotlin/JS webapp dev server on http://localhost:8080.
 kdr-tests          Run every module's tests (the `check` task across every subproject).
 kdr-probe          Drive a running instance as a chosen caller: scenarios, or a single call.
 kdr-run            Launch any Kotlin main class from the project's runtime classpath.
 kdr-create-config  Scaffold the customConfig provider project and wire it into settings.gradle.kts.
 kdr-source-dirs    Regenerate the source-directory manifest (current-source-directories.txt).
+kdr-prune-branches Delete your own remote branches that have gone untouched for N weeks.
 kdr-help           List the kdr commands (and shell functions) with one-line descriptions.
 ```
 
