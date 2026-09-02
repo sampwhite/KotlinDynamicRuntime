@@ -14,6 +14,8 @@ import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.uiblock.UIB
@@ -33,6 +35,21 @@ object SF {
     const val intro = "intro"
     const val support = "support"
     const val copyright = "copyright"
+
+    /**
+     * Acme's workflow copy: a **backend** fragment file (issue #533), pulled by its creation workflow's labels
+     * and never served. Shipped by the component, since client-declared base files are deferred.
+     */
+    const val acmeWf = "acmeWf"
+}
+
+/** The sample workflows' ids (issue #533): one creation workflow per client, under one shared name. */
+@Suppress("ConstPropertyName")
+object SW {
+    /** Both clients' creation workflow -- the same id in two scopes, which is what per-client registries are for. */
+    const val createForm = "createForm"
+    const val identify = "identify"
+    const val create = "create"
 }
 
 /** The sample UiBlock and the keys inside it (issue #457). */
@@ -234,6 +251,21 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 "declares it ahead of the workflow that will.",
         )
 
+        // --- a creation workflow (issue #533) --------------------------------------------------------------
+        //
+        // The richer of the two sample fixtures, so the gate and the view see more than one trait: an expense
+        // report (required) beside a questionnaire (optional), a layout that puts the optional one first, and
+        // labels pulled from a backend fragment file -- which is what drives the label boot check. Acme does
+        // not include `name`, so its forms stay untitled, as they always have; globex has the name-only one.
+        workflow(SW.createForm, WfEntry.creation) {
+            task(SW.identify, "%{@t(\"${SF.acmeWf}.${SW.identify}.label\")}") {
+                trait(ST.expenseReport)
+                trait(ST.questionnaire, required = false)
+                layout(listOf(ST.questionnaire, ST.expenseReport))
+                save(SW.create, "%{@t(\"${SF.acmeWf}.${SW.identify}.save\")}")
+            }
+        }
+
         // --- a trait of its own -------------------------------------------------------------------------
         //
         // Supported by having been declared, without appearing in `includedTraits`: a client does not include
@@ -269,6 +301,18 @@ private fun globexClient(cxt: KdrCxt): GedraConfig =
                 includedTraits = listOf(CLD.allGlobal),
             ),
         )
+
+        // --- a creation workflow (issue #533) --------------------------------------------------------------
+        //
+        // The plain fixture: asks for the form's name and nothing else, with literal labels -- no fragment
+        // file, because a label with no template blocks is already a template. Same id as acme's, in a
+        // different scope, which the per-client registries keep apart.
+        workflow(SW.createForm, WfEntry.creation) {
+            task(SW.identify, "Name the form") {
+                trait(GT.name)
+                save(SW.create, "Create form")
+            }
+        }
 
         // --- extending ------------------------------------------------------------------------------------
         //

@@ -9,6 +9,10 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.uiBlockOverlay
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WfDef
+import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
+import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.schema.qualifyTypeName
@@ -149,6 +153,16 @@ class GedraConfig(
      * later gains -- silently, since an unmatched item is simply absent rather than an error.
      */
     val uiBlocks: List<UiBlockSource> = emptyList(),
+    /**
+     * The workflow definitions this config declares, keyed by workflow id (issue #533) -- the "workflows
+     * later" this bundle was always going to carry, beside the traits they select from.
+     *
+     * A map keyed by id, as [traits] and [defs] are, because that is how a workflow is addressed: a client's
+     * workflow of the same id **shadows** a global one for that client, which a keyed map states and an array
+     * would have to search for. The id's client scope is the config's own, so a
+     * [com.dynamicruntime.common.gedra.workflow.WfRef] pairs this config's id with a key of this map.
+     */
+    val workflows: Map<String, WfDef> = emptyMap(),
 ) {
     /**
      * The code-explicit name this config is addressed by, which is also its id's base.
@@ -215,6 +229,35 @@ class GedraConfigBuilder(
     /** The client this config defines, if it declared one; see [defineClient]. */
     var clientDef: ClientDef? = null
         private set
+
+    /** The workflows declared in this block; see [workflow]. */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val workflows: MutableMap<String, WfDef> = LinkedHashMap()
+
+    /**
+     * Declares a workflow in source (issue #533). The builder writes the definition's **JSON**, which then
+     * takes the same path a definition from data does -- [workflowFromMap] -- so source and data cannot
+     * come to be read differently. The id's client scope is this config's, as a cfact's is.
+     */
+    fun workflow(workflowId: String, entry: WfEntry, build: WfDefBuilder.() -> Unit) {
+        workflowFromMap(WfDefBuilder(workflowId, entry).apply(build).build())
+    }
+
+    /**
+     * Declares a workflow from its JSON form -- a row, a form, a generated blob -- validated against the
+     * definition schema with the string-encoded forms coerced on the way in (`"required": "true"`,
+     * `"order": "a,b"`). This is the one path into the model; [workflow] is a convenience over it.
+     */
+    fun workflowFromMap(raw: Map<String, Any?>) {
+        val def = parseWfDef(cxt, raw)
+        workflows[def.workflowId]?.let {
+            throw KdrException.mkConv(
+                "Workflow '${def.workflowId}' is declared twice in one config. A workflow id identifies one " +
+                    "definition within its client.",
+            )
+        }
+        workflows[def.workflowId] = def
+    }
 
     /** The cfacts declared in this block; see [cfact]. */
     @Suppress("MemberVisibilityCanBePrivate")
@@ -366,5 +409,6 @@ fun gedraConfig(
         cfacts = builder.cfacts.toList(),
         fragments = builder.fragments.toList(),
         uiBlocks = builder.uiBlocks.toList(),
+        workflows = builder.workflows.toMap(),
     )
 }
