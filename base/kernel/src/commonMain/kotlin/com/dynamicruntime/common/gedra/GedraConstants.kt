@@ -28,6 +28,12 @@ object GEP {
 
     const val patch = "/gedra/patch"
 
+    /** The resolved-workflow view a creation page renders (issue #534). */
+    const val workflowView = "/gedra/workflow/view"
+
+    /** The type naming a resolved workflow view -- open by design, like a UiBlock. */
+    const val workflowViewType = "WorkflowView"
+
     /** The type naming what a "delete" removed. */
     const val deletedGedra = "DeletedGedra"
 
@@ -62,6 +68,9 @@ object GDF {
      */
     const val allowAdditionalTraits = "allowAdditionalTraits"
     const val gedraId = "gedraId"
+
+    /** Names a workflow to act on, e.g. the input of the view endpoint (issue #534). */
+    const val workflowId = "workflowId"
     const val gedraKind = "gedraKind"
     const val client = "client"
     const val userId = "userId"
