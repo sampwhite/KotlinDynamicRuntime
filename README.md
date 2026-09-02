@@ -167,6 +167,7 @@ kdr-probe          Drive a running instance as a chosen caller: scenarios, or a 
 kdr-run            Launch any Kotlin main class from the project's runtime classpath.
 kdr-create-config  Scaffold the customConfig provider project and wire it into settings.gradle.kts.
 kdr-source-dirs    Regenerate the source-directory manifest (current-source-directories.txt).
+kdr-prune-branches Delete your own remote branches that have gone untouched for N weeks.
 kdr-help           List the kdr commands (and shell functions) with one-line descriptions.
 ```
 
