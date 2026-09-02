@@ -110,4 +110,130 @@ class MarkdownRenderUtilTest : StringSpec({
         html shouldContain ">click</a>"
         html shouldNotContain "javascript:"
     }
+    // --- tables (issue #547) ------------------------------------------------------------------------------
+
+    "renders a github-style pipe table with a header and body rows" {
+        val md = """
+            | a | b |
+            | --- | --- |
+            | 1 | 2 |
+            | 3 | 4 |
+        """.trimIndent()
+        val html = md.renderMarkdown()
+        html shouldContain "<table>"
+        html shouldContain "<thead>"
+        html shouldContain "<th>a</th>"
+        html shouldContain "<th>b</th>"
+        html shouldContain "<tbody>"
+        html shouldContain "<td>1</td>"
+        html shouldContain "<td>4</td>"
+        // Wrapped in the scroll box so a wide table scrolls inside the page.
+        html shouldContain "md-table-scroll"
+        // Not the pre-#547 failure mode: the delimiter row must not survive as text.
+        html shouldNotContain "---"
+        html shouldNotContain "<p>| a"
+    }
+
+    "works without outer pipes" {
+        val md = """
+            h1 | h2
+            --- | ---
+            x | y
+        """.trimIndent()
+        val html = md.renderMarkdown()
+        html shouldContain "<th>h1</th>"
+        html shouldContain "<td>y</td>"
+    }
+
+    "takes column alignment from the delimiter row's colons" {
+        val md = """
+            | l | c | r |
+            | :-- | :-: | --: |
+            | 1 | 2 | 3 |
+        """.trimIndent()
+        val html = md.renderMarkdown()
+        html shouldContain "<th style=\"text-align:left\">l</th>"
+        html shouldContain "<th style=\"text-align:center\">c</th>"
+        html shouldContain "<th style=\"text-align:right\">r</th>"
+        // The alignment carries to the body cells of the same column.
+        html shouldContain "<td style=\"text-align:right\">3</td>"
+        // A plain `---` column gets no alignment style.
+        val plain = """
+            | a |
+            | --- |
+            | x |
+        """.trimIndent().renderMarkdown()
+        plain shouldContain "<th>a</th>"
+    }
+
+    "pads a short row and truncates a long one rather than throwing" {
+        val md = """
+            | a | b | c |
+            | - | - | - |
+            | 1 |
+            | 1 | 2 | 3 | 4 |
+        """.trimIndent()
+        val html = md.renderMarkdown()
+        // Short row: missing cells synthesized empty, so an empty <td> appears.
+        html shouldContain "<td></td>"
+        // Long row: the fourth cell is dropped, never rendered.
+        html shouldNotContain "<td>4</td>"
+    }
+
+    "runs inline constructs inside a cell, and honours an escaped pipe" {
+        val md = """
+            | name | note |
+            | --- | --- |
+            | **id** | a `x` and [d](x.md) |
+        """.trimIndent()
+        val html = md.renderMarkdown()
+        html shouldContain "<td><strong>id</strong></td>"
+        html shouldContain "<code>x</code>"
+        html shouldContain "href=\"x.md\""
+        // A `\|` inside a cell is a literal pipe, not a column separator (raw string: `\|` is two chars).
+        val esc = """
+            | a | b |
+            | --- | --- |
+            | one \| two | three |
+        """.trimIndent().renderMarkdown()
+        esc shouldContain "<td>one | two</td>"
+        esc shouldContain "<td>three</td>"
+    }
+
+    "leaves a paragraph that merely contains a pipe as a paragraph (the regression that matters)" {
+        // No delimiter row follows, so this is prose, not a table.
+        "a | b | c".renderMarkdown() shouldBe "<p>a | b | c</p>\n"
+        // A header-like line with no delimiter under it stays a paragraph too.
+        val noDelim = """
+            | x | y |
+            plain text
+        """.trimIndent().renderMarkdown()
+        noDelim shouldContain "<p>| x | y |"
+        // A bare `---` rule is still a horizontal rule, not a one-column table delimiter.
+        val rule = """
+            text
+
+            ---
+        """.trimIndent().renderMarkdown()
+        rule shouldContain "<hr/>"
+    }
+
+    "a table can interrupt a paragraph and follow a heading" {
+        val afterPara = """
+            intro line
+            | a | b |
+            | --- | --- |
+            | 1 | 2 |
+        """.trimIndent().renderMarkdown()
+        afterPara shouldContain "<p>intro line</p>"
+        afterPara shouldContain "<table>"
+        val afterHeading = """
+            ## Title
+            | a | b |
+            | --- | --- |
+            | 1 | 2 |
+        """.trimIndent().renderMarkdown()
+        afterHeading shouldContain "</h2>"
+        afterHeading shouldContain "<table>"
+    }
 })

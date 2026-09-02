@@ -11,12 +11,14 @@ import com.dynamicruntime.common.exception.KdrException
  *
  * ## Supported
  * ATX headings (`#`..`######`), paragraphs, fenced code blocks (``` ```), flat bullet (`-`/`*`/`+`) and
- * ordered (`1.`) lists, blockquotes (`>`), horizontal rules (`---`/`***`/`___`), and the inline constructs:
- * code spans (`` `x` ``), links (`[text](url)`), bold (`**x**`/`__x__`), and italic (`*x*`/`_x_`).
+ * ordered (`1.`) lists, blockquotes (`>`), horizontal rules (`---`/`***`/`___`), GitHub-style pipe tables (a
+ * header row, a `| --- |` delimiter row, then body rows -- alignment taken from the delimiter's colons), and
+ * the inline constructs: code spans (`` `x` ``), links (`[text](url)`), bold (`**x**`/`__x__`), and italic
+ * (`*x*`/`_x_`).
  *
- * Deliberately **not** supported (add when the copy needs it): tables, nested lists, reference links, images,
- * setext headings, and raw inline HTML -- raw HTML is escaped rather than passed through, so a fragment or
- * document can never inject markup.
+ * Deliberately **not** supported (add when the copy needs it): nested lists, reference links, images, setext
+ * headings, and raw inline HTML -- raw HTML is escaped rather than passed through, so a fragment or document
+ * can never inject markup.
  *
  * ## Safety
  * All text is HTML-escaped, and link URLs are restricted to http/https/mailto or a relative path
@@ -44,6 +46,7 @@ fun String.renderMarkdown(resolveUrl: ((String) -> String)? = null): String {
             bulletContent(line) != null -> appendList(sb, lines, i, ordered = false, resolveUrl)
             orderedContent(line) != null -> appendList(sb, lines, i, ordered = true, resolveUrl)
             isQuoteLine(line) -> appendQuote(sb, lines, i, resolveUrl)
+            isTableAt(lines, i) -> appendTable(sb, lines, i, resolveUrl)
             else -> appendParagraph(sb, lines, i, resolveUrl)
         }
     }
@@ -206,7 +209,7 @@ fun appendList(sb: StringBuilder, lines: List<String>, start: Int, ordered: Bool
         // An item's text may wrap onto following plain lines (a "lazy continuation").
         val parts = mutableListOf(content)
         var j = i + 1
-        while (j < lines.size && !startsBlock(lines[j])) {
+        while (j < lines.size && !startsBlock(lines[j]) && !isTableAt(lines, j)) {
             parts.add(lines[j].trim())
             j++
         }
@@ -238,12 +241,149 @@ fun appendQuote(sb: StringBuilder, lines: List<String>, start: Int, resolveUrl: 
 fun appendParagraph(sb: StringBuilder, lines: List<String>, start: Int, resolveUrl: ((String) -> String)? = null): Int {
     val parts = mutableListOf(lines[start].trim())
     var i = start + 1
-    while (i < lines.size && !startsBlock(lines[i])) {
+    while (i < lines.size && !startsBlock(lines[i]) && !isTableAt(lines, i)) {
         parts.add(lines[i].trim())
         i++
     }
     sb.append("<p>").append(renderInline(parts.joinToString(" "), 0, resolveUrl)).append("</p>\n")
     return i
+}
+
+// --- tables (GitHub-style pipe tables, issue #547) --------------------------------------------------------
+
+/**
+ * Whether a table begins at [i]: a header row (any non-blank line carrying a `|`) immediately followed by a
+ * delimiter row ([isDelimiterRow]). The two-line requirement is the whole point -- a header row *without* a
+ * following delimiter is ordinary prose, so a paragraph that merely contains a `|` is never mistaken for a
+ * table. Needs the lookahead, which is why table detection lives here and not in the single-line [startsBlock];
+ * the paragraph and list loops consult it directly so a table can still interrupt them.
+ */
+@KdrPrivate
+fun isTableAt(lines: List<String>, i: Int): Boolean =
+    i + 1 < lines.size && !isBlankLine(lines[i]) && lines[i].contains('|') && isDelimiterRow(lines[i + 1])
+
+/**
+ * Whether [line] is a table delimiter row: `|`-separated cells, each an optional leading colon, one or more
+ * dashes, and an optional trailing colon (`---`, `:--`, `--:`, `:-:`). A `|` is required, which is what keeps a
+ * bare `---`/`***` horizontal rule from reading as a one-column delimiter.
+ */
+@KdrPrivate
+fun isDelimiterRow(line: String): Boolean {
+    if (!line.contains('|')) {
+        return false
+    }
+    val cells = splitTableRow(line)
+    return cells.isNotEmpty() && cells.all { isDelimiterCell(it) }
+}
+
+@KdrPrivate
+fun isDelimiterCell(cell: String): Boolean {
+    val c = cell.trim()
+    var start = 0
+    var end = c.length
+    if (end > start && c[start] == ':') start++
+    if (end > start && c[end - 1] == ':') end--
+    if (end <= start) {
+        return false
+    }
+    for (k in start until end) {
+        if (c[k] != '-') return false
+    }
+    return true
+}
+
+/**
+ * Splits a table row into cell texts. One optional leading pipe and one optional *unescaped* trailing pipe are
+ * dropped (leading/trailing pipes are optional in the grammar), the remaining unescaped `|` characters are the
+ * separators, and `\|` becomes a literal `|` in a cell. Each cell is trimmed; other escapes are left for
+ * [renderInline] to handle.
+ */
+@KdrPrivate
+fun splitTableRow(line: String): List<String> {
+    val t = line.trim()
+    val from = if (t.startsWith("|")) 1 else 0
+    val to = if (t.endsWith("|") && !t.endsWith("\\|")) t.length - 1 else t.length
+    val inner = if (from <= to) t.substring(from, to) else ""
+    val cells = mutableListOf<String>()
+    val cur = StringBuilder()
+    var i = 0
+    while (i < inner.length) {
+        val c = inner[i]
+        when {
+            c == '\\' && i + 1 < inner.length && inner[i + 1] == '|' -> {
+                cur.append('|'); i += 2
+            }
+            c == '|' -> {
+                cells.add(cur.toString().trim()); cur.clear(); i++
+            }
+            else -> {
+                cur.append(c); i++
+            }
+        }
+    }
+    cells.add(cur.toString().trim())
+    return cells
+}
+
+/** The CSS text-align for a delimiter cell's colons: `:-:` center, `--:` right, `:--` left, plain `---` none. */
+@KdrPrivate
+fun cellAlign(delimiterCell: String): String? {
+    val c = delimiterCell.trim()
+    val left = c.startsWith(":")
+    val right = c.endsWith(":")
+    return when {
+        left && right -> "center"
+        right -> "right"
+        left -> "left"
+        else -> null
+    }
+}
+
+/**
+ * Emits a table from the header row at [start], the delimiter row at `start + 1`, and the body rows that follow
+ * (consecutive lines carrying a `|`, stopping at a blank line or another block). The header decides the column
+ * count; a body row with fewer cells is padded and one with more is truncated, so a ragged row renders rather
+ * than throwing. Column alignment comes from the delimiter and is applied to every cell in the column. Wrapped
+ * in an overflow-x box so a wide table scrolls inside the page rather than pushing it sideways. Returns the
+ * resume index.
+ */
+@KdrPrivate
+fun appendTable(sb: StringBuilder, lines: List<String>, start: Int, resolveUrl: ((String) -> String)? = null): Int {
+    val headers = splitTableRow(lines[start])
+    val aligns = splitTableRow(lines[start + 1]).map { cellAlign(it) }
+    val cols = headers.size
+    sb.append("<div class=\"md-table-scroll\">\n<table>\n<thead>\n<tr>")
+    for (c in 0 until cols) {
+        appendTableCell(sb, "th", headers[c], aligns.getOrNull(c), resolveUrl)
+    }
+    sb.append("</tr>\n</thead>\n")
+    val body = StringBuilder()
+    var i = start + 2
+    while (i < lines.size && lines[i].contains('|') && !startsBlock(lines[i])) {
+        val cells = splitTableRow(lines[i])
+        body.append("<tr>")
+        for (c in 0 until cols) {
+            appendTableCell(body, "td", cells.getOrElse(c) { "" }, aligns.getOrNull(c), resolveUrl)
+        }
+        body.append("</tr>\n")
+        i++
+    }
+    if (body.isNotEmpty()) {
+        sb.append("<tbody>\n").append(body).append("</tbody>\n")
+    }
+    sb.append("</table>\n</div>\n")
+    return i
+}
+
+/** Emits one `<th>`/`<td>` with optional alignment; the cell text goes through [renderInline] so links, code
+ *  spans and emphasis work inside a cell and everything else is escaped. */
+@KdrPrivate
+fun appendTableCell(sb: StringBuilder, tag: String, raw: String, align: String?, resolveUrl: ((String) -> String)?) {
+    sb.append('<').append(tag)
+    if (align != null) {
+        sb.append(" style=\"text-align:").append(align).append('"')
+    }
+    sb.append('>').append(renderInline(raw, 0, resolveUrl)).append("</").append(tag).append('>')
 }
 
 // --- inline constructs ------------------------------------------------------------------------------------
