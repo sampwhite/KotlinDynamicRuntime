@@ -81,7 +81,7 @@ class HomeUiConfigEndpointTest : StringSpec({
         val ids = links.map { it[HFLD.id] }
         ids shouldContainAll listOf(
             HDOC.readme, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
-            HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraPatch, HDOC.uiBlock,
+            HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraPatch, HDOC.uiBlock, HDOC.license,
         )
         // Each carries the source path the resolver needs, so none is served without it.
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }

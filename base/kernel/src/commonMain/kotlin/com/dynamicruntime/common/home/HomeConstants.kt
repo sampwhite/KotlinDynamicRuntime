@@ -245,4 +245,5 @@ object HDOC {
     const val gedraEntry = "gedra-entry"
     const val gedraPatch = "gedra-patch"
     const val uiBlock = "ui-block"
+    const val license = "license"
 }
