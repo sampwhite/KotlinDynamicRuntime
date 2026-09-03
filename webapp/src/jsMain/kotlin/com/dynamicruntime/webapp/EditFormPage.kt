@@ -284,10 +284,7 @@ private fun react.ChildrenBuilder.editNav(id: String?, toForm: Boolean = true) {
                 +"← Back to the form"
             }
         }
-        Button {
-            type = "link"
-            onClick = { navigateHash(listOf(HP.page to HMENU.pageForms)) }
-            +"← Back to my forms"
-        }
+        // The listing back (issue #554): to the forms list, or to whichever listing opened this form.
+        backToListing(HMENU.pageForms)
     }
 }

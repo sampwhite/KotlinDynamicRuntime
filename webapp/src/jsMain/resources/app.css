@@ -217,14 +217,15 @@ body {
 .debug-index a:hover { text-decoration: underline; }
 
 /* The "back to the debug index" link atop each tool page (issue #517 follow-up). */
-.debug-back {
+/* The "← Listing" link atop a child page (issue #554; was the debug-only `.debug-back`). */
+.back-link {
     display: inline-block;
     margin-bottom: 12px;
     color: var(--accent-bright);
     text-decoration: none;
     font-size: 0.9rem;
 }
-.debug-back:hover { text-decoration: underline; }
+.back-link:hover { text-decoration: underline; }
 
 /* The elevated-privilege chip: an outline against the admin-tinted bar, where a fill would blend into it. */
 .admin-badge {
