@@ -205,6 +205,9 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
             cfactExpression = "${CFACTS.anonymous},${BOOT.app}", parentId = HMENU.account)
 
         menuItem(HMENU.catalog, "Endpoint catalog", UiRoute(HMENU.pageCatalog))
+        // The documents page (issue #554). App-only: an edge serves no documents (its `links` are empty), so
+        // offering the listing there would be an entry that opens onto nothing.
+        menuItem(HMENU.docs, "Documents", UiRoute(HMENU.pageDocs), cfactExpression = BOOT.app)
         menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = "${CFACTS.hasAdminLevel},${BOOT.app}")
         // The Operator group (issue #540): a parent header and the deployment-operator diagnostic pages under
         // it, plus an "Overview" landing page that explains each. Parent and children share the one cfact

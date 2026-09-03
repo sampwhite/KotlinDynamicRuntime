@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 /**
  * Pure-logic coverage (issue #161) for the frontend half of document link resolution (issue #492): building the
  * repo-path -> in-app-doc map from the home links, and the resolver that turns a document's interior link into
- * an in-app `#doc=<id>` link (via the shared hash builder) or a source-repo link. The path-resolution rules
+ * an in-app `#page=docs&doc=<id>` link (via the shared hash builder) or a source-repo link. The path-resolution rules
  * themselves are the kernel's [com.dynamicruntime.common.util.resolveDocLink], covered on the JVM.
  */
 class DocLinkResolverTest {
@@ -29,7 +29,7 @@ class DocLinkResolverTest {
     @Test
     fun resolverLinksRegisteredDocsInAppViaTheSharedHashFormat() {
         val resolve = docLinkResolver("README.md", links, base)
-        assertEquals("#doc=code-guide", resolve("code-guide.md"))
+        assertEquals("#page=docs&doc=code-guide", resolve("code-guide.md"))
     }
 
     @Test
@@ -42,6 +42,6 @@ class DocLinkResolverTest {
     fun resolverWithoutABaseLeavesRepoFilesAsWrittenButStillLinksDocs() {
         val resolve = docLinkResolver("README.md", links, null)
         assertEquals("LICENSE", resolve("LICENSE"))
-        assertEquals("#doc=code-guide", resolve("code-guide.md"))
+        assertEquals("#page=docs&doc=code-guide", resolve("code-guide.md"))
     }
 }

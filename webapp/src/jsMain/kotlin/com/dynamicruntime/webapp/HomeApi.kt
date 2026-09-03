@@ -98,13 +98,13 @@ fun docKeyByPath(links: List<HomeLink>): Map<String, String> =
 
 /**
  * A link resolver for rendering the document at [currentSourcePath], to hand to [Markdown] (issue #492): its
- * interior relative links become in-app document links (`#doc=<id>`, via [hashHref] so the format cannot drift
+ * interior relative links become in-app document links (`#page=docs&doc=<id>`, via [docHref] so the format cannot drift
  * from what [hashParams] reads) or links into the source repo, per the kernel's [resolveDocLink]. A null
  * [sourceRepoBase] leaves non-document relative links as written. Pure over its inputs; covered by `jsNodeTest`.
  */
 fun docLinkResolver(currentSourcePath: String, links: List<HomeLink>, sourceRepoBase: String?): (String) -> String {
     val byPath = docKeyByPath(links)
-    return { raw -> resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase) { key -> hashHref(listOf(HP.doc to key)) } }
+    return { raw -> resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase) { key -> docHref(key) } }
 }
 
 /**

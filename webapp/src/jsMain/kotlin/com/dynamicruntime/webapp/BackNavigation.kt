@@ -22,8 +22,9 @@ import web.cssom.ClassName
 /** A listing page a child may be opened from, and how its back link names it. */
 class BackListing(val page: String, val label: String)
 
-/** The listings a child may return to, by page id. Documents joins this in a later slice of #554. */
+/** The listings a child may return to, by page id. */
 val backListings: Map<String, BackListing> = listOf(
+    BackListing(HMENU.pageDocs, "Documents"),
     BackListing(HMENU.pageOperator, "Operator"),
     BackListing(HMENU.pageForms, "My forms"),
     BackListing(HMENU.pageUsers, "Users"),

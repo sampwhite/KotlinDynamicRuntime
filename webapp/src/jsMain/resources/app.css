@@ -368,6 +368,8 @@ body {
 
 .home-inline-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .link-button {
+    display: inline-block;
+    text-decoration: none;
     background: transparent;
     border: 1px solid var(--border);
     border-radius: 8px;

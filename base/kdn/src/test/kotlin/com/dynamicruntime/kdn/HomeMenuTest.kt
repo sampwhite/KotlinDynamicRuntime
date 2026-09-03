@@ -68,6 +68,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.login, "Log in", HMENU.pageLogin, HMENU.account),
             page(HMENU.register, "Register", HMENU.pageRegister, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
+            page(HMENU.docs, "Documents", HMENU.pageDocs),
         )
     }
 
@@ -78,6 +79,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
+            page(HMENU.docs, "Documents", HMENU.pageDocs),
             page(HMENU.forms, "My forms", HMENU.pageForms),
         )
     }
@@ -92,6 +94,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
+            page(HMENU.docs, "Documents", HMENU.pageDocs),
             page(HMENU.users, "Users", HMENU.pageUsers),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
@@ -105,6 +108,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
+            page(HMENU.docs, "Documents", HMENU.pageDocs),
             header(HMENU.operator, "Operator"),
             page(HMENU.operatorOverview, "Overview", HMENU.pageOperator, HMENU.operator),
             page(HMENU.envReference, "Environment", HMENU.pageEnv, HMENU.operator),

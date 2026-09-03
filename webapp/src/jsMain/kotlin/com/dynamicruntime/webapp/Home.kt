@@ -6,7 +6,6 @@ import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.aside
-import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
@@ -15,18 +14,11 @@ import react.dom.html.ReactHTML.main
 import react.dom.html.ReactHTML.nav
 import react.dom.html.ReactHTML.p
 import react.useEffect
-import react.useEffectOnce
 import react.useState
 import web.cssom.ClassName
 
 /** Coroutine scope for firing the suspend home calls from React effects/handlers. */
 private val homeScope = MainScope()
-
-/**
- * The hash key naming the open document, so a doc page survives a refresh and can be linked to. Shared as
- * [HP.doc] so an in-document link the resolver mints (`#doc=<id>`) and the state read back here use one key.
- */
-private const val docParam = HP.doc
 
 /**
  * The home page — assembled from data rather than hardcoded. It fetches its UI-config (the "construction
@@ -36,14 +28,12 @@ private const val docParam = HP.doc
  *    bar, a left nav bar, inline in the body, any combination, or not at all;
  *  - Its **links** come from the config's state, each naming a Markdown document to open.
  *
- * Selecting a link opens that document (rendered by [Markdown]) and records it in the URL hash, so a document
- * page can be refreshed or shared.
+ * Selecting a link goes to that document's own page ([DocsPage], issue #554) -- Home no longer renders a
+ * document in place, so the listing and every document are destinations with history entries of their own.
  */
 val Home = FC<Props> {
     var config by useState<HomeConfig?>(null)
     var copy by useState(Copy.empty)
-    var openDoc by useState(hashParams()[docParam])
-    var docText by useState<String?>(null)
     var error by useState<DisplayError?>(null)
 
     val generation = useRefreshGeneration()
@@ -67,36 +57,6 @@ val Home = FC<Props> {
             }
         }
     }
-    useEffectOnce {
-        // The app bar's brand (and back/forward) can clear the hash from outside this component; re-derive the
-        // open document when that happens. Our own navigation uses replaceHash, which does not fire this.
-        onHashChange { openDoc = hashParams()[docParam] }
-    }
-
-    // Fetch whichever document the selection names (and drop the old text when nothing is open). Keyed on the
-    // selection and the config, so it also runs for a doc named by the hash on the first load.
-    useEffect(openDoc, config) {
-        val link = config?.links?.firstOrNull { it.id == openDoc }
-        if (link == null) {
-            docText = null
-        } else {
-            homeScope.launch {
-                try {
-                    docText = HomeApi.fetchDoc(link.docId, link.buildId)
-                    error = null
-                } catch (e: Throwable) {
-                    error = userFacingError(e)
-                }
-            }
-        }
-    }
-
-    /** Opens [link] (or the welcome copy when null), recording it in the hash so it survives a refresh. */
-    fun show(link: HomeLink?) {
-        openDoc = link?.id
-        replaceHash(if (link == null) emptyList() else listOf(docParam to link.id))
-    }
-
     val current = config
     val layout = current?.layout
     val links = current?.links ?: emptyList()
@@ -108,7 +68,7 @@ val Home = FC<Props> {
         if (layout?.topBar == true && links.isNotEmpty()) {
             nav {
                 className = ClassName("home-topbar")
-                linkButtons(links, openDoc) { show(it) }
+                docLinks(links, openId = null)
             }
         }
 
@@ -122,33 +82,14 @@ val Home = FC<Props> {
                     copy.opt("nav", "title")?.let {
                         h2 { +it }
                     }
-                    linkButtons(links, openDoc) { show(it) }
+                    docLinks(links, openId = null)
                 }
             }
 
             main {
                 className = ClassName("home-main")
-                val doc = links.firstOrNull { it.id == openDoc }
                 when {
                     error != null -> errorText("Couldn't load this page.", error!!)
-                    // A document page: its rendered Markdown, plus a way back to the welcome copy.
-                    doc != null -> {
-                        button {
-                            className = ClassName("link-button")
-                            onClick = { show(null) }
-                            +"← ${copy.t("nav", "homeLabel", "Home")}"
-                        }
-                        h1 { +doc.label }
-                        docText?.let { text ->
-                            Markdown {
-                                source = text
-                                // A document's interior repo-relative links are rewritten to an in-app document
-                                // or the source repo as it renders (issue #492). The welcome copy below gets no
-                                // resolver -- it is app copy, not a repo file.
-                                linkResolver = docLinkResolver(doc.sourcePath, links, current?.sourceRepoBase)
-                            }
-                        }
-                    }
                     // The welcome page: copy from the fragment file, and optionally the links inline.
                     current != null -> {
                         // The hero: the brand mark beside the wordmark. The wordmark is "copy" like everything
@@ -171,7 +112,7 @@ val Home = FC<Props> {
                         copy.opt("home", "title")?.let { h1 { +it } }
                         copy.opt("home", "intro")?.let { Markdown { source = it } }
                         if (layout?.inlineLinks == true) {
-                            renderInlineLinks(links, copy) { show(it) }
+                            renderInlineLinks(links, copy)
                         }
                     }
                     else -> p {
@@ -185,11 +126,7 @@ val Home = FC<Props> {
 }
 
 /** The links as inline body content (the third presentation). */
-private fun ChildrenBuilder.renderInlineLinks(
-    links: List<HomeLink>,
-    copy: Copy,
-    onSelect: (HomeLink) -> Unit,
-) {
+private fun ChildrenBuilder.renderInlineLinks(links: List<HomeLink>, copy: Copy) {
     copy.opt("nav", "title")?.let { h2 { +it } }
     if (links.isEmpty()) {
         p {
@@ -200,17 +137,6 @@ private fun ChildrenBuilder.renderInlineLinks(
     }
     div {
         className = ClassName("home-inline-links")
-        linkButtons(links, openId = null, onSelect = onSelect)
-    }
-}
-
-/** One button per link, marking the open one. Shared by all three presentations. */
-private fun ChildrenBuilder.linkButtons(links: List<HomeLink>, openId: String?, onSelect: (HomeLink) -> Unit) {
-    links.forEach { link ->
-        button {
-            className = ClassName(if (link.id == openId) "link-button open" else "link-button")
-            onClick = { onSelect(link) }
-            +link.label
-        }
+        docLinks(links, openId = null)
     }
 }

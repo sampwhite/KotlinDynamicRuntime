@@ -108,6 +108,8 @@ object HMENU {
 
     // Item ids.
     const val catalog = "catalog"
+    /** The documents listing page (issue #554). */
+    const val docs = "docs"
     const val users = "users"
     const val envReference = "envReference"
     /** Operator boot-checks page (issue #540). */
@@ -141,6 +143,7 @@ object HMENU {
     // Frontend page ids, carried in a menu item's `action` as a string; the frontend maps them onto its
     // own routing (issue #483).
     const val pageCatalog = "catalog"
+    const val pageDocs = "docs"
     const val pageUsers = "users"
     const val pageEnv = "env"
     const val pageBootChecks = "bootChecks"
