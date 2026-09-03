@@ -8,7 +8,6 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
-import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFRAG
