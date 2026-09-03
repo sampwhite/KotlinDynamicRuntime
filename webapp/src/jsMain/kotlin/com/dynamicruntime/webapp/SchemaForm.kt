@@ -180,7 +180,8 @@ external interface SchemaFormProps : Props {
     /**
      * The caller's delivered cfacts (issue #564), `name -> present`, from the catalog response
      * ([Catalog.cfacts]). A property's `g-visibleWhen` is evaluated against these and the field hidden when it
-     * fails -- in friendly mode only. Absent means no gating (every field shows).
+     * fails -- in an *editable* form only (a read-only render documents the wire and shows every field). Absent
+     * means no gating (every field shows).
      */
     var cfacts: Map<String, Boolean>?
     /**

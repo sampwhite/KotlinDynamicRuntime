@@ -56,4 +56,38 @@ class SchVisibleWhenTest : StringSpec({
         visibleWhenProblems("w", nested) { seen.add(it); null }
         seen shouldBe listOf("deepExpr")
     }
+
+    // A gate on a required property (issue #564): the field is hidden client-side but still required by the
+    // served schema, so a caller it hides could never submit -- refused at boot.
+    "a required property that declares g-visibleWhen is refused; an optional one is fine" {
+        fun obj(required: List<String>): Map<String, Any?> = linkedMapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to linkedMapOf(
+                "name" to linkedMapOf(SCH.type to SCT.string),
+                "secret" to linkedMapOf(SCH.type to SCT.string, SCH.visibleWhen to "hasAdminLevel"),
+            ),
+            SCH.required to required,
+        )
+        val gatedRequired = requiredVisibleWhenProblems("Type 'X'", obj(listOf("name", "secret")))
+        gatedRequired.size shouldBe 1
+        gatedRequired.single() shouldContain "secret"
+        // Gated but optional: nothing.
+        requiredVisibleWhenProblems("Type 'X'", obj(listOf("name"))) shouldBe emptyList()
+    }
+
+    "the required-gate check reaches a nested object" {
+        val nested: Map<String, Any?> = linkedMapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to linkedMapOf(
+                "inner" to linkedMapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to linkedMapOf(
+                        "deep" to linkedMapOf(SCH.type to SCT.string, SCH.visibleWhen to "hasAdminLevel"),
+                    ),
+                    SCH.required to listOf("deep"),
+                ),
+            ),
+        )
+        requiredVisibleWhenProblems("w", nested).size shouldBe 1
+    }
 })

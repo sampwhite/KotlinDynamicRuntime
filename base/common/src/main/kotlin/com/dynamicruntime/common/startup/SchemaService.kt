@@ -38,6 +38,8 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.SchOptionsProvider
 import com.dynamicruntime.common.schema.optionsSourceProblems
+import com.dynamicruntime.common.schema.requiredGateProblem
+import com.dynamicruntime.common.schema.requiredVisibleWhenProblems
 import com.dynamicruntime.common.schema.resolveOptionsSources
 import com.dynamicruntime.common.schema.visibleWhenProblems
 import com.dynamicruntime.common.util.addDays
@@ -265,13 +267,25 @@ class SchemaService : ServiceInitializer {
                     }
                 },
             )
+            // A gate on a *required* property is refused too: it hides the field while the schema still requires
+            // it, so a caller it hides could never submit (issue #564). This shape is a `properties` child named
+            // in the sibling `required`; an endpoint field, whose required-ness sits on the field itself, is
+            // checked below.
+            problems.addAll(requiredVisibleWhenProblems(where, node))
         }
         for ((name, body) in schemaStore.defs) check("Type '$name'", body)
         for ((client, store) in clientStores) {
             for ((name, body) in store.defs) check("Type '$name' (client '$client')", body)
         }
         for (endpoint in schemaStore.endpoints.values) {
-            endpoint.inputFields?.forEach { check("Endpoint '${endpoint.collationKey}' field '${it.name}'", it.schema) }
+            endpoint.inputFields?.forEach { field ->
+                check("Endpoint '${endpoint.collationKey}' field '${field.name}'", field.schema)
+                // The field's gate lives on its schema, its required-ness on the field, so the walk above cannot
+                // see them together -- match them here (issue #564).
+                if (field.required && field.schema[SCH.visibleWhen] is String) {
+                    problems.add(requiredGateProblem("Endpoint '${endpoint.collationKey}'", field.name))
+                }
+            }
             check("Endpoint '${endpoint.collationKey}' output", endpoint.outputSchema)
         }
         if (problems.isNotEmpty()) {

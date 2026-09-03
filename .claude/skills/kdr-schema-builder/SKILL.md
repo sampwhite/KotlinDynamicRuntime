@@ -165,9 +165,12 @@ field(EI.user, "Confine the search to one user — a userId or an email.") {
 **Presentation, never a gate.** Hiding a field client-side does not defend it: request validation runs against
 the compiled schema, which still carries it. A handler that accepts a `visibleWhen` field must enforce the same
 condition itself — it is the advertise half of an advertise-and-enforce pair, the same relationship
-`optionsSource` has with a handler that bounds its own input. A malformed expression fails the boot, as does one
-naming a cfact whose `CFactDef` is not marked `toFrontend` — that fact never reaches the client, so the gate
-would hide the field from everyone.
+`optionsSource` has with a handler that bounds its own input.
+
+**Optional fields only.** The boot fails on a `visibleWhen` that: is a malformed expression; names a cfact whose
+`CFactDef` is not marked `toFrontend` (that fact never reaches the client, so the gate would hide the field from
+everyone); or sits on a **required** property (the field is hidden client-side but the schema still requires it,
+so a caller it hides could never submit).
 
 ## Presentation hints (read-only display)
 
