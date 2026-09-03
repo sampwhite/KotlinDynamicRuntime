@@ -30,7 +30,8 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
-/** Attribute keys of the `/operator/cache/state` report. Each name matches its value. */
+// The report's attribute keys ([com.dynamicruntime.common.operator.TCS]) moved to the kernel, since the
+// operator cache-state page reads them by name (issue #540).
 
 /**
  * Owns the registered [SqlTableCache]s and the coherence between nodes.

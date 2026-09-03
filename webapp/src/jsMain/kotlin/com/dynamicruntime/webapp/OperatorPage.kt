@@ -392,6 +392,13 @@ fun cacheStateView(report: Map<String, Any?>): CacheStateView {
     )
 }
 
+/** What a reload targets: every cache, or one named table. A typed value rather than a nullable-string
+ *  sentinel (issue #540 review), so "reload all" is not a magic empty string. */
+private sealed interface ReloadTarget {
+    object All : ReloadTarget
+    data class One(val table: String) : ReloadTarget
+}
+
 /**
  * The cache-state operator page (issue #540, tier 3): a per-node view of the table caches beside the change
  * dates every node shares, with a reload action per cache and a reload-all. Hand-written rather than
@@ -401,9 +408,12 @@ fun cacheStateView(report: Map<String, Any?>): CacheStateView {
 val OperatorCacheStatePage = FC<Props> {
     var report by useState<Map<String, Any?>?>(null)
     var error by useState<DisplayError?>(null)
+    // A reload failure is its own state, shown beside the (still-visible) table -- it must not blank the whole
+    // page the way a report-load failure does, which would hide the data over a transient reload error.
+    var reloadError by useState<DisplayError?>(null)
     var asOf by useState<String?>(null)
-    // Which target is reloading: a table name, "" for reload-all, or null for none. Disables the buttons.
-    var reloading by useState<String?>(null)
+    // What is reloading, or null when nothing is; disables every reload button while one is in flight.
+    var reloading by useState<ReloadTarget?>(null)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
     val latestRun = useRef(0)
@@ -426,17 +436,21 @@ val OperatorCacheStatePage = FC<Props> {
     }
 
     // Force a reload on this node (one table, or all), then bump so the report re-reads on the new generation.
-    fun reload(table: String?) {
-        reloading = table ?: ""
+    fun reload(target: ReloadTarget) {
+        reloading = target
+        reloadError = null
         operatorScope.launch {
             try {
-                val body = if (table != null) mapOf(TCS.table to table) else emptyMap()
+                val body = when (target) {
+                    is ReloadTarget.One -> mapOf(TCS.table to target.table)
+                    ReloadTarget.All -> emptyMap()
+                }
                 Http.sendApi("POST", OPS.cacheReloadPath, body)
                 reloading = null
                 bump()
             } catch (e: Throwable) {
                 reloading = null
-                error = userFacingError(e)
+                reloadError = userFacingError(e)
             }
         }
     }
@@ -474,11 +488,13 @@ val OperatorCacheStatePage = FC<Props> {
                     button {
                         className = ClassName("op-reload")
                         disabled = reloading != null || view.isDisabled
-                        onClick = { reload(null) }
-                        +(if (reloading == "") "Reloading…" else "Reload all")
+                        onClick = { reload(ReloadTarget.All) }
+                        +(if (reloading == ReloadTarget.All) "Reloading…" else "Reload all")
                     }
                 }
-                cacheTable(view.rows, reloading) { t -> reload(t) }
+                // A reload failure shows here, beside the table -- the data stays visible.
+                reloadError?.let { errorText("Couldn't reload.", it) }
+                cacheTable(view.rows, reloading, view.isDisabled) { t -> reload(ReloadTarget.One(t)) }
                 if (view.unheldShared.isNotEmpty()) {
                     p { className = ClassName("op-section-label"); +"Cached by other nodes, not here" }
                     div {
@@ -502,7 +518,9 @@ val OperatorCacheStatePage = FC<Props> {
 
 /** The caches as a table: each row beside the shared row's last-changed date, with a per-row reload button.
  *  [reloading] disables every button while one is in flight (a table name, "" for all, or null for none). */
-private fun ChildrenBuilder.cacheTable(rows: List<CacheRow>, reloading: String?, onReload: (String) -> Unit) {
+private fun ChildrenBuilder.cacheTable(
+    rows: List<CacheRow>, reloading: ReloadTarget?, isDisabled: Boolean, onReload: (String) -> Unit,
+) {
     if (rows.isEmpty()) {
         p { className = ClassName("type-hint"); +"(no caches on this node)" }
         return
@@ -536,9 +554,9 @@ private fun ChildrenBuilder.cacheTable(rows: List<CacheRow>, reloading: String?,
                     td {
                         button {
                             className = ClassName("op-reload")
-                            disabled = reloading != null
+                            disabled = reloading != null || isDisabled
                             onClick = { onReload(row.tableName) }
-                            +(if (reloading == row.tableName) "Reloading…" else "Reload")
+                            +(if (reloading == ReloadTarget.One(row.tableName)) "Reloading…" else "Reload")
                         }
                     }
                 }

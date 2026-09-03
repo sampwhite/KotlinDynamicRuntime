@@ -653,8 +653,10 @@ input {
     border-radius: 6px;
     cursor: pointer;
 }
-.op-reload:hover:not(:disabled) { border-color: var(--accent-bright); }
-.op-reload:disabled { opacity: .5; cursor: default; }
+/* Set `background` explicitly in both states: the global `button:hover` (0,1,1) otherwise outranks the base
+   `.op-reload` (0,1,0) and paints every reload button accent-bright on hover -- a disabled one included. */
+.op-reload:hover:not(:disabled) { background: var(--border); border-color: var(--accent-bright); }
+.op-reload:disabled { opacity: .5; cursor: default; background: var(--surface-raised); }
 /* A per-row "reload pending" chip sits after the shared date, so give it a little separation. */
 .op-table td .op-status { margin-left: 8px; }
 .form-ok { color: var(--success); margin-top: 12px; }

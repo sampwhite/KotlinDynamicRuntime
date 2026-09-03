@@ -23,9 +23,8 @@ import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
-/**
- * Attribute keys of a cache's operator report (see [SqlTableCache.toJsonMap]). Each name matches its value.
- */
+// The cache-report attribute keys ([com.dynamicruntime.common.operator.TCI]) moved to the kernel, since the
+// operator cache-state page reads them by name (issue #540).
 
 /**
  * An in-memory copy of one database table, kept current by *incremental* reload.
