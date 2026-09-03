@@ -61,6 +61,13 @@ object HP {
     /** Home page: the id of the open Markdown document, or absent for the welcome copy. */
     const val doc = "doc"
 
+    /**
+     * The listing page a child was opened from (issue #554), so its back link can return there; absent when
+     * the child was reached some other way, in which case the child's natural parent is used. Honoured only
+     * when it names a known listing -- see `backTarget`.
+     */
+    const val from = "from"
+
     // The Users page's *search* (filters, range, sort) is also kept in the hash so a search is shareable, a
     // pasted link reproduces it, and Back/Forward step through it (issue #411). It has no constants here on
     // purpose: those keys ARE the endpoint's own arg names (`email`, `updatedAfter`, `sortBy`, … from `USF`),

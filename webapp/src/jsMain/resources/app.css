@@ -39,6 +39,13 @@
     --surface-page: #0f172a;
     /* Raised above the page: the app bar, the menu, a card. */
     --surface-raised: #1e293b;
+
+    /* The width of a *content* page -- Home, the documents, the operator pages, the catalog, the forms list
+       (issue #554). One token, so the shell widens as one thing: a wide window used to leave 42% of itself
+       empty beside a 1040px card. A genuine form (the auth flow, the profile) keeps the narrow `.card`, and a
+       table-first page keeps its own `.card.full`. Prose stays readable at this width because Markdown
+       paragraphs are capped at 80ch below, on the column rather than the card. */
+    --content-width: min(1400px, 95vw);
     /* Every border in the app, the hairline between sections, and a hover wash. */
     --border: #334155;
 
@@ -216,15 +223,15 @@ body {
 }
 .debug-index a:hover { text-decoration: underline; }
 
-/* The "back to the debug index" link atop each tool page (issue #517 follow-up). */
-.debug-back {
+/* The "← Listing" link atop a child page (issue #554; was the debug-only `.debug-back`). */
+.back-link {
     display: inline-block;
     margin-bottom: 12px;
     color: var(--accent-bright);
     text-decoration: none;
     font-size: 0.9rem;
 }
-.debug-back:hover { text-decoration: underline; }
+.back-link:hover { text-decoration: underline; }
 
 /* The elevated-privilege chip: an outline against the admin-tinted bar, where a fill would blend into it. */
 .admin-badge {
@@ -307,6 +314,12 @@ body {
     cursor: pointer;
 }
 .app-menu-item:hover { background: var(--border); }
+/* The page on screen (issue #554): an accent rail and a lifted tone, on the item and on the group holding it. */
+.app-menu-item.is-current, .app-menu-parent.is-current {
+    background: rgba(129, 140, 248, .10);
+    box-shadow: inset 3px 0 0 var(--accent-bright);
+}
+.app-menu-item.is-current { color: var(--accent-bright); }
 
 /* A drill-down parent (issue #517, collapsible since #540): a clickable group header that toggles its
    children, which are indented under it so the nesting reads as a group rather than a flat list. It reads like
@@ -339,7 +352,7 @@ body {
 
 /* A non-clickable menu header, e.g. "Signed in as …". */
 /* Home shell: the three link presentations (top bar / left bar / inline) around the content. */
-.home-shell { width: min(1040px, 95vw); }
+.home-shell { width: var(--content-width); }
 .home-topbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .home-body { display: flex; gap: 24px; align-items: flex-start; }
 .home-leftbar {
@@ -367,6 +380,8 @@ body {
 
 .home-inline-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .link-button {
+    display: inline-block;
+    text-decoration: none;
     background: transparent;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -382,6 +397,10 @@ body {
 
 /* Rendered Markdown (fragment copy and whole documents). */
 .markdown { line-height: 1.6; overflow-wrap: anywhere; }
+/* Readable measure at any width (issue #554): prose is capped at ~80 characters, on the paragraph rather than
+   the container, so a table (#547) or a code block still gets the full column while a line of text does not
+   run the width of a wide window. */
+.markdown p, .markdown li, .markdown blockquote, .markdown h1, .markdown h2, .markdown h3 { max-width: 80ch; }
 .markdown h1, .markdown h2, .markdown h3 { margin: 20px 0 8px; }
 /* `markdown-inline` is a phrase rendered inside markup the caller owns (MarkdownInline): it shares these
    inline looks, but never the block spacing above -- it has no line-height or margins of its own. */
@@ -453,10 +472,10 @@ body {
 .card > .type-hint { margin-top: 14px; }
 .card > .type-hint + .type-hint { margin-top: 2px; }
 /* The endpoint browser needs room for the table and wide responses. */
-.card.wide { width: min(1040px, 95vw); }
+.card.wide { width: var(--content-width); }
 /* A table-first page: the content is a grid of many columns, so it takes the window rather than a chosen
-   width. Separate from `.wide` rather than widening it, because 1040 is a deliberate figure for the endpoint
-   browser -- prose and a form read badly at 1600, and a ten-column table reads badly at 1040 (issue #462).
+   width. Separate from `.wide` rather than widening it, because `--content-width` is a deliberate figure for a
+   content page -- a form reads badly at 1600, and a ten-column table reads badly at 1400 (issue #462).
    `calc` rather than a flat cap so a large monitor is actually used; the cap keeps a line of text readable.
 
    This only pays off because the controls inside declare their own widths. While they did not, every pixel
@@ -630,11 +649,12 @@ input {
 .op-detail-label { color: var(--text-dim); font-size: .85rem; font-weight: 600; margin-bottom: 2px; }
 .type-hint { color: var(--text-faint); font-style: italic; margin: 2px 0; }
 
-/* The Operator overview's tool list (issue #540): readable accent links, like the debug index. */
-.operator-index { margin: 8px 0 0; padding-left: 22px; }
-.operator-index li { margin: 6px 0; }
-.operator-index a { color: var(--accent-bright); text-decoration: none; }
-.operator-index a:hover { text-decoration: underline; }
+/* A listing page's index (the Operator overview, the Documents page; issues #540, #554): a list of readable
+   accent links, each with a line on what it opens -- the same shape as the debug index. */
+.index-list { margin: 8px 0 0; padding-left: 22px; }
+.index-list li { margin: 6px 0; }
+.index-list a { color: var(--accent-bright); text-decoration: none; }
+.index-list a:hover { text-decoration: underline; }
 
 /* A free-form operator object (issue #540): titled sections and key/value rows. */
 .op-section-label { font-weight: 600; color: var(--text-dim); margin: 10px 0 2px; }

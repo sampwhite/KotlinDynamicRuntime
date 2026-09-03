@@ -15,7 +15,11 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * One navigable Markdown document offered by the home page, already carrying its cache-busting build id.
  * [sourcePath] is its repo-relative source, used to resolve the document's interior links (issue #492).
  */
-class HomeLink(val id: String, val label: String, val docId: String, val buildId: String, val sourcePath: String)
+class HomeLink(
+    val id: String, val label: String, val docId: String, val buildId: String, val sourcePath: String,
+    /** One line on what the document covers (issue #554); empty when the config carries none. */
+    val description: String = "",
+)
 
 /** Which of the three link presentations this deployment enabled. Independent toggles: any combination. */
 class HomeLayout(val topBar: Boolean, val leftBar: Boolean, val inlineLinks: Boolean)
@@ -61,6 +65,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
             docId = link[HFLD.docId] as? String ?: "",
             buildId = link[HFLD.buildId] as? String ?: "",
             sourcePath = link[HFLD.sourcePath] as? String ?: "",
+            description = link[HFLD.description] as? String ?: "",
         )
     }
     val menu = config.state[HFLD.menu].toJsonListOfMaps().map { entry ->
@@ -98,13 +103,13 @@ fun docKeyByPath(links: List<HomeLink>): Map<String, String> =
 
 /**
  * A link resolver for rendering the document at [currentSourcePath], to hand to [Markdown] (issue #492): its
- * interior relative links become in-app document links (`#doc=<id>`, via [hashHref] so the format cannot drift
+ * interior relative links become in-app document links (`#page=docs&doc=<id>`, via [docHref] so the format cannot drift
  * from what [hashParams] reads) or links into the source repo, per the kernel's [resolveDocLink]. A null
  * [sourceRepoBase] leaves non-document relative links as written. Pure over its inputs; covered by `jsNodeTest`.
  */
 fun docLinkResolver(currentSourcePath: String, links: List<HomeLink>, sourceRepoBase: String?): (String) -> String {
     val byPath = docKeyByPath(links)
-    return { raw -> resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase) { key -> hashHref(listOf(HP.doc to key)) } }
+    return { raw -> resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase) { key -> docHref(key) } }
 }
 
 /**

@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.util.evalTemplate
@@ -163,13 +164,7 @@ val DebugIndex = FC<Props> {
  * without relying on the browser's back button (issue #517 follow-up). Routes to `#page=debug` with no tool,
  * which [DebugPage] dispatches to [DebugIndex].
  */
-private fun ChildrenBuilder.debugBackLink() {
-    a {
-        className = ClassName("debug-back")
-        href = "#page=debug"
-        +"← Debug"
-    }
-}
+private fun ChildrenBuilder.debugBackLink() = backToListing(HMENU.pageDebug)
 
 /**
  * Throws while rendering. That is its whole job.

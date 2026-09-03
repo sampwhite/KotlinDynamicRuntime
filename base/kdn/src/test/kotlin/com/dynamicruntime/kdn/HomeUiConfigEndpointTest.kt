@@ -43,7 +43,8 @@ class HomeUiConfigEndpointTest : StringSpec({
 
         // The links default to a left nav bar alone (the other two presentations are opt-in).
         val features = cfg.obj(UIC.features)
-        features[HFEAT.leftBar] shouldBe true
+        // Off by default since the Documents page exists (issue #554); it only duplicated that listing.
+        features[HFEAT.leftBar] shouldBe false
         features[HFEAT.topBar] shouldBe false
         features[HFEAT.inlineLinks] shouldBe false
     }
@@ -84,6 +85,8 @@ class HomeUiConfigEndpointTest : StringSpec({
         )
         // Each carries the source path the resolver needs, so none is served without it.
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
+        // And the one-line description the Documents listing shows beside each (issue #554).
+        links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
     }
 
     "source repo base is absent by default and configured from the env var" {

@@ -73,6 +73,9 @@ object HFLD {
      */
     const val sourcePath = "sourcePath"
 
+    /** A link's one-line description, shown beside it in the Documents listing (issue #554). */
+    const val description = "description"
+
     /**
      * `state.sourceRepoBase`: the source repository's blob base (`.../blob/<branch>`), or absent when the
      * deployment did not configure one. Interior links to files that are *not* served as in-app documents are
@@ -108,6 +111,8 @@ object HMENU {
 
     // Item ids.
     const val catalog = "catalog"
+    /** The documents listing page (issue #554). */
+    const val docs = "docs"
     const val users = "users"
     const val envReference = "envReference"
     /** Operator boot-checks page (issue #540). */
@@ -141,6 +146,7 @@ object HMENU {
     // Frontend page ids, carried in a menu item's `action` as a string; the frontend maps them onto its
     // own routing (issue #483).
     const val pageCatalog = "catalog"
+    const val pageDocs = "docs"
     const val pageUsers = "users"
     const val pageEnv = "env"
     const val pageBootChecks = "bootChecks"

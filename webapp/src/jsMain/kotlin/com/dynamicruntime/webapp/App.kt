@@ -121,6 +121,7 @@ val App = FC<Props> {
                     }
                 }
                 AppBar {
+                    this.currentPage = page
                     this.envAuthSuppressible = envAuthSuppressible
                     this.envAuthActing = envAuthActing
                     this.envAuthDebug = envAuthDebug
@@ -146,6 +147,7 @@ val App = FC<Props> {
                         onError = ::reportRenderFailure
                         when (page) {
                             pageCatalog -> EndpointCatalog {}
+                            pageDocs -> DocsPage {}
                             pageLogin -> AuthFlow { mode = pageLogin }
                             pageRegister -> AuthFlow { mode = pageRegister }
                             pageProfile -> Profile {}
@@ -196,6 +198,8 @@ val App = FC<Props> {
 }
 
 private const val pageCatalog = "catalog"
+// The documents page (issue #554): the listing, or one document -- and where a bare `#doc=<id>` lands.
+private const val pageDocs = HMENU.pageDocs
 private const val pageLogin = "login"
 private const val pageRegister = "register"
 private const val pageProfile = "profile"
@@ -250,6 +254,7 @@ private fun currentPage(): String {
     val params = hashParams()
     return when {
         params[HP.page] == pageCatalog || params.containsKey(HP.method) -> pageCatalog
+        params[HP.page] == pageDocs || params.containsKey(HP.doc) -> pageDocs
         params[HP.page] == pageLogin -> pageLogin
         params[HP.page] == pageRegister -> pageRegister
         params[HP.page] == pageProfile -> pageProfile

@@ -251,7 +251,7 @@ val FormsPage = FC<Props> {
                                 Button {
                                     onClick = {
                                         viewingId?.let { id ->
-                                            navigateHash(listOf(HP.page to pageEditForm, HP.gedra to id))
+                                            navigateHash(listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id))
                                         }
                                     }
                                     +"Edit form"
@@ -324,7 +324,7 @@ val FormsPage = FC<Props> {
                         className = ClassName("row")
                         Button {
                             type = "primary"
-                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm)) }
+                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm, HP.from to HMENU.pageForms)) }
                             +"Create a form"
                         }
                     }
@@ -339,7 +339,7 @@ val FormsPage = FC<Props> {
                         className = ClassName("row")
                         Button {
                             type = "primary"
-                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm)) }
+                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm, HP.from to HMENU.pageForms)) }
                             +"New form"
                         }
                     }
@@ -353,7 +353,7 @@ val FormsPage = FC<Props> {
                     onView = { id -> viewingId = id }
                     canEdit = patchEndpoint != null
                     canDelete = deleteEndpoint != null
-                    onEdit = { id -> navigateHash(listOf(HP.page to pageEditForm, HP.gedra to id)) }
+                    onEdit = { id -> navigateHash(listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id)) }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId
                     onArmDelete = { id -> rowConfirmDeleteId = id; rowDeleteError = null }

@@ -102,7 +102,7 @@ class ConfigParsersTest {
                 ),
                 state = mapOf(
                     HFLD.links to listOf(
-                        mapOf(HFLD.id to "l1", HFLD.label to "Guide", HFLD.docId to "guide", HFLD.buildId to "b7"),
+                        mapOf(HFLD.id to "l1", HFLD.label to "Guide", HFLD.docId to "guide", HFLD.buildId to "b7", HFLD.description to "The guide."),
                     ),
                     HFLD.menu to listOf(
                         mapOf(HFLD.id to "m1", HFLD.label to "Profile", UIB.action to "profile"),
@@ -120,6 +120,7 @@ class ConfigParsersTest {
         assertEquals(1, cfg.links.size)
         assertEquals("guide", cfg.links[0].docId)
         assertEquals("b7", cfg.links[0].buildId)
+        assertEquals("The guide.", cfg.links[0].description)
 
         assertEquals(2, cfg.menu.size)
         // One field, two shapes (issue #483): a string is a route, an array is a call. The old pair of

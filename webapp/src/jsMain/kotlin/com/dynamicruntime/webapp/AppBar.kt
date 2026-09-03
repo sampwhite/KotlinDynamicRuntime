@@ -101,6 +101,8 @@ fun isStaleFragment(status: Int?): Boolean = status == 404
  * this reason (`debugAllowed`, `idleBumpIntervalMs`); these join it rather than inventing a second way.
  */
 external interface AppBarProps : Props {
+    /** The page the router is showing (issue #554), so the menu can mark it and open its group. */
+    var currentPage: String
     /** Whether env auth exists on this channel -- decides whether the control is shown at all. */
     var envAuthSuppressible: Boolean
     /** Whether the session is currently *acting* env-authed -- decides what the control says. */
@@ -140,6 +142,7 @@ val AppBar = FC<AppBarProps> { props ->
     // group finds it open next time. Held as the set of expanded parent ids.
     var expandedGroups by useState { readExpandedGroups() }
     var config by useState<HomeConfig?>(null)
+
     // The persistent `_debug` box's value (issue #517, slice 3), seeded from this browser's storage. A hook, so
     // it is declared unconditionally here even though the box renders only in debug -- and hiding the box (on
     // leaving debug) never clears it, so the value is still here when debug returns.
@@ -246,6 +249,16 @@ val AppBar = FC<AppBarProps> { props ->
 
     // A *delayed* loading flag so a fast load never flashes the cue (issue #469).
     val brandLoadingShown = useDelayedFlag(brandState is ShellBrand.Loading)
+
+    // Open the group that holds the page on screen when you first arrive at it (issue #554); after that the
+    // toggle owns the state, so the group you are in can still be collapsed. Keyed on that group, so navigating
+    // within it does not reopen a group you closed, while arriving at a different group opens it.
+    val currentGroup = currentGroupId(config?.menu.orEmpty(), props.currentPage)
+    useEffect(currentGroup) {
+        if (currentGroup != null && currentGroup !in expandedGroups) {
+            expandedGroups = expandedGroups + currentGroup
+        }
+    }
 
     header {
         className = ClassName(if (elevated) "app-bar admin" else "app-bar")
@@ -407,9 +420,10 @@ val AppBar = FC<AppBarProps> { props ->
 
                     // The items themselves, exactly as the backend composed them for this caller, nested into a
                     // drill-down where an item names a parent (issue #517).
+                    val currentItem = currentMenuItem(config?.menu.orEmpty(), props.currentPage)
                     for (node in menuTree(config?.menu.orEmpty())) {
                         if (node.children.isEmpty()) {
-                            menuItemView(node.item, frontendActions) { open = false }
+                            menuItemView(node.item, frontendActions, node.item.id == currentItem?.id) { open = false }
                         } else {
                             // A parent: its label is a header, and its children drill down indented under it.
                             // The parent carries no action of its own -- the backend `collectParentIssues` boot
@@ -417,11 +431,15 @@ val AppBar = FC<AppBarProps> { props ->
                             // so drawing it as a plain header loses nothing. The header labels the child group
                             // for assistive tech via `aria-labelledby`, matching the `role="group"` below.
                             val headerId = "menu-parent-${node.item.id}"
+                            // The header is marked when the group holds the page on screen; a collapsed group is
+                            // opened on arrival by the effect above, not by forcing `expanded` here -- otherwise the
+                            // toggle could never close the group you are in (a silent no-op, webapp/CLAUDE.md).
+                            val holdsCurrent = node.children.any { it.id == currentItem?.id }
                             val expanded = node.item.id in expandedGroups
                             button {
                                 // id/aria via asDynamic to match this file's idiom (see menuItemView below).
                                 asDynamic()["id"] = headerId
-                                className = ClassName("app-menu-parent")
+                                className = ClassName(if (holdsCurrent) "app-menu-parent is-current" else "app-menu-parent")
                                 // A real toggle now: aria-expanded states it, and the children below render
                                 // only when open, so the group collapses to a single line until asked for.
                                 asDynamic()["aria-expanded"] = expanded
@@ -441,7 +459,9 @@ val AppBar = FC<AppBarProps> { props ->
                                     className = ClassName("app-menu-children")
                                     asDynamic()["role"] = "group"
                                     asDynamic()["aria-labelledby"] = headerId
-                                    for (child in node.children) menuItemView(child, frontendActions) { open = false }
+                                    for (child in node.children) {
+                                        menuItemView(child, frontendActions, child.id == currentItem?.id) { open = false }
+                                    }
                                 }
                             }
                         }
@@ -513,14 +533,28 @@ private fun clearTimer(id: Int) {
 }
 
 /** One anchor menu item; navigating by hash fires `hashchange`, which the router and this bar react to. */
-private fun ChildrenBuilder.menuLink(href: String, label: String, onClick: () -> Unit) {
+private fun ChildrenBuilder.menuLink(href: String, label: String, current: Boolean, onClick: () -> Unit) {
     a {
-        className = ClassName("app-menu-item")
+        className = ClassName(if (current) "app-menu-item is-current" else "app-menu-item")
+        // The page on screen (issue #554): stated for assistive tech, not only by colour.
+        if (current) asDynamic()["aria-current"] = "page"
         this.href = href
         this.onClick = { onClick() }
         +label
     }
 }
+
+/**
+ * The menu item whose route is [page] -- the page on screen -- or null when the menu offers no route to it
+ * (Home, a document, a page reached by URL alone). Only a route can be current: a group header or a call has
+ * no page. Pure, covered under `jsNodeTest` (issue #554).
+ */
+fun currentMenuItem(items: List<MenuItem>, page: String): MenuItem? =
+    items.firstOrNull { (it.action as? UiRoute)?.page == page }
+
+/** The id of the drill-down group whose child is the page on screen, or null when the current item is
+ *  top-level or the menu offers no route to [page]. What the bar opens on arrival (issue #554). */
+fun currentGroupId(items: List<MenuItem>, page: String): String? = currentMenuItem(items, page)?.parentId
 
 /** A top-level menu item together with the items that name it as their [MenuItem.parentId] (issue #517). */
 class MenuNode(val item: MenuItem, val children: List<MenuItem>)
@@ -538,9 +572,11 @@ fun menuTree(items: List<MenuItem>): List<MenuNode> {
 
 /** Renders one leaf menu item -- a route as a link, a call as a button (issue #483); a null action renders
  *  nothing (a parent's label is drawn by the drill-down, not here). [onNavigate] closes the menu. */
-private fun ChildrenBuilder.menuItemView(item: MenuItem, actions: FrontendActions, onNavigate: () -> Unit) {
+private fun ChildrenBuilder.menuItemView(
+    item: MenuItem, actions: FrontendActions, current: Boolean, onNavigate: () -> Unit,
+) {
     when (val action = item.action) {
-        is UiRoute -> menuLink("#page=${action.page}", item.label) { onNavigate() }
+        is UiRoute -> menuLink("#page=${action.page}", item.label, current) { onNavigate() }
         is UiCall -> button {
             className = ClassName("app-menu-item")
             // An `openPath` call leaves the SPA for a server path (issue #493); its accessible name says so.

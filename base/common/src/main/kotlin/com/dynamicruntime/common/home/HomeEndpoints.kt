@@ -50,6 +50,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
         property(HFLD.docId, "Markdown document id, fetched at /<staticRoot>/<appId>/doc/<docId:buildId>.", required = true)
         property(HFLD.buildId, "Cache-busting content hash for the document.", required = true)
         property(HFLD.sourcePath, "The document's repo-relative source path, used to resolve its interior links.", required = true)
+        property(HFLD.description, "One line on what the document covers, shown beside its link (issue #554).", required = true)
     }
 
     // One app-bar menu item: an id the frontend can recognize, a label to show, and either a page to navigate
@@ -128,7 +129,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
             // document list grows. A deployment turns on the others (or off) via HCFG.
             UIC.features to mapOf(
                 HFEAT.topBar to c.layoutFlag(HCFG.homeTopBar, default = false),
-                HFEAT.leftBar to c.layoutFlag(HCFG.homeLeftBar, default = true),
+                // Off by default since the Documents page exists (issue #554): the bar only duplicated its listing.
+                HFEAT.leftBar to c.layoutFlag(HCFG.homeLeftBar, default = false),
                 HFEAT.inlineLinks to c.layoutFlag(HCFG.homeInlineLinks, default = false),
                 HFEAT.canManageUsers to AdminRules.canManageUsers(c),
             ),
@@ -205,6 +207,9 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
             cfactExpression = "${CFACTS.anonymous},${BOOT.app}", parentId = HMENU.account)
 
         menuItem(HMENU.catalog, "Endpoint catalog", UiRoute(HMENU.pageCatalog))
+        // The documents page (issue #554). App-only: an edge serves no documents (its `links` are empty), so
+        // offering the listing there would be an entry that opens onto nothing.
+        menuItem(HMENU.docs, "Documents", UiRoute(HMENU.pageDocs), cfactExpression = BOOT.app)
         menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = "${CFACTS.hasAdminLevel},${BOOT.app}")
         // The Operator group (issue #540): a parent header and the deployment-operator diagnostic pages under
         // it, plus an "Overview" landing page that explains each. Parent and children share the one cfact
@@ -287,6 +292,7 @@ private fun homeLinks(): List<Map<String, Any?>> = homeDocs.mapNotNull { doc ->
         HFLD.docId to doc.docId,
         HFLD.buildId to buildId,
         HFLD.sourcePath to doc.sourcePath,
+        HFLD.description to doc.description,
     )
 }
 
@@ -309,7 +315,11 @@ private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
 }
 
 /** One row of the home page's document registry: how it is addressed and labelled, and where it came from. */
-private class HomeDocDef(val id: String, val label: String, val docId: String, val sourcePath: String)
+private class HomeDocDef(
+    val id: String, val label: String, val docId: String, val sourcePath: String,
+    /** One line on what the document covers, shown beside its link in the Documents listing (issue #554). */
+    val description: String,
+)
 
 /**
  * The home page's document registry (issue #492): the README plus the repo docs it links to. Registering a
@@ -319,14 +329,22 @@ private class HomeDocDef(val id: String, val label: String, val docId: String, v
  * documents are published.
  */
 private val homeDocs: List<HomeDocDef> = listOf(
-    HomeDocDef(HDOC.readme, "Read me", HDOC.readme, "README.md"),
-    HomeDocDef(HDOC.codeGuide, "Code guide", HDOC.codeGuide, "code-guide.md"),
-    HomeDocDef(HDOC.clientDefinition, "Client definition", HDOC.clientDefinition, "client-definition.md"),
-    HomeDocDef(HDOC.deferredWork, "Deferred work", HDOC.deferredWork, "deferred-work.md"),
-    HomeDocDef(HDOC.gedraConfigAndData, "Gedra config and data", HDOC.gedraConfigAndData, "gedra-config-and-data.md"),
-    HomeDocDef(HDOC.gedraEntry, "Gedra entry", HDOC.gedraEntry, "gedra-entry.md"),
-    HomeDocDef(HDOC.gedraPatch, "Gedra patch", HDOC.gedraPatch, "gedra-patch.md"),
-    HomeDocDef(HDOC.uiBlock, "UI block", HDOC.uiBlock, "ui-block.md"),
+    HomeDocDef(HDOC.readme, "Read me", HDOC.readme, "README.md",
+        "What the runtime is, where it came from, and how to set it up."),
+    HomeDocDef(HDOC.codeGuide, "Code guide", HDOC.codeGuide, "code-guide.md",
+        "How code here is written, including where it deliberately departs from Kotlin norms."),
+    HomeDocDef(HDOC.clientDefinition, "Client definition", HDOC.clientDefinition, "client-definition.md",
+        "How a client is described, what it owns, and what a deployment does with one."),
+    HomeDocDef(HDOC.deferredWork, "Deferred work", HDOC.deferredWork, "deferred-work.md",
+        "What has deliberately not been done yet, each item under the condition that should reopen it."),
+    HomeDocDef(HDOC.gedraConfigAndData, "Gedra config and data", HDOC.gedraConfigAndData, "gedra-config-and-data.md",
+        "How gedra definitions and stored data are separated, identified, and kept apart."),
+    HomeDocDef(HDOC.gedraEntry, "Gedra entry", HDOC.gedraEntry, "gedra-entry.md",
+        "The design of the universal stored entity and the schema constructs it needs."),
+    HomeDocDef(HDOC.gedraPatch, "Gedra patch", HDOC.gedraPatch, "gedra-patch.md",
+        "How a stored gedra is changed: why a patch, what the input looks like, and the endpoints around it."),
+    HomeDocDef(HDOC.uiBlock, "UI block", HDOC.uiBlock, "ui-block.md",
+        "The UiBlock: declared presentation structure, contributed by components and varied per client."),
 )
 
 /**

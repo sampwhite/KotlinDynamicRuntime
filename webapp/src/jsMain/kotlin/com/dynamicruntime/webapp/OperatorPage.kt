@@ -117,6 +117,8 @@ val OperatorListPage = FC<OperatorListPageProps> { props ->
 
     div {
         className = ClassName("card wide")
+        // Back to the Operator overview -- or to whichever listing opened this tool (issue #554).
+        backToListing(HMENU.pageOperator)
         h1 { +props.title }
         props.description?.let { desc ->
             p { className = ClassName("subtitle"); +desc }
@@ -211,6 +213,7 @@ val OperatorObjectPage = FC<OperatorObjectPageProps> { props ->
 
     div {
         className = ClassName("card wide")
+        backToListing(HMENU.pageOperator)
         h1 { +props.title }
         props.description?.let { desc ->
             p { className = ClassName("subtitle"); +desc }
@@ -301,29 +304,29 @@ val OperatorIndex = FC<Props> {
                 "the app refreshes, so it answers about this node right now.")
         }
         ul {
-            className = ClassName("operator-index")
+            className = ClassName("index-list")
             li {
-                a { href = "#page=${HMENU.pageEnv}"; +"Environment" }
+                a { href = childHref(HMENU.pageEnv, HMENU.pageOperator); +"Environment" }
                 +" \u2014 the environment variables this node declares, with each one's resolved value here."
             }
             li {
-                a { href = "#page=${HMENU.pageSystemInfo}"; +"System info" }
+                a { href = childHref(HMENU.pageSystemInfo, HMENU.pageOperator); +"System info" }
                 +" \u2014 this node's identity, uptime, and JVM statistics."
             }
             li {
-                a { href = "#page=${HMENU.pageBootChecks}"; +"Boot checks" }
+                a { href = childHref(HMENU.pageBootChecks, HMENU.pageOperator); +"Boot checks" }
                 +" \u2014 every check this node ran at startup, its mode, and what it found."
             }
             li {
-                a { href = "#page=${HMENU.pageDbTables}"; +"Database tables" }
+                a { href = childHref(HMENU.pageDbTables, HMENU.pageOperator); +"Database tables" }
                 +" \u2014 every database table registered for this instance."
             }
             li {
-                a { href = "#page=${HMENU.pageFragmentsCheck}"; +"Fragments check" }
+                a { href = childHref(HMENU.pageFragmentsCheck, HMENU.pageOperator); +"Fragments check" }
                 +" \u2014 the Markdown fragment files this node carries, and any problems found."
             }
             li {
-                a { href = "#page=${HMENU.pageCacheState}"; +"Cache state" }
+                a { href = childHref(HMENU.pageCacheState, HMENU.pageOperator); +"Cache state" }
                 +" \u2014 this node's table caches beside the dates every node shares, with a reload action."
             }
         }
@@ -457,6 +460,7 @@ val OperatorCacheStatePage = FC<Props> {
 
     div {
         className = ClassName("card wide")
+        backToListing(HMENU.pageOperator)
         h1 { +"Cache state" }
         p {
             className = ClassName("subtitle")
