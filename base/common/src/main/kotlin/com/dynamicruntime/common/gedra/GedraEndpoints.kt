@@ -9,6 +9,10 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.noWorkflowView
+import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.util.getOptBool
@@ -250,5 +254,44 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
                 request.getOptBool(GDF.allowAdditionalTraits) == true,
             )
             .map { it.toJsonMap() }
+    }
+
+    // --- the resolved workflow view (issue #534) ----------------------------------------------------------
+
+    // Open by design: a resolved view is a render blob like a UiBlock, not a fixed contract, so the type
+    // vouches only for `found` and lets the rest through. `validateResponseSchema` (on in tests) then checks
+    // the one field that is a promise rather than rejecting the render shape.
+    type(GEP.workflowViewType) {
+        type = SCT.kObject
+        description = "A resolved workflow, shaped for a page to render; open like a UiBlock."
+        property(WVF.found, "Whether a workflow was resolved for this caller.", required = true) { type = SCT.boolean }
+        additionalProperties = true
+    }
+
+    // Answers with the caller's client's workflow resolved for rendering. With no `workflowId`, the client's
+    // **creation** workflow -- which is how a create page asks "does this client have one, and what does it
+    // collect?" in a single call. `cxt.client` is the caller's own on the shared path and the path's on a
+    // per-client copy, so the gedra-section copy machinery gives each client `/gedra/<client>/workflow/view`
+    // without this naming one.
+    generalEndpoint(
+        GEP.workflowView,
+        "Resolves a workflow for rendering: its tasks, each trait's schema ref, and resolved labels. With no " +
+            "workflowId, the caller's client's creation workflow.",
+        HttpMethod.GET,
+        outputRef = GEP.workflowViewType,
+        inputFields = {
+            field(GDF.workflowId, "The workflow to resolve; omit for the client's creation workflow.")
+        },
+        publicApi = true,
+    ) { c, request ->
+        val registry = WorkflowService.get(c).forClient(c.client)
+        val requested = request[GDF.workflowId].toOptStr()
+        val declared = if (requested != null) {
+            registry.workflow(requested)
+                ?: throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
+        } else {
+            registry.creation
+        }
+        if (declared == null) noWorkflowView() else resolveWorkflowView(c, declared)
     }
 }

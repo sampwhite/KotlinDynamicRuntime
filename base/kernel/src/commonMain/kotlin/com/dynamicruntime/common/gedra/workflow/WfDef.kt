@@ -57,6 +57,37 @@ object WFD {
 }
 
 /**
+ * The field names of the **resolved** workflow view a `/gedra/<client>/workflow/view` call returns (issue
+ * #534) -- the shape the creation page renders. It reuses [WFD]'s names where the meaning is the same
+ * (`workflowId`, `entry`, `tasks`, `id`, `label`, `traits`, `traitId`, `required`, `saves`, `kind`, `layout`,
+ * `order`, `edit`), and adds only what resolution produces: whether a workflow was found, the workflow's
+ * stored [WfRef], each trait's data `$ref` ([schemaRef]) into the `$defs` the view **carries** (a closure of
+ * just the types it references), whether the task list shows, and the target
+ * facts assembled about each task.
+ */
+@Suppress("ConstPropertyName")
+object WVF {
+    /** Whether the call resolved a workflow at all -- false when the client has no such (or no creation) one. */
+    const val found = "found"
+
+    /** The workflow's stored reference, as [WfRef] text -- what a created gedra records under `creationWorkflowId`. */
+    const val ref = "ref"
+
+    /**
+     * Beside a trait: the JSON-Schema `$ref` into this client's schema for the trait's **data** -- what a
+     * field edits. Named apart from [ref] on purpose: the two are both strings and unrelated (a workflow
+     * reference against a schema pointer), and one word for both is the collision [ref] would invite.
+     */
+    const val schemaRef = "schemaRef"
+
+    /** On the view's top level: whether a page shows the task list (more than one task); see [WfDef.showTaskList]. */
+    const val showTaskList = "showTaskList"
+
+    /** Beside a trait ref: the target facts assembled about the task (`wfTaskComplete`, `wfTaskAvailable`). */
+    const val facts = "facts"
+}
+
+/**
  * The cfact names a task's statuses are reported under -- **target facts** about the task being rendered,
  * passed to the registry's `assemble` rather than computed from the request (issue #533). Only these two are
  * declared: `complete` has a real producer ([WfTaskFacts]), `available` is a placeholder that is always
