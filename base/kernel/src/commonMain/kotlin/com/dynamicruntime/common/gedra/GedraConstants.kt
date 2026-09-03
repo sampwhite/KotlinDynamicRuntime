@@ -26,6 +26,12 @@ object GEP {
     const val formDoc = "/gedra/formDoc"
     const val formDocs = "/gedra/formDocs"
 
+    /** Imports form documents from search output for a target user (issue #545). */
+    const val formDocImport = "/gedra/formDoc/import"
+
+    /** The type naming an import's result -- what was created and what was thrown away. */
+    const val importResultType = "ImportResult"
+
     const val patch = "/gedra/patch"
 
     /** The resolved-workflow view a creation page renders (issue #534). */
@@ -51,6 +57,47 @@ object GEP {
 
     /** The type of what a patch did to one gedra. */
     const val patchedGedra = "PatchedGedra"
+}
+
+/**
+ * Field and value names for the form-document import (issue #545): its input parameters, its result envelope,
+ * and the discard categories. Each name matches its value, so a frontend and the handler read one spelling.
+ */
+@Suppress("ConstPropertyName")
+object GIF {
+    /** Input: the copied data to import -- a single form document, or a `{items: [...]}` wrapper. A Map. */
+    const val data = "data"
+
+    /** Input: throw away an entry whose trait the target client does not support (default true). */
+    const val forgiveUnknownTraits = "forgiveUnknownTraits"
+
+    /** Input: throw away an entry that fails validation rather than rejecting the whole import (default false). */
+    const val forgiveInvalidEntries = "forgiveInvalidEntries"
+
+    /** Input: keep the incoming entry ids instead of minting fresh ones (default false; env-auth only). */
+    const val preserveEntryIds = "preserveEntryIds"
+
+    /** Response: the documents created, each with its assigned gedra id and the traits excluded from it. */
+    const val imported = "imported"
+
+    /** Response: what was thrown away, one row per (category, trait) with a count. */
+    const val discarded = "discarded"
+
+    /** Response (imported[]): the traits excluded from this document, by trait id. */
+    const val excludedTraits = "excludedTraits"
+
+    /** Response (discarded[]): which kind of failure this row counts. */
+    const val category = "category"
+
+    /** Response (discarded[]): how many entries were thrown away for this (category, trait). */
+    const val count = "count"
+
+    // Discard categories.
+    /** An entry whose trait the target client does not support. */
+    const val unknownTrait = "unknownTrait"
+
+    /** An entry that failed validation against its trait's schema. */
+    const val invalidEntry = "invalidEntry"
 }
 
 /** Field names for a gedra's wire shape (see `GedraDataRow.toJsonMap`). Each name matches its value. */

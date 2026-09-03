@@ -18,6 +18,7 @@ import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkUniqueId
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
@@ -237,7 +238,28 @@ class GedraDataService : ServiceInitializer {
         // After the envelope is built, not before: what is checked is the entry as it will be stored, and the
         // union requires the fields `asStoredEntry` adds.
         checkStoredEntries(cxt, kind, stored)
+        return insertStoredGedra(cxt, kind, stored, creationWorkflowId)
+    }
 
+    /**
+     * Inserts one gedra whose entries are **already stored envelopes** -- id, source, timestamps and actor all
+     * stamped -- and returns the row as read back. The shared tail of every create path (issue #545): [create-
+     * Gedra] stamps a fresh envelope per entry and calls this; the import path stamps its own (preserving an
+     * entry id when asked) and calls this. It mints the gedra id, writes the row with ownership and audit taken
+     * from the context, and extracts the result from the very map written, so the caller cannot be handed
+     * something that differs from what is stored.
+     *
+     * It does **not** validate: the caller has already run [checkStoredEntries] (or, for import, partitioned the
+     * entries against the same union), so re-checking here would either duplicate that or, worse, invite a path
+     * that skips it. Keeping the checks with the caller is what lets import forgive an entry this must never see.
+     */
+    private fun insertStoredGedra(
+        cxt: KdrCxt,
+        kind: GedraDataType,
+        stored: List<Map<String, Any?>>,
+        creationWorkflowId: com.dynamicruntime.common.gedra.workflow.WfRef?,
+    ): GedraDataRow {
+        val gedraId = gedraService.intern(cxt.mkGedraId(kind, cxt.client, GedraIdContext.ui))
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
         val stmt = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
@@ -257,10 +279,114 @@ class GedraDataService : ServiceInitializer {
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranCreate, null, mapOf(GD.gedraId to gedraId.fullId)) {
             sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
         }
-        // Extracted from the very map that was written, so what the caller is handed back cannot differ from
-        // what is stored. The entries' `createdAt` was taken a beat before the row's and is therefore never
-        // later than it, which keeps "was this entry added after the gedra?" answerable by comparing them.
         return GedraDataRow.extract(gedraService, data)
+    }
+
+    /**
+     * Imports form documents on behalf of the owner bound to [cxt] (issue #545). Each [docs] entry is a copied
+     * document -- as a search returns one -- from which only the trait entries matter; everything else (ids,
+     * timestamps, actor, source, workflow lineage) is discarded, so an import is portable between users and
+     * clients. The bound owner (`cxt.client`/`cxt.userId`) is the target user, set by the endpoint on a sub
+     * context; the actor stamped into `createdBy` stays the caller.
+     *
+     * Two kinds of per-entry fault are handled, and [opts] says which to forgive: a trait the *target* client
+     * does not support ([GedraImportOptions.forgiveUnknownTraits], default on), and an entry that fails
+     * validation against its trait's schema ([GedraImportOptions.forgiveInvalidEntries], default off). A forgiven
+     * fault throws the entry away and is counted in the result; an unforgiven one throws, and since nothing has
+     * been written yet the whole import is rejected. Status traits are not a concern -- they live in another
+     * table and are never carried in a document's entries.
+     *
+     * Every surviving entry is stamped fresh (`source = user`, the caller as actor, now as the timestamps) and
+     * gets a new entry id unless [GedraImportOptions.preserveEntryIds] is set, which the endpoint permits only
+     * from an env-authed channel. A document reduced to no surviving entries creates nothing.
+     */
+    fun importGedras(
+        cxt: KdrCxt,
+        kind: GedraDataType,
+        docs: List<Map<String, Any?>>,
+        opts: GedraImportOptions,
+    ): GedraImportResult {
+        val union = clientUnion(cxt, kind)
+        val variants = union?.variants
+        val now = cxt.instanceNow()
+        val actor = cxt.userProfile.userId
+        // Aggregated across every document, since the result reports one count per (category, trait).
+        val discards = LinkedHashMap<Pair<String, String>, Int>()
+        fun discard(category: String, traitId: String) {
+            discards[category to traitId] = (discards[category to traitId] ?: 0) + 1
+        }
+        // One document's survivors and the traits excluded from it, computed in the validate phase and written
+        // in the insert phase.
+        val plans = mutableListOf<Pair<List<Map<String, Any?>>, List<String>>>()
+
+        // Phase one -- validate everything, write nothing. An unforgivable fault throws here, before any insert,
+        // which is what makes "reject the entire call" true across documents rather than only within one: a bad
+        // trait in the last document does not leave the first already stored.
+        for (doc in docs) {
+            val survivors = mutableListOf<Map<String, Any?>>()
+            val excluded = LinkedHashSet<String>()
+            for (entry in doc[GDF.entries].toJsonListOfMaps()) {
+                val traitId = (entry[GE.traitId] as? String)?.ifBlank { null }
+                if (traitId == null) {
+                    if (!opts.forgiveInvalidEntries) {
+                        throw KdrException.mkInput("An imported entry carries no '${GE.traitId}'.")
+                    }
+                    discard(GIF.invalidEntry, "")
+                    continue
+                }
+                if (variants != null && !variants.isKnown(traitId)) {
+                    if (!opts.forgiveUnknownTraits) {
+                        throw KdrException.mkInput(
+                            "The client '${cxt.client}' does not support the imported trait '$traitId'.",
+                        )
+                    }
+                    discard(GIF.unknownTrait, traitId)
+                    excluded.add(traitId)
+                    continue
+                }
+                // Strip to the trait and its data, then stamp a fresh envelope -- so an incoming source,
+                // timestamp, actor, or workflow field is dropped rather than carried across the import.
+                val slim = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to entry[GE.data].toJsonMapOrEmpty())
+                val entryId = if (opts.preserveEntryIds) {
+                    (entry[GE.entryId] as? String)?.ifBlank { null } ?: cxt.mkUniqueId()
+                } else {
+                    cxt.mkUniqueId()
+                }
+                val stored = slim.asStoredEntry(entryId = entryId, source = GSRC.user, createdAt = now, createdBy = actor)
+                val failures = if (union != null) validate(union, stored) else emptyList()
+                if (failures.isNotEmpty()) {
+                    if (!opts.forgiveInvalidEntries) {
+                        throw KdrException.mkInput(
+                            "An imported entry for trait '$traitId' is invalid: " +
+                                failures.joinToString("; ") { "${it.path}: ${it.message}" },
+                        )
+                    }
+                    discard(GIF.invalidEntry, traitId)
+                    excluded.add(traitId)
+                    continue
+                }
+                survivors.add(stored)
+            }
+            if (survivors.isEmpty()) {
+                continue
+            }
+            // At most one entry per trait (or per primary-key value) among the survivors, the same invariant a
+            // direct create enforces -- an unforgivable structural fault, so it rejects the whole import (still
+            // in the validate phase, so nothing has been written).
+            checkEntryKeys(survivors, pkFieldsOf(cxt, kind))
+            plans.add(survivors to excluded.toList())
+        }
+
+        // Phase two -- everything validated, so insert. (Not atomic across documents yet: each is its own topic
+        // transaction. What phase one buys is that a *validation* fault never leaves a partial import; a mid-
+        // insert infrastructure failure is a separate, larger concern, noted with the patch's own.)
+        val imported = plans.map { (survivors, excluded) ->
+            GedraImportedDoc(insertStoredGedra(cxt, kind, survivors, null).gedraId.fullId, excluded)
+        }
+        return GedraImportResult(
+            imported,
+            discards.map { (key, count) -> GedraImportDiscard(key.first, key.second, count) },
+        )
     }
 
     /**
@@ -921,4 +1047,33 @@ class GedraDataService : ServiceInitializer {
         fun get(cxt: KdrCxt): GedraDataService = cxt.instanceConfig.get(serviceName) as? GedraDataService
             ?: throw KdrException("The $serviceName is not available on this node.")
     }
+}
+
+/**
+ * Options for [GedraDataService.importGedras] (issue #545). Each forgiveness flag turns a class of per-entry
+ * fault from a whole-import rejection into a silent, reported discard; [preserveEntryIds] keeps incoming entry
+ * ids instead of minting fresh ones, which the endpoint allows only from an env-authed channel.
+ */
+class GedraImportOptions(
+    val forgiveUnknownTraits: Boolean = true,
+    val forgiveInvalidEntries: Boolean = false,
+    val preserveEntryIds: Boolean = false,
+)
+
+/** One thrown-away group in an import result: [count] entries of trait [traitId] discarded for [category]. */
+class GedraImportDiscard(val category: String, val traitId: String, val count: Int) {
+    fun toJsonMap(): Map<String, Any?> = linkedMapOf(GIF.category to category, GE.traitId to traitId, GIF.count to count)
+}
+
+/** One document an import created: its assigned [gedraId] and the trait ids excluded from it. */
+class GedraImportedDoc(val gedraId: String, val excludedTraits: List<String>) {
+    fun toJsonMap(): Map<String, Any?> = linkedMapOf(GDF.gedraId to gedraId, GIF.excludedTraits to excludedTraits)
+}
+
+/** What an import did: the [imported] documents and the [discarded] groups (issue #545). */
+class GedraImportResult(val imported: List<GedraImportedDoc>, val discarded: List<GedraImportDiscard>) {
+    fun toJsonMap(): Map<String, Any?> = linkedMapOf(
+        GIF.imported to imported.map { it.toJsonMap() },
+        GIF.discarded to discarded.map { it.toJsonMap() },
+    )
 }

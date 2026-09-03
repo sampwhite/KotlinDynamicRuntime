@@ -39,6 +39,8 @@ object CFACTS {
     const val isClientOperator = "isClientOperator"
 
     /** The session is in ENV DEBUG (issue #517): env auth effective, and debug behaviors on. */
+    const val hasEnvAuth = "hasEnvAuth"
+
     const val isEnvDebug = "isEnvDebug"
 
     /** The session may **turn debug on**: env auth is effective and debug is not already on (issue #517). */
@@ -166,6 +168,15 @@ fun addCoreCFacts(collector: SchemaCollector) {
                 "`/admin` section, which takes the `allClients` capability too.",
         ),
     ) { RoleLadder.satisfies(it.userProfile.roles, ROLE.admin) }
+
+    collector.addCFact(
+        CFactDef(
+            CFACTS.hasEnvAuth, CFGRP.caller,
+            "True when the session's env auth is effective (issue #545): the request came through an authenti" +
+                "cated edge, or a direct local start assumed it, and it is not suppressed. Gates a field a " +
+                "caller may set only from such a channel -- e.g. importing with entry ids preserved.",
+        ),
+    ) { it.isEnvAuthEffective }
 
     // The env-debug pair (issue #517), read off the context so the menu offer and the fence cannot drift: the
     // debug items appear exactly where `KdrCxt.isEnvDebug` is true, and the "Enable debug" item exactly where a

@@ -42,6 +42,13 @@ object EI {
      * hardcoding it -- the same reason the gedra paths moved in #393.
      */
     const val client = "client"
+
+    /**
+     * Input param naming whose rows an endpoint acts on -- a userId or an email (issue #545). Like [client], it
+     * is meaningful only to a caller who may reach past their own rows, so an endpoint that takes it gates the
+     * field on that (`g-visibleWhen`) and confines the value to the caller's read scope on the server.
+     */
+    const val user = "user"
     const val description = "description"
 
     /**

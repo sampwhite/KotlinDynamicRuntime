@@ -1,6 +1,9 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.ListPage
@@ -16,7 +19,9 @@ import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.ReadScopeRules
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -159,17 +164,128 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
                 minimum = 0
                 default = 0
             }
+            // Confine the search to one user -- a userId or an email (issue #545). Shown only to a caller who
+            // ranks at admin (`g-visibleWhen`), since an ordinary user reaches only their own rows and the
+            // param would name nobody else; the handler enforces the same, resolving the ref within the
+            // caller's read scope, so an ordinary caller who sends it can still only ever name themselves.
+            field(EI.user, "Confine the search to one user -- a userId or an email. Defaults to you.") {
+                emptyIsAbsent = true
+                visibleWhen = CFACTS.hasAdminLevel
+            }
         },
         publicApi = true,
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
         val offset = (request[EP.offset] as? Number)?.toInt() ?: 0
-        val page = GedraDataService.get(c).listGedras(c, formDoc, ReadScopeRules.forCaller(c), limit, offset)
+        val callerScope = ReadScopeRules.forCaller(c)
+        // A named user narrows the scope to that user -- but only within what the caller may already see (see
+        // [resolveTargetUser]); no name is the caller's own scope.
+        val target = resolveTargetUser(c, request, callerScope)
+        val scope = if (target == null) callerScope else ReadScope.ofUser(target.userId)
+        val page = GedraDataService.get(c).listGedras(c, formDoc, scope, limit, offset)
         ListPage(
             page.rows.map { it.toJsonMap() },
             page.numAvailable,
             hasMore = offset + page.rows.size < page.numAvailable,
         )
+    }
+
+    // --- the import (issue #545) --------------------------------------------------------------------------
+
+    // What an import did: the documents it created and, per (category, trait), what it threw away.
+    type(GEP.importResultType) {
+        type = SCT.kObject
+        description = "The outcome of an import: the documents created and the entries thrown away."
+        property(GIF.imported, "The documents created, each with its assigned id and excluded traits.", required = true) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(GDF.gedraId, "The gedra id assigned to the created document.", required = true)
+                property(GIF.excludedTraits, "Trait ids excluded from this document.", required = true) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+            }
+        }
+        property(GIF.discarded, "What was thrown away, one row per category and trait, with a count.", required = true) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(GIF.category, "The discard category ('${GIF.unknownTrait}' or '${GIF.invalidEntry}').", required = true)
+                property(GE.traitId, "The trait the discarded entries named (blank when they named none).", required = true)
+                property(GIF.count, "How many entries were thrown away for this category and trait.", required = true) {
+                    type = SCT.integer
+                }
+            }
+        }
+    }
+
+    generalEndpoint(
+        GEP.formDocImport,
+        "Imports form documents (as a search returns them) for a user, forgiving faults per the flags (issue #545).",
+        HttpMethod.POST,
+        outputRef = GEP.importResultType,
+        inputFields = {
+            // The target user -- a userId or an email. Shown only to a caller who can act for others; an
+            // ordinary caller imports for themselves and the handler confines a supplied ref to their scope.
+            field(EI.user, "The user to import for -- a userId or an email. Defaults to you.") {
+                emptyIsAbsent = true
+                visibleWhen = CFACTS.hasAdminLevel
+            }
+            // The copied data, schema-less on purpose: a single form document, or a `{items: [...]}` wrapper.
+            field(GIF.data, "The copied data to import: one form document, or an object with an 'items' array.", required = true) {
+                type = SCT.kObject
+            }
+            field(GIF.forgiveUnknownTraits, "Throw away an entry whose trait the target client does not support.") {
+                type = SCT.boolean
+                emptyIsAbsent = true
+                default = true
+            }
+            field(GIF.forgiveInvalidEntries, "Throw away an entry that fails validation instead of rejecting the import.") {
+                type = SCT.boolean
+                emptyIsAbsent = true
+                default = false
+            }
+            // Preserving entry ids risks cross-user id collision, so it is offered and allowed only from an
+            // env-authed channel -- gated in the schema, and enforced by the handler regardless.
+            field(GIF.preserveEntryIds, "Keep the incoming entry ids instead of minting fresh ones (env auth only).") {
+                type = SCT.boolean
+                emptyIsAbsent = true
+                default = false
+                visibleWhen = CFACTS.hasEnvAuth
+            }
+        },
+        publicApi = true,
+    ) { c, request ->
+        val callerScope = ReadScopeRules.forCaller(c)
+        // The target owner: the named user (resolved within the caller's scope, so an ordinary caller reaches
+        // only themselves -- see [resolveTargetUser]), or the caller when no user is named. The target's client
+        // is the one whose traits the import validates against.
+        val targetRow = resolveTargetUser(c, request, callerScope)
+        val target = if (targetRow == null) {
+            Triple(c.userProfile.client, c.userProfile.userId, c.userProfile.org)
+        } else {
+            Triple(targetRow.client, targetRow.userId, targetRow.org)
+        }
+        val preserve = request.getOptBool(GIF.preserveEntryIds) == true
+        // The schema hides the toggle from a non-env-authed caller; the gate is not a defense, so enforce it.
+        if (preserve && !c.isEnvAuthEffective) {
+            throw KdrException.mkInput("Preserving entry ids requires env auth.")
+        }
+        // Bind a sub context to the target as the owner (client/userId/org), keeping the caller as the actor
+        // stamped into createdBy.
+        val sub = c.mkSubContext("formDocImport", target.first)
+        sub.userId = target.second
+        sub.org = target.third
+        // Normalize the loose data: a `{items: [...]}` wrapper, else the map itself as one document.
+        val data = request[GIF.data].toJsonMapOrEmpty()
+        val docs = (data[EP.items] as? List<*>)?.toJsonListOfMaps() ?: listOf(data)
+        val opts = GedraImportOptions(
+            forgiveUnknownTraits = request.getOptBool(GIF.forgiveUnknownTraits) != false,
+            forgiveInvalidEntries = request.getOptBool(GIF.forgiveInvalidEntries) == true,
+            preserveEntryIds = preserve,
+        )
+        GedraDataService.get(c).importGedras(sub, formDoc, docs, opts).toJsonMap()
     }
     // --- the patch (issue #337) ---------------------------------------------------------------------------
 
@@ -340,4 +456,17 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         val saveId = request[GDF.saveId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.saveId} is required.")
         saveWorkflow(c, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps())
     }
+}
+
+/**
+ * Resolves the `user` parameter (issue #545) that the search and import handlers share: the caller-supplied
+ * userId-or-email confined to [callerScope], or null when none was named. A ref that resolves to nobody *within
+ * that scope* is a 400 whose wording does not say whether the user is absent or merely out of reach -- the one
+ * place the confinement rule and its message live, so the two surfaces cannot drift. An ordinary caller's scope
+ * is their own user, so they can only ever name themselves; an administrator reaches their client (or all).
+ */
+private fun resolveTargetUser(c: KdrCxt, request: Map<String, Any?>, callerScope: ReadScope): AuthUserRow? {
+    val userRef = (request[EI.user] as? String)?.trim()?.ifEmpty { null } ?: return null
+    return UserService.get(c).resolveUserRef(c, userRef, callerScope)
+        ?: throw KdrException.mkInput("No user matching '$userRef' is within your access.")
 }

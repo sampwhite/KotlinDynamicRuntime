@@ -43,51 +43,20 @@ fun resolveOptionsSources(
     cxt: KdrCxt,
     node: Map<String, Any?>,
     providers: Map<String, SchOptionsProvider>,
-): Map<String, Any?> = resolveMap(cxt, node, providers, "")
+): Map<String, Any?> = copyOnWriteSchema(node) { n, name -> resolveOptionsOnNode(cxt, n, providers, name) }
 
-/** Walks one node. [name] is the property this node is the value of, which is what a provider is told. */
-private fun resolveNode(cxt: KdrCxt, node: Any?, providers: Map<String, SchOptionsProvider>, name: String): Any? =
-    when (node) {
-        is Map<*, *> -> resolveMap(cxt, node, providers, name)
-        is List<*> -> resolveList(cxt, node, providers, name)
-        else -> node
-    }
-
-private fun resolveList(cxt: KdrCxt, list: List<*>, providers: Map<String, SchOptionsProvider>, name: String): Any {
-    var out: MutableList<Any?>? = null
-    for ((index, element) in list.withIndex()) {
-        val resolved = resolveNode(cxt, element, providers, name)
-        if (resolved === element) {
-            continue
-        }
-        val copy = out ?: ArrayList(list).also { out = it }
-        copy[index] = resolved
-    }
-    return out ?: list
-}
-
-private fun resolveMap(
+/**
+ * The per-node transform: when [node] declares [SCH.optionsSource], replace it -- in place, keeping its
+ * position -- with the [SCH.options] its provider gives for [cxt] under the property [name]. A node without the
+ * keyword comes back unchanged (the same instance). [copyOnWriteSchema] supplies the traversal and the name.
+ */
+private fun resolveOptionsOnNode(
     cxt: KdrCxt,
-    node: Map<*, *>,
+    node: Map<String, Any?>,
     providers: Map<String, SchOptionsProvider>,
     name: String,
 ): Map<String, Any?> {
-    val json = node.toJsonMap()
-    var out: MutableMap<String, Any?>? = null
-    for ((key, value) in json) {
-        // A `properties` map is the one place a child's key is its **name**, which is what a provider is
-        // handed. Everywhere else (`items`, a `oneOf` branch, an `if`/`then`) the enclosing name still
-        // describes the value being chosen, so it carries down unchanged.
-        val resolved = if (key == SCH.properties && value is Map<*, *>) {
-            resolveProperties(cxt, value, providers)
-        } else {
-            resolveNode(cxt, value, providers, name)
-        }
-        if (resolved !== value) {
-            (out ?: LinkedHashMap(json).also { out = it })[key] = resolved
-        }
-    }
-    val source = json[SCH.optionsSource] as? String ?: return out ?: json
+    val source = node[SCH.optionsSource] as? String ?: return node
     val provider = providers[source]
         // Unreachable on a booted node -- checkInit refuses an unregistered id before serving anything -- but
         // a store assembled by hand in a test has no such pass, and a silent empty choice list is exactly the
@@ -95,32 +64,10 @@ private fun resolveMap(
         ?: throw KdrException("No options provider is registered under '$source' (for property '$name').")
     val choices = provider(cxt, name).map { linkedMapOf<String, Any?>(SCH.label to it.label, SCH.value to it.value) }
     val result = LinkedHashMap<String, Any?>()
-    for ((key, value) in (out ?: json)) {
+    for ((key, value) in node) {
         if (key == SCH.optionsSource) result[SCH.options] = choices else result[key] = value
     }
     return result
-}
-
-/**
- * Walks a `properties` map, where each child's key **is** the property name a provider is told.
- *
- * Its own function rather than a branch inside [resolveMap] because the name it passes down comes from the
- * key rather than from the caller, which is the one place in the walk where that is true.
- */
-private fun resolveProperties(
-    cxt: KdrCxt,
-    props: Map<*, *>,
-    providers: Map<String, SchOptionsProvider>,
-): Map<String, Any?> {
-    val json = props.toJsonMap()
-    var out: MutableMap<String, Any?>? = null
-    for ((child, body) in json) {
-        val resolved = resolveNode(cxt, body, providers, child)
-        if (resolved !== body) {
-            (out ?: LinkedHashMap(json).also { out = it })[child] = resolved
-        }
-    }
-    return out ?: json
 }
 
 /**

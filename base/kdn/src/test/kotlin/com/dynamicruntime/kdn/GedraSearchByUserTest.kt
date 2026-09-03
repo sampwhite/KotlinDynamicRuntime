@@ -1,0 +1,97 @@
+package com.dynamicruntime.kdn
+
+import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.shouldBe
+
+/**
+ * The `user` search parameter on `GET /gedra/formDocs` (issue #545): confining the listing to one user by
+ * userId or email, the scope that keeps an ordinary caller to themselves, and the `g-visibleWhen` gate that
+ * shows the selector only to an administrator.
+ *
+ * A **flow test**, like [GedraDataEndpointTest] and for the same reason: alice's document in the first block is
+ * the row the admin filters to and the row bob may not reach, so the users and their documents are shared state
+ * built up across the blocks, which run in declaration order.
+ */
+class GedraSearchByUserTest : StringSpec({
+    val cxt = Startup.mkTestBootCxt("gedraSearchUser", "gedraSearchUserTest")
+
+    val aliceEmail = "alice@search.test"
+    val bobEmail = "bob@search.test"
+    val alice = TestUser.create(cxt, aliceEmail)
+    val bob = TestUser.create(cxt, bobEmail)
+    // A scoped administrator -- ROLE.admin without allClients -- who reaches their whole client, which is where
+    // the `user` filter earns its keep.
+    val ada = TestUser.create(cxt, "ada@search.test", level = ROLE.admin)
+
+    fun nameEntry(name: String): Map<String, Any?> =
+        mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))
+
+    fun idsSeenBy(tu: TestUser, args: Map<String, Any?>? = null): List<String?> =
+        tu.getItems(GEP.formDocs, args).map { it[GDF.gedraId].toOptStr() }
+
+    /** The `properties` of the `GET /gedra/formDocs` input schema as this caller's catalog renders it. */
+    fun formDocsInputProps(tu: TestUser): Map<String, Any?> {
+        val eps = tu.getData("/schema/endpoints")[EI.endpoints].toJsonListOfMaps()
+        val formDocs = eps.first { it[EI.path].toOptStr()?.endsWith("/formDocs") == true && it[EI.method] == "GET" }
+        return formDocs[EI.inputSchema].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
+    }
+
+    var aliceDocId = ""
+    var bobDocId = ""
+
+    "each user creates a form document of their own" {
+        aliceDocId = alice.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(nameEntry("Alice doc"))))[GDF.gedraId].toOptStr() ?: ""
+        bobDocId = bob.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(nameEntry("Bob doc"))))[GDF.gedraId].toOptStr() ?: ""
+        (aliceDocId.isNotEmpty() && bobDocId.isNotEmpty()) shouldBe true
+    }
+
+    "an admin confines the listing to one user, by email or by id" {
+        // By email.
+        idsSeenBy(ada, mapOf(EI.user to aliceEmail)) shouldBe listOf(aliceDocId)
+        // By numeric userId -- the two-way support (the same document).
+        idsSeenBy(ada, mapOf(EI.user to alice.userId.toString())) shouldBe listOf(aliceDocId)
+        // Bob's user narrows to bob's document.
+        idsSeenBy(ada, mapOf(EI.user to bobEmail)) shouldBe listOf(bobDocId)
+    }
+
+    "an admin with no user parameter sees the whole client" {
+        idsSeenBy(ada) shouldContainAll listOf(aliceDocId, bobDocId)
+    }
+
+    "an ordinary user sees only their own documents, with or without the parameter" {
+        // No parameter: own rows only.
+        idsSeenBy(bob).let {
+            it shouldContainAll listOf(bobDocId)
+            it shouldNotContain aliceDocId
+        }
+        // Naming themselves is allowed and changes nothing.
+        idsSeenBy(bob, mapOf(EI.user to bobEmail)) shouldBe listOf(bobDocId)
+    }
+
+    "an ordinary user naming another user is refused, without revealing whether they exist" {
+        // Out of bob's scope: a 400 that reads the same whether alice exists or not.
+        bob.client.sendGetRequest(GEP.formDocs, mapOf(EI.user to aliceEmail)).rptStatusCode shouldBe 400
+        // A userId out of scope is refused the same way.
+        bob.client.sendGetRequest(GEP.formDocs, mapOf(EI.user to alice.userId.toString())).rptStatusCode shouldBe 400
+    }
+
+    "the user selector is shown to an admin and hidden from an ordinary user (g-visibleWhen)" {
+        formDocsInputProps(ada).containsKey(EI.user) shouldBe true
+        formDocsInputProps(bob).containsKey(EI.user) shouldBe false
+        // And the keyword itself never leaks to the admin who does see the field.
+        (formDocsInputProps(ada)[EI.user].toJsonMapOrEmpty()).containsKey(SCH.visibleWhen) shouldBe false
+    }
+})
