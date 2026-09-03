@@ -39,6 +39,13 @@
     --surface-page: #0f172a;
     /* Raised above the page: the app bar, the menu, a card. */
     --surface-raised: #1e293b;
+
+    /* The width of a *content* page -- Home, the documents, the operator pages, the catalog, the forms list
+       (issue #554). One token, so the shell widens as one thing: a wide window used to leave 42% of itself
+       empty beside a 1040px card. A genuine form (the auth flow, the profile) keeps the narrow `.card`, and a
+       table-first page keeps its own `.card.full`. Prose stays readable at this width because Markdown
+       paragraphs are capped at 80ch below, on the column rather than the card. */
+    --content-width: min(1400px, 95vw);
     /* Every border in the app, the hairline between sections, and a hover wash. */
     --border: #334155;
 
@@ -346,7 +353,7 @@ body {
 
 /* A non-clickable menu header, e.g. "Signed in as …". */
 /* Home shell: the three link presentations (top bar / left bar / inline) around the content. */
-.home-shell { width: min(1040px, 95vw); }
+.home-shell { width: var(--content-width); }
 .home-topbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .home-body { display: flex; gap: 24px; align-items: flex-start; }
 .home-leftbar {
@@ -391,6 +398,10 @@ body {
 
 /* Rendered Markdown (fragment copy and whole documents). */
 .markdown { line-height: 1.6; overflow-wrap: anywhere; }
+/* Readable measure at any width (issue #554): prose is capped at ~80 characters, on the paragraph rather than
+   the container, so a table (#547) or a code block still gets the full column while a line of text does not
+   run the width of a wide window. */
+.markdown p, .markdown li, .markdown blockquote, .markdown h1, .markdown h2, .markdown h3 { max-width: 80ch; }
 .markdown h1, .markdown h2, .markdown h3 { margin: 20px 0 8px; }
 /* `markdown-inline` is a phrase rendered inside markup the caller owns (MarkdownInline): it shares these
    inline looks, but never the block spacing above -- it has no line-height or margins of its own. */
@@ -462,10 +473,10 @@ body {
 .card > .type-hint { margin-top: 14px; }
 .card > .type-hint + .type-hint { margin-top: 2px; }
 /* The endpoint browser needs room for the table and wide responses. */
-.card.wide { width: min(1040px, 95vw); }
+.card.wide { width: var(--content-width); }
 /* A table-first page: the content is a grid of many columns, so it takes the window rather than a chosen
-   width. Separate from `.wide` rather than widening it, because 1040 is a deliberate figure for the endpoint
-   browser -- prose and a form read badly at 1600, and a ten-column table reads badly at 1040 (issue #462).
+   width. Separate from `.wide` rather than widening it, because `--content-width` is a deliberate figure for a
+   content page -- a form reads badly at 1600, and a ten-column table reads badly at 1400 (issue #462).
    `calc` rather than a flat cap so a large monitor is actually used; the cap keeps a line of text readable.
 
    This only pays off because the controls inside declare their own widths. While they did not, every pixel
