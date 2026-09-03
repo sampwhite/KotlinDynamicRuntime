@@ -72,7 +72,7 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "profile") {
     // display would truncate it anyway, so an over-long value is refused by validation rather than by hand.
     generalEndpoint(AEP.profileSetName, "Sets the name the caller is shown under; blank clears it.",
         HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
-            field(AFLD.name, "The name to be shown under. Blank clears it, falling back to the login name.") {
+            field(AFLD.name, "The name to be shown under. Blank clears it, falling back to the login email.") {
                 maxLength = defaultDisplayLen
             }
         }) { c, req ->
