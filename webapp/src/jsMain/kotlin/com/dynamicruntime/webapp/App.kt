@@ -121,6 +121,7 @@ val App = FC<Props> {
                     }
                 }
                 AppBar {
+                    this.currentPage = page
                     this.envAuthSuppressible = envAuthSuppressible
                     this.envAuthActing = envAuthActing
                     this.envAuthDebug = envAuthDebug

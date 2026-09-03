@@ -308,6 +308,12 @@ body {
     cursor: pointer;
 }
 .app-menu-item:hover { background: var(--border); }
+/* The page on screen (issue #554): an accent rail and a lifted tone, on the item and on the group holding it. */
+.app-menu-item.is-current, .app-menu-parent.is-current {
+    background: rgba(129, 140, 248, .10);
+    box-shadow: inset 3px 0 0 var(--accent-bright);
+}
+.app-menu-item.is-current { color: var(--accent-bright); }
 
 /* A drill-down parent (issue #517, collapsible since #540): a clickable group header that toggles its
    children, which are indented under it so the nesting reads as a group rather than a flat list. It reads like
