@@ -283,18 +283,19 @@ object SCH {
 
     /**
      * A **cfact expression** (`CFactRegistry` syntax) deciding whether this property is shown to a given caller
-     * (issue #545). Resolved when the endpoint catalog renders for that caller, exactly like [optionsSource]:
-     * the property is kept when the caller's assembled cfacts satisfy the expression and **dropped entirely**
-     * -- from its `properties` map and from the enclosing `required` -- when they do not, and the keyword is
-     * stripped from what survives. So an ordinary user is not shown an administrator's `user` selector, and a
-     * non-env-authed caller is not shown a privileged toggle.
+     * (issues #545, #564). Unlike [optionsSource], it is **evaluated on the frontend**: the served schema keeps
+     * the keyword unresolved -- so the document is identical for every caller and can double as published
+     * documentation -- and the client hides the field when the caller's delivered cfacts fail the expression.
+     * The catalog response carries those cfacts (`cfacts`), holding only the ones a `CFactDef` marks
+     * `toFrontend`; a boot check refuses a `g-visibleWhen` that names a cfact not so marked, since it would hide
+     * the field from everyone.
      *
-     * **Presentation, never a gate.** Dropping a field from the *rendered* schema hides it; it does not defend
-     * it. Request validation runs against the compiled schema, which still carries the field, so a handler that
-     * accepts a `g-visibleWhen` field must enforce the same condition itself -- the keyword is the advertise
-     * half of an advertise-and-enforce pair, the same relationship [optionsSource] has with a handler that
-     * bounds its own input. It takes no part in validation and has no export row: a hidden field is not a
-     * stricter document, and a consumer that never sees the field cannot send it.
+     * **Presentation, never a gate.** Hiding a field client-side does not defend it. Request validation runs
+     * against the compiled schema, which still carries the field, so a handler that accepts a `g-visibleWhen`
+     * field must enforce the same condition itself -- the keyword is the advertise half of an
+     * advertise-and-enforce pair, the same relationship [optionsSource] has with a handler that bounds its own
+     * input. It takes no part in validation and has no export row: it neither tightens nor loosens what a
+     * consumer may send.
      */
     const val visibleWhen = "g-visibleWhen"
 

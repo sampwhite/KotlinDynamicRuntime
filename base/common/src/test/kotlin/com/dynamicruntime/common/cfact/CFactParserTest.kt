@@ -160,4 +160,15 @@ class CFactParserTest : StringSpec({
         parse("#always").render() shouldBe "#always"
         parse("ab,(cd|ef)").render() shouldBe "ab,(cd|ef)"
     }
+
+    // referencedNames feeds the g-visibleWhen boot check (issue #564): every atom, through the operators,
+    // and nothing for the literals, which name no cfact.
+    "referencedNames lists the atoms an expression names, unfolding operators and ignoring literals" {
+        parse("app").referencedNames() shouldBe setOf("app")
+        parse("~edge").referencedNames() shouldBe setOf("edge")
+        parse("(ab,cd)|(~ef,gh)").referencedNames() shouldBe setOf("ab", "cd", "ef", "gh")
+        parse("#always").referencedNames() shouldBe emptySet()
+        parse("#never").referencedNames() shouldBe emptySet()
+        CFACT.always.referencedNames() shouldBe emptySet()
+    }
 })

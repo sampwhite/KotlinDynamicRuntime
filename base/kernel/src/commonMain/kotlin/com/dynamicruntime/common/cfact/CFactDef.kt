@@ -77,6 +77,16 @@ class CFactDef(
      * between a discovery endpoint people use and one they read once.
      */
     val description: String,
+    /**
+     * Whether this cfact is **delivered to the frontend** (issue #564), so a `g-visibleWhen` expression naming
+     * it can be evaluated client-side.
+     *
+     * Default false: a cfact crosses the wire only by opting in, which keeps a client's private vocabulary off
+     * it (the concern `UiBlockService` raised against putting whole cfact sets on the wire). A boot check
+     * refuses a `g-visibleWhen` that names a cfact this is not set on -- such a gate would silently fail closed
+     * on the frontend, hiding the field from the very callers meant to see it.
+     */
+    val toFrontend: Boolean = false,
 ) {
     init {
         if (!isCFactName(name)) {

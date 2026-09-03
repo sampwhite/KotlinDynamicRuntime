@@ -149,10 +149,11 @@ site: those objects are the key sets of different surfaces, and the descriptions
 ## Per-caller field visibility: `visibleWhen`
 
 A property can be shown to some callers and hidden from others with `visibleWhen = "<cfact expression>"` (the
-custom `g-visibleWhen` keyword, issue #545). Resolved when the endpoint catalog renders for a caller — the same
-place and copy-on-write discipline as `optionsSource`: the field is kept (with the keyword stripped) when the
-caller's assembled cfacts satisfy the expression, and **dropped** — from its `properties` and from the
-enclosing `required` — when they do not.
+custom `g-visibleWhen` keyword, issues #545, #564). Unlike `optionsSource`, it is **evaluated on the frontend**:
+the served schema keeps the keyword unresolved — identical for every caller, so the catalog document can double
+as published documentation — and the client hides the field when the caller's delivered cfacts fail the
+expression. The catalog response carries those cfacts (its `cfacts` field), holding only the ones a `CFactDef`
+marks `toFrontend`.
 
 ```kotlin
 field(EI.user, "Confine the search to one user — a userId or an email.") {
@@ -161,11 +162,12 @@ field(EI.user, "Confine the search to one user — a userId or an email.") {
 }
 ```
 
-**Presentation, never a gate.** Hiding a field from the *rendered* schema does not defend it: request
-validation runs against the compiled schema, which still carries it. A handler that accepts a `visibleWhen`
-field must enforce the same condition itself — it is the advertise half of an advertise-and-enforce pair, the
-same relationship `optionsSource` has with a handler that bounds its own input. A malformed expression fails the
-boot; an unknown fact name is not an error (it evaluates absent), the parser's usual leniency.
+**Presentation, never a gate.** Hiding a field client-side does not defend it: request validation runs against
+the compiled schema, which still carries it. A handler that accepts a `visibleWhen` field must enforce the same
+condition itself — it is the advertise half of an advertise-and-enforce pair, the same relationship
+`optionsSource` has with a handler that bounds its own input. A malformed expression fails the boot, as does one
+naming a cfact whose `CFactDef` is not marked `toFrontend` — that fact never reaches the client, so the gate
+would hide the field from everyone.
 
 ## Presentation hints (read-only display)
 

@@ -73,6 +73,13 @@ object EI {
      * enforced server-side, so a frontend ignoring this still sees only the public set.
      */
     const val filtersAvailable = "filtersAvailable"
+
+    /**
+     * The caller's active, frontend-delivered cfacts, carried on the catalog response (issue #564) so the
+     * client can evaluate a property's `g-visibleWhen` itself. Only names a `CFactDef` marks `toFrontend`, and
+     * only those present for this caller, appear -- absence means false, matching the backend evaluator.
+     */
+    const val cfacts = "cfacts"
 }
 
 /**
