@@ -166,6 +166,9 @@ fun addCoreCFacts(collector: SchemaCollector) {
             "True when the caller ranks at `admin` on the privilege ladder. **Level only**: it says what the " +
                 "caller may do, not over whose rows, so it is not the same as reaching the deployment-wide " +
                 "`/admin` section, which takes the `allClients` capability too.",
+            // Delivered to the frontend (issue #564): an admin-only field gated `hasAdminLevel` is hidden
+            // client-side, so the client must be told whether the caller has the level.
+            toFrontend = true,
         ),
     ) { RoleLadder.satisfies(it.userProfile.roles, ROLE.admin) }
 
@@ -175,6 +178,9 @@ fun addCoreCFacts(collector: SchemaCollector) {
             "True when the session's env auth is effective (issue #545): the request came through an authenti" +
                 "cated edge, or a direct local start assumed it, and it is not suppressed. Gates a field a " +
                 "caller may set only from such a channel -- e.g. importing with entry ids preserved.",
+            // Delivered to the frontend (issue #564): `preserveEntryIds` is gated `hasEnvAuth`, so the client
+            // needs the fact to decide whether to show it.
+            toFrontend = true,
         ),
     ) { it.isEnvAuthEffective }
 

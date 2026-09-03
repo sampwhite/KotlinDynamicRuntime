@@ -57,6 +57,13 @@ class Catalog(
      * to toggle, and re-offering a publicApi filter that is forced on would only mislead.
      */
     val filtersAvailable: Boolean = true,
+    /**
+     * The caller's frontend-delivered cfacts (issue #564): each cfact name a `CFactDef` marks deliverable,
+     * mapped to whether it is present for this caller. [SchemaForm] evaluates a property's `g-visibleWhen`
+     * against these to hide a field a data-entry form should not offer this caller. Empty when the node sends
+     * none (an older backend): then nothing is gated.
+     */
+    val cfacts: Map<String, Boolean> = emptyMap(),
 ) {
     /** The shared `$defs` parsed once into resolved kernel [SchType]s (refs bound). */
     val defTypes: Map<String, SchType> by lazy { parseSchemaTypes(defs) }

@@ -4,6 +4,7 @@ import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.cfact.CFactRegistries
 import com.dynamicruntime.common.cfact.CFactRegistry
 import com.dynamicruntime.common.cfact.buildCFactRegistries
+import com.dynamicruntime.common.cfact.referencedNames
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -38,8 +39,9 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.SchOptionsProvider
 import com.dynamicruntime.common.schema.optionsSourceProblems
+import com.dynamicruntime.common.schema.requiredGateProblem
+import com.dynamicruntime.common.schema.requiredVisibleWhenProblems
 import com.dynamicruntime.common.schema.resolveOptionsSources
-import com.dynamicruntime.common.schema.resolveVisibleWhen
 import com.dynamicruntime.common.schema.visibleWhenProblems
 import com.dynamicruntime.common.util.addDays
 import com.dynamicruntime.common.util.formatDate
@@ -185,8 +187,8 @@ class SchemaService : ServiceInitializer {
         // complete global set. Once built, it never changes -- which is what makes a registry something an
         // expression can be parsed against once and evaluated many times.
         cfactRegistries = buildCFactRegistries(collected.cfacts, collected.cfactSources, collected.clientCFacts)
-        // After the registry exists (issue #545): a `g-visibleWhen` expression that does not parse would other-
-        // wise fault the catalog at request time -- for one caller, on one surface -- rather than at boot.
+        // After the registry exists (issue #545): a `g-visibleWhen` expression that does not parse would otherwise
+        // fault the catalog at request time -- for one caller, on one surface -- rather than at boot.
         checkVisibleWhen()
         isInit = true
     }
@@ -244,14 +246,47 @@ class SchemaService : ServiceInitializer {
         val registry = cfactsFor(null)
         val problems = LinkedHashSet<String>()
         fun check(where: String, node: Any?) {
-            problems.addAll(visibleWhenProblems(where, node) { registry.parse(it) })
+            problems.addAll(
+                visibleWhenProblems(where, node) { expression ->
+                    // Two ways an expression can be wrong: it does not parse (a typo or an undeclared name), or
+                    // it names a real cfact that is not delivered to the frontend -- where the gate is now
+                    // evaluated (issue #564). The second would hide the field from everyone, silently, so it is
+                    // refused here rather than discovered as a field that never appears.
+                    val predicate = try {
+                        registry.parse(expression)
+                    } catch (e: KdrException) {
+                        return@visibleWhenProblems "does not parse: ${e.message}"
+                    }
+                    val notDelivered = predicate.referencedNames()
+                        .filterNot { registry.defs[it]?.toFrontend == true }
+                        .sorted()
+                    if (notDelivered.isEmpty()) {
+                        null
+                    } else {
+                        "names cfact(s) $notDelivered that are not delivered to the frontend -- set " +
+                            "'toFrontend' on their CFactDef, or the gate hides the field from every caller"
+                    }
+                },
+            )
+            // A gate on a *required* property is refused too: it hides the field while the schema still requires
+            // it, so a caller it hides could never submit (issue #564). This shape is a `properties` child named
+            // in the sibling `required`; an endpoint field, whose required-ness sits on the field itself, is
+            // checked below.
+            problems.addAll(requiredVisibleWhenProblems(where, node))
         }
         for ((name, body) in schemaStore.defs) check("Type '$name'", body)
         for ((client, store) in clientStores) {
             for ((name, body) in store.defs) check("Type '$name' (client '$client')", body)
         }
         for (endpoint in schemaStore.endpoints.values) {
-            endpoint.inputFields?.forEach { check("Endpoint '${endpoint.collationKey}' field '${it.name}'", it.schema) }
+            endpoint.inputFields?.forEach { field ->
+                check("Endpoint '${endpoint.collationKey}' field '${field.name}'", field.schema)
+                // The field's gate lives on its schema, its required-ness on the field, so the walk above cannot
+                // see them together -- match them here (issue #564).
+                if (field.required && field.schema[SCH.visibleWhen] is String) {
+                    problems.add(requiredGateProblem("Endpoint '${endpoint.collationKey}'", field.name))
+                }
+            }
             check("Endpoint '${endpoint.collationKey}' output", endpoint.outputSchema)
         }
         if (problems.isNotEmpty()) {
@@ -385,6 +420,16 @@ class SchemaService : ServiceInitializer {
                         "only the published endpoints are listed and the frontend offers no filters.",
                     required = true,
                 ) { type = SCT.boolean }
+                property(
+                    EI.cfacts,
+                    "The frontend-delivered cfacts (issue #564) and whether each is present for this caller: a " +
+                        "map from cfact name to boolean, for evaluating a property's `g-visibleWhen` " +
+                        "client-side. Only cfacts a `CFactDef` marks deliverable appear -- the whole such " +
+                        "vocabulary, so a gate that names an absent one still parses.",
+                    required = true,
+                ) {
+                    type = SCT.kObject
+                }
             }
             generalEndpoint(
                 "/schema/endpoints",
@@ -795,6 +840,28 @@ class SchemaService : ServiceInitializer {
             renderings: List<Map<String, Any?>>,
             surface: CatalogSurface,
         ): Map<String, Any?> {
+            // Read optionally, like the surface -- a store built by hand, outside a running dispatcher, has
+            // no service to consult. But an absent service resolves against an **empty** registry rather than
+            // skipping resolution: a document with nothing sourced comes back untouched either way, and one
+            // with a sourced list faults instead of quietly shipping the id to a client that has no idea what
+            // to do with it.
+            val svc = cxt.instanceConfig.get(serviceName) as? SchemaService
+            // The frontend-delivered cfacts this caller has (issue #564). `g-visibleWhen` is no longer resolved
+            // here: the served schema keeps the keyword, identical for every caller, and the client hides a
+            // field whose expression these cfacts fail. Only cfacts a CFactDef marks `toFrontend` cross the
+            // wire (a boot check ensures every gate names one of those), and only the present ones are sent --
+            // absence means false, matching the backend evaluator. The registry is the surface's client's, the
+            // one whose cfacts an expression on this surface may name.
+            val registry = svc?.cfactsFor(surface.client)
+            val present = registry?.assemble(cxt).orEmpty()
+            // The whole frontend-delivered cfact vocabulary, each mapped to whether it is present for this
+            // caller -- not only the present ones. The client parses a gate against these names, so an absent
+            // one it may still name (a `~hasEnvAuth` gate for a caller who lacks it) has to be here as `false`,
+            // or the parse would choke on an unknown name. Only cfacts a CFactDef marks `toFrontend` appear,
+            // and the boot check ensures every gate names one of them.
+            val deliveredCfacts = registry?.defs.orEmpty().values
+                .filter { it.toFrontend }
+                .associate { it.name to (it.name in present) }
             val result = linkedMapOf(
                 EI.endpoints to renderings,
                 SCH.dDefs to collectDefs(renderings, surface.schema.defs),
@@ -802,26 +869,10 @@ class SchemaService : ServiceInitializer {
                 // listing and the single-lookup, so the two cannot disagree about it -- and read against the
                 // effective env auth, the same gate `endpointCatalog` restricts the listing by.
                 EI.filtersAvailable to cxt.isEnvAuthEffective,
+                EI.cfacts to deliveredCfacts,
             )
-            // Read optionally, like the surface -- a store built by hand, outside a running dispatcher, has
-            // no service to consult. But an absent service resolves against an **empty** registry rather than
-            // skipping resolution: a document with nothing sourced comes back untouched either way, and one
-            // with a sourced list faults instead of quietly shipping the id to a client that has no idea what
-            // to do with it.
-            val svc = cxt.instanceConfig.get(serviceName) as? SchemaService
-            // Field visibility first (issue #545): a field this caller may not see is dropped before its choice
-            // list is resolved, so a provider is not called for a field that then vanishes. The cfact registry
-            // is the surface's client's -- the one whose cfacts an expression on this surface may name. With no
-            // service (a store built by hand in a test), every gate passes and the keyword is merely stripped:
-            // the field is presentation, and the safe presentation default is to show it, since the handler
-            // enforces the real condition regardless.
-            val registry = svc?.cfactsFor(surface.client)
-            val assembled = registry?.assemble(cxt)
-            val gated = resolveVisibleWhen(result) { expression ->
-                if (registry == null || assembled == null) true else registry.parse(expression).matches(assembled)
-            }
             val providers = svc?.optionsProviders.orEmpty()
-            return resolveOptionsSources(cxt, gated, providers)
+            return resolveOptionsSources(cxt, result, providers)
         }
 
         /**

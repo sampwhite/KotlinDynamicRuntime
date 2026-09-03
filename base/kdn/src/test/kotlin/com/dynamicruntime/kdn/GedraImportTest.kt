@@ -1,8 +1,8 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
@@ -47,7 +47,7 @@ class GedraImportTest : StringSpec({
     fun entriesOf(tu: TestUser, gedraId: String): List<Map<String, Any?>> =
         tu.getItem(GEP.formDoc, mapOf(GDF.gedraId to gedraId))[GDF.entries].toJsonListOfMaps()
 
-    var aliceDocId = ""
+    var aliceDocId: String
 
     "a user imports a single document for themselves" {
         val res = importFor(bob, mapOf(GIF.data to doc(nameEntry("Imported for Bob"))))
@@ -146,14 +146,21 @@ class GedraImportTest : StringSpec({
         entriesOf(ada, newId).single()[GE.entryId] shouldBe "keep-this-id"
     }
 
-    "the preserveEntryIds toggle is shown only to an env-authed caller (g-visibleWhen)" {
+    "the preserveEntryIds toggle carries g-visibleWhen for every caller; the delivered cfacts decide it (#564)" {
         fun importInputProps(tu: TestUser): Map<String, Any?> {
             val eps = tu.getData("/schema/endpoints")[EI.endpoints].toJsonListOfMaps()
             val ep = eps.first { it[EI.path].toOptStr()?.endsWith("/formDoc/import") == true && it[EI.method] == "POST" }
             return ep[EI.inputSchema].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
         }
-        // ada's channel is env-authed (header set above); bob's is not.
+        fun deliveredCfacts(tu: TestUser): Map<String, Any?> =
+            tu.getData("/schema/endpoints")[EI.cfacts].toJsonMapOrEmpty()
+        // The served schema is caller-independent now (issue #564): the toggle and its keyword reach both.
         importInputProps(ada).containsKey(GIF.preserveEntryIds) shouldBe true
-        importInputProps(bob).containsKey(GIF.preserveEntryIds) shouldBe false
+        importInputProps(bob).containsKey(GIF.preserveEntryIds) shouldBe true
+        importInputProps(ada)[GIF.preserveEntryIds].toJsonMapOrEmpty()[SCH.visibleWhen] shouldBe CFACTS.hasEnvAuth
+        // ada's channel is env-authed (the header set above), bob's is not: the delivered cfacts differ, so the
+        // client shows the toggle only where hasEnvAuth is present. The handler enforces it regardless.
+        deliveredCfacts(ada)[CFACTS.hasEnvAuth] shouldBe true
+        deliveredCfacts(bob)[CFACTS.hasEnvAuth] shouldBe false
     }
 })

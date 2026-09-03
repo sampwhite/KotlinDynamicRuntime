@@ -13,9 +13,9 @@ typealias SchNodeTransform = (node: Map<String, Any?>, name: String) -> Map<Stri
  * Walks a schema document copy-on-write, applying [transform] to every map node after its children have been
  * walked (post-order), and returns the rewritten document (issue #545).
  *
- * The catalog's render-time resolutions -- sourcing a choice list ([resolveOptionsSources]) and gating a field
- * ([resolveVisibleWhen]) -- differ only in that transform, not in the traversal, so the traversal lives here
- * once. What it guarantees, and what both resolutions rely on:
+ * The catalog's render-time resolution of a choice list ([resolveOptionsSources]) is its caller: the transform
+ * is the per-node work, the traversal lives here once, general enough for any future per-caller rewrite. What it
+ * guarantees, and what such a resolution relies on:
  *
  *  - **Copy-on-write identity.** A node the transform leaves unchanged, whose children are unchanged too, comes
  *    back as the identical instance; only nodes on the path to a real change are copied. The catalog's
@@ -65,8 +65,8 @@ private fun cowMap(node: Map<*, *>, name: String, transform: SchNodeTransform): 
         }
     }
     // Post-order: the node's own transform runs after its children are settled, so a transform that reads its
-    // `properties` (field gating) sees children already rewritten, and one that reads the node's own keyword
-    // (options sourcing) sees the recursed node.
+    // `properties` sees children already rewritten, and one that reads the node's own keyword (options sourcing)
+    // sees the recursed node.
     return transform(out ?: json, name)
 }
 

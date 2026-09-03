@@ -129,3 +129,16 @@ fun isCFactNameChar(c: Char): Boolean = c.isLetterOrDigit() || c == '_' || c == 
 
 /** Whether [name] is spellable as a cfact name: non-empty, and [isCFactNameChar] throughout. */
 fun isCFactName(name: String): Boolean = name.isNotEmpty() && name.all { isCFactNameChar(it) }
+
+/**
+ * Every cfact name this expression refers to -- its atoms, unfolded through the operators, with the `#always` /
+ * `#never` literals contributing nothing (they name no cfact). For a boot check that each name a `g-visibleWhen`
+ * uses is one the deployment actually delivers where the expression is evaluated (issue #564).
+ */
+fun CFactPredicate.referencedNames(): Set<String> = when (this) {
+    is CFactAtom -> setOf(name)
+    is CFactNot -> inner.referencedNames()
+    is CFactAll -> parts.flatMapTo(LinkedHashSet()) { it.referencedNames() }
+    is CFactAny -> parts.flatMapTo(LinkedHashSet()) { it.referencedNames() }
+    else -> emptySet()
+}

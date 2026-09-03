@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -49,6 +50,10 @@ class GedraSearchByUserTest : StringSpec({
         return formDocs[EI.inputSchema].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
     }
 
+    /** The frontend-delivered cfacts on this caller's catalog response (issue #564): name -> present. */
+    fun deliveredCfacts(tu: TestUser): Map<String, Any?> =
+        tu.getData("/schema/endpoints")[EI.cfacts].toJsonMapOrEmpty()
+
     var aliceDocId = ""
     var bobDocId = ""
 
@@ -88,10 +93,17 @@ class GedraSearchByUserTest : StringSpec({
         bob.client.sendGetRequest(GEP.formDocs, mapOf(EI.user to alice.userId.toString())).rptStatusCode shouldBe 400
     }
 
-    "the user selector is shown to an admin and hidden from an ordinary user (g-visibleWhen)" {
+    "the user selector carries g-visibleWhen for every caller; the delivered cfacts decide who shows it (#564)" {
+        // The served schema is caller-independent now (issue #564): both callers get the field with the
+        // keyword intact, so the one document can double as published documentation. The frontend hides it.
         formDocsInputProps(ada).containsKey(EI.user) shouldBe true
-        formDocsInputProps(bob).containsKey(EI.user) shouldBe false
-        // And the keyword itself never leaks to the admin who does see the field.
-        (formDocsInputProps(ada)[EI.user].toJsonMapOrEmpty()).containsKey(SCH.visibleWhen) shouldBe false
+        formDocsInputProps(bob).containsKey(EI.user) shouldBe true
+        formDocsInputProps(ada)[EI.user].toJsonMapOrEmpty()[SCH.visibleWhen] shouldBe CFACTS.hasAdminLevel
+        formDocsInputProps(bob)[EI.user].toJsonMapOrEmpty()[SCH.visibleWhen] shouldBe CFACTS.hasAdminLevel
+        // What differs is the delivered cfacts the client evaluates against: the admin has hasAdminLevel, the
+        // ordinary user does not -- so the client shows the field to one and hides it from the other. The
+        // handler enforces scope regardless (the 400s above).
+        deliveredCfacts(ada)[CFACTS.hasAdminLevel] shouldBe true
+        deliveredCfacts(bob)[CFACTS.hasAdminLevel] shouldBe false
     }
 })

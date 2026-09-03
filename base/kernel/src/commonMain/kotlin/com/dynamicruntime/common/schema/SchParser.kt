@@ -559,14 +559,18 @@ fun parseProperty(
     val optionalContents = map[SCH.optionalContents] == true
     // Read before the split too (issue #540): a hint beside a `$ref` belongs to the site, not the shared target.
     val presentation = map[SCH.presentation].toOptStr()
+    // Read before the split too (issue #564): a visibility gate beside a `$ref` belongs to the use site, and it
+    // must reach the parsed property so the frontend -- which re-parses the served schema -- can evaluate it.
+    val visibleWhen = map[SCH.visibleWhen].toOptStr()
     val ref = map[SCH.dRef].toOptStr()
     if (ref != null) {
-        val prop = SchProperty(name, description, refTargetName(ref), title, optionalContents, presentation)
+        val prop = SchProperty(name, description, refTargetName(ref), title, optionalContents, presentation, visibleWhen)
         pendingRefs.add(prop) // valueType bound in the resolution pass
         return prop
     }
     val prop = SchProperty(
-        name, description, refName = null, title = title, optionalContents = optionalContents, presentation = presentation,
+        name, description, refName = null, title = title, optionalContents = optionalContents,
+        presentation = presentation, visibleWhen = visibleWhen,
     )
     prop.valueType = parseNode(null, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1)
     return prop

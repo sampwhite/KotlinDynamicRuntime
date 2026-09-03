@@ -188,6 +188,9 @@ val EditFormPage = FC<Props> {
                     this.values = values
                     editable = true
                     friendly = true
+                    // The caller's delivered cfacts (issue #564), so a g-visibleWhen field this caller should
+                    // not see is hidden here. The backend enforces the condition regardless of what is drawn.
+                    cfacts = cat.cfacts
                     // The gedra id is the form being edited, not something to retype; it is seeded and hidden.
                     omit = listOf(GDF.gedraId)
                     this.failures = failures
