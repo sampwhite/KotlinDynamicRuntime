@@ -99,20 +99,21 @@ object SchemaCatalogApi {
         multipart: Boolean = false,
     ): Map<String, Any?> {
         val url = apiRoot + endpoint.path
+        var traceId = ""
         val response = if (endpoint.method == "GET" || endpoint.method == "DELETE") {
             // The method is set explicitly rather than left to fetch's GET default, since DELETE takes the
             // same query-string treatment but is not the default.
             val init: dynamic = js("({})")
             init.method = endpoint.method
             val headers: dynamic = js("({})")
-            applyRequestHeaders(headers)
+            traceId = applyRequestHeaders(headers)
             init.headers = headers
             browserFetch(url + queryString(body), init).await()
         } else {
             val init: dynamic = js("({})")
             init.method = endpoint.method
             val headers: dynamic = js("({})")
-            applyRequestHeaders(headers)
+            traceId = applyRequestHeaders(headers)
             if (multipart) {
                 // An upload: the body is form parts, one of them the file itself. Deliberately no
                 // Content-Type header -- the browser must set it, because only it knows the multipart
@@ -128,7 +129,17 @@ object SchemaCatalogApi {
         }
         val map = readJson(response)
         if (!(response.ok as Boolean)) {
-            error(map["message"] as? String ?: "${endpoint.method} $url failed with status ${response.status}")
+            // Carry the error up as a structured ApiError (issue #111), the same as `Http` does, so a display
+            // site (`userFacingError`) shows the real message -- a 400 with "no such user in your access" reads
+            // as that, not as the "server could not be reached" that a bare throwable is treated as.
+            throw ApiError(
+                message = map[EP.errorMessage] as? String
+                    ?: "${endpoint.method} $url failed with status ${response.status}",
+                fromFragment = map[EP.errorFromFragment] == true,
+                status = (map[EP.status] as? Number)?.toInt() ?: (response.status as? Number)?.toInt(),
+                errorCode = map[EP.errorCode] as? String,
+                traceId = traceId,
+            )
         }
         return map
     }
