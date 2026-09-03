@@ -9,10 +9,12 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
+import com.dynamicruntime.common.gedra.workflow.saveWorkflow
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.util.getOptBool
@@ -293,5 +295,49 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
             registry.creation
         }
         if (declared == null) noWorkflowView() else resolveWorkflowView(c, declared)
+    }
+
+    // --- the workflow save (issue #535) -------------------------------------------------------------------
+
+    type(GEP.workflowSaveType) {
+        type = SCT.kObject
+        description = "The outcome of a workflow save: either a refusal naming what is missing, or the created gedra."
+        property(WSF.saved, "Whether the save happened; false means a required trait was missing.", required = true) {
+            type = SCT.boolean
+        }
+        property(WSF.unmetTraits, "When not saved: the required trait ids no entry satisfied.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(WSF.item, "When saved: the created form document, as create returns it.") { ref(docType) }
+    }
+
+    // Saves the entries a workflow task collected, with the workflow's gate (issue #535). A refused save is a
+    // **result** -- `saved` false, the unmet required traits named -- not an error, so a page can point at the
+    // fields to finish; a mistake (unknown task/save, a trait the task does not collect) is a loud 400.
+    generalEndpoint(
+        GEP.workflowSave,
+        "Saves a workflow task's entries. On a satisfied `create` save, creates the form and answers with it; " +
+            "on an incomplete one, answers with the unmet required traits (not an error).",
+        HttpMethod.POST,
+        outputRef = GEP.workflowSaveType,
+        inputFields = {
+            field(GDF.workflowId, "The workflow being saved.", required = true)
+            field(GDF.taskId, "The task whose entries these are.", required = true)
+            field(GDF.saveId, "The save option chosen within the task.", required = true)
+            field(GDF.entries, "The entries the task collected, each an instance of a trait the task declares.", required = true) {
+                type = SCT.array
+                items { ref("${GCFG.globalNamespace}.${GU.unionName(formDoc)}") }
+            }
+        },
+        publicApi = true,
+    ) { c, request ->
+        val workflowId = request[GDF.workflowId].toOptStr()
+            ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
+        val declared = WorkflowService.get(c).forClient(c.client).workflow(workflowId)
+            ?: throw KdrException("No workflow '$workflowId' for this caller.", code = EXC.notFound)
+        val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
+        val saveId = request[GDF.saveId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.saveId} is required.")
+        saveWorkflow(c, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps())
     }
 }

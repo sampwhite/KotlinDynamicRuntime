@@ -34,6 +34,12 @@ object GEP {
     /** The type naming a resolved workflow view -- open by design, like a UiBlock. */
     const val workflowViewType = "WorkflowView"
 
+    /** Saves a workflow task's collected entries (issue #535). */
+    const val workflowSave = "/gedra/workflow/save"
+
+    /** The type naming a workflow-save result -- either a refusal with reasons, or the created gedra. */
+    const val workflowSaveType = "WorkflowSaveResult"
+
     /** The type naming what a "delete" removed. */
     const val deletedGedra = "DeletedGedra"
 
@@ -71,6 +77,12 @@ object GDF {
 
     /** Names a workflow to act on, e.g., the input of the view endpoint (issue #534). */
     const val workflowId = "workflowId"
+
+    /** Names the workflow task a save targets (issue #535). */
+    const val taskId = "taskId"
+
+    /** Names the save option chosen within a task (issue #535). */
+    const val saveId = "saveId"
     const val gedraKind = "gedraKind"
     const val client = "client"
     const val userId = "userId"
