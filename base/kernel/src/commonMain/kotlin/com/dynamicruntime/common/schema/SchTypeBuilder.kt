@@ -131,6 +131,15 @@ open class SchTypeBuilder(
      */
     var outerWhitespace: String? by SchAttr(data, SCH.outerWhitespace)
 
+    /**
+     * Custom `g-visibleWhen` keyword (issue #545): a cfact expression deciding whether this property is shown to
+     * a given caller. Resolved when the catalog renders for that caller -- the property is dropped for one whose
+     * cfacts do not satisfy the expression. Presentation only: a handler accepting the field must still enforce
+     * the same condition, since request validation runs against the compiled schema that still carries it. See
+     * [SCH.visibleWhen].
+     */
+    var visibleWhen: String? by SchAttr(data, SCH.visibleWhen)
+
     /** Whether undeclared properties are allowed. When unset, the parser defaults it (false when the type
      *  has declared properties, true when it has none). Set explicitly to allow extras on a defined type. */
     var additionalProperties: Boolean? by SchAttr(data, SCH.additionalProperties)

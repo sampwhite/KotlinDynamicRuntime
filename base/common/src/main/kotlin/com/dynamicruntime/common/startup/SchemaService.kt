@@ -38,6 +38,8 @@ import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.SchOptionsProvider
 import com.dynamicruntime.common.schema.optionsSourceProblems
 import com.dynamicruntime.common.schema.resolveOptionsSources
+import com.dynamicruntime.common.schema.resolveVisibleWhen
+import com.dynamicruntime.common.schema.visibleWhenProblems
 import com.dynamicruntime.common.util.addDays
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -182,6 +184,9 @@ class SchemaService : ServiceInitializer {
         // complete global set. Once built, it never changes -- which is what makes a registry something an
         // expression can be parsed against once and evaluated many times.
         cfactRegistries = buildCFactRegistries(collected.cfacts, collected.cfactSources, collected.clientCFacts)
+        // After the registry exists (issue #545): a `g-visibleWhen` expression that does not parse would other-
+        // wise fault the catalog at request time -- for one caller, on one surface -- rather than at boot.
+        checkVisibleWhen()
         isInit = true
     }
 
@@ -221,6 +226,36 @@ class SchemaService : ServiceInitializer {
         if (problems.isNotEmpty()) {
             throw KdrException(
                 "Refusing to start: ${problems.size} problem(s) with sourced choice lists.\n" +
+                    problems.joinToString("\n"),
+            )
+        }
+    }
+
+    /**
+     * Refuses the boot when a `g-visibleWhen` expression does not parse (issue #545). The same reasoning as
+     * [checkOptionsSources]: this is the one moment holding the whole compiled document, and a bad expression
+     * left for request time would fault the catalog for one caller on one surface. Parsed against the global
+     * registry, which validates *syntax* -- an unknown fact name is not an error (it evaluates absent), the same
+     * leniency the parser applies everywhere, so a client-cfact gate is not rejected here.
+     */
+    @KdrPrivate
+    fun checkVisibleWhen() {
+        val registry = cfactsFor(null)
+        val problems = LinkedHashSet<String>()
+        fun check(where: String, node: Any?) {
+            problems.addAll(visibleWhenProblems(where, node) { registry.parse(it) })
+        }
+        for ((name, body) in schemaStore.defs) check("Type '$name'", body)
+        for ((client, store) in clientStores) {
+            for ((name, body) in store.defs) check("Type '$name' (client '$client')", body)
+        }
+        for (endpoint in schemaStore.endpoints.values) {
+            endpoint.inputFields?.forEach { check("Endpoint '${endpoint.collationKey}' field '${it.name}'", it.schema) }
+            check("Endpoint '${endpoint.collationKey}' output", endpoint.outputSchema)
+        }
+        if (problems.isNotEmpty()) {
+            throw KdrException(
+                "Refusing to start: ${problems.size} problem(s) with '${SCH.visibleWhen}' expressions.\n" +
                     problems.joinToString("\n"),
             )
         }
@@ -768,8 +803,20 @@ class SchemaService : ServiceInitializer {
             // skipping resolution: a document with nothing sourced comes back untouched either way, and one
             // with a sourced list faults instead of quietly shipping the id to a client that has no idea what
             // to do with it.
-            val providers = (cxt.instanceConfig.get(serviceName) as? SchemaService)?.optionsProviders.orEmpty()
-            return resolveOptionsSources(cxt, result, providers)
+            val svc = cxt.instanceConfig.get(serviceName) as? SchemaService
+            // Field visibility first (issue #545): a field this caller may not see is dropped before its choice
+            // list is resolved, so a provider is not called for a field that then vanishes. The cfact registry
+            // is the surface's client's -- the one whose cfacts an expression on this surface may name. With no
+            // service (a store built by hand in a test), every gate passes and the keyword is merely stripped:
+            // the field is presentation, and the safe presentation default is to show it, since the handler
+            // enforces the real condition regardless.
+            val registry = svc?.cfactsFor(surface.client)
+            val assembled = registry?.assemble(cxt)
+            val gated = resolveVisibleWhen(result) { expression ->
+                if (registry == null || assembled == null) true else registry.parse(expression).matches(assembled)
+            }
+            val providers = svc?.optionsProviders.orEmpty()
+            return resolveOptionsSources(cxt, gated, providers)
         }
 
         /**

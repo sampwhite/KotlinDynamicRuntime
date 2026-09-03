@@ -146,6 +146,27 @@ in an extension on the builder, beside the Kotlin class that owns the concept �
 `ClientDef` and is called from every field naming a client. The *name* and the *description* stay at each
 site: those objects are the key sets of different surfaces, and the descriptions genuinely differ.
 
+## Per-caller field visibility: `visibleWhen`
+
+A property can be shown to some callers and hidden from others with `visibleWhen = "<cfact expression>"` (the
+custom `g-visibleWhen` keyword, issue #545). Resolved when the endpoint catalog renders for a caller — the same
+place and copy-on-write discipline as `optionsSource`: the field is kept (with the keyword stripped) when the
+caller's assembled cfacts satisfy the expression, and **dropped** — from its `properties` and from the
+enclosing `required` — when they do not.
+
+```kotlin
+field(EI.user, "Confine the search to one user — a userId or an email.") {
+    emptyIsAbsent = true
+    visibleWhen = CFACTS.hasAdminLevel        // shown only to a caller ranking at admin
+}
+```
+
+**Presentation, never a gate.** Hiding a field from the *rendered* schema does not defend it: request
+validation runs against the compiled schema, which still carries it. A handler that accepts a `visibleWhen`
+field must enforce the same condition itself — it is the advertise half of an advertise-and-enforce pair, the
+same relationship `optionsSource` has with a handler that bounds its own input. A malformed expression fails the
+boot; an unknown fact name is not an error (it evaluates absent), the parser's usual leniency.
+
 ## Presentation hints (read-only display)
 
 A type or field may declare **how a read-only surface should display it** (issue #540) — advisory only, with

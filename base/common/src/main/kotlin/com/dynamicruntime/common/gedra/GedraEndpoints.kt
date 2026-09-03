@@ -1,6 +1,9 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.ListPage
@@ -17,6 +20,7 @@ import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.ReadScopeRules
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -159,12 +163,31 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
                 minimum = 0
                 default = 0
             }
+            // Confine the search to one user -- a userId or an email (issue #545). Shown only to a caller who
+            // ranks at admin (`g-visibleWhen`), since an ordinary user reaches only their own rows and the
+            // param would name nobody else; the handler enforces the same, resolving the ref within the
+            // caller's read scope, so an ordinary caller who sends it can still only ever name themselves.
+            field(EI.user, "Confine the search to one user -- a userId or an email. Defaults to you.") {
+                emptyIsAbsent = true
+                visibleWhen = CFACTS.hasAdminLevel
+            }
         },
         publicApi = true,
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
         val offset = (request[EP.offset] as? Number)?.toInt() ?: 0
-        val page = GedraDataService.get(c).listGedras(c, formDoc, ReadScopeRules.forCaller(c), limit, offset)
+        val callerScope = ReadScopeRules.forCaller(c)
+        // A named user narrows the scope to that user -- but only within what the caller may already see:
+        // `resolveUserRef` returns null for a ref outside the caller's scope, so an ordinary caller can name
+        // only themselves and no caller can probe another client. Unresolved is a 400 that does not say whether
+        // the user is absent or merely out of reach.
+        val userRef = (request[EI.user] as? String)?.trim()?.ifEmpty { null }
+        val scope = if (userRef == null) callerScope else {
+            val target = UserService.get(c).resolveUserRef(c, userRef, callerScope)
+                ?: throw KdrException.mkInput("No user matching '$userRef' is within your access.")
+            ReadScope.ofUser(target.userId)
+        }
+        val page = GedraDataService.get(c).listGedras(c, formDoc, scope, limit, offset)
         ListPage(
             page.rows.map { it.toJsonMap() },
             page.numAvailable,

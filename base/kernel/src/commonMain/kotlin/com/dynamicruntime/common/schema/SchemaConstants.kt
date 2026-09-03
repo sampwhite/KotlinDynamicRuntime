@@ -282,6 +282,23 @@ object SCH {
     const val optionsSource = "g-optionsSource"
 
     /**
+     * A **cfact expression** (`CFactRegistry` syntax) deciding whether this property is shown to a given caller
+     * (issue #545). Resolved when the endpoint catalog renders for that caller, exactly like [optionsSource]:
+     * the property is kept when the caller's assembled cfacts satisfy the expression and **dropped entirely**
+     * -- from its `properties` map and from the enclosing `required` -- when they do not, and the keyword is
+     * stripped from what survives. So an ordinary user is not shown an administrator's `user` selector, and a
+     * non-env-authed caller is not shown a privileged toggle.
+     *
+     * **Presentation, never a gate.** Dropping a field from the *rendered* schema hides it; it does not defend
+     * it. Request validation runs against the compiled schema, which still carries the field, so a handler that
+     * accepts a `g-visibleWhen` field must enforce the same condition itself -- the keyword is the advertise
+     * half of an advertise-and-enforce pair, the same relationship [optionsSource] has with a handler that
+     * bounds its own input. It takes no part in validation and has no export row: a hidden field is not a
+     * stricter document, and a consumer that never sees the field cannot send it.
+     */
+    const val visibleWhen = "g-visibleWhen"
+
+    /**
      * Per-field error copy: a map from an error key to the message to show when that failure is reported against
      * this field. The keys are [SchFailCode] names plus [errorDefault]; anything else fails at boot.
      *

@@ -123,6 +123,28 @@ class UserService : ServiceInitializer {
         return if (scope.admitsUserRow(row.client, row.org, row.userId)) row else null
     }
 
+    /**
+     * Resolves a caller-supplied user reference -- **either a numeric userId or an email** (issue #545) -- to
+     * the row, or null when it names no user *or* names one outside [scope]. Two-way by the shape of the value:
+     * an all-digit ref is a userId, anything else an email (a primary contact), which is unambiguous because an
+     * email always carries an `@`.
+     *
+     * Scoped by the same per-row predicate as [queryAdministrableUser], and for the same reason: an out-of-scope
+     * ref reads as *absent*, so an ordinary caller (whose scope is their own user) can only ever resolve
+     * themselves, and no caller can probe whether an id or address belongs to a real user in another client.
+     * That is what lets an endpoint accept a `user` param safely -- the confinement is here, not at each call
+     * site.
+     */
+    fun resolveUserRef(cxt: KdrCxt, ref: String, scope: ReadScope): AuthUserRow? {
+        val trimmed = ref.trim()
+        if (trimmed.isEmpty()) {
+            return null
+        }
+        val row = trimmed.toLongOrNull()?.let { queryByUserId(cxt, it) } ?: queryByPrimaryId(cxt, trimmed)
+        row ?: return null
+        return if (scope.admitsUserRow(row.client, row.org, row.userId)) row else null
+    }
+
     /** Selects a single `AuthUsers` row by an indexed [field], or null. Returns the row even if disabled. */
     private fun queryOne(cxt: KdrCxt, field: String, value: Any?): AuthUserRow? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
