@@ -197,7 +197,7 @@ val Profile = FC<Props> {
             +t(
                 "profile", "nameHelp",
                 "The name you are shown under. It need not be unique, and is not how you sign in. " +
-                    "Leave it empty to be shown by your login name instead.",
+                    "Leave it empty to be shown by your login email instead.",
             )
         }
         textField(t("profile", "nameLabel", "Name"), draftName, disabled = busy) { draftName = it }
