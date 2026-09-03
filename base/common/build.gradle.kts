@@ -69,7 +69,9 @@ val embedDocs by tasks.registering(Copy::class) {
     // and given the `.md` name MarkdownDocService serves under (docId "license"). The plain-text license
     // renders fine as Markdown, and the README's `[MIT](LICENSE)` link then resolves to an in-app document.
     from(layout.projectDirectory.file("../../LICENSE")) {
-        rename { "license.md" }
+        // Derive the served name from the source rather than a constant, so adding another extension-less
+        // root file here (NOTICE, COPYING) does not silently rename both to one name and clobber a document.
+        rename { "${it.lowercase()}.md" }
     }
     into(layout.buildDirectory.dir("docResources/md-docs"))
 }

@@ -10,8 +10,11 @@ import io.kotest.matchers.shouldBe
  */
 class DocLinkUtilTest : StringSpec({
 
-    // README.md at the repo root links to two docs; a repo blob base is configured.
-    val docsByPath = mapOf("README.md" to "readme", "code-guide.md" to "code-guide", "examples/x.md" to "ex")
+    // README.md at the repo root links to several docs -- including the extension-less LICENSE, served in-app
+    // as an ordinary document (issue #555); a repo blob base is configured.
+    val docsByPath = mapOf(
+        "README.md" to "readme", "code-guide.md" to "code-guide", "examples/x.md" to "ex", "LICENSE" to "license",
+    )
     val base = "https://github.com/o/r/blob/main"
 
     // The app's in-app document href, as the frontend builds it (a same-page hash link).
@@ -24,10 +27,12 @@ class DocLinkUtilTest : StringSpec({
         resolve("examples/x.md") shouldBe "#doc=ex"
         // A fragment on an in-app doc link is dropped -- the app cannot scroll a fetched doc to a heading.
         resolve("code-guide.md#usage") shouldBe "#doc=code-guide"
+        // The README's `[MIT](LICENSE)` link: an extension-less registered document resolves in-app (issue #555).
+        resolve("LICENSE") shouldBe "#doc=license"
     }
 
     "a relative link to an unregistered repo file goes to the source repo" {
-        resolve("LICENSE") shouldBe "$base/LICENSE"
+        resolve("CHANGELOG") shouldBe "$base/CHANGELOG"
         resolve("examples/settings.gradle.kts.example") shouldBe "$base/examples/settings.gradle.kts.example"
         // A fragment/anchor on a repo file is preserved.
         resolve("deferred-work.md#a-heading") shouldBe "$base/deferred-work.md#a-heading"
@@ -50,7 +55,7 @@ class DocLinkUtilTest : StringSpec({
     "relative paths normalize . and .. against the document's directory" {
         // From a doc one level down, `..` climbs back to the root where code-guide.md lives.
         resolve("../code-guide.md", from = "examples/guide.md") shouldBe "#doc=code-guide"
-        resolve("./LICENSE") shouldBe "$base/LICENSE"
+        resolve("./CHANGELOG") shouldBe "$base/CHANGELOG"
         // A `..` that climbs above the root cannot resolve; the link is left as written.
         resolve("../../etc/passwd") shouldBe "../../etc/passwd"
     }
@@ -59,7 +64,7 @@ class DocLinkUtilTest : StringSpec({
         // A registered document still resolves in-app -- that needs no repo base.
         resolve("code-guide.md", repo = null) shouldBe "#doc=code-guide"
         // A plain repo file has nowhere to go, so it is unchanged (the pre-#492 behavior, no regression).
-        resolve("LICENSE", repo = null) shouldBe "LICENSE"
+        resolve("CHANGELOG", repo = null) shouldBe "CHANGELOG"
     }
 
     "an empty target stays empty" {
