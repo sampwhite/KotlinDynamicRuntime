@@ -249,7 +249,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         outputRef = GEP.importResultType,
         inputFields = {
             // The target user -- a userId or an email. Shown only to a caller who can act for others; an
-            // ordinary caller imports for themselves and the handler confines a supplied ref to their scope.
+            // ordinary caller imports for themselves, and the handler confines a supplied ref to their scope.
             field(EI.user, "The user to import for -- a userId or an email. Defaults to you.") {
                 emptyIsAbsent = true
                 visibleWhen = CFACTS.hasAdminLevel
@@ -269,7 +269,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 default = false
             }
             // Preserving entry ids risks cross-user id collision, so it is offered and allowed only from an
-            // env-authed channel -- gated in the schema, and enforced by the handler regardless.
+            // env-authed channel -- gated in the schema and enforced by the handler regardless.
             field(GIF.preserveEntryIds, "Keep the incoming entry ids instead of minting fresh ones (env auth only).") {
                 type = SCT.boolean
                 emptyIsAbsent = true

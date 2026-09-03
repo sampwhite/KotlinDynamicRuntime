@@ -28,7 +28,7 @@ import io.kotest.matchers.shouldBe
  *
  * `globex` inherits the global `name` usage (searchable exact and by substring); `acme` overrides it with an
  * `Auditor` string (exact and substring) and a `Year` number (a `>=`/`<=` range) -- between them, every kind.
- * Each case uses a fresh user so the rows it searches are its own (an ordinary caller's read scope is their own
+ * Each case uses a fresh user, so the rows it searches are its own (an ordinary caller's read scope is their own
  * rows), which also means these run through the SQL fall-back path; the cache path filters the same predicate.
  */
 class UsageSearchTest : StringSpec({

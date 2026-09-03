@@ -21,6 +21,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * schema properties and the predicate are both built from [gedraSearchParams], so an advertised parameter and
  * the field the predicate reads cannot drift.
  */
+@Suppress("EnumEntryName")
 enum class SearchRole {
     /** A `string` exact match (case-insensitive). */
     exact,
@@ -142,14 +143,14 @@ fun searchParamCollisions(usages: List<ClientTraitUsage>): List<String> =
  * is what lets the per-client build hand back the global type when a client's search fields do not differ.
  *
  * A search property never **overwrites** a stable field the base already declares ([reservedQueryFieldNames]):
- * the base keeps it, and the colliding usage is left un-searchable rather than allowed to rewrite the paging or
+ * the base keeps it, and the colliding usage is left unsearchable rather than allowed to rewrite the paging or
  * user-filter schema. The boot check refuses such a usage; this is the structural backstop for one that slips.
  */
 fun withSearchProperties(baseDef: Any?, usages: List<ClientTraitUsage>): Map<String, Any?> {
     val base = baseDef.toJsonMapOrEmpty()
     val props = searchParamProperties(gedraSearchParams(usages))
     if (props.isEmpty()) return base
-    val merged = LinkedHashMap<String, Any?>(base[SCH.properties].toJsonMapOrEmpty())
+    val merged = LinkedHashMap(base[SCH.properties].toJsonMapOrEmpty())
     for ((name, prop) in props) {
         if (!merged.containsKey(name)) merged[name] = prop
     }

@@ -49,7 +49,7 @@ fun buildClientVariants(
     // exactly the ordinary case for a client that adds a search column and nothing else.
     val usageClients = collected.gedraConfigs.configs
         .filter { it.usages.isNotEmpty() }
-        .mapNotNull { it.gedraId.client }
+        .map { it.gedraId.client }
         .filter { it != GID.globalClient }
     // Every client that could differ from global: one that overlaid something, one whose definition restricts
     // which traits it supports, and one that declared usage rules. The middle has no overlays at all, so

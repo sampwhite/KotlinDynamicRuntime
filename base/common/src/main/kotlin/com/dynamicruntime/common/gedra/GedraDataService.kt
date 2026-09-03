@@ -213,7 +213,7 @@ class GedraDataService : ServiceInitializer {
         // Interned as it is minted, so every later reader of this gedra shares one instance. The cache does
         // not yet hold every extant id, so this buys identity and cheap keys and not existence -- see
         // GedraService.gedraIds.
-        val gedraId = gedraService.intern(cxt.mkGedraId(kind, cxt.client, GedraIdContext.ui))
+        gedraService.intern(cxt.mkGedraId(kind, cxt.client, GedraIdContext.ui))
         val now = cxt.instanceNow()
         val stored = entries.map {
             it.asStoredEntry(
@@ -242,7 +242,7 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * Inserts one gedra whose entries are **already stored envelopes** -- id, source, timestamps and actor all
+     * Inserts one gedra whose entries are **already stored envelopes** -- id, source, timestamps, and actor all
      * stamped -- and returns the row as read back. The shared tail of every create path (issue #545): [create-
      * Gedra] stamps a fresh envelope per entry and calls this; the import path stamps its own (preserving an
      * entry id when asked) and calls this. It mints the gedra id, writes the row with ownership and audit taken

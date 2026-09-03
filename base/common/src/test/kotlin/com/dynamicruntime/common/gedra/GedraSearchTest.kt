@@ -14,7 +14,7 @@ import io.kotest.matchers.shouldBe
  */
 class GedraSearchTest : StringSpec({
     fun usage(traitId: String, kind: UsageKind, substring: Boolean = false) =
-        ClientTraitUsage(traitId, traitId.replaceFirstChar { it.uppercase() }, "\${x}", kind, substring)
+        ClientTraitUsage(traitId, traitId.replaceFirstChar { it.uppercase() }, $$"${x}", kind, substring)
 
     "a string usage gives an exact parameter, and a substring one only when asked" {
         gedraSearchParams(listOf(usage("name", UsageKind.string))).map { it.name to it.role } shouldBe

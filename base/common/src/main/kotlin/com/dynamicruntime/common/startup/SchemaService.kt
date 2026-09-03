@@ -129,7 +129,7 @@ class SchemaService : ServiceInitializer {
         }
 
         // The forms-listing search fields (issue #538): a scope's usage rules contribute a search parameter
-        // each, merged onto the authored query type. The global scope's set is merged here so the shared
+        // each, merged onto the authored query type. The global scope's set is merged here, so the shared
         // listing advertises and accepts them; the pristine base is kept for the per-client build, which merges
         // each client's own set onto *it* (never onto the global-augmented one, or an overriding client would
         // inherit global's parameters too).
@@ -219,7 +219,7 @@ class SchemaService : ServiceInitializer {
      * would collide with a reserved forms-listing field (issue #538): a usage on a trait named `user`, say,
      * mints an exact parameter `user` that would otherwise try to overwrite the listing's own user filter. The
      * merge in `withSearchProperties` keeps the reserved field regardless, so the effect is a silently
-     * un-searchable trait -- worth reporting so the client learns their usage did not take.
+     * unsearchable trait -- worth reporting so the client learns their usage did not take.
      *
      * Every scope that declares usages is checked, plus `global`, drawn through `usagesFor` so the check reads
      * exactly the set each scope's listing would generate its parameters from.
@@ -232,7 +232,7 @@ class SchemaService : ServiceInitializer {
         val issues = mutableListOf<GedraConfigIssue>()
         val usageScopes = (
             listOf(GID.globalClient) +
-                collected.gedraConfigs.configs.filter { it.usages.isNotEmpty() }.mapNotNull { it.gedraId.client }
+                collected.gedraConfigs.configs.filter { it.usages.isNotEmpty() }.map { it.gedraId.client }
             ).distinct()
         for (scope in usageScopes) {
             val collisions = searchParamCollisions(collected.gedraConfigs.usagesFor(scope))
