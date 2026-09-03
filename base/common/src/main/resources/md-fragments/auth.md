@@ -17,7 +17,10 @@
 # +submit Log in
 # +sendCode Email me a code to use for login
 # +sendCodeSetPassword Email me a code and set a password
-# +codeSent We emailed a verification code to `${user.email}`.
+/- Hedged on purpose (issues #275, #565): the backend answers an unknown address exactly as a known one so that
+   asking for a code is not a membership oracle, so this cannot say a code *was* sent. Vague by design: it says
+   to check the address, never that the address has no account. -/
+# +codeSent If `${user.email}` has an account, a code is on its way. Check that the address is correct.
 # +newPasswordLabel New password
 # +newPasswordHelp You can use it to sign in from this browser next time.
 # +orDivider or
@@ -35,7 +38,8 @@
 
 # @verify
 # +expiresNote The code expires in fifteen minutes.
-# +resend Send a new code
+/- The way back as well as a resend (issue #565): it unlocks the address. -/
+# +resend Change the address or send a new code
 
 /- Error messages (issue #108). The backend renders these server-side from KdrException's KdrMsg and marks the
    response errorFromFragment=true. Markdown is allowed here (unlike the earlier note): it is safe because the

@@ -103,6 +103,12 @@ fun isStaleFragment(status: Int?): Boolean = status == 404
 external interface AppBarProps : Props {
     /** The page the router is showing (issue #554), so the menu can mark it and open its group. */
     var currentPage: String
+    /**
+     * Called when the item for [currentPage] is chosen again (issue #565). Navigating to the page you are on
+     * changes no hash, so nothing else would react; `App` answers by remounting the page, which is the reset a
+     * person means by it -- a login stranded at the code step is the case that found this.
+     */
+    var onRevisit: () -> Unit
     /** Whether env auth exists on this channel -- decides whether the control is shown at all. */
     var envAuthSuppressible: Boolean
     /** Whether the session is currently *acting* env-authed -- decides what the control says. */
@@ -419,11 +425,13 @@ val AppBar = FC<AppBarProps> { props ->
                     // actions; saying who you are is the bar's job.
 
                     // The items themselves, exactly as the backend composed them for this caller, nested into a
-                    // drill-down where an item names a parent (issue #517).
-                    val currentItem = currentMenuItem(config?.menu.orEmpty(), props.currentPage)
+                    // drill-down where an item names a parent (issue #517). Whether an item is *current* is
+                    // decided by its own route against the page on screen, not by matching one winning item:
+                    // two items routing to the same page (a client shortcut beside the built-in) are then both
+                    // current, and re-choosing either restarts the page rather than only the first (issue #565).
                     for (node in menuTree(config?.menu.orEmpty())) {
                         if (node.children.isEmpty()) {
-                            menuItemView(node.item, frontendActions, node.item.id == currentItem?.id) { open = false }
+                            menuItemView(node.item, frontendActions, props.currentPage, props.onRevisit) { open = false }
                         } else {
                             // A parent: its label is a header, and its children drill down indented under it.
                             // The parent carries no action of its own -- the backend `collectParentIssues` boot
@@ -434,7 +442,7 @@ val AppBar = FC<AppBarProps> { props ->
                             // The header is marked when the group holds the page on screen; a collapsed group is
                             // opened on arrival by the effect above, not by forcing `expanded` here -- otherwise the
                             // toggle could never close the group you are in (a silent no-op, webapp/CLAUDE.md).
-                            val holdsCurrent = node.children.any { it.id == currentItem?.id }
+                            val holdsCurrent = node.children.any { (it.action as? UiRoute)?.page == props.currentPage }
                             val expanded = node.item.id in expandedGroups
                             button {
                                 // id/aria via asDynamic to match this file's idiom (see menuItemView below).
@@ -460,7 +468,7 @@ val AppBar = FC<AppBarProps> { props ->
                                     asDynamic()["role"] = "group"
                                     asDynamic()["aria-labelledby"] = headerId
                                     for (child in node.children) {
-                                        menuItemView(child, frontendActions, child.id == currentItem?.id) { open = false }
+                                        menuItemView(child, frontendActions, props.currentPage, props.onRevisit) { open = false }
                                     }
                                 }
                             }
@@ -571,12 +579,21 @@ fun menuTree(items: List<MenuItem>): List<MenuNode> {
 }
 
 /** Renders one leaf menu item -- a route as a link, a call as a button (issue #483); a null action renders
- *  nothing (a parent's label is drawn by the drill-down, not here). [onNavigate] closes the menu. */
+ *  nothing (a parent's label is drawn by the drill-down, not here). A route is *current* when it names
+ *  [currentPage]. [onNavigate] closes the menu; [onRevisit] fires when the route chosen is the one already on
+ *  screen, since the hash cannot announce that (issue #565). */
 private fun ChildrenBuilder.menuItemView(
-    item: MenuItem, actions: FrontendActions, current: Boolean, onNavigate: () -> Unit,
+    item: MenuItem, actions: FrontendActions, currentPage: String, onRevisit: () -> Unit, onNavigate: () -> Unit,
 ) {
     when (val action = item.action) {
-        is UiRoute -> menuLink("#page=${action.page}", item.label, current) { onNavigate() }
+        is UiRoute -> {
+            val current = action.page == currentPage
+            menuLink("#page=${action.page}", item.label, current) {
+                onNavigate()
+                // Same hash, no `hashchange`: this is the only signal the router gets that the page was re-chosen.
+                if (current) onRevisit()
+            }
+        }
         is UiCall -> button {
             className = ClassName("app-menu-item")
             // An `openPath` call leaves the SPA for a server path (issue #493); its accessible name says so.

@@ -37,6 +37,11 @@ val App = FC<Props> {
     // every mounted config consumer. The tuple form (not `by`) is used, so the bump is a functional update
     // (`{ it + 1 }`), which the persistent hashchange listener below needs to avoid a stale count.
     val (refresh, setRefresh) = useState(0)
+    // How many times the page on screen has been chosen again from the menu (issue #565). Folded into the page
+    // boundary's key below for the pages in `restartOnRevisit`, so re-selecting one remounts it with fresh
+    // state -- the only reset a page can get when the hash does not change, since setting the hash to itself
+    // fires no `hashchange`. Tuple form for the same reason as `refresh`: the bump is a functional update.
+    val (revisit, setRevisit) = useState(0)
     // A newer web-app version detected on a response (issue #136); drives the reload affordance below. The
     // reaction is non-destructive: we never reload out from under the user, only offer it and reload on a
     // navigation (a safe point) or an explicit click.
@@ -122,6 +127,7 @@ val App = FC<Props> {
                 }
                 AppBar {
                     this.currentPage = page
+                    this.onRevisit = { setRevisit { it + 1 } }
                     this.envAuthSuppressible = envAuthSuppressible
                     this.envAuthActing = envAuthActing
                     this.envAuthDebug = envAuthDebug
@@ -141,8 +147,20 @@ val App = FC<Props> {
                     // and differ only by the `tool` hash param (issue #517), so a faulted `tool=fault` would
                     // otherwise keep showing its fallback after a `back` to the index -- the very outliving this
                     // key exists to prevent. Folding the tool in remounts the boundary when it changes.
+                    //
+                    // The revisit count is folded in for the same reason from the other direction (issue #565):
+                    // choosing the current page from the menu changes nothing else -- not the hash, not `page` --
+                    // yet for a page that can be left waiting on something that will never come (a login code
+                    // for an address with no account), it is the one gesture that says "start over". Only the
+                    // pages in `restartOnRevisit` take it: a remount is not free elsewhere -- the catalog would
+                    // refetch its whole listing, Profile would drop a password-change code mid-entry, and every
+                    // page that registers a `hashchange` listener in `useEffectOnce` would leak one per click,
+                    // since `onHashChange` has no cleanup yet (deferred-work.md).
                     ErrorBoundary {
-                        key = (page + (hashParams()[debugToolParam]?.let { ":$it" } ?: "")).unsafeCast<Key>()
+                        key = (
+                            page + (hashParams()[debugToolParam]?.let { ":$it" } ?: "") +
+                                (if (page in restartOnRevisit) "#$revisit" else "")
+                        ).unsafeCast<Key>()
                         fallback = ErrorFallback
                         onError = ::reportRenderFailure
                         when (page) {
@@ -202,6 +220,12 @@ private const val pageCatalog = "catalog"
 private const val pageDocs = HMENU.pageDocs
 private const val pageLogin = "login"
 private const val pageRegister = "register"
+
+// The pages that restart when their own menu item is chosen again (issue #565): the auth flow's two modes,
+// whose code step can be reached for an address that will never receive one (#275 answers an unknown address
+// as success on purpose), and which the hash cannot reset because it does not change. Opt-in, not every page:
+// see the boundary key in [App] for what a remount costs the others.
+private val restartOnRevisit = setOf(pageLogin, pageRegister)
 private const val pageProfile = "profile"
 // The user-administration page. Reachable only when the shell's menu offers it (the backend decides), but the
 // route exists unconditionally: the page itself reports honestly when the caller lacks the capability.

@@ -260,9 +260,17 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 className = ClassName("subtitle")
                 // Rendered as Markdown so the copy can set the address apart from the surrounding prose; the
                 // substitution runs first, so an address is escaped as text rather than read as Markdown.
+                //
+                // Login hedges on purpose (issues #275, #565): the backend answers an unknown address exactly as
+                // a known one, so this copy cannot promise a code was sent -- it says to check the address
+                // instead, vaguely, since naming the no-account case here would be the very oracle #275 closed.
+                // Register's address has no account by definition, so its copy can say what it did.
                 MarkdownInline {
-                    source = t(ns, "codeSent", $$"A code was sent to `${user.email}`.")
-                        .evalTemplate(mapOf("user" to mapOf("email" to email.trim())))
+                    source = t(
+                        ns, "codeSent",
+                        if (register) $$"A code was sent to `${user.email}`."
+                        else $$"If `${user.email}` has an account, a code is on its way. Check that the address is correct.",
+                    ).evalTemplate(mapOf("user" to mapOf("email" to email.trim())))
                 }
             }
             textField(
@@ -315,7 +323,9 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                         devFilled = false
                         settingPassword = false
                     }
-                    +t("verify", "resend", "Send a new code")
+                    // Named as the way back, not only a resend (issue #565): it unlocks the address too, and an
+                    // address that got no code is exactly when someone needs to know that.
+                    +t("verify", "resend", "Change the address or send a new code")
                 }
             }
             passwordError?.let {
