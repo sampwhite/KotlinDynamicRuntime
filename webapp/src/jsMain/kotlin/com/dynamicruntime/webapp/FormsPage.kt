@@ -60,6 +60,11 @@ val FormsPage = FC<Props> {
     var numAvailable by useState(0)
     // The first index of the page on screen; paging moves it by [formsPageSize].
     var offset by useState(0)
+    // The forms-list search (issue #538): `draft` is what the boxes hold, `applied` is what the list is
+    // currently filtered by. They part so typing does not re-query on every keystroke -- Search promotes the
+    // draft, and paging/reloads carry the applied set so a filtered list stays filtered across pages.
+    var searchDraft by useState<Map<String, String>>(emptyMap())
+    var appliedSearch by useState<Map<String, Any?>>(emptyMap())
     var listLoading by useState(true)
     var error by useState<DisplayError?>(null)
     // True once the initial hash restore has run; until then the sync effect stays quiet so it cannot overwrite
@@ -89,8 +94,12 @@ val FormsPage = FC<Props> {
     var rowDeletingId by useState<String?>(null)
     var rowDeleteError by useState<DisplayError?>(null)
 
-    /** Loads the page at [off] from [ep], replacing the rows and the total. Flips [listLoading] off when done. */
-    fun loadPage(ep: EndpointInfo, off: Int) {
+    /**
+     * Loads the page at [off] from [ep], replacing the rows and the total. [search] carries the client's filled
+     * search parameters (issue #538), sent beside `limit`/`offset`; it is passed explicitly rather than read
+     * from state so a reload never races a just-applied filter. Flips [listLoading] off when done.
+     */
+    fun loadPage(ep: EndpointInfo, off: Int, search: Map<String, Any?>) {
         // A row's armed delete confirm belongs to the page it was armed on; paging away (or reloading after a
         // delete) drops it, so a primed "Yes" never lingers on a row the user has navigated past (issue #417).
         rowConfirmDeleteId = null
@@ -98,7 +107,7 @@ val FormsPage = FC<Props> {
         listLoading = true
         formsScope.launch {
             try {
-                val resp = SchemaCatalogApi.invoke(ep, mapOf(EP.limit to formsPageSize, EP.offset to off))
+                val resp = SchemaCatalogApi.invoke(ep, mapOf(EP.limit to formsPageSize, EP.offset to off) + search)
                 rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                 numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
                 error = null
@@ -289,7 +298,7 @@ val FormsPage = FC<Props> {
                                                         confirmingDelete = false
                                                         viewingId = null
                                                         offset = 0
-                                                        loadPage(ep, 0)
+                                                        loadPage(ep, 0, appliedSearch)
                                                     } catch (e: Throwable) {
                                                         deleteError = userFacingError(e)
                                                     } finally {
@@ -311,8 +320,9 @@ val FormsPage = FC<Props> {
                     }
                 }
             }
-            // The list.
-            rows.isEmpty() && offset == 0 -> {
+            // The list, but truly empty: no forms at all, and no search narrowing it (a search that matches
+            // nothing is a different state, handled in the list branch so its box stays on screen to be cleared).
+            rows.isEmpty() && offset == 0 && appliedSearch.isEmpty() -> {
                 p {
                     className = ClassName("subtitle")
                     +"You haven't created any forms yet."
@@ -344,9 +354,41 @@ val FormsPage = FC<Props> {
                         }
                     }
                 }
-                pagingBar(offset, rows.size, numAvailable) { newOffset ->
-                    offset = newOffset
-                    loadPage(ep, newOffset)
+                // The search controls the client's usage rules declared (issue #538): the list's own input
+                // schema names them, so a client with no usage rules shows no box. Search promotes the draft to
+                // the applied filter and reloads from the top; Clear drops it.
+                val fields = searchFields(ep.inputSchema)
+                if (fields.isNotEmpty()) {
+                    FormsSearch {
+                        this.fields = fields
+                        values = searchDraft
+                        onChange = { name, value -> searchDraft = searchDraft + (name to value) }
+                        onSearch = {
+                            val applied = searchDraft.filterValues { it.isNotBlank() }
+                            appliedSearch = applied
+                            offset = 0
+                            loadPage(ep, 0, applied)
+                        }
+                        onClear = {
+                            searchDraft = emptyMap()
+                            appliedSearch = emptyMap()
+                            offset = 0
+                            loadPage(ep, 0, emptyMap())
+                        }
+                    }
+                }
+                // A search that matched nothing: the box stays above so it can be changed or cleared, and a
+                // plain message stands in for the paging bar (there is nothing to page).
+                if (rows.isEmpty()) {
+                    p {
+                        className = ClassName("subtitle")
+                        +"No forms match your search."
+                    }
+                } else {
+                    pagingBar(offset, rows.size, numAvailable) { newOffset ->
+                        offset = newOffset
+                        loadPage(ep, newOffset, appliedSearch)
+                    }
                 }
                 FormsTable {
                     forms = rows.map { (it[GDF.gedraId] as? String ?: "") to summarizeForm(it, union) }
@@ -374,7 +416,7 @@ val FormsPage = FC<Props> {
                                         if (rows.size == 1 && offset >= formsPageSize) offset - formsPageSize
                                         else offset
                                     offset = newOffset
-                                    loadPage(ep, newOffset)
+                                    loadPage(ep, newOffset, appliedSearch)
                                 } catch (e: Throwable) {
                                     rowDeleteError = userFacingError(e)
                                     rowDeletingId = null

@@ -3,6 +3,7 @@ package com.dynamicruntime.common.startup
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.schema.LogSchema
 
 /**
@@ -66,7 +67,7 @@ fun buildClientEndpoints(
  * answers with a registry a client's own config may have added to, so it is client-shaped while the rest of its
  * section is not.
  */
-private const val CLIENT_SHAPED_SECTION = "gedra"
+private const val CLIENT_SHAPED_SECTION = GEP.gedraNamespace
 
 /** [endpoint] under [client]'s path, bound to that client, with the shared handler untouched. */
 private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
@@ -96,7 +97,7 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         client = client,
         // The copy is the same endpoint under a client's path, so it carries the same catalog metadata: a
         // client copy of a published endpoint is published, and one of a tagged endpoint keeps the tag (issue
-        // #489). Omitting these silently un-published every client-dynamic endpoint, which is the opposite of
+        // #489). Omitting these silently unpublished every client-dynamic endpoint, which is the opposite of
         // what a client-specific surface should be.
         publicApi = endpoint.publicApi,
         tags = endpoint.tags,

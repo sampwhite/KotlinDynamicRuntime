@@ -26,6 +26,13 @@ class ClientTraitUsage(
     val display: String,
     /** How the value reads -- text, a number, or a date; what a later search treats it as. */
     val kind: UsageKind = UsageKind.string,
+    /**
+     * For a `string` kind, whether the search (issue #538) also offers a **substring** parameter beside the
+     * exact one -- two ways to find the value. Ignored for `number` and `date`, which are always searched as a
+     * range. Off by default: an exact match is the cheaper promise, and a client asks for the contains variant
+     * only where partial-name lookup is worth it.
+     */
+    val substring: Boolean = false,
 )
 
 /** The kinds a [ClientTraitUsage] value can be: what a listing shows and a search (issue #538) filters on. */
