@@ -42,17 +42,21 @@ class TraitUsageTest : StringSpec({
         display[UF.kind] shouldBe "string"
     }
 
-    "acme's own Auditor rule overrides the global default -- an Auditor column, no Name" {
+    "acme's own rules override the global default -- Auditor and Year columns, no Name" {
         acme.postItem(
             clientPath(GEP.formDocCreate, SC.acme),
             mapOf(GDF.entries to listOf(mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "Dana Reyes", SC.findings to "ok")))),
         )
         val row = acme.getItems(clientPath(GEP.formDocs, SC.acme)).first()
-        val display = displayOf(row).single()
-        display[UF.traitId] shouldBe SC.siteAudit
-        display[UF.label] shouldBe "Auditor"
-        display[UF.value] shouldBe "Dana Reyes"
-        // Override, not additive: acme's own rule replaces the global default, so it gets no `name` column.
+        val auditor = displayOf(row).first { it[UF.traitId] == SC.siteAudit }
+        auditor[UF.label] shouldBe "Auditor"
+        auditor[UF.value] shouldBe "Dana Reyes"
+        // The second usage acme declares (issue #538): a Year column, blank on a row that carries no expense
+        // report -- present, so every row shares the column set, but empty here.
+        val year = displayOf(row).first { it[UF.traitId] == ST.expenseReport }
+        year[UF.label] shouldBe "Year"
+        year[UF.value] shouldBe ""
+        // Override, not additive: acme's own rules replace the global default, so it gets no `name` column.
         displayOf(row).none { it[UF.traitId] == GT.name } shouldBe true
     }
 

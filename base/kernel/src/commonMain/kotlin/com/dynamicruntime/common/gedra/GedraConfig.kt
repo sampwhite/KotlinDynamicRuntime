@@ -247,9 +247,19 @@ class GedraConfigBuilder(
      * Declares how [traitId] presents in a listing (issue #537): a [display] string-script expression
      * evaluated against the trait's data, a [label] column header, and a value [kind]. The client owns this,
      * and it is the first thing a client's config changes about a page other than its own form.
+     *
+     * A usage is also **searchable** (issue #538): the forms-list gets a parameter per usage -- an exact one
+     * for a `string`, a `>=`/`<=` pair for a `number` or `date`. [substring] adds a contains parameter beside
+     * the exact one for a `string` kind (ignored otherwise).
      */
-    fun traitUsage(traitId: String, label: String, display: String, kind: UsageKind = UsageKind.string) {
-        usages.add(ClientTraitUsage(traitId, label, display, kind))
+    fun traitUsage(
+        traitId: String,
+        label: String,
+        display: String,
+        kind: UsageKind = UsageKind.string,
+        substring: Boolean = false,
+    ) {
+        usages.add(ClientTraitUsage(traitId, label, display, kind, substring))
     }
 
     /**

@@ -61,6 +61,8 @@ external interface InputProps : PropsWithChildren {
     /** HTML input type, e.g. "password" (antd masks it); omit for a normal text input. */
     var type: String?
     var disabled: Boolean?
+    /** Shows a clear (×) button once the input has a value. */
+    var allowClear: Boolean?
     /** antd passes a change event; read `event.target.value`. */
     var onChange: ((event: dynamic) -> Unit)?
     /** Fires when Enter is pressed inside the input. */

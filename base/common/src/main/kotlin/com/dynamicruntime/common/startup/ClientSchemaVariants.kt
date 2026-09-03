@@ -4,7 +4,10 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GU
+import com.dynamicruntime.common.gedra.formDocsQueryDefName
+import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.gedra.GedraConfigIssue
@@ -38,15 +41,25 @@ fun buildClientVariants(
     cxt: KdrCxt,
     collected: SchemaCollector,
     global: KdrSchemaStore,
+    queryBase: Any?,
 ): Map<String, KdrSchemaStore> {
     val defsByClient = collected.gedraConfigs.configs.mapNotNull { it.client }.associateBy { it.clientId }
-    // Every client that could differ from global: one that overlaid something, and one whose definition
-    // restricts which traits it supports. The second has no overlays at all, so iterating those alone would
-    // miss it -- a client that narrows its trait set purely by declaration is the ordinary case.
-    val clients = (collected.clientOverlays.keys + defsByClient.keys).toSet()
+    // A client that only declares usage rules (issue #538) varies its listing's search fields without
+    // overlaying a `$def` or restricting its traits -- so it would be missed by the two sets below, which is
+    // exactly the ordinary case for a client that adds a search column and nothing else.
+    val usageClients = collected.gedraConfigs.configs
+        .filter { it.usages.isNotEmpty() }
+        .mapNotNull { it.gedraId.client }
+        .filter { it != GID.globalClient }
+    // Every client that could differ from global: one that overlaid something, one whose definition restricts
+    // which traits it supports, and one that declared usage rules. The middle has no overlays at all, so
+    // iterating those alone would miss it -- a client that narrows its trait set purely by declaration is the
+    // ordinary case.
+    val clients = (collected.clientOverlays.keys + defsByClient.keys + usageClients).toSet()
     if (clients.isEmpty()) {
         return emptyMap()
     }
+    val queryName = formDocsQueryDefName()
     val mode = gedraConfigCheckMode(cxt)
     val issues = mutableListOf<GedraConfigIssue>()
     val out = LinkedHashMap<String, KdrSchemaStore>()
@@ -54,12 +67,21 @@ fun buildClientVariants(
         val declared = collected.clientOverlays[client] ?: emptyMap()
         val authored = keepWhatNarrows(cxt, client, global.defs, declared, mode, issues)
         val unions = changedUnions(cxt, collected, global, client, defsByClient[client], authored.keys)
-        // The unions are applied **after** the overlay, and so replace rather than merge. `overlayDefs` is
-        // built for an authored alteration, where an unmentioned key means "leave it as it was" -- exactly
-        // wrong for a type regenerated whole, whose absent `oneOf` is the statement being made. Merged, the
-        // global `oneOf` would survive underneath and the client would go on recognizing every trait.
-        val merged = overlayDefs(global.defs, authored)
-        val defs = if (unions.isEmpty()) merged else merged + unions
+        // The client's forms-listing search fields (issue #538): its usage rules' parameters merged onto the
+        // pristine query base -- never onto the global-augmented type, or an overriding client would inherit
+        // global's parameters too. Folded in only when they differ from the global type, like the unions
+        // below: a generated overlay returning only the difference, so an inheriting client shares the store.
+        val clientQuery = withSearchProperties(queryBase, collected.gedraConfigs.usagesFor(client))
+        val queryOverlay = if (clientQuery != global.defs[queryName]) mapOf(queryName to clientQuery) else emptyMap()
+        // The unions and the query overlay are applied **after** the authored overlay, and so replace rather
+        // than merge. `overlayDefs` is built for an authored alteration, where an unmentioned key means "leave
+        // it as it was" -- exactly wrong for a type regenerated whole, whose absent `oneOf` is the statement
+        // being made. Merged, the global `oneOf` would survive underneath and the client would go on
+        // recognizing every trait. Each `+` is guarded so an empty generated set keeps `overlayDefs`'
+        // identity result (a client varying nothing shares the global store rather than paying for a parse).
+        var defs: Map<String, Any?> = overlayDefs(global.defs, authored)
+        if (unions.isNotEmpty()) defs = defs + unions
+        if (queryOverlay.isNotEmpty()) defs = defs + queryOverlay
         if (defs === global.defs) {
             // Identity, not equality: a client whose overlays all fell away -- or who declared none that
             // change anything -- shares the global store rather than paying for a parse that would produce

@@ -23,6 +23,7 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -76,7 +77,7 @@ import com.dynamicruntime.common.util.toOptStr
 private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> =
     row.toJsonMap() + (GDF.displayValues to computeDisplayValues(cxt, row, SchemaService.get(cxt).traitUsagesFor(cxt.client)))
 
-fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
+fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) {
     val formDoc = GedraDataType.formDoc
     val docType = GU.gedraName(formDoc)
     GedraDataRow.defineType(this, formDoc)
@@ -156,6 +157,30 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         mapOf(GDF.gedraId to fullId)
     }
 
+    // The listing's stable input, as a named type so a per-client copy can carry that client's search fields
+    // (issue #538). Only the fields authored here are stable; the search fields for each scope are generated
+    // from its usage rules and merged onto this type at boot (see `augmentFormDocsQuery`).
+    type(GEP.formDocsQuery) {
+        type = SCT.kObject
+        description = "The forms-listing query: paging, an optional user filter, and a client's search fields."
+        property(EP.offset, "How many documents to skip before this page; 0 for the first page.") {
+            type = SCT.integer
+            // Empty means the default rather than a 400, and a page never starts before the beginning.
+            // (A query param arrives as text; an integer coerces from one by default.)
+            emptyIsAbsent = true
+            minimum = 0
+            default = 0
+        }
+        // Confine the search to one user -- a userId or an email (issue #545). Shown only to a caller who
+        // ranks at admin (`g-visibleWhen`), since an ordinary user reaches only their own rows and the
+        // param would name nobody else; the handler enforces the same, resolving the ref within the
+        // caller's read scope, so an ordinary caller who sends it can still only ever name themselves.
+        property(EI.user, "Confine the search to one user -- a userId or an email. Defaults to you.") {
+            emptyIsAbsent = true
+            visibleWhen = CFACTS.hasAdminLevel
+        }
+    }
+
     listEndpoint(
         GEP.formDocs,
         "Lists the form documents the caller may see, newest first, a page at a time.",
@@ -164,24 +189,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         // can page past the default limit rather than silently seeing only the first page.
         hasMore = true,
         hasNumAvailable = true,
-        inputFields = {
-            field(EP.offset, "How many documents to skip before this page; 0 for the first page.") {
-                type = SCT.integer
-                // Empty means the default rather than a 400, and a page never starts before the beginning.
-                // (A query param arrives as text; an integer coerces from one by default.)
-                emptyIsAbsent = true
-                minimum = 0
-                default = 0
-            }
-            // Confine the search to one user -- a userId or an email (issue #545). Shown only to a caller who
-            // ranks at admin (`g-visibleWhen`), since an ordinary user reaches only their own rows and the
-            // param would name nobody else; the handler enforces the same, resolving the ref within the
-            // caller's read scope, so an ordinary caller who sends it can still only ever name themselves.
-            field(EI.user, "Confine the search to one user -- a userId or an email. Defaults to you.") {
-                emptyIsAbsent = true
-                visibleWhen = CFACTS.hasAdminLevel
-            }
-        },
+        inputRef = GEP.formDocsQuery,
         publicApi = true,
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
@@ -191,9 +199,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         // [resolveTargetUser]); no name is the caller's own scope.
         val target = resolveTargetUser(c, request, callerScope)
         val scope = if (target == null) callerScope else ReadScope.ofUser(target.userId)
-        val page = GedraDataService.get(c).listGedras(c, formDoc, scope, limit, offset)
-        // The client's usage rules, read once for the whole page (issue #537).
+        // The client's usage rules, read once: they drive both the display columns (issue #537) and the search
+        // parameters (issue #538). A search parameter the caller filled becomes an in-memory predicate applied
+        // before paging, so the page and its `numAvailable` are both over the matched set (see `listGedras`).
         val usages = SchemaService.get(c).traitUsagesFor(c.client)
+        val filter = searchFilter(c, request, usages)
+        val page = GedraDataService.get(c).listGedras(c, formDoc, scope, limit, offset, filter)
         ListPage(
             page.rows.map { it.toJsonMap() + (GDF.displayValues to computeDisplayValues(c, it, usages)) },
             page.numAvailable,
@@ -480,4 +491,33 @@ private fun resolveTargetUser(c: KdrCxt, request: Map<String, Any?>, callerScope
     val userRef = (request[EI.user] as? String)?.trim()?.ifEmpty { null } ?: return null
     return UserService.get(c).resolveUserRef(c, userRef, callerScope)
         ?: throw KdrException.mkInput("No user matching '$userRef' is within your access.")
+}
+
+/**
+ * The forms-list search predicate (issue #538), or null when the caller filled no search field. Built from the
+ * client's [usages]: each contributes parameters ([gedraSearchParams]), and a filled one becomes a condition on
+ * the row's **display value** for that trait -- the same value the listing shows in its column, so a person
+ * searches what they see. A row satisfies the filter only when it satisfies every filled parameter.
+ *
+ * A number/date parameter arrives coerced (a `Number`); it is compared as text against the row's display value,
+ * so both sides read through the same parse. Applied by [GedraDataService.listGedras] before paging, over the
+ * cache's client+kind index (the SQL fallback filters its query's rows), with the stated in-memory ceiling.
+ */
+private fun searchFilter(
+    c: KdrCxt,
+    request: Map<String, Any?>,
+    usages: List<ClientTraitUsage>,
+): ((GedraDataRow) -> Boolean)? {
+    val active = gedraSearchParams(usages).mapNotNull { param ->
+        request[param.name]?.let { it.fmt().ifBlank { null } }?.let { param to it }
+    }
+    if (active.isEmpty()) {
+        return null
+    }
+    return { row ->
+        val byTrait = computeDisplayValues(c, row, usages).associate { display ->
+            (display[UF.traitId].toOptStr() ?: "") to (display[UF.value].toOptStr() ?: "")
+        }
+        matchesSearch(byTrait, active)
+    }
 }

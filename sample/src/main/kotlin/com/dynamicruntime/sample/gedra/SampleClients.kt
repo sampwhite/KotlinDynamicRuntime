@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFRAG
@@ -280,14 +281,20 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             property(SC.findings, "What they found.")
         }
 
-        // --- a trait-usage rule (issue #537) ------------------------------------------------------------
+        // --- trait-usage rules (issues #537, #538) ------------------------------------------------------
         //
         // The first thing acme's config changes about a page other than its own form: its forms *list* shows
         // an "Auditor" column, pulled from the site-audit trait's `auditor` field. Declaring any usage of its
         // own **overrides** the global default `name` column (`GedraConfigCollector.usagesFor`), so acme -- which
         // omits `name` -- shows Auditor and not a blank Name column, while globex, declaring none, inherits the
         // default Name. Two clients, two different columns.
-        traitUsage(SC.siteAudit, "Auditor", $$"${auditor}")
+        //
+        // Both are also **searchable** (issue #538), and between them they exercise every search kind: Auditor
+        // is a `string`, searchable exact and -- with `substring` -- by a contains parameter, since a name is
+        // the sort of thing half-remembered; Year is a `number` pulled from the expense report, searchable as a
+        // `>=`/`<=` range. So acme's forms list can be filtered by who audited a site or by reporting year.
+        traitUsage(SC.siteAudit, "Auditor", $$"${auditor}", substring = true)
+        traitUsage(ST.expenseReport, "Year", $$"${year}", UsageKind.number)
     }
 
 /**

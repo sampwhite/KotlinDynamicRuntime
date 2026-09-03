@@ -1,0 +1,116 @@
+package com.dynamicruntime.sample.gedra
+
+import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.UF
+import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.kdn.Startup
+import com.dynamicruntime.sample.SampleComponent
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.shouldBe
+
+/**
+ * Searching the forms list by a trait a client declared a usage rule for (issue #538). The parameters come from
+ * the usage rules (issue #537): every client's list can be sliced by a search field, and because a search
+ * parameter is advertised on the client's own variant of the listing's named input type, a request carrying one
+ * only validates when the client actually declared it -- so a passing search here is also proof the per-client
+ * variant carries the field.
+ *
+ * `globex` inherits the global `name` usage (searchable exact and by substring); `acme` overrides it with an
+ * `Auditor` string (exact and substring) and a `Year` number (a `>=`/`<=` range) -- between them, every kind.
+ * Each case uses a fresh user so the rows it searches are its own (an ordinary caller's read scope is their own
+ * rows), which also means these run through the SQL fall-back path; the cache path filters the same predicate.
+ */
+class UsageSearchTest : StringSpec({
+    val cxt = Startup.mkTestBootCxt(
+        "usageSearch", "usageSearchTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()),
+    )
+
+    // The search parameter names, derived exactly as the backend derives them from a usage's trait id.
+    fun exact(traitId: String) = traitId
+    fun contains(traitId: String) = "${traitId}Contains"
+    fun min(traitId: String) = "${traitId}Min"
+    fun max(traitId: String) = "${traitId}Max"
+
+    fun displayValue(row: Map<String, Any?>, traitId: String): Any? =
+        row[GDF.displayValues].toJsonListOfMaps().first { it[UF.traitId] == traitId }[UF.value]
+
+    fun postName(user: TestUser, name: String) = user.postItem(
+        clientPath(GEP.formDocCreate, SC.globex),
+        mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name)))),
+    )
+
+    fun postAudit(user: TestUser, auditor: String) = user.postItem(
+        clientPath(GEP.formDocCreate, SC.acme),
+        mapOf(GDF.entries to listOf(mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to auditor, SC.findings to "ok")))),
+    )
+
+    fun postExpense(user: TestUser, year: Int) = user.postItem(
+        clientPath(GEP.formDocCreate, SC.acme),
+        mapOf(GDF.entries to listOf(mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to year)))),
+    )
+
+    "globex searches its Name column exact (case-insensitively) and by substring" {
+        val user = TestUser.create(cxt, "name-search@globex.test", userClient = SC.globex)
+        postName(user, "Quarterly plan")
+        postName(user, "Annual budget")
+        val path = clientPath(GEP.formDocs, SC.globex)
+
+        // No search: the whole page, the named-type conversion having changed nothing about ordinary listing.
+        user.getItems(path).size shouldBe 2
+        // Exact, case-insensitive: the exact parameter is named for the trait (`name`).
+        user.getItems(path, mapOf(exact(GT.name) to "quarterly plan"))
+            .map { displayValue(it, GT.name) } shouldBe listOf("Quarterly plan")
+        // Substring: the contains parameter globex inherits because the global `name` usage asked for it.
+        user.getItems(path, mapOf(contains(GT.name) to "budg"))
+            .map { displayValue(it, GT.name) } shouldBe listOf("Annual budget")
+        // A substring that matches neither: an empty page, not an error.
+        user.getItems(path, mapOf(contains(GT.name) to "zzz")).size shouldBe 0
+    }
+
+    "acme searches its Auditor column exact and by substring" {
+        val user = TestUser.create(cxt, "auditor-search@acme.test", userClient = SC.acme)
+        postAudit(user, "Dana Reyes")
+        postAudit(user, "Sam Patel")
+        val path = clientPath(GEP.formDocs, SC.acme)
+
+        user.getItems(path, mapOf(exact(SC.siteAudit) to "dana reyes"))
+            .map { displayValue(it, SC.siteAudit) } shouldBe listOf("Dana Reyes")
+        user.getItems(path, mapOf(contains(SC.siteAudit) to "patel"))
+            .map { displayValue(it, SC.siteAudit) } shouldBe listOf("Sam Patel")
+    }
+
+    "acme searches its Year column as a >= / <= range" {
+        val user = TestUser.create(cxt, "year-search@acme.test", userClient = SC.acme)
+        postExpense(user, 2024)
+        postExpense(user, 2026)
+        val path = clientPath(GEP.formDocs, SC.acme)
+
+        // A lower bound keeps 2026; an upper bound keeps 2024; the two together keep both.
+        user.getItems(path, mapOf(min(ST.expenseReport) to 2025))
+            .map { displayValue(it, ST.expenseReport) } shouldBe listOf("2026")
+        user.getItems(path, mapOf(max(ST.expenseReport) to 2025))
+            .map { displayValue(it, ST.expenseReport) } shouldBe listOf("2024")
+        user.getItems(path, mapOf(min(ST.expenseReport) to 2024, max(ST.expenseReport) to 2026))
+            .map { displayValue(it, ST.expenseReport) } shouldContainExactlyInAnyOrder listOf("2024", "2026")
+        // A range that excludes both: an empty page.
+        user.getItems(path, mapOf(min(ST.expenseReport) to 2030)).size shouldBe 0
+    }
+
+    "two search parameters together narrow to their intersection" {
+        val user = TestUser.create(cxt, "combined-search@acme.test", userClient = SC.acme)
+        postAudit(user, "Dana Reyes")
+        postExpense(user, 2026)
+        val path = clientPath(GEP.formDocs, SC.acme)
+
+        // The audit row has no year and the expense row has no auditor, so a search on both matches neither: the
+        // parameters are ANDed, and a row missing either trait fails the one about it (a blank cell is a
+        // non-match, not a fault).
+        user.getItems(path, mapOf(exact(SC.siteAudit) to "Dana Reyes", min(ST.expenseReport) to 2000)).size shouldBe 0
+    }
+})

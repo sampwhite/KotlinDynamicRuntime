@@ -22,9 +22,24 @@ package com.dynamicruntime.common.gedra
  */
 @Suppress("ConstPropertyName")
 object GEP {
+    /**
+     * The section (and schema namespace) the gedra endpoints and their types live in -- every endpoint here is
+     * client-shaped, so the whole section is copied per client (issue #387). Named once so the endpoint module,
+     * the per-client copier, and the search-type key ([formDocsQueryDefName]) cannot disagree about it.
+     */
+    const val gedraNamespace = "gedra"
+
     const val formDocCreate = "/gedra/formDoc/create"
     const val formDoc = "/gedra/formDoc"
     const val formDocs = "/gedra/formDocs"
+
+    /**
+     * The named input type of the forms listing (issue #538). Named rather than inline because a per-client
+     * copy carries the type *name*, which resolves to that client's variant -- so a client's usage-derived
+     * search parameters can ride on it, where an inline field list would be copied literally and could not
+     * vary. Its stable fields (offset, user) are authored; the search fields are generated per scope.
+     */
+    const val formDocsQuery = "FormDocsQuery"
 
     /** Imports form documents from search output for a target user (issue #545). */
     const val formDocImport = "/gedra/formDoc/import"

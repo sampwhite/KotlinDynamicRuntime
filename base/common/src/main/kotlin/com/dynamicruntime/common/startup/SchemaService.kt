@@ -24,6 +24,8 @@ import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
+import com.dynamicruntime.common.gedra.formDocsQueryDefName
+import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
@@ -121,6 +123,17 @@ class SchemaService : ServiceInitializer {
             collected.defs.putAll(entryEditUnionDefs(cxt, GCFG.globalNamespace, kind, globalTraits))
         }
 
+        // The forms-listing search fields (issue #538): a scope's usage rules contribute a search parameter
+        // each, merged onto the authored query type. The global scope's set is merged here so the shared
+        // listing advertises and accepts them; the pristine base is kept for the per-client build, which merges
+        // each client's own set onto *it* (never onto the global-augmented one, or an overriding client would
+        // inherit global's parameters too).
+        val queryName = formDocsQueryDefName()
+        val queryBase = collected.defs[queryName]
+        if (queryBase != null) {
+            collected.defs[queryName] = withSearchProperties(queryBase, collected.gedraConfigs.usagesFor(GID.globalClient))
+        }
+
         val types = parseSchemaTypes(collected.defs)
         val endpoints = availableEndpoints.associateBy { it.collationKey }
         val tables = collected.tables.associateBy { it.tableName }
@@ -144,7 +157,7 @@ class SchemaService : ServiceInitializer {
         cxt.instanceConfig.put(KdrSchemaStore.key, store)
         // Built after the global store, from it (issue #356). A variant is the same document with one
         // client's overlays applied and re-parsed, so it cannot exist until the document is complete.
-        val variants = buildClientVariants(cxt, collected, store)
+        val variants = buildClientVariants(cxt, collected, store, queryBase)
         // Each client that varies something gets its own copy of the client-shaped endpoints (issue #387).
         // After the variants, because a client varying nothing needs none -- its endpoints would be the
         // global ones under a longer name.

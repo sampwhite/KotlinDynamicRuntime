@@ -66,6 +66,7 @@ fun coreTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, GT.coreTraits, GCFG.
     // The default forms-list presentation (issue #537): a "Name" column pulled from the `name` trait, applied
     // to any client that has not declared usage rules of its own. This is what preserves the name column every
     // deployment showed before presentation became client-configurable -- a client with its own rules
-    // overrides it wholesale (see `GedraConfigCollector.usagesFor`).
-    traitUsage(GT.name, "Name", $$"${name}")
+    // overrides it wholesale (see `GedraConfigCollector.usagesFor`). Searchable by exact name and, since a name
+    // is the field a person most often half-remembers, by substring too (issue #538).
+    traitUsage(GT.name, "Name", $$"${name}", substring = true)
 }
