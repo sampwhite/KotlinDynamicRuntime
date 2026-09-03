@@ -3,7 +3,6 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
@@ -48,7 +47,7 @@ class GedraImportTest : StringSpec({
     fun entriesOf(tu: TestUser, gedraId: String): List<Map<String, Any?>> =
         tu.getItem(GEP.formDoc, mapOf(GDF.gedraId to gedraId))[GDF.entries].toJsonListOfMaps()
 
-    var aliceDocId = ""
+    var aliceDocId: String
 
     "a user imports a single document for themselves" {
         val res = importFor(bob, mapOf(GIF.data to doc(nameEntry("Imported for Bob"))))

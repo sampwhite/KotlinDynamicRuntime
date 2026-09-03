@@ -186,8 +186,8 @@ class SchemaService : ServiceInitializer {
         // complete global set. Once built, it never changes -- which is what makes a registry something an
         // expression can be parsed against once and evaluated many times.
         cfactRegistries = buildCFactRegistries(collected.cfacts, collected.cfactSources, collected.clientCFacts)
-        // After the registry exists (issue #545): a `g-visibleWhen` expression that does not parse would other-
-        // wise fault the catalog at request time -- for one caller, on one surface -- rather than at boot.
+        // After the registry exists (issue #545): a `g-visibleWhen` expression that does not parse would otherwise
+        // fault the catalog at request time -- for one caller, on one surface -- rather than at boot.
         checkVisibleWhen()
         isInit = true
     }
@@ -311,7 +311,7 @@ class SchemaService : ServiceInitializer {
 
     /**
      * The gedra traits [client] can see -- its own and global's (issue #487). Each carries its `primaryKey`, so
-     * a write path can key entries by `(traitId, data[primaryKey])` without re-reading the generated schema.
+     * a write path can key entries by `(traitId, data[<primaryKey>])` without re-reading the generated schema.
      * The collector is what the unions were built from, so this is the same set they select on.
      */
     fun gedraTraitsFor(client: String): List<GedraTrait> = collector?.gedraConfigs?.traitsFor(client) ?: emptyList()
@@ -418,7 +418,7 @@ class SchemaService : ServiceInitializer {
                 property(
                     EI.cfacts,
                     "The frontend-delivered cfacts (issue #564) and whether each is present for this caller: a " +
-                        $$"map from cfact name to boolean, for evaluating a property's `g-visibleWhen` " +
+                        "map from cfact name to boolean, for evaluating a property's `g-visibleWhen` " +
                         "client-side. Only cfacts a `CFactDef` marks deliverable appear -- the whole such " +
                         "vocabulary, so a gate that names an absent one still parses.",
                     required = true,
