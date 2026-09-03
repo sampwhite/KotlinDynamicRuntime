@@ -345,6 +345,8 @@ private val homeDocs: List<HomeDocDef> = listOf(
         "How a stored gedra is changed: why a patch, what the input looks like, and the endpoints around it."),
     HomeDocDef(HDOC.uiBlock, "UI block", HDOC.uiBlock, "ui-block.md",
         "The UiBlock: declared presentation structure, contributed by components and varied per client."),
+    HomeDocDef(HDOC.license, "License", HDOC.license, "LICENSE",
+        "The MIT license the runtime is released under."),
 )
 
 /**

@@ -65,6 +65,12 @@ val embedDocs by tasks.registering(Copy::class) {
             "gedra-config-and-data.md", "gedra-entry.md", "gedra-patch.md", "ui-block.md",
         )
     }
+    // The MIT license the README links to (issue #555): extension-less at the repo root, so it is copied in
+    // and given the `.md` name MarkdownDocService serves under (docId "license"). The plain-text license
+    // renders fine as Markdown, and the README's `[MIT](LICENSE)` link then resolves to an in-app document.
+    from(layout.projectDirectory.file("../../LICENSE")) {
+        rename { "license.md" }
+    }
     into(layout.buildDirectory.dir("docResources/md-docs"))
 }
 
