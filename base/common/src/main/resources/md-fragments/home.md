@@ -11,7 +11,7 @@
 This is the **KotlinDynamicRuntime** runtime shell. Everything you see is assembled from data the backend
 serves: the layout below comes from a UI-config endpoint, and this copy comes from a Markdown fragment file.
 
-Pick a document from the navigation to read more.
+Open **Documents** from the menu to read more.
 
 # @nav
 # +title Documents
