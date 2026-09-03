@@ -307,6 +307,38 @@ and measuring beats eyeballing, since "an 816px input beside a 178px column" is 
 cramped" is a complaint. Write the rule to `app.css` once it is settled. Note the antd caveat below when the
 rule targets one of its controls.
 
+**Do not assume the developer's running app shows your change.** The human developer typically runs the
+backend from IntelliJ against a **rebuilt production** webapp bundle, and does not run the dev server at all —
+so the instance they have open reflects the last bundle *they* built, never your uncommitted frontend edits.
+To see your own change you run your own: the dev server above, or your own `:launch:run` (which rebuilds and
+embeds the bundle, ~a minute). Never ask the developer to look at something only your build contains, and
+never read their window as confirmation of your edit.
+
+## Signing a browser session in to verify a change (the `becomeUser` fixture)
+
+Most of the app is behind a login — a login-gated surface (anything in the `gedra` section, the forms pages)
+is not even *visible* to a signed-out caller, so `/schema/endpoints` omits it and a page fetched anonymously
+comes back empty. Verifying such a change in a browser therefore starts with a session, and the fast way in is
+a test fixture rather than the real email-code flow:
+
+- **`POST /kda/fixture/becomeUser`** with `{email, level, client, capabilities}` creates-or-finds the user and
+  logs you straight in — **no verification code**. It is a `forTestingOnly` endpoint, so it exists only on a
+  test instance (`KDR_TEST_INSTANCE`, which the in-memory local server is). Call it from the browser page's own
+  `fetch()` so the session cookie lands in the browser, then reload the app to fetch as the new identity (a
+  same-hash navigate does not reload — call `location.reload()`).
+- **Pass `client` to become a *specific* client's user** (`client: "acme"`). This is what a **per-client**
+  surface needs — a client's schema variant, its usage columns and search fields — and without it you land in
+  the default client and verify the wrong variant. An unknown client is refused rather than silently downgraded.
+- **`level` is the privilege rung** (`user` / `admin` / …); `admin` is client-wide, so a gedra listing it runs
+  goes through the in-memory **cache** read path, where an ordinary user (scoped to their own rows) goes through
+  SQL — a cheap way to exercise the path a unit test cannot easily reach. Seed whatever the surface reads with
+  further `fetch` POSTs in the same session, using the constants' real *values* (a trait id may be
+  `acmeSiteAudit`, not `siteAudit`).
+
+This is one `fetch`, not a heavyweight login — reach for it rather than declaring a login-gated change
+unverifiable. Other test fixtures exist for more specialized needs (for example reading a real login code back
+from the in-memory mail sink to drive the actual auth flow); `becomeUser` is the one for "sign in as X and look".
+
 ## Reading a frontend crash: the readable bundle (issue #230)
 
 What ships is webpack's **production** bundle, and a Kotlin exception reaches JS with `message` undefined and a
