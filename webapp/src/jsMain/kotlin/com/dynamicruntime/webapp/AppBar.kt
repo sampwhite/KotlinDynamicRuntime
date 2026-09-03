@@ -142,6 +142,7 @@ val AppBar = FC<AppBarProps> { props ->
     // group finds it open next time. Held as the set of expanded parent ids.
     var expandedGroups by useState { readExpandedGroups() }
     var config by useState<HomeConfig?>(null)
+
     // The persistent `_debug` box's value (issue #517, slice 3), seeded from this browser's storage. A hook, so
     // it is declared unconditionally here even though the box renders only in debug -- and hiding the box (on
     // leaving debug) never clears it, so the value is still here when debug returns.
@@ -248,6 +249,16 @@ val AppBar = FC<AppBarProps> { props ->
 
     // A *delayed* loading flag so a fast load never flashes the cue (issue #469).
     val brandLoadingShown = useDelayedFlag(brandState is ShellBrand.Loading)
+
+    // Open the group that holds the page on screen when you first arrive at it (issue #554); after that the
+    // toggle owns the state, so the group you are in can still be collapsed. Keyed on that group, so navigating
+    // within it does not reopen a group you closed, while arriving at a different group opens it.
+    val currentGroup = currentGroupId(config?.menu.orEmpty(), props.currentPage)
+    useEffect(currentGroup) {
+        if (currentGroup != null && currentGroup !in expandedGroups) {
+            expandedGroups = expandedGroups + currentGroup
+        }
+    }
 
     header {
         className = ClassName(if (elevated) "app-bar admin" else "app-bar")
@@ -420,10 +431,11 @@ val AppBar = FC<AppBarProps> { props ->
                             // so drawing it as a plain header loses nothing. The header labels the child group
                             // for assistive tech via `aria-labelledby`, matching the `role="group"` below.
                             val headerId = "menu-parent-${node.item.id}"
-                            // A group holding the page on screen opens regardless of the remembered state, and
-                            // its header is marked -- otherwise a collapsed group gives no hint of where you are.
+                            // The header is marked when the group holds the page on screen; a collapsed group is
+                            // opened on arrival by the effect above, not by forcing `expanded` here -- otherwise the
+                            // toggle could never close the group you are in (a silent no-op, webapp/CLAUDE.md).
                             val holdsCurrent = node.children.any { it.id == currentItem?.id }
-                            val expanded = node.item.id in expandedGroups || holdsCurrent
+                            val expanded = node.item.id in expandedGroups
                             button {
                                 // id/aria via asDynamic to match this file's idiom (see menuItemView below).
                                 asDynamic()["id"] = headerId
@@ -539,6 +551,10 @@ private fun ChildrenBuilder.menuLink(href: String, label: String, current: Boole
  */
 fun currentMenuItem(items: List<MenuItem>, page: String): MenuItem? =
     items.firstOrNull { (it.action as? UiRoute)?.page == page }
+
+/** The id of the drill-down group whose child is the page on screen, or null when the current item is
+ *  top-level or the menu offers no route to [page]. What the bar opens on arrival (issue #554). */
+fun currentGroupId(items: List<MenuItem>, page: String): String? = currentMenuItem(items, page)?.parentId
 
 /** A top-level menu item together with the items that name it as their [MenuItem.parentId] (issue #517). */
 class MenuNode(val item: MenuItem, val children: List<MenuItem>)

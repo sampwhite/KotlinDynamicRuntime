@@ -13,6 +13,7 @@ import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.ul
 import react.useEffect
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 
@@ -34,8 +35,13 @@ val DocsPage = FC<Props> {
     var config by useState<HomeConfig?>(null)
     var copy by useState(Copy.empty)
     var docText by useState<String?>(null)
+    // The document fetch has its own error, shown beside the (still-visible) heading, so a failed document does
+    // not blank the whole page the way a failed config load does, and does not race the config's `error = null`.
+    var docError by useState<DisplayError?>(null)
     var error by useState<DisplayError?>(null)
     val generation = useRefreshGeneration()
+    // Monotonic token so an out-of-order document response is dropped rather than overwriting the open one.
+    val latestDoc = useRef(0)
     val openId = hashParams()[HP.doc]
 
     // The same config Home reads (the links, and the fragment carrying the nav copy), re-read per generation.
@@ -54,18 +60,22 @@ val DocsPage = FC<Props> {
         }
     }
 
-    // Fetch whichever document the hash names, and drop the old text when none is.
+    // Fetch whichever document the hash names. Clear the old text and error up front, so switching documents
+    // never shows the previous body under the new heading; a token drops a slow response that a later switch
+    // has superseded (docsScope is module-global, so a launch outlives this effect).
     useEffect(openId, config) {
         val link = config?.links?.firstOrNull { it.id == openId }
-        if (link == null) {
-            docText = null
-        } else {
+        docText = null
+        docError = null
+        if (link != null) {
+            val token = (latestDoc.current ?: 0) + 1
+            latestDoc.current = token
             docsScope.launch {
                 try {
-                    docText = HomeApi.fetchDoc(link.docId, link.buildId)
-                    error = null
+                    val loaded = HomeApi.fetchDoc(link.docId, link.buildId)
+                    if (latestDoc.current == token) docText = loaded
                 } catch (e: Throwable) {
-                    error = userFacingError(e)
+                    if (latestDoc.current == token) docError = userFacingError(e)
                 }
             }
         }
@@ -82,6 +92,7 @@ val DocsPage = FC<Props> {
             doc != null -> {
                 backToListing(HMENU.pageDocs)
                 h1 { +doc.label }
+                docError?.let { errorText("Couldn't load this document.", it) }
                 docText?.let { text ->
                     Markdown {
                         source = text
@@ -112,11 +123,11 @@ val DocsPage = FC<Props> {
     }
 }
 
-/** One link per document, to the document's own page, marking the open one. Home's presentations use it too. */
-fun ChildrenBuilder.docLinks(links: List<HomeLink>, openId: String?) {
+/** One link per document, to the document's own page. Home's link presentations use it too. */
+fun ChildrenBuilder.docLinks(links: List<HomeLink>) {
     links.forEach { link ->
         a {
-            className = ClassName(if (link.id == openId) "link-button open" else "link-button")
+            className = ClassName("link-button")
             href = docHref(link.id)
             +link.label
         }

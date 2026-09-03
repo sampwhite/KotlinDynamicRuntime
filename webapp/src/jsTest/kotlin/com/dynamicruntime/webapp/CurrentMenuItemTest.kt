@@ -41,6 +41,15 @@ class CurrentMenuItemTest {
     }
 
     @Test
+    fun currentGroupIsTheParentOfAChildPageAndNullOtherwise() {
+        // What the bar opens on arrival (issue #554): the group of a child page; nothing for a top-level page
+        // or one the menu does not offer.
+        assertEquals("operator", currentGroupId(items, HMENU.pageCacheState))
+        assertNull(currentGroupId(items, HMENU.pageCatalog))
+        assertNull(currentGroupId(items, "home"))
+    }
+
+    @Test
     fun aHeaderOrCallItemIsNeverCurrent() {
         // Only a route can be "the page you are on"; a group header and a call have no page.
         assertNull(currentMenuItem(items, "operator"))

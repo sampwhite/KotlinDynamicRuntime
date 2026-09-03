@@ -68,7 +68,7 @@ val Home = FC<Props> {
         if (layout?.topBar == true && links.isNotEmpty()) {
             nav {
                 className = ClassName("home-topbar")
-                docLinks(links, openId = null)
+                docLinks(links)
             }
         }
 
@@ -82,7 +82,7 @@ val Home = FC<Props> {
                     copy.opt("nav", "title")?.let {
                         h2 { +it }
                     }
-                    docLinks(links, openId = null)
+                    docLinks(links)
                 }
             }
 
@@ -137,6 +137,6 @@ private fun ChildrenBuilder.renderInlineLinks(links: List<HomeLink>, copy: Copy)
     }
     div {
         className = ClassName("home-inline-links")
-        docLinks(links, openId = null)
+        docLinks(links)
     }
 }

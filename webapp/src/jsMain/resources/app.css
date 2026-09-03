@@ -223,7 +223,6 @@ body {
 }
 .debug-index a:hover { text-decoration: underline; }
 
-/* The "back to the debug index" link atop each tool page (issue #517 follow-up). */
 /* The "← Listing" link atop a child page (issue #554; was the debug-only `.debug-back`). */
 .back-link {
     display: inline-block;
