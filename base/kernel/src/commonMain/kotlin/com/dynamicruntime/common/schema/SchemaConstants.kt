@@ -145,7 +145,10 @@ object SCH {
      * [allowCoerce] is dropped, since JSON Schema cannot say "a string is also accepted here"; [visibleOnly]
      * is dropped too, because its nearest spelling (`pattern` over `\p{C}` and `\p{Z}` classes) is honored by
      * some regex engines and not others, so it would be stricter for one consumer and meaningless for the
-     * next. Stripping by default is exhaustive by construction: a keyword nobody remembered to consider never
+     * next. [outerWhitespace] exports, in *both* modes, as `pattern: "^\S(?:[\s\S]*\S)?$"` -- exactly what
+     * `"reject"` accepts, and stricter than `"trim"` (which would accept the whitespace and clean it), so it
+     * honors the stricter-than-us rule; its `\s` is the regex Unicode-ish class, a near-match for our `<= ' '`.
+     * Stripping by default is exhaustive by construction: a keyword nobody remembered to consider never
      * escapes. And where
      * a conversion cannot be exact, the export must be **stricter than us, never looser** -- a stricter export
      * means clients send a subset of what we accept, while a looser one manufactures rejections at the
@@ -180,6 +183,20 @@ object SCH {
      * attack, so it stays out.
      */
     const val visibleOnly = "g-visibleOnly"
+
+    /**
+     * Whether leading/trailing whitespace on a string value is stripped or refused (issue #541). A closed
+     * string vocabulary ([SOWS]) on a plain string property: absent leaves whitespace alone (the default,
+     * as today), `"trim"` strips it, `"reject"` fails a value that carries any. Off unless declared, and only
+     * a plain string type may declare it -- the parser refuses it elsewhere.
+     *
+     * One keyword for both modes because "trim it" and "reject it" are the same rule read two ways; two
+     * booleans would need a precedence rule for the both-set case. `"reject"` is for a field where silent
+     * trimming would hide a paste error (a code, a password, an identifier); `"trim"` is for ordinary free
+     * text. "Whitespace" here is the kernel's `<= ' '` test (see the validator's whitespace helper), not
+     * Kotlin's Unicode [trim]; the two disagree on a no-break space, and the rest of the kernel uses `<= ' '`.
+     */
+    const val outerWhitespace = "g-outerWhitespace"
 
     /**
      * Marks a property the client does not supply -- something else produces it (issue #254).
@@ -340,6 +357,19 @@ object SFMT {
      * something this schema layer already models.
      */
     const val binary = "binary"
+}
+
+/**
+ * Values of the [SCH.outerWhitespace] keyword (issue #541): the two modes for edge whitespace on a string.
+ * A closed set -- an unrecognized value fails the parse -- resolved onto [SchType.outerWhitespace].
+ */
+@Suppress("ConstPropertyName", "unused")
+object SOWS {
+    /** Strip leading/trailing whitespace (coerce mode); validate-only checks the trimmed form. */
+    const val trim = "trim"
+
+    /** Fail a value carrying leading/trailing whitespace with `badValue`; alter nothing. */
+    const val reject = "reject"
 }
 
 /**

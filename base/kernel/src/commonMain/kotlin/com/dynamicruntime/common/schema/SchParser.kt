@@ -327,6 +327,7 @@ fun parseNode(
         // constrains nothing -- is left alone.
         emptyIsAbsent = (map[SCH.emptyIsAbsent] as? Boolean) ?: isScalarType(jsonType),
         visibleOnly = parseVisibleOnly(map[SCH.visibleOnly], name, jsonType, format),
+        outerWhitespace = parseOuterWhitespace(map[SCH.outerWhitespace], name, jsonType, format),
         format = format,
         title = map[SCH.title].toOptStr(),
         description = map[SCH.description].toOptStr(),
@@ -418,6 +419,38 @@ fun parseVisibleOnly(raw: Any?, typeName: String?, jsonType: String?, format: St
         )
     }
     return on
+}
+
+/**
+ * Reads the custom `g-outerWhitespace` keyword (issue #541): absent is null (whitespace kept), `"trim"` and
+ * `"reject"` map to [SchOuterWhitespace], and anything else fails the parse.
+ *
+ * **Strict where the standard keywords are lenient**, on the same reasoning as [parseVisibleOnly]: the keyword
+ * is ours, so no stock-validator document is at stake, and the failure it prevents is the silent kind -- a
+ * `"strip"` misspelling read as "leave whitespace alone" would quietly disable the protection, and `"trim"` on
+ * an integer would constrain nothing (no integer is a string, so the check never runs). Both are refused by
+ * name at boot. A date-format or binary-format string is refused with the non-strings: its value is parsed as
+ * a date, or is not text at all, so there is no edge whitespace for the rule to see.
+ */
+@KdrPrivate
+fun parseOuterWhitespace(raw: Any?, typeName: String?, jsonType: String?, format: String?): SchOuterWhitespace? {
+    if (raw == null) return null
+    val where = typeName?.let { " on '$it'" } ?: ""
+    val mode = when (raw) {
+        SOWS.trim -> SchOuterWhitespace.trim
+        SOWS.reject -> SchOuterWhitespace.reject
+        else -> throw KdrException.mkConv(
+            "'${SCH.outerWhitespace}'$where must be '${SOWS.trim}' or '${SOWS.reject}', not '$raw'."
+        )
+    }
+    if (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format)) {
+        val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
+        throw KdrException.mkConv(
+            "'${SCH.outerWhitespace}'$where applies to a plain string, and this type is $actual. It would " +
+                "constrain nothing there."
+        )
+    }
+    return mode
 }
 
 /** Whether a JSON Schema type is one of the numeric types (the [SCH.allowCoerce] default). */

@@ -123,6 +123,14 @@ open class SchTypeBuilder(
      */
     var visibleOnly: Boolean? by SchAttr(data, SCH.visibleOnly)
 
+    /**
+     * Custom `g-outerWhitespace` keyword (issue #541): [SOWS.trim] strips leading/trailing whitespace,
+     * [SOWS.reject] fails a value that carries any. Unset leaves it alone (the default). Only a plain string
+     * field may set it -- the parser refuses it on any other type. Prefer the [trimmed] / [noOuterWhitespace]
+     * helpers to setting the raw value.
+     */
+    var outerWhitespace: String? by SchAttr(data, SCH.outerWhitespace)
+
     /** Whether undeclared properties are allowed. When unset, the parser defaults it (false when the type
      *  has declared properties, true when it has none). Set explicitly to allow extras on a defined type. */
     var additionalProperties: Boolean? by SchAttr(data, SCH.additionalProperties)
@@ -383,6 +391,23 @@ open class SchTypeBuilder(
     /** Defines the element schema for an array type (`items`). */
     fun items(build: SchTypeBuilder.() -> Unit) {
         data[SCH.items] = SchTypeBuilder(cxt, namespace).apply(build).data
+    }
+
+    /**
+     * Strips leading/trailing whitespace from this string value (issue #541): `g-outerWhitespace: "trim"`.
+     * For ordinary free text where edge whitespace is a paste artifact, not content.
+     */
+    fun trimmed() {
+        outerWhitespace = SOWS.trim
+    }
+
+    /**
+     * Refuses a value carrying leading/trailing whitespace on this string field (issue #541):
+     * `g-outerWhitespace: "reject"`. For a code, password, or identifier, where silent trimming would hide a
+     * paste error rather than fix it.
+     */
+    fun noOuterWhitespace() {
+        outerWhitespace = SOWS.reject
     }
 
     /** Marks this schema as a day-only date string (JSON Schema `format: "date"`, e.g. `2021-06-01`). */
