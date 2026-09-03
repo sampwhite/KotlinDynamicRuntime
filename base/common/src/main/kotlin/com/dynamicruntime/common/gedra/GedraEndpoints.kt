@@ -194,6 +194,106 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
             hasMore = offset + page.rows.size < page.numAvailable,
         )
     }
+
+    // --- the import (issue #545) --------------------------------------------------------------------------
+
+    // What an import did: the documents it created and, per (category, trait), what it threw away.
+    type(GEP.importResultType) {
+        type = SCT.kObject
+        description = "The outcome of an import: the documents created and the entries thrown away."
+        property(GIF.imported, "The documents created, each with its assigned id and excluded traits.", required = true) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(GDF.gedraId, "The gedra id assigned to the created document.", required = true)
+                property(GIF.excludedTraits, "Trait ids excluded from this document.", required = true) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+            }
+        }
+        property(GIF.discarded, "What was thrown away, one row per category and trait, with a count.", required = true) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(GIF.category, "The discard category ('${GIF.unknownTrait}' or '${GIF.invalidEntry}').", required = true)
+                property(GE.traitId, "The trait the discarded entries named (blank when they named none).", required = true)
+                property(GIF.count, "How many entries were thrown away for this category and trait.", required = true) {
+                    type = SCT.integer
+                }
+            }
+        }
+    }
+
+    generalEndpoint(
+        GEP.formDocImport,
+        "Imports form documents (as a search returns them) for a user, forgiving faults per the flags (issue #545).",
+        HttpMethod.POST,
+        outputRef = GEP.importResultType,
+        inputFields = {
+            // The target user -- a userId or an email. Shown only to a caller who can act for others; an
+            // ordinary caller imports for themselves and the handler confines a supplied ref to their scope.
+            field(EI.user, "The user to import for -- a userId or an email. Defaults to you.") {
+                emptyIsAbsent = true
+                visibleWhen = CFACTS.hasAdminLevel
+            }
+            // The copied data, schema-less on purpose: a single form document, or a `{items: [...]}` wrapper.
+            field(GIF.data, "The copied data to import: one form document, or an object with an 'items' array.") {
+                type = SCT.kObject
+            }
+            field(GIF.forgiveUnknownTraits, "Throw away an entry whose trait the target client does not support.") {
+                type = SCT.boolean
+                emptyIsAbsent = true
+                default = true
+            }
+            field(GIF.forgiveInvalidEntries, "Throw away an entry that fails validation instead of rejecting the import.") {
+                type = SCT.boolean
+                emptyIsAbsent = true
+                default = false
+            }
+            // Preserving entry ids risks cross-user id collision, so it is offered and allowed only from an
+            // env-authed channel -- gated in the schema, and enforced by the handler regardless.
+            field(GIF.preserveEntryIds, "Keep the incoming entry ids instead of minting fresh ones (env auth only).") {
+                type = SCT.boolean
+                emptyIsAbsent = true
+                default = false
+                visibleWhen = CFACTS.hasEnvAuth
+            }
+        },
+        publicApi = true,
+    ) { c, request ->
+        val callerScope = ReadScopeRules.forCaller(c)
+        // The target owner: the named user (resolved within the caller's scope, so an ordinary caller reaches
+        // only themselves), or the caller when no user is named. The target's client is the one whose traits
+        // the import validates against.
+        val userRef = (request[EI.user] as? String)?.trim()?.ifEmpty { null }
+        val target = if (userRef == null) {
+            Triple(c.userProfile.client, c.userProfile.userId, c.userProfile.org)
+        } else {
+            val row = UserService.get(c).resolveUserRef(c, userRef, callerScope)
+                ?: throw KdrException.mkInput("No user matching '$userRef' is within your access.")
+            Triple(row.client, row.userId, row.org)
+        }
+        val preserve = request.getOptBool(GIF.preserveEntryIds) == true
+        // The schema hides the toggle from a non-env-authed caller; the gate is not a defense, so enforce it.
+        if (preserve && !c.isEnvAuthEffective) {
+            throw KdrException.mkInput("Preserving entry ids requires env auth.")
+        }
+        // Bind a sub context to the target as the owner (client/userId/org), keeping the caller as the actor
+        // stamped into createdBy.
+        val sub = c.mkSubContext("formDocImport", target.first)
+        sub.userId = target.second
+        sub.org = target.third
+        // Normalize the loose data: a `{items: [...]}` wrapper, else the map itself as one document.
+        val data = request[GIF.data].toJsonMapOrEmpty()
+        val docs = (data[EP.items] as? List<*>)?.toJsonListOfMaps() ?: listOf(data)
+        val opts = GedraImportOptions(
+            forgiveUnknownTraits = request.getOptBool(GIF.forgiveUnknownTraits) != false,
+            forgiveInvalidEntries = request.getOptBool(GIF.forgiveInvalidEntries) == true,
+            preserveEntryIds = preserve,
+        )
+        GedraDataService.get(c).importGedras(sub, formDoc, docs, opts).toJsonMap()
+    }
     // --- the patch (issue #337) ---------------------------------------------------------------------------
 
     // One target: a gedra, and the edits asked of it. Its `edits` are the manufactured edit union for this
