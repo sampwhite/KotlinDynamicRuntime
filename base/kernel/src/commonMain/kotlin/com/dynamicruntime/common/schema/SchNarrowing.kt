@@ -63,6 +63,10 @@ private val presentationKeys = setOf(
     // A presentation hint (issue #540) is display-only and never consulted by validation, so a client may set
     // or change it as freely as a label. Absent from this list it would be refused as a validation change.
     SCH.presentation,
+    // Field visibility (issue #545) is resolved when the catalog renders and never reaches validation -- a
+    // caller the gate hides a field from still has it in the compiled schema, and the handler enforces the real
+    // condition -- so a client may set or change it freely. Hiding a field cannot widen what a type accepts.
+    SCH.visibleWhen,
 )
 
 /** The keys that may differ by narrowing; every other validating key must match the base exactly. */

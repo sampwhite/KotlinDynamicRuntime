@@ -19,6 +19,7 @@ import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.getOptBool
@@ -177,16 +178,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
         val offset = (request[EP.offset] as? Number)?.toInt() ?: 0
         val callerScope = ReadScopeRules.forCaller(c)
-        // A named user narrows the scope to that user -- but only within what the caller may already see:
-        // `resolveUserRef` returns null for a ref outside the caller's scope, so an ordinary caller can name
-        // only themselves and no caller can probe another client. Unresolved is a 400 that does not say whether
-        // the user is absent or merely out of reach.
-        val userRef = (request[EI.user] as? String)?.trim()?.ifEmpty { null }
-        val scope = if (userRef == null) callerScope else {
-            val target = UserService.get(c).resolveUserRef(c, userRef, callerScope)
-                ?: throw KdrException.mkInput("No user matching '$userRef' is within your access.")
-            ReadScope.ofUser(target.userId)
-        }
+        // A named user narrows the scope to that user -- but only within what the caller may already see (see
+        // [resolveTargetUser]); no name is the caller's own scope.
+        val target = resolveTargetUser(c, request, callerScope)
+        val scope = if (target == null) callerScope else ReadScope.ofUser(target.userId)
         val page = GedraDataService.get(c).listGedras(c, formDoc, scope, limit, offset)
         ListPage(
             page.rows.map { it.toJsonMap() },
@@ -238,7 +233,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
                 visibleWhen = CFACTS.hasAdminLevel
             }
             // The copied data, schema-less on purpose: a single form document, or a `{items: [...]}` wrapper.
-            field(GIF.data, "The copied data to import: one form document, or an object with an 'items' array.") {
+            field(GIF.data, "The copied data to import: one form document, or an object with an 'items' array.", required = true) {
                 type = SCT.kObject
             }
             field(GIF.forgiveUnknownTraits, "Throw away an entry whose trait the target client does not support.") {
@@ -264,15 +259,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
     ) { c, request ->
         val callerScope = ReadScopeRules.forCaller(c)
         // The target owner: the named user (resolved within the caller's scope, so an ordinary caller reaches
-        // only themselves), or the caller when no user is named. The target's client is the one whose traits
-        // the import validates against.
-        val userRef = (request[EI.user] as? String)?.trim()?.ifEmpty { null }
-        val target = if (userRef == null) {
+        // only themselves -- see [resolveTargetUser]), or the caller when no user is named. The target's client
+        // is the one whose traits the import validates against.
+        val targetRow = resolveTargetUser(c, request, callerScope)
+        val target = if (targetRow == null) {
             Triple(c.userProfile.client, c.userProfile.userId, c.userProfile.org)
         } else {
-            val row = UserService.get(c).resolveUserRef(c, userRef, callerScope)
-                ?: throw KdrException.mkInput("No user matching '$userRef' is within your access.")
-            Triple(row.client, row.userId, row.org)
+            Triple(targetRow.client, targetRow.userId, targetRow.org)
         }
         val preserve = request.getOptBool(GIF.preserveEntryIds) == true
         // The schema hides the toggle from a non-env-authed caller; the gate is not a defense, so enforce it.
@@ -463,4 +456,17 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         val saveId = request[GDF.saveId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.saveId} is required.")
         saveWorkflow(c, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps())
     }
+}
+
+/**
+ * Resolves the `user` parameter (issue #545) that the search and import handlers share: the caller-supplied
+ * userId-or-email confined to [callerScope], or null when none was named. A ref that resolves to nobody *within
+ * that scope* is a 400 whose wording does not say whether the user is absent or merely out of reach -- the one
+ * place the confinement rule and its message live, so the two surfaces cannot drift. An ordinary caller's scope
+ * is their own user, so they can only ever name themselves; an administrator reaches their client (or all).
+ */
+private fun resolveTargetUser(c: KdrCxt, request: Map<String, Any?>, callerScope: ReadScope): AuthUserRow? {
+    val userRef = (request[EI.user] as? String)?.trim()?.ifEmpty { null } ?: return null
+    return UserService.get(c).resolveUserRef(c, userRef, callerScope)
+        ?: throw KdrException.mkInput("No user matching '$userRef' is within your access.")
 }
