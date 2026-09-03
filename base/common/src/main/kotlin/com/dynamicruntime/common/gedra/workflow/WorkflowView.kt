@@ -112,6 +112,10 @@ fun resolveWorkflowView(
         WFD.tasks to taskViews,
         // The self-contained schema: exactly the types the trait refs reach, and their dependencies.
         SCH.dDefs to collectDefClosure(seedRefs, clientDefs),
+        // The caller's frontend-delivered cfacts (issue #569), so the page evaluates a rendered trait's
+        // `g-visibleWhen` -- an admin-only field is hidden from an ordinary caller here as on the endpoint form.
+        // The served schema keeps the field for everyone; only the page hides it, against this map.
+        WVF.cfacts to SchemaService.get(cxt).deliveredCfactsFor(cxt, client),
     )
 }
 

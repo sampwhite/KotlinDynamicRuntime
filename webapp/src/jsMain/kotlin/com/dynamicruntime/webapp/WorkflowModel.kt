@@ -37,7 +37,17 @@ class WfSaveView(val id: String, val label: String, val kind: String)
 class WfTaskView(val id: String, val label: String, val traits: List<WfTraitView>, val saves: List<WfSaveView>)
 
 /** A resolved creation workflow, ready to render. */
-class WorkflowCreation(val workflowId: String, val showTaskList: Boolean, val tasks: List<WfTaskView>) {
+class WorkflowCreation(
+    val workflowId: String,
+    val showTaskList: Boolean,
+    val tasks: List<WfTaskView>,
+    /**
+     * The caller's frontend-delivered cfacts (issue #569), `name -> present`, which each rendered trait's
+     * [SchemaForm] evaluates a property's `g-visibleWhen` against — so an admin-only field is hidden from an
+     * ordinary caller. The same shape the endpoint catalog delivers.
+     */
+    val cfacts: Map<String, Boolean>,
+) {
     /** The single task of a creation workflow (exactly one, by the backend's boot rule). */
     val task: WfTaskView get() = tasks.single()
 }
@@ -68,7 +78,8 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowCreation? {
             },
         )
     }
-    return WorkflowCreation(results[WFD.workflowId].toOptStr() ?: "", results[WVF.showTaskList] == true, tasks)
+    val cfacts = results[WVF.cfacts].toJsonMapOrEmpty().mapValues { it.value == true }
+    return WorkflowCreation(results[WFD.workflowId].toOptStr() ?: "", results[WVF.showTaskList] == true, tasks, cfacts)
 }
 
 /**

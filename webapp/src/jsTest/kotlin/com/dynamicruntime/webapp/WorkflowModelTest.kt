@@ -23,6 +23,8 @@ class WorkflowModelTest {
         WVF.found to found,
         WFD.workflowId to "createForm",
         WVF.showTaskList to false,
+        // The caller's delivered cfacts (issue #569): the whole frontend vocabulary, present-mapped.
+        WVF.cfacts to mapOf("hasAdminLevel" to true, "hasEnvAuth" to false),
         SCH.dDefs to mapOf(
             "globalconfig.NameData" to mapOf(
                 SCH.type to SCT.kObject,
@@ -64,6 +66,18 @@ class WorkflowModelTest {
         val save = task.saves.single()
         assertEquals("create", save.id)
         assertEquals("Create form", save.label)
+    }
+
+    @Test
+    fun carriesTheDeliveredCfactsForTheVisibleWhenGate() {
+        // The map the rendered SchemaForm evaluates each property's g-visibleWhen against (issue #569): present
+        // and absent cfacts both, so a gate naming an absent one still parses.
+        val wf = parseWorkflowView(view())!!
+        assertEquals(true, wf.cfacts["hasAdminLevel"])
+        assertEquals(false, wf.cfacts["hasEnvAuth"])
+        // A view with no cfacts key parses to an empty map, not a failure.
+        val noCfacts = parseWorkflowView(view() - WVF.cfacts)!!
+        assertTrue(noCfacts.cfacts.isEmpty())
     }
 
     @Test

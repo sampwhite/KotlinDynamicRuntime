@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
@@ -22,6 +23,7 @@ object ST {
     const val perItemAmount = "perItemAmount"
     const val itemCount = "itemCount"
     const val totalAmount = "totalAmount"
+    const val reviewerNote = "reviewerNote"
 
     // --- the questionnaire trait, which exercises a merge ---
     const val questionnaire = "questionnaire"
@@ -110,6 +112,13 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         }
         property(ST.perItemAmount, "Amount claimed for one item.") { type = SCT.number }
         property(ST.itemCount, "How many items are claimed.") { type = SCT.integer }
+        // Admin-only (issue #569): a `g-visibleWhen` gate the frontend evaluates, so the field is drawn for an
+        // administrator and hidden from an ordinary caller -- on the creation-workflow form (acme collects this
+        // trait) as on the endpoint form. Optional, because the gate is refused on a required property; the
+        // served schema keeps the field for everyone, and only the page hides it.
+        property(ST.reviewerNote, "An internal reviewer note, shown to administrators only.") {
+            visibleWhen = CFACTS.hasAdminLevel
+        }
         // Derived: the caller does not supply it, the form draws no control for it, and one echoed back is
         // dropped. Something has to produce it, and for a real trait that something is code bound to the
         // trait; here it is the fixture's own fill-out.

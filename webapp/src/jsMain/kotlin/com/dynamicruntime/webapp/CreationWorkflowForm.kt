@@ -137,6 +137,9 @@ val CreationWorkflowForm = FC<CreationWorkflowFormProps> { props ->
                         this.values = valuesOf(trait.traitId)
                         editable = true
                         friendly = true
+                        // The caller's cfacts (issue #569), so a property's g-visibleWhen hides an admin-only
+                        // field from an ordinary caller here as it does on the endpoint form.
+                        this.cfacts = wf.cfacts
                         this.failures = failuresByTrait[trait.traitId]
                         onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
                         // The server's "required" flag on this trait is stale the moment it is edited.
