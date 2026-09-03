@@ -88,6 +88,23 @@ class GedraSearchTest : StringSpec({
         matchesSearch(emptyMap(), listOf(exact to "anything")) shouldBe false
     }
 
+    "a search parameter colliding with a reserved query field is detected and never overwrites it" {
+        // A `string` usage on a trait named `user` mints an exact parameter `user`, which the reserved-field set
+        // catches (`offset`/`limit`/`user`); a `name` usage collides with nothing.
+        searchParamCollisions(listOf(usage("user", UsageKind.string))) shouldBe listOf("user")
+        searchParamCollisions(listOf(usage("name", UsageKind.string))) shouldBe emptyList()
+        // The base's own `user` field (with its admin-only gate) survives the merge -- the colliding search
+        // property is dropped rather than allowed to rewrite the listing's user filter.
+        val base = mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf("user" to mapOf(SCH.visibleWhen to "hasAdminLevel")),
+        )
+        @Suppress("UNCHECKED_CAST")
+        val userProp = (withSearchProperties(base, listOf(usage("user", UsageKind.string)))[SCH.properties]
+            as Map<String, Any?>)["user"] as Map<*, *>
+        userProp[SCH.visibleWhen] shouldBe "hasAdminLevel"
+    }
+
     "withSearchProperties merges into the base and leaves a usage-less base untouched" {
         val base = mapOf(
             SCH.type to SCT.kObject,

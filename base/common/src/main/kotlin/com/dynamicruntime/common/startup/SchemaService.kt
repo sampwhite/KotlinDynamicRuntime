@@ -24,7 +24,12 @@ import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
+import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.formDocsQueryDefName
+import com.dynamicruntime.common.gedra.gedraConfigCheckMode
+import com.dynamicruntime.common.gedra.reportConfigProblem
+import com.dynamicruntime.common.gedra.reservedQueryFieldNames
+import com.dynamicruntime.common.gedra.searchParamCollisions
 import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.endpoint.defaultListLimit
@@ -203,7 +208,50 @@ class SchemaService : ServiceInitializer {
         // After the registry exists (issue #545): a `g-visibleWhen` expression that does not parse would otherwise
         // fault the catalog at request time -- for one caller, on one surface -- rather than at boot.
         checkVisibleWhen()
+        // A trait-usage search parameter that collides with a reserved listing field (issue #538) is caught
+        // here rather than left to silently drop the search at merge time.
+        checkSearchParamNames(cxt, collected)
         isInit = true
+    }
+
+    /**
+     * Refuses (or warns, per the client-config check mode) a trait-usage rule whose generated search parameter
+     * would collide with a reserved forms-listing field (issue #538): a usage on a trait named `user`, say,
+     * mints an exact parameter `user` that would otherwise try to overwrite the listing's own user filter. The
+     * merge in `withSearchProperties` keeps the reserved field regardless, so the effect is a silently
+     * un-searchable trait -- worth reporting so the client learns their usage did not take.
+     *
+     * Every scope that declares usages is checked, plus `global`, drawn through `usagesFor` so the check reads
+     * exactly the set each scope's listing would generate its parameters from.
+     */
+    private fun checkSearchParamNames(cxt: KdrCxt, collected: SchemaCollector) {
+        val mode = gedraConfigCheckMode(cxt)
+        if (mode == BootCheckMode.off) {
+            return
+        }
+        val issues = mutableListOf<GedraConfigIssue>()
+        val usageScopes = (
+            listOf(GID.globalClient) +
+                collected.gedraConfigs.configs.filter { it.usages.isNotEmpty() }.mapNotNull { it.gedraId.client }
+            ).distinct()
+        for (scope in usageScopes) {
+            val collisions = searchParamCollisions(collected.gedraConfigs.usagesFor(scope))
+            if (collisions.isEmpty()) {
+                continue
+            }
+            reportConfigProblem(
+                cxt,
+                mode,
+                GedraConfigIssue(
+                    "Client '$scope' declares a trait usage whose search parameter(s) " +
+                        "${collisions.joinToString(", ")} collide with a reserved forms-listing field " +
+                        "(${reservedQueryFieldNames.joinToString(", ")}).",
+                    "Dropping the colliding search parameter; the column still shows, but that trait cannot " +
+                        "be searched. Rename the trait, or present it under a different one.",
+                ),
+                issues,
+            )
+        }
     }
 
     /**

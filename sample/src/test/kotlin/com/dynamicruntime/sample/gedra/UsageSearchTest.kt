@@ -1,13 +1,18 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GDX
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.UF
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
@@ -112,5 +117,25 @@ class UsageSearchTest : StringSpec({
         // parameters are ANDed, and a row missing either trait fails the one about it (a blank cell is a
         // non-match, not a fault).
         user.getItems(path, mapOf(exact(SC.siteAudit) to "Dana Reyes", min(ST.expenseReport) to 2000)).size shouldBe 0
+    }
+
+    "an admin's client-scoped search runs the predicate through the gedra cache" {
+        // An admin is client-wide, so its read scope carries a client and the listing is served from the
+        // gedra cache's client+kind index -- the path an ordinary user (scoped to their own rows) never takes.
+        // The predicate must filter there too, which this asserts through the `explainScope` diagnostic, over a
+        // uniquely-named row so a client-wide reader (which sees every acme audit this shared instance holds)
+        // still matches exactly one.
+        val admin = TestUser.create(cxt, "cache-admin@acme.test", level = ROLE.admin, userClient = SC.acme)
+        val unique = "Zephyr Cachecheck"
+        postAudit(admin, unique)
+        val resp = admin.client.sendJsonGetRequest(
+            clientPath(GEP.formDocs, SC.acme),
+            mapOf(exact(SC.siteAudit) to unique, EP.debug to GDBG.explainScope),
+        )
+        // The search returned exactly the uniquely-named row...
+        resp[EP.items].toJsonListOfMaps().map { displayValue(it, SC.siteAudit) } shouldBe listOf(unique)
+        // ...filtered over the cache's client+kind index, not the SQL fall-back (the diagnostic names which ran).
+        val explained = resp[EP.meta].toJsonMapOrEmpty()[GDBG.scopeExplained].toJsonMapOrEmpty()
+        explained[GDBG.statement] shouldBe "cache:${GDX.clientKind}"
     }
 })

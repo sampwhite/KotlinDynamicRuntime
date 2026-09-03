@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
@@ -113,21 +115,44 @@ private fun boundDescription(param: GedraSearchParam): String {
     return "Keep rows whose '${param.traitId}' value is $relation this."
 }
 
+/** The `$defs` key of the listing's query type: [GEP.formDocsQuery] qualified in the gedra namespace. */
+fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedraNamespace)
+
+/**
+ * The listing query's **stable** field names -- the paging offset, the appended limit, and the user filter --
+ * which a generated search parameter must not take. A usage whose search parameter would land on one of these
+ * is refused at boot ([searchParamCollisions]); this guards the merge regardless, so a slipped-through one
+ * cannot silently rewrite a stable field's schema.
+ */
+val reservedQueryFieldNames: Set<String> = setOf(EP.offset, EP.limit, EI.user)
+
+/**
+ * The search parameter names [usages] would generate that collide with a [reservedQueryFieldNames] entry -- the
+ * boot check behind the guard in [withSearchProperties]. A `string` usage on a trait named `user` (say) mints an
+ * exact parameter `user`, which would otherwise overwrite the listing's own user filter. Empty is the ordinary
+ * case; a non-empty result is a client-config mistake to report.
+ */
+fun searchParamCollisions(usages: List<ClientTraitUsage>): List<String> =
+    gedraSearchParams(usages).map { it.name }.filter { it in reservedQueryFieldNames }.distinct()
+
 /**
  * [baseDef] (a JSON-Schema object type -- the listing's stable query type) with the search properties [usages]
  * contribute merged into its `properties` (issue #538). The base is returned untouched when the usages
  * contribute nothing, so a scope with no usages shares the base rather than a distinct-but-equal copy -- which
  * is what lets the per-client build hand back the global type when a client's search fields do not differ.
+ *
+ * A search property never **overwrites** a stable field the base already declares ([reservedQueryFieldNames]):
+ * the base keeps it, and the colliding usage is left un-searchable rather than allowed to rewrite the paging or
+ * user-filter schema. The boot check refuses such a usage; this is the structural backstop for one that slips.
  */
-/** The `$defs` key of the listing's query type: [GEP.formDocsQuery] qualified in the gedra namespace. */
-fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedraNamespace)
-
 fun withSearchProperties(baseDef: Any?, usages: List<ClientTraitUsage>): Map<String, Any?> {
     val base = baseDef.toJsonMapOrEmpty()
     val props = searchParamProperties(gedraSearchParams(usages))
     if (props.isEmpty()) return base
     val merged = LinkedHashMap<String, Any?>(base[SCH.properties].toJsonMapOrEmpty())
-    merged.putAll(props)
+    for ((name, prop) in props) {
+        if (!merged.containsKey(name)) merged[name] = prop
+    }
     return base + (SCH.properties to merged)
 }
 
