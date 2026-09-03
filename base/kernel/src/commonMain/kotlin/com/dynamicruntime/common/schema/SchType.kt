@@ -40,6 +40,12 @@ class SchType(
      */
     val visibleOnly: Boolean = false,
     /**
+     * Custom `g-outerWhitespace` keyword (resolved): how leading/trailing whitespace on a string value is
+     * handled (issue #541) -- see [SCH.outerWhitespace]. Null unless declared (whitespace kept, as today), and
+     * only ever set on a plain string type; the parser refuses it elsewhere.
+     */
+    val outerWhitespace: SchOuterWhitespace? = null,
+    /**
      * The JSON Schema `format` value (e.g. [SFMT.date] / [SFMT.dateTime]) for a string type, or null.
      * A recognized date format makes a string field validate as a date and default [allowCoerce] to true.
      */
@@ -165,3 +171,18 @@ class SchType(
      */
     val presentation: String? = null,
 )
+
+/**
+ * The two modes of the `g-outerWhitespace` keyword (issue #541), resolved from its [SOWS] wire values. An enum
+ * rather than a string because it is a genuinely closed operational set the validator switches on -- the kind
+ * of use enums are kept for here. Entries are lower-case-first to match the wire spelling ([SOWS.trim] /
+ * [SOWS.reject]); absent is modeled as a null [SchType.outerWhitespace], not an entry.
+ */
+@Suppress("EnumEntryName")
+enum class SchOuterWhitespace {
+    /** Strip leading/trailing whitespace in coerce mode; validate-only checks the trimmed form. */
+    trim,
+
+    /** Fail a value carrying leading/trailing whitespace with `badValue`; alter nothing. */
+    reject,
+}

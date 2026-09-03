@@ -311,26 +311,35 @@ fun validateValue(
         // has to fail. Coercion runs in both modes (only its result is discarded when validating), so this
         // reports identically whether the caller asked for the coerced value or not.
         val coerced = coerceMismatch(type, value, path, coerce, failures, opts)
-        checkVisible(type, coerced, path, failures)
-        checkBounds(type, coerced, path, failures)
-        return coerced
+        // Edge-whitespace handling runs on the coerced string before the bounds see it, exactly as for a value
+        // that arrived as a string (below).
+        val effective = applyOuterWhitespace(type, coerced, path, failures)
+        checkVisible(type, effective, path, failures)
+        checkBounds(type, effective, path, failures)
+        return effective
     }
+
+    // Edge whitespace is trimmed (or rejected) before any of the checks below, so `minLength`/`maxLength`,
+    // `const` and `options` all measure the cleaned value -- otherwise `" a "` would pass a `minLength: 3` it
+    // should fail (issue #541). In validate-only mode the trimmed value is what the checks see and the caller
+    // discards it, the same way `allowCoerce` validates against the coerced form without emitting it.
+    val effective = applyOuterWhitespace(type, value, path, failures)
 
     // Character rules run on every string that reached here, ahead of `const` and `options`: a value that is
     // one of the listed choices yet carries an invisible character is a broken list, and saying so beats
     // letting the list vouch for it.
-    checkVisible(type, value, path, failures)
+    checkVisible(type, effective, path, failures)
 
     // `const`: the type admits one value. Checked before options, and separately from them, because it is a
     // statement about the shape rather than a choice being offered -- most often a union branch saying which
     // branch it is.
     val constValue = type.constValue
-    if (constValue != null && !constMatches(constValue, value)) {
+    if (constValue != null && !constMatches(constValue, effective)) {
         failures.add(
-            type.failure(path, SchFailCode.invalidOption, "'$value' is not '$constValue'.",
+            type.failure(path, SchFailCode.invalidOption, "'$effective' is not '$constValue'.",
                 listOf(SchOption(constValue.toOptStr() ?: "", constValue.toOptStr() ?: "")))
         )
-        return value
+        return effective
     }
 
     // An **open** list is suggestions rather than a bound (issue #418), so there is nothing here to check: the
@@ -339,19 +348,20 @@ fun validateValue(
     // never reject another caller's value, because no list of suggestions rejects anything.
     val options = type.options
     if (options != null && !type.openOptions) {
-        val choice = value as? String
+        val choice = effective as? String
         if (choice == null || options.none { it.value == choice }) {
-            failures.add(type.failure(path, SchFailCode.invalidOption, "'$value' is not a valid option.", options))
+            failures.add(type.failure(path, SchFailCode.invalidOption, "'$effective' is not a valid option.", options))
         }
-        return value
+        return effective
     }
     // Measured against the instance as it arrived, which is what the bound is about -- an object's property
-    // count before `emptyIsAbsent` drops anything or a default is injected.
-    checkBounds(type, value, path, failures)
+    // count before `emptyIsAbsent` drops anything or a default is injected. (A trimmed string is the cleaned
+    // value, since edge whitespace is not content the length bound should count.)
+    checkBounds(type, effective, path, failures)
     return when (jsonType) {
-        SCT.kObject -> validateObject(type, value as Map<*, *>, path, coerce, failures, opts)
-        SCT.array -> validateArray(type, value as List<*>, path, coerce, failures, opts)
-        else -> value // scalar matched, unchanged
+        SCT.kObject -> validateObject(type, effective as Map<*, *>, path, coerce, failures, opts)
+        SCT.array -> validateArray(type, effective as List<*>, path, coerce, failures, opts)
+        else -> effective // scalar matched; a trimmed string is cleaned, everything else unchanged
     }
 }
 
@@ -983,6 +993,49 @@ fun checkVisible(type: SchType, value: Any?, path: String, failures: MutableList
         )
     )
 }
+
+/**
+ * Applies the `g-outerWhitespace` rule (issue #541) to a string [value], returning the value the downstream
+ * checks (`minLength`/`maxLength`, `const`, `options`) and the coerced output should use:
+ *
+ *  - no keyword, or a non-string value -> returned unchanged;
+ *  - [SchOuterWhitespace.trim] -> the trimmed string. Returned in both modes: coerce mode emits it, and
+ *    validate-only checks against it and discards the return, the same contract `coerceMismatch` follows;
+ *  - [SchOuterWhitespace.reject] -> the value unchanged, plus a `badValue` failure when it carries leading or
+ *    trailing whitespace. "reject" never alters the value -- it only refuses it.
+ *
+ * "Whitespace" is the kernel's `<= ' '` test ([hasOuterWhitespace] / [trimOuterWhitespace]), not Kotlin's
+ * Unicode [trim]; the two disagree on a no-break space, and the rest of the kernel uses `<= ' '`.
+ */
+@KdrPrivate
+fun applyOuterWhitespace(type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>): Any? {
+    val mode = type.outerWhitespace ?: return value
+    if (value !is String) {
+        return value
+    }
+    return when (mode) {
+        SchOuterWhitespace.trim -> trimOuterWhitespace(value)
+        SchOuterWhitespace.reject -> {
+            if (hasOuterWhitespace(value)) {
+                failures.add(
+                    type.failure(
+                        path, SchFailCode.badValue,
+                        "Value has leading or trailing whitespace, which is not allowed here.",
+                    )
+                )
+            }
+            value
+        }
+    }
+}
+
+/** Whether [s] begins or ends with a whitespace character, using the kernel's `<= ' '` test (issue #541). */
+@KdrPrivate
+fun hasOuterWhitespace(s: String): Boolean = s.isNotEmpty() && (s.first() <= ' ' || s.last() <= ' ')
+
+/** [s] with leading and trailing whitespace (`<= ' '`) removed -- the kernel's whitespace test (issue #541). */
+@KdrPrivate
+fun trimOuterWhitespace(s: String): String = s.trim { it <= ' ' }
 
 /**
  * The first character of [s] that fails the `g-visibleOnly` rule, as (1-based position in code points,

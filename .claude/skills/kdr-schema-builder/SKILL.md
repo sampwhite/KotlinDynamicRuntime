@@ -97,6 +97,17 @@ and a no-break space that looks like a space and compares unequal. It does **not
 from another script; that is a different problem. Off unless set, and only a plain string may set it -- the
 parser refuses it on any other type, and on a date or binary format, where it would constrain nothing.
 
+A string field can also **strip or refuse leading/trailing whitespace** with `g-outerWhitespace` (issue #541),
+whose two modes are the [SOWS] values: `trimmed()` sets `"trim"` (strip the edges), `noOuterWhitespace()` sets
+`"reject"` (fail a value that carries any, as `badValue`; alter nothing). Absent leaves whitespace alone, as
+before -- a string that arrives as a string is otherwise never touched. The cleaning happens **before**
+`minLength`/`maxLength`, `const` and `options` are checked, so `" a "` fails a `minLength: 3` rather than
+sneaking past on its padding; in validate-only mode `"trim"` checks the trimmed form and passes, the same way
+`allowCoerce` validates against the coerced value without emitting it. "Whitespace" here is the kernel's
+`<= ' '` test (so a no-break space is *not* outer whitespace -- that is `visibleOnly`'s job), and like
+`visibleOnly` it is string-only and refused at parse time elsewhere. Reach for `"reject"` on a code, password
+or identifier where silent trimming would hide a paste error; `"trim"` on ordinary free text.
+
 ## Choice lists: written down, or sourced at render time
 
 `option(value, label)` writes the choices into the document, and they then **bind**: the validator rejects
