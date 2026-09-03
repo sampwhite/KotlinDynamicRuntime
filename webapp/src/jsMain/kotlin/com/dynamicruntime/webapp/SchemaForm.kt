@@ -76,9 +76,9 @@ class FormOpts(
     val omit: Set<String> = emptySet(),
     /**
      * A property's `g-visibleWhen` gate (issue #564): given the expression, whether the field is shown.
-     * Consulted only in friendly mode -- the catalog documents the wire and shows every field, like a derived
-     * one. Defaults to always-visible, so a form that supplies no cfacts shows everything; the gate is
-     * presentation-only and the backend enforces the condition regardless.
+     * Consulted only for an *editable* field -- a read-only render (the catalog documenting the wire, a stored
+     * form on display) shows every field. Defaults to always-visible, so a form that supplies no cfacts shows
+     * everything; the gate is presentation-only and the backend enforces the condition regardless.
      */
     val gateAllows: (expression: String) -> Boolean = { true },
 )
@@ -388,10 +388,11 @@ private fun ChildrenBuilder.renderProperties(
         if (opts.friendly && prop.valueType.derived) {
             return@forEach
         }
-        // A field gated by g-visibleWhen (issue #564) is hidden in a data-entry form when the caller's cfacts
-        // fail its expression. Friendly only, like the derived guard above: the catalog documents the wire, so
-        // it shows the field, and the backend enforces the condition regardless of what is drawn.
-        if (opts.friendly) {
+        // A field gated by g-visibleWhen (issue #564) is hidden when the caller's cfacts fail its expression --
+        // but only in an *editable* form, where the caller would be entering a value. A read-only render (the
+        // catalog documenting the wire, a stored form on display) shows the field regardless, and so does a form
+        // that supplies no cfacts. The backend enforces the condition either way.
+        if (editable) {
             prop.visibleWhen?.let { if (!opts.gateAllows(it)) return@forEach }
         }
         // A forbidden field is hidden -- unless it still holds something, in which case hiding it would hide

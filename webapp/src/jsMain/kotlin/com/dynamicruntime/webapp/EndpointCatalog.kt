@@ -439,6 +439,10 @@ val EndpointCatalog = FC<Props> {
                 type = inputType
                 this.values = values
                 this.editable = editable
+                // The caller's delivered cfacts (issue #564): a g-visibleWhen field this caller may not use is
+                // hidden while the invoke form is editable. Read-only, the field still shows -- this surface
+                // documents the wire. The backend enforces the condition regardless.
+                cfacts = cat.cfacts
                 this.failures = failures
                 onChange = { values = it }
                 // Clearing on edit, rather than re-validating: validation stays something the user asks for
