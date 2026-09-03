@@ -73,6 +73,9 @@ object HFLD {
      */
     const val sourcePath = "sourcePath"
 
+    /** A link's one-line description, shown beside it in the Documents listing (issue #554). */
+    const val description = "description"
+
     /**
      * `state.sourceRepoBase`: the source repository's blob base (`.../blob/<branch>`), or absent when the
      * deployment did not configure one. Interior links to files that are *not* served as in-app documents are

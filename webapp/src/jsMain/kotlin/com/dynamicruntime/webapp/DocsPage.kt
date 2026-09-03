@@ -9,7 +9,9 @@ import react.Props
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
+import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
@@ -94,9 +96,15 @@ val DocsPage = FC<Props> {
                 if (links.isEmpty()) {
                     p { className = ClassName("type-hint"); +copy.t("nav", "emptyNote", "") }
                 } else {
-                    div {
-                        className = ClassName("home-inline-links")
-                        docLinks(links, openId = null)
+                    // A list of links with a line on each, the shape the Operator overview and the Debug index
+                    // use for a listing -- not Home's toolbar of link buttons. The description is served with
+                    // the link, so a new document arrives with its own.
+                    ul {
+                        className = ClassName("index-list")
+                        for (link in links) li {
+                            a { href = docHref(link.id); +link.label }
+                            if (link.description.isNotEmpty()) +" \u2014 ${link.description}"
+                        }
                     }
                 }
             }

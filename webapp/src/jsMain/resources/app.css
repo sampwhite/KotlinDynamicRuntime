@@ -639,11 +639,12 @@ input {
 .op-detail-label { color: var(--text-dim); font-size: .85rem; font-weight: 600; margin-bottom: 2px; }
 .type-hint { color: var(--text-faint); font-style: italic; margin: 2px 0; }
 
-/* The Operator overview's tool list (issue #540): readable accent links, like the debug index. */
-.operator-index { margin: 8px 0 0; padding-left: 22px; }
-.operator-index li { margin: 6px 0; }
-.operator-index a { color: var(--accent-bright); text-decoration: none; }
-.operator-index a:hover { text-decoration: underline; }
+/* A listing page's index (the Operator overview, the Documents page; issues #540, #554): a list of readable
+   accent links, each with a line on what it opens -- the same shape as the debug index. */
+.index-list { margin: 8px 0 0; padding-left: 22px; }
+.index-list li { margin: 6px 0; }
+.index-list a { color: var(--accent-bright); text-decoration: none; }
+.index-list a:hover { text-decoration: underline; }
 
 /* A free-form operator object (issue #540): titled sections and key/value rows. */
 .op-section-label { font-weight: 600; color: var(--text-dim); margin: 10px 0 2px; }

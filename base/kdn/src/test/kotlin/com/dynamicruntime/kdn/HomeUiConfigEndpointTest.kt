@@ -85,6 +85,8 @@ class HomeUiConfigEndpointTest : StringSpec({
         )
         // Each carries the source path the resolver needs, so none is served without it.
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
+        // And the one-line description the Documents listing shows beside each (issue #554).
+        links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
     }
 
     "source repo base is absent by default and configured from the env var" {

@@ -304,7 +304,7 @@ val OperatorIndex = FC<Props> {
                 "the app refreshes, so it answers about this node right now.")
         }
         ul {
-            className = ClassName("operator-index")
+            className = ClassName("index-list")
             li {
                 a { href = childHref(HMENU.pageEnv, HMENU.pageOperator); +"Environment" }
                 +" \u2014 the environment variables this node declares, with each one's resolved value here."
