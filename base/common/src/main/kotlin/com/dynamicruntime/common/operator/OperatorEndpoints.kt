@@ -13,6 +13,7 @@ import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.formatDate
 import java.lang.management.ManagementFactory
+import java.util.Locale
 
 /**
  * Keys of the `/operator/system/info` report. Self-named per the code guide, even though the report is
@@ -171,6 +172,27 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
     ) { c, _ -> mapOf(OENV.markdown to renderEnvVarReference(c)) }
 }
 
+/** One gibibyte in bytes (1024^3): memory is reported base-2, the convention for RAM and JVM heap sizes. */
+private const val bytesPerGb = 1_073_741_824.0
+
+/**
+ * A memory size in bytes as a `"X.XX GB"` string for the System Info display (issue #560), two decimals, base-2.
+ * A JVM "no limit" reading -- exactly `-1` (an undefined `MemoryUsage.max`) or `Long.MAX_VALUE`
+ * (`Runtime.maxMemory()` with no cap) -- is shown as `"unbounded"` rather than a meaningless figure; a null (a
+ * pool with no usage) is left blank. The sentinels are matched exactly rather than "any negative", because one
+ * value here (`gc.freed`, a before-minus-after delta) is legitimately signed and a small negative delta is a
+ * real `-0.00 GB`, not "no limit". This endpoint is a human display feed -- it already formats dates and serves
+ * `uptimeText` -- so the presentation belongs here, where every memory field passes through one helper.
+ *
+ * Formatted against [Locale.ROOT], not the JVM default: a deployment's locale must not decide whether the page
+ * (and the test that reads it) sees `6.00 GB` or `6,00 GB`.
+ */
+private fun formatGb(bytes: Long?): String = when {
+    bytes == null -> ""
+    bytes == -1L || bytes == Long.MAX_VALUE -> "unbounded"
+    else -> "%.2f GB".format(Locale.ROOT, bytes / bytesPerGb)
+}
+
 /**
  * Gathers the VM's statistics, first requesting a collection when [collect] is set and reporting what it
  * appeared to reclaim.
@@ -184,24 +206,6 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
  * [OSI.memory] either way. The collection happens before the statistics are read, so they describe the VM
  * *after* it.
  */
-/** One gibibyte in bytes (1024^3): memory is reported base-2, the convention for RAM and JVM heap sizes. */
-private const val bytesPerGb = 1_073_741_824.0
-
-/**
- * A memory size in bytes as a `"X.XX GB"` string for the System Info display (issue #560), two decimals, base-2.
- * A JVM "no limit" reading -- exactly `-1` (an undefined `MemoryUsage.max`) or `Long.MAX_VALUE`
- * (`Runtime.maxMemory()` with no cap) -- is shown as `"unbounded"` rather than a meaningless figure; a null (a
- * pool with no usage) is left blank. The sentinels are matched exactly rather than "any negative", because one
- * value here (`gc.freed`, a before-minus-after delta) is legitimately signed and a small negative delta is a
- * real `-0.00 GB`, not "no limit". This endpoint is a human display feed -- it already formats dates and serves
- * `uptimeText` -- so the presentation belongs here, where every memory field passes through one helper.
- */
-private fun formatGb(bytes: Long?): String = when {
-    bytes == null -> ""
-    bytes == -1L || bytes == Long.MAX_VALUE -> "unbounded"
-    else -> "%.2f GB".format(bytes / bytesPerGb)
-}
-
 private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
     val node = NodeService.get(cxt)
     val memoryBean = ManagementFactory.getMemoryMXBean()
