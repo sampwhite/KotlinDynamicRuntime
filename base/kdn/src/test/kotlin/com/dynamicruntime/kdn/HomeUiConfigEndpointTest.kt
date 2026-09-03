@@ -43,7 +43,8 @@ class HomeUiConfigEndpointTest : StringSpec({
 
         // The links default to a left nav bar alone (the other two presentations are opt-in).
         val features = cfg.obj(UIC.features)
-        features[HFEAT.leftBar] shouldBe true
+        // Off by default since the Documents page exists (issue #554); it only duplicated that listing.
+        features[HFEAT.leftBar] shouldBe false
         features[HFEAT.topBar] shouldBe false
         features[HFEAT.inlineLinks] shouldBe false
     }

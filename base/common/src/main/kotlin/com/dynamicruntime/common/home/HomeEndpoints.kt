@@ -128,7 +128,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
             // document list grows. A deployment turns on the others (or off) via HCFG.
             UIC.features to mapOf(
                 HFEAT.topBar to c.layoutFlag(HCFG.homeTopBar, default = false),
-                HFEAT.leftBar to c.layoutFlag(HCFG.homeLeftBar, default = true),
+                // Off by default since the Documents page exists (issue #554): the bar only duplicated its listing.
+                HFEAT.leftBar to c.layoutFlag(HCFG.homeLeftBar, default = false),
                 HFEAT.inlineLinks to c.layoutFlag(HCFG.homeInlineLinks, default = false),
                 HFEAT.canManageUsers to AdminRules.canManageUsers(c),
             ),
