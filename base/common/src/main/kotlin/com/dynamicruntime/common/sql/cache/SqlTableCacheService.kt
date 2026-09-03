@@ -15,10 +15,15 @@ import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlWriteListener
 import com.dynamicruntime.common.sql.tableModule
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.operator.OPS
+import com.dynamicruntime.common.operator.TCI
+import com.dynamicruntime.common.operator.TCS
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptStr
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
@@ -26,13 +31,6 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 /** Attribute keys of the `/operator/cache/state` report. Each name matches its value. */
-@Suppress("ConstPropertyName")
-object TCS {
-    const val isDisabled = "isDisabled"
-    const val minRecheckMs = "minRecheckMs"
-    const val caches = "caches"
-    const val sharedState = "sharedState"
-}
 
 /**
  * Owns the registered [SqlTableCache]s and the coherence between nodes.
@@ -195,6 +193,26 @@ class SqlTableCacheService : ServiceInitializer {
             val compareDate = if (date != null && date > floor) date else floor
             cache.checkLoadCache(cxt, compareDate)
         }
+    }
+
+    /**
+     * Forces a reload of one cache ([tableName] given) or every cache (null) on **this** node, now, and returns
+     * the tables it reloaded (issue #540). This is the operator "catch this node up" action: it marks each
+     * target for reload ([SqlTableCache.markChanged]) and reloads it immediately rather than waiting for the
+     * next read to notice, bypassing the shared-row read throttle that paces the ordinary path. A disabled
+     * service, or an unknown table name, reloads nothing.
+     */
+    fun reloadCaches(cxt: KdrCxt, tableName: String?): List<String> {
+        if (isDisabled) {
+            return emptyList()
+        }
+        val targets = if (tableName != null) listOfNotNull(caches[tableName]) else getSortedCaches()
+        val now = cxt.instanceNow()
+        for (cache in targets) {
+            cache.markChanged()
+            cache.checkLoadCache(cxt, now)
+        }
+        return targets.map { it.params.tableName }
     }
 
     // --- change monitoring --------------------------------------------------
@@ -509,6 +527,7 @@ class SqlTableCacheService : ServiceInitializer {
             type(reportTypeName) {
                 type = SCT.kObject
                 description = "The table caches on this node, and the change dates every node shares."
+                property(TCS.nodeId, "The node this report is about.", required = true)
                 property(TCS.isDisabled, "Whether caching is switched off for this node.", required = true) {
                     type = SCT.boolean
                 }
@@ -530,18 +549,42 @@ class SqlTableCacheService : ServiceInitializer {
                 ) { type = SCT.kObject }
             }
             generalEndpoint(
-                "/operator/cache/state",
+                OPS.cacheStatePath,
                 "Reports this node's in-memory table caches and the change dates all nodes share.",
                 HttpMethod.GET,
                 outputRef = reportTypeName,
                 tags = setOf(ETAG.internal),
             ) { c, _ -> cacheReport(c) }
+
+            type(TCS.reloadTypeName) {
+                type = SCT.kObject
+                description = "What a cache reload touched."
+                property(TCS.reloaded, "The tables reloaded on this node.", required = true) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+            }
+            generalEndpoint(
+                OPS.cacheReloadPath,
+                "Forces this node's table cache(s) to reload now: one table when 'table' is given, else all. " +
+                    "Acts on the node that serves the request -- which is the node whose state the report shows.",
+                HttpMethod.POST,
+                outputRef = TCS.reloadTypeName,
+                inputFields = {
+                    field(TCS.table, "A single cached table to reload; omit to reload every cache on this node.")
+                },
+                tags = setOf(ETAG.internal),
+            ) { c, request ->
+                val table = request[TCS.table].toOptStr()?.trim()?.ifEmpty { null }
+                mapOf(TCS.reloaded to get(c).reloadCaches(c, table))
+            }
         }
 
         /** Handler for `/operator/cache/state`; see [schema]. */
         fun cacheReport(cxt: KdrCxt): Map<String, Any?> {
             val service = get(cxt)
             return linkedMapOf(
+                TCS.nodeId to NodeService.get(cxt).nodeLabel,
                 TCS.isDisabled to service.isDisabled,
                 TCS.minRecheckMs to service.minRecheckMs,
                 TCS.caches to service.getSortedCaches().map { it.toJsonMap() },

@@ -236,6 +236,10 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
             HMENU.fragmentsCheck, "Fragments check", UiRoute(HMENU.pageFragmentsCheck),
             cfactExpression = CFACTS.isDeploymentOperator, parentId = HMENU.operator,
         )
+        menuItem(
+            HMENU.cacheState, "Cache state", UiRoute(HMENU.pageCacheState),
+            cfactExpression = CFACTS.isDeploymentOperator, parentId = HMENU.operator,
+        )
         // Offered to a client-scoped operator or admin (issue #488) -- the same caller the `clientOperator`
         // section admits, asked as a cfact so the menu offer and the gate cannot drift.
         menuItem(

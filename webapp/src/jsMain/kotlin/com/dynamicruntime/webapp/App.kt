@@ -175,6 +175,7 @@ val App = FC<Props> {
                                 title = "Fragments check"
                                 description = "The Markdown fragment files this node carries, and any problems found."
                             }
+                            pageCacheState -> OperatorCacheStatePage {}
                             pageCfacts -> CFactReferencePage {}
                             pageNewForm -> NewFormPage {}
                             pageForms -> FormsPage {}
@@ -218,6 +219,7 @@ private const val pageBootChecks = HMENU.pageBootChecks
 private const val pageSystemInfo = HMENU.pageSystemInfo
 private const val pageDbTables = HMENU.pageDbTables
 private const val pageFragmentsCheck = HMENU.pageFragmentsCheck
+private const val pageCacheState = HMENU.pageCacheState
 // The Operator index/landing page (issue #540, Part B): mirrors the Debug index; reached from the Operator
 // menu group's "Overview" entry. Present unconditionally; the tools it links to each refuse without the role.
 private const val pageOperator = HMENU.pageOperator
@@ -257,6 +259,7 @@ private fun currentPage(): String {
         params[HP.page] == pageSystemInfo -> pageSystemInfo
         params[HP.page] == pageDbTables -> pageDbTables
         params[HP.page] == pageFragmentsCheck -> pageFragmentsCheck
+        params[HP.page] == pageCacheState -> pageCacheState
         params[HP.page] == pageOperator -> pageOperator
         params[HP.page] == pageCfacts -> pageCfacts
         params[HP.page] == pageNewForm -> pageNewForm

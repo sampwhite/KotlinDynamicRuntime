@@ -641,6 +641,22 @@ input {
 .op-kv { display: flex; gap: 10px; padding: 2px 0; }
 .op-kv-key { min-width: 180px; color: var(--text-dim); }
 .op-kv-val { color: var(--text); word-break: break-word; }
+
+/* Cache-state page (issue #540): the node line and the small reload buttons. */
+.op-node { color: var(--text-dim); margin: 2px 0 0; }
+.op-reload {
+    font-size: .82rem;
+    padding: 3px 12px;
+    background: var(--surface-raised);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+}
+.op-reload:hover:not(:disabled) { border-color: var(--accent-bright); }
+.op-reload:disabled { opacity: .5; cursor: default; }
+/* A per-row "reload pending" chip sits after the shared date, so give it a little separation. */
+.op-table td .op-status { margin-left: 8px; }
 .form-ok { color: var(--success); margin-top: 12px; }
 /* "Edited since the last check": neither pass nor fail but unknown, so neither the success green nor the
    danger red -- a dim tone that reads as a prompt rather than a verdict, in the same slot as the other two so
