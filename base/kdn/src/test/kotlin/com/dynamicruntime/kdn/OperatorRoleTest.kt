@@ -18,6 +18,7 @@ import io.kotest.matchers.doubles.shouldBeGreaterThan
 import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldMatch
 
 /**
  * The operator privilege and its first tenant, `/operator/system/info`.
@@ -123,9 +124,12 @@ class OperatorRoleTest : StringSpec({
         runtime[OSI.vmName].toOptStr().isNullOrBlank() shouldBe false
         runtime[OSI.pid].toOptLong()!! shouldBeGreaterThan 0L
 
+        // Memory sizes are shown in gigabytes, two decimals (issue #560) -- a "X.XX GB" string, not raw bytes.
         val memory = info[OSI.memory].toJsonMapOrEmpty()
-        memory[OSI.heapUsed].toOptLong()!! shouldBeGreaterThan 0L
-        memory[OSI.runtimeTotal].toOptLong()!! shouldBeGreaterThan 0L
+        memory[OSI.heapUsed].toOptStr()!! shouldMatch Regex("""\d+\.\d{2} GB""")
+        memory[OSI.runtimeTotal].toOptStr()!! shouldMatch Regex("""\d+\.\d{2} GB""")
+        // A field the JVM leaves uncapped reads as "unbounded" rather than a nonsense figure.
+        memory[OSI.runtimeMax].toOptStr() shouldNotBe null
 
         info[OSI.threads].toJsonMapOrEmpty()[OSI.count].toOptLong()!! shouldBeGreaterThan 0L
         info[OSI.classes].toJsonMapOrEmpty()[OSI.loaded].toOptLong()!! shouldBeGreaterThan 0L
@@ -133,7 +137,9 @@ class OperatorRoleTest : StringSpec({
 
         // Every JVM has at least one collector and one memory pool; these are the "all the VM stats" lists.
         info[OSI.gcCollectors].toJsonListOfMaps().shouldNotBeEmpty()
-        info[OSI.memoryPools].toJsonListOfMaps().shouldNotBeEmpty()
+        // A pool's memory sizes are formatted the same way (issue #560).
+        val pool = info[OSI.memoryPools].toJsonListOfMaps().also { it.shouldNotBeEmpty() }.first()
+        pool[OSI.used].toOptStr()!! shouldMatch Regex("""(\d+\.\d{2} GB|unbounded)""")
     }
 
     /**
@@ -157,9 +163,11 @@ class OperatorRoleTest : StringSpec({
         gc[OSI.requested] shouldBe true
 
         // The JVM may ignore the request, so `freed` is not asserted to be positive -- but the readings that
-        // bracket it are real measurements either way, and the duration is a real elapsed time.
-        gc[OSI.heapUsedBefore].toOptLong()!! shouldBeGreaterThan 0L
-        gc[OSI.heapUsedAfter].toOptLong()!! shouldBeGreaterThan 0L
+        // bracket it are real measurements either way (shown in GB, issue #560), and the duration is a real
+        // elapsed time.
+        gc[OSI.heapUsedBefore].toOptStr()!! shouldMatch Regex("""\d+\.\d{2} GB""")
+        gc[OSI.heapUsedAfter].toOptStr()!! shouldMatch Regex("""\d+\.\d{2} GB""")
+        gc[OSI.freed].toOptStr()!! shouldMatch Regex("""-?\d+\.\d{2} GB""")
         gc[OSI.durationMs].toOptDouble()!! shouldBeGreaterThan -0.1
     }
 

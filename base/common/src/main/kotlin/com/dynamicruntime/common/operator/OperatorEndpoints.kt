@@ -184,6 +184,24 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
  * [OSI.memory] either way. The collection happens before the statistics are read, so they describe the VM
  * *after* it.
  */
+/** One gibibyte in bytes (1024^3): memory is reported base-2, the convention for RAM and JVM heap sizes. */
+private const val bytesPerGb = 1_073_741_824.0
+
+/**
+ * A memory size in bytes as a `"X.XX GB"` string for the System Info display (issue #560), two decimals, base-2.
+ * A JVM "no limit" reading -- exactly `-1` (an undefined `MemoryUsage.max`) or `Long.MAX_VALUE`
+ * (`Runtime.maxMemory()` with no cap) -- is shown as `"unbounded"` rather than a meaningless figure; a null (a
+ * pool with no usage) is left blank. The sentinels are matched exactly rather than "any negative", because one
+ * value here (`gc.freed`, a before-minus-after delta) is legitimately signed and a small negative delta is a
+ * real `-0.00 GB`, not "no limit". This endpoint is a human display feed -- it already formats dates and serves
+ * `uptimeText` -- so the presentation belongs here, where every memory field passes through one helper.
+ */
+private fun formatGb(bytes: Long?): String = when {
+    bytes == null -> ""
+    bytes == -1L || bytes == Long.MAX_VALUE -> "unbounded"
+    else -> "%.2f GB".format(bytes / bytesPerGb)
+}
+
 private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
     val node = NodeService.get(cxt)
     val memoryBean = ManagementFactory.getMemoryMXBean()
@@ -196,9 +214,9 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
         val heapAfter = memoryBean.heapMemoryUsage.used
         linkedMapOf(
             OSI.requested to true,
-            OSI.heapUsedBefore to heapBefore,
-            OSI.heapUsedAfter to heapAfter,
-            OSI.freed to heapBefore - heapAfter,
+            OSI.heapUsedBefore to formatGb(heapBefore),
+            OSI.heapUsedAfter to formatGb(heapAfter),
+            OSI.freed to formatGb(heapBefore - heapAfter),
             OSI.durationMs to gcMillis,
         )
     } else {
@@ -235,17 +253,17 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             OSI.inputArguments to runtimeBean.inputArguments,
         ),
         OSI.memory to linkedMapOf(
-            OSI.heapUsed to heap.used,
-            OSI.heapCommitted to heap.committed,
-            OSI.heapMax to heap.max,
-            OSI.heapInit to heap.init,
-            OSI.nonHeapUsed to nonHeap.used,
-            OSI.nonHeapCommitted to nonHeap.committed,
-            OSI.nonHeapMax to nonHeap.max,
-            OSI.nonHeapInit to nonHeap.init,
-            OSI.runtimeTotal to jvmRuntime.totalMemory(),
-            OSI.runtimeFree to jvmRuntime.freeMemory(),
-            OSI.runtimeMax to jvmRuntime.maxMemory(),
+            OSI.heapUsed to formatGb(heap.used),
+            OSI.heapCommitted to formatGb(heap.committed),
+            OSI.heapMax to formatGb(heap.max),
+            OSI.heapInit to formatGb(heap.init),
+            OSI.nonHeapUsed to formatGb(nonHeap.used),
+            OSI.nonHeapCommitted to formatGb(nonHeap.committed),
+            OSI.nonHeapMax to formatGb(nonHeap.max),
+            OSI.nonHeapInit to formatGb(nonHeap.init),
+            OSI.runtimeTotal to formatGb(jvmRuntime.totalMemory()),
+            OSI.runtimeFree to formatGb(jvmRuntime.freeMemory()),
+            OSI.runtimeMax to formatGb(jvmRuntime.maxMemory()),
         ),
         OSI.threads to linkedMapOf(
             OSI.count to threadBean.threadCount,
@@ -276,9 +294,9 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             linkedMapOf<String, Any?>(
                 OSI.name to pool.name,
                 OSI.type to pool.type.name,
-                OSI.used to pool.usage?.used,
-                OSI.committed to pool.usage?.committed,
-                OSI.max to pool.usage?.max,
+                OSI.used to formatGb(pool.usage?.used),
+                OSI.committed to formatGb(pool.usage?.committed),
+                OSI.max to formatGb(pool.usage?.max),
             )
         },
     )
