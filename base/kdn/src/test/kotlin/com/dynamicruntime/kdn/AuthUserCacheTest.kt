@@ -7,8 +7,8 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
-import com.dynamicruntime.common.sql.cache.TCI
-import com.dynamicruntime.common.sql.cache.TCS
+import com.dynamicruntime.common.operator.TCI
+import com.dynamicruntime.common.operator.TCS
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.truncateToMs
 import com.dynamicruntime.common.user.AU
@@ -19,6 +19,8 @@ import com.dynamicruntime.common.user.UserService
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
+import com.dynamicruntime.common.operator.OPS
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import kotlin.time.Duration.Companion.days
@@ -147,6 +149,8 @@ class AuthUserCacheTest : StringSpec({
 
         val report = opal.getData("/operator/cache/state")
         report[TCS.isDisabled] shouldBe false
+        // Cache state is per node, so the report says which node answered (issue #540).
+        (report[TCS.nodeId] as? String).shouldNotBeNull()
 
         @Suppress("UNCHECKED_CAST")
         val caches = report.getValue(TCS.caches) as List<Map<String, Any?>>
@@ -164,5 +168,46 @@ class AuthUserCacheTest : StringSpec({
         // memory and how far behind each one is, which is not an ordinary user's business.
         val plain = TestUser.create(cxt, "ucache-plain@example.com")
         plain.expectError(EXC.notAuthorized, "/operator/cache/state")
+    }
+
+    /**
+     * `/operator/cache/reload` (issue #540): the operator "catch this node up" action forces a reload of one
+     * cache or all, on the node that serves it, and reports the tables it reloaded. Operator-gated like the
+     * report it accompanies.
+     */
+    "the reload action forces one cache or all to reload and reports what it touched" {
+        val cxt = Startup.mkTestBootCxt("userCacheReload", "userCacheReloadTest")
+        val opal = TestUser.createOperator(cxt, "ureload-operator@example.com")
+        TestUser.create(cxt, "ureload-seed@example.com")
+
+        // Reload all: the auth-users cache is registered, so it is among the tables reloaded.
+        @Suppress("UNCHECKED_CAST")
+        val all = opal.postData(OPS.cacheReloadPath, emptyMap()).getValue(TCS.reloaded) as List<String>
+        all shouldContain UT.authUsers
+
+        // Reload one named table: exactly that table comes back.
+        @Suppress("UNCHECKED_CAST")
+        val one = opal.postData(OPS.cacheReloadPath, mapOf(TCS.table to UT.authUsers))
+            .getValue(TCS.reloaded) as List<String>
+        one shouldBe listOf(UT.authUsers)
+
+        // An unknown table reloads nothing rather than failing.
+        @Suppress("UNCHECKED_CAST")
+        val none = opal.postData(OPS.cacheReloadPath, mapOf(TCS.table to "no.such.table"))
+            .getValue(TCS.reloaded) as List<String>
+        none shouldBe emptyList()
+
+        // Prove the reload actually performs a load, not just echoes the table names: a marked-for-reload
+        // cache has its pending flag cleared only by a completed load, so a reloadCaches that skipped the load
+        // would leave it set. (Driven at the service, since a read would clear the flag before we could look.)
+        val service = SqlTableCacheService.get(cxt)
+        val cache = service.caches.getValue(UT.authUsers)
+        cache.markChanged()
+        cache.forceReload shouldBe true
+        service.reloadCaches(cxt, UT.authUsers)
+        cache.forceReload shouldBe false
+
+        val plain = TestUser.create(cxt, "ureload-plain@example.com")
+        plain.expectError(EXC.notAuthorized, OPS.cacheReloadPath)
     }
 })

@@ -641,6 +641,24 @@ input {
 .op-kv { display: flex; gap: 10px; padding: 2px 0; }
 .op-kv-key { min-width: 180px; color: var(--text-dim); }
 .op-kv-val { color: var(--text); word-break: break-word; }
+
+/* Cache-state page (issue #540): the node line and the small reload buttons. */
+.op-node { color: var(--text-dim); margin: 2px 0 0; }
+.op-reload {
+    font-size: .82rem;
+    padding: 3px 12px;
+    background: var(--surface-raised);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+}
+/* Set `background` explicitly in both states: the global `button:hover` (0,1,1) otherwise outranks the base
+   `.op-reload` (0,1,0) and paints every reload button accent-bright on hover -- a disabled one included. */
+.op-reload:hover:not(:disabled) { background: var(--border); border-color: var(--accent-bright); }
+.op-reload:disabled { opacity: .5; cursor: default; background: var(--surface-raised); }
+/* A per-row "reload pending" chip sits after the shared date, so give it a little separation. */
+.op-table td .op-status { margin-left: 8px; }
 .form-ok { color: var(--success); margin-top: 12px; }
 /* "Edited since the last check": neither pass nor fail but unknown, so neither the success green nor the
    danger red -- a dim tone that reads as a prompt rather than a verdict, in the same slot as the other two so

@@ -2,6 +2,7 @@ package com.dynamicruntime.common.sql.cache
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.operator.TCI
 import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
@@ -22,23 +23,8 @@ import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
-/**
- * Attribute keys of a cache's operator report (see [SqlTableCache.toJsonMap]). Each name matches its value.
- */
-@Suppress("ConstPropertyName")
-object TCI {
-    const val tableName = "tableName"
-    const val topic = "topic"
-    const val isLoaded = "isLoaded"
-    const val isDetached = "isDetached"
-    const val pendingReload = "pendingReload"
-    const val numRows = "numRows"
-    const val numEntries = "numEntries"
-    const val highCounter = "highCounter"
-    const val queryFromDate = "queryFromDate"
-    const val lastSeen = "lastSeen"
-    const val indexes = "indexes"
-}
+// The cache-report attribute keys ([com.dynamicruntime.common.operator.TCI]) moved to the kernel, since the
+// operator cache-state page reads them by name (issue #540).
 
 /**
  * An in-memory copy of one database table, kept current by *incremental* reload.

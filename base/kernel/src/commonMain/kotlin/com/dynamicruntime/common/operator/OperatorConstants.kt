@@ -38,4 +38,48 @@ object OPS {
 
     /** Syntax-checks this instance's Markdown fragment files, reporting problems and per-entry data reads. */
     const val fragmentsCheckPath = "/${SECT.operator}/fragments/check"
+
+    /** Reports this node's in-memory table caches and the change dates every node shares. */
+    const val cacheStatePath = "/${SECT.operator}/cache/state"
+
+    /** Forces this node's table cache(s) to reload now -- one table, or all. */
+    const val cacheReloadPath = "/${SECT.operator}/cache/reload"
+}
+
+
+/**
+ * Wire vocabulary for the cache-state operator surface (issue #540) -- shared with the frontend, since the
+ * cache-state page is a hand-written composite (a per-node comparison plus a reload action) that reads these
+ * fields by name, the way the env reference reads [OENV.markdown]. Both sides compile the same names.
+ */
+@Suppress("ConstPropertyName")
+object TCS {
+    const val isDisabled = "isDisabled"
+    const val minRecheckMs = "minRecheckMs"
+    const val caches = "caches"
+    const val sharedState = "sharedState"
+
+    /** The node this report is about -- cache state is per node, so the page says which one answered. */
+    const val nodeId = "nodeId"
+
+    // The reload endpoint: its input table name and its output list of reloaded tables.
+    const val table = "table"
+    const val reloaded = "reloaded"
+    const val reloadTypeName = "TableCacheReload"
+}
+
+/** Field names of one cache's entry in the cache-state report (issue #540); shared with the frontend page. */
+@Suppress("ConstPropertyName")
+object TCI {
+    const val tableName = "tableName"
+    const val topic = "topic"
+    const val isLoaded = "isLoaded"
+    const val isDetached = "isDetached"
+    const val pendingReload = "pendingReload"
+    const val numRows = "numRows"
+    const val numEntries = "numEntries"
+    const val highCounter = "highCounter"
+    const val queryFromDate = "queryFromDate"
+    const val lastSeen = "lastSeen"
+    const val indexes = "indexes"
 }

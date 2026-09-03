@@ -2,6 +2,9 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.operator.OPS
+import com.dynamicruntime.common.operator.TCI
+import com.dynamicruntime.common.operator.TCS
 import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.SchType
@@ -14,6 +17,7 @@ import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.a
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
@@ -317,6 +321,245 @@ val OperatorIndex = FC<Props> {
             li {
                 a { href = "#page=${HMENU.pageFragmentsCheck}"; +"Fragments check" }
                 +" \u2014 the Markdown fragment files this node carries, and any problems found."
+            }
+            li {
+                a { href = "#page=${HMENU.pageCacheState}"; +"Cache state" }
+                +" \u2014 this node's table caches beside the dates every node shares, with a reload action."
+            }
+        }
+    }
+}
+
+
+// --- cache state (issue #540, tier 3) --------------------------------------------------------------------
+
+/** One cached table on this node, joined with the shared row's last-changed date for a side-by-side read. */
+class CacheRow(
+    val tableName: String,
+    val topic: String,
+    val numRows: Long,
+    val highCounter: Long,
+    val lastSeen: String?,
+    val pendingReload: Boolean,
+    val sharedChanged: String?,
+    val needsAttention: Boolean,
+)
+
+/**
+ * The cache-state page's view of the report: this node's caches (each beside the shared row), the shared-row
+ * tables this node holds no cache for, and a count of what wants attention. Pure, so `jsNodeTest` covers the
+ * join and the (deliberately light) flagging -- no confident "behind" verdict, since the two dates are a
+ * change-announce time and a row `updatedAt`, not strictly comparable.
+ */
+class CacheStateView(
+    val nodeId: String,
+    val isDisabled: Boolean,
+    val rows: List<CacheRow>,
+    val unheldShared: List<Pair<String, String>>,
+    val attentionCount: Int,
+)
+
+fun cacheStateView(report: Map<String, Any?>): CacheStateView {
+    val caches = report[TCS.caches].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
+    val shared = report[TCS.sharedState].toJsonMapOrEmpty()
+    val held = caches.mapNotNull { it[TCI.tableName] as? String }.toSet()
+    val rows = caches.map { c ->
+        val name = c[TCI.tableName] as? String ?: ""
+        val pending = c[TCI.pendingReload] == true
+        CacheRow(
+            tableName = name,
+            topic = c[TCI.topic] as? String ?: "",
+            numRows = (c[TCI.numRows] as? Number)?.toLong() ?: 0L,
+            highCounter = (c[TCI.highCounter] as? Number)?.toLong() ?: 0L,
+            lastSeen = c[TCI.lastSeen] as? String,
+            pendingReload = pending,
+            sharedChanged = shared[name] as? String,
+            // Light flag only: a local write awaiting reload. Not a date comparison -- see the class KDoc.
+            needsAttention = pending,
+        )
+    }
+    // Tables the shared row records that this node holds no cache for: another node caches something this one
+    // does not, the clearest "this node is not the whole picture" signal.
+    val unheld = shared.entries.filter { it.key !in held }.map { it.key to (it.value as? String ?: "") }
+        .sortedBy { it.first }
+    val attention = rows.count { it.needsAttention } + unheld.size
+    return CacheStateView(
+        nodeId = report[TCS.nodeId] as? String ?: "",
+        isDisabled = report[TCS.isDisabled] == true,
+        rows = rows,
+        unheldShared = unheld,
+        attentionCount = attention,
+    )
+}
+
+/** What a reload targets: every cache, or one named table. A typed value rather than a nullable-string
+ *  sentinel (issue #540 review), so "reload all" is not a magic empty string. */
+private sealed interface ReloadTarget {
+    object All : ReloadTarget
+    data class One(val table: String) : ReloadTarget
+}
+
+/**
+ * The cache-state operator page (issue #540, tier 3): a per-node view of the table caches beside the change
+ * dates every node shares, with a reload action per cache and a reload-all. Hand-written rather than
+ * schema-driven because it joins two shapes and carries an action -- but the action is a plain operator POST
+ * that then bumps the app's refresh generation, so the page re-reads itself.
+ */
+val OperatorCacheStatePage = FC<Props> {
+    var report by useState<Map<String, Any?>?>(null)
+    var error by useState<DisplayError?>(null)
+    // A reload failure is its own state, shown beside the (still-visible) table -- it must not blank the whole
+    // page the way a report-load failure does, which would hide the data over a transient reload error.
+    var reloadError by useState<DisplayError?>(null)
+    var asOf by useState<String?>(null)
+    // What is reloading, or null when nothing is; disables every reload button while one is in flight.
+    var reloading by useState<ReloadTarget?>(null)
+    val generation = useRefreshGeneration()
+    val bump = useRefreshBump()
+    val latestRun = useRef(0)
+
+    useEffect(generation) {
+        val token = (latestRun.current ?: 0) + 1
+        latestRun.current = token
+        operatorScope.launch {
+            try {
+                val loaded = Http.getApi(OPS.cacheStatePath)[EP.results].toJsonMapOrEmpty()
+                if (latestRun.current == token) {
+                    report = loaded
+                    asOf = nowTimeString()
+                    error = null
+                }
+            } catch (e: Throwable) {
+                if (latestRun.current == token) error = userFacingError(e)
+            }
+        }
+    }
+
+    // Force a reload on this node (one table, or all), then bump so the report re-reads on the new generation.
+    fun reload(target: ReloadTarget) {
+        reloading = target
+        reloadError = null
+        operatorScope.launch {
+            try {
+                val body = when (target) {
+                    is ReloadTarget.One -> mapOf(TCS.table to target.table)
+                    ReloadTarget.All -> emptyMap()
+                }
+                Http.sendApi("POST", OPS.cacheReloadPath, body)
+                reloading = null
+                bump()
+            } catch (e: Throwable) {
+                reloading = null
+                reloadError = userFacingError(e)
+            }
+        }
+    }
+
+    div {
+        className = ClassName("card wide")
+        h1 { +"Cache state" }
+        p {
+            className = ClassName("subtitle")
+            +"This node's in-memory table caches, beside the change dates every node shares."
+        }
+        val current = report
+        when {
+            error != null -> errorText("Couldn't load cache state.", error!!)
+            current == null -> p { className = ClassName("subtitle"); +"Loading…" }
+            else -> {
+                val view = cacheStateView(current)
+                // Cache state is per node -- say which node answered.
+                p {
+                    className = ClassName("op-node")
+                    +"Node "
+                    span { className = ClassName("op-identifier"); +view.nodeId }
+                }
+                asOf?.let { p { className = ClassName("op-asof"); +"as of $it" } }
+                when {
+                    view.isDisabled ->
+                        p { className = ClassName("op-verdict"); +"Table caching is disabled on this node." }
+                    view.attentionCount == 0 ->
+                        p { className = ClassName("op-verdict"); +"This node is current." }
+                    else ->
+                        p { className = ClassName("op-verdict"); +"${view.attentionCount} item(s) need attention." }
+                }
+                div {
+                    className = ClassName("row")
+                    button {
+                        className = ClassName("op-reload")
+                        disabled = reloading != null || view.isDisabled
+                        onClick = { reload(ReloadTarget.All) }
+                        +(if (reloading == ReloadTarget.All) "Reloading…" else "Reload all")
+                    }
+                }
+                // A reload failure shows here, beside the table -- the data stays visible.
+                reloadError?.let { errorText("Couldn't reload.", it) }
+                cacheTable(view.rows, reloading, view.isDisabled) { t -> reload(ReloadTarget.One(t)) }
+                if (view.unheldShared.isNotEmpty()) {
+                    p { className = ClassName("op-section-label"); +"Cached by other nodes, not here" }
+                    div {
+                        className = ClassName("op-table-scroll")
+                        table {
+                            className = ClassName("op-table")
+                            thead { tr { th { +"table" }; th { +"last changed" } } }
+                            tbody {
+                                for ((name, date) in view.unheldShared) tr {
+                                    td { span { className = ClassName("op-identifier"); +name } }
+                                    td { +date }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The caches as a table: each row beside the shared row's last-changed date, with a per-row reload button.
+ *  [reloading] disables every button while one is in flight (a table name, "" for all, or null for none). */
+private fun ChildrenBuilder.cacheTable(
+    rows: List<CacheRow>, reloading: ReloadTarget?, isDisabled: Boolean, onReload: (String) -> Unit,
+) {
+    if (rows.isEmpty()) {
+        p { className = ClassName("type-hint"); +"(no caches on this node)" }
+        return
+    }
+    div {
+        className = ClassName("op-table-scroll")
+        table {
+            className = ClassName("op-table")
+            thead {
+                tr {
+                    th { +"table" }
+                    th { +"topic" }
+                    th { +"rows" }
+                    th { +"counter" }
+                    th { +"last seen (here)" }
+                    th { +"last changed (shared)" }
+                    th { +"" }
+                }
+            }
+            tbody {
+                for (row in rows) tr {
+                    td { span { className = ClassName("op-identifier"); +row.tableName } }
+                    td { +row.topic }
+                    td { +row.numRows.toString() }
+                    td { +row.highCounter.toString() }
+                    td { +(row.lastSeen ?: "—") }
+                    td {
+                        +(row.sharedChanged ?: "—")
+                        if (row.pendingReload) span { className = ClassName("op-status warning"); +"reload pending" }
+                    }
+                    td {
+                        button {
+                            className = ClassName("op-reload")
+                            disabled = reloading != null || isDisabled
+                            onClick = { onReload(row.tableName) }
+                            +(if (reloading == ReloadTarget.One(row.tableName)) "Reloading…" else "Reload")
+                        }
+                    }
+                }
             }
         }
     }

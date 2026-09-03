@@ -119,6 +119,7 @@ object HMENU {
     const val systemInfo = "systemInfo"
     const val dbTables = "dbTables"
     const val fragmentsCheck = "fragmentsCheck"
+    const val cacheState = "cacheState"
     const val cfactReference = "cfactReference"
     // No `newForm` item id: creating a form is reached from the "My forms" list, not a menu entry (issue #417).
     // The `pageNewForm` route below still exists -- the list's "New form" button navigates to it.
@@ -146,6 +147,7 @@ object HMENU {
     const val pageSystemInfo = "systemInfo"
     const val pageDbTables = "dbTables"
     const val pageFragmentsCheck = "fragmentsCheck"
+    const val pageCacheState = "cacheState"
     /** The Operator index/landing page (issue #540), mirroring the Debug index. */
     const val pageOperator = "operator"
     const val pageCfacts = "cfacts"

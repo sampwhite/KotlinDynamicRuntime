@@ -112,6 +112,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.bootChecks, "Boot checks", HMENU.pageBootChecks, HMENU.operator),
             page(HMENU.dbTables, "Database tables", HMENU.pageDbTables, HMENU.operator),
             page(HMENU.fragmentsCheck, "Fragments check", HMENU.pageFragmentsCheck, HMENU.operator),
+            page(HMENU.cacheState, "Cache state", HMENU.pageCacheState, HMENU.operator),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
         )
