@@ -403,13 +403,13 @@ class SchemaService : ServiceInitializer {
                 ) { type = SCT.boolean }
                 property(
                     EI.cfacts,
-                    "The caller's active, frontend-delivered cfacts (issue #564), for evaluating a property's " +
-                        $$"`g-visibleWhen` client-side. Only cfacts a `CFactDef` marks deliverable, and only " +
-                        "those currently present, appear; absence means false.",
+                    "The frontend-delivered cfacts (issue #564) and whether each is present for this caller: a " +
+                        $$"map from cfact name to boolean, for evaluating a property's `g-visibleWhen` " +
+                        "client-side. Only cfacts a `CFactDef` marks deliverable appear -- the whole such " +
+                        "vocabulary, so a gate that names an absent one still parses.",
                     required = true,
                 ) {
-                    type = SCT.array
-                    items { type = SCT.string }
+                    type = SCT.kObject
                 }
             }
             generalEndpoint(
@@ -835,10 +835,14 @@ class SchemaService : ServiceInitializer {
             // one whose cfacts an expression on this surface may name.
             val registry = svc?.cfactsFor(surface.client)
             val present = registry?.assemble(cxt).orEmpty()
+            // The whole frontend-delivered cfact vocabulary, each mapped to whether it is present for this
+            // caller -- not only the present ones. The client parses a gate against these names, so an absent
+            // one it may still name (a `~hasEnvAuth` gate for a caller who lacks it) has to be here as `false`,
+            // or the parse would choke on an unknown name. Only cfacts a CFactDef marks `toFrontend` appear,
+            // and the boot check ensures every gate names one of them.
             val deliveredCfacts = registry?.defs.orEmpty().values
-                .filter { it.toFrontend && it.name in present }
-                .map { it.name }
-                .sorted()
+                .filter { it.toFrontend }
+                .associate { it.name to (it.name in present) }
             val result = linkedMapOf(
                 EI.endpoints to renderings,
                 SCH.dDefs to collectDefs(renderings, surface.schema.defs),

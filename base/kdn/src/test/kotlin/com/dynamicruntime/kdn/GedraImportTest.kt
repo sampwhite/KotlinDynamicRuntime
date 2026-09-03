@@ -15,14 +15,11 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
-import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
-import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
-import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 
@@ -156,15 +153,15 @@ class GedraImportTest : StringSpec({
             val ep = eps.first { it[EI.path].toOptStr()?.endsWith("/formDoc/import") == true && it[EI.method] == "POST" }
             return ep[EI.inputSchema].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
         }
-        fun deliveredCfacts(tu: TestUser): List<String> =
-            tu.getData("/schema/endpoints")[EI.cfacts].toJsonListOfStrings()
+        fun deliveredCfacts(tu: TestUser): Map<String, Any?> =
+            tu.getData("/schema/endpoints")[EI.cfacts].toJsonMapOrEmpty()
         // The served schema is caller-independent now (issue #564): the toggle and its keyword reach both.
         importInputProps(ada).containsKey(GIF.preserveEntryIds) shouldBe true
         importInputProps(bob).containsKey(GIF.preserveEntryIds) shouldBe true
         importInputProps(ada)[GIF.preserveEntryIds].toJsonMapOrEmpty()[SCH.visibleWhen] shouldBe CFACTS.hasEnvAuth
         // ada's channel is env-authed (the header set above), bob's is not: the delivered cfacts differ, so the
         // client shows the toggle only where hasEnvAuth is present. The handler enforces it regardless.
-        deliveredCfacts(ada) shouldContain CFACTS.hasEnvAuth
-        deliveredCfacts(bob) shouldNotContain CFACTS.hasEnvAuth
+        deliveredCfacts(ada)[CFACTS.hasEnvAuth] shouldBe true
+        deliveredCfacts(bob)[CFACTS.hasEnvAuth] shouldBe false
     }
 })

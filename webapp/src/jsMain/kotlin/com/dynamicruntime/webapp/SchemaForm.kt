@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCT
@@ -73,6 +74,13 @@ class FormOpts(
      * offer. Applies only at the top level, so a same-named field deeper in the tree is untouched.
      */
     val omit: Set<String> = emptySet(),
+    /**
+     * A property's `g-visibleWhen` gate (issue #564): given the expression, whether the field is shown.
+     * Consulted only in friendly mode -- the catalog documents the wire and shows every field, like a derived
+     * one. Defaults to always-visible, so a form that supplies no cfacts shows everything; the gate is
+     * presentation-only and the backend enforces the condition regardless.
+     */
+    val gateAllows: (expression: String) -> Boolean = { true },
 )
 
 /**
@@ -170,6 +178,12 @@ external interface SchemaFormProps : Props {
     /** Root-level field names to omit from the form (see [FormOpts.omit]); absent means omit nothing. */
     var omit: List<String>?
     /**
+     * The caller's delivered cfacts (issue #564), `name -> present`, from the catalog response
+     * ([Catalog.cfacts]). A property's `g-visibleWhen` is evaluated against these and the field hidden when it
+     * fails -- in friendly mode only. Absent means no gating (every field shows).
+     */
+    var cfacts: Map<String, Boolean>?
+    /**
      * Validation failures to show against the fields that caused them. Their paths are the ones the kernel
      * validator reported, and the form rebuilds the same paths as it walks — see [FieldErrors].
      *
@@ -248,11 +262,42 @@ fun focusField(path: String) {
     (control ?: row as? HTMLElement)?.focus()
 }
 
+/**
+ * A `g-visibleWhen` evaluator over the caller's delivered cfacts (issue #564): parses an expression with the
+ * SAME kernel [CFactParser] the backend uses and matches it against the present ones. [cfacts] is the map the
+ * catalog delivered -- every frontend cfact name to whether it is present -- so its keys are the parse
+ * vocabulary and its true-valued keys are the present set. Null means no cfacts were supplied, so nothing is
+ * gated (every field shows); a form opts into gating by passing them.
+ *
+ * Fail-open on a parse error: the boot check already validated every expression against the registry, so a
+ * throw here means the delivered vocabulary lacks a name the gate uses -- show the field rather than hide it on
+ * a technicality, since this is presentation and the backend enforces the real condition.
+ */
+internal fun buildCfactGate(cfacts: Map<String, Boolean>?): (String) -> Boolean {
+    if (cfacts == null) return { true }
+    val allowed = cfacts.keys
+    val present = cfacts.filterValues { it }.keys
+    val cache = HashMap<String, Boolean>()
+    return { expression ->
+        cache.getOrPut(expression) {
+            try {
+                CFactParser.parse(expression, allowed).matches(present)
+            } catch (e: Throwable) {
+                true
+            }
+        }
+    }
+}
+
 val SchemaForm = FC<SchemaFormProps> { props ->
     val errors = FieldErrors(props.failures ?: emptyList(), props.onFieldEdit ?: {})
     // An external-interface Boolean arrives as `undefined` when a caller omits it, so read it as `== true`
     // rather than trusting the declared type; the catalog omits both and gets the plain wire view.
-    val opts = FormOpts(friendly = props.friendly == true, omit = props.omit?.toSet() ?: emptySet())
+    val opts = FormOpts(
+        friendly = props.friendly == true,
+        omit = props.omit?.toSet() ?: emptySet(),
+        gateAllows = buildCfactGate(props.cfacts),
+    )
     div {
         className = ClassName("schema-form")
         // The root path is empty, which is what the validator starts from too, so `childPath` composes the
@@ -342,6 +387,12 @@ private fun ChildrenBuilder.renderProperties(
         // The catalog does the opposite and shows it read-only, because that surface documents the wire.
         if (opts.friendly && prop.valueType.derived) {
             return@forEach
+        }
+        // A field gated by g-visibleWhen (issue #564) is hidden in a data-entry form when the caller's cfacts
+        // fail its expression. Friendly only, like the derived guard above: the catalog documents the wire, so
+        // it shows the field, and the backend enforces the condition regardless of what is drawn.
+        if (opts.friendly) {
+            prop.visibleWhen?.let { if (!opts.gateAllows(it)) return@forEach }
         }
         // A forbidden field is hidden -- unless it still holds something, in which case hiding it would hide
         // its failure too, leaving a complaint about a field with nowhere to go and no way to clear it. Shown,

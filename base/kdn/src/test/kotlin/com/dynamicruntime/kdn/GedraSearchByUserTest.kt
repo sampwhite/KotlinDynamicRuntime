@@ -10,11 +10,9 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
-import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
@@ -52,9 +50,9 @@ class GedraSearchByUserTest : StringSpec({
         return formDocs[EI.inputSchema].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
     }
 
-    /** The frontend-delivered cfacts on this caller's catalog response (issue #564). */
-    fun deliveredCfacts(tu: TestUser): List<String> =
-        tu.getData("/schema/endpoints")[EI.cfacts].toJsonListOfStrings()
+    /** The frontend-delivered cfacts on this caller's catalog response (issue #564): name -> present. */
+    fun deliveredCfacts(tu: TestUser): Map<String, Any?> =
+        tu.getData("/schema/endpoints")[EI.cfacts].toJsonMapOrEmpty()
 
     var aliceDocId = ""
     var bobDocId = ""
@@ -105,7 +103,7 @@ class GedraSearchByUserTest : StringSpec({
         // What differs is the delivered cfacts the client evaluates against: the admin has hasAdminLevel, the
         // ordinary user does not -- so the client shows the field to one and hides it from the other. The
         // handler enforces scope regardless (the 400s above).
-        deliveredCfacts(ada) shouldContain CFACTS.hasAdminLevel
-        deliveredCfacts(bob) shouldNotContain CFACTS.hasAdminLevel
+        deliveredCfacts(ada)[CFACTS.hasAdminLevel] shouldBe true
+        deliveredCfacts(bob)[CFACTS.hasAdminLevel] shouldBe false
     }
 })

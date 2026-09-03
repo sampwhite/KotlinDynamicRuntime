@@ -70,6 +70,9 @@ object SchemaCatalogApi {
         // Default true when the field is absent (an older node, a hand-built store): the safe reading is that
         // filtering is allowed, and the endpoints the response already carries are what the page can show.
         filtersAvailable = results[EI.filtersAvailable] as? Boolean ?: true,
+        // name -> present (issue #564); each value is a wire boolean. Absent on an older node -> empty -> no
+        // gating, which is the safe reading since the backend enforces the real condition regardless.
+        cfacts = results[EI.cfacts].toJsonMapOrEmpty().mapValues { it.value == true },
     )
 
     private fun toEndpointInfo(m: Map<String, Any?>): EndpointInfo = EndpointInfo(

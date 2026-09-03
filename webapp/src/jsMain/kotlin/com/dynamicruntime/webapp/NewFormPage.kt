@@ -168,6 +168,9 @@ val NewFormPage = FC<Props> {
                     // Friendly data-entry presentation: fields labeled by title/humanized key, and the derived
                     // system fields (entryId, source, the audit stamps) hidden rather than shown read-only.
                     friendly = true
+                    // The caller's delivered cfacts (issue #564), so a g-visibleWhen field this caller should
+                    // not see is hidden here. The backend enforces the condition regardless of what is drawn.
+                    cfacts = cat.cfacts
                     // `allowAdditionalTraits` is a power flag (write traits the client does not support), not
                     // something an end-user form should offer; it defaults false when omitted.
                     omit = listOf(GDF.allowAdditionalTraits)

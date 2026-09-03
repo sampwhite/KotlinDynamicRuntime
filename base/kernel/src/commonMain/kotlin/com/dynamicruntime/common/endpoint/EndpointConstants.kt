@@ -75,9 +75,10 @@ object EI {
     const val filtersAvailable = "filtersAvailable"
 
     /**
-     * The caller's active, frontend-delivered cfacts, carried on the catalog response (issue #564) so the
-     * client can evaluate a property's `g-visibleWhen` itself. Only names a `CFactDef` marks `toFrontend`, and
-     * only those present for this caller, appear -- absence means false, matching the backend evaluator.
+     * The frontend-delivered cfacts carried on the catalog response (issue #564) so the client can evaluate a
+     * property's `g-visibleWhen` itself: a map from cfact name to whether it is present for this caller. The
+     * whole vocabulary a `CFactDef` marks `toFrontend` (present and absent), so the client can parse a gate
+     * that names an absent one; the true-valued keys are the present set the expression matches against.
      */
     const val cfacts = "cfacts"
 }
