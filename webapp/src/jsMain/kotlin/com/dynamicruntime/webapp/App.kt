@@ -37,6 +37,10 @@ val App = FC<Props> {
     // every mounted config consumer. The tuple form (not `by`) is used, so the bump is a functional update
     // (`{ it + 1 }`), which the persistent hashchange listener below needs to avoid a stale count.
     val (refresh, setRefresh) = useState(0)
+    // How many times the page on screen has been chosen again from the menu (issue #565). Folded into the page
+    // boundary's key below, so re-selecting the current page remounts it with fresh state -- the only reset a
+    // page can get when the hash does not change, since setting the hash to itself fires no `hashchange`.
+    var revisit by useState(0)
     // A newer web-app version detected on a response (issue #136); drives the reload affordance below. The
     // reaction is non-destructive: we never reload out from under the user, only offer it and reload on a
     // navigation (a safe point) or an explicit click.
@@ -122,6 +126,7 @@ val App = FC<Props> {
                 }
                 AppBar {
                     this.currentPage = page
+                    this.onRevisit = { revisit += 1 }
                     this.envAuthSuppressible = envAuthSuppressible
                     this.envAuthActing = envAuthActing
                     this.envAuthDebug = envAuthDebug
@@ -141,8 +146,13 @@ val App = FC<Props> {
                     // and differ only by the `tool` hash param (issue #517), so a faulted `tool=fault` would
                     // otherwise keep showing its fallback after a `back` to the index -- the very outliving this
                     // key exists to prevent. Folding the tool in remounts the boundary when it changes.
+                    //
+                    // The revisit count is folded in for the same reason from the other direction (issue #565):
+                    // choosing the current page from the menu changes nothing else -- not the hash, not `page` --
+                    // yet it is the one gesture that says "start this page over". A login left waiting on a code
+                    // that will never come is the case that found this; any page with transient state is covered.
                     ErrorBoundary {
-                        key = (page + (hashParams()[debugToolParam]?.let { ":$it" } ?: "")).unsafeCast<Key>()
+                        key = (page + (hashParams()[debugToolParam]?.let { ":$it" } ?: "") + "#$revisit").unsafeCast<Key>()
                         fallback = ErrorFallback
                         onError = ::reportRenderFailure
                         when (page) {
