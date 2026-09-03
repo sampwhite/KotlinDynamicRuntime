@@ -30,7 +30,7 @@ class WfTraitView(
     val type: SchType,
 )
 
-/** One save option a task offers: what a button says, and what it does. */
+/** One save option a task offers: what a button says and what it does. */
 class WfSaveView(val id: String, val label: String, val kind: String)
 
 /** One task of the workflow: its traits in the order the page draws them, and its saves. */
@@ -58,9 +58,9 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowCreation? {
             traits = t[WFD.traits].toJsonListOfMaps().map { tr ->
                 val ref = tr[WVF.schemaRef].toOptStr() ?: ""
                 val name = refName(ref)
-                    ?: error("Workflow view trait '${tr[WFD.traitId]}' has a schemaRef '$ref' that is not a local \$defs pointer.")
+                    ?: error($$"Workflow view trait '$${tr[WFD.traitId]}' has a schemaRef '$$ref' that is not a local $defs pointer.")
                 val type = defTypes[name]
-                    ?: error("Workflow view references '$name', which its own \$defs does not carry.")
+                    ?: error($$"Workflow view references '$$name', which its own $defs does not carry.")
                 WfTraitView(tr[WFD.traitId].toOptStr() ?: "", tr[WFD.required] == true, type)
             },
             saves = t[WFD.saves].toJsonListOfMaps().map { s ->
