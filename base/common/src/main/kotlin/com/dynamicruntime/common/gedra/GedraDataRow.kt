@@ -175,6 +175,11 @@ class GedraDataRow(
                 ) {
                     derived = true
                 }
+                property(GDF.displayValues, "Computed display values from the client's trait-usage rules (issue #537).") {
+                    type = SCT.array
+                    items { type = SCT.kObject }
+                    derived = true
+                }
                 // An instruction about the write, so it belongs to the sent shape and to nothing else.
                 if (forInput) {
                     property(GDF.allowAdditionalTraits, additionalTraitsHint) { type = SCT.boolean }

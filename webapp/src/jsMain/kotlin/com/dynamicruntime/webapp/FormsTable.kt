@@ -50,11 +50,10 @@ external interface FormsTableProps : Props {
 }
 
 val FormsTable = FC<FormsTableProps> { props ->
-    // A form document has no dedicated name -- a title comes from the `name` trait, which a client may not
-    // support (acme does not), so for such a client every row's name is empty. The Name column is shown only
-    // when at least one listed form actually has one, rather than standing as a column of dashes; `Contains`
-    // carries the identity in its absence.
-    val anyNamed = props.forms.any { it.second.title != null }
+    // The display columns a client's trait-usage rules declared (issue #537): every row carries the same set
+    // (the backend attaches all of them), so any row's list gives the columns and their order. A client with
+    // no usage rules has none, and `Contains` carries the identity, as it did before this was configurable.
+    val displayCols = props.forms.firstOrNull()?.second?.displayValues ?: emptyList()
     // The Actions column exists only when at least one action can be performed, so a read-only surface carries
     // no empty column.
     val anyActions = props.canEdit || props.canDelete
@@ -63,7 +62,9 @@ val FormsTable = FC<FormsTableProps> { props ->
         pagination = false
         rowKey = "key"
         columns = buildList {
-            if (anyNamed) add(column("Name", "name", 220))
+            // Namespaced key: a usage trait id must not shadow the reserved row key ("key") or a fixed column
+            // ("contains"/"created"/"actions") -- overwriting the row key would break which form a click opens.
+            displayCols.forEach { add(column(it.label, displayColKey(it.traitId), 220)) }
             add(column("Contains", "contains", null))
             add(column("Created", "created", 170))
             if (anyActions) add(actionsColumn(props))
@@ -71,8 +72,9 @@ val FormsTable = FC<FormsTableProps> { props ->
         dataSource = props.forms.map { (id, summary) ->
             val row: dynamic = js("({})")
             row.key = id
-            // A dash only where a named list has the odd untitled row; an all-untitled list drops the column.
-            row.name = summary.title ?: "—"
+            // Each declared column's value for this row, under the same namespaced key as its column; a blank
+            // cell where the row has none.
+            summary.displayValues.forEach { row[displayColKey(it.traitId)] = it.value.ifBlank { "—" } }
             row.contains = summary.traitLabels.joinToString(", ")
             row.created = summary.createdAt ?: ""
             row
@@ -175,6 +177,10 @@ private val FormRowActions = FC<FormRowActionsProps> { props ->
         }
     }
 }
+
+/** The antd row/column key for a display column: a trait id, namespaced so it cannot shadow the reserved
+ *  row key ("key") or the fixed "contains"/"created"/"actions" columns (issue #537). */
+private fun displayColKey(traitId: String): String = "display_$traitId"
 
 /** Builds an antd column config `{ title, dataIndex, key, width? }`. */
 private fun column(title: String, dataIndex: String, width: Int?): dynamic {

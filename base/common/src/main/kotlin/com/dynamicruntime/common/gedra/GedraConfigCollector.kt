@@ -155,6 +155,19 @@ class GedraConfigCollector {
         .filter { (_, config) -> config.gedraId.client == client }
         .mapNotNull { (traitId, _) -> traitOwners[traitId] }
 
+    /**
+     * The trait-usage rules [client] applies (issue #537): **its own if it declared any, otherwise the global
+     * defaults**. Unlike [traitsFor], this is an override rather than own-and-global: once a client says how it
+     * presents its forms, that is authoritative -- a global default (like the `name` column `coreTraits` ships)
+     * fills in only where a client has said nothing, so a client that omits `name` is not given a blank column
+     * for it, and a client that presents `name` itself does not get it twice. In declaration order.
+     */
+    fun usagesFor(client: String): List<ClientTraitUsage> {
+        val own = configsById.values.filter { it.gedraId.client == client }.flatMap { it.usages }
+        if (own.isNotEmpty()) return own
+        return configsById.values.filter { it.gedraId.client == GID.globalClient }.flatMap { it.usages }
+    }
+
     /** The `$defs` the kept configs generated, merged, for compiling with everything else. */
     fun defs(): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()
