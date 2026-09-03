@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -152,13 +153,18 @@ class GedraFormsTest {
         assertNull(entriesUnionOf(null))
     }
 
-    /** The summary reads each trait by its friendly label, the document's name from a `name`-trait entry, and
-     *  a formatted created time. */
+    /** One computed display value, as the backend attaches it (issue #537). */
+    private fun displayValue(traitId: String, label: String, value: String): Map<String, Any?> =
+        mapOf(UF.traitId to traitId, UF.label to label, UF.value to value)
+
+    /** The summary reads each trait by its friendly label, the document's heading and columns from the
+     *  client's computed `displayValues`, and a formatted created time. */
     @Test
-    fun summarizesTraitsNameAndTime() {
+    fun summarizesTraitsDisplayValuesAndTime() {
         val item = mapOf(
             GDF.gedraId to "gd.fd.acme.u123",
             GDF.createdAt to "2026-08-21T19:49:51.568Z",
+            GDF.displayValues to listOf(displayValue("name", "Name", "Q3 expenses")),
             GDF.entries to listOf(
                 mapOf(GE.traitId to "name", GE.data to mapOf("name" to "Q3 expenses")),
                 mapOf(GE.traitId to "expenseReport", GE.data to mapOf("year" to 2026)),
@@ -166,37 +172,44 @@ class GedraFormsTest {
         )
         val info = summarizeForm(item, entriesUnion())
         assertEquals("gd.fd.acme.u123", info.gedraId)
+        // The heading is the first non-blank display value; the column carries label + value.
         assertEquals("Q3 expenses", info.title)
-        // "name" has no title so it humanizes; "expenseReport"'s branch declares one.
+        assertEquals(listOf("Name"), info.displayValues.map { it.label })
+        assertEquals("Q3 expenses", info.displayValues.single().value)
+        // "name" has no branch title so it humanizes; "expenseReport"'s branch declares one.
         assertEquals(listOf("Name", "Expense report"), info.traitLabels)
         assertEquals("2026-08-21 19:49 UTC", info.createdAt)
     }
 
-    /**
-     * The title comes from the `name` **trait**, not from any entry that happens to carry a `name` field. Here
-     * an expense entry has its own vendor `name` and is added first; the document's title is still the one
-     * somebody chose, and does not depend on the order entries were added in.
-     */
+    /** The heading is the first **non-blank** display value: a blank one (the row lacks that trait) is skipped. */
     @Test
-    fun aFieldLevelNameIsNotTheDocumentTitle() {
+    fun theHeadingIsTheFirstNonBlankDisplayValue() {
         val item = mapOf(
             GDF.gedraId to "gd.fd.acme.u7",
-            GDF.entries to listOf(
-                mapOf(GE.traitId to "expenseReport", GE.data to mapOf("name" to "Acme Supplies Ltd")),
-                mapOf(GE.traitId to "name", GE.data to mapOf("name" to "Q3 expenses")),
+            GDF.displayValues to listOf(
+                displayValue("auditor", "Auditor", ""),
+                displayValue("name", "Name", "Q3 expenses"),
             ),
+            GDF.entries to listOf(mapOf(GE.traitId to "name", GE.data to mapOf("name" to "Q3 expenses"))),
         )
-        assertEquals("Q3 expenses", summarizeForm(item, entriesUnion()).title)
+        val info = summarizeForm(item, entriesUnion())
+        assertEquals("Q3 expenses", info.title)
+        // Both columns are present in the client's order, blank cell and all.
+        assertEquals(listOf("Auditor", "Name"), info.displayValues.map { it.label })
     }
 
-    /** An entry carrying a `name` field under some other trait does not title the document at all. */
+    /** A form whose display values are all blank -- the row carries none of the presented traits -- is
+     *  untitled, but its columns still stand (so the table keeps a stable set). */
     @Test
-    fun aNameFieldOnAnotherTraitTitlesNothing() {
+    fun allBlankDisplayValuesLeaveTheFormUntitledButKeepTheColumns() {
         val item = mapOf(
             GDF.gedraId to "gd.fd.acme.u8",
-            GDF.entries to listOf(mapOf(GE.traitId to "siteVisit", GE.data to mapOf("name" to "North depot"))),
+            GDF.displayValues to listOf(displayValue("name", "Name", "")),
+            GDF.entries to listOf(mapOf(GE.traitId to "siteVisit", GE.data to mapOf("place" to "North depot"))),
         )
-        assertNull(summarizeForm(item, entriesUnion()).title)
+        val info = summarizeForm(item, entriesUnion())
+        assertNull(info.title)
+        assertEquals(listOf("Name"), info.displayValues.map { it.label })
     }
 
     /** A form with no name-bearing trait and no timestamp: untitled and undated, both legitimate. */

@@ -19,6 +19,7 @@ import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.user.UserService
@@ -67,6 +68,14 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * An `allClients` holder can ask for one client's surface with the catalog's `client` filter.
  */
+/**
+ * One stored row's wire map with the client's computed display values attached (issue #537). The list path
+ * inlines the same thing over a page; this is the single-read counterpart, so a form opened directly presents
+ * the same columns a listing does.
+ */
+private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> =
+    row.toJsonMap() + (GDF.displayValues to computeDisplayValues(cxt, row, SchemaService.get(cxt).traitUsagesFor(cxt.client)))
+
 fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
     val formDoc = GedraDataType.formDoc
     val docType = GU.gedraName(formDoc)
@@ -110,7 +119,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         // Absent, disabled, the wrong kind and out of scope all arrive here as null, and all leave as 404 --
         // see `GedraDataService.queryGedra` for why the last of those must not be distinguishable.
             ?: throw KdrException("No form document '$fullId'.", code = EXC.notFound)
-        row.toJsonMap()
+        withDisplayValues(c, row)
     }
 
     // What a delete answers with. Not the document: a caller who has just deleted something does not want it
@@ -183,8 +192,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedra") {
         val target = resolveTargetUser(c, request, callerScope)
         val scope = if (target == null) callerScope else ReadScope.ofUser(target.userId)
         val page = GedraDataService.get(c).listGedras(c, formDoc, scope, limit, offset)
+        // The client's usage rules, read once for the whole page (issue #537).
+        val usages = SchemaService.get(c).traitUsagesFor(c.client)
         ListPage(
-            page.rows.map { it.toJsonMap() },
+            page.rows.map { it.toJsonMap() + (GDF.displayValues to computeDisplayValues(c, it, usages)) },
             page.numAvailable,
             hasMore = offset + page.rows.size < page.numAvailable,
         )
