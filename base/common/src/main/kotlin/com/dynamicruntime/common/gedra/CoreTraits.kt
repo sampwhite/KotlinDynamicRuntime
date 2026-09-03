@@ -62,4 +62,10 @@ fun coreTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, GT.coreTraits, GCFG.
     ) {
         property(GT.name, "What to call it.", required = true) { maxLength = GT.nameMaxLength }
     }
+
+    // The default forms-list presentation (issue #537): a "Name" column pulled from the `name` trait, applied
+    // to any client that has not declared usage rules of its own. This is what preserves the name column every
+    // deployment showed before presentation became client-configurable -- a client with its own rules
+    // overrides it wholesale (see `GedraConfigCollector.usagesFor`).
+    traitUsage(GT.name, "Name", $$"${name}")
 }

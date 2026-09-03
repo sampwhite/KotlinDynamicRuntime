@@ -163,6 +163,11 @@ class GedraConfig(
      * [com.dynamicruntime.common.gedra.workflow.WfRef] pairs this config's id with a key of this map.
      */
     val workflows: Map<String, WfDef> = emptyMap(),
+    /**
+     * The trait-usage rules this config declares (issue #537) -- how its client presents a trait in a listing.
+     * A list rather than a map: a client may present two traits, and order is the column order.
+     */
+    val usages: List<ClientTraitUsage> = emptyList(),
 ) {
     /**
      * The code-explicit name this config is addressed by, which is also its id's base.
@@ -233,6 +238,19 @@ class GedraConfigBuilder(
     /** The workflows declared in this block; see [workflow]. */
     @Suppress("MemberVisibilityCanBePrivate")
     val workflows: MutableMap<String, WfDef> = LinkedHashMap()
+
+    /** The trait-usage rules declared in this block; see [traitUsage]. */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val usages: MutableList<ClientTraitUsage> = mutableListOf()
+
+    /**
+     * Declares how [traitId] presents in a listing (issue #537): a [display] string-script expression
+     * evaluated against the trait's data, a [label] column header, and a value [kind]. The client owns this,
+     * and it is the first thing a client's config changes about a page other than its own form.
+     */
+    fun traitUsage(traitId: String, label: String, display: String, kind: UsageKind = UsageKind.string) {
+        usages.add(ClientTraitUsage(traitId, label, display, kind))
+    }
 
     /**
      * Declares a workflow in source (issue #533). The builder writes the definition's **JSON**, which then
@@ -410,5 +428,6 @@ fun gedraConfig(
         fragments = builder.fragments.toList(),
         uiBlocks = builder.uiBlocks.toList(),
         workflows = builder.workflows.toMap(),
+        usages = builder.usages.toList(),
     )
 }

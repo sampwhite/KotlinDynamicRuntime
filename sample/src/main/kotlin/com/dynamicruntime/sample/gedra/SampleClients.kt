@@ -279,6 +279,15 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             property(SC.auditor, "Who carried out the audit.", required = true)
             property(SC.findings, "What they found.")
         }
+
+        // --- a trait-usage rule (issue #537) ------------------------------------------------------------
+        //
+        // The first thing acme's config changes about a page other than its own form: its forms *list* shows
+        // an "Auditor" column, pulled from the site-audit trait's `auditor` field. Declaring any usage of its
+        // own **overrides** the global default `name` column (`GedraConfigCollector.usagesFor`), so acme -- which
+        // omits `name` -- shows Auditor and not a blank Name column, while globex, declaring none, inherits the
+        // default Name. Two clients, two different columns.
+        traitUsage(SC.siteAudit, "Auditor", $$"${auditor}")
     }
 
 /**

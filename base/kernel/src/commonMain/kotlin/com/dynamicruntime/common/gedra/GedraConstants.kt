@@ -135,6 +135,14 @@ object GDF {
     const val userId = "userId"
     const val org = "org"
     const val entries = "entries"
+
+    /**
+     * A stored row's **computed display values** (issue #537): a list of `{traitId, label, value, kind}` the
+     * list and read endpoints attach from the caller's client's trait-usage rules, so the forms table shows
+     * the columns a client declared. Derived -- neither sent nor stored.
+     */
+    const val displayValues = "displayValues"
+
     const val createdAt = "createdAt"
     const val updatedAt = "updatedAt"
 
