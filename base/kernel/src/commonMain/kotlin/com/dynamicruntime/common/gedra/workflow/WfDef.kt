@@ -88,6 +88,25 @@ object WVF {
 }
 
 /**
+ * The field names of a **workflow-save result** (issue #535) -- the shape `/gedra/<client>/workflow/save`
+ * returns, either way. A save is not all-or-nothing at the HTTP level: an incomplete one is a **result**
+ * ([saved] false, [unmetTraits] naming what is missing), not an error, the soft-validation shape
+ * `gedra-patch.md` draws. A satisfied one carries the created gedra under [item], the shape `formDoc/create`
+ * returns.
+ */
+@Suppress("ConstPropertyName")
+object WSF {
+    /** Whether the save happened. False means a required trait was missing; see [unmetTraits]. */
+    const val saved = "saved"
+
+    /** When not [saved]: the required trait ids no entry satisfied, in the order the task declares them. */
+    const val unmetTraits = "unmetTraits"
+
+    /** When [saved]: the created gedra, as `formDoc/create` returns it. */
+    const val item = "item"
+}
+
+/**
  * The cfact names a task's statuses are reported under -- **target facts** about the task being rendered,
  * passed to the registry's `assemble` rather than computed from the request (issue #533). Only these two are
  * declared: `complete` has a real producer ([WfTaskFacts]), `available` is a placeholder that is always

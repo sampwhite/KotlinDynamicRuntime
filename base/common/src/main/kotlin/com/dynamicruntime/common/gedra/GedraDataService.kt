@@ -198,6 +198,11 @@ class GedraDataService : ServiceInitializer {
         kind: GedraDataType,
         entries: List<Map<String, Any?>>,
         allowAdditionalTraits: Boolean = false,
+        /**
+         * The creation workflow that made this gedra, when one did (issue #535): stamped once under
+         * [GD.creationWorkflowId], never rewritten. Configuration lineage, not a trait -- see [GedraDataRow].
+         */
+        creationWorkflowId: com.dynamicruntime.common.gedra.workflow.WfRef? = null,
     ): GedraDataRow {
         // At most one entry per trait -- or per primary-key value, for a keyed trait (issue #487) -- refused
         // before anything is minted (issue #337). This was not checked when create was written, so a caller
@@ -236,10 +241,15 @@ class GedraDataService : ServiceInitializer {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
         val stmt = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
+        // The stored `data` map: the entries, and -- when a creation workflow made this gedra -- its
+        // reference beside them, the one key promoted out of `extra` on read (issue #535).
+        val dataMap = LinkedHashMap<String, Any?>()
+        creationWorkflowId?.let { dataMap[GD.creationWorkflowId] = it.text }
+        dataMap[GD.entries] = stored
         val data = mutableMapOf<String, Any?>(
             GD.gedraId to gedraId.fullId,
             GD.gedraKind to kind.name,
-            GD.data to mapOf(GD.entries to stored),
+            GD.data to dataMap,
         )
         // Ownership and audit come from the context, never from the caller: `client`, `org` and `userId` from
         // the bound owner, `createdBy`/`updatedBy` from the actor, and `enabled` true.
