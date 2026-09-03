@@ -179,7 +179,7 @@ val App = FC<Props> {
                             }
                             pageCacheState -> OperatorCacheStatePage {}
                             pageCfacts -> CFactReferencePage {}
-                            pageNewForm -> NewFormPage {}
+                            pageNewForm -> CreationPage {}
                             pageForms -> FormsPage {}
                             pageEditForm -> EditFormPage {}
                             // Resolved here rather than in `currentPage()` because the answer depends on the
