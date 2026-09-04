@@ -36,6 +36,15 @@ object GEP {
     const val formDocs = "/gedra/formDocs"
 
     /**
+     * The distinct values a text trait takes across the caller's own documents (issue #581): what a filter
+     * box's type-ahead suggests. Client-shaped like the rest, so a caller reaches its own client's copy.
+     */
+    const val formDocValues = "/gedra/formDoc/values"
+
+    /** The type of one suggested value -- a `{value}` wrapper so the listing envelope carries a distinct-count. */
+    const val fieldValueType = "FormDocFieldValue"
+
+    /**
      * The named input type of the forms listing (issue #538). Named rather than inline because a per-client
      * copy carries the type *name*, which resolves to that client's variant -- so a client's usage-derived
      * search parameters can ride on it, where an inline field list would be copied literally and could not

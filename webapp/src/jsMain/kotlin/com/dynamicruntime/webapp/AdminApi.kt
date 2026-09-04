@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
@@ -140,8 +141,13 @@ object AdminApi {
      * an absent field and an empty one differently. The sort is always sent, so the server orders the whole
      * matched set before capping (client-side sorting would only reorder the page, misleading past the cap).
      */
-    suspend fun searchUsers(query: UserSearchQuery): UserSearchResult {
-        val env = Http.getApi(UADEP.userSearch + queryString(userSearchArgs(query)))
+    suspend fun searchUsers(query: UserSearchQuery, limit: Int? = null): UserSearchResult {
+        // The limit is a fetch concern, not part of the query's identity, so it rides on the URL here rather
+        // than in `userSearchArgs` -- which the shareable-hash encoding mirrors, and where a suggestion cap has
+        // no business (issue #581). A type-ahead asks for the few it will show; the console omits it and takes
+        // the endpoint's own default.
+        val args = userSearchArgs(query) + (limit?.let { mapOf(EP.limit to it) } ?: emptyMap())
+        val env = Http.getApi(UADEP.userSearch + queryString(args))
         return UserSearchResult(
             users = env[EP.items].toJsonListOfMaps().map { it.toAdminUser() },
             numAvailable = (env[EP.numAvailable] as? Number)?.toInt() ?: 0,
@@ -260,6 +266,12 @@ class UserSearchQuery(
     val ranges: Map<String, DateRange> = emptyMap(),
     val sortBy: String = USF.lastEdited.at,
     val descending: Boolean = true,
+    /**
+     * A single free-text term matched across email, name, and username at once (issue #581) -- the OR term the
+     * scope-bar type-ahead sends, distinct from the per-field [textTerms] which AND. Blank is no constraint.
+     * Appended after the existing parameters so the positional call sites (the users console) are unaffected.
+     */
+    val anyText: String? = null,
 )
 
 /**
@@ -269,6 +281,7 @@ class UserSearchQuery(
  * encoding, so the wire and the hash carry the same keys -- and adding a spec field needs no edit here.
  */
 fun userSearchArgs(query: UserSearchQuery): Map<String, Any?> = buildMap {
+    query.anyText?.trim()?.takeIf { it.isNotEmpty() }?.let { put(EI.q, it) }
     query.textTerms.forEach { (field, term) -> term.trim().takeIf { it.isNotEmpty() }?.let { put(field, it) } }
     query.ranges.forEach { (field, range) ->
         val keys = userSearchFieldSpecsByName[field]?.rangeKeys ?: return@forEach

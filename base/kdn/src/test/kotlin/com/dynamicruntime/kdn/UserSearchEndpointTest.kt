@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
@@ -52,6 +53,19 @@ class UserSearchEndpointTest : StringSpec({
 
     "a public-name substring matches the username" {
         emails(search(mapOf(USF.publicName to "usrch_alice"))) shouldContainExactly listOf("alice@usrch.test")
+    }
+
+    // The single "any text" q term (issue #581): one box matching email, username, or real name at once, OR
+    // across the fields. Its own `qsrch.test` marker, so its rows never drift into the counts above.
+    "the q term matches across email, username, and name at once" {
+        admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to "egg@qsrch.test", ADF.username to "qsrch_egg", ADF.name to "Zelda Fitzwilliam"))
+        admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to "bee@qsrch.test", ADF.username to "qsrch_bee"))
+        // A real name carried by no email or username.
+        emails(search(mapOf(EI.q to "fitzwilliam"))) shouldContainExactly listOf("egg@qsrch.test")
+        // A username fragment.
+        emails(search(mapOf(EI.q to "qsrch_bee"))) shouldContainExactly listOf("bee@qsrch.test")
+        // The shared domain fragment returns both -- OR across fields, where two named terms would AND.
+        emails(search(mapOf(EI.q to "qsrch.test"))).sorted() shouldContainExactly listOf("bee@qsrch.test", "egg@qsrch.test")
     }
 
     "every returned row carries an update time -- the projection surfaces it" {
