@@ -378,11 +378,8 @@ class SchemaService : ServiceInitializer {
      * evaluator). The one place this shape is computed -- the endpoint catalog and the resolved workflow view
      * both hand it to the frontend so a field's gate is evaluated the same way on either surface.
      */
-    fun deliveredCfactsFor(cxt: KdrCxt, client: String?): Map<String, Boolean> {
-        val registry = cfactsFor(client)
-        val present = registry.assemble(cxt)
-        return registry.defs.values.filter { it.toFrontend }.associate { it.name to (it.name in present) }
-    }
+    fun deliveredCfactsFor(cxt: KdrCxt, client: String?): Map<String, Boolean> =
+        cfactsFor(client).let { it.deliveredCfacts(it.assemble(cxt)) }
 
     /**
      * The gedra traits [client] can see -- its own and global's (issue #487). Each carries its `primaryKey`, so
