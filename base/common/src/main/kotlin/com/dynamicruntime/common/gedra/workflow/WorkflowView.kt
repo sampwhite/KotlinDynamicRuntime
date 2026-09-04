@@ -43,6 +43,7 @@ fun resolveWorkflowView(
     entriesByTask: Map<String, List<Map<String, Any?>>> = emptyMap(),
 ): Map<String, Any?> {
     val client: String = cxt.client
+    @Suppress("VariableInitializerIsRedundant2")
     val fragments = MarkdownFragmentService.get(cxt)
     val cfacts = SchemaService.get(cxt).cfactsFor(client)
     // Every trait an admitted workflow names is one the client can see (the boot check in #533 guaranteed it),
