@@ -237,6 +237,38 @@ JSON schema as a whole. The same will be true for complex application configurat
 Besides using "$ref" constructs to do linkage, we will also allow overrides where recursive map merges can
 modify either schema or configuration.
 
+### Whether to put logic in the frontend or backend
+
+In many cases when designing an SDUI-style implementation, you need to decide whether the logic for how the UI
+is shown belongs in the backend or the frontend. The choice is case-by-case, so here are some considerations to
+help make it.
+
+* Frontend is usually better, but only if the logic is somewhat generic and data-driven. So rules to drive
+  conditional display and template-string evaluation should generally be done on the frontend if possible --
+  especially when the logic reuses kernel code the backend also runs (the schema validator, the cfact
+  predicate, template evaluation), so the two cannot disagree by construction. Frontend logic also lets debug
+  functionality modify the inputs and immediately see the outcome, which is relevant once we start previewing
+  potential changes to client configuration or workflow UIs.
+* Backend should be used if it dramatically reduces the number of things the frontend needs to work with. For
+  example, if the frontend needs to refer to some schema to drive its UI, the backend should filter the schema
+  down to what it actually needs.
+* Backend should do it if the logic is somewhat involved. For example, the backend should do workflow schema
+  overlays, not the frontend.
+* Backend should do it if it is something it already must do. Client schema overlays would be an example of
+  this.
+* Backend should do it if the rendering state is computed fresh on each call and can greatly vary based on data
+  or state. This means tables with a greatly varying number of columns dictated by configuration should usually
+  have their column state calculated by the backend. But if the table presentation has only a column or two
+  that vary, then frontend logic can be used to control the variance.
+* Security splits the decision, and the split matters: frontend logic must never *be* the security boundary. If
+  the concern is **disclosure** -- data the caller should not receive at all -- the backend must resolve it so
+  the excluded data never reaches the frontend (an anonymous user watching network calls must not be sent the
+  full menu an admin would see, even though the frontend would hide it). If the concern is only **decluttering**
+  data the caller may already have, the frontend may hide it, but the backend still enforces the real rule
+  regardless of what the client draws (an admin-only input field can be hidden on the frontend while the handler
+  still rejects it from anyone who forges it). For the same reason, prefer backend string substitutions for
+  client-specific strings you do not want to make generally available.
+
 ### Rendering a value: two questions before reaching for `toString`
 
 `toString` is Kotlin's answer to "make this readable". It is rarely ours, and the two are easy to confuse
