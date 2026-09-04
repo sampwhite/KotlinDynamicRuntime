@@ -165,12 +165,12 @@ private fun boundDescription(param: GedraSearchParam): String {
 fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedraNamespace)
 
 /**
- * The listing query's **stable** field names -- the paging offset, the appended limit, the user filter, and the
- * free-text term -- which a generated search parameter must not take. A usage whose search parameter would land on one of these
- * is refused at boot ([searchParamCollisions]); this guards the merge regardless, so a slipped-through one
- * cannot silently rewrite a stable field's schema.
+ * The listing query's **stable** field names -- the paging offset, the appended limit, the user filter, the
+ * free-text term, and the include-users flag -- which a generated search parameter must not take. A usage whose
+ * search parameter would land on one of these is refused at boot ([searchParamCollisions]); this guards the
+ * merge regardless, so a slipped-through one cannot silently rewrite a stable field's schema.
  */
-val reservedQueryFieldNames: Set<String> = setOf(EP.offset, EP.limit, EI.user, EI.q)
+val reservedQueryFieldNames: Set<String> = setOf(EP.offset, EP.limit, EI.user, EI.q, EI.includeUsers)
 
 /**
  * The search parameter names [usages] would generate that collide with a [reservedQueryFieldNames] entry -- the
