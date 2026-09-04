@@ -14,8 +14,9 @@ import com.dynamicruntime.common.util.toOptStr
  * ([withoutLayouts]) and delivered out-of-band, so the wire schema stays a clean, documentation-grade artifact.
  *
  * This first slice (Stage 1) carries the copy-override fields — [SchLayoutField.label] / `description` / `hint`
- * — and the block's [fragmentFileId]; the error override and field inclusion/order are later stages. The model
- * is parsed and held here; nothing consumes it yet.
+ * — and the block's [fragmentFileId]; the error override and field inclusion/order are later stages. Stage 2
+ * (issue #585) delivers the model to every friendly surface ([deliveredLayouts]) and parses it back on the
+ * frontend ([parseDeliveredLayouts]); nothing renders it yet.
  */
 class SchLayout(
     /** The fragment file the block's `${'$'}{…}` substitutions resolve against, declared once for the block. */
@@ -25,6 +26,19 @@ class SchLayout(
 ) {
     /** The schema properties this layout addresses -- what the boot check holds against the type. */
     val fieldNames: List<String> = fields.map { it.field }
+
+    /**
+     * The layout as its `g-layout` block again -- the wire form (issue #585). Delivery re-serializes the
+     * **model** rather than shipping the authored block, so what a page receives is what the store holds: the
+     * pruned form for a client that narrowed the type, never a field the client's type lacks. Round-trips
+     * through [parseSchLayout]; a null override is omitted, not written as null.
+     */
+    fun toJson(): Map<String, Any?> {
+        val out = LinkedHashMap<String, Any?>()
+        fragmentFileId?.let { out[SL.fragmentFileId] = it }
+        out[SL.schemaFields] = fields.map { it.toJson() }
+        return out
+    }
 
     /**
      * This layout with every field the type does not declare dropped -- [props] being the type's property
@@ -46,7 +60,72 @@ class SchLayoutField(
     val label: String?,
     val description: String?,
     val hint: String?,
-)
+) {
+    /** The entry as written in a `schemaFields` list; see [SchLayout.toJson]. */
+    fun toJson(): Map<String, Any?> {
+        val out = LinkedHashMap<String, Any?>()
+        out[SL.field] = field
+        label?.let { out[SL.label] = it }
+        description?.let { out[SL.description] = it }
+        hint?.let { out[SL.hint] = it }
+        return out
+    }
+}
+
+/**
+ * Declares a type's `g-layout` from the schema DSL (issue #585): `layout { field("topic", label = "Topic") }`
+ * inside a `type("X") { ... }` block, or a trait's data block. Writes the same block [parseSchLayout] reads, so
+ * the boot check and the delivery see a hand-written block and a built one identically. A builder rather than
+ * the raw-map escape hatch because the sample's layouts are read by people, and the sets [SL.blockKeys] /
+ * [SL.fieldKeys] the parser is strict about are then spelled once, here.
+ */
+class SchLayoutBuilder(private val fragmentFileId: String?) {
+    private val fields = mutableListOf<SchLayoutField>()
+
+    /** One field's overrides; each is optional, and an entry with none is still a legal (if pointless) mention. */
+    fun field(name: String, label: String? = null, description: String? = null, hint: String? = null) {
+        fields.add(SchLayoutField(name, label, description, hint))
+    }
+
+    /** The finished block, as the JSON `g-layout` value. */
+    fun build(): Map<String, Any?> = SchLayout(fragmentFileId, fields.toList()).toJson()
+}
+
+/** Attaches a `g-layout` to the type being built; see [SchLayoutBuilder]. Replaces one declared earlier. */
+fun SchTypeBuilder.layout(fragmentFileId: String? = null, block: SchLayoutBuilder.() -> Unit) {
+    data[SCH.layout] = SchLayoutBuilder(fragmentFileId).apply(block).build()
+}
+
+/**
+ * The `{ typeName -> g-layout block }` to deliver beside a served `$defs` closure (issue #585): the layouts in
+ * [layouts] for exactly the [typeNames] the closure carries, each in wire form ([SchLayout.toJson]). A type with
+ * no layout has **no entry** -- absent, not empty -- so a page reads "no layout" and "no key" the same way. The
+ * shared helper both friendly surfaces call (the endpoint catalog and the workflow view), the way the delivered
+ * cfacts have one shape; a pure function, so the frontend could reuse it if it ever assembles a view itself.
+ */
+fun deliveredLayouts(layouts: Map<String, SchLayout>, typeNames: Collection<String>): Map<String, Any?> {
+    val out = LinkedHashMap<String, Any?>()
+    for (name in typeNames) {
+        layouts[name]?.let { out[name] = it.toJson() }
+    }
+    return out
+}
+
+/**
+ * The frontend's read of a delivered `layouts` map (issue #585) -- the inverse of [deliveredLayouts], through
+ * the same strict [parseSchLayout] the boot ran, so a page holds the same model the store did. An absent or
+ * non-object map (an older node) parses to empty, which reads as "no layouts" rather than a fault: the schema
+ * renders without one. A malformed entry, though, is a fault -- the backend built it from a parsed model, so a
+ * bad one is a wiring bug worth surfacing, not a case to render around.
+ */
+fun parseDeliveredLayouts(raw: Any?): Map<String, SchLayout> {
+    val map = raw.toJsonMapOrEmpty()
+    val out = LinkedHashMap<String, SchLayout>()
+    for ((name, block) in map) {
+        out[name] = parseSchLayout("Type '$name'", block.toJsonMapOrEmpty())
+    }
+    return out
+}
 
 /** The vocabulary inside a `g-layout` block (issue #584). Bare rather than `g-`-prefixed: these are fields
  *  inside the value of the `g-layout` keyword, not keywords in the schema namespace, so nothing collides. The

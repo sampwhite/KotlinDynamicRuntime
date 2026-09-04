@@ -539,6 +539,16 @@ class SchemaService : ServiceInitializer {
                 ) {
                     type = SCT.kObject
                 }
+                property(
+                    EI.layouts,
+                    $$"The per-type layouts (issue #585): a map from a type name in `$defs` to its `g-layout` " +
+                        "block, for the types that declare one. Delivered here rather than inside the schema, " +
+                        "so the schema stays documentation-grade; a friendly form joins a type to its layout by " +
+                        "name. A type with no layout has no entry.",
+                    required = true,
+                ) {
+                    type = SCT.kObject
+                }
             }
             generalEndpoint(
                 "/schema/endpoints",
@@ -961,18 +971,23 @@ class SchemaService : ServiceInitializer {
             // hides a field whose expression these cfacts fail. An absent service resolves to no cfacts, matching
             // how it resolves against an empty registry above.
             val deliveredCfacts = svc?.deliveredCfactsFor(cxt, surface.client).orEmpty()
+            // Drawn from the store's `servedDefs` (issue #584): the catalog is friendly-form fuel and
+            // documentation both, so the `g-layout` presentation blocks are already stripped there --
+            // delivered out-of-band instead, and never part of the documentation-grade schema. Stripped once
+            // at boot, not per request.
+            val defs = collectDefs(renderings, surface.schema.servedDefs)
             val result = linkedMapOf(
                 EI.endpoints to renderings,
-                // Drawn from the store's `servedDefs` (issue #584): the catalog is friendly-form fuel and
-                // documentation both, so the `g-layout` presentation blocks are already stripped there --
-                // delivered out-of-band instead, and never part of the documentation-grade schema. Stripped once
-                // at boot, not per request.
-                SCH.dDefs to collectDefs(renderings, surface.schema.servedDefs),
+                SCH.dDefs to defs,
                 // Whether this caller may slice the catalog (issue #489). Emitted here, shared by both the
                 // listing and the single-lookup, so the two cannot disagree about it -- and read against the
                 // effective env auth, the same gate `endpointCatalog` restricts the listing by.
                 EI.filtersAvailable to cxt.isEnvAuthEffective,
                 EI.cfacts to deliveredCfacts,
+                // The layouts for exactly the types the closure carries (issue #585): what the friendly forms
+                // off-workflow (`NewFormPage`, `EditFormPage`, the read-only view) join to a type by name. Over
+                // the surface's own store, so a client that overlaid or narrowed a type gets that variant's.
+                EI.layouts to surface.schema.deliveredLayouts(defs),
             )
             val providers = svc?.optionsProviders.orEmpty()
             return resolveOptionsSources(cxt, result, providers)

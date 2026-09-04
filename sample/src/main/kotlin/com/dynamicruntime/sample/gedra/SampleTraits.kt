@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.layout
 
 /** The sample traits' names, kept beside the config that declares them. */
 @Suppress("ConstPropertyName")
@@ -149,6 +150,15 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         // valid alone and invalid once merged: `{hasIssue: false}` says nothing wrong by itself, and says
         // something wrong when it lands on a stored explanation.
         presentWhen(ST.explanation, on = ST.hasIssue, value = true)
+        // The type's `g-layout` (issue #585): friendly copy for the form, kept out of the served schema and
+        // delivered beside it. Names every field, `notes` included, so acme -- whose overlay drops `notes` --
+        // inherits this layout **pruned** to the three properties it kept. Delivered but not yet rendered.
+        layout {
+            field(ST.topic, label = "Topic", description = "Pick the subject the answers are about.")
+            field(ST.notes, label = "Anything else?")
+            field(ST.hasIssue, label = "Did you hit a problem?")
+            field(ST.explanation, label = "What went wrong", hint = "Only asked when a problem is flagged.")
+        }
     }
 
     trait(

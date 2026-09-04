@@ -201,7 +201,7 @@ being hand-coded per endpoint and drifting when a field is renamed. A renderer t
 falls back to ordinary rendering, and the validator never consults it — an endpoint declaring a hint still
 validates exactly as before.
 
-## Layouts: `g-layout` (issue #584)
+## Layouts: `g-layout` (issues #584, #585)
 
 A type may carry a **layout** — how a friendly form renders its fields — under the custom `g-layout` keyword.
 It is the one kd2 keyword that is **never read into `SchType`**: a layout varies by surface, not by validity,
@@ -209,6 +209,23 @@ so it is read out by its own kernel function into a `SchLayout` held **beside** 
 (`KdrSchemaStore.layouts`, keyed by qualified type name), stripped from the served schema
 (`KdrSchemaStore.servedDefs`, what the catalog and the workflow view hand out), and delivered out-of-band. The
 wire schema stays documentation-grade; the parser ignores the key.
+
+Declare it with the `layout { }` builder inside a `type("X") { ... }` block or a trait's data block:
+
+```kotlin
+type("Questionnaire") {
+    type = SCT.kObject
+    property("topic", "What this is about.")
+    property("hasIssue", "Whether a problem was flagged.") { type = SCT.boolean }
+    layout(fragmentFileId = "acme") {
+        field("topic", label = "Topic", description = $$"${topic.help}")
+        field("hasIssue", label = "Has issue?")
+    }
+}
+```
+
+which writes the block the parser reads (`SchLayoutBuilder`; the raw-map form `data[SCH.layout] = mapOf(...)`
+is equivalent):
 
 ```json
 "g-layout": {
@@ -229,8 +246,15 @@ wire schema stays documentation-grade; the parser ignores the key.
   array type, refuses the boot. A client that narrows a type inherits the base layout by reference and has it
   **pruned** to the properties it kept — a sanctioned narrowing never fails the boot.
 - A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key.
-- No builder method yet (nothing consumes the model in this stage); attach one to a type with the map escape
-  hatch `data[SCH.layout] = mapOf(...)` inside its `type("X") { ... }` block.
+
+**Delivery (issue #585).** Both friendly surfaces carry a `layouts` map beside their `$defs` — the endpoint
+catalog under `EI.layouts`, the workflow view under `WVF.layouts` — built by one call,
+`KdrSchemaStore.deliveredLayouts(closure)`: `{ typeName → g-layout block }` for exactly the types the served
+closure carries that declare one (a type with none has **no entry**), each re-serialized from the store's model
+(`SchLayout.toJson()`), so a narrowed client's page receives the pruned form. The frontend reads it with the
+kernel's `parseDeliveredLayouts` (the same strict parser the boot ran) into `Catalog.layouts` and
+`WorkflowCreation.layouts`, joined to a type by its qualified name; a workflow trait carries its own under
+`WfTraitView.layout`. Delivered but not yet consumed: `SchemaForm` reads the layout from Stage 3 (#586) on.
 
 ## Validation & coercion
 

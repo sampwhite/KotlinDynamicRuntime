@@ -4,6 +4,7 @@ import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.collectLayouts
+import com.dynamicruntime.common.schema.deliveredLayouts
 import com.dynamicruntime.common.schema.withoutLayouts
 import com.dynamicruntime.common.sql.KdrTable
 
@@ -48,6 +49,15 @@ class KdrSchemaStore(
     }
 
     val servedDefs: Map<String, Any?> by lazy { withoutLayouts(defs) }
+
+    /**
+     * The layouts to deliver beside a served `$defs` closure (issue #585): `{ typeName -> g-layout block }` for
+     * the types in [servedClosure] that have one, in wire form. The one call both friendly surfaces make -- the
+     * endpoint catalog over its `collectDefs` result, the workflow view over its `collectDefClosure` -- so the
+     * two cannot differ in what a type's layout looks like on the wire. Pass the closure itself: its keys are
+     * the type names, and the layouts are keyed the same way.
+     */
+    fun deliveredLayouts(servedClosure: Map<String, Any?>): Map<String, Any?> = deliveredLayouts(layouts, servedClosure.keys)
 
     @Suppress("ConstPropertyName")
     companion object {

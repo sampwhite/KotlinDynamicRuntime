@@ -6,7 +6,9 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.parseDeliveredLayouts
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -28,6 +30,13 @@ class WfTraitView(
     val required: Boolean,
     /** The trait's data type, resolved from the view's `$defs` — what a field renders and validates against. */
     val type: SchType,
+    /** The qualified name [type] was resolved under -- the key the view's `layouts` are joined on. */
+    val typeName: String,
+    /**
+     * The data type's layout (issue #585), joined from the view's `layouts` by [typeName]; null when the type
+     * declares none, and the trait then renders from its schema alone. Not yet consumed by [SchemaForm].
+     */
+    val layout: SchLayout?,
 )
 
 /** One save option a task offers: what a button says and what it does. */
@@ -47,6 +56,12 @@ class WorkflowCreation(
      * ordinary caller. The same shape the endpoint catalog delivers.
      */
     val cfacts: Map<String, Boolean>,
+    /**
+     * The per-type layouts the view delivered (issue #585), keyed by qualified type name like its `$defs` --
+     * the same shape the endpoint catalog carries. Each trait's own is already joined onto [WfTraitView.layout];
+     * this is the whole closure, for a renderer that reaches a nested type by name.
+     */
+    val layouts: Map<String, SchLayout> = emptyMap(),
 ) {
     /** The single task of a creation workflow (exactly one, by the backend's boot rule). */
     val task: WfTaskView get() = tasks.single()
@@ -61,6 +76,8 @@ class WorkflowCreation(
 fun parseWorkflowView(results: Map<String, Any?>): WorkflowCreation? {
     if (results[WVF.found] != true) return null
     val defTypes = parseSchemaTypes(results[SCH.dDefs].toJsonMapOrEmpty())
+    // The third closure (issue #585), keyed like `$defs`; a trait's layout is the entry under its type name.
+    val layouts = parseDeliveredLayouts(results[WVF.layouts])
     val tasks = results[WFD.tasks].toJsonListOfMaps().map { t ->
         WfTaskView(
             id = t[WFD.id].toOptStr() ?: "",
@@ -71,7 +88,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowCreation? {
                     ?: error($$"Workflow view trait '$${tr[WFD.traitId]}' has a schemaRef '$$ref' that is not a local $defs pointer.")
                 val type = defTypes[name]
                     ?: error($$"Workflow view references '$$name', which its own $defs does not carry.")
-                WfTraitView(tr[WFD.traitId].toOptStr() ?: "", tr[WFD.required] == true, type)
+                WfTraitView(tr[WFD.traitId].toOptStr() ?: "", tr[WFD.required] == true, type, name, layouts[name])
             },
             saves = t[WFD.saves].toJsonListOfMaps().map { s ->
                 WfSaveView(s[WFD.id].toOptStr() ?: "", s[WFD.label].toOptStr() ?: "", s[WFD.kind].toOptStr() ?: "")
@@ -79,7 +96,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowCreation? {
         )
     }
     val cfacts = results[WVF.cfacts].toJsonMapOrEmpty().mapValues { it.value == true }
-    return WorkflowCreation(results[WFD.workflowId].toOptStr() ?: "", results[WVF.showTaskList] == true, tasks, cfacts)
+    return WorkflowCreation(results[WFD.workflowId].toOptStr() ?: "", results[WVF.showTaskList] == true, tasks, cfacts, layouts)
 }
 
 /**

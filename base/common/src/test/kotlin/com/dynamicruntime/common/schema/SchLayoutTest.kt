@@ -119,4 +119,46 @@ class SchLayoutTest : StringSpec({
         problems.size shouldBe 1
         problems.single() shouldContain "object type"
     }
+
+    // --- delivery (issue #585) ---
+
+    "toJson round-trips through parseSchLayout, writing no null override" {
+        val layout = parseSchLayout("Type 'X'", layoutBlock)
+        val wire = layout.toJson()
+        wire[SL.fragmentFileId] shouldBe "acme"
+        val entries = wire[SL.schemaFields] as List<*>
+        // `hasIssue` has only a label: no `description` key written, rather than one carrying null.
+        (entries[1] as Map<*, *>).containsKey(SL.description) shouldBe false
+        val again = parseSchLayout("Type 'X'", wire)
+        again.fieldNames shouldBe layout.fieldNames
+        again.fields[0].description shouldBe layout.fields[0].description
+        // A pruned layout re-serializes as the pruned form -- what a narrowed client's page must receive.
+        (layout.prunedTo(setOf("topic")).toJson()[SL.schemaFields] as List<*>).size shouldBe 1
+    }
+
+    "the layout builder writes the block the parser reads" {
+        val built = SchLayoutBuilder("acme").apply {
+            field("topic", label = "Topic", description = $$"${topic.help}")
+            field("hasIssue", label = "Has issue?")
+        }.build()
+        built shouldBe layoutBlock
+    }
+
+    "deliveredLayouts keys only the closure's types that have a layout -- absent, not empty, for the rest" {
+        val layouts = collectLayouts(mapOfDefs("acme.Q" to typeBody(withLayout = true), "acme.Plain" to typeBody(withLayout = false)))
+        val delivered = deliveredLayouts(layouts, listOf("acme.Q", "acme.Plain", "acme.Unknown"))
+        delivered.keys shouldBe setOf("acme.Q")
+        delivered["acme.Q"] shouldBe layoutBlock
+        // A closure that reaches no layout type delivers an empty map, not a failure.
+        deliveredLayouts(layouts, listOf("acme.Plain")) shouldBe emptyMap()
+    }
+
+    "parseDeliveredLayouts is the inverse, and reads an absent map as no layouts" {
+        val parsed = parseDeliveredLayouts(mapOf("acme.Q" to layoutBlock))
+        parsed.keys shouldBe setOf("acme.Q")
+        parsed["acme.Q"]!!.fieldNames shouldBe listOf("topic", "hasIssue")
+        parseDeliveredLayouts(null) shouldBe emptyMap()
+        // A malformed entry is a fault (the backend built it from a parsed model), not a case to render around.
+        shouldThrow<KdrException> { parseDeliveredLayouts(mapOf("acme.Q" to mapOf("formFields" to emptyList<Any?>()))) }
+    }
 })

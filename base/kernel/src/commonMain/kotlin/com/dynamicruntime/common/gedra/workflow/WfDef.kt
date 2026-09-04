@@ -94,6 +94,15 @@ object WVF {
      * frontend gate reads either surface identically.
      */
     const val cfacts = "cfacts"
+
+    /**
+     * On the view's top level: the **per-type layouts** (issue #585), `{ typeName -> g-layout block }` over
+     * exactly the types the view's `$defs` closure carries -- the third parallel closure beside the schema and
+     * the cfacts, joined to a trait's data type by name on the frontend. The task-level layout (order, edit
+     * mode) is a different thing and already rides on each task under `WFD.layout`. The same wire name and
+     * shape as the endpoint catalog's `layouts` (`EI.layouts`), so a page reads either surface identically.
+     */
+    const val layouts = "layouts"
 }
 
 /**
