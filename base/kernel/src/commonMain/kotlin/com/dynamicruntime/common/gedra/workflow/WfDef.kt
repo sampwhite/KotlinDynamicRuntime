@@ -85,6 +85,15 @@ object WVF {
 
     /** Beside a trait ref: the target facts assembled about the task (`wfTaskComplete`, `wfTaskAvailable`). */
     const val facts = "facts"
+
+    /**
+     * On the view's top level: the caller's **frontend-delivered cfacts** (issue #569), `name -> present` over
+     * the whole `toFrontend` vocabulary -- what the page evaluates a trait property's `g-visibleWhen` against, so
+     * an admin-only field is hidden from an ordinary caller in a creation workflow exactly as it is on the
+     * endpoint form. The same wire name and shape as the endpoint catalog's `cfacts` (`EI.cfacts`), so the
+     * frontend gate reads either surface identically.
+     */
+    const val cfacts = "cfacts"
 }
 
 /**

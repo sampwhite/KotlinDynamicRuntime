@@ -74,6 +74,18 @@ class CFactRegistry(
         return present
     }
 
+    /**
+     * The **frontend-delivered** cfacts mapped to presence (issues #564, #569): the whole `toFrontend`
+     * vocabulary, each name to whether it is in [present] (the set [assemble] returns). Not only the present
+     * ones -- the frontend parses a `g-visibleWhen` gate against these names, so one it may still name while
+     * lacking (a `~hasEnvAuth` gate) has to be here as `false`, or the parse would choke on an unknown name.
+     *
+     * Takes the already-assembled [present] rather than assembling again, so a caller that has it (the workflow
+     * view, which assembles for its per-task filter) does not run every cfact source a second time.
+     */
+    fun deliveredCfacts(present: Set<String>): Map<String, Boolean> =
+        defs.values.filter { it.toFrontend }.associate { it.name to (it.name in present) }
+
     override fun toString(): String = names.sorted().toString()
 }
 

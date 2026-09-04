@@ -372,6 +372,16 @@ class SchemaService : ServiceInitializer {
     fun cfactsFor(client: String?): CFactRegistry = cfactRegistries.forClient(client)
 
     /**
+     * The **frontend-delivered** cfacts for [client] and whether each is present for [cxt]'s caller (issue #564):
+     * the whole `toFrontend` vocabulary mapped `name -> present`, not just the present ones, so a `g-visibleWhen`
+     * expression naming an absent cfact still parses against it (an absent name is `false`, matching the backend
+     * evaluator). The one place this shape is computed -- the endpoint catalog and the resolved workflow view
+     * both hand it to the frontend so a field's gate is evaluated the same way on either surface.
+     */
+    fun deliveredCfactsFor(cxt: KdrCxt, client: String?): Map<String, Boolean> =
+        cfactsFor(client).let { it.deliveredCfacts(it.assemble(cxt)) }
+
+    /**
      * The gedra traits [client] can see -- its own and global's (issue #487). Each carries its `primaryKey`, so
      * a write path can key entries by `(traitId, data[<keyField>])` without re-reading the generated schema.
      * The collector is what the unions were built from, so this is the same set they select on.
@@ -907,22 +917,12 @@ class SchemaService : ServiceInitializer {
             // with a sourced list faults instead of quietly shipping the id to a client that has no idea what
             // to do with it.
             val svc = cxt.instanceConfig.get(serviceName) as? SchemaService
-            // The frontend-delivered cfacts this caller has (issue #564). `g-visibleWhen` is no longer resolved
-            // here: the served schema keeps the keyword, identical for every caller, and the client hides a
-            // field whose expression these cfacts fail. Only cfacts a CFactDef marks `toFrontend` cross the
-            // wire (a boot check ensures every gate names one of those), and only the present ones are sent --
-            // absence means false, matching the backend evaluator. The registry is the surface's client's, the
-            // one whose cfacts an expression on this surface may name.
-            val registry = svc?.cfactsFor(surface.client)
-            val present = registry?.assemble(cxt).orEmpty()
-            // The whole frontend-delivered cfact vocabulary, each mapped to whether it is present for this
-            // caller -- not only the present ones. The client parses a gate against these names, so an absent
-            // one it may still name (a `~hasEnvAuth` gate for a caller who lacks it) has to be here as `false`,
-            // or the parse would choke on an unknown name. Only cfacts a CFactDef marks `toFrontend` appear,
-            // and the boot check ensures every gate names one of them.
-            val deliveredCfacts = registry?.defs.orEmpty().values
-                .filter { it.toFrontend }
-                .associate { it.name to (it.name in present) }
+            // The frontend-delivered cfacts this caller has (issue #564), for the surface's client -- the whole
+            // `toFrontend` vocabulary mapped to presence (see [deliveredCfactsFor]). `g-visibleWhen` is no longer
+            // resolved here: the served schema keeps the keyword, identical for every caller, and the client
+            // hides a field whose expression these cfacts fail. An absent service resolves to no cfacts, matching
+            // how it resolves against an empty registry above.
+            val deliveredCfacts = svc?.deliveredCfactsFor(cxt, surface.client).orEmpty()
             val result = linkedMapOf(
                 EI.endpoints to renderings,
                 SCH.dDefs to collectDefs(renderings, surface.schema.defs),
