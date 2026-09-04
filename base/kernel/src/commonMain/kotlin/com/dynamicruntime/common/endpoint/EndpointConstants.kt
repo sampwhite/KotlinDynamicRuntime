@@ -49,6 +49,13 @@ object EI {
      * field on that (`g-visibleWhen`) and confines the value to the caller's read scope on the server.
      */
     const val user = "user"
+
+    /**
+     * A listing's free-text search term (issue #562): a case-insensitive substring matched against **every**
+     * text search field at once, so one box finds a document by any of its searchable values. Reserved beside
+     * [user] and the paging fields, so a generated per-field parameter can never take its name.
+     */
+    const val q = "q"
     const val description = "description"
 
     /**

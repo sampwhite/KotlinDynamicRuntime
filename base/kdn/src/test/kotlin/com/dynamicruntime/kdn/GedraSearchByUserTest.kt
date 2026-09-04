@@ -6,6 +6,11 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GT
+import kotlin.time.Duration.Companion.seconds
+import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GPF
+import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.TestUser
@@ -105,5 +110,43 @@ class GedraSearchByUserTest : StringSpec({
         // handler enforces scope regardless (the 400s above).
         deliveredCfacts(ada)[CFACTS.hasAdminLevel] shouldBe true
         deliveredCfacts(bob)[CFACTS.hasAdminLevel] shouldBe false
+    }
+    // The User column's data (issue #562): an admin's listed rows carry the owner's name and email; an ordinary
+    // caller's do not -- their rows are all their own, so the column is not drawn and nothing is looked up.
+    "listed rows carry the owner's name and email for an admin, and not for an ordinary user" {
+        val adaRows = ada.getItems(GEP.formDocs)
+        val aliceRow = adaRows.first { it[GDF.gedraId] == aliceDocId }
+        // No name set on the provisioned account, so the display name falls back to the email (the public name).
+        aliceRow[GDF.ownerEmail] shouldBe aliceEmail
+        aliceRow[GDF.ownerName] shouldBe aliceEmail
+        val bobRows = bob.getItems(GEP.formDocs)
+        bobRows.first { it[GDF.gedraId] == bobDocId }.containsKey(GDF.ownerName) shouldBe false
+        bobRows.first { it[GDF.gedraId] == bobDocId }.containsKey(GDF.ownerEmail) shouldBe false
+    }
+
+    // The default order (issue #562): most recently *written* first, so an edit to an older document brings it
+    // to the top -- where `createdAt` order would leave it where it was.
+    "the list is ordered by updatedAt descending, so an edited older document moves to the top" {
+        // Bob's document was created after alice's; alice's is therefore older by creation.
+        ada.getItems(GEP.formDocs).map { it[GDF.gedraId] }.take(2) shouldBe listOf(bobDocId, aliceDocId)
+        // Step the clock, then patch alice's document -- a write, which bumps its updatedAt past bob's.
+        cxt.instanceConfig.clock.advanceBy(1.seconds)
+        ada.postItems(
+            GEP.patch,
+            mapOf(
+                GPF.targets to mapOf(
+                    GedraDataType.formDoc.name to listOf(
+                        mapOf(
+                            GDF.gedraId to aliceDocId,
+                            GPF.edits to listOf(
+                                mapOf(GED.action to GedraEditAction.addOrMerge.name, GE.traitId to GT.name, GE.data to mapOf(GT.name to "Alice edited")),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        // Alice's now leads: written most recently, though created earlier.
+        ada.getItems(GEP.formDocs).map { it[GDF.gedraId] }.take(2) shouldBe listOf(aliceDocId, bobDocId)
     }
 })

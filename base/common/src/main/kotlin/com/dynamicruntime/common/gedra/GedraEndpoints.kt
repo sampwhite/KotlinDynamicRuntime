@@ -20,6 +20,7 @@ import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.user.UserService
@@ -179,6 +180,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             emptyIsAbsent = true
             visibleWhen = CFACTS.hasAdminLevel
         }
+        // The free-text term (issue #562): one box that searches every text field at once, so a caller need
+        // not know which column holds the value they remember. ANDed with any per-field filters also sent.
+        property(EI.q, "Free text matched against every text search field (any field, case-insensitive substring).") {
+            emptyIsAbsent = true
+        }
     }
 
     listEndpoint(
@@ -205,8 +211,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val usages = SchemaService.get(c).traitUsagesFor(c.client)
         val filter = searchFilter(c, request, usages)
         val page = GedraDataService.get(c).listGedras(c, formDoc, scope, limit, offset, filter)
+        // Who owns each row, for a caller who can see other users' documents (issue #562): the name and email
+        // the User column shows. Only such a caller gets it -- an ordinary caller's rows are all their own, so
+        // the column is not drawn and the lookups would be wasted. Resolved once per distinct owner from the
+        // AuthUsers cache, not once per row.
+        val owners = if (AdminRules.canManageUsers(c)) ownersOf(c, page.rows) else emptyMap()
         ListPage(
-            page.rows.map { it.toJsonMap() + (GDF.displayValues to computeDisplayValues(c, it, usages)) },
+            page.rows.map { row ->
+                row.toJsonMap() + (GDF.displayValues to computeDisplayValues(c, row, usages)) + ownerFields(owners[row.userId])
+            },
             page.numAvailable,
             hasMore = offset + page.rows.size < page.numAvailable,
         )
@@ -511,13 +524,38 @@ private fun searchFilter(
     val active = gedraSearchParams(usages).mapNotNull { param ->
         request[param.name]?.let { it.fmt().ifBlank { null } }?.let { param to it }
     }
-    if (active.isEmpty()) {
+    // The free-text term (issue #562), searched across every text field; blank is no term.
+    val term = request[EI.q]?.fmt()?.ifBlank { null }
+    if (active.isEmpty() && term == null) {
         return null
     }
+    val textTraits = textSearchTraitIds(usages)
     return { row ->
         val byTrait = computeDisplayValues(c, row, usages).associate { display ->
             (display[UF.traitId].toOptStr() ?: "") to (display[UF.value].toOptStr() ?: "")
         }
-        matchesSearch(byTrait, active)
+        matchesSearch(byTrait, active) && (term == null || matchesAnyText(byTrait, textTraits, term))
     }
+}
+
+/**
+ * The owning users of [rows], keyed by user id, for the User column a scope-wide caller sees (issue #562).
+ * Resolved once per distinct owner through the AuthUsers cache -- a page of one person's forms costs one lookup,
+ * not one per row -- and an owner the cache no longer holds (a deleted account) is simply absent, so their rows
+ * show no owner rather than faulting the page.
+ */
+private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>): Map<Long, AuthUserRow> {
+    val users = UserService.get(c)
+    return rows.map { it.userId }.distinct().mapNotNull { id -> users.queryByUserId(c, id)?.let { id to it } }.toMap()
+}
+
+/**
+ * The owner fields attached to a listed row (issue #562): the display name (`name`, else the public name --
+ * the same rule as `UserProfile.displayName`) and the email. Empty for no [owner], so the map addition is a
+ * no-op rather than a pair of nulls.
+ */
+private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> {
+    if (owner == null) return emptyMap()
+    val name = owner.name?.trim()?.ifEmpty { null } ?: owner.publicName()
+    return mapOf(GDF.ownerName to name, GDF.ownerEmail to owner.primaryId)
 }

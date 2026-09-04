@@ -125,7 +125,7 @@ fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedr
  * is refused at boot ([searchParamCollisions]); this guards the merge regardless, so a slipped-through one
  * cannot silently rewrite a stable field's schema.
  */
-val reservedQueryFieldNames: Set<String> = setOf(EP.offset, EP.limit, EI.user)
+val reservedQueryFieldNames: Set<String> = setOf(EP.offset, EP.limit, EI.user, EI.q)
 
 /**
  * The search parameter names [usages] would generate that collide with a [reservedQueryFieldNames] entry -- the
@@ -165,6 +165,22 @@ fun withSearchProperties(baseDef: Any?, usages: List<ClientTraitUsage>): Map<Str
  */
 fun matchesSearch(displayByTrait: Map<String, String>, active: List<Pair<GedraSearchParam, String>>): Boolean =
     active.all { (param, query) -> matchesOne(displayByTrait[param.traitId].orEmpty(), param, query) }
+
+/** The trait ids of the `string` usages -- the fields the free-text term ([EI.q]) searches across. */
+fun textSearchTraitIds(usages: List<ClientTraitUsage>): List<String> =
+    usages.filter { it.kind == UsageKind.string }.map { it.traitId }
+
+/**
+ * Whether a row's display values match the free-text term [query] (issue #562): a case-insensitive substring
+ * match against **any** of the [textTraitIds] (OR across fields), so one box finds a document by whichever of
+ * its searchable text values the person remembers. A blank term matches everything -- an empty box is no
+ * search, not a search for nothing -- and a row with no text values matches only a blank term.
+ */
+fun matchesAnyText(displayByTrait: Map<String, String>, textTraitIds: List<String>, query: String): Boolean {
+    val term = query.trim()
+    if (term.isEmpty()) return true
+    return textTraitIds.any { displayByTrait[it].orEmpty().contains(term, ignoreCase = true) }
+}
 
 private fun matchesOne(value: String, param: GedraSearchParam, query: String): Boolean = when (param.role) {
     SearchRole.exact -> value.trim().equals(query.trim(), ignoreCase = true)

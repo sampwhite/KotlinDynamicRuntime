@@ -118,4 +118,28 @@ class GedraSearchTest : StringSpec({
         // No usages contribute nothing, and the exact same map comes back (an inheriting scope shares it).
         withSearchProperties(base, emptyList()) shouldBe base
     }
+    // The free-text term (issue #562): one box searched across every text field.
+    "textSearchTraitIds is the string usages only, in order" {
+        textSearchTraitIds(
+            listOf(usage("name", UsageKind.string), usage("year", UsageKind.number), usage("auditor", UsageKind.string, substring = true)),
+        ) shouldBe listOf("name", "auditor")
+    }
+
+    "matchesAnyText ORs a case-insensitive substring across the text fields, and a blank term matches all" {
+        val byTrait = mapOf("name" to "Quarterly plan", "auditor" to "Ada Lovelace", "year" to "2026")
+        val text = listOf("name", "auditor")
+        // Found via either field -- any one match is enough.
+        matchesAnyText(byTrait, text, "quarter") shouldBe true
+        matchesAnyText(byTrait, text, "LOVELACE") shouldBe true
+        // Present only in a non-text field: not searched, so not a match.
+        matchesAnyText(byTrait, text, "2026") shouldBe false
+        // Nothing carries it.
+        matchesAnyText(byTrait, text, "zzz") shouldBe false
+        // A blank or whitespace term is no search, not a search for nothing.
+        matchesAnyText(byTrait, text, "") shouldBe true
+        matchesAnyText(byTrait, text, "   ") shouldBe true
+        // A row with no text values matches only a blank term.
+        matchesAnyText(emptyMap(), text, "quarter") shouldBe false
+        matchesAnyText(emptyMap(), text, "") shouldBe true
+    }
 })

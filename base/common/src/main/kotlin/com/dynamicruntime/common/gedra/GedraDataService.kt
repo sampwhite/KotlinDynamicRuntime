@@ -126,18 +126,23 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * The order [listGedras] returns, made to match its SQL `order by c:createdAt desc, c:gedraId desc`: newest
-     * first, with the id breaking a tie so the order is *total* (the id's base is the project's time-sortable
-     * unique id). It has to be total, or two gedras created in the same millisecond would page in whatever
-     * order each side happened to produce, and the cache would disagree with SQL only sometimes.
+     * The order [listGedras] returns, made to match its SQL `order by c:updatedAt desc, c:gedraId desc`: most
+     * recently written first (issue #562), with the id breaking a tie so the order is *total* (the id's base is
+     * the project's time-sortable unique id). It has to be total, or two gedras written in the same millisecond
+     * would page in whatever order each side happened to produce, and the cache would disagree with SQL only
+     * sometimes.
      *
-     * A null `createdAt` sorts **last**, but only defensively: `SqlTopicUtil.prepDates` stamps `createdAt` on
-     * every insert, so a stored gedra never has one, which is also why it does not matter that a database's own
-     * null ordering under `desc` (H2 and PostgreSQL differ) is not reproduced here -- the case never arises on
-     * real rows, so the two cannot be seen to differ.
+     * `updatedAt` rather than `createdAt`: a list of documents is read to find the one somebody just worked on,
+     * and an edit to an old document should bring it to the top. This is the listing's *default* order; the
+     * search will one day take a sort of its own, and this is what it falls back to.
+     *
+     * A null `updatedAt` sorts **last**, but only defensively: `SqlTopicUtil.prepDates` stamps it on every
+     * insert (and every write bumps it), so a stored gedra never has one, which is also why it does not matter
+     * that a database's own null ordering under `desc` (H2 and PostgreSQL differ) is not reproduced here -- the
+     * case never arises on real rows, so the two cannot be seen to differ.
      */
     private val gedraListOrder: Comparator<Map<String, Any?>> =
-        compareByDescending<Map<String, Any?>> { it[PF.createdAt].toOptInstant() ?: Instant.DISTANT_PAST }
+        compareByDescending<Map<String, Any?>> { it[PF.updatedAt].toOptInstant() ?: Instant.DISTANT_PAST }
             .thenByDescending { it[GD.gedraId].toOptStr() ?: "" }
 
     internal fun gedraDataTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GDT.gedraData]
@@ -996,12 +1001,13 @@ class GedraDataService : ServiceInitializer {
         conditions.add("c:${PF.enabled} = true")
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "qGedraData${GU.gedraName(kind)}${scope.shapeKey}", table.columns,
-            // Newest first, with the id as the tiebreak so the order is *total*. Two documents created in the
-            // same millisecond share a `createdAt`, and without a second key their relative order would be
-            // whatever the database felt like -- which is the sort of thing that shows up as a test that
-            // usually passes. The id works as one because its base is the project's time-sortable unique id.
+            // Most recently written first (issue #562), with the id as the tiebreak so the order is *total*.
+            // Two documents written in the same millisecond share an `updatedAt`, and without a second key
+            // their relative order would be whatever the database felt like -- which is the sort of thing that
+            // shows up as a test that usually passes. The id works as one because its base is the project's
+            // time-sortable unique id. Must stay in step with `gedraListOrder`, the cache's copy of this order.
             "select * from t:${GDT.gedraData} where ${conditions.joinToString(" and ")} " +
-                "order by c:${PF.createdAt} desc, c:${GD.gedraId} desc",
+                "order by c:${PF.updatedAt} desc, c:${GD.gedraId} desc",
         )
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) {

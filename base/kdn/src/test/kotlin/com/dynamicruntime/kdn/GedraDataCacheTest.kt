@@ -147,7 +147,7 @@ class GedraDataCacheTest : StringSpec({
     /**
      * The whole of slice 2: a client-scoped listing served from the `clientKind` index must equal the SQL
      * listing it replaces **row for row and in order**, because the page a caller sees is
-     * `order by createdAt desc, gedraId desc` and then a cap -- a cache that returned the same set in another
+     * `order by updatedAt desc, gedraId desc` and then a cap -- a cache that returned the same set in another
      * order would be a different, wrong page.
      */
     "a client-scoped listing matches SQL row for row and in order" {
@@ -160,11 +160,11 @@ class GedraDataCacheTest : StringSpec({
         fromCache shouldBe fromSql
         fromCache shouldContainAll listOf(caraDocId, cyrusDocId)
 
-        // Independently of SQL: the order really is newest-first, id breaking a tie. Proven against the rows'
+        // Independently of SQL: the order really is most-recently-written first (issue #562), id breaking a tie. Proven against the rows'
         // own dates rather than trusting the reference, since "match SQL" and "be right" should both hold.
         val rows = service().listGedras(cxt, kind, scope, 100).rows
         val resorted = rows.sortedWith(
-            compareByDescending<com.dynamicruntime.common.gedra.GedraDataRow> { it.createdAt }
+            compareByDescending<com.dynamicruntime.common.gedra.GedraDataRow> { it.updatedAt }
                 .thenByDescending { it.gedraId.fullId },
         )
         rows.map { it.gedraId.fullId } shouldBe resorted.map { it.gedraId.fullId }
@@ -178,7 +178,7 @@ class GedraDataCacheTest : StringSpec({
      */
     "the limit caps the scoped list, and the scope is applied first" {
         val kind = GedraDataType.formDoc
-        // Interleave the two users, stepping the clock between so createdAt strictly orders them and Cyrus's
+        // Interleave the two users, stepping the clock between so updatedAt strictly orders them and Cyrus's
         // is unambiguously newest -- the tie-break is Test C's job, not this one's.
         val clock = cxt.instanceConfig.clock
         createDoc(caraId, "Cara A"); clock.advanceBy(1.seconds)
@@ -203,11 +203,11 @@ class GedraDataCacheTest : StringSpec({
     }
 
     /**
-     * Two gedras sharing a `createdAt` -- the case the id tiebreak exists for -- page by id, the same way from
+     * Two gedras sharing an `updatedAt` -- the case the id tiebreak exists for -- page by id, the same way from
      * cache and from SQL. The clock is frozen so the pair genuinely collides; without the tiebreak their order
      * would be whichever each side happened to produce.
      */
-    "gedras sharing a createdAt page by id, identically from cache and SQL" {
+    "gedras sharing an updatedAt page by id, identically from cache and SQL" {
         val kind = GedraDataType.formDoc
         val clock = cxt.instanceConfig.clock
         clock.freeze()
