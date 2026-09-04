@@ -189,7 +189,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
 
     listEndpoint(
         GEP.formDocs,
-        "Lists the form documents the caller may see, newest first, a page at a time.",
+        "Lists the form documents the caller may see, most recently written first, a page at a time.",
         outputRef = docType,
         // Paging (issue #408): the answer carries whether more remain and the total the scope admits, so a UI
         // can page past the default limit rather than silently seeing only the first page.
@@ -213,9 +213,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val page = GedraDataService.get(c).listGedras(c, formDoc, scope, limit, offset, filter)
         // Who owns each row, for a caller who can see other users' documents (issue #562): the name and email
         // the User column shows. Only such a caller gets it -- an ordinary caller's rows are all their own, so
-        // the column is not drawn and the lookups would be wasted. Resolved once per distinct owner from the
-        // AuthUsers cache, not once per row.
-        val owners = if (AdminRules.canManageUsers(c)) ownersOf(c, page.rows) else emptyMap()
+        // the column is not drawn and nothing is looked up. Resolved in one scoped bulk read over the page's
+        // distinct owners, confined to the caller's scope exactly as `resolveTargetUser` confines the `user`
+        // parameter above: a row's stamped org can outlive its owner's move to another, and the owner is then
+        // not this caller's to see even though the row is.
+        val owners = if (AdminRules.canManageUsers(c)) ownersOf(c, page.rows, callerScope) else emptyMap()
         ListPage(
             page.rows.map { row ->
                 row.toJsonMap() + (GDF.displayValues to computeDisplayValues(c, row, usages)) + ownerFields(owners[row.userId])
@@ -539,23 +541,26 @@ private fun searchFilter(
 }
 
 /**
- * The owning users of [rows], keyed by user id, for the User column a scope-wide caller sees (issue #562).
- * Resolved once per distinct owner through the AuthUsers cache -- a page of one person's forms costs one lookup,
- * not one per row -- and an owner the cache no longer holds (a deleted account) is simply absent, so their rows
- * show no owner rather than faulting the page.
+ * The owning users of [rows] that [scope] admits, keyed by user id, for the User column a scope-wide caller sees
+ * (issue #562). One bulk read ([UserService.queryUsersByIds]): the cache answers the owners it holds, the rest
+ * share a single session, and every row is checked against [scope]. An owner outside the scope, or one the
+ * store no longer has, is simply absent -- their rows show no owner rather than faulting the page or naming
+ * somebody the caller may not see.
  */
-private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>): Map<Long, AuthUserRow> {
-    val users = UserService.get(c)
-    return rows.map { it.userId }.distinct().mapNotNull { id -> users.queryByUserId(c, id)?.let { id to it } }.toMap()
-}
+private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>, scope: ReadScope): Map<Long, AuthUserRow> =
+    UserService.get(c).queryUsersByIds(c, rows.map { it.userId }, scope)
 
 /**
- * The owner fields attached to a listed row (issue #562): the display name (`name`, else the public name --
- * the same rule as `UserProfile.displayName`) and the email. Empty for no [owner], so the map addition is a
+ * The owner fields attached to a listed row (issue #562): the email always, and a display name only when the
+ * account has one that is not the email -- `name`, else a chosen username (the `UserProfile.displayName` rule).
+ * A provisioned account with neither would otherwise repeat its address as its name, and the column's rule is
+ * "the email, or the name with the email beneath": sending the name only when it adds something lets the
+ * frontend render exactly that without comparing the two strings. Empty for no [owner], so the map addition is a
  * no-op rather than a pair of nulls.
  */
 private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> {
     if (owner == null) return emptyMap()
+    val email = owner.primaryId
     val name = owner.name?.trim()?.ifEmpty { null } ?: owner.publicName()
-    return mapOf(GDF.ownerName to name, GDF.ownerEmail to owner.primaryId)
+    return if (name == email) mapOf(GDF.ownerEmail to email) else mapOf(GDF.ownerName to name, GDF.ownerEmail to email)
 }

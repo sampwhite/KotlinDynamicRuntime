@@ -968,7 +968,7 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * Every gedra of [kind] within [scope], newest first, capped at [limit].
+     * Every gedra of [kind] within [scope], most recently written first (issue #562), capped at [limit].
      *
      * Scope and the enabled flag are both SQL, so the rows that come back are already the rows the caller may
      * see; [limit] is applied afterward, which makes it a cap on what is returned rather than an exact page.

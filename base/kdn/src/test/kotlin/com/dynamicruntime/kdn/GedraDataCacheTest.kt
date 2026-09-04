@@ -153,12 +153,31 @@ class GedraDataCacheTest : StringSpec({
     "a client-scoped listing matches SQL row for row and in order" {
         val kind = GedraDataType.formDoc
         val scope = ReadScope.ofClient(client)
+        // Write to the *older* document first (issue #562): with every row created and never touched, updatedAt
+        // equals createdAt everywhere and this comparison could not tell the two orders apart -- either side
+        // left on createdAt would still match. A patch after a clock step makes the two keys disagree on one
+        // row, so "row for row" below is only true if both sides really sort by updatedAt.
+        cxt.instanceConfig.clock.advanceBy(1.seconds)
+        service().patchGedras(
+            cxt,
+            mapOf(
+                kind to listOf(
+                    GedraPatchTarget(
+                        GedraService.get(cxt).readId(caraDocId),
+                        listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.name to "Cara's doc, edited"))),
+                    ),
+                ),
+            ),
+            scope,
+        )
 
         val fromCache = listIds(kind, scope, 100)
         val fromSql = listIds(kind, scope, 100, viaSql = true)
 
         fromCache shouldBe fromSql
         fromCache shouldContainAll listOf(caraDocId, cyrusDocId)
+        // The edited, older document now leads: written most recently, though created first.
+        fromCache.first() shouldBe caraDocId
 
         // Independently of SQL: the order really is most-recently-written first (issue #562), id breaking a tie. Proven against the rows'
         // own dates rather than trusting the reference, since "match SQL" and "be right" should both hold.

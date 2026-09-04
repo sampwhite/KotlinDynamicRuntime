@@ -5,12 +5,11 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
-import com.dynamicruntime.common.gedra.GT
-import kotlin.time.Duration.Companion.seconds
-import com.dynamicruntime.common.gedra.GedraEditAction
-import com.dynamicruntime.common.gedra.GedraDataType
-import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GED
+import com.dynamicruntime.common.gedra.GPF
+import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.TestUser
@@ -21,6 +20,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The `user` search parameter on `GET /gedra/formDocs` (issue #545): confining the listing to one user by
@@ -111,14 +111,16 @@ class GedraSearchByUserTest : StringSpec({
         deliveredCfacts(ada)[CFACTS.hasAdminLevel] shouldBe true
         deliveredCfacts(bob)[CFACTS.hasAdminLevel] shouldBe false
     }
-    // The User column's data (issue #562): an admin's listed rows carry the owner's name and email; an ordinary
-    // caller's do not -- their rows are all their own, so the column is not drawn and nothing is looked up.
-    "listed rows carry the owner's name and email for an admin, and not for an ordinary user" {
+    // The User column's data (issue #562): an admin's listed rows carry the owner's email, and a name only when
+    // the account has one that is not the email; an ordinary caller's rows carry neither -- they are all their
+    // own, so the column is not drawn and nothing is looked up.
+    "listed rows carry the owner's email (and a name only when it adds one) for an admin, and nothing for an ordinary user" {
         val adaRows = ada.getItems(GEP.formDocs)
         val aliceRow = adaRows.first { it[GDF.gedraId] == aliceDocId }
-        // No name set on the provisioned account, so the display name falls back to the email (the public name).
+        // A provisioned account has no name and a placeholder username, so its public name *is* the email: the
+        // email is sent and the name is not, rather than the address twice.
         aliceRow[GDF.ownerEmail] shouldBe aliceEmail
-        aliceRow[GDF.ownerName] shouldBe aliceEmail
+        aliceRow.containsKey(GDF.ownerName) shouldBe false
         val bobRows = bob.getItems(GEP.formDocs)
         bobRows.first { it[GDF.gedraId] == bobDocId }.containsKey(GDF.ownerName) shouldBe false
         bobRows.first { it[GDF.gedraId] == bobDocId }.containsKey(GDF.ownerEmail) shouldBe false
@@ -126,27 +128,37 @@ class GedraSearchByUserTest : StringSpec({
 
     // The default order (issue #562): most recently *written* first, so an edit to an older document brings it
     // to the top -- where `createdAt` order would leave it where it was.
-    "the list is ordered by updatedAt descending, so an edited older document moves to the top" {
-        // Bob's document was created after alice's; alice's is therefore older by creation.
-        ada.getItems(GEP.formDocs).map { it[GDF.gedraId] }.take(2) shouldBe listOf(bobDocId, aliceDocId)
-        // Step the clock, then patch alice's document -- a write, which bumps its updatedAt past bob's.
-        cxt.instanceConfig.clock.advanceBy(1.seconds)
-        ada.postItems(
+    "the list is ordered by updatedAt descending, so the most recently written document leads" {
+        /** Patches one document's name as ada -- a write, which stamps a fresh updatedAt on it. */
+        fun rename(docId: String?, name: String) = ada.postItems(
             GEP.patch,
             mapOf(
                 GPF.targets to mapOf(
                     GedraDataType.formDoc.name to listOf(
                         mapOf(
-                            GDF.gedraId to aliceDocId,
+                            GDF.gedraId to docId,
                             GPF.edits to listOf(
-                                mapOf(GED.action to GedraEditAction.addOrMerge.name, GE.traitId to GT.name, GE.data to mapOf(GT.name to "Alice edited")),
+                                mapOf(GED.action to GedraEditAction.addOrMerge.name, GE.traitId to GT.name, GE.data to mapOf(GT.name to name)),
                             ),
                         ),
                     ),
                 ),
             ),
         )
-        // Alice's now leads: written most recently, though created earlier.
-        ada.getItems(GEP.formDocs).map { it[GDF.gedraId] }.take(2) shouldBe listOf(aliceDocId, bobDocId)
+        fun leaders() = ada.getItems(GEP.formDocs).map { it[GDF.gedraId] }.take(2)
+        val clock = cxt.instanceConfig.clock
+
+        // Both documents were created in the setup, likely within one millisecond, where the tiebreak is the
+        // id's random suffix -- so creation order says nothing about which leads. Establish the starting order
+        // by writing, the way the rest of the test does, rather than assuming it.
+        clock.advanceBy(1.seconds)
+        rename(bobDocId, "Bob edited")
+        leaders() shouldBe listOf(bobDocId, aliceDocId)
+
+        // Step the clock and write to alice's -- the older document by creation -- and it now leads: written
+        // most recently, though created earlier, which `createdAt` order would never show.
+        clock.advanceBy(1.seconds)
+        rename(aliceDocId, "Alice edited")
+        leaders() shouldBe listOf(aliceDocId, bobDocId)
     }
 })
