@@ -203,6 +203,14 @@ external interface TableProps : Props {
      */
     var tableLayout: String?
     /**
+     * antd's scroll config, e.g. `js("({ x: 1200 })")`: a number under `x` is the table's **minimum** width.
+     * Under [tableLayout] `"fixed"` the one column declared without a width takes whatever the declared
+     * widths leave -- which in a narrow card is nothing, and it is crushed to a sliver. A minimum keeps that
+     * column a real column and lets the table scroll inside its wrapper instead, which is the failure mode a
+     * person can work with.
+     */
+    var scroll: dynamic
+    /**
      * Fires on a table change -- here, a column-header sort. antd calls it with (pagination, filters, sorter);
      * the sorter carries `{ field, order }`, `order` being "ascend" | "descend" | undefined (undefined when a
      * header is toggled back to unsorted). Used to drive a **server-side** re-fetch (issue #411).

@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.home.HMENU
@@ -38,7 +39,10 @@ private const val formsPageSize = 25
  * by anything decided here.
  *
  * The list pages through `limit`/`offset` and shows the total the scope admits, so a caller with more forms
- * than a page can reach all of them rather than silently seeing only the first (issue #408). The open form
+ * than a page can reach all of them rather than silently seeing only the first (issue #408). It is ordered
+ * most recently written first, and a caller who administers other users also gets a scope bar (whose forms)
+ * and a User column (issue #562); both key on the shell's `canManageUsers`, the predicate the backend attaches
+ * owners on, so the controls appear exactly when the rows carry an owner to show. The open form
  * lives in the URL hash (`g=<id>`), like the Users page's open record; a form the loaded page does not hold --
  * a bookmark, or a link to one now past the first page -- is fetched by id, so a deep link always resolves.
  * The stored row renders through the shared [SchemaForm] in friendly, read-only mode, so its derived system
@@ -64,7 +68,16 @@ val FormsPage = FC<Props> {
     // currently filtered by. They part so typing does not re-query on every keystroke -- Search promotes the
     // draft, and paging/reloads carry the applied set so a filtered list stays filtered across pages.
     var searchDraft by useState<Map<String, String>>(emptyMap())
-    var appliedSearch by useState<Map<String, Any?>>(emptyMap())
+    var appliedSearch by useState<Map<String, String>>(emptyMap())
+    // Whether the caller administers other users (issue #562), from the shell's UI-config. False until it
+    // answers and false when it cannot, so the administrative controls are never drawn on a guess.
+    var canManageUsers by useState(false)
+    // Whether the grouped filter panel is open; closed by default so the search does not take the screen.
+    var filtersOpen by useState(false)
+    // A failure of a search or page reload, shown beside the controls so they stay on screen to be corrected --
+    // a user reference outside the caller's access, say -- rather than replacing the whole list. It also keeps
+    // the empty state away: a reload that failed with nothing on screen is not "no forms".
+    var searchError by useState<DisplayError?>(null)
     var listLoading by useState(true)
     var error by useState<DisplayError?>(null)
     // True once the initial hash restore has run; until then the sync effect stays quiet so it cannot overwrite
@@ -110,13 +123,21 @@ val FormsPage = FC<Props> {
                 val resp = SchemaCatalogApi.invoke(ep, mapOf(EP.limit to formsPageSize, EP.offset to off) + search)
                 rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                 numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
-                error = null
+                searchError = null
             } catch (e: Throwable) {
-                error = userFacingError(e)
+                searchError = userFacingError(e)
             } finally {
                 listLoading = false
             }
         }
+    }
+
+    /** Promotes [draft] -- its non-blank values -- to the applied filter and reloads from the top (issue #538). */
+    fun applySearch(ep: EndpointInfo, draft: Map<String, String>) {
+        val applied = draft.filterValues { it.isNotBlank() }
+        appliedSearch = applied
+        offset = 0
+        loadPage(ep, 0, applied)
     }
 
     useEffectOnce {
@@ -126,6 +147,9 @@ val FormsPage = FC<Props> {
     useEffectOnce {
         formsScope.launch {
             try {
+                // Whether the caller administers other users (issue #562): a failure to learn it leaves the
+                // administrative controls off, which is the safe reading -- the list itself still loads.
+                canManageUsers = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false)
                 // The caller's own client-scoped surface, so the list is exactly what this caller may see.
                 val cat = SchemaCatalogApi.fetchCatalog()
                 catalog = cat
@@ -321,8 +345,9 @@ val FormsPage = FC<Props> {
                 }
             }
             // The list, but truly empty: no forms at all, and no search narrowing it (a search that matches
-            // nothing is a different state, handled in the list branch so its box stays on screen to be cleared).
-            rows.isEmpty() && offset == 0 && appliedSearch.isEmpty() -> {
+            // nothing is a different state, handled in the list branch so its box stays on screen to be cleared),
+            // and no reload failure -- an empty page after a failed request is unknown, not empty (#562 review).
+            rows.isEmpty() && offset == 0 && appliedSearch.isEmpty() && searchError == null -> {
                 p {
                     className = ClassName("subtitle")
                     +"You haven't created any forms yet."
@@ -354,35 +379,55 @@ val FormsPage = FC<Props> {
                         }
                     }
                 }
-                // The search controls the client's usage rules declared (issue #538): the list's own input
-                // schema names them, so a client with no usage rules shows no box. Search promotes the draft to
-                // the applied filter and reloads from the top; Clear drops it.
-                val fields = searchFields(ep.inputSchema)
-                if (fields.isNotEmpty()) {
-                    FormsSearch {
-                        this.fields = fields
-                        values = searchDraft
-                        onChange = { name, value -> searchDraft = searchDraft + (name to value) }
-                        onSearch = {
-                            val applied = searchDraft.filterValues { it.isNotBlank() }
-                            appliedSearch = applied
-                            offset = 0
-                            loadPage(ep, 0, applied)
-                        }
-                        onClear = {
-                            searchDraft = emptyMap()
-                            appliedSearch = emptyMap()
-                            offset = 0
-                            loadPage(ep, 0, emptyMap())
+                // Whose forms (issue #562): promoted above the search, and only for a caller who administers
+                // other users -- an ordinary caller's list is their own, so there is nothing to choose.
+                if (canManageUsers) {
+                    FormsScopeBar {
+                        value = searchDraft[EI.user] ?: ""
+                        applied = appliedSearch[EI.user]?.toString()?.ifBlank { null }
+                        onChange = { v -> searchDraft = searchDraft + (EI.user to v) }
+                        onApply = { applySearch(ep, searchDraft) }
+                        // Drops the user from what is *applied*, and reverts the boxes to that: a pending edit in
+                        // a filter box is not applied by a button about whose forms are shown (#562 review).
+                        onShowEveryone = {
+                            val kept = appliedSearch - EI.user
+                            searchDraft = kept
+                            applySearch(ep, kept)
                         }
                     }
                 }
+                // The search the client's usage rules declared (issue #538, regrouped in #562): the list's own
+                // input schema names the parameters, so a client with no usage rules shows no box. Search and
+                // Apply promote the draft to the applied filter and reload from the top; Clear drops the term and
+                // the filters but leaves whose forms are shown to the scope bar -- as *applied*, so a user typed
+                // into the scope box and never applied is not applied by Clear either (#562 review).
+                val groups = searchGroups(ep.inputSchema)
+                if (groups.isNotEmpty()) {
+                    FormsSearch {
+                        this.groups = groups
+                        values = searchDraft
+                        applied = appliedSearch
+                        panelOpen = filtersOpen
+                        onTogglePanel = { filtersOpen = !filtersOpen }
+                        onChange = { name, value -> searchDraft = searchDraft + (name to value) }
+                        onSearch = { applySearch(ep, searchDraft) }
+                        onClear = {
+                            val kept = appliedSearch.filterKeys { it == EI.user }
+                            searchDraft = kept
+                            applySearch(ep, kept)
+                        }
+                    }
+                }
+                searchError?.let { errorText("Couldn't load your forms.", it) }
                 // A search that matched nothing: the box stays above so it can be changed or cleared, and a
-                // plain message stands in for the paging bar (there is nothing to page).
+                // plain message stands in for the paging bar (there is nothing to page). After a failed reload
+                // the rows are whatever was on screen before, so nothing is said about what they match.
                 if (rows.isEmpty()) {
-                    p {
-                        className = ClassName("subtitle")
-                        +"No forms match your search."
+                    if (searchError == null) {
+                        p {
+                            className = ClassName("subtitle")
+                            +"No forms match your search."
+                        }
                     }
                 } else {
                     pagingBar(offset, rows.size, numAvailable) { newOffset ->
@@ -395,6 +440,7 @@ val FormsPage = FC<Props> {
                     onView = { id -> viewingId = id }
                     canEdit = patchEndpoint != null
                     canDelete = deleteEndpoint != null
+                    showOwner = canManageUsers
                     onEdit = { id -> navigateHash(listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id)) }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId
@@ -449,6 +495,14 @@ private fun ChildrenBuilder.renderForm(
         p {
             className = ClassName("subtitle")
             +"Created $it"
+        }
+    }
+    // The last write, when it is not the creation (issue #562) -- a line that would repeat the one above says
+    // nothing.
+    summary.updatedAt?.takeIf { it != summary.createdAt }?.let {
+        p {
+            className = ClassName("subtitle")
+            +"Updated $it"
         }
     }
     p {

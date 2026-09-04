@@ -124,6 +124,38 @@ class UserService : ServiceInitializer {
     }
 
     /**
+     * The users among [userIds] that [scope] admits, keyed by id (issue #562) -- the bulk, scoped counterpart of
+     * [queryAdministrableUser], for attaching owners to a listed page rather than resolving one user at a time.
+     *
+     * Two things the single lookup does not give a caller of many: **scope on every row** (the same
+     * `admitsUserRow` predicate, so a listing and a by-id read cannot disagree about what a scope admits -- an
+     * out-of-scope id is simply absent from the result), and **one session for the misses**. Ids the cache holds
+     * cost no SQL; the rest -- disabled accounts, the routine miss, or every id when the cache is off -- are read
+     * in one `withSession` rather than one connection each. Still one statement per missed id: the SQL layer
+     * binds no lists, so an `in (...)` waits on that; the ceiling is the page size, which is why this is cheap
+     * enough to sit on a listing.
+     */
+    fun queryUsersByIds(cxt: KdrCxt, userIds: Collection<Long>, scope: ReadScope): Map<Long, AuthUserRow> {
+        val found = LinkedHashMap<Long, AuthUserRow>()
+        val missed = ArrayList<Long>()
+        for (id in userIds.distinct()) {
+            val cached = cachedUser(cxt) { it.snapshot.get(it.idOf(id)) }
+            if (cached != null) found[id] = cached else missed.add(id)
+        }
+        if (missed.isNotEmpty()) {
+            val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+            val table = authUsersTable(cxt)
+            val stmt = SqlTopicUtil.mkNamedTableSelectStmt(sqlCxt, "qAuthUsersBy_${AU.userId}", table, listOf(AU.userId))
+            sqlCxt.sqlDb.withSession(cxt) {
+                for (id in missed) {
+                    sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(AU.userId to id))?.let { found[id] = AuthUserRow.extract(it) }
+                }
+            }
+        }
+        return found.filterValues { scope.admitsUserRow(it.client, it.org, it.userId) }
+    }
+
+    /**
      * Resolves a caller-supplied user reference -- **either a numeric userId or an email** (issue #545) -- to
      * the row, or null when it names no user *or* names one outside [scope]. Two-way by the shape of the value:
      * an all-digit ref is a userId, anything else an email (a primary contact), which is unambiguous because an

@@ -180,6 +180,15 @@ class GedraDataRow(
                     items { type = SCT.kObject }
                     derived = true
                 }
+                // The owner's email and, when it adds something, display name (issue #562), attached to a *listed*
+                // row for a caller who may see other users' documents; absent for an ordinary caller and on a
+                // single read.
+                property(GDF.ownerName, "The owning user's display name, when the caller may see other users' documents and the name is not the email.") {
+                    derived = true
+                }
+                property(GDF.ownerEmail, "The owning user's email, when the caller may see other users' documents.") {
+                    derived = true
+                }
                 // An instruction about the write, so it belongs to the sent shape and to nothing else.
                 if (forInput) {
                     property(GDF.allowAdditionalTraits, additionalTraitsHint) { type = SCT.boolean }

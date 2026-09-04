@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.GDBG
@@ -137,5 +138,22 @@ class UsageSearchTest : StringSpec({
         // ...filtered over the cache's client+kind index, not the SQL fall-back (the diagnostic names which ran).
         val explained = resp[EP.meta].toJsonMapOrEmpty()[GDBG.scopeExplained].toJsonMapOrEmpty()
         explained[GDBG.statement] shouldBe "cache:${GDX.clientKind}"
+    }
+    // The free-text term (issue #562): one box searched across every text field, ANDed with per-field filters.
+    "the free-text term searches the text fields at once, and stacks with a per-field filter" {
+        val user = TestUser.create(cxt, "q-search@globex.test", userClient = SC.globex)
+        postName(user, "Quarterly plan")
+        postName(user, "Annual budget")
+        val path = clientPath(GEP.formDocs, SC.globex)
+
+        // Substring, case-insensitive, without naming which field -- the point of the box.
+        user.getItems(path, mapOf(EI.q to "BUDG")).map { displayValue(it, GT.name) } shouldBe listOf("Annual budget")
+        // Matches neither: an empty page, not an error.
+        user.getItems(path, mapOf(EI.q to "zzz")).size shouldBe 0
+        // ANDed with a per-field filter: the term alone matches both, the filter narrows to one.
+        user.getItems(path, mapOf(EI.q to "a", contains(GT.name) to "annual"))
+            .map { displayValue(it, GT.name) } shouldBe listOf("Annual budget")
+        // A blank term is no search: the whole page.
+        user.getItems(path, mapOf(EI.q to "  ")).size shouldBe 2
     }
 })

@@ -158,6 +158,18 @@ object GDF {
      */
     const val displayValues = "displayValues"
 
+    /**
+     * The owning user's display name, attached to a listed row for a caller who may see other users' documents
+     * (issue #562) -- and only when the account has one that is not its email, so a column can show "the email,
+     * or the name with the email beneath" without comparing the two. Absent for an ordinary caller, whose rows
+     * are all their own. Beside it, [ownerEmail], which such a caller always gets.
+     */
+    const val ownerName = "ownerName"
+
+    /** The owning user's email (their login id), attached to a listed row for a caller who may see other users'
+     *  documents; absent for an ordinary caller. */
+    const val ownerEmail = "ownerEmail"
+
     const val createdAt = "createdAt"
     const val updatedAt = "updatedAt"
 

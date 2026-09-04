@@ -37,7 +37,8 @@ Three questions, in order. A "no" to any of them means do not cache it.
    fresh map does not.
 
 The order that a cached listing returns must **equal the SQL `order by` exactly**, including the tiebreak that
-makes it total — `gedraData` sorts `createdAt desc, gedraId desc`, the id breaking a same-millisecond tie so
+makes it total — `gedraData` sorts `updatedAt desc, gedraId desc` (most recently written first, issue #562), the
+id breaking a same-millisecond tie so
 the cache and SQL never page the same rows differently. And the `limit` is applied **after** the scope filter,
 not before (the SQL carries no `LIMIT` — it filters, orders, then `take(limit)`), so the cache must filter and
 sort the whole scoped set before capping, or a caller gets fewer of their own rows than they should.

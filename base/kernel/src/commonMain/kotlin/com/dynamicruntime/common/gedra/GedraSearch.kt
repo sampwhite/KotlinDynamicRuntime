@@ -22,18 +22,27 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * the field the predicate reads cannot drift.
  */
 @Suppress("EnumEntryName")
-enum class SearchRole {
+enum class SearchRole(
+    /**
+     * What the role appends to the trait id to make the parameter's wire name: `name` for the exact match,
+     * `nameContains`, `yearMin`, `yearMax`. [gedraSearchParams] writes it and [decodeSearchParam] reads it back,
+     * so a control that groups a trait's parameters (issue #562) cannot disagree with the names it must send.
+     */
+    val nameSuffix: String,
+    /** What the role appends to the column label for a control's caption, said in words. */
+    val labelSuffix: String,
+) {
     /** A `string` exact match (case-insensitive). */
-    exact,
+    exact("", ""),
 
     /** A `string` substring match (case-insensitive). */
-    contains,
+    contains("Contains", " (contains)"),
 
     /** A `number`/`date` lower bound: the value is `>=` this. */
-    min,
+    min("Min", " (min)"),
 
     /** A `number`/`date` upper bound: the value is `<=` this. */
-    max,
+    max("Max", " (max)"),
 }
 
 /**
@@ -57,16 +66,15 @@ class GedraSearchParam(
  */
 fun gedraSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> = buildList {
     for (usage in usages) {
+        fun param(role: SearchRole) = GedraSearchParam(usage.traitId + role.nameSuffix, usage.label, usage.traitId, role, usage.kind)
         when (usage.kind) {
             UsageKind.string -> {
-                add(GedraSearchParam(usage.traitId, usage.label, usage.traitId, SearchRole.exact, usage.kind))
-                if (usage.substring) {
-                    add(GedraSearchParam("${usage.traitId}Contains", usage.label, usage.traitId, SearchRole.contains, usage.kind))
-                }
+                add(param(SearchRole.exact))
+                if (usage.substring) add(param(SearchRole.contains))
             }
             UsageKind.number, UsageKind.date -> {
-                add(GedraSearchParam("${usage.traitId}Min", usage.label, usage.traitId, SearchRole.min, usage.kind))
-                add(GedraSearchParam("${usage.traitId}Max", usage.label, usage.traitId, SearchRole.max, usage.kind))
+                add(param(SearchRole.min))
+                add(param(SearchRole.max))
             }
         }
     }
@@ -104,11 +112,48 @@ fun searchParamProperties(params: List<GedraSearchParam>): Map<String, Any?> {
 }
 
 /** The short label a search control shows for [param] -- the column label, with the variant said in words. */
-private fun searchLabel(param: GedraSearchParam): String = when (param.role) {
-    SearchRole.exact -> param.label
-    SearchRole.contains -> "${param.label} (contains)"
-    SearchRole.min -> "${param.label} (min)"
-    SearchRole.max -> "${param.label} (max)"
+private fun searchLabel(param: GedraSearchParam): String = param.label + param.role.labelSuffix
+
+/**
+ * One search parameter read back off the listing's input schema (issue #562): the [traitId] whose display value
+ * it filters, its [role], and the [kind] both sides are read as -- what [gedraSearchParams] wrote, recovered
+ * from the wire name and the property's schema. For a UI that groups a trait's parameters into one control (a
+ * text box, or a from-to pair) rather than showing each as a peer.
+ */
+class SearchParamShape(val traitId: String, val role: SearchRole, val kind: UsageKind)
+
+/**
+ * The inverse of [gedraSearchParams]'s naming, for one property [name] with its schema [prop] among the
+ * [declared] property names of the same query type: the trait, the role and the kind the parameter was
+ * generated from.
+ *
+ * The schema decides the family and the spelling decides the role within it: a `number` type or `date` format
+ * says the parameter is a bound, and then a `Min`/`Max` ending says which. Plain text ending in `Contains` is
+ * the substring parameter **only when the name it shortens to is declared too** -- the generator never writes a
+ * substring parameter without the exact one beside it -- so a trait whose own id ends in `Contains` reads as
+ * the exact match on its full name rather than as some other trait's substring. Reading the kind first does the
+ * same for a text trait whose id ends in `Min`. A parameter the generator would not have written -- a typed one
+ * with neither ending -- reads as an exact match on its own name, so it still gets a control rather than
+ * vanishing.
+ */
+fun decodeSearchParam(name: String, prop: Map<String, Any?>, declared: Set<String>): SearchParamShape {
+    val kind = when {
+        prop[SCH.type] == SCT.number -> UsageKind.number
+        prop[SCH.format] == SFMT.date -> UsageKind.date
+        else -> UsageKind.string
+    }
+    fun hasSuffix(role: SearchRole) = name.length > role.nameSuffix.length && name.endsWith(role.nameSuffix)
+    val role = when (kind) {
+        UsageKind.string ->
+            if (hasSuffix(SearchRole.contains) && name.removeSuffix(SearchRole.contains.nameSuffix) in declared) SearchRole.contains
+            else SearchRole.exact
+        UsageKind.number, UsageKind.date -> when {
+            hasSuffix(SearchRole.min) -> SearchRole.min
+            hasSuffix(SearchRole.max) -> SearchRole.max
+            else -> SearchRole.exact
+        }
+    }
+    return SearchParamShape(name.removeSuffix(role.nameSuffix), role, kind)
 }
 
 private fun boundDescription(param: GedraSearchParam): String {
@@ -120,12 +165,12 @@ private fun boundDescription(param: GedraSearchParam): String {
 fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedraNamespace)
 
 /**
- * The listing query's **stable** field names -- the paging offset, the appended limit, and the user filter --
- * which a generated search parameter must not take. A usage whose search parameter would land on one of these
+ * The listing query's **stable** field names -- the paging offset, the appended limit, the user filter, and the
+ * free-text term -- which a generated search parameter must not take. A usage whose search parameter would land on one of these
  * is refused at boot ([searchParamCollisions]); this guards the merge regardless, so a slipped-through one
  * cannot silently rewrite a stable field's schema.
  */
-val reservedQueryFieldNames: Set<String> = setOf(EP.offset, EP.limit, EI.user)
+val reservedQueryFieldNames: Set<String> = setOf(EP.offset, EP.limit, EI.user, EI.q)
 
 /**
  * The search parameter names [usages] would generate that collide with a [reservedQueryFieldNames] entry -- the
@@ -165,6 +210,22 @@ fun withSearchProperties(baseDef: Any?, usages: List<ClientTraitUsage>): Map<Str
  */
 fun matchesSearch(displayByTrait: Map<String, String>, active: List<Pair<GedraSearchParam, String>>): Boolean =
     active.all { (param, query) -> matchesOne(displayByTrait[param.traitId].orEmpty(), param, query) }
+
+/** The trait ids of the `string` usages -- the fields the free-text term ([EI.q]) searches across. */
+fun textSearchTraitIds(usages: List<ClientTraitUsage>): List<String> =
+    usages.filter { it.kind == UsageKind.string }.map { it.traitId }
+
+/**
+ * Whether a row's display values match the free-text term [query] (issue #562): a case-insensitive substring
+ * match against **any** of the [textTraitIds] (OR across fields), so one box finds a document by whichever of
+ * its searchable text values the person remembers. A blank term matches everything -- an empty box is no
+ * search, not a search for nothing -- and a row with no text values matches only a blank term.
+ */
+fun matchesAnyText(displayByTrait: Map<String, String>, textTraitIds: List<String>, query: String): Boolean {
+    val term = query.trim()
+    if (term.isEmpty()) return true
+    return textTraitIds.any { displayByTrait[it].orEmpty().contains(term, ignoreCase = true) }
+}
 
 private fun matchesOne(value: String, param: GedraSearchParam, query: String): Boolean = when (param.role) {
     SearchRole.exact -> value.trim().equals(query.trim(), ignoreCase = true)

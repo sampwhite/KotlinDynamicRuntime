@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
@@ -117,5 +118,52 @@ class GedraSearchTest : StringSpec({
         props.containsKey("name") shouldBe true // the search field is added
         // No usages contribute nothing, and the exact same map comes back (an inheriting scope shares it).
         withSearchProperties(base, emptyList()) shouldBe base
+    }
+    // The free-text term (issue #562): one box searched across every text field.
+    "textSearchTraitIds is the string usages only, in order" {
+        textSearchTraitIds(
+            listOf(usage("name", UsageKind.string), usage("year", UsageKind.number), usage("auditor", UsageKind.string, substring = true)),
+        ) shouldBe listOf("name", "auditor")
+    }
+
+    "matchesAnyText ORs a case-insensitive substring across the text fields, and a blank term matches all" {
+        val byTrait = mapOf("name" to "Quarterly plan", "auditor" to "Ada Lovelace", "year" to "2026")
+        val text = listOf("name", "auditor")
+        // Found via either field -- any one match is enough.
+        matchesAnyText(byTrait, text, "quarter") shouldBe true
+        matchesAnyText(byTrait, text, "LOVELACE") shouldBe true
+        // Present only in a non-text field: not searched, so not a match.
+        matchesAnyText(byTrait, text, "2026") shouldBe false
+        // Nothing carries it.
+        matchesAnyText(byTrait, text, "zzz") shouldBe false
+        // A blank or whitespace term is no search, not a search for nothing.
+        matchesAnyText(byTrait, text, "") shouldBe true
+        matchesAnyText(byTrait, text, "   ") shouldBe true
+        // A row with no text values matches only a blank term.
+        matchesAnyText(emptyMap(), text, "quarter") shouldBe false
+        matchesAnyText(emptyMap(), text, "") shouldBe true
+    }
+
+    // Issue #562: a UI reads the parameters back off the listing's schema to group each trait's controls, so the
+    // naming must round-trip -- every generated parameter decodes to the trait, role and kind that made it.
+    "a generated parameter decodes back to its trait, role and kind from its name and schema" {
+        val usages = listOf(
+            usage("name", UsageKind.string, substring = true),
+            usage("year", UsageKind.number),
+            usage("due", UsageKind.date),
+            // Trait ids that end like a suffix: the schema, not the spelling, says whether one is a bound, and a
+            // `Contains` ending is a substring parameter only beside the exact one it shortens to.
+            usage("vitaMin", UsageKind.string),
+            usage("climax", UsageKind.number),
+            usage("notesContains", UsageKind.string),
+        )
+        val params = gedraSearchParams(usages)
+        val props = searchParamProperties(params)
+        for (param in params) {
+            val shape = decodeSearchParam(param.name, props[param.name].toJsonMapOrEmpty(), props.keys)
+            Triple(shape.traitId, shape.role, shape.kind) shouldBe Triple(param.traitId, param.role, param.kind)
+        }
+        // A trait a client could not have generated -- typed, but with neither ending -- still reads as a control.
+        decodeSearchParam("year", mapOf(SCH.type to SCT.number), setOf("year")).role shouldBe SearchRole.exact
     }
 })
