@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.schema.SchTypeBuilder
+
 /*
  * Endpoint paths and wire field-names for stored gedra data, in `base/kernel` so the front end names them from
  * the same strings the backend serves them under -- a backend rename then breaks compilation here rather than
@@ -159,16 +161,17 @@ object GDF {
     const val displayValues = "displayValues"
 
     /**
-     * The owning user's display name, attached to a listed row for a caller who may see other users' documents
-     * (issue #562) -- and only when the account has one that is not its email, so a column can show "the email,
-     * or the name with the email beneath" without comparing the two. Absent for an ordinary caller, whose rows
-     * are all their own. Beside it, [ownerEmail], which such a caller always gets.
+     * The document's **owner** as a block of user-type information (issue #580): a `{name?, email}` map keyed
+     * by [DUF], attached to a listed row for a caller who may see other users' documents. Absent -- not empty --
+     * for an ordinary caller, whose rows are all their own, and on a single read.
+     *
+     * Its own block rather than flat `ownerName`/`ownerEmail` keys because more of this kind of information is
+     * coming: who last **updated** the document (an administrator may edit another user's), and when the owner
+     * created and last touched it -- as distinct from the row's [updatedAt], which any user's edit moves. Each
+     * of those is a block of the same [DUF] shape (`owner`, later `updatedBy`), so a frontend learns one shape
+     * rather than a widening set of `ownerX`/`updatedByX` keys.
      */
-    const val ownerName = "ownerName"
-
-    /** The owning user's email (their login id), attached to a listed row for a caller who may see other users'
-     *  documents; absent for an ordinary caller. */
-    const val ownerEmail = "ownerEmail"
+    const val owner = "owner"
 
     const val createdAt = "createdAt"
     const val updatedAt = "updatedAt"
@@ -180,6 +183,35 @@ object GDF {
      * stays user-editable.
      */
     const val creationWorkflowId = "creationWorkflowId"
+}
+
+/**
+ * The field names inside a document's **user-information block** (issue #580) -- [GDF.owner] today, and the
+ * `updatedBy` and per-user timestamps to come, which share this shape. A `D`ocument-`U`ser `F`ield. Each name
+ * matches its value; only the fields a caller may see are attached, so a reader treats every one as optional.
+ */
+@Suppress("ConstPropertyName")
+object DUF {
+    /** The user's display name, present only when the account has one that is not its email (issue #580). */
+    const val name = "name"
+
+    /** The user's email (their login id). */
+    const val email = "email"
+}
+
+/**
+ * The properties inside a document's user-information block ([DUF]) -- declared once, beside the field names,
+ * so a block's shape lives in one place rather than re-listed at each site (issue #580). The [GDF.owner] block
+ * composes it today, and the `updatedBy` block to come will too. The email is always present; the name only
+ * when the account has one that is not its email, so it is optional. Both are computed, never sent -- the
+ * caller marks the containing block `derived`, and that carries to these, so they are not repeated as such.
+ *
+ * The property *type* defaults to string (see `property`), which is what both are; a caller composes this into
+ * a `kObject` property whose own presence is already gated (an ordinary caller gets no block at all).
+ */
+fun SchTypeBuilder.userBlockProperties() {
+    property(DUF.name, "The user's display name, when it is not the email.")
+    property(DUF.email, "The user's email (their login id).", required = true)
 }
 
 /** Field names for a patch's request and its answer (issue #337). Each name matches its value. */

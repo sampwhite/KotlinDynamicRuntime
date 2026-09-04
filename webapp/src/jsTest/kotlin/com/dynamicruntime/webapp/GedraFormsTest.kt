@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -232,8 +233,7 @@ class GedraFormsTest {
             GDF.gedraId to "gd.fd.acme.u10",
             GDF.createdAt to "2026-08-21T19:49:51.568Z",
             GDF.updatedAt to "2026-08-22T08:05:00.000Z",
-            GDF.ownerName to "Ada",
-            GDF.ownerEmail to "ada@example.com",
+            GDF.owner to mapOf(DUF.name to "Ada", DUF.email to "ada@example.com"),
             GDF.entries to emptyList<Any?>(),
         )
         val info = summarizeForm(item, entriesUnion())
