@@ -142,6 +142,11 @@ external interface AutoCompleteProps : PropsWithChildren {
     /** antd passes the text -- typed or the picked option's **value**, never its label. */
     var onChange: ((value: dynamic) -> Unit)?
     /**
+     * Fires only when a suggestion is **picked** (not on plain typing), with that option's value. Lets a
+     * type-ahead act on a choice -- apply a scope, say -- where [onChange] cannot tell a pick from a keystroke.
+     */
+    var onSelect: ((value: dynamic) -> Unit)?
+    /**
      * Whether the popup narrows to what has been typed. `false` shows every option always, which is what a
      * short suggestion list wants (see `OpenChoiceField`).
      *

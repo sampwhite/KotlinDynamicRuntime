@@ -80,6 +80,42 @@ class GedraFormsTest {
     }
 
     /**
+     * The values endpoint (issue #581) is `/formDoc/values` by GET -- distinct from the single-form GET
+     * (`/formDoc`) and the list (`/formDocs`), and absent (null) on a surface that carries no such endpoint.
+     */
+    @Test
+    fun findsTheScopedValuesGet() {
+        val endpoints = listOf(
+            ep(HttpMethod.GET.name, "/gedra/acme/formDoc"),
+            ep(HttpMethod.GET.name, "/gedra/acme/formDocs"),
+            ep(HttpMethod.GET.name, "/gedra/acme/formDoc/values"),
+        )
+        assertEquals("/gedra/acme/formDoc/values", findFormValuesEndpoint(endpoints)?.path)
+        // The single-form and list finders do not pick the values endpoint.
+        assertEquals("/gedra/acme/formDoc", findFormGetEndpoint(endpoints)?.path)
+        // A surface without it: null, so the filter boxes stay plain text.
+        assertNull(findFormValuesEndpoint(listOf(ep(HttpMethod.GET.name, "/gedra/acme/formDocs"))))
+    }
+
+    /**
+     * The user-picker label (issue #581): a real name wins, else the public name (the username), else the
+     * email -- so a user found by their username is shown by it, not by an email that carried no part of what
+     * was typed. A placeholder username (`@<email>`) is not a public name; the email stands alone.
+     */
+    @Test
+    fun buildsTheUserPickLabel() {
+        assertEquals("Ada Lovelace — ada@x.test", userPickLabel("Ada Lovelace", "ada_l", "ada@x.test"))
+        // No real name: the username is the public name and leads.
+        assertEquals("grace_h — grace@x.test", userPickLabel(null, "grace_h", "grace@x.test"))
+        // A placeholder username is not shown; the email stands alone.
+        assertEquals("bob@x.test", userPickLabel(null, "@bob@x.test", "bob@x.test"))
+        // A blank real name falls through to the username.
+        assertEquals("zoe_q — zoe@x.test", userPickLabel("  ", "zoe_q", "zoe@x.test"))
+        // Nothing that adds to the email: the email alone.
+        assertEquals("sam@x.test", userPickLabel(null, "", "sam@x.test"))
+    }
+
+    /**
      * The delete shares the single-form path and is told apart by the DELETE method -- so on a surface that
      * carries GET and DELETE for `/formDoc`, each finder picks its own without cross-matching.
      */

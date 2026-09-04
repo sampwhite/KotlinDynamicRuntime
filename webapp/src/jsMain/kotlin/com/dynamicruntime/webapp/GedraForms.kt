@@ -34,6 +34,7 @@ fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substr
 private val formCreateSuffix: String = pathAfterSection(GEP.formDocCreate)
 private val formsListSuffix: String = pathAfterSection(GEP.formDocs)
 private val formGetSuffix: String = pathAfterSection(GEP.formDoc)
+private val formValuesSuffix: String = pathAfterSection(GEP.formDocValues)
 private val patchSuffix: String = pathAfterSection(GEP.patch)
 
 /**
@@ -50,6 +51,30 @@ fun findFormCreateEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
 /** The endpoint that lists the caller's form documents, matched the same client-scoped way as the create one. */
 fun findFormsListEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
     endpoints.firstOrNull { it.method == HttpMethod.GET.name && it.path.endsWith(formsListSuffix) }
+
+/**
+ * The endpoint that suggests a text trait's distinct values (`GET /gedra/<client>/formDoc/values`, issue #581),
+ * matched the same client-scoped way. Backs the filter boxes' type-ahead; null when the caller's surface has no
+ * such endpoint (an older node), and then the boxes stay plain text. Pure, and covered under `jsNodeTest`.
+ */
+fun findFormValuesEndpoint(endpoints: List<EndpointInfo>): EndpointInfo? =
+    endpoints.firstOrNull { it.method == HttpMethod.GET.name && it.path.endsWith(formValuesSuffix) }
+
+/**
+ * The label a user-picker suggestion shows (issue #581): a display name and the email, or the email alone when
+ * neither adds to it. The display name is the real name if there is one, else the **public name** -- the
+ * username -- so a user found by their username (the search hits it) is shown by it rather than by an email
+ * that carried no part of what was typed. A username starting with `@` is the placeholder `@<email>`, whose
+ * public name is the email itself (the backend's `publicName()` rule); a real username never contains `@`. The
+ * value a pick sends is always the [email], which the listing's `user` parameter resolves. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun userPickLabel(name: String?, username: String, email: String): String {
+    val realName = name?.trim()?.ifEmpty { null }
+    val publicName = username.takeIf { it.isNotEmpty() && !it.startsWith("@") }
+    val display = realName ?: publicName
+    return if (display == null || display == email) email else "$display — $email"
+}
 
 /**
  * The endpoint that fetches **one** form document by id (`GET /gedra/<client>/formDoc`). Distinct from the list

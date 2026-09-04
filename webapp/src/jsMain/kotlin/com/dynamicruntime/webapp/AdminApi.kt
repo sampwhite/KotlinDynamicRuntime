@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
@@ -260,6 +261,12 @@ class UserSearchQuery(
     val ranges: Map<String, DateRange> = emptyMap(),
     val sortBy: String = USF.lastEdited.at,
     val descending: Boolean = true,
+    /**
+     * A single free-text term matched across email, name, and username at once (issue #581) -- the OR term the
+     * scope-bar type-ahead sends, distinct from the per-field [textTerms] which AND. Blank is no constraint.
+     * Appended after the existing parameters so the positional call sites (the users console) are unaffected.
+     */
+    val anyText: String? = null,
 )
 
 /**
@@ -269,6 +276,7 @@ class UserSearchQuery(
  * encoding, so the wire and the hash carry the same keys -- and adding a spec field needs no edit here.
  */
 fun userSearchArgs(query: UserSearchQuery): Map<String, Any?> = buildMap {
+    query.anyText?.trim()?.takeIf { it.isNotEmpty() }?.let { put(EI.q, it) }
     query.textTerms.forEach { (field, term) -> term.trim().takeIf { it.isNotEmpty() }?.let { put(field, it) } }
     query.ranges.forEach { (field, range) ->
         val keys = userSearchFieldSpecsByName[field]?.rangeKeys ?: return@forEach

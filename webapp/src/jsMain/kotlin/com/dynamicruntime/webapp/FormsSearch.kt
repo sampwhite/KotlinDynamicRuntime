@@ -11,11 +11,52 @@ import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.span
+import react.useEffect
+import react.useRef
+import react.useState
 import web.cssom.ClassName
 
 /** The fields on the reserved side of the listing query -- paging, the user scope and the free-text term --
  *  not search fields, and never shown as one. */
 private val reservedQueryFields = setOf(EP.offset, EP.limit, EI.user, EI.q)
+
+/** How long a type-ahead waits after a keystroke before it fetches, so a fast typist makes one call not many. */
+private const val suggestDebounceMs = 200
+
+/** At most this many user suggestions in the scope bar's dropdown -- a short list to pick from, not a listing. */
+const val maxUserSuggestions = 8
+
+/** How many value suggestions a filter box asks for -- a short dropdown, capped again on the backend. */
+const val maxValueSuggestions = 10
+
+/**
+ * One user the scope-bar type-ahead offers (issue #581): the [label] shown (a name or public name with the
+ * email, or the email alone) and the [value] a pick sends -- the email, which the listing's `user` parameter
+ * resolves within the caller's own access.
+ */
+class UserPick(val label: String, val value: String)
+
+/** The browser's `setTimeout`/`clearTimeout`, declared locally rather than reaching for a DOM wrapper -- the
+ *  same idiom the app bar and the users page use for their debounces. */
+private fun setTimer(block: () -> Unit, delayMs: Int): Int = js("setTimeout(block, delayMs)") as Int
+private fun clearTimer(id: Int) {
+    js("clearTimeout(id)")
+}
+
+/** antd `{label, value}` options for the user suggestions. */
+private fun userPickOptions(picks: List<UserPick>): Array<dynamic> = picks.map { pick ->
+    val o: dynamic = js("({})")
+    o.label = pick.label
+    o.value = pick.value
+    o
+}.toTypedArray()
+
+/** antd `{value}` options for value suggestions, where the shown label is the value itself. */
+private fun stringOptions(values: List<String>): Array<dynamic> = values.map { v ->
+    val o: dynamic = js("({})")
+    o.value = v
+    o
+}.toTypedArray()
 
 /**
  * One trait's search controls, grouped (issue #562): the parameters the listing declares for a single trait --
@@ -112,11 +153,15 @@ fun activeFilterChips(groups: List<SearchGroup>, applied: Map<String, Any?>): Li
 }
 
 /**
- * The scope bar (issue #562), for a caller who administers other users: whose forms the list shows. Promoted
- * above the search rather than filed among the filters, because it changes *whose* documents are on screen
- * where a filter narrows *which* -- and drawn in the elevated-privilege tint so it reads as the administrative
- * control it is. The box takes a user id or an email; the backend resolves either, confined to the caller's
- * own access, so an id outside it is refused with a message rather than silently emptied.
+ * The scope bar (issue #562, a type-ahead in #581), for a caller who administers other users: whose forms the
+ * list shows. Promoted above the search rather than filed among the filters, because it changes *whose*
+ * documents are on screen where a filter narrows *which* -- and drawn in the elevated-privilege tint so it
+ * reads as the administrative control it is.
+ *
+ * A type-ahead over the users the caller administers: typing a name, username, or email fetches matching users
+ * (debounced) and picking one confines the list to them. A raw id or email typed and applied without picking
+ * still resolves through the listing's `user` parameter, which confines whatever is sent to the caller's own
+ * access -- the suggestions only make the box easier to fill, never wider.
  */
 external interface FormsScopeBarProps : Props {
     /** What the box holds. */
@@ -128,27 +173,61 @@ external interface FormsScopeBarProps : Props {
     /** Records a keystroke in the box. */
     var onChange: (String) -> Unit
 
-    /** Confines the list to the user in the box. */
+    /** Confines the list to the user in the box (the raw-entry path: a typed id or email). */
     var onApply: () -> Unit
 
     /** Drops the user and shows everyone again. */
     var onShowEveryone: () -> Unit
+
+    /**
+     * Fetches user suggestions for a typed `term`, calling back with them (issue #581). Owned by the parent so
+     * this stays free of the API; the box debounces the calls. A failure calls back with an empty list, which
+     * leaves the box working as plain text.
+     */
+    var fetchUsers: (String, (List<UserPick>) -> Unit) -> Unit
+
+    /** Confines the list to the picked user (by email), keeping the applied filters -- the pick path, distinct
+     *  from [onApply]'s raw-entry path, so a stale draft never rides along. */
+    var onPick: (String) -> Unit
 }
 
 val FormsScopeBar = FC<FormsScopeBarProps> { props ->
+    var suggestions by useState<List<UserPick>>(emptyList())
+    val timer = useRef<Int>(null)
+
+    // Debounce a suggestion fetch on the typed value. A short term is not worth a search, so it clears the list
+    // (and a name/email fragment is meaningful only from a couple of characters). Cleanup on the next run, the
+    // codebase's idiom, so a fast typist never leaves two fetches racing.
+    useEffect(props.value) {
+        timer.current?.let { clearTimer(it) }
+        timer.current = null
+        val term = props.value.trim()
+        if (term.length < 2) {
+            suggestions = emptyList()
+        } else {
+            timer.current = setTimer({ props.fetchUsers(term) { suggestions = it } }, suggestDebounceMs)
+        }
+    }
+
     div {
         className = ClassName("row forms-scope")
         span {
             className = ClassName("forms-scope-label")
             +"Showing forms for"
         }
-        Input {
-            placeholder = "everyone you administer — or a user id or email"
+        AutoComplete {
+            placeholder = "everyone you administer — or a name, email, or id"
             value = props.value
+            options = userPickOptions(suggestions)
             allowClear = true
-            style = js("({ width: 340 })")
-            onChange = { event -> props.onChange(event.target.value as? String ?: "") }
-            onPressEnter = { props.onApply() }
+            // Show every fetched suggestion; the backend already narrowed them to the term.
+            filterOption = false
+            style = js("({ width: 360 })")
+            onChange = { v -> props.onChange((v as? String) ?: "") }
+            onSelect = { v ->
+                suggestions = emptyList()
+                props.onPick((v as? String) ?: "")
+            }
         }
         Button {
             onClick = { props.onApply() }
@@ -165,15 +244,14 @@ val FormsScopeBar = FC<FormsScopeBarProps> { props ->
 }
 
 /**
- * The forms-list search (issue #538, regrouped in #562): one box that searches every text field at once, and
- * behind a toggle the per-trait filters the client's usage rules declared -- one text box per text trait, a
- * from-to pair per number or date -- so the list keeps the screen and the filters are there when wanted.
- * While the panel is closed, the applied filters are summarized as chips so a narrowed list never looks like
- * the whole.
+ * The forms-list search (issue #538, regrouped in #562, type-ahead in #581): one box that searches every text
+ * field at once, and behind a toggle the per-trait filters the client's usage rules declared -- one text box
+ * per text trait, a from-to pair per number or date -- so the list keeps the screen and the filters are there
+ * when wanted. While the panel is closed, the applied filters are summarized as chips so a narrowed list never
+ * looks like the whole. A text trait's box suggests the distinct values that trait takes, when the caller's
+ * surface can supply them ([fetchValues]).
  *
- * Presentational -- the parent owns the values and every action -- so it knows nothing about usages or
- * endpoints, only the groups it was handed. Every control is a plain text input (a number or date bound is
- * coerced by the backend), which is also the one antd control a browser test can drive.
+ * The parent owns the values and every action; the widgets own only their own suggestion state and debounce.
  */
 external interface FormsSearchProps : Props {
     /** The declared search groups, in display order. */
@@ -199,6 +277,13 @@ external interface FormsSearchProps : Props {
 
     /** Clears the term and every filter (not the user scope, which has its own control). */
     var onClear: () -> Unit
+
+    /**
+     * Fetches distinct value suggestions for a text trait (issue #581): given the trait id and a typed prefix,
+     * calls back with the values. Null when the caller's surface carries no values endpoint (an older node),
+     * and then the text boxes stay plain inputs. A failure calls back empty, leaving the box usable as text.
+     */
+    var fetchValues: ((String, String, (List<String>) -> Unit) -> Unit)?
 }
 
 val FormsSearch = FC<FormsSearchProps> { props ->
@@ -270,13 +355,25 @@ val FormsSearch = FC<FormsSearchProps> { props ->
                         }
                     } else {
                         group.text?.let { name ->
-                            Input {
-                                placeholder = if (group.contains != null) "contains" else "is exactly"
-                                value = props.values[name] ?: ""
-                                allowClear = true
-                                style = js("({ width: 260 })")
-                                onChange = { event -> props.onChange(name, event.target.value as? String ?: "") }
-                                onPressEnter = { props.onSearch() }
+                            val placeholder = if (group.contains != null) "contains" else "is exactly"
+                            val fetch = props.fetchValues
+                            if (fetch != null) {
+                                FilterValueBox {
+                                    this.traitId = group.traitId
+                                    this.placeholder = placeholder
+                                    this.value = props.values[name] ?: ""
+                                    this.onChange = { v -> props.onChange(name, v) }
+                                    this.fetchValues = fetch
+                                }
+                            } else {
+                                Input {
+                                    this.placeholder = placeholder
+                                    value = props.values[name] ?: ""
+                                    allowClear = true
+                                    style = js("({ width: 260 })")
+                                    onChange = { event -> props.onChange(name, event.target.value as? String ?: "") }
+                                    onPressEnter = { props.onSearch() }
+                                }
                             }
                         }
                     }
@@ -296,6 +393,46 @@ val FormsSearch = FC<FormsSearchProps> { props ->
                 }
             }
         }
+    }
+}
+
+/**
+ * One text-trait filter box with a value type-ahead (issue #581): as the person types, it suggests the distinct
+ * values that trait takes across the caller's documents. Its own component so each box holds its own suggestion
+ * state and debounce. The value it holds is still a plain "contains" fragment -- picking a suggestion only
+ * fills the box, and the panel's Apply is what searches -- so an empty or failed fetch leaves it a text input.
+ */
+private external interface FilterValueBoxProps : Props {
+    var traitId: String
+    var placeholder: String
+    var value: String
+    var onChange: (String) -> Unit
+    var fetchValues: (String, String, (List<String>) -> Unit) -> Unit
+}
+
+private val FilterValueBox = FC<FilterValueBoxProps> { props ->
+    var suggestions by useState<List<String>>(emptyList())
+    val timer = useRef<Int>(null)
+
+    useEffect(props.value) {
+        timer.current?.let { clearTimer(it) }
+        timer.current = null
+        val term = props.value.trim()
+        if (term.isEmpty()) {
+            suggestions = emptyList()
+        } else {
+            timer.current = setTimer({ props.fetchValues(props.traitId, term) { suggestions = it } }, suggestDebounceMs)
+        }
+    }
+
+    AutoComplete {
+        placeholder = props.placeholder
+        value = props.value
+        options = stringOptions(suggestions)
+        allowClear = true
+        filterOption = false
+        style = js("({ width: 260 })")
+        onChange = { v -> props.onChange((v as? String) ?: "") }
     }
 }
 

@@ -3,6 +3,8 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.util.toJsonListOrEmpty
@@ -59,6 +61,9 @@ val FormsPage = FC<Props> {
     // The patch endpoint (issue #417): its presence is what lets the view and each list row offer Edit, on the
     // same "do not show a control that cannot work" rule the delete button follows.
     var patchEndpoint by useState<EndpointInfo?>(null)
+    // The field-value suggestions endpoint (issue #581): its presence turns a text filter box into a
+    // type-ahead; absent (an older node), the boxes stay plain text.
+    var valuesEndpoint by useState<EndpointInfo?>(null)
     var rows by useState<List<Map<String, Any?>>>(emptyList())
     // How many forms the scope admits in all, for "showing X–Y of N" and to know when a next page exists.
     var numAvailable by useState(0)
@@ -157,6 +162,7 @@ val FormsPage = FC<Props> {
                 deleteEndpoint = findFormDeleteEndpoint(cat.endpoints)
                 createEndpoint = findFormCreateEndpoint(cat.endpoints)
                 patchEndpoint = findFormPatchEndpoint(cat.endpoints)
+                valuesEndpoint = findFormValuesEndpoint(cat.endpoints)
                 val ep = findFormsListEndpoint(cat.endpoints)
                 listEndpoint = ep
                 if (ep != null) {
@@ -394,6 +400,24 @@ val FormsPage = FC<Props> {
                             searchDraft = kept
                             applySearch(ep, kept)
                         }
+                        // The type-ahead (issue #581): a typed fragment fetches matching users the caller may
+                        // administer, and a pick confines the list to them by email -- keeping the applied
+                        // filters, since the pick answers "whose", not "which".
+                        fetchUsers = { term, cb ->
+                            formsScope.launch {
+                                cb(
+                                    runCatching {
+                                        AdminApi.searchUsers(UserSearchQuery(anyText = term)).users.take(maxUserSuggestions)
+                                            .map { UserPick(userPickLabel(it.name, it.username, it.primaryId), it.primaryId) }
+                                    }.getOrDefault(emptyList()),
+                                )
+                            }
+                        }
+                        onPick = { email ->
+                            val kept = appliedSearch + (EI.user to email)
+                            searchDraft = kept
+                            applySearch(ep, kept)
+                        }
                     }
                 }
                 // The search the client's usage rules declared (issue #538, regrouped in #562): the list's own
@@ -415,6 +439,27 @@ val FormsPage = FC<Props> {
                             val kept = appliedSearch.filterKeys { it == EI.user }
                             searchDraft = kept
                             applySearch(ep, kept)
+                        }
+                        // A text box's value type-ahead (issue #581), only when the caller's surface can supply
+                        // it. Fetches the distinct values the trait takes across the caller's own documents.
+                        fetchValues = valuesEndpoint?.let { ve ->
+                            { traitId, prefix, cb ->
+                                formsScope.launch {
+                                    cb(
+                                        runCatching {
+                                            val resp = SchemaCatalogApi.invoke(
+                                                ve,
+                                                buildMap {
+                                                    put(GE.traitId, traitId)
+                                                    if (prefix.isNotBlank()) put(EI.q, prefix)
+                                                    put(EP.limit, maxValueSuggestions)
+                                                },
+                                            )
+                                            resp[EP.items].toJsonListOrEmpty().mapNotNull { it.toJsonMapOrEmpty()[UF.value] as? String }
+                                        }.getOrDefault(emptyList()),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
