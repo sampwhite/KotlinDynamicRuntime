@@ -225,6 +225,28 @@ class GedraFormsTest {
         assertEquals(listOf("Expense report"), info.traitLabels)
     }
 
+    /** The owner and the last write (issue #562): carried when the row has them, null when it does not. */
+    @Test
+    fun carriesTheOwnerAndTheLastWriteWhenPresent() {
+        val item = mapOf(
+            GDF.gedraId to "gd.fd.acme.u10",
+            GDF.createdAt to "2026-08-21T19:49:51.568Z",
+            GDF.updatedAt to "2026-08-22T08:05:00.000Z",
+            GDF.ownerName to "Ada",
+            GDF.ownerEmail to "ada@example.com",
+            GDF.entries to emptyList<Any?>(),
+        )
+        val info = summarizeForm(item, entriesUnion())
+        assertEquals("2026-08-22 08:05 UTC", info.updatedAt)
+        assertEquals("Ada", info.ownerName)
+        assertEquals("ada@example.com", info.ownerEmail)
+        // An ordinary caller's own row carries no owner, and a row without a write time has none to show.
+        val bare = summarizeForm(mapOf(GDF.gedraId to "gd.fd.acme.u11", GDF.entries to emptyList<Any?>()), entriesUnion())
+        assertNull(bare.updatedAt)
+        assertNull(bare.ownerName)
+        assertNull(bare.ownerEmail)
+    }
+
     /** The timestamp formatter trims to minute precision and labels the zone; a non-ISO value is left alone. */
     @Test
     fun formatsTimestamps() {

@@ -159,6 +159,15 @@ class FormSummary(
     val traitLabels: List<String>,
     /** When it was created, already formatted for reading; null when the row carried no timestamp. */
     val createdAt: String?,
+    /** When it was last written, formatted like [createdAt]; null when the row carried no timestamp (issue #562). */
+    val updatedAt: String? = null,
+    /**
+     * The owner's display name, when the listing attached one (issue #562): only for a caller who sees other
+     * users' documents, and only when the account has a name that is not its email. Null otherwise.
+     */
+    val ownerName: String? = null,
+    /** The owner's email, when the listing attached one (issue #562); null for an ordinary caller's own rows. */
+    val ownerEmail: String? = null,
 )
 
 /**
@@ -196,6 +205,9 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary 
         displayValues = displayValues,
         traitLabels = traitLabels,
         createdAt = (item[GDF.createdAt] as? String)?.let { formatTimestamp(it) },
+        updatedAt = (item[GDF.updatedAt] as? String)?.let { formatTimestamp(it) },
+        ownerName = item[GDF.ownerName] as? String,
+        ownerEmail = item[GDF.ownerEmail] as? String,
     )
 }
 

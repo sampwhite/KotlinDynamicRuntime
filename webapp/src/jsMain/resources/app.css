@@ -740,3 +740,50 @@ textarea.json-edit.edited { border-color: var(--accent-bright); }
    opens at a few lines rather than the request panel's full height -- still resizable for the ones that are
    not. */
 textarea.json-edit.json-field { min-height: 4.5rem; }
+
+/* The forms list's search (issue #562). The scope bar -- whose forms an administrator is looking at -- takes
+   the elevated-privilege tint the app bar uses for the same condition, so it reads as the administrative
+   control it is and not as one more filter. The filter panel is an inset well, closed by default; while it is
+   closed the applied filters are summarized as chips, which borrow the .bar-badge shape but not its shouting
+   uppercase, since they quote what the person typed. */
+.forms-scope {
+    padding: 8px 12px;
+    border: 1px solid var(--border-admin);
+    border-radius: 8px;
+    background: var(--surface-admin);
+}
+
+.forms-scope-label { color: var(--text-muted); white-space: nowrap; }
+
+.forms-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.filter-chip {
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-page);
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.forms-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px 24px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-page);
+}
+
+.forms-filters .filter-actions { grid-column: 1 / -1; }
+
+.filter-group { display: flex; flex-direction: column; gap: 4px; }
+
+.filter-label { font-size: 12px; color: var(--text-muted); }
+
+.filter-range { display: flex; align-items: center; gap: 8px; }
+
+/* The User column's second line: the email under the name, quieter so the name leads. */
+.owner-email { display: block; font-size: 12px; color: var(--text-muted); }

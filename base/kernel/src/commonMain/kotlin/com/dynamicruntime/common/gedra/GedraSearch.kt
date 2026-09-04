@@ -22,18 +22,27 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * the field the predicate reads cannot drift.
  */
 @Suppress("EnumEntryName")
-enum class SearchRole {
+enum class SearchRole(
+    /**
+     * What the role appends to the trait id to make the parameter's wire name: `name` for the exact match,
+     * `nameContains`, `yearMin`, `yearMax`. [gedraSearchParams] writes it and [decodeSearchParam] reads it back,
+     * so a control that groups a trait's parameters (issue #562) cannot disagree with the names it must send.
+     */
+    val nameSuffix: String,
+    /** What the role appends to the column label for a control's caption, said in words. */
+    val labelSuffix: String,
+) {
     /** A `string` exact match (case-insensitive). */
-    exact,
+    exact("", ""),
 
     /** A `string` substring match (case-insensitive). */
-    contains,
+    contains("Contains", " (contains)"),
 
     /** A `number`/`date` lower bound: the value is `>=` this. */
-    min,
+    min("Min", " (min)"),
 
     /** A `number`/`date` upper bound: the value is `<=` this. */
-    max,
+    max("Max", " (max)"),
 }
 
 /**
@@ -57,16 +66,15 @@ class GedraSearchParam(
  */
 fun gedraSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> = buildList {
     for (usage in usages) {
+        fun param(role: SearchRole) = GedraSearchParam(usage.traitId + role.nameSuffix, usage.label, usage.traitId, role, usage.kind)
         when (usage.kind) {
             UsageKind.string -> {
-                add(GedraSearchParam(usage.traitId, usage.label, usage.traitId, SearchRole.exact, usage.kind))
-                if (usage.substring) {
-                    add(GedraSearchParam("${usage.traitId}Contains", usage.label, usage.traitId, SearchRole.contains, usage.kind))
-                }
+                add(param(SearchRole.exact))
+                if (usage.substring) add(param(SearchRole.contains))
             }
             UsageKind.number, UsageKind.date -> {
-                add(GedraSearchParam("${usage.traitId}Min", usage.label, usage.traitId, SearchRole.min, usage.kind))
-                add(GedraSearchParam("${usage.traitId}Max", usage.label, usage.traitId, SearchRole.max, usage.kind))
+                add(param(SearchRole.min))
+                add(param(SearchRole.max))
             }
         }
     }
@@ -104,11 +112,43 @@ fun searchParamProperties(params: List<GedraSearchParam>): Map<String, Any?> {
 }
 
 /** The short label a search control shows for [param] -- the column label, with the variant said in words. */
-private fun searchLabel(param: GedraSearchParam): String = when (param.role) {
-    SearchRole.exact -> param.label
-    SearchRole.contains -> "${param.label} (contains)"
-    SearchRole.min -> "${param.label} (min)"
-    SearchRole.max -> "${param.label} (max)"
+private fun searchLabel(param: GedraSearchParam): String = param.label + param.role.labelSuffix
+
+/**
+ * One search parameter read back off the listing's input schema (issue #562): the [traitId] whose display value
+ * it filters, its [role], and the [kind] both sides are read as -- what [gedraSearchParams] wrote, recovered
+ * from the wire name and the property's schema. For a UI that groups a trait's parameters into one control (a
+ * text box, or a from-to pair) rather than showing each as a peer.
+ */
+class SearchParamShape(val traitId: String, val role: SearchRole, val kind: UsageKind)
+
+/**
+ * The inverse of [gedraSearchParams]'s naming, for one property [name] with its schema [prop]: the trait, the
+ * role and the kind the parameter was generated from.
+ *
+ * The schema decides the family and the spelling decides the role within it: a `number` type or `date` format
+ * says the parameter is a bound, and then a `Min`/`Max` ending says which; plain text ending in `Contains` is
+ * the substring parameter, and any other text is the exact one. Reading the kind first is what keeps a text
+ * trait whose id happens to end in `Min` from being taken for a bound. A parameter the generator would not
+ * have written -- a typed one with neither ending -- reads as an exact match on its own name, so it still gets
+ * a control rather than vanishing.
+ */
+fun decodeSearchParam(name: String, prop: Map<String, Any?>): SearchParamShape {
+    val kind = when {
+        prop[SCH.type] == SCT.number -> UsageKind.number
+        prop[SCH.format] == SFMT.date -> UsageKind.date
+        else -> UsageKind.string
+    }
+    fun hasSuffix(role: SearchRole) = name.length > role.nameSuffix.length && name.endsWith(role.nameSuffix)
+    val role = when (kind) {
+        UsageKind.string -> if (hasSuffix(SearchRole.contains)) SearchRole.contains else SearchRole.exact
+        UsageKind.number, UsageKind.date -> when {
+            hasSuffix(SearchRole.min) -> SearchRole.min
+            hasSuffix(SearchRole.max) -> SearchRole.max
+            else -> SearchRole.exact
+        }
+    }
+    return SearchParamShape(name.removeSuffix(role.nameSuffix), role, kind)
 }
 
 private fun boundDescription(param: GedraSearchParam): String {

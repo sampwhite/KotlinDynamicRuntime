@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
@@ -141,5 +142,26 @@ class GedraSearchTest : StringSpec({
         // A row with no text values matches only a blank term.
         matchesAnyText(emptyMap(), text, "quarter") shouldBe false
         matchesAnyText(emptyMap(), text, "") shouldBe true
+    }
+
+    // Issue #562: a UI reads the parameters back off the listing's schema to group each trait's controls, so the
+    // naming must round-trip -- every generated parameter decodes to the trait, role and kind that made it.
+    "a generated parameter decodes back to its trait, role and kind from its name and schema" {
+        val usages = listOf(
+            usage("name", UsageKind.string, substring = true),
+            usage("year", UsageKind.number),
+            usage("due", UsageKind.date),
+            // Trait ids that end like a suffix: the schema, not the spelling, says whether one is a bound.
+            usage("vitaMin", UsageKind.string),
+            usage("climax", UsageKind.number),
+        )
+        val params = gedraSearchParams(usages)
+        val props = searchParamProperties(params)
+        for (param in params) {
+            val shape = decodeSearchParam(param.name, props[param.name].toJsonMapOrEmpty())
+            Triple(shape.traitId, shape.role, shape.kind) shouldBe Triple(param.traitId, param.role, param.kind)
+        }
+        // A trait a client could not have generated -- typed, but with neither ending -- still reads as a control.
+        decodeSearchParam("year", mapOf(SCH.type to SCT.number)).role shouldBe SearchRole.exact
     }
 })
