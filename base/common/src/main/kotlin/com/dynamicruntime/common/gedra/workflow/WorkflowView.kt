@@ -50,9 +50,11 @@ fun resolveWorkflowView(
     // so this map is total over the workflow's traits.
     val traitsById: Map<String, GedraTrait> =
         SchemaService.get(cxt).gedraTraitsFor(client).associateBy { it.traitId }
-    // The client's raw `$defs` (its variant, so a narrowed type is that client's) -- what the returned closure
-    // is drawn from. The trait pointers the view hands out are resolved against this subset, not the catalog.
-    val clientDefs = SchemaService.get(cxt).storeFor(client).defs
+    // The client's `$defs` (its variant, so a narrowed type is that client's) -- what the returned closure is
+    // drawn from. The trait pointers the view hands out are resolved against this subset, not the catalog. The
+    // *served* form (issue #584): each type's `g-layout` already stripped, since a layout is delivered
+    // out-of-band and never rides in a served schema.
+    val clientDefs = SchemaService.get(cxt).storeFor(client).servedDefs
     // The trait data types the workflow references, collected as they are rendered; the seeds of the closure.
     val seedRefs = LinkedHashSet<String>()
     // The request-scoped cfacts, computed once: they are the same for every task, so only each task's own

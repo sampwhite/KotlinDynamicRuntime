@@ -92,6 +92,9 @@ fun buildClientVariants(
             types = parseSchemaTypes(defs),
             endpoints = global.endpoints,
             tables = global.tables,
+            // The variant's own layouts (issue #584) derive from these defs: a client may overlay a type's
+            // `g-layout` (it is a presentation key the narrowing check permits), and an unmentioned one is
+            // inherited from global by reference -- then pruned to whatever properties the client kept.
             defs = defs,
         )
         LogSchema.debug(cxt) {

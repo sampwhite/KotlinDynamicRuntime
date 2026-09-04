@@ -32,6 +32,8 @@ import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.searchParamCollisions
 import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.schema.collectDefs
+import com.dynamicruntime.common.schema.collectLayouts
+import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
@@ -143,6 +145,8 @@ class SchemaService : ServiceInitializer {
         val endpoints = availableEndpoints.associateBy { it.collationKey }
         val tables = collected.tables.associateBy { it.tableName }
         // The raw defs ride along so the /schema/endpoints catalog can serve types with their `$ref`s intact.
+        // The per-type layouts (issue #584) and the layout-stripped `servedDefs` are derived from them by the
+        // store itself, so no construction site can hand it one and not the other.
         val store = KdrSchemaStore(types, endpoints, tables, collected.defs)
 
         // Fail fast: input resolution is deferred to request time (it needs the compiled types), so resolve
@@ -184,15 +188,11 @@ class SchemaService : ServiceInitializer {
             val allEndpoints = endpoints + clientEndpoints.associateBy { it.collationKey }
             val withClients = KdrSchemaStore(types, allEndpoints, tables, collected.defs)
             clientStores = varyingClients.associateWith { client ->
-                val variant = variants[client]
                 // A client that varies nothing about *schema* gets the global document with the full endpoint
                 // map -- present in this map rather than absent, because `hasEndpoints` reads it to decide
-                // whether to advertise the copies that were just made for that client.
-                if (variant == null) {
-                    KdrSchemaStore(types, allEndpoints, tables, collected.defs)
-                } else {
-                    KdrSchemaStore(variant.types, allEndpoints, variant.tables, variant.defs)
-                }
+                // whether to advertise the copies that were just made for that client. It is the very same
+                // store object, so its derived layouts and served defs are computed once and shared.
+                variants[client]?.let { KdrSchemaStore(it.types, allEndpoints, it.tables, it.defs) } ?: withClients
             }
             schemaStore = withClients
             cxt.instanceConfig.put(KdrSchemaStore.key, withClients)
@@ -211,6 +211,9 @@ class SchemaService : ServiceInitializer {
         // A trait-usage search parameter that collides with a reserved listing field (issue #538) is caught
         // here rather than left to silently drop the search at merge time.
         checkSearchParamNames(cxt, collected)
+        // A `g-layout` naming a field its type does not declare is caught at boot (issue #584), not discovered
+        // as a control that renders nothing.
+        checkLayouts()
         isInit = true
     }
 
@@ -353,6 +356,41 @@ class SchemaService : ServiceInitializer {
         if (problems.isNotEmpty()) {
             throw KdrException(
                 "Refusing to start: ${problems.size} problem(s) with '${SCH.visibleWhen}' expressions.\n" +
+                    problems.joinToString("\n"),
+            )
+        }
+    }
+
+    /**
+     * Refuses the boot when a `g-layout` names a field its type does not declare, or sits on a type that is
+     * not an object (issue #584) -- the same enumerate-rather-than-discover move [checkVisibleWhen] makes, so a
+     * layout referencing a renamed or absent property fails here instead of rendering nothing.
+     *
+     * It reads the layouts **unpruned** (straight from each store's defs), because what it holds to account is
+     * what an author *wrote*; the pruned form on `KdrSchemaStore.layouts` is what is delivered. And it holds a
+     * layout to the type it was **authored** on: every global layout, but on a client variant only a layout the
+     * client supplied itself. A variant that narrowed a type inherits global's layout by reference -- the same
+     * object -- and that layout naming a property the client dropped is the sanctioned outcome (pruned on
+     * delivery), not a mistake, so it is skipped rather than allowed to take the node down.
+     */
+    @KdrPrivate
+    fun checkLayouts() {
+        val problems = LinkedHashSet<String>()
+        fun rawLayout(defs: Map<String, Any?>, name: String): Any? = (defs[name] as? Map<*, *>)?.get(SCH.layout)
+        for ((name, layout) in collectLayouts(schemaStore.defs)) {
+            problems.addAll(layoutFieldProblems("Type '$name'", layout, schemaStore.types[name]))
+        }
+        for ((client, store) in clientStores) {
+            // A client sharing the global document has nothing of its own to check.
+            if (store.defs === schemaStore.defs) continue
+            for ((name, layout) in collectLayouts(store.defs)) {
+                if (rawLayout(store.defs, name) === rawLayout(schemaStore.defs, name)) continue // inherited
+                problems.addAll(layoutFieldProblems("Type '$name' (client '$client')", layout, store.types[name]))
+            }
+        }
+        if (problems.isNotEmpty()) {
+            throw KdrException(
+                "Refusing to start: ${problems.size} problem(s) with '${SCH.layout}' field references.\n" +
                     problems.joinToString("\n"),
             )
         }
@@ -925,7 +963,11 @@ class SchemaService : ServiceInitializer {
             val deliveredCfacts = svc?.deliveredCfactsFor(cxt, surface.client).orEmpty()
             val result = linkedMapOf(
                 EI.endpoints to renderings,
-                SCH.dDefs to collectDefs(renderings, surface.schema.defs),
+                // Drawn from the store's `servedDefs` (issue #584): the catalog is friendly-form fuel and
+                // documentation both, so the `g-layout` presentation blocks are already stripped there --
+                // delivered out-of-band instead, and never part of the documentation-grade schema. Stripped once
+                // at boot, not per request.
+                SCH.dDefs to collectDefs(renderings, surface.schema.servedDefs),
                 // Whether this caller may slice the catalog (issue #489). Emitted here, shared by both the
                 // listing and the single-lookup, so the two cannot disagree about it -- and read against the
                 // effective env auth, the same gate `endpointCatalog` restricts the listing by.

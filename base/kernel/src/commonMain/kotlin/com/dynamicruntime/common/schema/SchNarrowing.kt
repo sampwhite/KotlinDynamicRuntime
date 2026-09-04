@@ -67,6 +67,11 @@ private val presentationKeys = setOf(
     // caller the gate hides a field from still has it in the compiled schema, and the handler enforces the real
     // condition -- so a client may set or change it freely. Hiding a field cannot widen what a type accepts.
     SCH.visibleWhen,
+    // A layout (issue #584) is how a friendly form renders a type's fields; it is never read into `SchType`
+    // and takes no part in validation, so a client may supply its own. Absent from this list, a client's
+    // `g-layout` overlay would be refused as a validation change -- and, in warn mode, take the client's whole
+    // alteration of that type down with it.
+    SCH.layout,
 )
 
 /** The keys that may differ by narrowing; every other validating key must match the base exactly. */

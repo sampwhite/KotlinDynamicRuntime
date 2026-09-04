@@ -325,7 +325,7 @@ object SCH {
 
     /**
      * A **presentation hint** for a read-only surface: how a value of this type/field should be *displayed*,
-     * with no effect on validation (issue #540). Carries a value from [PRES] -- `status` (colour by verdict),
+     * with no effect on validation (issue #540). Carries a value from [PRES] -- `status` (color by verdict),
      * `table` (render an array of the type as rows/columns), `identifier` (monospace). Purely advisory: a
      * renderer that does not recognize the hint falls back to its ordinary rendering, and validation ignores it
      * entirely, so an endpoint declaring one still validates exactly as before.
@@ -335,6 +335,14 @@ object SCH {
      * schema the same way the catalog's outline already does. Surfaced on `SchType.presentation`.
      */
     const val presentation = "g-presentation"
+
+    /**
+     * The **layout** for a type: how a friendly form renders its fields (issue #584). Unlike the other
+     * keywords here, it is **never read into `SchType`** -- it varies by surface, so it is extracted by its own
+     * function ([collectLayouts]) into a `SchLayout` held beside the compiled types, stripped from the served
+     * and exported schema ([withoutLayouts]), and delivered out-of-band. See `SchLayout` and `SL`.
+     */
+    const val layout = "g-layout"
 }
 
 /** Values of the JSON Schema `type` keyword (object/null collide with Kotlin
@@ -396,7 +404,7 @@ object SOWS {
  */
 @Suppress("ConstPropertyName", "unused")
 object PRES {
-    /** A verdict field, coloured by its [PSTAT] value (green/blue/amber/red) rather than shown as plain text. */
+    /** A verdict field, colored by its [PSTAT] value (green/blue/amber/red) rather than shown as plain text. */
     const val status = "status"
 
     /** A type whose array is rendered as a table -- one row per element, its properties the columns. */
@@ -406,15 +414,15 @@ object PRES {
     const val identifier = "identifier"
 
     /** On a **property** whose value is an array of objects, inside a [table]-rendered row: render that array as
-     *  its own labelled sub-table on a full-width row *beneath* the main row, rather than as an inline cell.
+     *  its own labeled sub-table on a full-width row *beneath* the main row, rather than as an inline cell.
      *  Master-detail -- for a heavy nested array (a database table's `columns`) that would otherwise force the
      *  row very wide. Ignored on a property that is not a structured array. */
     const val detail = "detail"
 }
 
 /**
- * Values a [PRES.status] field may carry, in increasing severity, each with a conventional colour a renderer
- * maps (issue #540). A shared vocabulary so the server states the verdict and the frontend colours it the same
+ * Values a [PRES.status] field may carry, in increasing severity, each with a conventional color a renderer
+ * maps (issue #540). A shared vocabulary so the server states the verdict and the frontend colors it the same
  * way, rather than each side inventing its own strings.
  */
 @Suppress("ConstPropertyName", "unused")
@@ -432,7 +440,7 @@ object PSTAT {
     const val error = "error"
 
     /** Every status, ordered by increasing severity -- the one place the vocabulary and its order live, so the
-     *  schema (an `options` list), the chip colours, and any severity test read the same set rather than a copy. */
+     *  schema (an `options` list), the chip colors, and any severity test read the same set rather than a copy. */
     val all: List<String> = listOf(ok, info, warning, error)
 
     /** Whether a status calls for attention: at or above [warning] in [all]. Anything the list does not know
