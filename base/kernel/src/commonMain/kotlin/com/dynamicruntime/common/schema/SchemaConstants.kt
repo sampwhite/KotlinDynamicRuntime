@@ -335,6 +335,14 @@ object SCH {
      * schema the same way the catalog's outline already does. Surfaced on `SchType.presentation`.
      */
     const val presentation = "g-presentation"
+
+    /**
+     * The **layout** for a type: how a friendly form renders its fields (issue #584). Unlike the other
+     * keywords here, it is **never read into `SchType`** -- it varies by surface, so it is extracted by its own
+     * function ([collectLayouts]) into a `SchLayout` held beside the compiled types, stripped from the served
+     * and exported schema ([withoutLayouts]), and delivered out-of-band. See `SchLayout` and `SL`.
+     */
+    const val layout = "g-layout"
 }
 
 /** Values of the JSON Schema `type` keyword (object/null collide with Kotlin

@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.gedraConfigCheckMode
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.schema.LogSchema
+import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.narrowingProblems
 import com.dynamicruntime.common.schema.overlayDefs
 import com.dynamicruntime.common.schema.parseSchemaTypes
@@ -93,6 +94,10 @@ fun buildClientVariants(
             endpoints = global.endpoints,
             tables = global.tables,
             defs = defs,
+            // This client's own layouts (issue #584): a client can overlay a type's `g-layout`, and `defs` here
+            // carries the merged result, so a read of it is the variant's layout -- inheriting global's where
+            // the client changed nothing.
+            layouts = collectLayouts(defs),
         )
         LogSchema.debug(cxt) {
             "Built a schema variant for '$client': ${authored.size} altered definition(s), " +

@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.context
 
 import com.dynamicruntime.common.endpoint.KdrEndpoint
+import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.sql.KdrTable
 
@@ -22,12 +23,18 @@ import com.dynamicruntime.common.sql.KdrTable
  * Tables are held here — beside types and endpoints — because a table definition is
  * "schema for data stored in a database"; the topic service reads its topic's tables
  * from here rather than owning the definitions itself.
+ *
+ * [layouts] are the per-type `g-layout` presentation models (issue #584), extracted out of the raw [defs] and
+ * held beside them, keyed by the same qualified name — a friendly form joins a type to its layout by that name.
+ * They live here rather than on [SchType] because a layout varies by surface, not by validity, and are stripped
+ * from what the catalog serves (delivered out-of-band instead).
  */
 class KdrSchemaStore(
     val types: Map<String, SchType> = emptyMap(),
     val endpoints: Map<String, KdrEndpoint> = emptyMap(),
     val tables: Map<String, KdrTable> = emptyMap(),
     val defs: Map<String, Any?> = emptyMap(),
+    val layouts: Map<String, SchLayout> = emptyMap(),
 ) {
     @Suppress("ConstPropertyName")
     companion object {

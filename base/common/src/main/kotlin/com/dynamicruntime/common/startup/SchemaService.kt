@@ -32,6 +32,9 @@ import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.searchParamCollisions
 import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.schema.collectDefs
+import com.dynamicruntime.common.schema.collectLayouts
+import com.dynamicruntime.common.schema.layoutFieldProblems
+import com.dynamicruntime.common.schema.withoutLayouts
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
@@ -142,8 +145,12 @@ class SchemaService : ServiceInitializer {
         val types = parseSchemaTypes(collected.defs)
         val endpoints = availableEndpoints.associateBy { it.collationKey }
         val tables = collected.tables.associateBy { it.tableName }
+        // The per-type layouts (issue #584), read out of the raw defs and held beside the compiled types. A
+        // read-only pass -- `g-layout` stays in the defs so a per-client overlay inherits it, and is stripped
+        // only from what the catalog serves.
+        val globalLayouts = collectLayouts(collected.defs)
         // The raw defs ride along so the /schema/endpoints catalog can serve types with their `$ref`s intact.
-        val store = KdrSchemaStore(types, endpoints, tables, collected.defs)
+        val store = KdrSchemaStore(types, endpoints, tables, collected.defs, globalLayouts)
 
         // Fail fast: input resolution is deferred to request time (it needs the compiled types), so resolve
         // every endpoint's input once here. A missing referenced input type surfaces at boot instead of on
@@ -182,16 +189,16 @@ class SchemaService : ServiceInitializer {
             // variant would not find the very endpoints the variant is for. The types and defs are reused as
             // parsed -- only the endpoint map changes -- so this costs a map merge and no re-parsing.
             val allEndpoints = endpoints + clientEndpoints.associateBy { it.collationKey }
-            val withClients = KdrSchemaStore(types, allEndpoints, tables, collected.defs)
+            val withClients = KdrSchemaStore(types, allEndpoints, tables, collected.defs, globalLayouts)
             clientStores = varyingClients.associateWith { client ->
                 val variant = variants[client]
                 // A client that varies nothing about *schema* gets the global document with the full endpoint
                 // map -- present in this map rather than absent, because `hasEndpoints` reads it to decide
                 // whether to advertise the copies that were just made for that client.
                 if (variant == null) {
-                    KdrSchemaStore(types, allEndpoints, tables, collected.defs)
+                    KdrSchemaStore(types, allEndpoints, tables, collected.defs, globalLayouts)
                 } else {
-                    KdrSchemaStore(variant.types, allEndpoints, variant.tables, variant.defs)
+                    KdrSchemaStore(variant.types, allEndpoints, variant.tables, variant.defs, variant.layouts)
                 }
             }
             schemaStore = withClients
@@ -211,6 +218,9 @@ class SchemaService : ServiceInitializer {
         // A trait-usage search parameter that collides with a reserved listing field (issue #538) is caught
         // here rather than left to silently drop the search at merge time.
         checkSearchParamNames(cxt, collected)
+        // A `g-layout` naming a field its type does not declare is caught at boot (issue #584), not discovered
+        // as a control that renders nothing.
+        checkLayouts()
         isInit = true
     }
 
@@ -353,6 +363,30 @@ class SchemaService : ServiceInitializer {
         if (problems.isNotEmpty()) {
             throw KdrException(
                 "Refusing to start: ${problems.size} problem(s) with '${SCH.visibleWhen}' expressions.\n" +
+                    problems.joinToString("\n"),
+            )
+        }
+    }
+
+    /**
+     * Refuses the boot when a `g-layout` names a field its type does not declare (issue #584) -- the same
+     * enumerate-rather-than-discover move [checkVisibleWhen] makes, so a layout referencing a renamed or absent
+     * property fails here instead of rendering nothing. Runs over the global store's layouts and each client's,
+     * resolving each type from that store's compiled types.
+     */
+    @KdrPrivate
+    fun checkLayouts() {
+        val problems = LinkedHashSet<String>()
+        fun check(store: KdrSchemaStore, scopeSuffix: String) {
+            for ((typeName, layout) in store.layouts) {
+                problems.addAll(layoutFieldProblems("Type '$typeName'$scopeSuffix", layout, store.types[typeName]))
+            }
+        }
+        check(schemaStore, "")
+        for ((client, store) in clientStores) check(store, " (client '$client')")
+        if (problems.isNotEmpty()) {
+            throw KdrException(
+                "Refusing to start: ${problems.size} problem(s) with '${SCH.layout}' field references.\n" +
                     problems.joinToString("\n"),
             )
         }
@@ -925,7 +959,10 @@ class SchemaService : ServiceInitializer {
             val deliveredCfacts = svc?.deliveredCfactsFor(cxt, surface.client).orEmpty()
             val result = linkedMapOf(
                 EI.endpoints to renderings,
-                SCH.dDefs to collectDefs(renderings, surface.schema.defs),
+                // The catalog is friendly-form fuel and documentation both, so the `g-layout` presentation
+                // blocks are stripped here (issue #584) -- delivered out-of-band instead, and never part of the
+                // documentation-grade schema.
+                SCH.dDefs to withoutLayouts(collectDefs(renderings, surface.schema.defs)),
                 // Whether this caller may slice the catalog (issue #489). Emitted here, shared by both the
                 // listing and the single-lookup, so the two cannot disagree about it -- and read against the
                 // effective env auth, the same gate `endpointCatalog` restricts the listing by.
