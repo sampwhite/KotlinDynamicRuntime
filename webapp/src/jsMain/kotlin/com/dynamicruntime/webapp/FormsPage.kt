@@ -68,14 +68,15 @@ val FormsPage = FC<Props> {
     // currently filtered by. They part so typing does not re-query on every keystroke -- Search promotes the
     // draft, and paging/reloads carry the applied set so a filtered list stays filtered across pages.
     var searchDraft by useState<Map<String, String>>(emptyMap())
-    var appliedSearch by useState<Map<String, Any?>>(emptyMap())
+    var appliedSearch by useState<Map<String, String>>(emptyMap())
     // Whether the caller administers other users (issue #562), from the shell's UI-config. False until it
     // answers and false when it cannot, so the administrative controls are never drawn on a guess.
     var canManageUsers by useState(false)
     // Whether the grouped filter panel is open; closed by default so the search does not take the screen.
     var filtersOpen by useState(false)
-    // A failure of a search or page load, shown beside the controls so they stay on screen to be corrected --
-    // a user reference outside the caller's access, say -- rather than replacing the whole list.
+    // A failure of a search or page reload, shown beside the controls so they stay on screen to be corrected --
+    // a user reference outside the caller's access, say -- rather than replacing the whole list. It also keeps
+    // the empty state away: a reload that failed with nothing on screen is not "no forms".
     var searchError by useState<DisplayError?>(null)
     var listLoading by useState(true)
     var error by useState<DisplayError?>(null)
@@ -344,8 +345,9 @@ val FormsPage = FC<Props> {
                 }
             }
             // The list, but truly empty: no forms at all, and no search narrowing it (a search that matches
-            // nothing is a different state, handled in the list branch so its box stays on screen to be cleared).
-            rows.isEmpty() && offset == 0 && appliedSearch.isEmpty() -> {
+            // nothing is a different state, handled in the list branch so its box stays on screen to be cleared),
+            // and no reload failure -- an empty page after a failed request is unknown, not empty (#562 review).
+            rows.isEmpty() && offset == 0 && appliedSearch.isEmpty() && searchError == null -> {
                 p {
                     className = ClassName("subtitle")
                     +"You haven't created any forms yet."
@@ -385,17 +387,20 @@ val FormsPage = FC<Props> {
                         applied = appliedSearch[EI.user]?.toString()?.ifBlank { null }
                         onChange = { v -> searchDraft = searchDraft + (EI.user to v) }
                         onApply = { applySearch(ep, searchDraft) }
+                        // Drops the user from what is *applied*, and reverts the boxes to that: a pending edit in
+                        // a filter box is not applied by a button about whose forms are shown (#562 review).
                         onShowEveryone = {
-                            val draft = searchDraft - EI.user
-                            searchDraft = draft
-                            applySearch(ep, draft)
+                            val kept = appliedSearch - EI.user
+                            searchDraft = kept
+                            applySearch(ep, kept)
                         }
                     }
                 }
                 // The search the client's usage rules declared (issue #538, regrouped in #562): the list's own
                 // input schema names the parameters, so a client with no usage rules shows no box. Search and
                 // Apply promote the draft to the applied filter and reload from the top; Clear drops the term and
-                // the filters but leaves whose forms are shown to the scope bar.
+                // the filters but leaves whose forms are shown to the scope bar -- as *applied*, so a user typed
+                // into the scope box and never applied is not applied by Clear either (#562 review).
                 val groups = searchGroups(ep.inputSchema)
                 if (groups.isNotEmpty()) {
                     FormsSearch {
@@ -407,19 +412,22 @@ val FormsPage = FC<Props> {
                         onChange = { name, value -> searchDraft = searchDraft + (name to value) }
                         onSearch = { applySearch(ep, searchDraft) }
                         onClear = {
-                            val kept = searchDraft.filterKeys { it == EI.user }
+                            val kept = appliedSearch.filterKeys { it == EI.user }
                             searchDraft = kept
                             applySearch(ep, kept)
                         }
                     }
                 }
-                searchError?.let { errorText("Couldn't search your forms.", it) }
+                searchError?.let { errorText("Couldn't load your forms.", it) }
                 // A search that matched nothing: the box stays above so it can be changed or cleared, and a
-                // plain message stands in for the paging bar (there is nothing to page).
+                // plain message stands in for the paging bar (there is nothing to page). After a failed reload
+                // the rows are whatever was on screen before, so nothing is said about what they match.
                 if (rows.isEmpty()) {
-                    p {
-                        className = ClassName("subtitle")
-                        +"No forms match your search."
+                    if (searchError == null) {
+                        p {
+                            className = ClassName("subtitle")
+                            +"No forms match your search."
+                        }
                     }
                 } else {
                     pagingBar(offset, rows.size, numAvailable) { newOffset ->

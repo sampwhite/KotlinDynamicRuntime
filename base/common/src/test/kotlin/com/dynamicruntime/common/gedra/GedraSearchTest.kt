@@ -151,17 +151,19 @@ class GedraSearchTest : StringSpec({
             usage("name", UsageKind.string, substring = true),
             usage("year", UsageKind.number),
             usage("due", UsageKind.date),
-            // Trait ids that end like a suffix: the schema, not the spelling, says whether one is a bound.
+            // Trait ids that end like a suffix: the schema, not the spelling, says whether one is a bound, and a
+            // `Contains` ending is a substring parameter only beside the exact one it shortens to.
             usage("vitaMin", UsageKind.string),
             usage("climax", UsageKind.number),
+            usage("notesContains", UsageKind.string),
         )
         val params = gedraSearchParams(usages)
         val props = searchParamProperties(params)
         for (param in params) {
-            val shape = decodeSearchParam(param.name, props[param.name].toJsonMapOrEmpty())
+            val shape = decodeSearchParam(param.name, props[param.name].toJsonMapOrEmpty(), props.keys)
             Triple(shape.traitId, shape.role, shape.kind) shouldBe Triple(param.traitId, param.role, param.kind)
         }
         // A trait a client could not have generated -- typed, but with neither ending -- still reads as a control.
-        decodeSearchParam("year", mapOf(SCH.type to SCT.number)).role shouldBe SearchRole.exact
+        decodeSearchParam("year", mapOf(SCH.type to SCT.number), setOf("year")).role shouldBe SearchRole.exact
     }
 })

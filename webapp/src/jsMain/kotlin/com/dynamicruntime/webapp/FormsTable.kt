@@ -68,14 +68,18 @@ val FormsTable = FC<FormsTableProps> { props ->
     val anyActions = props.canEdit || props.canDelete
     Table {
         size = "small"
+        // Declared widths mean what they say (see `TableProps.tableLayout`): under the default auto layout the
+        // User column's unbreakable email would take width from the two date columns, whose content is fixed
+        // and cannot give way, and wrap them -- the failure the user table met first. `Contains`, the one
+        // column with no width, takes what is left -- and the minimum width below guarantees it a real share,
+        // so a card too narrow for the whole set scrolls the table rather than crushing that column.
+        tableLayout = "fixed"
         pagination = false
         rowKey = "key"
-        columns = buildList {
+        val cols = buildList {
             // Namespaced key: a usage trait id must not shadow the reserved row key ("key") or a fixed column
             // ("contains"/"owner"/"updated"/"created"/"actions") -- overwriting the row key would break which
             // form a click opens.
-            // Widths sized so the full set -- display columns, User, both dates, Actions -- fits the wide card
-            // without the table scrolling; `Contains` takes what is left.
             displayCols.forEach { add(column(it.label, displayColKey(it.traitId), 160)) }
             add(column("Contains", "contains", null))
             if (props.showOwner) add(ownerColumn())
@@ -84,7 +88,9 @@ val FormsTable = FC<FormsTableProps> { props ->
             add(column("Updated ↓", "updated", 175))
             add(column("Created", "created", 175))
             if (anyActions) add(actionsColumn(props))
-        }.toTypedArray()
+        }
+        columns = cols.toTypedArray()
+        scroll = minTableWidth(cols)
         dataSource = props.forms.map { (id, summary) ->
             val row: dynamic = js("({})")
             row.key = id
@@ -230,6 +236,21 @@ private val FormRowActions = FC<FormRowActionsProps> { props ->
             }
         }
     }
+}
+
+/** What the width-less `Contains` column is guaranteed under the fixed layout, in px -- see [minTableWidth]. */
+private const val containsMinWidth = 200
+
+/**
+ * The table's minimum width as an antd `scroll` config: every declared column width plus [containsMinWidth]
+ * for the one column declared without one. Above this the width-less column absorbs the extra; below it the
+ * table scrolls inside its wrapper, so no card width crushes a column to nothing.
+ */
+private fun minTableWidth(cols: List<dynamic>): dynamic {
+    val declared = cols.sumOf { (it.width as? Int) ?: 0 }
+    val scroll: dynamic = js("({})")
+    scroll.x = declared + containsMinWidth
+    return scroll
 }
 
 /** The antd row/column key for a display column: a trait id, namespaced so it cannot shadow the reserved

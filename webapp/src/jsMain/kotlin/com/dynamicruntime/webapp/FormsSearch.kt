@@ -69,7 +69,7 @@ fun searchGroups(inputSchema: Map<String, Any?>): List<SearchGroup> {
     for ((name, body) in properties) {
         if (name in reservedQueryFields) continue
         val prop = body.toJsonMapOrEmpty()
-        val shape = decodeSearchParam(name, prop)
+        val shape = decodeSearchParam(name, prop, properties.keys)
         val draft = drafts.getOrPut(shape.traitId) { Draft(shape.traitId, shape.kind) }
         // The caption is the column label: the parameter's title with the role's own words removed.
         if (draft.label == null) draft.label = (prop[SCH.title] as? String)?.removeSuffix(shape.role.labelSuffix)

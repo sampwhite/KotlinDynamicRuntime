@@ -123,17 +123,20 @@ private fun searchLabel(param: GedraSearchParam): String = param.label + param.r
 class SearchParamShape(val traitId: String, val role: SearchRole, val kind: UsageKind)
 
 /**
- * The inverse of [gedraSearchParams]'s naming, for one property [name] with its schema [prop]: the trait, the
- * role and the kind the parameter was generated from.
+ * The inverse of [gedraSearchParams]'s naming, for one property [name] with its schema [prop] among the
+ * [declared] property names of the same query type: the trait, the role and the kind the parameter was
+ * generated from.
  *
  * The schema decides the family and the spelling decides the role within it: a `number` type or `date` format
- * says the parameter is a bound, and then a `Min`/`Max` ending says which; plain text ending in `Contains` is
- * the substring parameter, and any other text is the exact one. Reading the kind first is what keeps a text
- * trait whose id happens to end in `Min` from being taken for a bound. A parameter the generator would not
- * have written -- a typed one with neither ending -- reads as an exact match on its own name, so it still gets
- * a control rather than vanishing.
+ * says the parameter is a bound, and then a `Min`/`Max` ending says which. Plain text ending in `Contains` is
+ * the substring parameter **only when the name it shortens to is declared too** -- the generator never writes a
+ * substring parameter without the exact one beside it -- so a trait whose own id ends in `Contains` reads as
+ * the exact match on its full name rather than as some other trait's substring. Reading the kind first does the
+ * same for a text trait whose id ends in `Min`. A parameter the generator would not have written -- a typed one
+ * with neither ending -- reads as an exact match on its own name, so it still gets a control rather than
+ * vanishing.
  */
-fun decodeSearchParam(name: String, prop: Map<String, Any?>): SearchParamShape {
+fun decodeSearchParam(name: String, prop: Map<String, Any?>, declared: Set<String>): SearchParamShape {
     val kind = when {
         prop[SCH.type] == SCT.number -> UsageKind.number
         prop[SCH.format] == SFMT.date -> UsageKind.date
@@ -141,7 +144,9 @@ fun decodeSearchParam(name: String, prop: Map<String, Any?>): SearchParamShape {
     }
     fun hasSuffix(role: SearchRole) = name.length > role.nameSuffix.length && name.endsWith(role.nameSuffix)
     val role = when (kind) {
-        UsageKind.string -> if (hasSuffix(SearchRole.contains)) SearchRole.contains else SearchRole.exact
+        UsageKind.string ->
+            if (hasSuffix(SearchRole.contains) && name.removeSuffix(SearchRole.contains.nameSuffix) in declared) SearchRole.contains
+            else SearchRole.exact
         UsageKind.number, UsageKind.date -> when {
             hasSuffix(SearchRole.min) -> SearchRole.min
             hasSuffix(SearchRole.max) -> SearchRole.max
