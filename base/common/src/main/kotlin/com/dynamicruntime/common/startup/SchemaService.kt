@@ -34,7 +34,6 @@ import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.layoutFieldProblems
-import com.dynamicruntime.common.schema.withoutLayouts
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
@@ -145,12 +144,10 @@ class SchemaService : ServiceInitializer {
         val types = parseSchemaTypes(collected.defs)
         val endpoints = availableEndpoints.associateBy { it.collationKey }
         val tables = collected.tables.associateBy { it.tableName }
-        // The per-type layouts (issue #584), read out of the raw defs and held beside the compiled types. A
-        // read-only pass -- `g-layout` stays in the defs so a per-client overlay inherits it, and is stripped
-        // only from what the catalog serves.
-        val globalLayouts = collectLayouts(collected.defs)
         // The raw defs ride along so the /schema/endpoints catalog can serve types with their `$ref`s intact.
-        val store = KdrSchemaStore(types, endpoints, tables, collected.defs, globalLayouts)
+        // The per-type layouts (issue #584) and the layout-stripped `servedDefs` are derived from them by the
+        // store itself, so no construction site can hand it one and not the other.
+        val store = KdrSchemaStore(types, endpoints, tables, collected.defs)
 
         // Fail fast: input resolution is deferred to request time (it needs the compiled types), so resolve
         // every endpoint's input once here. A missing referenced input type surfaces at boot instead of on
@@ -189,17 +186,13 @@ class SchemaService : ServiceInitializer {
             // variant would not find the very endpoints the variant is for. The types and defs are reused as
             // parsed -- only the endpoint map changes -- so this costs a map merge and no re-parsing.
             val allEndpoints = endpoints + clientEndpoints.associateBy { it.collationKey }
-            val withClients = KdrSchemaStore(types, allEndpoints, tables, collected.defs, globalLayouts)
+            val withClients = KdrSchemaStore(types, allEndpoints, tables, collected.defs)
             clientStores = varyingClients.associateWith { client ->
-                val variant = variants[client]
                 // A client that varies nothing about *schema* gets the global document with the full endpoint
                 // map -- present in this map rather than absent, because `hasEndpoints` reads it to decide
-                // whether to advertise the copies that were just made for that client.
-                if (variant == null) {
-                    KdrSchemaStore(types, allEndpoints, tables, collected.defs, globalLayouts)
-                } else {
-                    KdrSchemaStore(variant.types, allEndpoints, variant.tables, variant.defs, variant.layouts)
-                }
+                // whether to advertise the copies that were just made for that client. It is the very same
+                // store object, so its derived layouts and served defs are computed once and shared.
+                variants[client]?.let { KdrSchemaStore(it.types, allEndpoints, it.tables, it.defs) } ?: withClients
             }
             schemaStore = withClients
             cxt.instanceConfig.put(KdrSchemaStore.key, withClients)
@@ -369,21 +362,32 @@ class SchemaService : ServiceInitializer {
     }
 
     /**
-     * Refuses the boot when a `g-layout` names a field its type does not declare (issue #584) -- the same
-     * enumerate-rather-than-discover move [checkVisibleWhen] makes, so a layout referencing a renamed or absent
-     * property fails here instead of rendering nothing. Runs over the global store's layouts and each client's,
-     * resolving each type from that store's compiled types.
+     * Refuses the boot when a `g-layout` names a field its type does not declare, or sits on a type that is
+     * not an object (issue #584) -- the same enumerate-rather-than-discover move [checkVisibleWhen] makes, so a
+     * layout referencing a renamed or absent property fails here instead of rendering nothing.
+     *
+     * It reads the layouts **unpruned** (straight from each store's defs), because what it holds to account is
+     * what an author *wrote*; the pruned form on `KdrSchemaStore.layouts` is what is delivered. And it holds a
+     * layout to the type it was **authored** on: every global layout, but on a client variant only a layout the
+     * client supplied itself. A variant that narrowed a type inherits global's layout by reference -- the same
+     * object -- and that layout naming a property the client dropped is the sanctioned outcome (pruned on
+     * delivery), not a mistake, so it is skipped rather than allowed to take the node down.
      */
     @KdrPrivate
     fun checkLayouts() {
         val problems = LinkedHashSet<String>()
-        fun check(store: KdrSchemaStore, scopeSuffix: String) {
-            for ((typeName, layout) in store.layouts) {
-                problems.addAll(layoutFieldProblems("Type '$typeName'$scopeSuffix", layout, store.types[typeName]))
+        fun rawLayout(defs: Map<String, Any?>, name: String): Any? = (defs[name] as? Map<*, *>)?.get(SCH.layout)
+        for ((name, layout) in collectLayouts(schemaStore.defs)) {
+            problems.addAll(layoutFieldProblems("Type '$name'", layout, schemaStore.types[name]))
+        }
+        for ((client, store) in clientStores) {
+            // A client sharing the global document has nothing of its own to check.
+            if (store.defs === schemaStore.defs) continue
+            for ((name, layout) in collectLayouts(store.defs)) {
+                if (rawLayout(store.defs, name) === rawLayout(schemaStore.defs, name)) continue // inherited
+                problems.addAll(layoutFieldProblems("Type '$name' (client '$client')", layout, store.types[name]))
             }
         }
-        check(schemaStore, "")
-        for ((client, store) in clientStores) check(store, " (client '$client')")
         if (problems.isNotEmpty()) {
             throw KdrException(
                 "Refusing to start: ${problems.size} problem(s) with '${SCH.layout}' field references.\n" +
@@ -959,10 +963,11 @@ class SchemaService : ServiceInitializer {
             val deliveredCfacts = svc?.deliveredCfactsFor(cxt, surface.client).orEmpty()
             val result = linkedMapOf(
                 EI.endpoints to renderings,
-                // The catalog is friendly-form fuel and documentation both, so the `g-layout` presentation
-                // blocks are stripped here (issue #584) -- delivered out-of-band instead, and never part of the
-                // documentation-grade schema.
-                SCH.dDefs to withoutLayouts(collectDefs(renderings, surface.schema.defs)),
+                // Drawn from the store's `servedDefs` (issue #584): the catalog is friendly-form fuel and
+                // documentation both, so the `g-layout` presentation blocks are already stripped there --
+                // delivered out-of-band instead, and never part of the documentation-grade schema. Stripped once
+                // at boot, not per request.
+                SCH.dDefs to collectDefs(renderings, surface.schema.servedDefs),
                 // Whether this caller may slice the catalog (issue #489). Emitted here, shared by both the
                 // listing and the single-lookup, so the two cannot disagree about it -- and read against the
                 // effective env auth, the same gate `endpointCatalog` restricts the listing by.

@@ -201,6 +201,37 @@ being hand-coded per endpoint and drifting when a field is renamed. A renderer t
 falls back to ordinary rendering, and the validator never consults it — an endpoint declaring a hint still
 validates exactly as before.
 
+## Layouts: `g-layout` (issue #584)
+
+A type may carry a **layout** — how a friendly form renders its fields — under the custom `g-layout` keyword.
+It is the one kd2 keyword that is **never read into `SchType`**: a layout varies by surface, not by validity,
+so it is read out by its own kernel function into a `SchLayout` held **beside** the compiled types
+(`KdrSchemaStore.layouts`, keyed by qualified type name), stripped from the served schema
+(`KdrSchemaStore.servedDefs`, what the catalog and the workflow view hand out), and delivered out-of-band. The
+wire schema stays documentation-grade; the parser ignores the key.
+
+```json
+"g-layout": {
+  "fragmentFileId": "acme",
+  "schemaFields": [
+    { "field": "topic",    "label": "Topic", "description": "${topic.help}" },
+    { "field": "hasIssue", "label": "Has issue?" }
+  ]
+}
+```
+
+- The block's vocabulary is the `SL` object (`schemaFields`, `field`, `label`, `description`, `hint`,
+  `fragmentFileId`). The parser is **strict**: an unknown key on the block or on an entry, a present block with
+  no entries, or a non-object value all fail the boot — a layout must never parse clean and render nothing.
+- Only a **named type's own top-level** `g-layout` is collected. One nested on an inline sub-object is
+  **refused** at boot (pull the sub-object out as a named type), not ignored.
+- **Boot check** (`checkLayouts`): a layout naming a field its type does not declare, or sitting on a union or
+  array type, refuses the boot. A client that narrows a type inherits the base layout by reference and has it
+  **pruned** to the properties it kept — a sanctioned narrowing never fails the boot.
+- A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key.
+- No builder method yet (nothing consumes the model in this stage); attach one to a type with the map escape
+  hatch `data[SCH.layout] = mapOf(...)` inside its `type("X") { ... }` block.
+
 ## Validation & coercion
 
 Parse the built `$defs` map into resolved types, then validate/coerce data:
@@ -240,7 +271,8 @@ Don't write `as`/`@Suppress("UNCHECKED_CAST")`. Use `com.dynamicruntime.common.u
 ## Source files
 
 - `base/kernel/src/commonMain/.../schema/`: `SchemaConstants.kt` (SCH/SCT/SFMT), `SchTypeBuilder.kt`,
-  `SchTypesBuilder.kt`, `SchParser.kt`, `SchValidator.kt`, `SchType.kt`, `SchProperty.kt`, `SchOption.kt`
+  `SchTypesBuilder.kt`, `SchParser.kt`, `SchValidator.kt`, `SchType.kt`, `SchProperty.kt`, `SchOption.kt`,
+  `SchLayout.kt` (the `g-layout` model, its `SL` vocabulary, collect/strip/prune and the boot check)
 - `base/kernel/src/commonMain/.../util/`: `CollectionUtil.kt` (`deepClone`), `ConvertUtil.kt`
   (`toT`/`toJsonMap`/`toOptStr`)
 - Tests: `base/common/src/test/.../schema/SchTypeBuilderTest.kt`, `SchValidatorTest.kt`, `SchParserTest.kt`
