@@ -113,18 +113,29 @@ class GedraSearchByUserTest : StringSpec({
         deliveredCfacts(ada)[CFACTS.hasAdminLevel] shouldBe true
         deliveredCfacts(bob)[CFACTS.hasAdminLevel] shouldBe false
     }
-    // The owner block (issue #580, flat keys in #562): an admin's listed rows carry an `owner` block with the
-    // email, and a name only when the account has one that is not the email; an ordinary caller's rows carry no
-    // block at all -- they are all their own, so the column is not drawn and nothing is looked up.
-    "listed rows carry an owner block (email, and a name only when it adds one) for an admin, and none for an ordinary user" {
-        val adaRows = ada.getItems(GEP.formDocs)
+    // The owner block (issue #580, flat keys in #562; opt-in in #591): when an admin asks for it with
+    // `includeUsers`, their listed rows carry an `owner` block -- the email, and a name only when the account
+    // has one that is not the email. An ordinary caller's rows carry none even when they ask (nobody else to
+    // name), and nobody gets it without asking.
+    "an admin who asks with includeUsers gets an owner block (email, and a name only when it adds one); an ordinary user gets none" {
+        val adaRows = ada.getItems(GEP.formDocs, mapOf(EI.includeUsers to true))
         val aliceOwner = adaRows.first { it[GDF.gedraId] == aliceDocId }[GDF.owner].toJsonMapOrEmpty()
         // A provisioned account has no name and a placeholder username, so its public name *is* the email: the
         // email is present and the name is not, rather than the address twice.
         aliceOwner[DUF.email] shouldBe aliceEmail
         aliceOwner.containsKey(DUF.name) shouldBe false
-        val bobRows = bob.getItems(GEP.formDocs)
+        val bobRows = bob.getItems(GEP.formDocs, mapOf(EI.includeUsers to true))
         bobRows.first { it[GDF.gedraId] == bobDocId }.containsKey(GDF.owner) shouldBe false
+    }
+
+    // The flag is off by default (issue #591): the block is attached only when asked, so a caller that will not
+    // draw the User column pays for no owner lookup and receives no owner.
+    "the owner block is absent unless includeUsers is asked for, even for an admin" {
+        // No flag: no owner block, though the same admin gets one when asking (the test above).
+        ada.getItems(GEP.formDocs).first { it[GDF.gedraId] == aliceDocId }.containsKey(GDF.owner) shouldBe false
+        // Explicit false reads the same as absent.
+        ada.getItems(GEP.formDocs, mapOf(EI.includeUsers to false))
+            .first { it[GDF.gedraId] == aliceDocId }.containsKey(GDF.owner) shouldBe false
     }
 
     // The default order (issue #562): most recently *written* first, so an edit to an older document brings it

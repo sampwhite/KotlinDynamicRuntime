@@ -56,6 +56,14 @@ object EI {
      * [user] and the paging fields, so a generated per-field parameter can never take its name.
      */
     const val q = "q"
+
+    /**
+     * Whether a listing should attach the per-row **user block** -- who owns each document (issue #591). A
+     * listing that can carry one leaves it off unless this is set, so the owner lookup and the extra payload
+     * happen only where a caller wants them; the block stays gated by scope on top of this, so an ordinary
+     * caller never receives it however this reads. Reserved beside [user], [q] and the paging fields.
+     */
+    const val includeUsers = "includeUsers"
     const val description = "description"
 
     /**
