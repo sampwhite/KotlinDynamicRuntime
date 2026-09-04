@@ -78,6 +78,13 @@ import com.dynamicruntime.common.util.toOptStr
 private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> =
     row.toJsonMap() + (GDF.displayValues to computeDisplayValues(cxt, row, SchemaService.get(cxt).traitUsagesFor(cxt.client)))
 
+/**
+ * How many of the caller's most-recent documents a field-value suggestion list scans (issue #581). A suggestion
+ * list is a convenience, not a report: scanning the most recent this many surfaces the values a person is
+ * likely reaching for, and bounds the work so the endpoint stays cheap enough to answer a keystroke.
+ */
+private const val fieldValueScanCap = 2000
+
 fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) {
     val formDoc = GedraDataType.formDoc
     val docType = GU.gedraName(formDoc)
@@ -224,6 +231,62 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             },
             page.numAvailable,
             hasMore = offset + page.rows.size < page.numAvailable,
+        )
+    }
+
+    // --- field-value suggestions (issue #581) --------------------------------------------------------------
+
+    // One suggested value for a text filter box: a `{value}` wrapper, so the listing envelope can report how
+    // many distinct values matched (numAvailable) beside the capped page the box shows.
+    type(GEP.fieldValueType) {
+        type = SCT.kObject
+        description = "One distinct value a text trait takes across the caller's documents (issue #581)."
+        property(UF.value, "The distinct display value.", required = true)
+    }
+
+    listEndpoint(
+        GEP.formDocValues,
+        "Distinct values a text trait takes across the caller's own form documents, for a filter box's " +
+            "type-ahead. Case-insensitive, capped, and confined to what the caller may see.",
+        outputRef = GEP.fieldValueType,
+        hasNumAvailable = true,
+        hasMore = true,
+        inputFields = {
+            field(GE.traitId, "The text trait whose values to suggest -- a search field the client declared.", required = true) {
+                emptyIsAbsent = true
+            }
+            field(EI.q, "Only values containing this fragment (case-insensitive). Absent lists the first values.") {
+                emptyIsAbsent = true
+            }
+        },
+        publicApi = true,
+    ) { c, request ->
+        val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
+        val traitId = (request[GE.traitId] as? String)?.trim()?.ifEmpty { null }
+            ?: throw KdrException.mkInput("A ${GE.traitId} is required.")
+        val term = (request[EI.q] as? String)?.trim()?.ifEmpty { null }
+        // The trait must be one the client declared a *text* usage for -- the same set the search boxes are
+        // built from. A number or date, or an unknown trait, has no value list to suggest and is a 400 rather
+        // than an empty page, so a caller learns the parameter was wrong rather than that nothing matched.
+        val usage = SchemaService.get(c).traitUsagesFor(c.client).firstOrNull { it.traitId == traitId && it.kind == UsageKind.string }
+            ?: throw KdrException.mkInput("'$traitId' is not a text search field of this client.")
+        // Scan the caller's scope up to a cap, compute this one trait's display value per row, and keep the
+        // distinct non-blank ones. The cap bounds the work: a suggestion list is a convenience, not a report,
+        // so scanning the most-recent [fieldValueScanCap] documents is enough to surface the common values.
+        val scope = ReadScopeRules.forCaller(c)
+        val rows = GedraDataService.get(c).listGedras(c, formDoc, scope, fieldValueScanCap).rows
+        val distinct = LinkedHashMap<String, String>()
+        for (row in rows) {
+            val value = computeDisplayValues(c, row, listOf(usage)).first()[UF.value].toOptStr()?.trim().orEmpty()
+            if (value.isEmpty()) continue
+            if (term != null && !value.contains(term, ignoreCase = true)) continue
+            distinct.putIfAbsent(value.lowercase(), value)
+        }
+        val sorted = distinct.values.sortedBy { it.lowercase() }
+        ListPage(
+            sorted.take(limit).map { mapOf(UF.value to it) },
+            numAvailable = sorted.size,
+            hasMore = sorted.size > limit,
         )
     }
 

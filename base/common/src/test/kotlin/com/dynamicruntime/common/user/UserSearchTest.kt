@@ -89,6 +89,38 @@ class UserSearchTest : StringSpec({
         ids(page) shouldBe listOf(1L)
     }
 
+    // The single "any text" term (issue #581): one box matching email, real name, or username at once, OR
+    // across the fields where the per-field terms above AND.
+    "the any-text term matches across email, name, and username" {
+        val amy = user(4, "amy@corp.test", "amy_j", name = "Amy Beach")
+        val rows = all + amy
+        // Matches by email fragment...
+        ids(searchUserRows(rows, UserSearchCriteria(anyText = "other.com"))) shouldBe listOf(3L)
+        // ...by username fragment...
+        ids(searchUserRows(rows, UserSearchCriteria(anyText = "grace_h"))) shouldBe listOf(2L)
+        // ...and by real name, case-insensitively, which no other row has.
+        ids(searchUserRows(rows, UserSearchCriteria(anyText = "BEACH"))) shouldBe listOf(4L)
+    }
+
+    "the any-text term ORs, where two named terms would AND" {
+        // "ada" is in ada's username; "example" is in ada's and grace's emails. As one any-text term, a row
+        // matches if it contains the fragment in ANY field -- so "example" alone returns both, where pairing
+        // it with a name term (the AND case above) narrowed to one.
+        ids(searchUserRows(all, UserSearchCriteria(anyText = "example"))).sorted() shouldBe listOf(1L, 2L)
+    }
+
+    // The concern behind issue #581's scope bar: a search by user name must reach the PUBLIC name (the
+    // username), not only the real name -- most accounts have a username and no real name at all.
+    "the any-text term hits the public name (username) even with no real name" {
+        // No real name; an email that does not contain the username fragment -- so the only field that can
+        // match "zephyr_q" is the public name (publicName() == the username).
+        val zed = user(7, "zzed@corp.test", "zephyr_q")
+        ids(searchUserRows(listOf(zed), UserSearchCriteria(anyText = "zephyr_q"))) shouldBe listOf(7L)
+        // grace, above, is the same case from `all`: her username is her public name and her email carries no
+        // "grace_h", so this fragment reaches her only through it.
+        ids(searchUserRows(all, UserSearchCriteria(anyText = "grace_h"))) shouldBe listOf(2L)
+    }
+
     "the update-time range is inclusive on both ends" {
         // [t2, t3] admits ada (t2) and grace (t3) but not alan (t1).
         val page = searchUserRows(

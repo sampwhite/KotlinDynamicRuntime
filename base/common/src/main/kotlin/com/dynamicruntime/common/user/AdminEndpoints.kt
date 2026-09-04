@@ -2,6 +2,7 @@ package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.ListPage
@@ -110,6 +111,11 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // larger default, so it is declared here and the auto one suppressed.
         noLimit = true,
         inputFields = {
+            field(
+                EI.q,
+                "Free text matched against email, name, or username at once (any of them, case-insensitive " +
+                    "substring) -- one box for finding a user however you remember them.",
+            ) { emptyIsAbsent = true }
             field(USF.email, "Case-insensitive substring to match against the email address.")
             field(USF.name, "Case-insensitive substring to match against the account's real-world name or its username.")
             field(USF.publicName, "Case-insensitive substring to match against the public name (username or email).")
@@ -531,6 +537,7 @@ private fun parseUserSearch(request: Map<String, Any?>): UserSearchCriteria {
     }
     return UserSearchCriteria(
         textTerms = textTerms,
+        anyText = request[EI.q].toOptStr()?.trim()?.ifEmpty { null },
         dateRanges = dateRanges,
         sortBy = sortBy ?: USF.updatedAt,
         descending = request.getOptBool(USF.descending) ?: true,

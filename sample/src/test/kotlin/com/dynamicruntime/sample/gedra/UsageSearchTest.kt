@@ -156,4 +156,45 @@ class UsageSearchTest : StringSpec({
         // A blank term is no search: the whole page.
         user.getItems(path, mapOf(EI.q to "  ")).size shouldBe 2
     }
+
+    // Field-value suggestions (issue #581): the distinct values a text trait takes across the caller's own
+    // documents, for a filter box's type-ahead -- deduped, contains-filtered, sorted, and scoped to the caller.
+    "formDocValues suggests a text trait's distinct values, deduped and filtered" {
+        val user = TestUser.create(cxt, "values@globex.test", userClient = SC.globex)
+        postName(user, "Quarterly plan")
+        postName(user, "Quarterly plan")   // a duplicate collapses to one distinct value
+        postName(user, "Annual budget")
+        val path = clientPath(GEP.formDocValues, SC.globex)
+        fun values(args: Map<String, Any?>) = user.getItems(path, args).map { it[UF.value] }
+
+        // All distinct values, sorted, the duplicate collapsed to one.
+        values(mapOf(GE.traitId to GT.name)) shouldBe listOf("Annual budget", "Quarterly plan")
+        // A case-insensitive contains filter.
+        values(mapOf(GE.traitId to GT.name, EI.q to "QUART")) shouldBe listOf("Quarterly plan")
+        // A fragment matching nothing: an empty list, not an error.
+        values(mapOf(GE.traitId to GT.name, EI.q to "zzz")).size shouldBe 0
+    }
+
+    "formDocValues is scoped to the caller: one user's values are not another's" {
+        val alice = TestUser.create(cxt, "vscope-alice@globex.test", userClient = SC.globex)
+        val bob = TestUser.create(cxt, "vscope-bob@globex.test", userClient = SC.globex)
+        postName(alice, "Alice plan zzscopemark")
+        val path = clientPath(GEP.formDocValues, SC.globex)
+        // Bob, scoped to his own rows, sees none of alice's distinct values.
+        bob.getItems(path, mapOf(GE.traitId to GT.name, EI.q to "zzscopemark")).size shouldBe 0
+        // Alice sees her own.
+        alice.getItems(path, mapOf(GE.traitId to GT.name, EI.q to "zzscopemark")).map { it[UF.value] } shouldBe
+            listOf("Alice plan zzscopemark")
+    }
+
+    "formDocValues refuses a trait that is not a text search field" {
+        val user = TestUser.create(cxt, "values-bad@acme.test", userClient = SC.acme)
+        val path = clientPath(GEP.formDocValues, SC.acme)
+        // A number usage (Year) has no value list to suggest -- a 400, not an empty page.
+        user.expectError(400, path, args = mapOf(GE.traitId to ST.expenseReport))
+        // An unknown trait id.
+        user.expectError(400, path, args = mapOf(GE.traitId to "nosuchtrait"))
+        // A missing trait id.
+        user.expectError(400, path)
+    }
 })
