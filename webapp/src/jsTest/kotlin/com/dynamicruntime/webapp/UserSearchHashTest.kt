@@ -51,6 +51,18 @@ class UserSearchHashTest {
     }
 
     @Test
+    fun theAnyTextTermRoundTrips() {
+        // The single "any text" term (issue #581) encodes to the wire `q` and reads back, so a shared link
+        // keeps it rather than dropping it on decode.
+        val params = searchHashParams(UserSearchQuery(anyText = "dana")).toMap()
+        assertEquals("dana", params["q"])
+        assertEquals("dana", roundTrip(UserSearchQuery(anyText = "dana")).anyText)
+        // Absent by default, so a plain search stays a clean URL.
+        assertEquals(null, searchHashParams(UserSearchQuery()).toMap()["q"])
+        assertEquals(null, roundTrip(UserSearchQuery()).anyText)
+    }
+
+    @Test
     fun anEmptyHashIsTheDefaultSearch() {
         val q = searchQueryFromHash(emptyMap())
         assertTrue(q.textTerms.isEmpty())

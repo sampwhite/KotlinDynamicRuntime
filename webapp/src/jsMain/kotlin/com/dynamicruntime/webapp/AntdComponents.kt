@@ -147,6 +147,19 @@ external interface AutoCompleteProps : PropsWithChildren {
      */
     var onSelect: ((value: dynamic) -> Unit)?
     /**
+     * A keydown on the inner input, before the popup handles it (antd's `onInputKeyDown`). `AutoComplete` does
+     * **not** forward `onPressEnter` the way `Input` does, so this is how a type-ahead restores Enter -- read
+     * `event.key`. Paired with [defaultActiveFirstOption] false, an Enter with nothing arrowed-to reaches this
+     * as a plain submit rather than committing a suggestion the caller never chose.
+     */
+    var onInputKeyDown: ((event: dynamic) -> Unit)?
+    /**
+     * Whether Enter (with no arrowing) commits the first suggestion. antd defaults it true for a Select-like
+     * control; a type-ahead over free text wants **false**, so typing an id or email and pressing Enter submits
+     * what was typed rather than a suggestion that merely matched a fragment of it.
+     */
+    var defaultActiveFirstOption: Boolean?
+    /**
      * Whether the popup narrows to what has been typed. `false` shows every option always, which is what a
      * short suggestion list wants (see `OpenChoiceField`).
      *

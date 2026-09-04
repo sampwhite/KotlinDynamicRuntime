@@ -173,6 +173,8 @@ class UsageSearchTest : StringSpec({
         values(mapOf(GE.traitId to GT.name, EI.q to "QUART")) shouldBe listOf("Quarterly plan")
         // A fragment matching nothing: an empty list, not an error.
         values(mapOf(GE.traitId to GT.name, EI.q to "zzz")).size shouldBe 0
+        // A nonsensical negative limit is the harmless empty page, not a 500 (the limit is floored at 0).
+        values(mapOf(GE.traitId to GT.name, EP.limit to -1)).size shouldBe 0
     }
 
     "formDocValues is scoped to the caller: one user's values are not another's" {

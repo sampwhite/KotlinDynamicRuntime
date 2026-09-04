@@ -222,12 +222,16 @@ val FormsScopeBar = FC<FormsScopeBarProps> { props ->
             allowClear = true
             // Show every fetched suggestion; the backend already narrowed them to the term.
             filterOption = false
+            // Enter submits what was typed (a raw id or email), never a suggestion that merely matched a
+            // fragment -- a suggestion is taken by clicking it or arrowing to it.
+            defaultActiveFirstOption = false
             style = js("({ width: 360 })")
             onChange = { v -> props.onChange((v as? String) ?: "") }
             onSelect = { v ->
                 suggestions = emptyList()
                 props.onPick((v as? String) ?: "")
             }
+            onInputKeyDown = { event -> if (event.key == "Enter") props.onApply() }
         }
         Button {
             onClick = { props.onApply() }
@@ -363,6 +367,7 @@ val FormsSearch = FC<FormsSearchProps> { props ->
                                     this.placeholder = placeholder
                                     this.value = props.values[name] ?: ""
                                     this.onChange = { v -> props.onChange(name, v) }
+                                    this.onSearch = { props.onSearch() }
                                     this.fetchValues = fetch
                                 }
                             } else {
@@ -407,6 +412,7 @@ private external interface FilterValueBoxProps : Props {
     var placeholder: String
     var value: String
     var onChange: (String) -> Unit
+    var onSearch: () -> Unit
     var fetchValues: (String, String, (List<String>) -> Unit) -> Unit
 }
 
@@ -431,8 +437,11 @@ private val FilterValueBox = FC<FilterValueBoxProps> { props ->
         options = stringOptions(suggestions)
         allowClear = true
         filterOption = false
+        // Picking a suggestion only fills the box; Enter runs the search, as the plain input it replaces did.
+        defaultActiveFirstOption = false
         style = js("({ width: 260 })")
         onChange = { v -> props.onChange((v as? String) ?: "") }
+        onInputKeyDown = { event -> if (event.key == "Enter") props.onSearch() }
     }
 }
 

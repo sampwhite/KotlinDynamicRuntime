@@ -261,7 +261,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         },
         publicApi = true,
     ) { c, request ->
-        val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
+        // Floored at 0 like the user search: the auto-appended `limit` is deliberately unbounded, so a
+        // negative one would otherwise reach `List.take` and throw a 500 rather than the harmless empty page
+        // a nonsensical `?limit=-1` should get.
+        val limit = ((request[EP.limit] as? Number)?.toInt() ?: defaultListLimit).coerceAtLeast(0)
         val traitId = (request[GE.traitId] as? String)?.trim()?.ifEmpty { null }
             ?: throw KdrException.mkInput("A ${GE.traitId} is required.")
         val term = (request[EI.q] as? String)?.trim()?.ifEmpty { null }

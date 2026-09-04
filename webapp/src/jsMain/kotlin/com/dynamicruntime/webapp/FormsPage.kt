@@ -407,7 +407,7 @@ val FormsPage = FC<Props> {
                             formsScope.launch {
                                 cb(
                                     runCatching {
-                                        AdminApi.searchUsers(UserSearchQuery(anyText = term)).users.take(maxUserSuggestions)
+                                        AdminApi.searchUsers(UserSearchQuery(anyText = term), limit = maxUserSuggestions).users
                                             .map { UserPick(userPickLabel(it.name, it.username, it.primaryId), it.primaryId) }
                                     }.getOrDefault(emptyList()),
                                 )

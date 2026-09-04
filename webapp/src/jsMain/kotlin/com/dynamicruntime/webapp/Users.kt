@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
@@ -855,6 +856,9 @@ fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery {
         sortBy = hp[USF.sortBy]?.takeIf { userSortKeys.contains(it) } ?: USF.lastEdited.at,
         // Descending is the default; only an explicit "false" means ascending.
         descending = hp[USF.descending] != "false",
+        // The any-text term (issue #581) round-trips through the hash like the other filters -- read back so a
+        // shared or bookmarked search keeps it, rather than silently dropping it on decode.
+        anyText = hp[EI.q]?.takeIf { it.isNotBlank() },
     )
 }
 
