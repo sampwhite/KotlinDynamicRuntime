@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
@@ -10,6 +11,7 @@ import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.TestUser
@@ -111,19 +113,18 @@ class GedraSearchByUserTest : StringSpec({
         deliveredCfacts(ada)[CFACTS.hasAdminLevel] shouldBe true
         deliveredCfacts(bob)[CFACTS.hasAdminLevel] shouldBe false
     }
-    // The User column's data (issue #562): an admin's listed rows carry the owner's email, and a name only when
-    // the account has one that is not the email; an ordinary caller's rows carry neither -- they are all their
-    // own, so the column is not drawn and nothing is looked up.
-    "listed rows carry the owner's email (and a name only when it adds one) for an admin, and nothing for an ordinary user" {
+    // The owner block (issue #580, flat keys in #562): an admin's listed rows carry an `owner` block with the
+    // email, and a name only when the account has one that is not the email; an ordinary caller's rows carry no
+    // block at all -- they are all their own, so the column is not drawn and nothing is looked up.
+    "listed rows carry an owner block (email, and a name only when it adds one) for an admin, and none for an ordinary user" {
         val adaRows = ada.getItems(GEP.formDocs)
-        val aliceRow = adaRows.first { it[GDF.gedraId] == aliceDocId }
+        val aliceOwner = adaRows.first { it[GDF.gedraId] == aliceDocId }[GDF.owner].toJsonMapOrEmpty()
         // A provisioned account has no name and a placeholder username, so its public name *is* the email: the
-        // email is sent and the name is not, rather than the address twice.
-        aliceRow[GDF.ownerEmail] shouldBe aliceEmail
-        aliceRow.containsKey(GDF.ownerName) shouldBe false
+        // email is present and the name is not, rather than the address twice.
+        aliceOwner[DUF.email] shouldBe aliceEmail
+        aliceOwner.containsKey(DUF.name) shouldBe false
         val bobRows = bob.getItems(GEP.formDocs)
-        bobRows.first { it[GDF.gedraId] == bobDocId }.containsKey(GDF.ownerName) shouldBe false
-        bobRows.first { it[GDF.gedraId] == bobDocId }.containsKey(GDF.ownerEmail) shouldBe false
+        bobRows.first { it[GDF.gedraId] == bobDocId }.containsKey(GDF.owner) shouldBe false
     }
 
     // The default order (issue #562): most recently *written* first, so an edit to an older document brings it

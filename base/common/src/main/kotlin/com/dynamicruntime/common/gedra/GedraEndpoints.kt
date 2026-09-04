@@ -551,16 +551,17 @@ private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>, scope: ReadScope): Map
     UserService.get(c).queryUsersByIds(c, rows.map { it.userId }, scope)
 
 /**
- * The owner fields attached to a listed row (issue #562): the email always, and a display name only when the
- * account has one that is not the email -- `name`, else a chosen username (the `UserProfile.displayName` rule).
- * A provisioned account with neither would otherwise repeat its address as its name, and the column's rule is
- * "the email, or the name with the email beneath": sending the name only when it adds something lets the
- * frontend render exactly that without comparing the two strings. Empty for no [owner], so the map addition is a
- * no-op rather than a pair of nulls.
+ * The owner block attached to a listed row (issue #580, flat keys in #562): a `{name?, email}` map under
+ * [GDF.owner]. The email always, and a display name only when the account has one that is not the email --
+ * `name`, else a chosen username (the `UserProfile.displayName` rule). A provisioned account with neither would
+ * otherwise repeat its address as its name, and the column's rule is "the email, or the name with the email
+ * beneath": sending the name only when it adds something lets the frontend render exactly that without comparing
+ * the two strings. Empty for no [owner], so the map addition is a no-op rather than an empty block.
  */
 private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> {
     if (owner == null) return emptyMap()
     val email = owner.primaryId
     val name = owner.name?.trim()?.ifEmpty { null } ?: owner.publicName()
-    return if (name == email) mapOf(GDF.ownerEmail to email) else mapOf(GDF.ownerName to name, GDF.ownerEmail to email)
+    val block = if (name == email) mapOf(DUF.email to email) else mapOf(DUF.name to name, DUF.email to email)
+    return mapOf(GDF.owner to block)
 }

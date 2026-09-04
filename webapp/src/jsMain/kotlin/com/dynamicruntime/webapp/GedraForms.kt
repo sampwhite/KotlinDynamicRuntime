@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -11,6 +12,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /*
  * Shared helpers for the gedra form-document pages (issue #408): discovering the client-scoped endpoints in the
@@ -162,11 +164,11 @@ class FormSummary(
     /** When it was last written, formatted like [createdAt]; null when the row carried no timestamp (issue #562). */
     val updatedAt: String? = null,
     /**
-     * The owner's display name, when the listing attached one (issue #562): only for a caller who sees other
-     * users' documents, and only when the account has a name that is not its email. Null otherwise.
+     * The owner's display name, from the row's `owner` block (issue #580): present only for a caller who sees
+     * other users' documents, and only when the account has a name that is not its email. Null otherwise.
      */
     val ownerName: String? = null,
-    /** The owner's email, when the listing attached one (issue #562); null for an ordinary caller's own rows. */
+    /** The owner's email, from the row's `owner` block (issue #580); null for an ordinary caller's own rows. */
     val ownerEmail: String? = null,
 )
 
@@ -183,6 +185,7 @@ class FormSummary(
  */
 fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary {
     val entries = item[GDF.entries].toJsonListOfMaps()
+    val owner = item[GDF.owner].toJsonMapOrEmpty()
     val traitLabels = entries.mapNotNull { entry ->
         (entry[GE.traitId] as? String)?.let { traitId ->
             entriesUnion?.variants?.byValue?.get(traitId)?.title ?: humanizeFieldName(traitId)
@@ -206,8 +209,11 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary 
         traitLabels = traitLabels,
         createdAt = (item[GDF.createdAt] as? String)?.let { formatTimestamp(it) },
         updatedAt = (item[GDF.updatedAt] as? String)?.let { formatTimestamp(it) },
-        ownerName = item[GDF.ownerName] as? String,
-        ownerEmail = item[GDF.ownerEmail] as? String,
+        // The owner's name and email come from the row's `owner` block (issue #580), attached only for a caller
+        // who may see other users' documents. Kept as two flat summary fields, since the User column and the
+        // read-only view read them one at a time; a block absent (an ordinary caller's own row) leaves both null.
+        ownerName = owner[DUF.name] as? String,
+        ownerEmail = owner[DUF.email] as? String,
     )
 }
 
