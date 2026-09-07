@@ -121,6 +121,11 @@ class GedraConfigCollector {
     private val configsById = LinkedHashMap<String, GedraConfig>()
     private val traitOwners = LinkedHashMap<String, GedraTrait>()
     private val traitConfigs = LinkedHashMap<String, GedraConfig>()
+    // State traits (issue #597) kept in their own registries, so data-trait consumers (traitsFor -> the entry /
+    // edit unions and the patch keying) never see one. A trait id is still globally unique across both -- the
+    // collision check below scans data and state together.
+    private val stateTraitOwners = LinkedHashMap<String, GedraTrait>()
+    private val stateTraitConfigs = LinkedHashMap<String, GedraConfig>()
     private val namespaceOwners = linkedMapOf(GCFG.globalNamespace to GID.globalClient)
 
     /** Problems found, in the order they were found. Empty unless something degraded. */
@@ -143,6 +148,13 @@ class GedraConfigCollector {
     fun traitsFor(client: String): List<GedraTrait> = traitConfigs.entries
         .filter { (_, config) -> config.gedraId.client == GID.globalClient || config.gedraId.client == client }
         .mapNotNull { (traitId, _) -> traitOwners[traitId] }
+
+    /**
+     * The **state** traits in force (issue #597). State is global -- a client does not vary the set (decision
+     * 3) -- so this is every kept state trait, independent of client. It takes no client for that reason, unlike
+     * [traitsFor]: there is nothing per-client to narrow to.
+     */
+    fun stateTraits(): List<GedraTrait> = stateTraitOwners.values.toList()
 
     /**
      * The traits [client] **owns** -- declared in a config of its own, rather than seen from `global`.
@@ -205,6 +217,10 @@ class GedraConfigCollector {
             traitOwners[traitId] = trait
             traitConfigs[traitId] = config
         }
+        for ((traitId, trait) in config.stateTraits) {
+            stateTraitOwners[traitId] = trait
+            stateTraitConfigs[traitId] = config
+        }
     }
 
     /**
@@ -213,10 +229,12 @@ class GedraConfigCollector {
      * to be fixed first.
      */
     private fun firstProblem(config: GedraConfig): GedraConfigIssue? {
+        // Dropping a config drops all of its traits, data and state alike, so the count says both (issue #597).
+        val traitCount = config.traits.size + config.stateTraits.size
         configsById[config.gedraId.fullId]?.let {
             return GedraConfigIssue(
                 "Gedra config '${config.gedraId}' is contributed twice.",
-                "Keeping the first; the second is dropped, along with its ${config.traits.size} trait(s).",
+                "Keeping the first; the second is dropped, along with its $traitCount trait(s).",
             )
         }
         val owner = namespaceOwners[config.namespace]
@@ -228,14 +246,15 @@ class GedraConfigCollector {
                 "Dropping '${config.gedraId}'; '$owner' keeps the namespace.",
             )
         }
-        for (traitId in config.traits.keys) {
-            val held = traitConfigs[traitId] ?: continue
+        // Data and state trait ids share one global id space, so a new config's traits of either kind are
+        // checked against both registries -- a state trait may not reuse a data trait's id, or vice versa.
+        for (traitId in config.traits.keys + config.stateTraits.keys) {
+            val held = traitConfigs[traitId] ?: stateTraitConfigs[traitId] ?: continue
             return GedraConfigIssue(
                 "Trait '$traitId' is declared by both '${held.gedraId}' and '${config.gedraId}'. A trait id " +
                     "is unique across every namespace and every gedra kind, which is what lets stored data " +
                     "carry a bare trait id and nothing else.",
-                "Keeping '${held.gedraId}''s; dropping '${config.gedraId}' and its ${config.traits.size} " +
-                    "trait(s).",
+                "Keeping '${held.gedraId}''s; dropping '${config.gedraId}' and its $traitCount trait(s).",
             )
         }
         return null

@@ -54,8 +54,37 @@ class GedraTrait(
      * generated schema, the same reason [appliesTo] is a typed field rather than a keyword to be parsed back.
      */
     val primaryKey: List<String> = emptyList(),
+    /**
+     * When set, this is a **state** trait rather than a data trait (issue #597), and this is its classification:
+     * [StateTraitClass.derived] (a projection a batch may recompute) or [StateTraitClass.asserted] (a human or
+     * external act a batch must not touch). Null for an ordinary data trait -- the flavor that partitions the
+     * two, since both share this class and one global id space. Carried on the trait, the same reason
+     * [appliesTo] and [primaryKey] are, so the state write path and the later batch / authorization phases read
+     * it off the trait rather than parsing it back out of the generated schema.
+     */
+    val stateClass: StateTraitClass? = null,
 ) {
     override fun toString(): String = "$traitId -> $typeName"
+}
+
+/**
+ * How a **state** trait behaves under recomputation, and who may write it (issue #597, decision 2 of the gedra
+ * states design). The flag is set once on the trait declaration and decides both, so the two questions -- "is a
+ * batch safe to overwrite this?" and "may this actor write it?" -- cannot come to disagree.
+ */
+@Suppress("EnumEntryName")
+enum class StateTraitClass {
+    /**
+     * A projection of (data + current definitions) -- survey-completeness, eligibility, computed cfacts. A batch
+     * job may recompute and overwrite it, because nothing it holds is an authority a recompute could destroy.
+     */
+    derived,
+
+    /**
+     * A human or external act -- an approval, a sign-off, a captured third-party report. A batch must never
+     * recompute it away, and only an authorized actor may write it.
+     */
+    asserted,
 }
 
 /**
@@ -99,6 +128,12 @@ class GedraConfig(
     val namespace: String,
     /** Its traits, keyed by [GedraTrait.traitId]. */
     val traits: Map<String, GedraTrait>,
+    /**
+     * Its **state** traits (issue #597), keyed by [GedraTrait.traitId] -- kept apart from [traits] so the data
+     * unions never see them; they manufacture a *state* union instead (globally only, since state has no
+     * per-client variant). Each carries a non-null [GedraTrait.stateClass].
+     */
+    val stateTraits: Map<String, GedraTrait> = emptyMap(),
     /**
      * The `$defs` this config contributes, keyed by qualified type name.
      *
@@ -193,6 +228,15 @@ class GedraConfigBuilder(
 ) : SchTypesBuilder(cxt, namespace) {
     @Suppress("MemberVisibilityCanBePrivate")
     val traits: MutableMap<String, GedraTrait> = LinkedHashMap()
+
+    /**
+     * The **state** traits declared in this block (issue #597); see [stateTrait]. Kept apart from [traits] so
+     * every existing consumer of data traits -- the entry / edit unions, the patch keying -- sees data traits
+     * only and cannot be reached by a state trait, while the two still share one global id space (a state trait
+     * id may not collide with a data trait id; [checkTraitIsNew] scans both).
+     */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val stateTraits: MutableMap<String, GedraTrait> = LinkedHashMap()
 
     /** The fragment overlays declared in this block; see [fragmentOverlay]. */
     @Suppress("MemberVisibilityCanBePrivate")
@@ -372,21 +416,58 @@ class GedraConfigBuilder(
         trait(typeName, traitId, appliesTo, description, primaryKey) { ref(dataType) }
     }
 
-    /** Refuses a trait id or a generated type name this config has already used. */
+    /**
+     * Declares a **state** trait (issue #597) -- the same machinery as [trait] (one entry type, keyed on
+     * [GE.traitId], with [primaryKey] and the stored envelope), so a keyed state trait (`[<workflowId>]`,
+     * `[<year>]`) and an unkeyed form-singleton fall out of the existing keying exactly as a data trait's do. It
+     * differs in two ways only: it carries a [StateTraitClass] ([stateClass], required), and it is filed under
+     * [stateTraits] so it manufactures a *state* union rather than being mixed into a gedra kind's data union.
+     * [appliesTo] still names the parent gedra kinds whose state this is.
+     */
+    fun stateTrait(
+        typeName: String,
+        traitId: String,
+        appliesTo: Set<GedraDataType>,
+        stateClass: StateTraitClass,
+        description: String? = null,
+        primaryKey: List<String> = emptyList(),
+        dataSchema: SchTypeBuilder.() -> Unit,
+    ) {
+        val qualified = qualifyTypeName(typeName, namespace)
+        checkTraitIsNew(qualified, traitId)
+        val built = traitEntry(typeName, traitId, appliesTo, description, primaryKey, dataSchema)
+        stateTraits[traitId] = GedraTrait(traitId, qualified, appliesTo, built, primaryKey, stateClass)
+    }
+
+    /** A state trait whose data shape is a type declared elsewhere -- see [stateTrait] and the [trait] ref form. */
+    fun stateTrait(
+        typeName: String,
+        traitId: String,
+        appliesTo: Set<GedraDataType>,
+        stateClass: StateTraitClass,
+        dataType: String,
+        description: String? = null,
+        primaryKey: List<String> = emptyList(),
+    ) {
+        stateTrait(typeName, traitId, appliesTo, stateClass, description, primaryKey) { ref(dataType) }
+    }
+
+    /** Refuses a trait id or a generated type name this config has already used, across data **and** state traits. */
     private fun checkTraitIsNew(qualified: String, traitId: String) {
-        traits[traitId]?.let {
+        (traits[traitId] ?: stateTraits[traitId])?.let {
             throw KdrException.mkConv(
                 "Trait '$traitId' is declared twice in one config, as '${it.typeName}' and as '$qualified'. " +
                     "A trait id identifies one definition; two of them are either one trait declared twice " +
                     "or two concepts sharing a name.",
             )
         }
-        traits.values.firstOrNull { it.typeName == qualified }?.let {
-            throw KdrException.mkConv(
-                "Traits '${it.traitId}' and '$traitId' both generate the type '$qualified'. The second " +
-                    "would silently replace the first, so it is refused here instead.",
-            )
-        }
+        (traits.values.asSequence() + stateTraits.values.asSequence())
+            .firstOrNull { it.typeName == qualified }?.let {
+                throw KdrException.mkConv(
+                    "Traits '${it.traitId}' and '$traitId' both generate the type '$qualified'. The second " +
+                        "would silently replace the first, so it is refused here instead.",
+                )
+            }
     }
 }
 
@@ -432,6 +513,7 @@ fun gedraConfig(
         gedraId = GedraId.of(GedraConfigType.configDoc, client, name),
         namespace = namespace,
         traits = builder.traits.toMap(),
+        stateTraits = builder.stateTraits.toMap(),
         defs = builder.defs.toMap(),
         client = builder.clientDef,
         cfacts = builder.cfacts.toList(),
