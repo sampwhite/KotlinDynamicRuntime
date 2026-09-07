@@ -126,11 +126,13 @@ private fun resolveLayoutTemplate(text: String, data: Map<String, Any?>): String
 internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, opts: FormOpts): LayoutCopy? {
     if (!opts.friendly) return null
     val field = type.name?.let { opts.layouts[it] }?.fieldFor(name) ?: return null
-    val boundsData = type.properties[name]?.let { boundsContextData(it.valueType) } ?: emptyMap()
+    // The bounds context is built only when there is a hint to resolve against it -- a field overriding just
+    // its label/description (the common case) pays nothing for it.
+    fun boundsData(): Map<String, Any?> = type.properties[name]?.let { boundsContextData(it.valueType) } ?: emptyMap()
     return LayoutCopy(
         label = field.label?.let { resolveLayoutTemplate(it, values) },
         description = field.description?.let { resolveLayoutTemplate(it, values) },
-        hint = field.hint?.let { resolveLayoutTemplate(it, boundsData) },
+        hint = field.hint?.let { resolveLayoutTemplate(it, boundsData()) },
     )
 }
 

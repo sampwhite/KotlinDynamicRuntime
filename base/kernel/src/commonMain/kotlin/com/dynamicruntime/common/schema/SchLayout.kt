@@ -2,7 +2,6 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.analyzeTemplate
-import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -314,12 +313,15 @@ fun boundsContextNames(type: SchType): Set<String> = buildSet {
     if (type.maxBound != null) add(LayoutCtx.max)
 }
 
-/** The bounds-context data [type] supplies to a `hint` template (issue #587): each provided bound as its
- *  formatted number, keyed by [LayoutCtx.min] / [LayoutCtx.max]. The values a `${'$'}{min}` / `${'$'}{max}` resolves to;
- *  the same names [boundsContextNames] validates, so the boot check and the render agree on the vocabulary. */
+/** The bounds-context data [type] supplies to a `hint` template (issue #587): each provided bound as a
+ *  **number**, keyed by [LayoutCtx.min] / [LayoutCtx.max]. Kept numeric rather than pre-formatted so a hint may
+ *  compute on it -- `${'$'}{max - min}`, `${'$'}{max > 2000}` -- which string operands would refuse (`numOf` in
+ *  `ScriptEval` never coerces a string); a bare `${'$'}{min}` still renders cleanly because `Any?.fmt` trims a whole
+ *  value (`2000.0` -> `"2000"`). The same names [boundsContextNames] validates, so the boot check and the render
+ *  agree on the vocabulary. */
 fun boundsContextData(type: SchType): Map<String, Any?> = buildMap {
-    type.minBound?.let { put(LayoutCtx.min, it.fmtD()) }
-    type.maxBound?.let { put(LayoutCtx.max, it.fmtD()) }
+    type.minBound?.let { put(LayoutCtx.min, it) }
+    type.maxBound?.let { put(LayoutCtx.max, it) }
 }
 
 /**

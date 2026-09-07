@@ -182,7 +182,7 @@ class SchLayoutTest : StringSpec({
     "boundsContextNames and boundsContextData reflect exactly the bounds a field declares" {
         val year = boundedType.properties.getValue("year").valueType
         boundsContextNames(year) shouldBe setOf(LayoutCtx.min, LayoutCtx.max)
-        boundsContextData(year) shouldBe mapOf(LayoutCtx.min to "2000", LayoutCtx.max to "2100")
+        boundsContextData(year) shouldBe mapOf(LayoutCtx.min to 2000.0, LayoutCtx.max to 2100.0)
         // A field with neither bound provides nothing -- so a hint referencing one is a boot failure.
         val note = boundedType.properties.getValue("note").valueType
         boundsContextNames(note) shouldBe emptySet()
