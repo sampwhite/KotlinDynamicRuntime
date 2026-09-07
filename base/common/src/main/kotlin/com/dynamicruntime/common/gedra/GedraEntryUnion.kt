@@ -5,6 +5,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.schemaDefs
 
 /** Names for the types one gedra kind gives rise to (issues #301, #310). */
+@Suppress("ConstPropertyName")
 object GU {
     /**
      * The type of a gedra of one kind: `formDoc` becomes `FormDoc`.

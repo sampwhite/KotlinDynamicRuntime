@@ -57,7 +57,7 @@ class GedraTrait(
     /**
      * When set, this is a **state** trait rather than a data trait (issue #597), and this is its classification:
      * [StateTraitClass.derived] (a projection a batch may recompute) or [StateTraitClass.asserted] (a human or
-     * external act a batch must not touch). Null for an ordinary data trait -- the flavour that partitions the
+     * external act a batch must not touch). Null for an ordinary data trait -- the flavor that partitions the
      * two, since both share this class and one global id space. Carried on the trait, the same reason
      * [appliesTo] and [primaryKey] are, so the state write path and the later batch / authorization phases read
      * it off the trait rather than parsing it back out of the generated schema.
@@ -72,6 +72,7 @@ class GedraTrait(
  * states design). The flag is set once on the trait declaration and decides both, so the two questions -- "is a
  * batch safe to overwrite this?" and "may this actor write it?" -- cannot come to disagree.
  */
+@Suppress("EnumEntryName")
 enum class StateTraitClass {
     /**
      * A projection of (data + current definitions) -- survey-completeness, eligibility, computed cfacts. A batch
@@ -417,8 +418,8 @@ class GedraConfigBuilder(
 
     /**
      * Declares a **state** trait (issue #597) -- the same machinery as [trait] (one entry type, keyed on
-     * [GE.traitId], with [primaryKey] and the stored envelope), so a keyed state trait (`[workflowId]`,
-     * `[year]`) and an unkeyed form-singleton fall out of the existing keying exactly as a data trait's do. It
+     * [GE.traitId], with [primaryKey] and the stored envelope), so a keyed state trait (`[<workflowId>]`,
+     * `[<year>]`) and an unkeyed form-singleton fall out of the existing keying exactly as a data trait's do. It
      * differs in two ways only: it carries a [StateTraitClass] ([stateClass], required), and it is filed under
      * [stateTraits] so it manufactures a *state* union rather than being mixed into a gedra kind's data union.
      * [appliesTo] still names the parent gedra kinds whose state this is.

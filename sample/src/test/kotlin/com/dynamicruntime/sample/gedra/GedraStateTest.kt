@@ -25,7 +25,7 @@ import io.kotest.matchers.string.shouldNotBeBlank
  * of #595): a state entry is a real trait instance, stamped with the stored envelope, validated against the
  * global state union for the gedra's kind, and keyed by the trait's own `primaryKey` -- the same path a data
  * write takes. Exercised through `sampleTraits`' `traitPresenceByYear`, a *derived* state trait keyed by
- * `[year]` (its derivation is phase D; here we write it by hand).
+ * `[<year>]` (its derivation is phase D; here we write it by hand).
  *
  * It lives in `sample` rather than beside the phase-A plumbing because the interesting cases need a real
  * declared state trait, and the state union that validates one is built from the sample config's state traits.
