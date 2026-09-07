@@ -359,7 +359,7 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
                     val name = path.substringBefore('.')
                     if (name !in allowed) {
                         problems.add(
-                            "$where: the '${SCH.layout}' hint for '${field.field}' references '${'$'}{$path}', but this " +
+                            $$"$$where: the '$${SCH.layout}' hint for '$${field.field}' references '${$$path}', but this " +
                                 "field's bounds context provides ${if (allowed.isEmpty()) "no params (it declares no minimum or maximum)" else allowed.sorted().joinToString(", ")}.",
                         )
                     }
