@@ -57,9 +57,17 @@ object SchemaCatalogApi {
         return toCatalog(results)
     }
 
-    /** GET a single endpoint by exact method + path, in the same shape as the full catalog. */
-    suspend fun fetchEndpoint(method: String, path: String): Catalog {
-        val results = getJson("$schemaBase/endpoint?${EI.method}=$method&${EI.path}=${encodeUriComponent(path)}")[EP.results].toJsonMapOrEmpty()
+    /**
+     * GET a single endpoint in the same shape as the full catalog. With [resolveClient] set, [path] is a
+     * **bare** path the backend resolves to the caller's own client-scoped copy (issue #552) -- how a page
+     * that holds only the bare path (e.g. `GEP.formDocCreate`) fetches its one endpoint's closure without
+     * first fetching the whole catalog to discover the concrete path. Without it, [path] must be exact.
+     */
+    suspend fun fetchEndpoint(method: String, path: String, resolveClient: Boolean = false): Catalog {
+        val resolve = if (resolveClient) "&${EI.resolveClient}=true" else ""
+        val results = getJson(
+            "$schemaBase/endpoint?${EI.method}=$method&${EI.path}=${encodeUriComponent(path)}$resolve",
+        )[EP.results].toJsonMapOrEmpty()
         return toCatalog(results)
     }
 
