@@ -218,7 +218,7 @@ type("Questionnaire") {
     property("topic", "What this is about.")
     property("hasIssue", "Whether a problem was flagged.") { type = SCT.boolean }
     layout(fragmentFileId = "acme") {
-        field("topic", label = "Topic", description = $$"${topic.help}")
+        field("topic", label = "Topic", description = "Pick the subject.")
         field("hasIssue", label = "Has issue?")
     }
 }
@@ -231,7 +231,7 @@ is equivalent):
 "g-layout": {
   "fragmentFileId": "acme",
   "schemaFields": [
-    { "field": "topic",    "label": "Topic", "description": "${topic.help}" },
+    { "field": "topic",    "label": "Topic", "description": "Pick the subject." },
     { "field": "hasIssue", "label": "Has issue?" }
   ]
 }
@@ -246,6 +246,12 @@ is equivalent):
   array type, refuses the boot. A client that narrows a type inherits the base layout by reference and has it
   **pruned** to the properties it kept — a sanctioned narrowing never fails the boot.
 - A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key.
+
+**Substitution (`${…}`) lands in Stage 4 (#587).** Keep layout copy **literal** for now. The layout's `${…}`
+vocabulary — fragment pulls (`${@t("ns.key")}`, resolved against the block's `fragmentFileId`) and per-context
+injected params (`${min}` / `${max}` for a bound `hint`) — plus its boot-checkable placeholders are built
+there. Until then an unresolved `${…}` renders **as written** and logs a `[kdr]` console warning rather than
+blanking the field, so a premature template is visible but harmless.
 
 **Delivery (issue #585).** Both friendly surfaces carry a `layouts` map beside their `$defs` — the endpoint
 catalog under `EI.layouts`, the workflow view under `WVF.layouts` — built by one call,

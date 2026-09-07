@@ -148,7 +148,7 @@ class SchemaSkillExamplesTest : StringSpec({
                 property("topic", "What this is about.")
                 property("hasIssue", "Whether a problem was flagged.") { type = SCT.boolean }
                 layout(fragmentFileId = "acme") {
-                    field("topic", label = "Topic", description = $$"${topic.help}")
+                    field("topic", label = "Topic", description = "Pick the subject.")
                     field("hasIssue", label = "Has issue?")
                 }
             }
@@ -157,7 +157,7 @@ class SchemaSkillExamplesTest : StringSpec({
         defs["lay.Questionnaire"].toJsonMapOrEmpty()[SCH.layout] shouldBe mapOf(
             SL.fragmentFileId to "acme",
             SL.schemaFields to listOf(
-                mapOf(SL.field to "topic", SL.label to "Topic", SL.description to $$"${topic.help}"),
+                mapOf(SL.field to "topic", SL.label to "Topic", SL.description to "Pick the subject."),
                 mapOf(SL.field to "hasIssue", SL.label to "Has issue?"),
             ),
         )

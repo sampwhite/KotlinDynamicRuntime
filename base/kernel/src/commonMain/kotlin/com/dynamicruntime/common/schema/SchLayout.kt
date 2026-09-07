@@ -27,6 +27,9 @@ class SchLayout(
     /** The schema properties this layout addresses -- what the boot check holds against the type. */
     val fieldNames: List<String> = fields.map { it.field }
 
+    /** The override for property [name], or null when this layout does not address that field. */
+    fun fieldFor(name: String): SchLayoutField? = fields.firstOrNull { it.field == name }
+
     /**
      * The layout as its `g-layout` block again -- the wire form (issue #585). Delivery re-serializes the
      * **model** rather than shipping the authored block, so what a page receives is what the store holds: the
