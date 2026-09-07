@@ -18,10 +18,11 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 
 /**
- * The `g-layout` closure delivered out-of-band on both friendly surfaces (issue #585), over real HTTP: the
- * endpoint catalog (what the off-workflow forms fetch) and the workflow view. The questionnaire's layout names
- * every field; acme's overlay drops `notes`, so acme receives the layout **pruned** to what it kept while a
- * global caller receives it whole -- and on neither surface does the served schema carry the keyword.
+ * The `g-layout` closure delivered out-of-band on both friendly surfaces (issues #585, #587), over real HTTP:
+ * the endpoint catalog (what the off-workflow forms fetch) and the workflow view. The questionnaire's layout
+ * names every field (acme's overlay drops `notes`, so acme receives it **pruned**); the expense report's layout
+ * carries a `hint` whose `${'$'}{min}` / `${'$'}{max}` ride as a **raw template** (frontend-resolved). On neither
+ * surface does the served schema carry the keyword.
  */
 class LayoutDeliveryTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(
@@ -31,7 +32,7 @@ class LayoutDeliveryTest : StringSpec({
     val everyone = TestUser.create(cxt, "layout@public.test")
 
     val questionnaire = "${ST.namespace}.${traitDataTypeName(ST.questionnaireEntry)}"
-    // A type in every closure below that declares no layout -- the control for "absent, not empty".
+    // Carries a `hint` layout (issue #587) on its `year` field.
     val expenseReport = "${ST.namespace}.${traitDataTypeName(ST.expenseReportEntry)}"
     val allFields = listOf(ST.topic, ST.notes, ST.hasIssue, ST.explanation)
     val acmeFields = listOf(ST.topic, ST.hasIssue, ST.explanation)
@@ -41,15 +42,22 @@ class LayoutDeliveryTest : StringSpec({
     fun fieldNames(layouts: Any?, type: String): List<String?> =
         layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps().map { it[SL.field] as? String }
 
-    $$"the catalog carries the questionnaire's layout beside a $defs that does not" {
+    fun hintOf(layouts: Any?, type: String, field: String): Any? =
+        layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
+            .first { it[SL.field] == field }[SL.hint]
+
+    $$"the catalog carries the layouts beside a $defs that does not, the hint as a raw template" {
         val c = catalog(everyone)
         val defs = c[SCH.dDefs].toJsonMapOrEmpty()
         defs.keys shouldContain questionnaire
         defs[questionnaire].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
         fieldNames(c[EI.layouts], questionnaire) shouldBe allFields
-        // A type in the closure with no layout has no entry -- the map is not one-per-type.
-        defs.keys shouldContain expenseReport
-        c[EI.layouts].toJsonMapOrEmpty().containsKey(expenseReport) shouldBe false
+        // The expense report's `hint` (issue #587) is delivered as its raw `${min}`/`${max}` template -- the
+        // backend does not resolve it (frontend-resolved against the field's bounds).
+        hintOf(c[EI.layouts], expenseReport, ST.year) shouldBe $$"Any year from ${min} to ${max}."
+        // "Absent, not empty": another type in the closure -- one with no layout -- gets no entry.
+        val noLayoutType = defs.keys.first { it != questionnaire && it != expenseReport }
+        c[EI.layouts].toJsonMapOrEmpty().containsKey(noLayoutType) shouldBe false
     }
 
     "acme's catalog carries the inherited layout pruned to the properties its overlay kept" {
@@ -58,13 +66,13 @@ class LayoutDeliveryTest : StringSpec({
         c[SCH.dDefs].toJsonMapOrEmpty()[questionnaire].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
     }
 
-    "the workflow view carries the same closure, over exactly the types it references" {
+    "the workflow view carries the layouts for exactly the traits it collects" {
         val v = acme.getData(clientPath(GEP.workflowView, SC.acme))
         v[WVF.found] shouldBe true
         fieldNames(v[WVF.layouts], questionnaire) shouldBe acmeFields
-        // The other trait the workflow collects declares no layout: absent, not an empty block.
-        v[WVF.layouts].toJsonMapOrEmpty().containsKey(questionnaire) shouldBe true
-        v[WVF.layouts].toJsonMapOrEmpty().containsKey(expenseReport) shouldBe false
+        hintOf(v[WVF.layouts], expenseReport, ST.year) shouldBe $$"Any year from ${min} to ${max}."
+        // Exactly the two collected traits that declare a layout -- no spurious entries.
+        v[WVF.layouts].toJsonMapOrEmpty().keys shouldBe setOf(questionnaire, expenseReport)
         v[SCH.dDefs].toJsonMapOrEmpty()[questionnaire].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
     }
 })
