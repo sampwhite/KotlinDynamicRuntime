@@ -192,6 +192,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         property(EI.q, "Free text matched against every text search field (any field, case-insensitive substring).") {
             emptyIsAbsent = true
         }
+        // Whether to attach the per-row owner block (issue #591): off unless asked, so the owner lookup and the
+        // extra payload happen only where a caller draws the User column. Admin-only like the `user` filter --
+        // an ordinary caller's rows are all their own, so there is nobody else to name -- and gated by scope on
+        // top of this in the handler, so setting it can never widen what a caller may see.
+        property(EI.includeUsers, "Attach the owner (user) of each document. Defaults to false; a caller who may not see other users' documents gets nothing regardless.") {
+            type = SCT.boolean
+            emptyIsAbsent = true
+            visibleWhen = CFACTS.hasAdminLevel
+        }
     }
 
     listEndpoint(
@@ -218,13 +227,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val usages = SchemaService.get(c).traitUsagesFor(c.client)
         val filter = searchFilter(c, request, usages)
         val page = GedraDataService.get(c).listGedras(c, formDoc, scope, limit, offset, filter)
-        // Who owns each row, for a caller who can see other users' documents (issue #562): the name and email
-        // the User column shows. Only such a caller gets it -- an ordinary caller's rows are all their own, so
-        // the column is not drawn and nothing is looked up. Resolved in one scoped bulk read over the page's
-        // distinct owners, confined to the caller's scope exactly as `resolveTargetUser` confines the `user`
-        // parameter above: a row's stamped org can outlive its owner's move to another, and the owner is then
-        // not this caller's to see even though the row is.
-        val owners = if (AdminRules.canManageUsers(c)) ownersOf(c, page.rows, callerScope) else emptyMap()
+        // Who owns each row, for a caller who asked for it and may see other users' documents (issues #562,
+        // #591): the name and email the User column shows. Attached only when `includeUsers` is set AND the
+        // caller may see past their own rows -- an ordinary caller's rows are all their own, so there is nobody
+        // else to name, and a caller that will not draw the column pays for no lookup. Resolved in one scoped
+        // bulk read over the page's distinct owners, confined to the caller's scope exactly as `resolveTargetUser`
+        // confines the `user` parameter above: a row's stamped org can outlive its owner's move to another, and
+        // the owner is then not this caller's to see even though the row is.
+        val includeUsers = request.getOptBool(EI.includeUsers) == true
+        val owners = if (includeUsers && AdminRules.canManageUsers(c)) ownersOf(c, page.rows, callerScope) else emptyMap()
         ListPage(
             page.rows.map { row ->
                 row.toJsonMap() + (GDF.displayValues to computeDisplayValues(c, row, usages)) + ownerFields(owners[row.userId])

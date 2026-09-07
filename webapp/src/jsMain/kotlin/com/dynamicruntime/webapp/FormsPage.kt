@@ -34,6 +34,13 @@ private val formsIdentity = setOf(HP.gedra)
 private const val formsPageSize = 25
 
 /**
+ * The owner-block request argument (issue #591): asks the listing to attach each document's owner only when the
+ * caller draws the User column ([on]), so the backend does the owner lookup exactly where it is used. Empty
+ * otherwise, so the parameter is simply absent and the listing carries no owners.
+ */
+private fun includeUsersArg(on: Boolean): Map<String, Any?> = if (on) mapOf(EI.includeUsers to true) else emptyMap()
+
+/**
  * The read side of the form documents (issue #408): a paged list of the caller's forms, a read-only view of
  * one, and a delete from that view (slice 3). All are driven by the same catalog the create page uses -- the
  * client-scoped `formDocs` list, `formDoc` fetch, and `formDoc` DELETE endpoints -- so what is shown and what
@@ -125,7 +132,10 @@ val FormsPage = FC<Props> {
         listLoading = true
         formsScope.launch {
             try {
-                val resp = SchemaCatalogApi.invoke(ep, mapOf(EP.limit to formsPageSize, EP.offset to off) + search)
+                val resp = SchemaCatalogApi.invoke(
+                    ep,
+                    mapOf(EP.limit to formsPageSize, EP.offset to off) + search + includeUsersArg(canManageUsers),
+                )
                 rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                 numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
                 searchError = null
@@ -154,7 +164,8 @@ val FormsPage = FC<Props> {
             try {
                 // Whether the caller administers other users (issue #562): a failure to learn it leaves the
                 // administrative controls off, which is the safe reading -- the list itself still loads.
-                canManageUsers = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false)
+                val canManage = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false)
+                canManageUsers = canManage
                 // The caller's own client-scoped surface, so the list is exactly what this caller may see.
                 val cat = SchemaCatalogApi.fetchCatalog()
                 catalog = cat
@@ -166,7 +177,12 @@ val FormsPage = FC<Props> {
                 val ep = findFormsListEndpoint(cat.endpoints)
                 listEndpoint = ep
                 if (ep != null) {
-                    val resp = SchemaCatalogApi.invoke(ep, mapOf(EP.limit to formsPageSize, EP.offset to 0))
+                    // The freshly-read `canManage`, not the state set just above: the setter has not landed in
+                    // this closure yet, so the initial page would ask for no owners if it read the state.
+                    val resp = SchemaCatalogApi.invoke(
+                        ep,
+                        mapOf(EP.limit to formsPageSize, EP.offset to 0) + includeUsersArg(canManage),
+                    )
                     rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                     numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
                 }
