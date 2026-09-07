@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
@@ -10,6 +12,7 @@ import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -30,6 +33,44 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * and covered under `jsNodeTest` against a renamed section.
  */
 fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substringAfter('/')
+
+/**
+ * The forms hash's navigation keys -- the page, the open form, and the listing a child was opened from. Every
+ * other key on a forms hash is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`),
+ * because the forms search shares the endpoint's own arg names, the same arrangement the Users page uses.
+ */
+private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight)
+
+/**
+ * The applied forms search read back out of a hash (issue #592): every param that is not a navigation key. So a
+ * shared or bookmarked forms URL reproduces the filter, and returning from an edit -- which carries the search
+ * on its own URL -- lands on the same filtered list. Pure, and covered under `jsNodeTest`.
+ */
+fun formsSearchFromHash(hp: Map<String, String>): Map<String, String> =
+    hp.filterKeys { it !in formsNavKeys }.filterValues { it.isNotBlank() }
+
+/**
+ * The applied forms [search] as hash params (issue #592): its non-blank entries, to merge beside the page and
+ * the open form. The inverse of [formsSearchFromHash]. Pure, and covered under `jsNodeTest`.
+ */
+fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String>> =
+    search.entries.mapNotNull { (k, v) -> v.trim().ifEmpty { null }?.let { k to it } }
+
+/** The declared query keys that are not applied-search values: paging, and the owner-block flag. */
+private val formsNonSearchKeys = setOf(EP.offset, EP.limit, EI.includeUsers)
+
+/**
+ * The applied-search keys a listing's [inputSchema] actually declares (issue #592 review): its own property
+ * names, minus paging and the owner flag. `user` and `q` are declared and kept, as is every trait filter this
+ * client's variant carries.
+ *
+ * Reading a hash back through this **whitelist** rather than "everything that is not a navigation key" is what
+ * keeps a stale or hand-added param from reaching the endpoint, where an undeclared property is a 400 -- so a
+ * bookmarked URL from before a client's usage rules changed lands on the list rather than an error page, and a
+ * stray `offset`/`limit` in the URL cannot pin the paging. Pure, and covered under `jsNodeTest`.
+ */
+fun formsSearchKeys(inputSchema: Map<String, Any?>): Set<String> =
+    inputSchema[SCH.properties].toJsonMapOrEmpty().keys - formsNonSearchKeys
 
 private val formCreateSuffix: String = pathAfterSection(GEP.formDocCreate)
 private val formsListSuffix: String = pathAfterSection(GEP.formDocs)
@@ -145,18 +186,6 @@ fun seededEdits(form: Map<String, Any?>): List<Map<String, Any?>> =
  */
 fun formDocPatchBody(target: Map<String, Any?>): Map<String, Any?> =
     mapOf(GPF.targets to mapOf(GedraDataType.formDoc.name to listOf(target)))
-
-/**
- * The trait labels a patch response reports as **applied** (`outcomes` with `applied = true`), across the
- * patched gedras, by the same friendly label the form's trait picker showed (issue #417). Empty when a patch
- * changed nothing -- which the edit page reports as "no changes" rather than a false success. Pure, and covered
- * under `jsNodeTest`.
- */
-fun appliedTraitLabels(patched: List<Map<String, Any?>>, entriesUnion: SchType?): List<String> =
-    patched.flatMap { it[GPF.outcomes].toJsonListOfMaps() }
-        .filter { it[GPF.applied] == true }
-        .mapNotNull { it[GE.traitId] as? String }
-        .map { traitId -> entriesUnion?.variants?.byValue?.get(traitId)?.title ?: humanizeFieldName(traitId) }
 
 /**
  * The trait entry union inside a form-document type -- the `entries` array's element -- or null when [type] is

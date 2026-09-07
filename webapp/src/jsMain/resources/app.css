@@ -787,3 +787,12 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 
 /* The User column's second line: the email under the name, quieter so the name leads. */
 .owner-email { display: block; font-size: 12px; color: var(--text-muted); }
+
+/* The just-saved form, flashed once on arrival back at the list from the edit page (issue #592): the row's
+   cells fade from the accent tint to nothing, so the eye is drawn to it without leaving a persistent mark.
+   One-shot -- the page clears the highlight after the animation, so it never repeats on a reload or a page. */
+@keyframes forms-row-flash {
+    from { background-color: var(--accent); }
+    to { background-color: transparent; }
+}
+.forms-row-highlight > td { animation: forms-row-flash 2s ease-out; }

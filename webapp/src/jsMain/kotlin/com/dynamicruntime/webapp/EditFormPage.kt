@@ -6,7 +6,6 @@ import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
-import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -52,7 +51,6 @@ val EditFormPage = FC<Props> {
     // where Save would patch the stale gedra (issue #417).
     var gedraId by useState<String?>(hashParams()[HP.gedra])
     var patchEndpoint by useState<EndpointInfo?>(null)
-    var getEndpoint by useState<EndpointInfo?>(null)
     var catalog by useState<Catalog?>(null)
     var values by useState<Map<String, Any?>>(emptyMap())
     var failures by useState<List<SchFailure>?>(null)
@@ -60,8 +58,6 @@ val EditFormPage = FC<Props> {
     var focusRequest by useState(0)
     var running by useState(false)
     var runError by useState<DisplayError?>(null)
-    // The applied-trait labels the patch reported, set on a successful save; drives the confirmation screen.
-    var appliedLabels by useState<List<String>?>(null)
     var loadError by useState<DisplayError?>(null)
     // The open form could not be loaded (absent, or not this caller's) -- a deep link to a form that is not theirs.
     var notFound by useState(false)
@@ -85,7 +81,6 @@ val EditFormPage = FC<Props> {
         failures = null
         revalidate = false
         runError = null
-        appliedLabels = null
         notFound = false
         loadingSchema = true
         val id = gedraId
@@ -98,7 +93,6 @@ val EditFormPage = FC<Props> {
                 val patchEp = findFormPatchEndpoint(cat.endpoints)
                 val getEp = findFormGetEndpoint(cat.endpoints)
                 patchEndpoint = patchEp
-                getEndpoint = getEp
                 if (id == null || patchEp == null || getEp == null) {
                     loadError = null
                 } else {
@@ -148,8 +142,7 @@ val EditFormPage = FC<Props> {
                 +"No form was named to edit."
             }
             notFound -> {
-                // The form is not viewable either, so only the list link is offered here.
-                editNav(id, toForm = false)
+                editNav()
                 p {
                     className = ClassName("subtitle")
                     +"That form is not one you can edit."
@@ -159,24 +152,8 @@ val EditFormPage = FC<Props> {
                 className = ClassName("subtitle")
                 +"This account's surface has no way to edit forms."
             }
-            appliedLabels != null -> {
-                // A save confirms in place with what changed, and offers to return to the (now updated) form to
-                // keep editing or to go back to the listing (issue #417).
-                editNav(id)
-                val labels = appliedLabels!!
-                p {
-                    className = ClassName("form-ok")
-                    +(if (labels.isEmpty()) "✓ Saved — no changes to apply." else "✓ Saved.")
-                }
-                if (labels.isNotEmpty()) {
-                    p {
-                        className = ClassName("subtitle")
-                        +("Updated: " + labels.joinToString(", "))
-                    }
-                }
-            }
             else -> {
-                editNav(id)
+                editNav()
                 p {
                     className = ClassName("subtitle")
                     +("Change an entry's fields, add a section for a new trait, or switch a section to delete. " +
@@ -220,13 +197,22 @@ val EditFormPage = FC<Props> {
                                 runError = null
                                 editScope.launch {
                                     try {
-                                        val body = formDocPatchBody(payload)
-                                        val patched = SchemaCatalogApi.invoke(patchEp, body)[EP.items].toJsonListOfMaps()
-                                        val union = entriesUnionOf(getEndpoint?.let { cat.payloadType(it) })
-                                        appliedLabels = appliedTraitLabels(patched, union)
+                                        SchemaCatalogApi.invoke(patchEp, formDocPatchBody(payload))
+                                        // Back to the listing (issue #592): filtered as it was, and with the
+                                        // just-saved form flagged so the list flashes it -- "here is the form
+                                        // you saved", the confirmation, not a screen to click away from. Every
+                                        // successful save flashes: the patch always writes the entry (an
+                                        // `addOrReplace` reports applied even for identical data), so a save
+                                        // that changed nothing cannot be told from one that did, and marking
+                                        // the form the caller was just editing is the honest, useful cue.
+                                        val search = formsSearchHashParams(formsSearchFromHash(hashParams()))
+                                        val flag = id?.let { listOf(HP.highlight to it) } ?: emptyList()
+                                        navigateHash(listOf(HP.page to HMENU.pageForms) + search + flag)
                                     } catch (e: Throwable) {
+                                        // Only the failure path stays on the page, so re-enable the button here
+                                        // rather than in a `finally` that would run after a successful save has
+                                        // already navigated away and unmounted this page.
                                         runError = userFacingError(e)
-                                    } finally {
                                         running = false
                                     }
                                 }
@@ -272,22 +258,15 @@ val EditFormPage = FC<Props> {
 }
 
 /**
- * The edit page's navigation row. It always offers a link back to **My forms** (the listing) -- the way out that
- * was missing after a save (issue #417) -- and, when [toForm] and the form is viewable, a link back to that
- * form's read-only view to keep editing it. On the not-found branch the form cannot be viewed, so only the list
- * link is shown.
+ * The edit page's navigation row: a link back to **My forms** (the listing, issue #417), carrying the search
+ * the caller was filtering by (issue #592) so returning lands on the same filtered list. A successful save
+ * navigates there on its own (see the Save handler), so this is the way out *before* saving -- while editing,
+ * and on the not-found branch.
  */
-private fun react.ChildrenBuilder.editNav(id: String?, toForm: Boolean = true) {
+private fun react.ChildrenBuilder.editNav() {
+    val search = formsSearchHashParams(formsSearchFromHash(hashParams()))
     div {
         className = ClassName("row")
-        if (toForm && id != null) {
-            Button {
-                type = "link"
-                onClick = { navigateHash(listOf(HP.page to HMENU.pageForms, HP.gedra to id)) }
-                +"← Back to the form"
-            }
-        }
-        // The listing back (issue #554): to the forms list, or to whichever listing opened this form.
-        backToListing(HMENU.pageForms)
+        backToListing(HMENU.pageForms, search)
     }
 }

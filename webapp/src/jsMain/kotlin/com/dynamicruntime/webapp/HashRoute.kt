@@ -58,6 +58,13 @@ object HP {
     /** Forms page: the gedra id of the form document open in the read-only view, or absent in the list view. */
     const val gedra = "g"
 
+    /**
+     * Forms page: the gedra id of a form to **highlight** briefly in the list (issue #592) -- how a save
+     * hands the just-edited form back to the listing. Transient: read once on arrival and dropped from the
+     * hash by the page's own hash-write, so a reload does not re-flash it and the URL stays clean to share.
+     */
+    const val highlight = "hl"
+
     /** Home page: the id of the open Markdown document, or absent for the welcome copy. */
     const val doc = "doc"
 

@@ -32,6 +32,10 @@ external interface FormsTableProps : Props {
     /** Whether the caller's surface carries the delete endpoint, so a Delete action can work. */
     var canDelete: Boolean
 
+    /** The gedra id of a row to flash briefly -- the form just saved on the edit page (issue #592); null for
+     *  none. The flash is a one-shot CSS animation on the row, so it fades on its own. */
+    var highlightId: String?
+
     /**
      * Whether to draw the User column (issue #562): true for a caller who administers other users, whose rows
      * carry an owner. An ordinary caller's rows are all their own, so the column would say one name over and
@@ -108,6 +112,10 @@ val FormsTable = FC<FormsTableProps> { props ->
             val handlers: dynamic = js("({})")
             handlers.onClick = { props.onView(record.key as String) }
             handlers.style = js("({ cursor: 'pointer' })")
+            // The just-saved form flashes on arrival from the edit page (issue #592).
+            if (props.highlightId != null && record.key == props.highlightId) {
+                handlers.className = "forms-row-highlight"
+            }
             handlers
         }
     }
