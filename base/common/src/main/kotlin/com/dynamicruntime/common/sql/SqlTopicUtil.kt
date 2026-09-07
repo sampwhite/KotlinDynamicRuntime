@@ -54,6 +54,35 @@ object SqlTopicUtil {
         return SqlStmtUtil.prepareSql(sqlCxt, "u${table.tableName}", table.columns, query)
     }
 
+    /**
+     * A **partial** update statement -- `update <table> set <businessSetSql>, <the update-protocol stamps>
+     * where <where>` -- prepared and cached under [name]. The caller owns its own business assignments and the
+     * whole `where` clause; this appends the SET assignments for [updateStampColumns] so a scoped or by-id
+     * update never names the audit columns itself, and [prepForStdUpdate] fills their bind values. A new
+     * protocol update-field is then added in one place (that list plus [prepForStdUpdate]), and every partial
+     * update picks it up without being touched.
+     *
+     * Contrast [mkTableUpdateStmt], which writes a **whole row** by primary key. The protocol fields here are
+     * all SET assignments and never conditions, which is why the caller can be handed the whole `where` as a
+     * string: nothing this helper adds ever needs to become part of it.
+     */
+    fun mkPartialUpdateStmt(
+        sqlCxt: SqlCxt,
+        table: KdrTable,
+        name: String,
+        businessSetSql: String,
+        where: String,
+    ): SqlStatement {
+        val stampSql = stdUpdateStampSql(table)
+        val setSql = if (stampSql.isEmpty()) businessSetSql else "$businessSetSql, $stampSql"
+        val query = "update t:${table.tableName} set $setSql where $where"
+        return SqlStmtUtil.prepareSql(sqlCxt, name, table.columns, query)
+    }
+
+    /** The `SET` assignments (`c:col = :col`, comma-joined) for whichever [updateStampColumns] [table] declares. */
+    private fun stdUpdateStampSql(table: KdrTable): String =
+        updateStampColumns.filter { table.columnsByName.containsKey(it) }.joinToString(", ") { "c:$it = :$it" }
+
     /** Takes the transaction lock by updating [PF.touchedAt] on the primary-key row. */
     fun mkTableTranLockStmt(sqlCxt: SqlCxt, table: KdrTable): SqlStatement {
         if (!table.columnsByName.containsKey(PF.touchedAt)) {
@@ -68,6 +97,58 @@ object SqlTopicUtil {
     }
 
     // --- protocol-field population ------------------------------------------
+
+    /**
+     * The protocol columns a **partial** update stamps on every write: the "updated" audit pair. The single
+     * source of truth for both halves of a scoped or by-id update -- [mkPartialUpdateStmt] emits their `SET`
+     * assignments from this list, and [prepForStdUpdate] fills their bind values from it -- so a new protocol
+     * update-field is added here and given a fill rule in [prepForStdUpdate], and no update *call site* has to
+     * learn about it.
+     *
+     * The creation pair (`createdAt`/`createdBy`) is deliberately **absent**: an update preserves it, exactly
+     * as [prepForStdExecute] fills it put-if-absent. Ownership columns are absent for the same reason -- a
+     * partial update leaves them as they stand unless it means to change one, and then it says so itself.
+     */
+    val updateStampColumns: List<String> = listOf(PF.updatedAt, PF.updatedBy)
+
+    /**
+     * Stamps the [updateStampColumns] onto [data] for a partial update: `updatedBy` from the acting user, and
+     * `updatedAt` from [nextUpdatedAt] against [prior] -- the row's current `updatedAt`, read under the same
+     * lock the write takes, so the new stamp is strictly past it and the incremental caches cannot miss the
+     * write (see [nextUpdatedAt]). Only columns [table] actually declares are stamped.
+     *
+     * This is the update-side companion to [prepForStdExecute]. A new protocol update-field is added to
+     * [updateStampColumns] and given its fill rule in the `when` below; the `else` throws rather than silently
+     * emitting a `SET c:new = :new` with no bound value, so the omission fails loudly at its one site.
+     *
+     * Returns the `updatedAt` it stamped (null only if [table] declares no such column) -- the monotonic write
+     * time, which a caller stamping the same instant elsewhere needs: the gedra patch carries it into each
+     * entry's own `updated` so the row column and the in-JSON stamp cannot disagree.
+     */
+    fun prepForStdUpdate(cxt: KdrCxt, table: KdrTable, data: MutableMap<String, Any?>, prior: Instant?): Instant? {
+        for (col in updateStampColumns) {
+            if (!table.columnsByName.containsKey(col)) {
+                continue
+            }
+            data[col] = when (col) {
+                PF.updatedBy -> cxt.userProfile.userId
+                PF.updatedAt -> nextUpdatedAt(cxt, prior)
+                else -> throw KdrException(
+                    "No fill rule for update-stamp column '$col'; add one in SqlTopicUtil.prepForStdUpdate.",
+                )
+            }
+        }
+        return data[PF.updatedAt].toOptInstant()
+    }
+
+    /**
+     * As [prepForStdUpdate], but reading the prior `updatedAt` from [priorRow] itself -- the row as it stands
+     * under the lock, or null when there is none yet. The overload an update path reaches for after reading the
+     * current row: it hands the whole row over rather than picking the audit column out of it, so the call site
+     * names no protocol field. The value read is the same [PF.updatedAt] the [Instant] overload expects.
+     */
+    fun prepForStdUpdate(cxt: KdrCxt, table: KdrTable, data: MutableMap<String, Any?>, priorRow: Map<String, Any?>?): Instant? =
+        prepForStdUpdate(cxt, table, data, priorRow?.get(PF.updatedAt).toOptInstant())
 
     /**
      * Stamps the audit and ownership columns onto [data] before writing to the row. `createdBy`/`createdAt` are filled
