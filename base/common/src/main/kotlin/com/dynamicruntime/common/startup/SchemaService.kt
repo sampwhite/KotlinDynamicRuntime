@@ -35,7 +35,7 @@ import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.layoutFieldProblems
-import com.dynamicruntime.common.schema.layoutHintProblems
+import com.dynamicruntime.common.schema.layoutTemplateProblems
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
@@ -387,7 +387,7 @@ class SchemaService : ServiceInitializer {
         for ((name, layout) in collectLayouts(schemaStore.defs)) {
             val type = schemaStore.types[name]
             problems.addAll(layoutFieldProblems("Type '$name'", layout, type))
-            problems.addAll(layoutHintProblems("Type '$name'", layout, type))
+            problems.addAll(layoutTemplateProblems("Type '$name'", layout, type))
         }
         for ((client, store) in clientStores) {
             // A client sharing the global document has nothing of its own to check.
@@ -396,7 +396,7 @@ class SchemaService : ServiceInitializer {
                 if (rawLayout(store.defs, name) === rawLayout(schemaStore.defs, name)) continue // inherited
                 val type = store.types[name]
                 problems.addAll(layoutFieldProblems("Type '$name' (client '$client')", layout, type))
-                problems.addAll(layoutHintProblems("Type '$name' (client '$client')", layout, type))
+                problems.addAll(layoutTemplateProblems("Type '$name' (client '$client')", layout, type))
             }
         }
         if (problems.isNotEmpty()) {

@@ -189,35 +189,60 @@ class SchLayoutTest : StringSpec({
         boundsContextData(note) shouldBe emptyMap()
     }
 
-    "layoutHintProblems passes a hint that references only the params its field provides" {
+    "layoutTemplateProblems passes a hint that references only the params its field provides" {
         val layout = parseSchLayout("Type 'acme.R'", mapOf(SL.schemaFields to listOf(
             mapOf(SL.field to "year", SL.hint to $$"From ${min} to ${max}."),
         )))
-        layoutHintProblems("Type 'acme.R'", layout, boundedType) shouldBe emptyList()
+        layoutTemplateProblems("Type 'acme.R'", layout, boundedType) shouldBe emptyList()
     }
 
-    "layoutHintProblems refuses a hint referencing a bound the field does not declare" {
+    "layoutTemplateProblems refuses a hint referencing a bound the field does not declare" {
         // `${max}` on `note`, which has no maximum -- caught at boot like a mistyped key.
         val layout = parseSchLayout("Type 'acme.R'", mapOf(SL.schemaFields to listOf(
             mapOf(SL.field to "note", SL.hint to $$"At most ${max}."),
         )))
-        val problems = layoutHintProblems("Type 'acme.R'", layout, boundedType)
+        val problems = layoutTemplateProblems("Type 'acme.R'", layout, boundedType)
         problems.size shouldBe 1
         problems.single() shouldContain "max"
     }
 
-    "layoutHintProblems refuses a malformed hint template" {
+    "layoutTemplateProblems refuses a malformed hint template" {
         val layout = parseSchLayout("Type 'acme.R'", mapOf(SL.schemaFields to listOf(
             mapOf(SL.field to "year", SL.hint to $$"From ${min"),  // unterminated block
         )))
-        layoutHintProblems("Type 'acme.R'", layout, boundedType).size shouldBe 1
+        layoutTemplateProblems("Type 'acme.R'", layout, boundedType).size shouldBe 1
     }
 
-    "layoutHintProblems ignores a field with no hint, and a hint with no substitution" {
+    "layoutTemplateProblems ignores a field with no hint, and a hint with no substitution" {
         val layout = parseSchLayout("Type 'acme.R'", mapOf(SL.schemaFields to listOf(
             mapOf(SL.field to "year", SL.label to "Year"),                 // no hint
             mapOf(SL.field to "note", SL.hint to "Anything you like."),    // plain hint, references nothing
         )))
-        layoutHintProblems("Type 'acme.R'", layout, boundedType) shouldBe emptyList()
+        layoutTemplateProblems("Type 'acme.R'", layout, boundedType) shouldBe emptyList()
+    }
+
+    "layoutTemplateProblems refuses a fragment pull in any copy until #605 wires it" {
+        // A `@t` pull in a description (or label/hint) would render raw today; caught at boot instead.
+        val layout = parseSchLayout("Type 'acme.R'", mapOf(SL.schemaFields to listOf(
+            mapOf(SL.field to "note", SL.description to $$"""See ${@t("acme.noteHelp")}."""),
+        )))
+        val problems = layoutTemplateProblems("Type 'acme.R'", layout, boundedType)
+        problems.size shouldBe 1
+        problems.single() shouldContain "605"
+    }
+
+    "layoutTemplateProblems refuses a malformed label or description, not only a hint" {
+        val layout = parseSchLayout("Type 'acme.R'", mapOf(SL.schemaFields to listOf(
+            mapOf(SL.field to "note", SL.label to $$"Broken ${oops"),   // unterminated block on a label
+        )))
+        layoutTemplateProblems("Type 'acme.R'", layout, boundedType).size shouldBe 1
+    }
+
+    "layoutTemplateProblems leaves a field-data reference in a label alone (dynamic, checked at render)" {
+        // `${note}` on a label is a field-data path, not a fragment pull; label paths are not boot-checked.
+        val layout = parseSchLayout("Type 'acme.R'", mapOf(SL.schemaFields to listOf(
+            mapOf(SL.field to "note", SL.label to $$"Note: ${note}"),
+        )))
+        layoutTemplateProblems("Type 'acme.R'", layout, boundedType) shouldBe emptyList()
     }
 })

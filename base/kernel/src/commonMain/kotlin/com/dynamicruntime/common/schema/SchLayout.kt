@@ -325,32 +325,45 @@ fun boundsContextData(type: SchType): Map<String, Any?> = buildMap {
 }
 
 /**
- * The problems with a layout's `hint` templates against the fields they annotate (issue #587) -- the boot check
- * for §10's injected-param placeholders. For each field carrying a `hint`: a malformed template fails, and a
- * `${'$'}{…}` referencing a bounds param the field does not provide (`${'$'}{max}` on a field with no maximum) fails, the
- * same way a mistyped key would. Only the `hint` is checked here: a `label` / `description` resolves against the
- * field's own dynamic data, which no boot check can enumerate, and a `@t` fragment pull is a fragment-existence
- * concern rather than a param one (it is not a data path). [type] is the object the layout annotates; a field the
- * type does not declare is already reported by [layoutFieldProblems], so it is skipped here.
+ * The problems with a layout's copy **templates** -- `label` / `description` / `hint` -- against the field they
+ * annotate (issues #587, #605), the boot check for §10's frontend substitution:
+ *  - a **malformed** template (an unterminated `${'$'}{...}`, an empty block) fails, on any of the three;
+ *  - a **fragment pull** `${'$'}{@t("ns.key")}` fails until #605 wires fragment resolution -- it would otherwise
+ *    render as raw text, exactly the "parses clean, renders wrong" the layout boot checks exist to prevent;
+ *  - a **hint** additionally may reference only its field's bounds params: a `${'$'}{max}` on a field with no maximum
+ *    fails, like a mistyped key. A `label` / `description` resolves against the field's own **dynamic** data, so
+ *    its `${'$'}{...}` data paths are not checked here (no boot can enumerate them).
+ * [type] is the object the layout annotates; a field it does not declare is reported by [layoutFieldProblems]
+ * and skipped here.
  */
-fun layoutHintProblems(where: String, layout: SchLayout, type: SchType?): List<String> {
+fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): List<String> {
     if (type == null) return emptyList()
     val problems = mutableListOf<String>()
     for (field in layout.fields) {
-        val hint = field.hint ?: continue
         val prop = type.properties[field.field] ?: continue
-        val allowed = boundsContextNames(prop.valueType)
-        val analysis = hint.analyzeTemplate()
-        for (issue in analysis.issues) {
-            problems.add("$where: the '${SCH.layout}' hint for '${field.field}' is a malformed template: ${issue.message}")
-        }
-        for (path in analysis.paths.required + analysis.paths.optional) {
-            val name = path.substringBefore('.')
-            if (name !in allowed) {
+        for ((kind, text) in listOf(SL.label to field.label, SL.description to field.description, SL.hint to field.hint)) {
+            if (text == null) continue
+            val analysis = text.analyzeTemplate()
+            for (issue in analysis.issues) {
+                problems.add("$where: the '${SCH.layout}' $kind for '${field.field}' is a malformed template: ${issue.message}")
+            }
+            if (analysis.refs.isNotEmpty()) {
                 problems.add(
-                    "$where: the '${SCH.layout}' hint for '${field.field}' references '${'$'}{$path}', but this field's " +
-                        "bounds context provides ${if (allowed.isEmpty()) "no params (it declares no minimum or maximum)" else allowed.sorted().toString()}.",
+                    "$where: the '${SCH.layout}' $kind for '${field.field}' uses a fragment pull ('@t'), which layout " +
+                        "copy does not resolve yet (see #605). Use literal copy for now.",
                 )
+            }
+            if (kind == SL.hint) {
+                val allowed = boundsContextNames(prop.valueType)
+                for (path in analysis.paths.required + analysis.paths.optional) {
+                    val name = path.substringBefore('.')
+                    if (name !in allowed) {
+                        problems.add(
+                            "$where: the '${SCH.layout}' hint for '${field.field}' references '${'$'}{$path}', but this " +
+                                "field's bounds context provides ${if (allowed.isEmpty()) "no params (it declares no minimum or maximum)" else allowed.sorted().joinToString(", ")}.",
+                        )
+                    }
+                }
             }
         }
     }

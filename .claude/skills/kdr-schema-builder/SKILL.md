@@ -255,10 +255,14 @@ is equivalent):
 - A **`label`** / **`description`** templates over the **field's own data** — `${someField}` reads the value
   being entered. No boot check (the data is dynamic).
 - **Fragment pulls** (`${@t("ns.key")}`, against the block's `fragmentFileId`) are **not wired yet** — issue
-  #605 settles whether they resolve on the backend at delivery or via a frontend fetch first.
+  #605 settles whether they resolve on the backend at delivery or via a frontend fetch first. Until then a `@t`
+  pull in any layout copy **fails the boot** (`layoutTemplateProblems`), rather than shipping a layout that
+  renders raw.
 
-An unresolved `${…}` never blanks the field: it renders **as written** and logs a `[kdr]` console warning, so a
-premature or broken template is visible but harmless.
+The boot check (`layoutTemplateProblems`) refuses a **malformed** template in any of `label` / `description` /
+`hint`, a **fragment pull** (above), and a `hint` referencing a bounds param its field lacks. A `label` /
+`description` `${…}` over the field's own data is **not** boot-checked (the data is dynamic); if it fails to
+resolve at render it shows **as written** with a `[kdr]` console warning rather than blanking the field.
 
 **Delivery (issue #585).** Both friendly surfaces carry a `layouts` map beside their `$defs` — the endpoint
 catalog under `EI.layouts`, the workflow view under `WVF.layouts` — built by one call,
