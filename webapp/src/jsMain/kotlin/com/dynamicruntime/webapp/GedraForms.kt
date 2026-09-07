@@ -31,6 +31,28 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  */
 fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substringAfter('/')
 
+/**
+ * The forms hash's navigation keys -- the page, the open form, and the listing a child was opened from. Every
+ * other key on a forms hash is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`),
+ * because the forms search shares the endpoint's own arg names, the same arrangement the Users page uses.
+ */
+private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from)
+
+/**
+ * The applied forms search read back out of a hash (issue #592): every param that is not a navigation key. So a
+ * shared or bookmarked forms URL reproduces the filter, and returning from an edit -- which carries the search
+ * on its own URL -- lands on the same filtered list. Pure, and covered under `jsNodeTest`.
+ */
+fun formsSearchFromHash(hp: Map<String, String>): Map<String, String> =
+    hp.filterKeys { it !in formsNavKeys }.filterValues { it.isNotBlank() }
+
+/**
+ * The applied forms [search] as hash params (issue #592): its non-blank entries, to merge beside the page and
+ * the open form. The inverse of [formsSearchFromHash]. Pure, and covered under `jsNodeTest`.
+ */
+fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String>> =
+    search.entries.mapNotNull { (k, v) -> v.trim().ifEmpty { null }?.let { k to it } }
+
 private val formCreateSuffix: String = pathAfterSection(GEP.formDocCreate)
 private val formsListSuffix: String = pathAfterSection(GEP.formDocs)
 private val formGetSuffix: String = pathAfterSection(GEP.formDoc)

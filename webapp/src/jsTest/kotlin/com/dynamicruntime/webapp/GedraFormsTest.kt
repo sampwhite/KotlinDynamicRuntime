@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
@@ -383,5 +384,27 @@ class GedraFormsTest {
         // Nothing applied -> no labels.
         val noop = listOf(mapOf(GPF.outcomes to listOf(mapOf(GE.traitId to "name", GPF.applied to false))))
         assertTrue(appliedTraitLabels(noop, entriesUnion()).isEmpty())
+    }
+
+    /**
+     * The forms search round-trips through the hash (issue #592): the navigation keys (page, the open form, the
+     * `from`) are dropped and everything else -- trait filters, the scope-bar user, the free-text q -- is the
+     * applied search, so a bookmarked URL and the edit round-trip both reproduce the filter.
+     */
+    @Test
+    fun formsSearchRoundTripsThroughTheHash() {
+        val applied = mapOf("acmeSiteAuditContains" to "dana", EI.user to "7", EI.q to "plan")
+        val params = formsSearchHashParams(applied)
+        // A hash as it would stand on the list, with navigation keys mixed in.
+        val hash = params.toMap() + mapOf(HP.page to "forms", HP.gedra to "gd.fd.acme.u1", HP.from to "forms")
+        assertEquals(applied, formsSearchFromHash(hash))
+        // The navigation keys are never taken for search.
+        val decoded = formsSearchFromHash(hash)
+        assertTrue(HP.page !in decoded && HP.gedra !in decoded && HP.from !in decoded)
+        // A blank value is not a filter, so it neither encodes nor decodes.
+        assertTrue(formsSearchHashParams(mapOf("x" to "  ")).isEmpty())
+        assertEquals(emptyMap(), formsSearchFromHash(mapOf(HP.page to "forms", "x" to "")))
+        // No search: nothing but the navigation keys.
+        assertEquals(emptyList(), formsSearchHashParams(emptyMap()))
     }
 }

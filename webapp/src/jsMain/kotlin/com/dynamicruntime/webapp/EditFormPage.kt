@@ -278,16 +278,20 @@ val EditFormPage = FC<Props> {
  * link is shown.
  */
 private fun react.ChildrenBuilder.editNav(id: String?, toForm: Boolean = true) {
+    // The search the caller was filtering by, carried onto this page's URL by the Edit link (issue #592), so
+    // both ways back land on the same filtered list rather than the whole one.
+    val search = formsSearchHashParams(formsSearchFromHash(hashParams()))
     div {
         className = ClassName("row")
         if (toForm && id != null) {
             Button {
                 type = "link"
-                onClick = { navigateHash(listOf(HP.page to HMENU.pageForms, HP.gedra to id)) }
+                onClick = { navigateHash(listOf(HP.page to HMENU.pageForms, HP.gedra to id) + search) }
                 +"← Back to the form"
             }
         }
-        // The listing back (issue #554): to the forms list, or to whichever listing opened this form.
-        backToListing(HMENU.pageForms)
+        // The listing back (issue #554): to the forms list, or to whichever listing opened this form, keeping
+        // the search that was active (issue #592).
+        backToListing(HMENU.pageForms, search)
     }
 }

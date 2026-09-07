@@ -47,12 +47,16 @@ fun backLabel(page: String): String = backListings[page]?.label ?: page
 fun childHref(childPage: String, listing: String, vararg extra: Pair<String, String>): String =
     hashHref(listOf(HP.page to childPage, HP.from to listing) + extra)
 
-/** The `← Listing` link atop a child page: to the listing it was opened from, or to [fallback]. */
-fun ChildrenBuilder.backToListing(fallback: String) {
+/**
+ * The `← Listing` link atop a child page: to the listing it was opened from, or to [fallback]. [forward] carries
+ * extra params onto the target -- the search the listing was filtered by, so returning keeps it (issue #592);
+ * empty for a child that has nothing to hand back.
+ */
+fun ChildrenBuilder.backToListing(fallback: String, forward: List<Pair<String, String>> = emptyList()) {
     val target = backTarget(hashParams()[HP.from], fallback)
     a {
         className = ClassName("back-link")
-        href = hashHref(listOf(HP.page to target))
+        href = hashHref(listOf(HP.page to target) + forward)
         +"← ${backLabel(target)}"
     }
 }

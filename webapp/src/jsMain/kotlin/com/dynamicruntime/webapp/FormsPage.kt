@@ -177,11 +177,15 @@ val FormsPage = FC<Props> {
                 val ep = findFormsListEndpoint(cat.endpoints)
                 listEndpoint = ep
                 if (ep != null) {
-                    // The freshly-read `canManage`, not the state set just above: the setter has not landed in
-                    // this closure yet, so the initial page would ask for no owners if it read the state.
+                    // Seed the search from the hash (issue #592), so a bookmarked filter -- or the one carried
+                    // back from an edit -- loads applied rather than the list coming back empty. The freshly-read
+                    // locals, not the state set just above: those setters have not landed in this closure yet.
+                    val initialSearch = formsSearchFromHash(hashParams())
+                    searchDraft = initialSearch
+                    appliedSearch = initialSearch
                     val resp = SchemaCatalogApi.invoke(
                         ep,
-                        mapOf(EP.limit to formsPageSize, EP.offset to 0) + includeUsersArg(canManage),
+                        mapOf(EP.limit to formsPageSize, EP.offset to 0) + initialSearch + includeUsersArg(canManage),
                     )
                     rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                     numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
@@ -253,13 +257,17 @@ val FormsPage = FC<Props> {
     // Keep the hash in step with the open form: opening one is a navigation and earns a history entry, so Back
     // returns to the list. A `g=` naming a form the page does not hold is corrected in place rather than pushed
     // onto -- the fetch still resolves it, but it is not a list row to page back to.
-    useEffect(viewingId, restored, rows) {
+    useEffect(viewingId, restored, rows, appliedSearch) {
         if (!restored) {
             return@useEffect
         }
+        // The applied search rides in the hash too (issue #592): shareable, restored on mount, and carried
+        // across an edit. It is not part of `formsIdentity` (only the open form is), so a filter change replaces
+        // the entry in place rather than pushing one -- typing a filter never spams Back.
         val params = buildList {
             add(HP.page to HMENU.pageForms)
             viewingId?.let { add(HP.gedra to it) }
+            addAll(formsSearchHashParams(appliedSearch))
         }
         val current = hashParams()[HP.gedra]
         val reachable = current == null || rows.any { it[GDF.gedraId] == current }
@@ -306,7 +314,10 @@ val FormsPage = FC<Props> {
                                 Button {
                                     onClick = {
                                         viewingId?.let { id ->
-                                            navigateHash(listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id))
+                                            navigateHash(
+                                                listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
+                                                    formsSearchHashParams(appliedSearch),
+                                            )
                                         }
                                     }
                                     +"Edit form"
@@ -502,7 +513,12 @@ val FormsPage = FC<Props> {
                     canEdit = patchEndpoint != null
                     canDelete = deleteEndpoint != null
                     showOwner = canManageUsers
-                    onEdit = { id -> navigateHash(listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id)) }
+                    onEdit = { id ->
+                        navigateHash(
+                            listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
+                                formsSearchHashParams(appliedSearch),
+                        )
+                    }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId
                     onArmDelete = { id -> rowConfirmDeleteId = id; rowDeleteError = null }
