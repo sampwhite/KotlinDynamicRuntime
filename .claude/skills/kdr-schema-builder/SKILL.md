@@ -247,11 +247,18 @@ is equivalent):
   **pruned** to the properties it kept — a sanctioned narrowing never fails the boot.
 - A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key.
 
-**Substitution (`${…}`) lands in Stage 4 (#587).** Keep layout copy **literal** for now. The layout's `${…}`
-vocabulary — fragment pulls (`${@t("ns.key")}`, resolved against the block's `fragmentFileId`) and per-context
-injected params (`${min}` / `${max}` for a bound `hint`) — plus its boot-checkable placeholders are built
-there. Until then an unresolved `${…}` renders **as written** and logs a `[kdr]` console warning rather than
-blanking the field, so a premature template is visible but harmless.
+**Substitution (`${…}`).** Resolved on the frontend at render, **per context** (issues #586, #587):
+
+- A **`hint`** templates over the field's **bounds** — `${min}` / `${max}` resolve to the field's declared
+  `minimum` / `maximum`, replacing the derived `range: X to Y`. **Boot-checked**: a `${max}` on a field with no
+  maximum, or a malformed template, fails the boot like a mistyped key (`layoutHintProblems`).
+- A **`label`** / **`description`** templates over the **field's own data** — `${someField}` reads the value
+  being entered. No boot check (the data is dynamic).
+- **Fragment pulls** (`${@t("ns.key")}`, against the block's `fragmentFileId`) are **not wired yet** — issue
+  #605 settles whether they resolve on the backend at delivery or via a frontend fetch first.
+
+An unresolved `${…}` never blanks the field: it renders **as written** and logs a `[kdr]` console warning, so a
+premature or broken template is visible but harmless.
 
 **Delivery (issue #585).** Both friendly surfaces carry a `layouts` map beside their `$defs` — the endpoint
 catalog under `EI.layouts`, the workflow view under `WVF.layouts` — built by one call,
