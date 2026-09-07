@@ -44,6 +44,19 @@ object GU {
     fun unknownBranchName(kind: GedraDataType): String = unionName(kind) + "Unknown"
 
     /**
+     * The union type of **state** entries (issue #597) -- a **single** union across every gedra kind, unlike the
+     * per-kind data [unionName]. State is not partitioned by gedra kind because most of it is kind-agnostic (an
+     * `externalId` from a third-party sync, a `syncStatus`, an `approval` apply to whatever gedra was synced or
+     * approved), and a state trait that *is* kind-specific says so with its `appliesTo`, enforced as a write
+     * guard rather than by living in a separate union. So there is one `StateEntry`, built globally (state has
+     * no per-client variant).
+     */
+    const val stateUnionName: String = "StateEntry"
+
+    /** The state union's default branch, for a state trait this node does not know. */
+    const val stateUnknownBranchName: String = stateUnionName + "Unknown"
+
+    /**
      * The union of *edits* to the entries one kind may carry: `formDoc` becomes `FormDocEntryEdit`.
      *
      * Derived from [unionName] by one rule rather than given a naming scheme of its own, so the pair reads as
@@ -98,10 +111,51 @@ fun entryUnionDefs(
     // Sorted by trait id, so the same set of traits produces the same document however the components that
     // contributed them happened to be ordered.
     val branches = traits.filter { kind in it.appliesTo }.sortedBy { it.traitId }.map { it.typeName }
-    val unionName = GU.unionName(kind)
-    val unknownName = GU.unknownBranchName(kind)
-    val unknownDescription = "An entry whose trait this reader does not know -- from a client whose " +
-        "definitions it never loaded, or newer than this node."
+    return unionDefs(
+        cxt, namespace, branches, GU.unionName(kind), GU.unknownBranchName(kind),
+        unknownDescription = "An entry whose trait this reader does not know -- from a client whose " +
+            "definitions it never loaded, or newer than this node.",
+        unionDescription = "Any entry that may be carried by a ${kind.name} gedra, selected by its ${GE.traitId}.",
+    )
+}
+
+/**
+ * Builds the **single** state entry union (issue #597), over every state trait regardless of gedra kind -- see
+ * [GU.stateUnionName] for why state is one union rather than one per kind. The same manufacturer as
+ * [entryUnionDefs] (an open-defaulted `oneOf` selected by [GE.traitId]), but with no `appliesTo` filter: a
+ * trait's applicability to a kind is a write-time guard, not union membership. Called at the **global scope
+ * only** -- state has no per-client variant (decision 3), which is also why the state kinds are not folded into
+ * [GU.entryKinds] (both passes iterate that list).
+ */
+fun stateEntryUnionDefs(
+    cxt: KdrCxtBase,
+    namespace: String,
+    stateTraits: Collection<GedraTrait>,
+): Map<String, Any?> {
+    val branches = stateTraits.sortedBy { it.traitId }.map { it.typeName }
+    return unionDefs(
+        cxt, namespace, branches, GU.stateUnionName, GU.stateUnknownBranchName,
+        unknownDescription = "A state entry whose trait this reader does not know -- from a component whose " +
+            "definitions it never loaded, or newer than this node.",
+        unionDescription = "Any state entry a gedra may carry, selected by its ${GE.traitId}.",
+    )
+}
+
+/**
+ * The shared body of [entryUnionDefs] and [stateEntryUnionDefs]: an open-defaulted `oneOf` over the given
+ * [branches] (trait type names, already filtered and sorted by the caller), selected by [GE.traitId], named
+ * [unionName] with default branch [unknownName] and the two descriptions the caller supplies. Everything about
+ * how the union is assembled is here; the callers differ only in which branches and names they pass.
+ */
+private fun unionDefs(
+    cxt: KdrCxtBase,
+    namespace: String,
+    branches: List<String>,
+    unionName: String,
+    unknownName: String,
+    unknownDescription: String,
+    unionDescription: String,
+): Map<String, Any?> {
     return schemaDefs(cxt, namespace) {
         variantDefault(unknownName, GE.traitId, unknownDescription) {
             // Declared even though the branch is open, so the shape a reader can rely on is stated rather
@@ -124,7 +178,7 @@ fun entryUnionDefs(
         } else {
             variantType(
                 unionName,
-                "Any entry that may be carried by a ${kind.name} gedra, selected by its ${GE.traitId}.",
+                unionDescription,
                 on = GE.traitId,
                 branches = branches,
                 defaultBranch = unknownName,

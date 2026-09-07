@@ -4,6 +4,7 @@ import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.StateTraitClass
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.layout
@@ -76,6 +77,17 @@ object ST {
     const val yearly = "yearly"
     const val yearlyEntry = "YearlyEntry"
     const val note = "note"
+
+    // --- a state trait (issue #597): derived, keyed by year -- the phase-B declaration; the derivation is phase D ---
+    const val traitPresenceByYear = "traitPresenceByYear"
+    const val traitPresenceByYearEntry = "TraitPresenceByYearEntry"
+    const val presentTraits = "presentTraits"
+
+    // --- a cross-kind state trait (issue #597): an id from a third-party sync, applies to more than one kind ---
+    const val externalId = "externalId"
+    const val externalIdEntry = "ExternalIdEntry"
+    const val externalSource = "externalSource"
+    const val externalRef = "externalRef"
 }
 
 /**
@@ -219,5 +231,47 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
             maximum = 2100
         }
         property(ST.note, "Anything recorded for the year.")
+    }
+
+    // A **state** trait (issue #597), and the one that exercises the state union the way `yearly` exercises the
+    // data one: a *derived* projection, keyed by `year`, recording which of a form's traits have data that year.
+    // Keyed by `year` on purpose -- it is the proof that a state trait keys by whatever dimension it names, not
+    // always `workflowId`. Only the schema lives here; the derivation that computes it is phase D (#599).
+    stateTrait(
+        ST.traitPresenceByYearEntry,
+        ST.traitPresenceByYear,
+        setOf(GedraDataType.formDoc),
+        StateTraitClass.derived,
+        "Per year, which of the form's traits have data -- a derived projection of the form's own data.",
+        primaryKey = listOf(ST.year),
+    ) {
+        property(ST.year, "The year this record is for; the entry's primary key.", required = true) {
+            type = SCT.integer
+            minimum = 2000
+            maximum = 2100
+        }
+        property(ST.presentTraits, "The trait ids that have data for this year.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+    }
+
+    // A **cross-kind** state trait (issue #597): the id a third-party store hands back when a gedra is synced to
+    // it, keyed by the source so one gedra can be synced to several. It applies to more than one gedra kind --
+    // whatever was synced -- which is the case that makes state a single `StateEntry` union rather than one per
+    // kind: the id's shape has nothing to do with whether it is a formDoc or a wfData underneath. `asserted`:
+    // an external fact a batch must never recompute away.
+    stateTrait(
+        ST.externalIdEntry,
+        ST.externalId,
+        setOf(GedraDataType.formDoc, GedraDataType.wfData),
+        StateTraitClass.asserted,
+        "The id a third-party store returned for this gedra, keyed by the source.",
+        primaryKey = listOf(ST.externalSource),
+    ) {
+        property(ST.externalSource, "Which third-party store; the entry's primary key.", required = true) {
+            maxLength = 64
+        }
+        property(ST.externalRef, "The id that store uses for this gedra.", required = true) { maxLength = 256 }
     }
 }

@@ -4,6 +4,8 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.SqlCxt
@@ -158,17 +160,51 @@ class GedraDataService : ServiceInitializer {
      * entries and advances `updatedAt` (strictly past, so the state cache -- issue #598 -- will see the change,
      * the same reason the patch path uses [SqlTopicUtil.nextUpdatedAt]).
      *
-     * Ownership and audit are stamped from [cxt], exactly as [insertStoredGedra] does, so a state row scopes to
-     * the same owner as its gedra; [cxt] is therefore expected to be bound to that owner, as the create and
-     * patch paths bind it. This phase stores the entries **as given** and does not validate them as traits
-     * (that is issue #597). Returns the entries as stored.
+     * Each entry must name a **known** state trait that applies to the gedra's kind ([checkStateTraits]); the set
+     * is then **keyed and validated against the global state union** (issue #597) -- the same trait-modeled path a
+     * data write takes, so a state entry is a real trait instance rather than a raw map. State is global
+     * (decision 3), so it validates against the **global** store whatever [cxt]'s client is. An entry whose
+     * address matches one already stored **keeps that entry's identity** -- its `entryId` and its `created` half
+     * survive the rewrite, only the `updated` half moves, exactly as the patch path preserves an edited entry.
+     * Ownership and audit on the row are stamped from [cxt], exactly as [insertStoredGedra] does, so a state row
+     * scopes to the same owner as its gedra; [cxt] is therefore expected to be bound to that owner, as the create
+     * and patch paths bind it. Returns the entries as stored (the envelope stamped on).
      */
     fun writeState(cxt: KdrCxt, gedraId: GedraId, entries: List<Map<String, Any?>>): List<Map<String, Any?>> {
+        val kind = gedraId.dataType
+            ?: throw KdrException.mkInput("'$gedraId' is not a data gedra, so it carries no state.")
+        // The declared state traits, read once (state is global, so this is client-independent). Their keys drive
+        // both the applicability guard and how the entries are addressed.
+        val stateTraits = SchemaService.get(cxt).gedraStateTraits().associateBy { it.traitId }
+        val pkOf: (String) -> List<String> = { traitId -> stateTraits[traitId]?.primaryKey.orEmpty() }
+        // Fail fast, before the lock: every entry names a known state trait that applies to this kind, and no two
+        // share an address. Shape validation waits until the entries are stamped, under the lock.
+        checkStateTraits(kind, entries, stateTraits)
+        checkEntryKeys(entries, pkOf)
+
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraStatesTable(cxt)
-        val dataMap = linkedMapOf<String, Any?>(GD.entries to entries)
+        val now = cxt.instanceNow()
+        var stored: List<Map<String, Any?>> = emptyList()
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranStateWrite, null, mapOf(GD.gedraId to gedraId.fullId)) {
             val existing = readStateRowUnderLock(cxt, sqlCxt, table, gedraId)
+            // Preserve each entry's envelope -- its `entryId` and its `created` half -- from the same-key entry
+            // already stored, moving only the `updated` half, exactly as the patch path does. So a rewrite that
+            // re-sends an unchanged entry (an `externalId` captured once, say) keeps its identity and capture
+            // time rather than being re-minted. Read under the lock so the preservation source is current.
+            val existingByKey = keyEntries(existing?.get(GD.data).toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps(), pkOf)
+            stored = entries.map { entry ->
+                val traitId = entry[GE.traitId].toOptStr()!! // present and known: checkStateTraits guaranteed it
+                val key = entryKey(traitId, entryKeyValues(entry, traitId, pkOf(traitId)))
+                mkStoredEntry(cxt, traitId, entry[GE.data].toJsonMapOrEmpty(), existingByKey[key], now)
+            }
+            // Now that the envelope is stamped (its fields are `required`), validate each entry's shape against
+            // the state union -- a non-conforming entry rejects the whole write, with nothing stored.
+            validateEntryShapes(stateUnion(cxt), stored) {
+                "These state entries do not conform to their traits: " +
+                    it.joinToString("; ") { f -> "${f.path}: ${f.message}" }
+            }
+            val dataMap = linkedMapOf<String, Any?>(GD.entries to stored)
             if (existing == null) {
                 val row = mutableMapOf<String, Any?>(GD.gedraId to gedraId.fullId, GD.data to dataMap)
                 SqlTopicUtil.prepForStdExecute(cxt, table, row)
@@ -187,7 +223,58 @@ class GedraDataService : ServiceInitializer {
                 sqlCxt.sqlDb.executeStatement(cxt, stmt, bind)
             }
         }
-        return entries
+        return stored
+    }
+
+    /**
+     * The single global **state** entry union (issue #597), resolved from the **global** store -- state is one
+     * union across every gedra kind, and has no per-client variant (decision 3), so unlike [clientUnion] this
+     * never reads a client store and takes no kind. Null on a node whose schema has no state union.
+     */
+    private fun stateUnion(cxt: KdrCxt) =
+        SchemaService.get(cxt).storeFor(null).types["${GCFG.globalNamespace}.${GU.stateUnionName}"]
+
+    /**
+     * Refuses state entries a write must not carry (issue #597) -- the state analogue of [checkTraitsSupported]:
+     * an entry naming no state trait, or one this node does not declare, or one whose `appliesTo` does not name
+     * [kind]. Unlike a data write there is no `allowAdditionalTraits` escape hatch, because state is global and
+     * component-authored: an unknown state trait id is a caller mistake, not a client extension, so it is
+     * refused rather than stored on the union's open default branch (which exists to tolerate an unknown trait
+     * on a *read*, not to wave one through on a write). [stateTraits] is the declared set, keyed by trait id.
+     */
+    private fun checkStateTraits(kind: GedraDataType, entries: List<Map<String, Any?>>, stateTraits: Map<String, GedraTrait>) {
+        for (entry in entries) {
+            val traitId = entry[GE.traitId].toOptStr()
+                ?: throw KdrException.mkInput("A state entry names no '${GE.traitId}'.")
+            val trait = stateTraits[traitId]
+                ?: throw KdrException.mkInput(
+                    "'$traitId' is not a known state trait. State traits are declared globally by components, so " +
+                        "a write cannot introduce one -- check for a misspelling.",
+                )
+            if (kind !in trait.appliesTo) {
+                throw KdrException.mkInput(
+                    "The state trait '$traitId' does not apply to a ${kind.name} gedra; it applies to " +
+                        trait.appliesTo.joinToString(", ") { it.name } + ".",
+                )
+            }
+        }
+    }
+
+    /**
+     * Validates each of [entries] against [union] (skipped when the node has none), throwing the message
+     * [describe] builds from the failures. The shared shape check of the data ([checkStoredEntries]) and state
+     * ([writeState]) write paths; [checkEntryKeys] stays each caller's own, since the two key at different points.
+     */
+    private fun validateEntryShapes(
+        union: SchType?,
+        entries: List<Map<String, Any?>>,
+        describe: (List<SchFailure>) -> String,
+    ) {
+        union ?: return
+        val failures = entries.flatMap { validate(union, it) }
+        if (failures.isNotEmpty()) {
+            throw KdrException.mkInput(describe(failures))
+        }
     }
 
     /** The state row as it stands inside the transaction, or null if none has been written for this gedra yet. */
@@ -968,13 +1055,9 @@ class GedraDataService : ServiceInitializer {
      */
     private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {
         checkEntryKeys(entries, pkFieldsOf(cxt, kind))
-        val union = clientUnion(cxt, kind) ?: return
-        val failures = entries.flatMap { validate(union, it) }
-        if (failures.isNotEmpty()) {
-            throw KdrException.mkInput(
-                "The patch would leave ${failures.size} problem(s) in the stored entries: " +
-                    failures.joinToString("; ") { "${it.path}: ${it.message}" },
-            )
+        validateEntryShapes(clientUnion(cxt, kind), entries) {
+            "The patch would leave ${it.size} problem(s) in the stored entries: " +
+                it.joinToString("; ") { f -> "${f.path}: ${f.message}" }
         }
     }
 

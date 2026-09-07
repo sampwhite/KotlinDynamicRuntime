@@ -24,6 +24,7 @@ import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
+import com.dynamicruntime.common.gedra.stateEntryUnionDefs
 import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.gedraConfigCheckMode
@@ -129,6 +130,11 @@ class SchemaService : ServiceInitializer {
             // The edit union beside it, from the same traits (issue #337): one source, two renderings.
             collected.defs.putAll(entryEditUnionDefs(cxt, GCFG.globalNamespace, kind, globalTraits))
         }
+        // The single state entry union (issue #597), from every state trait regardless of gedra kind -- built
+        // **only here**, at the global scope. State has no per-client variant (decision 3), which is why the
+        // per-client pass in `ClientSchemaVariants` builds no state union, and why there is one `StateEntry`
+        // rather than one per kind (a trait's kind applicability is a write guard, not union membership).
+        collected.defs.putAll(stateEntryUnionDefs(cxt, GCFG.globalNamespace, collected.gedraConfigs.stateTraits()))
 
         // The forms-listing search fields (issue #538): a scope's usage rules contribute a search parameter
         // each, merged onto the authored query type. The global scope's set is merged here, so the shared
@@ -425,6 +431,14 @@ class SchemaService : ServiceInitializer {
      * The collector is what the unions were built from, so this is the same set they select on.
      */
     fun gedraTraitsFor(client: String): List<GedraTrait> = collector?.gedraConfigs?.traitsFor(client) ?: emptyList()
+
+    /**
+     * The gedra **state** traits in force (issue #597) -- every one, since state is global and a client does not
+     * vary the set (decision 3), which is why this takes no client. Each carries its `primaryKey` and its
+     * `stateClass`. The same set the `StateEntry` unions were built from, so a state write keys and validates on
+     * exactly what those unions declare.
+     */
+    fun gedraStateTraits(): List<GedraTrait> = collector?.gedraConfigs?.stateTraits() ?: emptyList()
 
     /** The trait-usage rules [client] applies (issue #537) -- what a listing's columns are computed from. */
     fun traitUsagesFor(client: String): List<ClientTraitUsage> =
