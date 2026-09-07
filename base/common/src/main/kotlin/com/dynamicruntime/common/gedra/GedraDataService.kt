@@ -84,11 +84,18 @@ class GedraDataService : ServiceInitializer {
      */
     var dataCache: SqlTableCache<Map<String, Any?>>? = null
 
+    /**
+     * The in-memory `GedraDataStates` cache (issue #598), or null when the table-cache service is absent (see
+     * [GedraStatesCache]). Consulted first by [readState] and, like [dataCache], only ever saves a round trip.
+     */
+    var statesCache: SqlTableCache<Map<String, Any?>>? = null
+
     override fun checkInit(cxt: KdrCxt) {
         gedraService = GedraService.get(cxt)
         // Registered during this pass so the cache service's own checkReady -- which runs after every
         // service's checkInit -- performs the initial load at startup rather than in a request.
         dataCache = GedraDataCache.register(cxt)
+        statesCache = GedraStatesCache.register(cxt)
     }
 
     /**
@@ -282,12 +289,28 @@ class GedraDataService : ServiceInitializer {
         sqlCxt.sqlDb.queryOneEnabled(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), mapOf(GD.gedraId to gedraId.fullId))
 
     /**
+     * Serves a gedra's state entries from [statesCache], or null when it cannot -- which [readState] turns into
+     * its SQL query, so the cache only ever saves a round trip and never changes an answer. The state twin of
+     * [cachedGedra]: [scope] is applied **per row** by [admitsRow] (the state row carries the same ownership
+     * columns as a data row), and a row the scope refuses returns null here so the caller re-asks SQL, which
+     * refuses it too -- the same one-wasted-query-on-a-denied-probe trade the data lookup makes.
+     */
+    private fun cachedState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): List<Map<String, Any?>>? {
+        val cache = statesCache ?: return null
+        cache.checkRefresh(cxt)
+        val row = cache.snapshot.get(cache.idOf(gedraId.fullId)) ?: return null
+        if (!admitsRow(scope, row.value)) return null
+        return row.value[GD.data].toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
+    }
+
+    /**
      * Reads a gedra's state entries (issue #596), **scope-checked exactly as [queryGedra] reads a data row** --
      * the scope half is composed by [SqlScopeUtil], so this and a listing cannot disagree, and a row the [scope]
-     * refuses returns empty rather than throwing. No cache yet (issue #598); a direct SQL by-id read. Returns
-     * the state entries, or empty when the gedra has no state row.
+     * refuses returns empty rather than throwing. Served from [statesCache] first (issue #598), the SQL below
+     * being the fall-back on a miss. Returns the state entries, or empty when the gedra has no state row.
      */
     fun readState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): List<Map<String, Any?>> {
+        cachedState(cxt, gedraId, scope)?.let { return it }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraStatesTable(cxt)
         val data = mutableMapOf<String, Any?>(GD.gedraId to gedraId.fullId)
