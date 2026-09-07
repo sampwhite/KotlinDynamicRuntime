@@ -139,4 +139,32 @@ class SchemaSkillExamplesTest : StringSpec({
         // here can produce an `invalidOption`.
         parseSchemaTypes(defs)["cat.Query"]!!.properties.getValue(EI.client).valueType.options shouldBe null
     }
+
+    // Transcribed from the skill's "Layouts: `g-layout`" section.
+    "the layout builder writes the g-layout block the skill shows, and the store keeps it out of the schema" {
+        val defs = schemaDefs(cxt, "lay") {
+            type("Questionnaire") {
+                type = SCT.kObject
+                property("topic", "What this is about.")
+                property("hasIssue", "Whether a problem was flagged.") { type = SCT.boolean }
+                layout(fragmentFileId = "acme") {
+                    field("topic", label = "Topic", description = $$"${topic.help}")
+                    field("hasIssue", label = "Has issue?")
+                }
+            }
+        }
+        // The JSON block the skill shows beside the builder, key for key.
+        defs["lay.Questionnaire"].toJsonMapOrEmpty()[SCH.layout] shouldBe mapOf(
+            SL.fragmentFileId to "acme",
+            SL.schemaFields to listOf(
+                mapOf(SL.field to "topic", SL.label to "Topic", SL.description to $$"${topic.help}"),
+                mapOf(SL.field to "hasIssue", SL.label to "Has issue?"),
+            ),
+        )
+        // "Never read into SchType ... stripped from the served schema ... delivered out-of-band."
+        val layouts = collectLayouts(defs)
+        layouts["lay.Questionnaire"]!!.fieldNames shouldBe listOf("topic", "hasIssue")
+        withoutLayouts(defs)["lay.Questionnaire"].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
+        deliveredLayouts(layouts, listOf("lay.Questionnaire")).keys shouldBe setOf("lay.Questionnaire")
+    }
 })

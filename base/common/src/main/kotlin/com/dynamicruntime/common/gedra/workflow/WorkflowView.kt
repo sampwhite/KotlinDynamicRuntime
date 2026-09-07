@@ -50,11 +50,11 @@ fun resolveWorkflowView(
     // so this map is total over the workflow's traits.
     val traitsById: Map<String, GedraTrait> =
         SchemaService.get(cxt).gedraTraitsFor(client).associateBy { it.traitId }
-    // The client's `$defs` (its variant, so a narrowed type is that client's) -- what the returned closure is
-    // drawn from. The trait pointers the view hands out are resolved against this subset, not the catalog. The
-    // *served* form (issue #584): each type's `g-layout` already stripped, since a layout is delivered
-    // out-of-band and never rides in a served schema.
-    val clientDefs = SchemaService.get(cxt).storeFor(client).servedDefs
+    // The client's schema store (its variant, so a narrowed type is that client's) -- what the returned closure
+    // and its layouts are drawn from. The trait pointers the view hands out are resolved against this store's
+    // `$defs` subset, not the catalog. The *served* form (issue #584): each type's `g-layout` already stripped,
+    // since a layout is delivered out-of-band (below) and never rides in a served schema.
+    val clientStore = SchemaService.get(cxt).storeFor(client)
     // The trait data types the workflow references, collected as they are rendered; the seeds of the closure.
     val seedRefs = LinkedHashSet<String>()
     // The request-scoped cfacts, computed once: they are the same for every task, so only each task's own
@@ -106,6 +106,8 @@ fun resolveWorkflowView(
 
     // Tasks first: rendering them collects the trait refs the closure needs.
     val taskViews = declared.def.tasks.map { taskView(it) }
+    // The self-contained schema: exactly the types the trait refs reach, and their dependencies.
+    val defs = collectDefClosure(seedRefs, clientStore.servedDefs)
     return linkedMapOf(
         WVF.found to true,
         WFD.workflowId to declared.def.workflowId,
@@ -113,13 +115,17 @@ fun resolveWorkflowView(
         WFD.entry to declared.def.entry.name,
         WVF.showTaskList to declared.def.showTaskList,
         WFD.tasks to taskViews,
-        // The self-contained schema: exactly the types the trait refs reach, and their dependencies.
-        SCH.dDefs to collectDefClosure(seedRefs, clientDefs),
+        SCH.dDefs to defs,
         // The caller's frontend-delivered cfacts (issue #569), so the page evaluates a rendered trait's
         // `g-visibleWhen` -- an admin-only field is hidden from an ordinary caller here as on the endpoint form.
         // The served schema keeps the field for everyone; only the page hides it, against this map. Built from
         // `requestFacts`, already assembled above for the per-task filter, so the cfact sources run once.
         WVF.cfacts to cfacts.deliveredCfacts(requestFacts),
+        // The third parallel closure (issue #585): the `g-layout` of each type in `$defs` that has one, joined
+        // to a trait's data type by name on the page. From the same store the closure came from, so a client
+        // that narrowed a trait's type gets the layout pruned to what it kept. The task-level layout (order,
+        // edit mode) is a different thing and already rides on each task above.
+        WVF.layouts to clientStore.layoutsFor(defs),
     )
 }
 

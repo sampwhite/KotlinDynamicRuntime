@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SL
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -25,6 +26,12 @@ class WorkflowModelTest {
         WVF.showTaskList to false,
         // The caller's delivered cfacts (issue #569): the whole frontend vocabulary, present-mapped.
         WVF.cfacts to mapOf("hasAdminLevel" to true, "hasEnvAuth" to false),
+        // The per-type layouts (issue #585), keyed like `$defs`: the one type here declares a label override.
+        WVF.layouts to mapOf(
+            "globalconfig.NameData" to mapOf(
+                SL.schemaFields to listOf(mapOf(SL.field to "name", SL.label to "What is it called?")),
+            ),
+        ),
         SCH.dDefs to mapOf(
             "globalconfig.NameData" to mapOf(
                 SCH.type to SCT.kObject,
@@ -78,6 +85,21 @@ class WorkflowModelTest {
         // A view with no cfacts key parses to an empty map, not a failure.
         val noCfacts = parseWorkflowView(view() - WVF.cfacts)!!
         assertTrue(noCfacts.cfacts.isEmpty())
+    }
+
+    @Test
+    fun joinsTheDeliveredLayoutToEachTraitByTypeName() {
+        // The third closure (issue #585): the trait's data type declares a layout, so the trait carries it,
+        // joined by the very name its schemaRef resolved under.
+        val wf = parseWorkflowView(view())!!
+        val trait = wf.task.traits.single()
+        assertEquals("globalconfig.NameData", trait.typeName)
+        assertEquals("What is it called?", trait.layout?.fields?.single()?.label)
+        assertEquals(setOf("globalconfig.NameData"), wf.layouts.keys)
+        // A view with no layouts key parses to no layout on the trait, not a failure -- the type renders alone.
+        val bare = parseWorkflowView(view() - WVF.layouts)!!
+        assertNull(bare.task.traits.single().layout)
+        assertTrue(bare.layouts.isEmpty())
     }
 
     @Test

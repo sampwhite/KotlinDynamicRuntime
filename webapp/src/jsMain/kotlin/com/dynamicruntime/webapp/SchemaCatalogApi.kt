@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.parseDeliveredLayouts
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.await
@@ -62,30 +63,7 @@ object SchemaCatalogApi {
         return toCatalog(results)
     }
 
-    /** The `results` map of `/schema/endpoints` (or `/schema/endpoint`) as a [Catalog]. One reader, so the two
-     *  feeds cannot drift in how they parse the shared shape (issue #489 added `filtersAvailable`). */
-    private fun toCatalog(results: Map<String, Any?>): Catalog = Catalog(
-        endpoints = results[EI.endpoints].toJsonListOfMaps().map { toEndpointInfo(it) },
-        defs = results[SCH.dDefs].toJsonMapOrEmpty(),
-        // Default true when the field is absent (an older node, a hand-built store): the safe reading is that
-        // filtering is allowed, and the endpoints the response already carries are what the page can show.
-        filtersAvailable = results[EI.filtersAvailable] as? Boolean ?: true,
-        // name -> present (issue #564); each value is a wire boolean. Absent on an older node -> empty -> no
-        // gating, which is the safe reading since the backend enforces the real condition regardless.
-        cfacts = results[EI.cfacts].toJsonMapOrEmpty().mapValues { it.value == true },
-    )
-
-    private fun toEndpointInfo(m: Map<String, Any?>): EndpointInfo = EndpointInfo(
-        path = m[EI.path] as? String ?: "",
-        method = m[EI.method] as? String ?: "",
-        kind = m[EI.kind] as? String ?: "",
-        namespace = m[EI.namespace] as? String ?: "",
-        description = m[EI.description] as? String,
-        inputSchema = m[EI.inputSchema].toJsonMapOrEmpty(),
-        outputSchema = m[EI.outputSchema].toJsonMapOrEmpty(),
-        publicApi = m[EI.publicApi] as? Boolean ?: false,
-        tags = m[EI.tags].toJsonListOfStrings(),
-    )
+    private fun toCatalog(results: Map<String, Any?>): Catalog = parseCatalog(results)
 
     /**
      * Executes [endpoint] with the (already coerced) [body] and returns its parsed response envelope. A GET
@@ -193,6 +171,37 @@ object SchemaCatalogApi {
     }
 
 }
+
+/**
+ * The `results` map of `/schema/endpoints` (or `/schema/endpoint`) as a [Catalog]. One reader, so the two feeds
+ * cannot drift in how they parse the shared shape (issue #489 added `filtersAvailable`, #564 `cfacts`, #585
+ * `layouts`). A pure top-level function, like the UI-config mappers, so `jsNodeTest` covers it without a server.
+ */
+fun parseCatalog(results: Map<String, Any?>): Catalog = Catalog(
+    endpoints = results[EI.endpoints].toJsonListOfMaps().map { toEndpointInfo(it) },
+    defs = results[SCH.dDefs].toJsonMapOrEmpty(),
+    // Default true when the field is absent (an older node, a hand-built store): the safe reading is that
+    // filtering is allowed, and the endpoints the response already carries are what the page can show.
+    filtersAvailable = results[EI.filtersAvailable] as? Boolean ?: true,
+    // name -> present (issue #564); each value is a wire boolean. Absent on an older node -> empty -> no
+    // gating, which is the safe reading since the backend enforces the real condition regardless.
+    cfacts = results[EI.cfacts].toJsonMapOrEmpty().mapValues { it.value == true },
+    // typeName -> layout (issue #585), read by the same strict kernel parser the boot ran. Absent -> empty ->
+    // every type renders from its schema alone, which is what a node that sends no layouts means.
+    layouts = parseDeliveredLayouts(results[EI.layouts]),
+)
+
+private fun toEndpointInfo(m: Map<String, Any?>): EndpointInfo = EndpointInfo(
+    path = m[EI.path] as? String ?: "",
+    method = m[EI.method] as? String ?: "",
+    kind = m[EI.kind] as? String ?: "",
+    namespace = m[EI.namespace] as? String ?: "",
+    description = m[EI.description] as? String,
+    inputSchema = m[EI.inputSchema].toJsonMapOrEmpty(),
+    outputSchema = m[EI.outputSchema].toJsonMapOrEmpty(),
+    publicApi = m[EI.publicApi] as? Boolean ?: false,
+    tags = m[EI.tags].toJsonListOfStrings(),
+)
 
 /** A new, empty browser `FormData`. */
 private fun newFormData(): dynamic = js("new FormData()")
