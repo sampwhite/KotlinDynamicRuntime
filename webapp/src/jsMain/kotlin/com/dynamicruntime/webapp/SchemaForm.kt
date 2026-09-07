@@ -7,6 +7,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOption
+import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchVariants
@@ -17,6 +18,7 @@ import com.dynamicruntime.common.schema.indexPath
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.schema.isPathAtOrBelow
+import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptBool
@@ -81,7 +83,31 @@ class FormOpts(
      * everything; the gate is presentation-only and the backend enforces the condition regardless.
      */
     val gateAllows: (expression: String) -> Boolean = { true },
+    /**
+     * The per-type layouts (issue #586), keyed by qualified type name. Consulted only in [friendly] mode, and
+     * only for the copy overrides (label / description); empty means every field keeps its schema `title` /
+     * `description`, which is what the catalog and every read-only-of-the-wire caller wants.
+     */
+    val layouts: Map<String, SchLayout> = emptyMap(),
 )
+
+/**
+ * The layout copy override for property [name] of object [type], for display (issue #586): the layout's
+ * `label` / `description` when [opts] carries a layout for the type that addresses the field, each run through
+ * [evalTemplate] against [values] so a `${'$'}{…}` referring to the field's own data resolves. Either element is
+ * null when the layout does not override it, so the render site falls back to the schema's `title` /
+ * `description`. Only in friendly mode -- the wire-documenting view ignores layouts as it ignores `title`.
+ *
+ * Fail-safe on a template error, like the cfact gate: a `${'$'}{…}` the current data cannot resolve (or a stray
+ * `${'$'}`) falls back to the copy as written rather than blanking the label, since this is presentation and a
+ * missing substitution should not hide the field's name.
+ */
+internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, opts: FormOpts): Pair<String?, String?> {
+    if (!opts.friendly) return null to null
+    val field = type.name?.let { opts.layouts[it] }?.fieldFor(name) ?: return null to null
+    fun resolve(text: String?): String? = text?.let { runCatching { it.evalTemplate(values) }.getOrDefault(it) }
+    return resolve(field.label) to resolve(field.description)
+}
 
 /**
  * A short, readable label from a wire key: `expenseReport` -> `Expense report`, `perItemAmount` -> `Per item
@@ -184,6 +210,14 @@ external interface SchemaFormProps : Props {
      * means no gating (every field shows).
      */
     var cfacts: Map<String, Boolean>?
+    /**
+     * The per-type layouts (issue #586), keyed by qualified type name, from the surface's delivery
+     * ([Catalog.layouts] / [WorkflowCreation.layouts]). In **friendly** mode a field's `label` / `description`
+     * come from the layout for its enclosing type when it addresses the field, cascading over the schema's
+     * `title` / `description`; absent (or in wire-documenting mode) the form is unchanged. A `${'$'}{…}` in the
+     * copy is resolved against the object's own values through [evalTemplate].
+     */
+    var layouts: Map<String, SchLayout>?
     /**
      * Validation failures to show against the fields that caused them. Their paths are the ones the kernel
      * validator reported, and the form rebuilds the same paths as it walks — see [FieldErrors].
@@ -298,6 +332,7 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         friendly = props.friendly == true,
         omit = props.omit?.toSet() ?: emptySet(),
         gateAllows = buildCfactGate(props.cfacts),
+        layouts = props.layouts ?: emptyMap(),
     )
     div {
         className = ClassName("schema-form")
@@ -411,6 +446,9 @@ private fun ChildrenBuilder.renderProperties(
         // computed field invisible, a value appearing in the response reads as the one you typed being
         // overwritten. A real form-entry GUI would hide it, and would be right to; these two surfaces read
         // the same keyword and reach opposite conclusions, which is the point of the annotation.
+        // The layout's copy override for this field (issue #586), resolved against the object's own values;
+        // null elements fall through to the schema's title/description at the render site.
+        val (labelOverride, descriptionOverride) = layoutCopy(type, name, values, opts)
         renderField(
             // Never marked required, derived: the asterisk means "you must supply this", and a field with no
             // control is not something anybody can supply. It is required of the *stored* shape, which the
@@ -425,6 +463,8 @@ private fun ChildrenBuilder.renderProperties(
             emit = { newValue -> onChange(settle(values + (name to newValue), name)) },
             omit = { onChange(settle(values - name, name)) },
             opts = opts,
+            labelOverride = labelOverride,
+            descriptionOverride = descriptionOverride,
         )
     }
 }
@@ -638,6 +678,8 @@ private fun ChildrenBuilder.renderField(
     emit: (Any?) -> Unit,
     omit: () -> Unit,
     opts: FormOpts,
+    labelOverride: String? = null,
+    descriptionOverride: String? = null,
 ) {
     val vt = prop.valueType
     val elementType = objectElementType(vt)
@@ -652,26 +694,26 @@ private fun ChildrenBuilder.renderField(
         if (!editable && elementType.presentation == PRES.table &&
             elementType.properties.isNotEmpty() && !errors.anyUnder(path)
         ) {
-            renderTable(name, prop, required, value, elementType, path, errors, opts)
+            renderTable(name, prop, required, value, elementType, path, errors, opts, labelOverride, descriptionOverride)
             return
         }
-        renderObjectList(name, prop, required, value, elementType, seen, editable, path, errors, emit, omit, opts)
+        renderObjectList(name, prop, required, value, elementType, seen, editable, path, errors, emit, omit, opts, labelOverride, descriptionOverride)
         return
     }
     // A list of scalars, edited: one widget per element. Not the multi-select case (an item type with options
     // is a fixed set of choices, which the Select already emits as a real list), and not the read-only view,
     // where a comma-joined line reads better than a column of single values.
     if (editable && vt.jsonType == SCT.array && vt.itemType?.options == null) {
-        renderScalarList(name, prop, required, value, vt.itemType, path, errors, emit, omit, opts)
+        renderScalarList(name, prop, required, value, vt.itemType, path, errors, emit, omit, opts, labelOverride, descriptionOverride)
         return
     }
     if (isStructuredObject(vt)) {
-        renderNestedObject(name, prop, required, value, vt, seen, editable, path, errors, emit, omit, opts)
+        renderNestedObject(name, prop, required, value, vt, seen, editable, path, errors, emit, omit, opts, labelOverride, descriptionOverride)
         return
     }
 
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages, opts) {
+    fieldFrame(name, prop, required, path, messages, opts, labelOverride, descriptionOverride) {
         widget(
             vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) },
             // A hint declared at *this* use site wins over one on the (shared) target type -- the same
@@ -700,6 +742,8 @@ private fun ChildrenBuilder.fieldFrame(
     path: String,
     messages: List<SchFailure>,
     opts: FormOpts,
+    labelOverride: String? = null,
+    descriptionOverride: String? = null,
     rowContent: ChildrenBuilder.() -> Unit = {},
 ) {
     div {
@@ -708,10 +752,12 @@ private fun ChildrenBuilder.fieldFrame(
         // to be able to land on a row that carries no control of its own.
         tabIndex = -1
         className = ClassName(rowClass(messages))
-        labelSpan(fieldLabel(name, prop, opts), required)
+        // The layout's `label` (issue #586) shadows the schema title/humanized key; absent, `fieldLabel` decides.
+        labelSpan(labelOverride ?: fieldLabel(name, prop, opts), required)
         rowContent()
     }
-    prop.description?.let { desc(it) }
+    // Likewise the layout's `description` shadows the schema's; absent, the schema's shows as before.
+    (descriptionOverride ?: prop.description)?.let { desc(it) }
     // Stated before the field is filled in, not discovered by being rejected. The outline shows the same
     // thing for an output type; this is the input side, which is the one someone is about to type into.
     boundHint(prop.valueType)
@@ -816,6 +862,8 @@ private fun ChildrenBuilder.renderNestedObject(
     emit: (Any?) -> Unit,
     omit: () -> Unit,
     opts: FormOpts,
+    labelOverride: String? = null,
+    descriptionOverride: String? = null,
 ) {
     val typeName = vt.name
     val recursive = typeName != null && typeName in seen
@@ -823,7 +871,7 @@ private fun ChildrenBuilder.renderNestedObject(
     val dataDriven = recursive || !required
     val messages = errors.messagesAt(path)
 
-    fieldFrame(name, prop, required, path, messages, opts) {
+    fieldFrame(name, prop, required, path, messages, opts, labelOverride, descriptionOverride) {
         if (dataDriven && editable) {
             // Adding or removing the whole branch invalidates anything reported inside it, which is why the
             // edit is noted against this field rather than against whatever it contained.
@@ -872,10 +920,12 @@ private fun ChildrenBuilder.renderObjectList(
     emit: (Any?) -> Unit,
     omit: () -> Unit,
     opts: FormOpts,
+    labelOverride: String? = null,
+    descriptionOverride: String? = null,
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages, opts)
+    fieldFrame(name, prop, required, path, messages, opts, labelOverride, descriptionOverride)
 
     val typeName = elementType.name
     val childSeen = if (typeName != null) seen + typeName else seen
@@ -950,10 +1000,12 @@ private fun ChildrenBuilder.renderScalarList(
     emit: (Any?) -> Unit,
     omit: () -> Unit,
     opts: FormOpts,
+    labelOverride: String? = null,
+    descriptionOverride: String? = null,
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages, opts)
+    fieldFrame(name, prop, required, path, messages, opts, labelOverride, descriptionOverride)
 
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
@@ -1449,8 +1501,10 @@ private fun ChildrenBuilder.renderTable(
     path: String,
     errors: FieldErrors,
     opts: FormOpts,
+    labelOverride: String? = null,
+    descriptionOverride: String? = null,
 ) {
-    fieldFrame(name, prop, required, path, errors.messagesAt(path), opts)
+    fieldFrame(name, prop, required, path, errors.messagesAt(path), opts, labelOverride, descriptionOverride)
     schemaTable(elementType, value.toJsonListOrEmpty(), opts)
 }
 

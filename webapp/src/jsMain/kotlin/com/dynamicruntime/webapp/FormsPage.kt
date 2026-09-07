@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -297,7 +298,7 @@ val FormsPage = FC<Props> {
                         +(if (viewMissing) "That form is not in your list." else "Loading…")
                     }
                     else -> {
-                        renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType)
+                        renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType, cat.layouts)
                         // Edit, offered only when the caller's surface carries the patch endpoint (issue #417).
                         // Its own route off the view for now; a later slice folds it into a list-centric hub.
                         patchEndpoint?.let {
@@ -543,6 +544,7 @@ private fun ChildrenBuilder.renderForm(
     row: Map<String, Any?>,
     union: SchType?,
     payloadType: SchType?,
+    layouts: Map<String, SchLayout>,
 ) {
     val summary = summarizeForm(row, union)
     summary.title?.let { h2 { +it } }
@@ -583,6 +585,9 @@ private fun ChildrenBuilder.renderForm(
             values = row
             editable = false
             friendly = true
+            // The per-type layouts (issue #586): the read-only view shows the same layout copy the edit form
+            // does, cascading over the schema's title/description.
+            this.layouts = layouts
         }
     }
 }

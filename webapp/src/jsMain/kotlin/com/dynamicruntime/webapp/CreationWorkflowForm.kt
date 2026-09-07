@@ -140,6 +140,8 @@ val CreationWorkflowForm = FC<CreationWorkflowFormProps> { props ->
                         // The caller's cfacts (issue #569), so a property's g-visibleWhen hides an admin-only
                         // field from an ordinary caller here as it does on the endpoint form.
                         this.cfacts = wf.cfacts
+                        // The per-type layouts (issue #586): each trait's data type carries its copy here.
+                        this.layouts = wf.layouts
                         this.failures = failuresByTrait[trait.traitId]
                         onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
                         // The server's "required" flag on this trait is stale the moment it is edited.

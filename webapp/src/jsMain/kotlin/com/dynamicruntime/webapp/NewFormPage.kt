@@ -171,6 +171,9 @@ val NewFormPage = FC<Props> {
                     // The caller's delivered cfacts (issue #564), so a g-visibleWhen field this caller should
                     // not see is hidden here. The backend enforces the condition regardless of what is drawn.
                     cfacts = cat.cfacts
+                    // The per-type layouts (issue #586): a field's label/description come from the layout for
+                    // its type, cascading over the schema's title/description. Joined by type name inside the form.
+                    layouts = cat.layouts
                     // `allowAdditionalTraits` is a power flag (write traits the client does not support), not
                     // something an end-user form should offer; it defaults false when omitted.
                     omit = listOf(GDF.allowAdditionalTraits)

@@ -191,6 +191,9 @@ val EditFormPage = FC<Props> {
                     // The caller's delivered cfacts (issue #564), so a g-visibleWhen field this caller should
                     // not see is hidden here. The backend enforces the condition regardless of what is drawn.
                     cfacts = cat.cfacts
+                    // The per-type layouts (issue #586), joined by type name inside the form -- the same copy the
+                    // create form shows, since both render the same trait data types.
+                    layouts = cat.layouts
                     // The gedra id is the form being edited, not something to retype; it is seeded and hidden.
                     omit = listOf(GDF.gedraId)
                     this.failures = failures
