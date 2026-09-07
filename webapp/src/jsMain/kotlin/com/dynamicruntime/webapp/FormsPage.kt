@@ -21,6 +21,7 @@ import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.useEffect
 import react.useEffectOnce
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 
@@ -32,6 +33,15 @@ private val formsIdentity = setOf(HP.gedra)
 
 /** How many forms a page shows. Small enough to page a long list, large enough that most callers never do. */
 private const val formsPageSize = 25
+
+/** How long the just-saved row keeps its flash before the highlight is cleared (issue #592). */
+private const val formsHighlightMs = 2500
+
+/** The browser's `setTimeout`/`clearTimeout`, declared locally rather than reaching for a DOM wrapper. */
+private fun setFormsTimer(block: () -> Unit, delayMs: Int): Int = js("setTimeout(block, delayMs)") as Int
+private fun clearFormsTimer(id: Int) {
+    js("clearTimeout(id)")
+}
 
 /**
  * The owner-block request argument (issue #591): asks the listing to attach each document's owner only when the
@@ -84,6 +94,10 @@ val FormsPage = FC<Props> {
     // Whether the caller administers other users (issue #562), from the shell's UI-config. False until it
     // answers and false when it cannot, so the administrative controls are never drawn on a guess.
     var canManageUsers by useState(false)
+    // The row to flash on arrival (issue #592): the form just saved on the edit page, read from the hash once
+    // and cleared after a beat so the flash is a one-time flourish, not a state a reload repeats.
+    var highlightRowId by useState<String?>(null)
+    val highlightTimer = useRef<Int>(null)
     // Whether the grouped filter panel is open; closed by default so the search does not take the screen.
     var filtersOpen by useState(false)
     // A failure of a search or page reload, shown beside the controls so they stay on screen to be corrected --
@@ -129,6 +143,9 @@ val FormsPage = FC<Props> {
         // delete) drops it, so a primed "Yes" never lingers on a row the user has navigated past (issue #417).
         rowConfirmDeleteId = null
         rowDeleteError = null
+        // Any list action (paging, a new search, a delete reload) ends the just-saved flash, so it plays once
+        // on arrival and never re-runs when the rows are rebuilt (issue #592 review).
+        highlightRowId = null
         listLoading = true
         formsScope.launch {
             try {
@@ -159,6 +176,17 @@ val FormsPage = FC<Props> {
         onHashChange { viewingId = hashParams()[HP.gedra] }
     }
 
+    // Clear the flash after a beat, so it plays once on arrival and a later re-render (paging, a reload) does
+    // not repeat it (issue #592). The timer is cleared on the next run rather than via an effect-cleanup
+    // callback -- the codebase's idiom (see `useDelayedFlag`).
+    useEffect(highlightRowId) {
+        highlightTimer.current?.let { clearFormsTimer(it) }
+        highlightTimer.current = null
+        if (highlightRowId != null) {
+            highlightTimer.current = setFormsTimer({ highlightRowId = null }, formsHighlightMs)
+        }
+    }
+
     useEffectOnce {
         formsScope.launch {
             try {
@@ -178,9 +206,13 @@ val FormsPage = FC<Props> {
                 listEndpoint = ep
                 if (ep != null) {
                     // Seed the search from the hash (issue #592), so a bookmarked filter -- or the one carried
-                    // back from an edit -- loads applied rather than the list coming back empty. The freshly-read
-                    // locals, not the state set just above: those setters have not landed in this closure yet.
-                    val initialSearch = formsSearchFromHash(hashParams())
+                    // back from an edit -- loads applied rather than the list coming back empty. Whitelisted to
+                    // the keys this client's listing actually declares (#592 review): a stale trait filter from
+                    // before the usage rules changed, or a stray paging param, is dropped rather than sent to an
+                    // endpoint that would refuse the undeclared property with a 400 and strand the page. The
+                    // freshly-read locals, not the state set just above: those setters have not landed yet.
+                    val declaredKeys = formsSearchKeys(ep.inputSchema)
+                    val initialSearch = formsSearchFromHash(hashParams()).filterKeys { it in declaredKeys }
                     searchDraft = initialSearch
                     appliedSearch = initialSearch
                     val resp = SchemaCatalogApi.invoke(
@@ -204,6 +236,9 @@ val FormsPage = FC<Props> {
     useEffect(listLoading) {
         if (!listLoading && !restored) {
             viewingId = hashParams()[HP.gedra]
+            // The just-saved form to flash (issue #592). Read here, before the hash-write effect rewrites the
+            // hash from the applied search and drops it -- so a reload does not re-flash.
+            highlightRowId = hashParams()[HP.highlight]
             restored = true
         }
     }
@@ -513,6 +548,7 @@ val FormsPage = FC<Props> {
                     canEdit = patchEndpoint != null
                     canDelete = deleteEndpoint != null
                     showOwner = canManageUsers
+                    highlightId = highlightRowId
                     onEdit = { id ->
                         navigateHash(
                             listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
