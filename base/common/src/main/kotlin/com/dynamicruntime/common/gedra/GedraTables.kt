@@ -14,6 +14,14 @@ const val gedraDataTopic = "gedraData"
 object GDT {
     const val gedraDataTran = "GedraDataTran"
     const val gedraData = "GedraData"
+
+    /**
+     * The companion **state** table (issue #596): one row per gedra holding its state entries, a sibling to
+     * [gedraData] under the same [gedraDataTran] lock. State changes in batches and stays small where data can
+     * grow large and is pruned, so a separate row keeps a state change off the data row and lets state have its
+     * own always-resident cache (issue #598).
+     */
+    const val gedraDataStates = "GedraDataStates"
 }
 
 /** Column names for the gedra data tables, and the keys inside [GD.data]. */
@@ -117,6 +125,23 @@ fun gedraDataTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         index(PF.client, GD.gedraKind)
         // The in-memory cache (GedraDataCache) reloads by asking for the rows changed since it last looked,
         // which is a predicate on `updatedAt` run on every node. Without this index that is a full scan.
+        index(PF.updatedAt)
+    }
+    table(GDT.gedraDataStates, "The state of one gedra: its state entries, written under the same lock as its data.") {
+        // Keyed by the same [GD.gedraId] as the content row, so a state write takes the [GDT.gedraDataTran]
+        // lock for that gedra and can share a transaction with the data write (issue #596). No `gedraKind`
+        // column: the id carries the kind, and no scoped listing filters state by kind yet.
+        column(GD.gedraId, "Id of the gedra whose state this is.", required = true)
+        column(GD.data, "A JSON map: the state entries, keyed by each state trait's primary key.") {
+            type = SCT.kObject
+        }
+        primaryKey(GD.gedraId)
+        // Scoped like the content: an owner reads their own state, an administrator their client's.
+        forUsers()
+        forOrg()
+        // The state cache (issue #598) lists by client and reloads on `updatedAt`, the same shape GedraData's
+        // cache uses -- without these two, both are full scans.
+        index(PF.client)
         index(PF.updatedAt)
     }
 }

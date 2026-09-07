@@ -148,10 +148,85 @@ class GedraDataService : ServiceInitializer {
     internal fun gedraDataTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GDT.gedraData]
         ?: throw KdrException("${GDT.gedraData} table is not registered in the schema store.")
 
+    internal fun gedraStatesTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GDT.gedraDataStates]
+        ?: throw KdrException("${GDT.gedraDataStates} table is not registered in the schema store.")
+
     /**
-     * The scoped single-gedra update statement every write path here shares: `update GedraData set [setSql]
-     * where gedraId = :gedraId and enabled = true and <the scope's own conditions>` -- named
-     * `<stmtNamePrefix><shapeKey>`, since the scope's shape changes the SQL and statements are cached by name.
+     * Writes a gedra's **state** entries into the companion [GDT.gedraDataStates] table (issue #596), under the
+     * **same `GedraDataTran` lock** its data is written under -- so a later create or import can commit data and
+     * state in one transaction. An upsert: the first write inserts the state row, a later one replaces its
+     * entries and advances `updatedAt` (strictly past, so the state cache -- issue #598 -- will see the change,
+     * the same reason the patch path uses [SqlTopicUtil.nextUpdatedAt]).
+     *
+     * Ownership and audit are stamped from [cxt], exactly as [insertStoredGedra] does, so a state row scopes to
+     * the same owner as its gedra; [cxt] is therefore expected to be bound to that owner, as the create and
+     * patch paths bind it. This phase stores the entries **as given** and does not validate them as traits
+     * (that is issue #597). Returns the entries as stored.
+     */
+    fun writeState(cxt: KdrCxt, gedraId: GedraId, entries: List<Map<String, Any?>>): List<Map<String, Any?>> {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val table = gedraStatesTable(cxt)
+        val dataMap = linkedMapOf<String, Any?>(GD.entries to entries)
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranStateWrite, null, mapOf(GD.gedraId to gedraId.fullId)) {
+            val existing = readStateRowUnderLock(cxt, sqlCxt, table, gedraId)
+            if (existing == null) {
+                val row = mutableMapOf<String, Any?>(GD.gedraId to gedraId.fullId, GD.data to dataMap)
+                SqlTopicUtil.prepForStdExecute(cxt, table, row)
+                sqlCxt.sqlDb.executeStatement(cxt, SqlTopicUtil.mkTableInsertStmt(sqlCxt, table), row)
+            } else {
+                // A partial update of the one business column, `data`. The audit pair is appended to the SET by
+                // the shared builder and filled by `prepForStdUpdate` -- so this path names no protocol field,
+                // and a new one would reach it without an edit. `updatedAt` advances strictly past the value
+                // read under this lock, the same reason the patch path does (see SqlTopicUtil.nextUpdatedAt).
+                val stmt = SqlTopicUtil.mkPartialUpdateStmt(
+                    sqlCxt, table, "uGedraState",
+                    "c:${GD.data} = :${GD.data}", "c:${GD.gedraId} = :${GD.gedraId}",
+                )
+                val bind = mutableMapOf<String, Any?>(GD.gedraId to gedraId.fullId, GD.data to dataMap)
+                SqlTopicUtil.prepForStdUpdate(cxt, table, bind, existing)
+                sqlCxt.sqlDb.executeStatement(cxt, stmt, bind)
+            }
+        }
+        return entries
+    }
+
+    /** The state row as it stands inside the transaction, or null if none has been written for this gedra yet. */
+    private fun readStateRowUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, gedraId: GedraId): Map<String, Any?>? =
+        sqlCxt.sqlDb.queryOneEnabled(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), mapOf(GD.gedraId to gedraId.fullId))
+
+    /**
+     * Reads a gedra's state entries (issue #596), **scope-checked exactly as [queryGedra] reads a data row** --
+     * the scope half is composed by [SqlScopeUtil], so this and a listing cannot disagree, and a row the [scope]
+     * refuses returns empty rather than throwing. No cache yet (issue #598); a direct SQL by-id read. Returns
+     * the state entries, or empty when the gedra has no state row.
+     */
+    fun readState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): List<Map<String, Any?>> {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val table = gedraStatesTable(cxt)
+        val data = mutableMapOf<String, Any?>(GD.gedraId to gedraId.fullId)
+        val conditions = mutableListOf("c:${GD.gedraId} = :${GD.gedraId}")
+        conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, data))
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qGedraStateById${scope.shapeKey}", table.columns,
+            "select * from t:${GDT.gedraDataStates} where ${conditions.joinToString(" and ")}",
+        )
+        var row: Map<String, Any?>? = null
+        sqlCxt.sqlDb.withSession(cxt) {
+            row = sqlCxt.sqlDb.queryOneEnabled(cxt, stmt, data)
+        }
+        return row?.get(GD.data).toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
+    }
+
+    /**
+     * The scoped single-gedra update statement every write path here shares: `update GedraData set
+     * [businessSetSql], <the update-protocol stamps> where gedraId = :gedraId and enabled = true and <the
+     * scope's own conditions>` -- named `<stmtNamePrefix><shapeKey>`, since the scope's shape changes the SQL
+     * and statements are cached by name.
+     *
+     * The caller passes only its **business** assignments; the audit pair is appended by
+     * [SqlTopicUtil.mkPartialUpdateStmt] from the shared `updateStampColumns`, and filled by
+     * [SqlTopicUtil.prepForStdUpdate], so a caller here names no protocol field and a new one reaches every
+     * write path without an edit.
      *
      * One builder rather than a copy per caller because the where clause **is the write-side authorization**:
      * the patch and the delete must always agree on what "a row this caller may write" means, and a scope
@@ -162,7 +237,7 @@ class GedraDataService : ServiceInitializer {
         table: KdrTable,
         scope: ReadScope,
         stmtNamePrefix: String,
-        setSql: String,
+        businessSetSql: String,
         bind: MutableMap<String, Any?>,
     ): SqlStatement {
         val conditions = mutableListOf(
@@ -170,9 +245,9 @@ class GedraDataService : ServiceInitializer {
             "c:${PF.enabled} = true",
         )
         conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, bind))
-        return SqlStmtUtil.prepareSql(
-            sqlCxt, "$stmtNamePrefix${scope.shapeKey}", table.columns,
-            "update t:${GDT.gedraData} set $setSql where ${conditions.joinToString(" and ")}",
+        return SqlTopicUtil.mkPartialUpdateStmt(
+            sqlCxt, table, "$stmtNamePrefix${scope.shapeKey}",
+            businessSetSql, conditions.joinToString(" and "),
         )
     }
 
@@ -462,34 +537,29 @@ class GedraDataService : ServiceInitializer {
 
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
-        val data = mutableMapOf<String, Any?>(
-            GD.gedraId to row.gedraId.fullId,
-            // The audit half of a delete. `prepForStdExecute` is deliberately not used: it stamps `enabled`
-            // true unconditionally, which is right for a "create" that revives a disabled row and exactly wrong
-            // here -- the "write" would succeed and leave the gedra live. `UserService.updateUser` defends the
-            // same field for the same reason; this states it in the SQL instead, so there is nothing to defend.
-            // updatedAt is stamped under the lock below, not here, so it is strictly past the row's real value.
-            PF.updatedBy to cxt.userProfile.userId,
-        )
-        // The shared scoped-update builder carries the enabled = true condition, which is also what makes the
-        // returned count mean something here: already-deleted is not deleted again.
-        val stmt = mkScopedGedraUpdate(
-            sqlCxt, table, scope, "uGedraDataDelete",
-            "c:${PF.enabled} = false, c:${PF.updatedAt} = :${PF.updatedAt}, c:${PF.updatedBy} = :${PF.updatedBy}",
-            data,
-        )
+        val data = mutableMapOf<String, Any?>(GD.gedraId to row.gedraId.fullId)
+        // The one business column of a delete is `enabled = false`; the audit pair is appended to the SET by
+        // the shared builder and stamped by `prepForStdUpdate` under the lock below, so this path names no
+        // protocol field. `prepForStdExecute` is deliberately not used here: it stamps `enabled` true
+        // unconditionally, which is right for a "create" that revives a disabled row and exactly wrong here --
+        // the "write" would succeed and leave the gedra live. `UserService.updateUser` defends the same field
+        // for the same reason; this states it in the SQL instead, so there is nothing to defend. The shared
+        // builder also carries the enabled = true *condition*, which is what makes the returned count mean
+        // something here: already-deleted is not deleted again.
+        val stmt = mkScopedGedraUpdate(sqlCxt, table, scope, "uGedraDataDelete", "c:${PF.enabled} = false", data)
         val selectStmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
         var changed = 0
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranDelete, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
-            // Stamp updatedAt strictly past the row's *current* value, read here under the lock. A delete that
-            // did not advance it would be permanently invisible to the gedra cache: the cache skips a row at or
-            // before the version it holds, and a disabled gedra never gets a later write to correct that, so it
-            // would stay readable from the cache forever. The `row` read before the transaction cannot be trusted
-            // for the bump -- it may have come from the cache, which is exactly what might be behind. A row
-            // gone or already disabled here reads as null, and nextUpdatedAt falls back to now, which is
-            // harmless: the enabled-only update then matches nothing and the delete reports nothing to do.
+            // Stamp the audit pair from the row's *current* value, read here under the lock, so `updatedAt` is
+            // strictly past it. A delete that did not advance it would be permanently invisible to the gedra
+            // cache: the cache skips a row at or before the version it holds, and a disabled gedra never gets a
+            // later write to correct that, so it would stay readable from the cache forever. The `row` read
+            // before the transaction cannot be trusted for the bump -- it may have come from the cache, which is
+            // exactly what might be behind. A row gone or already disabled here reads as null, and nextUpdatedAt
+            // falls back to now, which is harmless: the enabled-only update then matches nothing and the delete
+            // reports nothing to do.
             val current = sqlCxt.sqlDb.queryOneEnabled(cxt, selectStmt, mapOf(GD.gedraId to row.gedraId.fullId))
-            data[PF.updatedAt] = SqlTopicUtil.nextUpdatedAt(cxt, current?.get(PF.updatedAt).toOptInstant())
+            SqlTopicUtil.prepForStdUpdate(cxt, table, data, current)
             changed = sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
         }
         return changed > 0
@@ -662,11 +732,7 @@ class GedraDataService : ServiceInitializer {
         // make the "write" itself unable to touch a row the caller may not, rather than relying on an earlier
         // phase having been correct.
         val bind = mutableMapOf<String, Any?>()
-        val stmt = mkScopedGedraUpdate(
-            sqlCxt, table, scope, "uGedraDataPatch",
-            "c:${GD.data} = :${GD.data}, c:${PF.updatedAt} = :${PF.updatedAt}, c:${PF.updatedBy} = :${PF.updatedBy}",
-            bind,
-        )
+        val stmt = mkScopedGedraUpdate(sqlCxt, table, scope, "uGedraDataPatch", "c:${GD.data} = :${GD.data}", bind)
         val outcomes = mutableListOf<GedraEditOutcome>()
         SqlTopicTranProvider.executeTopicTran(
             sqlCxt, tranPatch, null, mapOf(GD.gedraId to target.gedraId.fullId),
@@ -678,25 +744,23 @@ class GedraDataService : ServiceInitializer {
             // entry does not move when its neighbor changes.
             val pkFieldsOf = pkFieldsOf(cxt, kind)
             val byKey = keyEntries(row.entries, pkFieldsOf)
-            // Strictly past the row's current updatedAt (read under this lock), not merely "now": the gedra
-            // cache reloads by walking updatedAt forward and skips a row stamped at or before the version it
-            // holds, so a re-edit landing in the same millisecond as the last would otherwise be invisible to
-            // the cache until the gedra's next write. See SqlTopicUtil.nextUpdatedAt.
-            val now = SqlTopicUtil.nextUpdatedAt(cxt, row.updatedAt)
+            // Stamp the row's audit pair via the shared helper and take back the `updatedAt` it chose. It is
+            // strictly past the row's current value (read under this lock), not merely "now": the gedra cache
+            // reloads by walking updatedAt forward and skips a row stamped at or before the version it holds, so
+            // a re-edit landing in the same millisecond as the last would otherwise be invisible to the cache
+            // until the gedra's next write (see SqlTopicUtil.nextUpdatedAt). The entries carry that same instant
+            // as their own `updated`, so the row column and the in-JSON stamp cannot disagree.
+            val now = checkNotNull(SqlTopicUtil.prepForStdUpdate(cxt, table, bind, row.updatedAt)) {
+                "${GDT.gedraData} must declare ${PF.updatedAt} for a patch to stamp it."
+            }
             for (edit in target.edits) {
                 outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(cxt, edit, byKey, pkFieldsOf(edit.traitId), now)))
             }
             val entries = byKey.values.toList()
             checkStoredEntries(cxt, kind, entries)
-            val changed = sqlCxt.sqlDb.executeStatement(
-                cxt, stmt,
-                bind + mapOf(
-                    GD.gedraId to target.gedraId.fullId,
-                    GD.data to row.storedData(entries),
-                    PF.updatedAt to now,
-                    PF.updatedBy to cxt.userProfile.userId,
-                ),
-            )
+            bind[GD.gedraId] = target.gedraId.fullId
+            bind[GD.data] = row.storedData(entries)
+            val changed = sqlCxt.sqlDb.executeStatement(cxt, stmt, bind)
             // Zero rows means the gedra stopped being writable between admitting and applying -- deleted, or
             // moved out of reach. Silence here would report edits as applied that were not, which is the one
             // outcome the answer must never contain.
@@ -1073,6 +1137,9 @@ class GedraDataService : ServiceInitializer {
 
         /** Name of the "patch" transaction; it prefixes the generated transaction id. */
         const val tranPatch = "patchGedra"
+
+        /** Name of the state-write transaction (issue #596); it prefixes the generated transaction id. */
+        const val tranStateWrite = "writeGedraState"
 
         /** The service; throws naming it on a node that does not run it. */
         fun get(cxt: KdrCxt): GedraDataService = cxt.instanceConfig.get(serviceName) as? GedraDataService
