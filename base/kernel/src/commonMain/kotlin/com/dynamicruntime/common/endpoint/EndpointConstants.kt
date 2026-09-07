@@ -44,6 +44,18 @@ object EI {
     const val client = "client"
 
     /**
+     * Single-lookup query param (`/schema/endpoint`): treat [path] as a **bare** path and resolve it to the
+     * caller's own copy before looking it up (issue #552). A per-client endpoint is served at
+     * `clientPath(bare, client)`, and only the catalog knows whether the caller's client varies -- so a
+     * frontend that holds only the bare path (e.g. `GEP.formDocCreate`) cannot form the concrete one to ask
+     * for. With this set the lookup applies [clientPath] against the surface's own client (leaving a bare
+     * surface's path untouched), so a form page can fetch just its one endpoint's closure without first
+     * fetching the whole catalog to discover its path. Ignored by the plural listing, which returns every path
+     * as-is.
+     */
+    const val resolveClient = "resolveClient"
+
+    /**
      * Input param naming whose rows an endpoint acts on -- a userId or an email (issue #545). Like [client], it
      * is meaningful only to a caller who may reach past their own rows, so an endpoint that takes it gates the
      * field on that (`g-visibleWhen`) and confines the value to the caller's read scope on the server.

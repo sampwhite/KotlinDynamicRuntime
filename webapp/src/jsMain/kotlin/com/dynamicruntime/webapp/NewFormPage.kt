@@ -1,7 +1,9 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
@@ -21,7 +23,7 @@ import react.useEffectOnce
 import react.useState
 import web.cssom.ClassName
 
-/** Coroutine scope for the new-form page's suspend calls (the catalog fetch and the create request). */
+/** Coroutine scope for the new-form page's suspend calls (the endpoint fetch and the create request). */
 private val formScope = MainScope()
 
 /**
@@ -59,9 +61,11 @@ val NewFormPage = FC<Props> {
     useEffectOnce {
         formScope.launch {
             try {
-                // The caller's own client-scoped surface (no `client` arg), so the schema is already narrowed to
-                // what this client supports and a control cannot offer a trait the client removed.
-                val fetched = SchemaCatalogApi.fetchCatalog()
+                // Just this one endpoint's closure, resolved to the caller's own client-scoped copy of the bare
+                // create path (issue #552) -- the schema is already narrowed to what this client supports (a
+                // control cannot offer a trait the client removed), and the page fetches only what it renders
+                // rather than the whole catalog to discover its path. The finder still validates the one result.
+                val fetched = SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, GEP.formDocCreate, resolveClient = true)
                 catalog = fetched
                 endpoint = findFormCreateEndpoint(fetched.endpoints)
                 loadError = null

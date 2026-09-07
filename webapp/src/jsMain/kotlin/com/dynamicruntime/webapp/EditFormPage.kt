@@ -1,13 +1,16 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import react.FC
 import react.Props
@@ -21,7 +24,7 @@ import react.useEffectOnce
 import react.useState
 import web.cssom.ClassName
 
-/** Coroutine scope for the edit page's suspend calls (the catalog fetch, the form fetch, and the patch). */
+/** Coroutine scope for the edit page's suspend calls (the endpoint fetches, the form fetch, and the patch). */
 private val editScope = MainScope()
 
 /**
@@ -71,7 +74,7 @@ val EditFormPage = FC<Props> {
         onHashChange { gedraId = hashParams()[HP.gedra] }
     }
 
-    // Load the catalog and the named form, re-running whenever the id changes. Re-fetching the catalog on a
+    // Load the endpoints and the named form, re-running whenever the id changes. Re-fetching the endpoints on a
     // reload is a rare, cheap cost (edit->edit happens only by a hand-edited URL); what matters is that the
     // form is re-seeded from the id now in the hash, never left as the previous one.
     useEffect(gedraId) {
@@ -86,12 +89,23 @@ val EditFormPage = FC<Props> {
         val id = gedraId
         editScope.launch {
             try {
-                // The caller's own client-scoped surface, so the patch schema is already narrowed to what this
-                // client supports and a section cannot offer a trait the client removed.
-                val cat = SchemaCatalogApi.fetchCatalog()
+                // Just the two endpoints this page uses, each resolved to the caller's own client-scoped copy of
+                // its bare path (issue #552): the **patch** endpoint, whose schema this page renders (already
+                // narrowed to what this client supports, so a section cannot offer a trait the client removed),
+                // and the **get** endpoint, which it only *invokes* to load the form's current entries. Fetched
+                // in isolation -- each carries only its own `$defs` closure plus the page's per-client cfacts and
+                // layouts -- rather than the whole catalog once scanned to find these by suffix. Run together, so
+                // two small fetches cost one round trip.
+                val patchFetch = async {
+                    SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, GEP.patch, resolveClient = true)
+                }
+                val getFetch = async {
+                    SchemaCatalogApi.fetchEndpoint(HttpMethod.GET.name, GEP.formDoc, resolveClient = true)
+                }
+                val cat = patchFetch.await()
                 catalog = cat
                 val patchEp = findFormPatchEndpoint(cat.endpoints)
-                val getEp = findFormGetEndpoint(cat.endpoints)
+                val getEp = findFormGetEndpoint(getFetch.await().endpoints)
                 patchEndpoint = patchEp
                 if (id == null || patchEp == null || getEp == null) {
                     loadError = null

@@ -567,7 +567,22 @@ class SchemaService : ServiceInitializer {
                 property(EI.method, "The endpoint's HTTP method.", required = true) {
                     HttpMethod.entries.forEach { option(it.name) }
                 }
-                property(EI.path, "The exact endpoint path, as registered (e.g. `/schema/complex`).", required = true)
+                property(
+                    EI.path,
+                    "The endpoint path, as registered (e.g. `/schema/complex`). Exact by default; with " +
+                        "`${EI.resolveClient}` it is a **bare** path resolved to your own client's copy.",
+                    required = true,
+                )
+                property(
+                    EI.resolveClient,
+                    "Read `path` as a **bare** path and resolve it to your own client's copy before looking it " +
+                        "up (issue #552) -- so a caller holding only the bare path (e.g. `/gedra/formDoc/create`) " +
+                        "can fetch its one client-scoped endpoint's closure without first fetching the whole " +
+                        "catalog to discover the concrete path. No effect on a bare surface (nothing to insert).",
+                ) {
+                    type = SCT.boolean
+                    allowCoerce = true
+                }
             }
             generalEndpoint(
                 "/schema/endpoint",
@@ -925,9 +940,17 @@ class SchemaService : ServiceInitializer {
         @KdrPrivate
         fun endpointLookup(cxt: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
             val method = (request[EI.method] as? String)?.uppercase()
-            val path = request[EI.path] as? String
+            val requestedPath = request[EI.path] as? String
             refreshCallerRoles(cxt)
             val surface = catalogSurface(cxt, request)
+            // Resolve a bare path to the caller's own copy when asked (issue #552): the surface's client is the
+            // one this lookup answers for, so `clientPath` here inverts exactly the mint at [buildClientEndpoints]
+            // (`clientPath(endpoint.path, forClient)`). A bare surface has no client, so the path is left as-is
+            // and a caller who does not vary is unaffected. Only the singular does this; the listing shows paths
+            // verbatim.
+            val path = requestedPath?.let { p ->
+                if (request[EI.resolveClient] == true) surface.client?.let { clientPath(p, it) } ?: p else p
+            }
             // Filtered exactly as the listing is: a lookup that answered for an endpoint the listing hides
             // would be a one-call way around the hiding, and this endpoint exists to return the same shape.
             // Explained the same way too, so "it came back empty" can be told apart from "you may not see it",
