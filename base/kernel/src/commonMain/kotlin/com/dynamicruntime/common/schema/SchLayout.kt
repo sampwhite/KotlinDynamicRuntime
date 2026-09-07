@@ -79,7 +79,7 @@ class SchLayoutField(
 /**
  * Declares a type's `g-layout` from the schema DSL (issue #585): `layout { field("topic", label = "Topic") }`
  * inside a `type("X") { ... }` block, or a trait's data block. Writes the same block [parseSchLayout] reads, so
- * the boot check and the delivery see a hand-written block and a built one identically. A builder rather than
+ * the boot check and the delivery see a handwritten block and a built one identically. A builder rather than
  * the raw-map escape hatch because the sample's layouts are read by people, and the sets [SL.blockKeys] /
  * [SL.fieldKeys] the parser is strict about are then spelled once, here.
  */

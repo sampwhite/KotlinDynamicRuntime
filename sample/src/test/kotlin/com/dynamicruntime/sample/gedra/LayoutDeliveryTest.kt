@@ -41,7 +41,7 @@ class LayoutDeliveryTest : StringSpec({
     fun fieldNames(layouts: Any?, type: String): List<String?> =
         layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps().map { it[SL.field] as? String }
 
-    "the catalog carries the questionnaire's layout beside a \$defs that does not" {
+    $$"the catalog carries the questionnaire's layout beside a $defs that does not" {
         val c = catalog(everyone)
         val defs = c[SCH.dDefs].toJsonMapOrEmpty()
         defs.keys shouldContain questionnaire
