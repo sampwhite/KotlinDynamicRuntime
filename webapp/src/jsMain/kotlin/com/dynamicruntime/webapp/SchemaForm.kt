@@ -105,7 +105,20 @@ class FormOpts(
 internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, opts: FormOpts): Pair<String?, String?> {
     if (!opts.friendly) return null to null
     val field = type.name?.let { opts.layouts[it] }?.fieldFor(name) ?: return null to null
-    fun resolve(text: String?): String? = text?.let { runCatching { it.evalTemplate(values) }.getOrDefault(it) }
+    fun resolve(text: String?): String? = text?.let { s ->
+        // Skip the template parse for the common case of plain copy (no `$`), so an ordinary label pays nothing
+        // per render; only a string that could carry a `${'$'}{…}` is run through evalTemplate.
+        if ('$' !in s) return@let s
+        try {
+            s.evalTemplate(values)
+        } catch (e: Throwable) {
+            // Fail-safe like the cfact gate, but not silent (webapp CLAUDE.md: never swallow without a `[kdr]`
+            // console signal): a `${'$'}{…}` the current data cannot resolve shows as written rather than blanking
+            // the field, and the failure is reported so a broken template is not invisible to a developer.
+            console.warn("$errorLogPrefix layout copy could not resolve a template, showing it as written: \"$s\" (${e.message})")
+            s
+        }
+    }
     return resolve(field.label) to resolve(field.description)
 }
 
