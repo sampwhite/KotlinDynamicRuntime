@@ -48,10 +48,11 @@ object EI {
      * caller's own copy before looking it up (issue #552). A per-client endpoint is served at
      * `clientPath(bare, client)`, and only the catalog knows whether the caller's client varies -- so a
      * frontend that holds only the bare path (e.g. `GEP.formDocCreate`) cannot form the concrete one to ask
-     * for. With this set the lookup applies [clientPath] against the surface's own client (leaving a bare
-     * surface's path untouched), so a form page can fetch just its one endpoint's closure without first
-     * fetching the whole catalog to discover its path. Ignored by the plural listing, which returns every path
-     * as-is.
+     * for. With this set the lookup applies [clientPath] against the surface's own client, so a form page can
+     * fetch just its one endpoint's closure without first fetching the whole catalog to discover its path.
+     * Where there is no client-scoped copy to resolve to -- a bare surface, or an endpoint the caller's client
+     * does not vary -- the bare path is looked up as-is, so the shared endpoint answers rather than nothing.
+     * Ignored by the plural listing, which returns every path as-is.
      */
     const val resolveClient = "resolveClient"
 

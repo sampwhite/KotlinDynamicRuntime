@@ -33,11 +33,11 @@ class SchemaEndpointResolveClientTest : StringSpec({
         additionalComponents = listOf(VariantFixtureComponent()),
     )
 
-    fun lookup(user: TestUser, path: String, resolveClient: Boolean): Map<String, Any?> =
+    fun lookup(user: TestUser, path: String, resolveClient: Boolean, method: String = "POST"): Map<String, Any?> =
         user.getData(
             "/schema/endpoint",
             buildMap {
-                put(EI.method, "POST")
+                put(EI.method, method)
                 put(EI.path, path)
                 if (resolveClient) put(EI.resolveClient, true)
             },
@@ -66,8 +66,11 @@ class SchemaEndpointResolveClientTest : StringSpec({
 
         val resolved = lookup(hub, GEP.formDocCreate, resolveClient = true)
         val catalog = hub.getData("/schema/endpoints", mapOf(EP.limit to 1000))
-        // The one endpoint's $defs is only its input's transitive closure -- strictly fewer than the whole
-        // surface's bag, which is the isolation this issue is about.
+        // The endpoint is actually present -- asserted so the size comparison below cannot pass on an empty
+        // result (0 defs is trivially fewer than the catalog's), which would hide a broken resolution.
+        paths(resolved) shouldContainExactly listOf(clientPath(GEP.formDocCreate, CL.hub))
+        // Its $defs is only that input's transitive closure -- strictly fewer than the whole surface's bag,
+        // which is the isolation this issue is about.
         defCount(resolved) shouldBeLessThan defCount(catalog)
     }
 
@@ -77,5 +80,18 @@ class SchemaEndpointResolveClientTest : StringSpec({
         val plain = TestUser.create(boot("plainForms"), "plain-forms@resolve.test")
 
         paths(lookup(plain, GEP.formDocCreate, resolveClient = true)) shouldContainExactly listOf(GEP.formDocCreate)
+    }
+
+    "resolveClient falls back to the shared endpoint when the caller's client has no copy of it" {
+        // A varying client still gets client copies only of the endpoints `buildClientEndpoints` copies (the
+        // gedra section, plus anything `clientShaped`). `/schema/endpoints` is neither, so `hub` has no copy of
+        // it -- and resolveClient must fall back to the shared path rather than answer empty, since a caller
+        // cannot tell which endpoints were copied. (Without the fallback this resolves to the non-existent
+        // `/schema/hub/endpoints` and returns nothing.)
+        val hub = TestUser.create(boot("hubFallback"), "hub-fallback@resolve.test", userClient = CL.hub)
+
+        val schemaListPath = "/schema/endpoints"
+        paths(lookup(hub, schemaListPath, resolveClient = true, method = "GET")) shouldContainExactly
+            listOf(schemaListPath)
     }
 })
