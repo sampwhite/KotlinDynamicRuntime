@@ -57,7 +57,7 @@ class KdrSchemaStore(
      * two cannot differ in what a type's layout looks like on the wire. Pass the closure itself: its keys are
      * the type names, and the layouts are keyed the same way.
      */
-    fun deliveredLayouts(servedClosure: Map<String, Any?>): Map<String, Any?> = deliveredLayouts(layouts, servedClosure.keys)
+    fun layoutsFor(servedClosure: Map<String, Any?>): Map<String, Any?> = deliveredLayouts(layouts, servedClosure.keys)
 
     @Suppress("ConstPropertyName")
     companion object {

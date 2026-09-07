@@ -23,7 +23,7 @@ class SchLayout(
     val fragmentFileId: String?,
     /** The per-field overrides, in declaration order. */
     val fields: List<SchLayoutField>,
-) {
+) : JsonMappable {
     /** The schema properties this layout addresses -- what the boot check holds against the type. */
     val fieldNames: List<String> = fields.map { it.field }
 
@@ -31,14 +31,18 @@ class SchLayout(
      * The layout as its `g-layout` block again -- the wire form (issue #585). Delivery re-serializes the
      * **model** rather than shipping the authored block, so what a page receives is what the store holds: the
      * pruned form for a client that narrowed the type, never a field the client's type lacks. Round-trips
-     * through [parseSchLayout]; a null override is omitted, not written as null.
+     * through [parseSchLayout]; a null override is omitted, not written as null. Built once and kept: the
+     * model never changes after boot and every catalog and workflow-view request delivers it, so the wire form
+     * is a property of the layout rather than work done per request (the same reason `servedDefs` is).
      */
-    fun toJson(): Map<String, Any?> {
+    private val jsonMap: Map<String, Any?> by lazy {
         val out = LinkedHashMap<String, Any?>()
         fragmentFileId?.let { out[SL.fragmentFileId] = it }
-        out[SL.schemaFields] = fields.map { it.toJson() }
-        return out
+        out[SL.schemaFields] = fields.map { it.toJsonMap() }
+        out
     }
+
+    override fun toJsonMap(): Map<String, Any?> = jsonMap
 
     /**
      * This layout with every field the type does not declare dropped -- [props] being the type's property
@@ -60,9 +64,9 @@ class SchLayoutField(
     val label: String?,
     val description: String?,
     val hint: String?,
-) {
-    /** The entry as written in a `schemaFields` list; see [SchLayout.toJson]. */
-    fun toJson(): Map<String, Any?> {
+) : JsonMappable {
+    /** The entry as written in a `schemaFields` list; see [SchLayout.toJsonMap]. */
+    override fun toJsonMap(): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()
         out[SL.field] = field
         label?.let { out[SL.label] = it }
@@ -82,13 +86,13 @@ class SchLayoutField(
 class SchLayoutBuilder(private val fragmentFileId: String?) {
     private val fields = mutableListOf<SchLayoutField>()
 
-    /** One field's overrides; each is optional, and an entry with none is still a legal (if pointless) mention. */
+    /** One field's overrides; each is optional. */
     fun field(name: String, label: String? = null, description: String? = null, hint: String? = null) {
         fields.add(SchLayoutField(name, label, description, hint))
     }
 
     /** The finished block, as the JSON `g-layout` value. */
-    fun build(): Map<String, Any?> = SchLayout(fragmentFileId, fields.toList()).toJson()
+    fun build(): Map<String, Any?> = SchLayout(fragmentFileId, fields.toList()).toJsonMap()
 }
 
 /** Attaches a `g-layout` to the type being built; see [SchLayoutBuilder]. Replaces one declared earlier. */
@@ -98,7 +102,7 @@ fun SchTypeBuilder.layout(fragmentFileId: String? = null, block: SchLayoutBuilde
 
 /**
  * The `{ typeName -> g-layout block }` to deliver beside a served `$defs` closure (issue #585): the layouts in
- * [layouts] for exactly the [typeNames] the closure carries, each in wire form ([SchLayout.toJson]). A type with
+ * [layouts] for exactly the [typeNames] the closure carries, each in wire form ([SchLayout.toJsonMap]). A type with
  * no layout has **no entry** -- absent, not empty -- so a page reads "no layout" and "no key" the same way. The
  * shared helper both friendly surfaces call (the endpoint catalog and the workflow view), the way the delivered
  * cfacts have one shape; a pure function, so the frontend could reuse it if it ever assembles a view itself.
@@ -106,7 +110,7 @@ fun SchTypeBuilder.layout(fragmentFileId: String? = null, block: SchLayoutBuilde
 fun deliveredLayouts(layouts: Map<String, SchLayout>, typeNames: Collection<String>): Map<String, Any?> {
     val out = LinkedHashMap<String, Any?>()
     for (name in typeNames) {
-        layouts[name]?.let { out[name] = it.toJson() }
+        layouts[name]?.let { out[name] = it.toJsonMap() }
     }
     return out
 }

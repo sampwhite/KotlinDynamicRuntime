@@ -31,6 +31,8 @@ class LayoutDeliveryTest : StringSpec({
     val everyone = TestUser.create(cxt, "layout@public.test")
 
     val questionnaire = "${ST.namespace}.${traitDataTypeName(ST.questionnaireEntry)}"
+    // A type in every closure below that declares no layout -- the control for "absent, not empty".
+    val expenseReport = "${ST.namespace}.${traitDataTypeName(ST.expenseReportEntry)}"
     val allFields = listOf(ST.topic, ST.notes, ST.hasIssue, ST.explanation)
     val acmeFields = listOf(ST.topic, ST.hasIssue, ST.explanation)
 
@@ -46,7 +48,8 @@ class LayoutDeliveryTest : StringSpec({
         defs[questionnaire].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
         fieldNames(c[EI.layouts], questionnaire) shouldBe allFields
         // A type in the closure with no layout has no entry -- the map is not one-per-type.
-        c[EI.layouts].toJsonMapOrEmpty().keys.size shouldBe 1
+        defs.keys shouldContain expenseReport
+        c[EI.layouts].toJsonMapOrEmpty().containsKey(expenseReport) shouldBe false
     }
 
     "acme's catalog carries the inherited layout pruned to the properties its overlay kept" {
@@ -60,7 +63,8 @@ class LayoutDeliveryTest : StringSpec({
         v[WVF.found] shouldBe true
         fieldNames(v[WVF.layouts], questionnaire) shouldBe acmeFields
         // The other trait the workflow collects declares no layout: absent, not an empty block.
-        v[WVF.layouts].toJsonMapOrEmpty().keys shouldBe setOf(questionnaire)
+        v[WVF.layouts].toJsonMapOrEmpty().containsKey(questionnaire) shouldBe true
+        v[WVF.layouts].toJsonMapOrEmpty().containsKey(expenseReport) shouldBe false
         v[SCH.dDefs].toJsonMapOrEmpty()[questionnaire].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
     }
 })

@@ -122,9 +122,9 @@ class SchLayoutTest : StringSpec({
 
     // --- delivery (issue #585) ---
 
-    "toJson round-trips through parseSchLayout, writing no null override" {
+    "toJsonMap round-trips through parseSchLayout, writing no null override" {
         val layout = parseSchLayout("Type 'X'", layoutBlock)
-        val wire = layout.toJson()
+        val wire = layout.toJsonMap()
         wire[SL.fragmentFileId] shouldBe "acme"
         val entries = wire[SL.schemaFields] as List<*>
         // `hasIssue` has only a label: no `description` key written, rather than one carrying null.
@@ -133,7 +133,7 @@ class SchLayoutTest : StringSpec({
         again.fieldNames shouldBe layout.fieldNames
         again.fields[0].description shouldBe layout.fields[0].description
         // A pruned layout re-serializes as the pruned form -- what a narrowed client's page must receive.
-        (layout.prunedTo(setOf("topic")).toJson()[SL.schemaFields] as List<*>).size shouldBe 1
+        (layout.prunedTo(setOf("topic")).toJsonMap()[SL.schemaFields] as List<*>).size shouldBe 1
     }
 
     "the layout builder writes the block the parser reads" {

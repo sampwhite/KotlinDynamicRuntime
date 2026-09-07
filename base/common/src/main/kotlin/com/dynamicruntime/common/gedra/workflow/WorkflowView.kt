@@ -125,7 +125,7 @@ fun resolveWorkflowView(
         // to a trait's data type by name on the page. From the same store the closure came from, so a client
         // that narrowed a trait's type gets the layout pruned to what it kept. The task-level layout (order,
         // edit mode) is a different thing and already rides on each task above.
-        WVF.layouts to clientStore.deliveredLayouts(defs),
+        WVF.layouts to clientStore.layoutsFor(defs),
     )
 }
 

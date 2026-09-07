@@ -987,7 +987,7 @@ class SchemaService : ServiceInitializer {
                 // The layouts for exactly the types the closure carries (issue #585): what the friendly forms
                 // off-workflow (`NewFormPage`, `EditFormPage`, the read-only view) join to a type by name. Over
                 // the surface's own store, so a client that overlaid or narrowed a type gets that variant's.
-                EI.layouts to surface.schema.deliveredLayouts(defs),
+                EI.layouts to surface.schema.layoutsFor(defs),
             )
             val providers = svc?.optionsProviders.orEmpty()
             return resolveOptionsSources(cxt, result, providers)
