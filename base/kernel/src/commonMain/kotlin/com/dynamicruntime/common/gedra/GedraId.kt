@@ -167,7 +167,17 @@ enum class GedraIdContext(val letter: String) {
  * user's gedra, `u12_acmePaymentWf` for the one workflow a user may have). Nothing reads either back.
  *
  * The [suffix] is not parsed either, but it *is* held separately, because for config it is the revision and
- * "same object, which revision" is a question worth being able to ask without string surgery.
+ * "same object, which revision" is a question worth being able to ask without string surgery. For config that
+ * revision is a whole number, checked on the way in (`checkSuffix`), so `~3` collates with `~2` and `~4` as
+ * versions of one config; [revision] reads it back and [revisionClass] drops it (issue #612).
+ *
+ * ### A present suffix is a pin, not an instruction
+ *
+ * An id with **no** suffix means the active revision. An id *with* one that is stored somewhere -- a `WfRef` on a
+ * gedra, recording which bundle revision shaped it -- is **lineage**: it says which revision was current when
+ * the reference was written, for audit and diagnosis. Execution always resolves against the **active** revision
+ * of the class; nothing runs a superseded revision because a stored reference names it. Recorded here (issue
+ * #612) because the id is where "which revision?" is asked, and #614 reads revisions by this rule.
  *
  * ### Interning, and why parsing does not do it
  *
@@ -208,6 +218,23 @@ class GedraId private constructor(
     /** [kind] as a data kind, or null when this is a config id. */
     val dataType: GedraDataType? get() = kind as? GedraDataType
 
+    /**
+     * For a config id, the revision its [suffix] names, or null when it names none -- the **active** revision
+     * (issue #612). Always null for a data id, whose suffix is a child index rather than a revision. Safe to read
+     * as a number because a config suffix is checked to be one on the way in (`checkSuffix`).
+     */
+    val revision: Int? get() = if (storageType == GedraStorageType.configStore) suffix?.toInt() else null
+
+    /**
+     * The **revision class** of this id (issue #612): the same config with no revision -- `gc.cd.acme.main` for
+     * `gc.cd.acme.main~3` -- which collates every revision of one config. The transaction root
+     * (`GedraConfigTran`) and the config cache (#615) key on it. An id with no suffix is its own class.
+     */
+    fun revisionClass(): GedraId = if (suffix == null) this else of(kind, client, baseId)
+
+    /** This id at [revision] (issue #612): `gc.cd.acme.main~3` from any revision of `gc.cd.acme.main`. */
+    fun withRevision(revision: Int): GedraId = of(kind, client, baseId, revision.toString())
+
     override fun toInternString(): String = fullId
 
     override fun toString(): String = fullId
@@ -231,7 +258,7 @@ class GedraId private constructor(
         fun of(kind: GedraKind, client: String, baseId: String, suffix: String? = null): GedraId {
             checkClient(client)
             checkPart(baseId, "base id")
-            suffix?.let { checkPart(it, "suffix") }
+            suffix?.let { checkSuffix(kind, it) }
             val fullId = buildString {
                 append(kind.storageType.idAbbrev).append(GID.partSep)
                 append(kind.idAbbrev).append(GID.partSep)
@@ -276,7 +303,7 @@ class GedraId private constructor(
             val suffix = if (at < 0) null else tail.substring(at + 1)
             checkClient(client)
             checkPart(baseId, "base id")
-            suffix?.let { checkPart(it, "suffix") }
+            suffix?.let { checkSuffix(kind, it) }
             return GedraId(kind, client, baseId, suffix, fullId)
         }
 
@@ -309,6 +336,24 @@ class GedraId private constructor(
                 )
             }
             checkPart(client, "client")
+        }
+
+        /**
+         * A suffix is a part like any other, and for a **config** id it is also a revision -- a whole number,
+         * spelled the one way its integer prints, so `~3`, `~03` and `~+3` cannot be three ids for one revision
+         * (issue #612). A data id's suffix is a child index and stays free-form: nothing reads it back, and
+         * tightening it would refuse ids already stored.
+         */
+        private fun checkSuffix(kind: GedraKind, suffix: String) {
+            checkPart(suffix, "suffix")
+            if (kind.storageType == GedraStorageType.configStore) {
+                val n = suffix.toIntOrNull()
+                if (n == null || n < 0 || n.toString() != suffix) {
+                    throw KdrException.mkInput(
+                        "A config gedra's suffix is its revision and has to be a whole number, not '$suffix'.",
+                    )
+                }
+            }
         }
 
         /**

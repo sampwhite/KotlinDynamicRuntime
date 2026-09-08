@@ -6,7 +6,7 @@ import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.tableModule
 
-/** The SQL topic the gedra **data** tables belong to; config storage will be a topic of its own. */
+/** The SQL topic the gedra **data** tables belong to; config storage is a topic of its own, [gedraConfigTopic]. */
 const val gedraDataTopic = "gedraData"
 
 /** Gedra data table names. Each name matches its value. */
