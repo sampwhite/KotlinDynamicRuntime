@@ -8,12 +8,22 @@ import com.dynamicruntime.common.gedra.GedraConfigRow
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.GC
+import com.dynamicruntime.common.gedra.GCT
+import com.dynamicruntime.common.gedra.GD
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.gedraConfigTopic
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
+import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.sql.SqlStmtUtil
+import com.dynamicruntime.common.sql.SqlTopicService
+import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -139,5 +149,65 @@ class GedraConfigWriteTest : StringSpec({
 
         // Sanity: the class list actually distinguishes these ids.
         classId.fullId shouldNotBe GedraId.of(GedraConfigType.configDoc, client, "wcfgDel").fullId
+    }
+
+    "a config with two entries in one slot sharing a key is refused, not silently collapsed" {
+        // The builder keeps cfacts as a plain list, so declaring the same name twice reaches the write path as
+        // two cfactDef entries with the same key -- which the kernel refuses for data and this must for config.
+        val dup = gedraConfig(cxt, "wcfgDup", "wcfgDupns", client) {
+            cfact("same", "grp", "First", toFrontend = false)
+            cfact("same", "grp", "Second", toFrontend = false)
+        }
+        val ex = shouldThrow<KdrException> { service().writeConfig(asOwner(), dup) }
+        (ex.message ?: "").contains("same key") shouldBe true
+        // Nothing was stored for the class.
+        GedraId.of(GedraConfigType.configDoc, client, "wcfgDup").let { id ->
+            val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
+            val table = cxt.getSchema().tables.getValue(GCT.gedraConfig)
+            val stmt = SqlStmtUtil.prepareSql(
+                sqlCxt, "qDupCheck", table.columns,
+                "select * from t:${GCT.gedraConfig} where c:${GC.configId} = :${GC.configId}",
+            )
+            var rows = 0
+            sqlCxt.sqlDb.withSession(cxt) { rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(GC.configId to id.revisionClass().fullId)).size }
+            rows shouldBe 0
+        }
+    }
+
+    "an unknown key on a revision survives the bump to a new version" {
+        val classId = GedraId.of(GedraConfigType.configDoc, client, "wcfgExtra")
+        val v1 = service().writeConfig(asOwner(), cfg("wcfgExtra", "Beta"))
+
+        // Plant a key a newer node might write, beside the entries on revision 1's data map.
+        val stray = "futureKey"
+        val strayValue = mapOf("from" to "a newer node")
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
+        val table = cxt.getSchema().tables.getValue(GCT.gedraConfig)
+        val plant = SqlStmtUtil.prepareSql(
+            sqlCxt, "plantConfigExtra", table.columns,
+            "update t:${GCT.gedraConfig} set c:${GC.data} = :${GC.data}, c:${PF.updatedAt} = :${PF.updatedAt} " +
+                "where c:${GC.gedraId} = :${GC.gedraId}",
+        )
+        sqlCxt.sqlDb.withSession(cxt) {
+            sqlCxt.sqlDb.executeStatement(
+                cxt, plant,
+                mapOf(
+                    GC.gedraId to v1.gedraId.fullId,
+                    GC.data to mapOf(GD.entries to v1.entries, stray to strayValue),
+                    PF.updatedAt to SqlTopicUtil.nextUpdatedAt(cxt, v1.updatedAt),
+                ),
+            ) shouldBe 1
+        }
+
+        // Publish, then write again -- which mints revision 2. The planted key must be carried across the bump,
+        // exactly as an in-place edit would keep it.
+        service().publish(asOwner(), classId)
+        val v2 = service().writeConfig(asOwner(), cfg("wcfgExtra", "Beta v2"))
+        v2.version shouldBe 2
+        v2.extra[stray] shouldBe strayValue
+        // The entries came across too -- the promotion did not eat them.
+        v2.entries.map { it[GE.data].toJsonMapOrEmpty()[CCT.name].toOptStr() } shouldContainExactlyInAnyOrder listOf("alpha", "beta")
+        // And the JSON entries key is not itself in extra.
+        (GD.entries in v2.extra) shouldBe false
     }
 })

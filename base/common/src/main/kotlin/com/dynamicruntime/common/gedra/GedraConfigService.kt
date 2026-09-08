@@ -93,43 +93,22 @@ class GedraConfigService : ServiceInitializer {
         val wcxt = boundToClient(cxt, configId.client)
         val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
         val table = configTable(wcxt)
-        val now = wcxt.instanceNow()
         var result: GedraConfigRow? = null
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranWrite, null, mapOf(GC.configId to configId.fullId)) {
             val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
             val priorByKey = latest?.let { keyStoredEntries(it.entries) } ?: emptyMap()
-
-            // Build the stamped entry for each slot the config carries, diffing against the prior revision's
-            // same-slot entry so an unchanged slot keeps its stored stamps whole.
-            val stampedByKey = LinkedHashMap<String, Map<String, Any?>>()
-            for ((slot, rawEntries) in newBySlot) {
-                val pk = slotPrimaryKeys[slot].orEmpty()
-                for (raw in rawEntries) {
-                    val key = entryKey(slot, pk.map { raw[it] })
-                    val existing = priorByKey[key]
-                    stampedByKey[key] = if (entryDataUnchanged(existing, raw)) {
-                        existing!! // unchanged: keep the stored envelope, both halves
-                    } else {
-                        stampEntry(wcxt, slot, raw, existing, now)
-                    }
-                }
-            }
-            // Carry forward the prior revision's slots the new config no longer mentions, unless a write is
-            // authoritative (implied delete) -- then a dropped slot really is dropped.
-            val carried = if (impliedDelete || latest == null) {
-                emptyList()
-            } else {
-                latest.entries.filter { keyOfStored(it) !in stampedByKey.keys }
-            }
-            val finalEntries = stampedByKey.values.toList() + carried
-
+            // Each write path stamps its slot entries with the very instant its row is stamped with, so the two
+            // cannot disagree (see the write helpers); nothing is stamped out here on a pre-lock clock read.
             result = when {
                 // No revision yet: this is version 1.
-                latest == null -> insertRevision(wcxt, sqlCxt, table, configId, 1, finalEntries)
+                latest == null ->
+                    insertRevision(wcxt, sqlCxt, table, configId, 1, newBySlot, priorByKey, impliedDelete, null)
                 // Latest is still editable: rewrite it in place at the same version.
-                !latest.isPublished -> updateRevision(wcxt, sqlCxt, table, latest, finalEntries)
+                !latest.isPublished ->
+                    updateRevision(wcxt, sqlCxt, table, latest, newBySlot, priorByKey, impliedDelete)
                 // Latest is published: start the next revision.
-                else -> insertRevision(wcxt, sqlCxt, table, configId, latest.version + 1, finalEntries)
+                else ->
+                    insertRevision(wcxt, sqlCxt, table, configId, latest.version + 1, newBySlot, priorByKey, impliedDelete, latest)
             }
         }
         return result!!
@@ -194,14 +173,22 @@ class GedraConfigService : ServiceInitializer {
         return GedraConfigRow.extract(gedraService, row)
     }
 
-    /** Inserts a fresh, unpublished revision at [version] and returns it as stored. */
+    /**
+     * Inserts a fresh, unpublished revision at [version] and returns it as stored. When a new revision is minted
+     * after a publish, [prior] is the revision it descends from: its entries are the diff source
+     * [buildFinalEntries] reads, and its forward-compatibility [GedraConfigRow.extra] keys are carried onto the
+     * new row -- a version bump must not drop what an in-place edit would have kept.
+     */
     private fun insertRevision(
         cxt: KdrCxt,
         sqlCxt: SqlCxt,
         table: KdrTable,
         configId: GedraId,
         version: Int,
-        entries: List<Map<String, Any?>>,
+        newBySlot: Map<String, List<Map<String, Any?>>>,
+        priorByKey: Map<String, Map<String, Any?>>,
+        impliedDelete: Boolean,
+        prior: GedraConfigRow?,
     ): GedraConfigRow {
         val gedraId = gedraService.intern(configId.withRevision(version))
         val data = mutableMapOf<String, Any?>(
@@ -212,9 +199,17 @@ class GedraConfigService : ServiceInitializer {
             GC.version to version,
             // A newly written revision is the editable latest, so it has no publish time yet.
             GC.publishedAt to null,
-            GC.data to linkedMapOf<String, Any?>(GD.entries to entries),
         )
+        // Stamp the row first, then stamp the entries with the very instant it took, so the row's `updatedAt`
+        // column and the entries' own stamps cannot disagree -- the move the patch path makes.
         SqlTopicUtil.prepForStdExecute(cxt, table, data)
+        val now = data[PF.updatedAt].toOptInstant() ?: cxt.instanceNow()
+        val entries = buildFinalEntries(cxt, configId, newBySlot, priorByKey, now, impliedDelete, prior)
+        // Carry the prior revision's unknown keys across the bump, the same forward-compatibility promise an
+        // in-place edit keeps through `GedraConfigRow.storedData`.
+        val stored = LinkedHashMap<String, Any?>(prior?.extra ?: emptyMap())
+        stored[GD.entries] = entries
+        data[GC.data] = stored
         val row = GedraConfigRow.extract(gedraService, data)
         sqlCxt.sqlDb.executeStatement(cxt, SqlTopicUtil.mkTableInsertStmt(sqlCxt, table), data)
         return row
@@ -231,19 +226,72 @@ class GedraConfigService : ServiceInitializer {
         sqlCxt: SqlCxt,
         table: KdrTable,
         latest: GedraConfigRow,
-        entries: List<Map<String, Any?>>,
+        newBySlot: Map<String, List<Map<String, Any?>>>,
+        priorByKey: Map<String, Map<String, Any?>>,
+        impliedDelete: Boolean,
     ): GedraConfigRow {
         val stmt = SqlTopicUtil.mkPartialUpdateStmt(
             sqlCxt, table, "uGedraConfigData",
             "c:${GC.data} = :${GC.data}", "c:${GC.gedraId} = :${GC.gedraId}",
         )
-        val bind = mutableMapOf<String, Any?>(
-            GC.gedraId to latest.gedraId.fullId,
-            GC.data to latest.storedData(entries),
-        )
-        SqlTopicUtil.prepForStdUpdate(cxt, table, bind, latest.updatedAt)
+        val bind = mutableMapOf<String, Any?>(GC.gedraId to latest.gedraId.fullId)
+        // Take the canonical `now` from the stamp helper before building the entries, so the entries carry the
+        // very instant the row's `updatedAt` column will -- strictly past the value read under this lock, so the
+        // config cache (#615) cannot miss the write. The move the patch path makes.
+        val now = SqlTopicUtil.prepForStdUpdate(cxt, table, bind, latest.updatedAt)
+            ?: throw KdrException("${GCT.gedraConfig} must declare ${PF.updatedAt} for a config write to stamp it.")
+        val entries = buildFinalEntries(cxt, latest.configId, newBySlot, priorByKey, now, impliedDelete, latest)
+        // `storedData` merges the prior revision's unknown keys back in, keeping the forward-compatibility promise.
+        bind[GC.data] = latest.storedData(entries)
         sqlCxt.sqlDb.executeStatement(cxt, stmt, bind)
         return readRowUnderLock(cxt, sqlCxt, table, latest.gedraId)
+    }
+
+    /**
+     * The stored entry list for a revision: one stamped entry per slot the config carries, diffed against the
+     * prior revision so an unchanged slot keeps its stored envelope whole (both halves) and a changed one moves
+     * only its `updated` half at [now], plus -- when [impliedDelete] is off -- the prior slots the config no
+     * longer mentions, carried forward untouched. Two entries of one slot sharing a key are refused rather than
+     * silently collapsed, the config twin of the kernel `checkEntryKeys` every data write runs (the builder
+     * keeps several slots as plain lists, so a doubled usage or cfact reaches here as two same-key entries).
+     */
+    private fun buildFinalEntries(
+        cxt: KdrCxt,
+        configId: GedraId,
+        newBySlot: Map<String, List<Map<String, Any?>>>,
+        priorByKey: Map<String, Map<String, Any?>>,
+        now: Instant,
+        impliedDelete: Boolean,
+        latest: GedraConfigRow?,
+    ): List<Map<String, Any?>> {
+        val stampedByKey = LinkedHashMap<String, Map<String, Any?>>()
+        for ((slot, rawEntries) in newBySlot) {
+            val pk = slotPrimaryKeys[slot].orEmpty()
+            for (raw in rawEntries) {
+                val key = entryKey(slot, pk.map { raw[it] })
+                if (stampedByKey.containsKey(key)) {
+                    throw KdrException.mkInput(
+                        "Config '$configId' carries two '$slot' entries with the same key " +
+                            "(${pk.joinToString(", ").ifEmpty { "single-instance" }}). A config slot holds one " +
+                            "entry per key, so there would be no way to say afterward which was meant.",
+                    )
+                }
+                val existing = priorByKey[key]
+                stampedByKey[key] = if (entryDataUnchanged(existing, raw)) {
+                    existing!! // unchanged: keep the stored envelope, both halves
+                } else {
+                    stampEntry(cxt, slot, raw, existing, now)
+                }
+            }
+        }
+        // Carry forward the prior revision's slots the new config no longer mentions, unless a write is
+        // authoritative (implied delete) -- then a dropped slot really is dropped.
+        val carried = if (impliedDelete || latest == null) {
+            emptyList()
+        } else {
+            latest.entries.filter { keyOfStored(it) !in stampedByKey.keys }
+        }
+        return stampedByKey.values.toList() + carried
     }
 
     /**
