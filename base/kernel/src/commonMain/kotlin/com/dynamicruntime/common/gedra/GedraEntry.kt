@@ -435,6 +435,21 @@ fun Map<String, Any?>.asStoredEntry(
 )
 
 /**
+ * Whether a stored [existing] entry already holds exactly [newData] (issue #626), so an update to it changes
+ * nothing and its `updated` stamps must not move -- **diff before stamp**. Absent [existing] is never
+ * "unchanged": a first write is always a change.
+ *
+ * Structural map equality, order-insensitive: re-sending the same keys in another order is not a change. Both
+ * sides are schema-coerced data -- the patch input is validated before it reaches here, and the stored side
+ * was coerced when it was written -- so `Long`/`Double` line up and the comparison does not falsely differ on
+ * type. This is the pure, reusable half of diff-before-stamp: the config write path (#613) diffs its trait
+ * data the same way, and applying it to the data patch closes the #592 gap where an `addOrReplace` reported an
+ * entry `applied` even when it carried identical data.
+ */
+fun entryDataUnchanged(existing: Map<String, Any?>?, newData: Map<String, Any?>): Boolean =
+    existing != null && newData == existing[GE.data]
+
+/**
  * Holds a trait's `data` to an object: absent means object, an explicit object is fine, and anything else is
  * refused. A `$ref` passes through untouched, since what it points at is not known until types are compiled.
  */
