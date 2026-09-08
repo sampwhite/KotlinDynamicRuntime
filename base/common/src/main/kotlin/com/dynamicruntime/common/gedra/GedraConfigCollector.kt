@@ -167,6 +167,15 @@ class GedraConfigCollector {
     fun configTraits(): List<GedraConfigTrait> = configTraitOwners.values.toList()
 
     /**
+     * Who owns [namespace] -- the client whose config first claimed it, `global` for the reserved runtime
+     * namespaces, or null when no kept config has claimed it (issue #627). The write path consults this to
+     * refuse a client authoring into a namespace another owner holds, the same rule [firstProblem] enforces at
+     * load; a namespace no component has claimed reads null, and two data-authored configs racing for one are
+     * the load-time collision #614 resolves, not something this can see before either is stored.
+     */
+    fun namespaceOwner(namespace: String): String? = namespaceOwners[namespace]
+
+    /**
      * The traits [client] **owns** -- declared in a config of its own, rather than seen from `global`.
      *
      * The other half of [traitsFor], and kept apart from it because the two answer different questions: that
