@@ -395,6 +395,27 @@ object WfDefSchema {
 }
 
 /**
+ * A workflow definition back as its JSON form (issue #613): the inverse of [parseWfDef], so a definition built
+ * in source can be stored and read back through the same parser. It mirrors what [WfDefBuilder]/[WfTaskBuilder]
+ * emit exactly -- the same keys, `enum.name` for every enum -- because that shape is the one [parseWfDef]
+ * accepts; a divergence would store a definition that no longer round-trips. Pure over the model, so it lives
+ * beside the parser rather than in a service.
+ */
+fun WfDef.toJsonMap(): Map<String, Any?> = linkedMapOf(
+    WFD.workflowId to workflowId,
+    WFD.entry to entry.name,
+    WFD.tasks to tasks.map { task ->
+        buildMap {
+            put(WFD.id, task.id)
+            put(WFD.label, task.label)
+            put(WFD.traits, task.traits.map { linkedMapOf(WFD.traitId to it.traitId, WFD.required to it.required) })
+            put(WFD.saves, task.saves.map { linkedMapOf(WFD.id to it.id, WFD.label to it.label, WFD.kind to it.kind.name) })
+            task.layout?.let { put(WFD.layout, linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name)) }
+        }
+    },
+)
+
+/**
  * Reads a workflow definition from its JSON form: validates and coerces [raw] against [WfDefSchema], refusing
  * it with every failure named, then builds the [WfDef] -- whose own constructor checks the structural rules
  * a schema cannot state (unique ids, the creation shape).
