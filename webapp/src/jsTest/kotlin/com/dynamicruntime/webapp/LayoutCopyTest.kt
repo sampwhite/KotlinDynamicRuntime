@@ -38,6 +38,7 @@ class LayoutCopyTest {
 
     private val layout = SchLayout(
         fragmentFileId = "acme",
+        label = null,
         fields = listOf(
             SchLayoutField("topic", label = "Topic", description = "Pick the subject.", hint = null),
             SchLayoutField("notes", label = "Notes about \${topic}", description = null, hint = null),
@@ -73,7 +74,7 @@ class LayoutCopyTest {
     fun noLayoutForTheFieldReturnsNullSoTheSchemaWins() {
         // A layout that addresses no such field, and a form with no layouts at all: both fall through.
         assertNull(layoutCopy(type, "topic", emptyMap(), optsWith(null)))
-        val partial = SchLayout("acme", listOf(SchLayoutField("notes", "Notes", null, null)))
+        val partial = SchLayout("acme", null, listOf(SchLayoutField("notes", "Notes", null, null)))
         assertNull(layoutCopy(type, "topic", emptyMap(), optsWith(partial)))
     }
 
@@ -86,7 +87,7 @@ class LayoutCopyTest {
     @Test
     fun aBrokenSubstitutionFallsBackToTheCopyAsWritten() {
         // A `${'$'}{…}` the data cannot resolve must not blank the label; it shows as written rather than throwing.
-        val broken = SchLayout("acme", listOf(SchLayoutField("topic", "Label \${missing.deep.path}", null, null)))
+        val broken = SchLayout("acme", null, listOf(SchLayoutField("topic", "Label \${missing.deep.path}", null, null)))
         assertEquals("Label \${missing.deep.path}", layoutCopy(type, "topic", emptyMap(), optsWith(broken))!!.label)
     }
 }

@@ -184,9 +184,12 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         // The type's `g-layout` (issue #585): friendly copy for the form, kept out of the served schema and
         // delivered beside it. Names every field, `notes` included, so acme -- whose overlay drops `notes` --
         // inherits this layout **pruned** to the three properties it kept. Delivered but not yet rendered.
-        layout(fragmentFileId = SF.formHelp) {
-            // `topic`'s description is a backend fragment pull (issue #605): `%{@t("questionnaire.topicHelp")}`
-            // resolves against SF.formHelp server-side at delivery, so only the finished copy reaches the page.
+        layout(fragmentFileId = SF.formHelp, label = "%{@t(\"questionnaire.heading\")}") {
+            // The block `label` is the type's **heading** override (issue #605), a backend fragment pull that
+            // resolves to Markdown at delivery ("## Questionnaire" + a line under it); the workflow form renders
+            // it as Markdown in place of the schema title, leaving the served schema's title untouched.
+            // `topic`'s description is a backend fragment pull too: `%{@t("questionnaire.topicHelp")}` resolves
+            // against SF.formHelp server-side at delivery, so only the finished copy reaches the page.
             field(ST.topic, label = "Topic", description = "%{@t(\"questionnaire.topicHelp\")}")
             field(ST.notes, label = "Anything else?")
             field(ST.hasIssue, label = "Did you hit a problem?")

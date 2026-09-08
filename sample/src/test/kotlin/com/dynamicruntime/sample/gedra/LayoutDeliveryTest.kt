@@ -52,6 +52,9 @@ class LayoutDeliveryTest : StringSpec({
         layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
             .first { it[SL.field] == field }[SL.description]
 
+    fun headingOf(layouts: Any?, type: String): Any? =
+        layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.label]
+
     $$"the catalog carries the layouts beside a $defs that does not, the hint as a raw template" {
         val c = catalog(everyone)
         val defs = c[SCH.dDefs].toJsonMapOrEmpty()
@@ -67,6 +70,12 @@ class LayoutDeliveryTest : StringSpec({
         val topicDesc = descriptionOf(c[EI.layouts], questionnaire, ST.topic).toString()
         topicDesc shouldContain "pulled from a shared fragment file"
         topicDesc shouldNotContain "@t("
+        // The block-level heading (issue #605) is a backend fragment pull too, delivered as resolved Markdown
+        // (a `## Questionnaire` header and a line under it), never the raw pull token.
+        val heading = headingOf(c[EI.layouts], questionnaire).toString()
+        heading shouldContain "## Questionnaire"
+        heading shouldContain "Choose a topic"
+        heading shouldNotContain "@t("
         // "Absent, not empty": another type in the closure -- one with no layout -- gets no entry.
         val noLayoutType = defs.keys.first { it != questionnaire && it != expenseReport }
         c[EI.layouts].toJsonMapOrEmpty().containsKey(noLayoutType) shouldBe false

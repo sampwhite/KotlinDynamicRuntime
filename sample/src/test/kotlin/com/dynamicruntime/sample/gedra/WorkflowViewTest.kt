@@ -62,8 +62,8 @@ class WorkflowViewTest : StringSpec({
         v[WVF.found] shouldBe true
         val task = v[WFD.tasks].toJsonListOfMaps().single()
         // Pulled from acmeWf.md (%{@t("acmeWf.identify.label")}) rather than a literal.
-        task[WFD.label] shouldBe "Describe the expense"
-        task[WFD.saves].toJsonListOfMaps().single()[WFD.label] shouldBe "Create the report"
+        task[WFD.label] shouldBe "Answer an issues question and enter your expense report"
+        task[WFD.saves].toJsonListOfMaps().single()[WFD.label] shouldBe "Create expense form"
         // The layout ordered the optional trait first; both carry a ref and their required flag.
         val traits = task[WFD.traits].toJsonListOfMaps()
         traits.map { it[WFD.traitId] } shouldBe listOf(ST.questionnaire, ST.expenseReport)

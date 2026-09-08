@@ -4,5 +4,5 @@
 
 # @identify
 
-# +label Describe the expense
-# +save Create the report
+# +label Answer an issues question and enter your expense report
+# +save Create expense form

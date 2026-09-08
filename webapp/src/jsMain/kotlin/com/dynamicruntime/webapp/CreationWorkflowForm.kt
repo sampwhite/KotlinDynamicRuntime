@@ -125,7 +125,10 @@ val CreationWorkflowForm = FC<CreationWorkflowFormProps> { props ->
             task.traits.forEach { trait ->
                 div {
                     className = ClassName("wf-trait")
-                    h2 { +traitHeading(trait) }
+                    // The layout's heading override (issue #605) renders as Markdown -- a `%{@t(...)}` pull is
+                    // already resolved server-side, so this is finished copy (a header plus body). Absent, the
+                    // schema title stands as a plain `h2`.
+                    trait.layout?.label?.let { Markdown { source = it } } ?: h2 { +traitHeading(trait) }
                     if (trait.traitId in unmetTraits) {
                         p {
                             className = ClassName("error-text")
