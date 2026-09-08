@@ -201,6 +201,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             emptyIsAbsent = true
             visibleWhen = CFACTS.hasAdminLevel
         }
+        // Attach each form's state entries (issue #600): off unless asked, so the states read happens only where
+        // a caller wants them. Not admin-gated -- a caller sees the state of the forms they can already see,
+        // read with the same scope that admitted the row. A boolean on a GET, so it coerces from query text.
+        property(GDF.withStates, "Attach each document's state entries (issue #600). Defaults to false.") {
+            type = SCT.boolean
+            emptyIsAbsent = true
+            allowCoerce = true
+        }
     }
 
     listEndpoint(
@@ -226,7 +234,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // before paging, so the page and its `numAvailable` are both over the matched set (see `listGedras`).
         val usages = SchemaService.get(c).traitUsagesFor(c.client)
         val filter = searchFilter(c, request, usages)
-        val page = GedraDataService.get(c).listGedras(c, formDoc, scope, limit, offset, filter)
+        val svc = GedraDataService.get(c)
+        val page = svc.listGedras(c, formDoc, scope, limit, offset, filter)
+        // Attach each form's state (issue #600) only when asked. One batch read over the page's ids -- cache-
+        // first off the resident states cache, the misses (a form with no state, or a cache-absent node) sharing
+        // one session -- read with the same `scope` that admitted the rows, so the state a caller sees is
+        // exactly the state of the forms they can already see.
+        val withStates = request.getOptBool(GDF.withStates) == true
+        val statesByGedra = if (withStates) svc.readStates(c, page.rows.map { it.gedraId }, scope) else emptyMap()
         // Who owns each row, for a caller who asked for it and may see other users' documents (issues #562,
         // #591): the name and email the User column shows. Attached only when `includeUsers` is set AND the
         // caller may see past their own rows -- an ordinary caller's rows are all their own, so there is nobody
@@ -238,7 +253,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val owners = if (includeUsers && AdminRules.canManageUsers(c)) ownersOf(c, page.rows, callerScope) else emptyMap()
         ListPage(
             page.rows.map { row ->
-                row.toJsonMap() + (GDF.displayValues to computeDisplayValues(c, row, usages)) + ownerFields(owners[row.userId])
+                row.toJsonMap() + (GDF.displayValues to computeDisplayValues(c, row, usages)) + ownerFields(owners[row.userId]) +
+                    if (withStates) mapOf(GDF.states to statesByGedra[row.gedraId.fullId].orEmpty()) else emptyMap()
             },
             page.numAvailable,
             hasMore = offset + page.rows.size < page.numAvailable,
@@ -641,4 +657,81 @@ private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> {
     val name = owner.name?.trim()?.ifEmpty { null } ?: owner.publicName()
     val block = if (name == email) mapOf(DUF.email to email) else mapOf(DUF.name to name, DUF.email to email)
     return mapOf(GDF.owner to block)
+}
+
+/**
+ * The global admin state surface (issue #600): read one gedra's state, and replace it wholesale. On `/admin/…`
+ * rather than `/gedra/…` on purpose -- state is global, so the section gate wanted is the deployment-wide one
+ * (`admin` + `allClients`), not the client-scoped `gedra` gate. A separate module, registered once (not
+ * per-client-copied, which the `gedra` section is), and never `publicApi`: this is an internal admin tool, not
+ * part of the client-facing API.
+ *
+ * The edit is a **full replace** (issue #600): `writeState` is a whole-set upsert, so a caller reads the state,
+ * edits it, and posts the complete set back. A finer per-entry state patch (the state counterpart of
+ * `patchGedras`) is left for when a workflow or console needs it.
+ */
+/**
+ * Resolves the gedra an admin state request names (issue #600): its `gedraId` param to the stored row, faulting
+ * a malformed id (400), a non-data (config) id (400), and a gedra that does not exist (404) -- so a state read
+ * or write acts on a real gedra, an empty state read means "no state" rather than "no gedra", and a write finds
+ * the owner its state row must scope to. The section gate confines the caller to `allClients`, so the scope is
+ * unrestricted and a 404 means genuinely absent rather than out of reach.
+ */
+private fun adminStateGedra(c: KdrCxt, request: Map<String, Any?>): GedraDataRow {
+    val fullId = request[GDF.gedraId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.gedraId} is required.")
+    val kind = GedraService.get(c).readId(fullId).dataType
+        ?: throw KdrException.mkInput("'$fullId' is not a data gedra, so it carries no state.")
+    return GedraDataService.get(c).queryGedra(c, fullId, kind, ReadScopeRules.forCaller(c))
+        ?: throw KdrException("No gedra '$fullId'.", code = EXC.notFound)
+}
+
+fun gedraStateAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "adminGedra") {
+    val stateRef = "${GCFG.globalNamespace}.${GU.stateUnionName}"
+    type(GEP.gedraStateDoc) {
+        type = SCT.kObject
+        description = "One gedra's state: its id and its state entries."
+        property(GDF.gedraId, "The gedra whose state this is.", required = true) { derived = true }
+        property(GDF.states, "The gedra's state entries.", required = true) {
+            type = SCT.array
+            items { ref(stateRef) }
+            derived = true
+        }
+    }
+
+    itemEndpoint(
+        GEP.adminGedraState,
+        "Reads one gedra's state entries (issue #600).",
+        HttpMethod.GET,
+        outputRef = GEP.gedraStateDoc,
+        inputFields = { field(GDF.gedraId, "Id of the gedra whose state to read.", required = true) },
+    ) { c, request ->
+        // Resolve (and 404) the gedra first, so an empty result means "no state" and a missing gedra is a real
+        // 404 -- an item response could not carry the not-found otherwise. Then read its state (admin scope is
+        // unrestricted, so it reads whoever owns the gedra).
+        val row = adminStateGedra(c, request)
+        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c)))
+    }
+
+    itemEndpoint(
+        GEP.adminGedraState,
+        "Replaces one gedra's state entries with the supplied set (issue #600); a whole-set upsert.",
+        HttpMethod.POST,
+        outputRef = GEP.gedraStateDoc,
+        inputFields = {
+            field(GDF.gedraId, "Id of the gedra whose state to replace.", required = true)
+            field(GDF.states, "The complete set of state entries to store; it replaces what is there.", required = true) {
+                type = SCT.array
+                items { type = SCT.kObject }
+            }
+        },
+    ) { c, request ->
+        val row = adminStateGedra(c, request)
+        val entries = request[GDF.states].toJsonListOfMaps()
+        // A state row scopes to the gedra's owner, not the admin, so writeState runs on a context bound to that
+        // owner -- exactly as create and import bind one; the caller stays the actor stamped into the audit.
+        val ownerCxt = c.mkSubContext("adminState", row.client)
+        ownerCxt.userId = row.userId
+        ownerCxt.org = row.org
+        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to GedraDataService.get(c).writeState(ownerCxt, row.gedraId, entries))
+    }
 }

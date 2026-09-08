@@ -83,6 +83,17 @@ object GEP {
 
     /** The type of what a patch did to one gedra. */
     const val patchedGedra = "PatchedGedra"
+
+    /**
+     * The global admin state surface (issue #600): read (GET) and replace (POST) one gedra's state directly.
+     * On `/admin/…` rather than `/gedra/…` on purpose -- state is global, so this is a deployment-wide admin
+     * endpoint (the section gate requires `admin` + `allClients`), not a client-scoped one, and the first path
+     * segment is what selects that gate.
+     */
+    const val adminGedraState = "/admin/gedraState"
+
+    /** The type naming a gedra's state as returned by [adminGedraState]: its id and its state entries. */
+    const val gedraStateDoc = "GedraStateDoc"
 }
 
 /**
@@ -181,6 +192,19 @@ object GDF {
      * rather than a widening set of `ownerX`/`updatedByX` keys.
      */
     const val owner = "owner"
+
+    /**
+     * List param (issue #600): when set true, `GET /gedra/formDocs` attaches each form's [states]. A boolean
+     * on a GET, so it needs `allowCoerce` where declared -- the query string carries it as text.
+     */
+    const val withStates = "withStates"
+
+    /**
+     * A gedra's **state entries** (issue #600): a list of `StateEntry`s, attached to a listed form when
+     * `withStates` is asked for, and the payload of the admin state endpoints. Derived -- read from the states
+     * cache, neither sent to create nor stored on the data row -- and absent, not empty, when not requested.
+     */
+    const val states = "states"
 
     const val createdAt = "createdAt"
     const val updatedAt = "updatedAt"

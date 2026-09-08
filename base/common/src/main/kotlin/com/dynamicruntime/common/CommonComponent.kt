@@ -26,6 +26,7 @@ import com.dynamicruntime.common.gedra.coreTraits
 import com.dynamicruntime.common.gedra.gedraConfigTables
 import com.dynamicruntime.common.gedra.gedraDataTables
 import com.dynamicruntime.common.gedra.gedraSchema
+import com.dynamicruntime.common.gedra.gedraStateAdminSchema
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.user.AFRAG
@@ -140,6 +141,9 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(MarkdownFragmentService.schema(cxt))
         // Gedra data (issue #310): the form-document endpoints and the two tables under them.
         collector.addModule(gedraSchema(cxt), appOnly)
+        // The global admin state surface (issue #600): read/replace a gedra's state, on `/admin/…`. Registered
+        // once (state is global, so it is not client-scoped and not per-client-copied like the gedra section).
+        collector.addModule(gedraStateAdminSchema(cxt), appOnly)
         collector.addTables(gedraDataTables(cxt), appOnly)
         // Gedra config storage (issue #612): the two tables a stored client configuration lives in, keyed so
         // every revision of one config locks on one root row. Nothing reads or writes them yet (#613, #614).
