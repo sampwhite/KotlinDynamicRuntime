@@ -306,4 +306,16 @@ class SchLayoutTest : StringSpec({
         problems.any { it.contains("no fragment file 'nofile'") } shouldBe true
         problems.any { it.contains("frontend file") } shouldBe true
     }
+
+    "layoutPullProblems flags a key that is not a fileId.namespace.key reference, without resolving" {
+        // A bare one-part key composes to nothing that can name a file and key, so it is reported on its shape
+        // alone -- the resolver is never consulted (it would have nothing to look up).
+        val layout = SchLayout("help", null, listOf(
+            SchLayoutField("a", """%{@t("heading")}""", null, null),
+        ))
+        val problems = layoutPullProblems("Type 'Z'", layout) { _, _ ->
+            error("the resolver must not be called for a malformed pull key")
+        }
+        problems.single() shouldContain "is not a fileId.namespace.key reference"
+    }
 })

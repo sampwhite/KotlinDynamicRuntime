@@ -19,11 +19,11 @@ import com.dynamicruntime.common.util.toOptStr
  * Run per request at each friendly surface's delivery (the endpoint catalog and the workflow view), because the
  * resolution is per caller (a client's fragment overlays). A string with no `%` is left untouched -- nothing to
  * resolve. A pull that cannot resolve degrades to the copy **as written** with a `[<schema>]` warning, rather than
- * faulting the whole catalog or view response. That fallback is the safety net for **every** miss today: the
- * boot checks so far catch a *malformed* block (`SchemaService.checkLayouts`) and the frontend-pass problems
- * (`layoutTemplateProblems`), but whether a well-formed pull's file and key actually **resolve** is a
- * cross-service check deferred to #620, so a literal miss (like a computed one) surfaces here at delivery rather
- * than at boot for now.
+ * faulting the whole catalog or view response. That fallback now catches only the misses no boot check can: the
+ * boot checks catch a *malformed* block (`SchemaService.checkLayouts`), the frontend-pass problems
+ * (`layoutTemplateProblems`), and -- since #620 -- whether a well-formed *literal* pull's file and key actually
+ * **resolve** (`SchemaService.checkLayoutPulls`, run from `LayoutCheckService`). So what still degrades here is a
+ * **computed** pull (`%{@t(chosenKey)}`), which names a fragment only at delivery, or a guarded one that opts out.
  */
 fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String, Any?> {
     if (layouts.isEmpty()) {
