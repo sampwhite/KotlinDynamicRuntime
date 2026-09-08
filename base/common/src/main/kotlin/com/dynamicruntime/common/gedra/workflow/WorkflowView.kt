@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.collectDefClosure
 import com.dynamicruntime.common.schema.refName
+import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.filterByCFacts
 import com.dynamicruntime.common.util.toOptStr
@@ -125,7 +126,7 @@ fun resolveWorkflowView(
         // to a trait's data type by name on the page. From the same store the closure came from, so a client
         // that narrowed a trait's type gets the layout pruned to what it kept. The task-level layout (order,
         // edit mode) is a different thing and already rides on each task above.
-        WVF.layouts to clientStore.layoutsFor(defs),
+        WVF.layouts to resolveDeliveredLayouts(cxt, clientStore.layoutsFor(defs)),
     )
 }
 

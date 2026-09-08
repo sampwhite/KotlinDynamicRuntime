@@ -627,6 +627,24 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     fun backendPass(cxt: KdrCxt, text: String, data: Map<String, Any?> = emptyMap()): String =
         text.evalTemplate(data, prefix = backendPassPrefix, resolver = backendResolver(cxt))
 
+    /**
+     * Backend-passes a **layout** copy string (issue #605): resolves its `%{@t(...)}` fragment pulls against
+     * [cxt]'s fragments, treating a **two-part** `namespace.key` as [defaultFileId]`.namespace.key` -- the layout
+     * block's `fragmentFileId`, so a pull need not repeat the file -- and a three-part `fileId.namespace.key`
+     * outright (a cross-file pull). `${...}` blocks are left for the frontend, exactly as [backendPass] does; the
+     * only layout-specific part is composing the block's default file onto a two-part key before the shared
+     * [backendResolver] runs. Throws on an unresolvable literal pull, like [backendPass] -- the delivery site
+     * degrades gracefully rather than letting it fault the whole response.
+     */
+    fun layoutBackendPass(cxt: KdrCxt, text: String, defaultFileId: String?): String {
+        val base = backendResolver(cxt)
+        val resolver = FragmentResolver { key ->
+            val full = if (defaultFileId != null && key.count { it == '.' } == 1) "$defaultFileId.$key" else key
+            base.resolve(full)
+        }
+        return text.evalTemplate(emptyMap(), prefix = backendPassPrefix, resolver = resolver)
+    }
+
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "MarkdownFragmentService"

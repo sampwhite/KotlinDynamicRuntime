@@ -78,6 +78,8 @@ class SampleComponent : ComponentDefinition {
             fragmentOverlayFile(SF.content) +
             // Acme's workflow copy (issue #533): a backend file, pulled by its creation workflow's labels.
             backendFragmentFiles(SF.acmeWf) +
+            // Layout copy help (issue #605): a backend file pulled by a g-layout description's %{@t(...)}.
+            backendFragmentFiles(SF.formHelp) +
             // In code rather than in a file, which is the case a small change should not need a resource for.
             // Applied after the overlay file above, so this is what a reader of `footer.copyright` gets.
             fragmentInline(SF.content, origin = "SampleComponent") {

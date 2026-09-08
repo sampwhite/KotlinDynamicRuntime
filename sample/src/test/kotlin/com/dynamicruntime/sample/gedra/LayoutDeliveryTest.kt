@@ -16,6 +16,8 @@ import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 
 /**
  * The `g-layout` closure delivered out-of-band on both friendly surfaces (issues #585, #587), over real HTTP:
@@ -46,6 +48,10 @@ class LayoutDeliveryTest : StringSpec({
         layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
             .first { it[SL.field] == field }[SL.hint]
 
+    fun descriptionOf(layouts: Any?, type: String, field: String): Any? =
+        layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
+            .first { it[SL.field] == field }[SL.description]
+
     $$"the catalog carries the layouts beside a $defs that does not, the hint as a raw template" {
         val c = catalog(everyone)
         val defs = c[SCH.dDefs].toJsonMapOrEmpty()
@@ -55,6 +61,12 @@ class LayoutDeliveryTest : StringSpec({
         // The expense report's `hint` (issue #587) is delivered as its raw `${min}`/`${max}` template -- the
         // backend does not resolve it (frontend-resolved against the field's bounds).
         hintOf(c[EI.layouts], expenseReport, ST.year) shouldBe $$"Any year from ${min} to ${max}."
+        // The questionnaire's `topic` description is a backend fragment pull (issue #605): the delivery has
+        // already resolved `%{@t("questionnaire.topicHelp")}` server-side, so the caller sees finished copy and
+        // never the pull token.
+        val topicDesc = descriptionOf(c[EI.layouts], questionnaire, ST.topic).toString()
+        topicDesc shouldContain "pulled from a shared fragment file"
+        topicDesc shouldNotContain "@t("
         // "Absent, not empty": another type in the closure -- one with no layout -- gets no entry.
         val noLayoutType = defs.keys.first { it != questionnaire && it != expenseReport }
         c[EI.layouts].toJsonMapOrEmpty().containsKey(noLayoutType) shouldBe false
