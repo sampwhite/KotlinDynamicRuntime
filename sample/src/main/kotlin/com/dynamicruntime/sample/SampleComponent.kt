@@ -19,6 +19,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.sample.file.SampleFileService
 import com.dynamicruntime.sample.gedra.GedraFixtureEndpoints
+import com.dynamicruntime.sample.gedra.TraitPresenceByYearDeriver
 import com.dynamicruntime.sample.gedra.sampleClients
 import com.dynamicruntime.sample.gedra.sampleTraits
 import com.dynamicruntime.common.startup.ComponentDefinition
@@ -66,6 +67,9 @@ class SampleComponent : ComponentDefinition {
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         collector.addModule(SampleFileService.schema(cxt))
         collector.addModule(GedraFixtureEndpoints.schema(cxt))
+        // The demo state derivation (issue #599); it runs only for a test-instance client that opts in via
+        // `testFeatures` (acme does), so registering it here is harmless everywhere else.
+        collector.addStateDeriver(TraitPresenceByYearDeriver)
     }
 
     /**

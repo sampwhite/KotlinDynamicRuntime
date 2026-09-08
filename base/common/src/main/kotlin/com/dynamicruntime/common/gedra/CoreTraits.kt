@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.schema.SCT
 
 /** The core traits' own names, so nothing has to spell one twice (issue #300). */
 @Suppress("ConstPropertyName")
@@ -26,6 +27,21 @@ object GT {
      * to index and to show in a listing without truncation being the normal case.
      */
     const val nameMaxLength = 128
+
+    /**
+     * The `cfacts` **state** trait (issue #599): the state→cfact bridge's convention. A gedra's stored state may
+     * assert cfact names in this trait's [facts]; `GedraDataService.formCfacts` reads them and feeds them into
+     * `CFactRegistry.assemble` as target facts, so a workflow-eligibility expression can gate on state. `derived`
+     * -- a projection a batch may recompute -- and form-global (unkeyed). The survey (a later phase) is the real
+     * producer; the trait and bridge exist now so that producer is not a redesign.
+     */
+    const val cfacts = "cfacts"
+
+    /** The entry type the [cfacts] state trait generates: `globalconfig.CFactsEntry`. */
+    const val cfactsEntry = "CFactsEntry"
+
+    /** Under a [cfacts] entry: the declared cfact names this gedra's state asserts. */
+    const val facts = "facts"
 }
 
 /**
@@ -69,4 +85,20 @@ fun coreTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, GT.coreTraits, GCFG.
     // overrides it wholesale (see `GedraConfigCollector.usagesFor`). Searchable by exact name and, since a name
     // is the field a person most often half-remembers, by substring too (issue #538).
     traitUsage(GT.name, "Name", $$"${name}", substring = true)
+
+    // The state→cfact bridge's convention (issue #599): a gedra's state may assert cfact names here, which
+    // `GedraDataService.formCfacts` unions into `assemble`'s target facts. Global and form-singleton, since a
+    // form's cfacts are one set about the form, not per-workflow; `derived`, since a batch may recompute them.
+    stateTrait(
+        GT.cfactsEntry,
+        GT.cfacts,
+        setOf(GedraDataType.formDoc, GedraDataType.wfData),
+        StateTraitClass.derived,
+        "The declared cfact names this gedra's stored state asserts, for eligibility expressions to gate on.",
+    ) {
+        property(GT.facts, "Declared cfact names asserted about this gedra.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+    }
 }
