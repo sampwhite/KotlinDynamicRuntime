@@ -32,10 +32,18 @@ object GC {
      * revision of this config" is otherwise `gedraId like 'gc.cd.acme.main~%'`, which reads as a trick, welds
      * the query to the id format, and cannot use an index. The same reason [GD.gedraKind] exists. The id stays
      * the authority: a reader derives the class from the id (`GedraId.revisionClass`), never from here.
+     *
+     * This and [version] are **derivations of [gedraId], not independent facts.** A writer (#613) fills them
+     * from the id -- `GedraId.revisionClass()` for this, `GedraId.revision` for [version] -- never from separate
+     * inputs, so the row cannot store a class or version that disagrees with its own id; the schema does not
+     * enforce the agreement, the writer keeping to the id as the source of truth does.
      */
     const val configId = "configId"
 
-    /** The revision number, the same one the id's suffix carries, as a column so "latest" is an order-by. */
+    /**
+     * The revision number, the same one the id's suffix carries, as a column so "latest" is an order-by.
+     * Derived from the id (`GedraId.revision`), never accepted on its own -- see [configId] on why.
+     */
     const val version = "version"
 
     /**

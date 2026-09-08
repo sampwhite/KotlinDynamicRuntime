@@ -229,11 +229,31 @@ class GedraId private constructor(
      * The **revision class** of this id (issue #612): the same config with no revision -- `gc.cd.acme.main` for
      * `gc.cd.acme.main~3` -- which collates every revision of one config. The transaction root
      * (`GedraConfigTran`) and the config cache (#615) key on it. An id with no suffix is its own class.
+     *
+     * Config ids only -- a data id's suffix is a child index, not a revision, so dropping it would forge a
+     * different-looking id rather than answer a question. Guarded to fail loudly rather than return a plausible
+     * wrong id, the same config/data line [revision] draws.
      */
-    fun revisionClass(): GedraId = if (suffix == null) this else of(kind, client, baseId)
+    fun revisionClass(): GedraId {
+        requireConfig("revisionClass")
+        return if (suffix == null) this else of(kind, client, baseId)
+    }
 
-    /** This id at [revision] (issue #612): `gc.cd.acme.main~3` from any revision of `gc.cd.acme.main`. */
-    fun withRevision(revision: Int): GedraId = of(kind, client, baseId, revision.toString())
+    /**
+     * This id at [revision] (issue #612): `gc.cd.acme.main~3` from any revision of `gc.cd.acme.main`. Config ids
+     * only, for the reason [revisionClass] is -- a data id has no revision to set.
+     */
+    fun withRevision(revision: Int): GedraId {
+        requireConfig("withRevision")
+        return of(kind, client, baseId, revision.toString())
+    }
+
+    /** Refuses a config-only operation on a data id, naming it, so misuse fails where it is written. */
+    private fun requireConfig(operation: String) {
+        if (storageType != GedraStorageType.configStore) {
+            throw KdrException.mkInput("'$operation' is a config-id operation; '$fullId' is a data id.")
+        }
+    }
 
     override fun toInternString(): String = fullId
 
@@ -347,8 +367,11 @@ class GedraId private constructor(
         private fun checkSuffix(kind: GedraKind, suffix: String) {
             checkPart(suffix, "suffix")
             if (kind.storageType == GedraStorageType.configStore) {
+                // `checkPart` has already refused any non-`[A-Za-z0-9_]` character, so the sign is gone and a
+                // parse can only be a non-negative integer; the toString round-trip is what rejects a leading
+                // zero (`03`), and a null is overflow past Int.
                 val n = suffix.toIntOrNull()
-                if (n == null || n < 0 || n.toString() != suffix) {
+                if (n == null || n.toString() != suffix) {
                     throw KdrException.mkInput(
                         "A config gedra's suffix is its revision and has to be a whole number, not '$suffix'.",
                     )

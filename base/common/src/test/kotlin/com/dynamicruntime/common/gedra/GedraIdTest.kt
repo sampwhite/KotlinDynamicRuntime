@@ -237,6 +237,14 @@ class GedraIdTest : StringSpec({
         GedraId.parse("gd.fd.acme.e123~x_1").suffix shouldBe "x_1"
         GedraId.parse("gd.fd.acme.e123").revision.shouldBeNull()
     }
+
+    // The transforms are config-only, and fail loudly on a data id rather than forging a different-looking one
+    // by dropping or setting a child index.
+    "the revision transforms refuse a data id" {
+        val dataId = GedraId.parse("gd.fd.acme.e123~7")
+        shouldThrow<KdrException> { dataId.revisionClass() }.message.shouldNotBeNull() shouldContain "config-id"
+        shouldThrow<KdrException> { dataId.withRevision(2) }.message.shouldNotBeNull() shouldContain "config-id"
+    }
 })
 
 /** Applies [check] to every element, reporting which one failed. */
