@@ -11,21 +11,27 @@ import com.dynamicruntime.common.exception.KdrException
  * below are deliberately *stated* rather than emergent, because this is the part of a small dynamic language
  * that otherwise turns into a lookup table nobody can predict:
  *
- *  - **A string is never a number.** `"3"` is text everywhere, so `${count + 1}` on a `"3"` is a type error
- *    rather than `4` or `"31"`. That error is the useful outcome: it says the value arrived as text when a
- *    number was expected, which both coercion and concatenation would have hidden. Converting at the boundary
- *    is `ConvertUtil`'s job (and the schema layer's), not an operator's.
+ *  - **A numeric operator reads a numeric string as a number; nothing else does** (issue #608). The operator
+ *    has declared it wants a number, so `${count + 1}` on a `"3"` is `4` -- a cleanly-numeric string is coerced
+ *    (the whole string, once trimmed, must parse as a finite number). `"3abc"` is still a type error, which is
+ *    the useful outcome: it names a value that arrived as text and is not a number. Everywhere an operator is
+ *    *not* involved a string stays text: equality is same-kind (`"1" == 1` is a mismatch) and a function names
+ *    its kinds (`abs("3")` is a mismatch), so coercion is the operators' rule, not a global one.
  *  - **Truth**: null is false; a boolean is itself; a number is true when non-zero; a string is true when
  *    non-empty; a map or list is true when non-empty. Anything else is true.
- *  - **`+ - * / %` are arithmetic only.** A non-numeric operand is [ScriptError.typeMismatch]; dividing by
- *    zero is [ScriptError.divideByZero] rather than an infinity that would print.
+ *  - **`+ - * / %` are arithmetic.** Each operand is a number or a cleanly-numeric string; anything else is
+ *    [ScriptError.typeMismatch]; dividing by zero is [ScriptError.divideByZero] rather than an infinity that
+ *    would print.
  *  - **`~` joins text**, formatting each side with [fmt]. Separate from `+` so neither operator is ever
  *    ambiguous about what it is doing. Most templates need no operator at all -- `n=${count}` already
- *    concatenates by juxtaposition; `~` is for composing inside an expression, e.g., a ternary branch.
+ *    concatenates by juxtaposition; `~` is for composing inside an expression, e.g., a ternary branch. It
+ *    formats each side rather than coercing it to a number -- the mirror of the arithmetic rule -- so `1 ~ "x"`
+ *    is `"1x"`, while an absent side is still a type error (there is no text an absent value should become).
  *  - **Numbers stay integral where they start.** Two `Long`s divide as integers (`7 / 2` is 3); one `Double`
- *    makes the result a `Double`.
- *  - **`< > <= >=`** compare two numbers numerically and two strings lexicographically. Mixed kinds are a type
- *    mismatch rather than a guess.
+ *    makes the result a `Double`. A coerced integer string is a `Long`, so `"7" / "2"` is 3 too.
+ *  - **`< > <= >=` compare numerically**, each side a number or a cleanly-numeric string. Two plain strings are
+ *    a type mismatch, not a lexicographic answer -- ordering means magnitude, and text ordering is a function
+ *    (to be added when a case needs one), not an operator that guesses.
  *  - **`==` / `!=`** compare within a kind -- numbers with numbers, text with text, booleans with booleans.
  *    Comparing against `null` is always allowed (that is the presence test); mixing other kinds is a type
  *    mismatch, so `${flag == "true"}` on a real boolean tells you to write `${flag == true}`.
@@ -176,7 +182,7 @@ fun evalUnary(state: ScriptState, data: Map<String, Any?>, node: UnaryNode, tole
     val v = evalNode(state, data, node.operand, tolerant, depth)
     return when (node.op) {
         "!" -> !truthy(v)
-        else -> when (val n = numOf(v)) { // unary minus
+        else -> when (val n = numOperand(v)) { // unary minus; a numeric string coerces, like binary `-`
             is Long -> -n
             is Double -> -n
             else -> throw mkTypeMismatch(state, "-", v, null)
@@ -223,11 +229,11 @@ fun evalBinary(state: ScriptState, data: Map<String, Any?>, node: BinaryNode, to
 @KdrPrivate
 fun isNullLiteral(n: ScriptNode): Boolean = n is LiteralNode && n.value == null
 
-/** Arithmetic over real numbers only, staying in `Long` while both sides are integral. */
+/** Arithmetic over numbers only, staying in `Long` while both sides are integral; a numeric string coerces. */
 @KdrPrivate
 fun arith(state: ScriptState, op: String, l: Any?, r: Any?): Any {
-    val ln = numOf(l) ?: throw mkTypeMismatch(state, op, l, r)
-    val rn = numOf(r) ?: throw mkTypeMismatch(state, op, l, r)
+    val ln = numOperand(l) ?: throw mkTypeMismatch(state, op, l, r)
+    val rn = numOperand(r) ?: throw mkTypeMismatch(state, op, l, r)
     if (ln is Long && rn is Long) {
         if ((op == "/" || op == "%") && rn == 0L) throw mkDivideByZero(state, op)
         return when (op) {
@@ -250,18 +256,19 @@ fun arith(state: ScriptState, op: String, l: Any?, r: Any?): Any {
     }
 }
 
-/** Ordering comparison: numeric when both sides are numeric, lexicographic when both are strings. */
+/**
+ * Ordering comparison, numeric only (issue #608): each side must be a number or a cleanly-numeric string, which
+ * [numOperand] coerces. Two plain strings no longer compare lexicographically -- `"apple" < "z"` is now a type
+ * mismatch rather than a lexicographic answer, so ordering means one thing (magnitude) and text ordering, when a
+ * case needs it, will be a named function rather than an operator that guesses. The one behavior this flips is a
+ * numeric-looking pair: `"10" < "9"` was lexicographic `true` and is now numeric `false`, which is the meaning
+ * an author comparing those actually wants.
+ */
 @KdrPrivate
 fun compareOp(state: ScriptState, op: String, l: Any?, r: Any?): Boolean {
-    val ln = numOf(l)
-    val rn = numOf(r)
-    val cmp = if (ln != null && rn != null) {
-        if (ln is Long && rn is Long) ln.compareTo(rn) else toD(ln).compareTo(toD(rn))
-    } else if (l is String && r is String) {
-        l.compareTo(r)
-    } else {
-        throw mkTypeMismatch(state, op, l, r)
-    }
+    val ln = numOperand(l) ?: throw mkTypeMismatch(state, op, l, r)
+    val rn = numOperand(r) ?: throw mkTypeMismatch(state, op, l, r)
+    val cmp = if (ln is Long && rn is Long) ln.compareTo(rn) else toD(ln).compareTo(toD(rn))
     return when (op) {
         "<" -> cmp < 0
         ">" -> cmp > 0
@@ -308,9 +315,11 @@ fun truthy(v: Any?): Boolean = when (v) {
 }
 
 /**
- * [v] as a number, or null when it is not one -- and a **string is never one**, however numeric it looks.
- * `"3" * 2` reports a type mismatch instead of quietly being 6, so a value that reached the template as text
- * gets fixed where it was produced rather than papered over here. Booleans are not numbers either.
+ * [v] as a number, or null when it is not one -- and a **string is never one** here, however numeric it looks.
+ * This is the *same-kind* reading: it is what equality ([valuesEqual]) and the functions (`abs`) use, so
+ * `"1.0" == "1"` stays a text comparison (false) and `abs("42")` stays a type mismatch, on the rule that a
+ * function names its kinds. The numeric *operators* read a numeric string as a number instead -- see
+ * [numOperand], which they call. Booleans are not numbers either.
  */
 @KdrPrivate
 fun numOf(v: Any?): Any? = when (v) {
@@ -319,6 +328,31 @@ fun numOf(v: Any?): Any? = when (v) {
     is Float -> v.toDouble()
     else -> null
 }
+
+/**
+ * [v] as a number for a **numeric operator** (`+ - * / %`, unary `-`, and `< > <= >=`), or null when it is not
+ * one (issue #608). Unlike [numOf] this coerces a **cleanly-numeric string**: the whole string, once trimmed,
+ * must parse as a *finite* number, so `"42"` is `42L` and `"2.9"` is `2.9`, while `"2100abc"`, `""`, and the
+ * non-finite spellings `"NaN"` / `"Infinity"` (which `toDoubleOrNull` would otherwise accept) stay null and the
+ * operator reports a type mismatch. Barring the non-finite ones matters: `NaN` sorts above every number under
+ * `Double.compareTo`, so `${n > 5}` on `"NaN"` would silently pass rather than fault, and an infinity renders as
+ * the literal `null` (see [fmt]) -- the same "an infinity that would print" the divide-by-zero guard exists to
+ * stop. Integer strings stay `Long` so `"7" / "2"` is `3`, matching a literal `7 / 2`; a fractional string
+ * makes it a `Double`.
+ *
+ * Trimming first is deliberate on two counts: it matches the schema layer's `allowCoerce` (`ConvertUtil`), the
+ * coercion this issue is bringing the operators in line with, and it keeps `" 42"` an integer -- without it,
+ * `toLongOrNull` rejects the surrounding space while `toDoubleOrNull` tolerates it, so a stray space would
+ * silently flip the value from `Long` to `Double` (and inconsistently across JVM and JS).
+ *
+ * The operators coerce and equality does not, deliberately: an operator has already declared it wants a number
+ * (the same reasoning that makes `~` and `+` two operators), and config values often arrive as text -- a quoted
+ * JSON number, a fragment-pull result -- so demanding code-level type precision there is the friction issue
+ * #608 removes. Equality is an identity check, not an arithmetic one, so `${status == "active"}` stays a text
+ * comparison and `${flag == "true"}` on a real boolean still names the mistake.
+ */
+private fun numOperand(v: Any?): Any? =
+    numOf(v) ?: (v as? String)?.trim()?.let { it.toLongOrNull() ?: it.toDoubleOrNull()?.takeIf { d -> d.isFinite() } }
 
 private fun toD(n: Any?): Double = when (n) {
     is Long -> n.toDouble()
