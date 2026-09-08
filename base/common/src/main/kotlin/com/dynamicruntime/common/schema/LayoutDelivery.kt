@@ -2,6 +2,7 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -60,4 +61,72 @@ fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String
             put(SL.schemaFields, fields)
         }
     }
+}
+
+
+/**
+ * Whether a layout's backend `%{@t(fileId.ns.key)}` pull resolves at boot (issue #620): the target file is
+ * declared, it is a **backend** file, and the `namespace.key` is present in it. Mirrors the three checks
+ * `MarkdownFragmentService.checkFragments` runs on a fragment file's own pulls.
+ */
+class LayoutPullHit(val fileFound: Boolean, val backend: Boolean, val keyPresent: Boolean)
+
+/**
+ * The problems with a layout's backend `%{@t(...)}` pulls whose target does not resolve (issue #620) -- the
+ * cross-service half of the layout boot check, the part `SchemaService.checkLayouts` cannot do because it runs
+ * in the startup phase, before the fragment registry exists. Kept a **pure function of a resolver lambda** so it
+ * carries no dependency on `MarkdownFragmentService`: a regular-phase caller supplies [resolve] against the
+ * fragment registry (see `LayoutCheckService`).
+ *
+ * For each copy string -- the block heading and every field's `label` / `description` / `hint` -- each
+ * **literal, un-guarded** `%{@t(...)}` is resolved: a two-part `namespace.key` against the block's
+ * `fragmentFileId`, a three-part `fileId.namespace.key` against its own file (the composition the delivery's
+ * `layoutBackendPass` does). A guarded (`?:`) or computed key is skipped -- the delivery fallback handles those,
+ * exactly as the fragment layer leaves them. [where] names the type (and client, for a variant).
+ */
+fun layoutPullProblems(
+    where: String,
+    layout: SchLayout,
+    resolve: (fileId: String, nsKey: String) -> LayoutPullHit,
+): List<String> {
+    val problems = mutableListOf<String>()
+    fun check(what: String, text: String?) {
+        if (text == null || MarkdownFragmentService.backendPassPrefix !in text) {
+            return
+        }
+        for (ref in text.analyzeTemplate(MarkdownFragmentService.backendPassPrefix).refs) {
+            if (ref.tolerant) {
+                continue
+            }
+            // A two-part key resolves against the block's default file; a three-part key names its own.
+            val full = if (layout.fragmentFileId != null && ref.key.count { it == '.' } == 1) {
+                "${layout.fragmentFileId}.${ref.key}"
+            } else {
+                ref.key
+            }
+            val dot = full.indexOf('.')
+            if (dot <= 0 || dot >= full.length - 1) {
+                problems.add("$where: the '${SCH.layout}' $what pull '%{@t(\"${ref.key}\")}' is not a fileId.namespace.key reference.")
+                continue
+            }
+            val fileId = full.substring(0, dot)
+            val nsKey = full.substring(dot + 1)
+            val hit = resolve(fileId, nsKey)
+            when {
+                !hit.fileFound ->
+                    problems.add("$where: the '${SCH.layout}' $what pulls %{@t(\"${ref.key}\")}, but no fragment file '$fileId' is declared here.")
+                !hit.backend ->
+                    problems.add("$where: the '${SCH.layout}' $what pulls from '$fileId', a frontend file; a layout pull must name a backend file.")
+                !hit.keyPresent ->
+                    problems.add("$where: the '${SCH.layout}' $what pulls %{@t(\"${ref.key}\")}, but '$fileId' has no fragment '$nsKey'.")
+            }
+        }
+    }
+    check("heading", layout.label)
+    for (field in layout.fields) {
+        check("${field.field}'s label", field.label)
+        check("${field.field}'s description", field.description)
+        check("${field.field}'s hint", field.hint)
+    }
+    return problems
 }

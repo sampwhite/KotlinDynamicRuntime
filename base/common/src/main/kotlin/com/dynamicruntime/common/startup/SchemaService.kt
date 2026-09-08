@@ -38,6 +38,8 @@ import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.layoutTemplateProblems
+import com.dynamicruntime.common.schema.layoutPullProblems
+import com.dynamicruntime.common.schema.LayoutPullHit
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.endpoint.defaultListLimit
@@ -437,6 +439,32 @@ class SchemaService : ServiceInitializer {
             checkBackendBlocks("${field.field}'s label", field.label)
             checkBackendBlocks("${field.field}'s description", field.description)
             checkBackendBlocks("${field.field}'s hint", field.hint)
+        }
+        return problems
+    }
+
+    /**
+     * The layout **fragment-pull resolution** problems (issue #620) -- the cross-service half of the layout boot
+     * check the startup-phase [checkLayouts] cannot do, because it needs the fragment registry that a regular
+     * service (`LayoutCheckService`) holds. It iterates the same layouts [checkLayouts] does -- every global one,
+     * and on a variant only a layout the client authored (an inherited one is checked against global) -- and
+     * hands each to [layoutPullProblems] with a client-bound [resolve]. Returns the problems; the caller decides
+     * whether an empty result is required. [resolve] answers whether a `(fileId, namespace.key)` resolves as a
+     * backend pull for the given client -- the one thing that needs the registry, injected so this stays free of
+     * a dependency on the fragment service.
+     */
+    fun checkLayoutPulls(resolve: (client: String?, fileId: String, nsKey: String) -> LayoutPullHit): List<String> {
+        val problems = mutableListOf<String>()
+        fun rawLayout(defs: Map<String, Any?>, name: String): Any? = (defs[name] as? Map<*, *>)?.get(SCH.layout)
+        for ((name, layout) in collectLayouts(schemaStore.defs)) {
+            problems.addAll(layoutPullProblems("Type '$name'", layout) { fileId, nsKey -> resolve(null, fileId, nsKey) })
+        }
+        for ((client, store) in clientStores) {
+            if (store.defs === schemaStore.defs) continue
+            for ((name, layout) in collectLayouts(store.defs)) {
+                if (rawLayout(store.defs, name) === rawLayout(schemaStore.defs, name)) continue
+                problems.addAll(layoutPullProblems("Type '$name' (client '$client')", layout) { fileId, nsKey -> resolve(client, fileId, nsKey) })
+            }
         }
         return problems
     }
