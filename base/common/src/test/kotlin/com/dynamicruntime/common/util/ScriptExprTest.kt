@@ -56,13 +56,19 @@ class ScriptExprTest : StringSpec({
     }
 
     /**
-     * The rule that keeps this predictable: text is never a number, so the error names the real problem --
-     * a value that reached the template as a string when a number was expected. Coercing it to 42, or
-     * concatenating it, would both have hidden that.
+     * A numeric operator reads a cleanly-numeric string as a number (issue #608): config values often arrive as
+     * text -- a quoted JSON number, a fragment pull -- and the operator has already said it wants a number. An
+     * integer string stays integral; a string that is not cleanly a number still errors, naming the real
+     * problem rather than papering over it.
      */
-    "a numeric-looking string is still text, and arithmetic on it is an error" {
-        errorCode($$"${n * 2}", mapOf("n" to "21")) shouldBe ScriptError.typeMismatch
-        errorCode($$"${n + 1}", mapOf("n" to "3")) shouldBe ScriptError.typeMismatch
+    "a numeric operator coerces a cleanly-numeric string" {
+        evl($$"${n * 2}", mapOf("n" to "21")) shouldBe "42"
+        evl($$"${n + 1}", mapOf("n" to "3")) shouldBe "4"
+        evl($$"${n / 2}", mapOf("n" to "7")) shouldBe "3" // integer string stays integral
+        evl($$"${n - 1}", mapOf("n" to "2.5")) shouldBe "1.5" // fractional string makes it a double
+        evl($$"${n - 1}", mapOf("n" to " 42 ")) shouldBe "41" // trimmed, and still an integer (not a double)
+        // Not cleanly a number -> still a type error.
+        errorCode($$"${n - 1}", mapOf("n" to "2100abc")) shouldBe ScriptError.typeMismatch
     }
 
     "unary minus negates" {
@@ -95,14 +101,22 @@ class ScriptExprTest : StringSpec({
 
     // --- comparison and logic --------------------------------------------------
 
-    "comparisons work on numbers and on strings" {
+    "ordering compares numerically, coercing numeric strings" {
         evl($$"${1 < 2}|${2 <= 2}|${3 > 4}|${3 >= 4}") shouldBe "true|true|false|false"
-        evl($$"""${"a" < "b"}""") shouldBe "true"
+        // A numeric string coerces, so a numeric-looking pair compares by magnitude, not lexicographically:
+        // "10" < "9" was lexicographic true, and is now numeric false (issue #608).
+        evl($$"""${"10" < "9"}|${"10" > "9"}""") shouldBe "false|true"
+        evl($$"""${n >= 5}""", mapOf("n" to "15")) shouldBe "true"
+        // Two plain strings no longer order lexicographically -- that is a type mismatch now.
+        errorCode($$"""${"apple" < "z"}""") shouldBe ScriptError.typeMismatch
     }
 
     "equality compares within a kind, and always allows a null test" {
         evl($$"""${1 == 1.0}|${"x" == "x"}|${true == true}|${1 != 2}""") shouldBe "true|true|true|true"
         evl($$"${missing == null}") shouldBe "true"
+        // Equality stays same-kind even though the operators coerce (issue #608): text compares as text, so a
+        // string status is matched by string equality rather than being pushed into a function.
+        evl($$"""${status == "active"}""", mapOf("status" to "active")) shouldBe "true"
     }
 
     /** Mixing kinds is refused rather than quietly false, on the same reasoning as the arithmetic rule. */
@@ -189,8 +203,9 @@ class ScriptExprTest : StringSpec({
 
     /** The message has to name the offending value, or a template author cannot act on it. */
     "a type mismatch says what it was given" {
-        val ex = shouldThrow<KdrException> { $$"${n * 2}".evalTemplate(mapOf("n" to "21")) }
-        (ex.message ?: "") shouldContain "'21'"
+        // A value that is not cleanly a number, so the operator still refuses it and names it (issue #608).
+        val ex = shouldThrow<KdrException> { $$"${n * 2}".evalTemplate(mapOf("n" to "abc")) }
+        (ex.message ?: "") shouldContain "'abc'"
         (ex.message ?: "") shouldContain "*"
     }
 

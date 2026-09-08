@@ -200,8 +200,9 @@ Until then every substitution is "print this", which no type can get wrong.
 
 - **Type-aware fragment checking** *(from #305; the half #314 left undone).* `/operator/fragments/check`
   reports the paths an entry requires and which ones a supplied map lacks, but it is a **presence** check: it
-  never evaluates, so `${minutes > 5}` against a `"15"` passes it and still fails at render, since a string is
-  never a number (#293). Catching that means evaluating against realistic values, which means first deciding
+  never evaluates, so `${minutes > 5}` against a `"lots"` passes it and still fails at render, since that is not
+  a number (a cleanly-numeric string like `"15"` now coerces, #608; a non-numeric one still throws, #293).
+  Catching that means evaluating against realistic values, which means first deciding
   where those come from — supplied by the caller at the endpoint, or declared beside the fragment so a boot
   check can run with nobody present. Deferred because the shipped copy reads five paths in total and none of
   them compute, so a check with nothing to find would be tested against invented cases only.
