@@ -18,6 +18,7 @@ import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraService
 import com.dynamicruntime.common.gedra.clientCatalogSchema
@@ -224,6 +225,7 @@ class CommonComponent : ComponentDefinition {
             // than a requirement: every service is published into the config before any `checkInit` runs.
             service(::GedraService, roles = setOf(BOOT.app)),
             service(::GedraDataService, roles = setOf(BOOT.app)),
+            service(::GedraConfigService, roles = setOf(BOOT.app)),
         )
 
     /** Load just ahead of the standard components (demonstrates relative priority). */
