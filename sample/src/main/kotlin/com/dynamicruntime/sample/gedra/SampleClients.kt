@@ -42,6 +42,12 @@ object SF {
      * and never served. Shipped by the component, since client-declared base files are deferred.
      */
     const val acmeWf = "acmeWf"
+
+    /**
+     * Layout-copy help: a **backend** fragment file (issue #605), pulled by a `g-layout`'s `description` with
+     * `%{@t("questionnaire.topicHelp")}` and resolved server-side at delivery. Never served.
+     */
+    const val formHelp = "sampleFormHelp"
 }
 
 /** The sample workflows' ids (issue #533): one creation workflow per client, under one shared name. */

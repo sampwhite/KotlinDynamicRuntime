@@ -247,22 +247,26 @@ is equivalent):
   **pruned** to the properties it kept — a sanctioned narrowing never fails the boot.
 - A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key.
 
-**Substitution (`${…}`).** Resolved on the frontend at render, **per context** (issues #586, #587):
+**Substitution — two passes, by prefix (issues #586, #587, #605).** Layout copy (`label` / `description` /
+`hint`) carries two kinds of template block, resolved in different passes:
 
-- A **`hint`** templates over the field's **bounds** — `${min}` / `${max}` resolve to the field's declared
-  `minimum` / `maximum`, replacing the derived `range: X to Y`. **Boot-checked**: a `${max}` on a field with no
-  maximum, or a malformed template, fails the boot like a mistyped key (`layoutHintProblems`).
-- A **`label`** / **`description`** templates over the **field's own data** — `${someField}` reads the value
-  being entered. No boot check (the data is dynamic).
-- **Fragment pulls** (`${@t("ns.key")}`, against the block's `fragmentFileId`) are **not wired yet** — issue
-  #605 settles whether they resolve on the backend at delivery or via a frontend fetch first. Until then a `@t`
-  pull in any layout copy **fails the boot** (`layoutTemplateProblems`), rather than shipping a layout that
-  renders raw.
+- **Frontend `${…}`**, resolved at render. A **`hint`** templates over the field's **bounds** — `${min}` /
+  `${max}` resolve to the field's declared `minimum` / `maximum`, replacing the derived `range: X to Y`. A
+  **`label`** / **`description`** templates over the **field's own data** — `${someField}` reads the value being
+  entered.
+- **Backend `%{@t("…")}`**, resolved **server-side at delivery** (`MarkdownFragmentService.backendPass`, the
+  mechanism task labels use), for shared copy pulled from a **backend** fragment file. A two-part key
+  `%{@t("ns.key")}` resolves against the block's `fragmentFileId`; a three-part `%{@t("fileId.ns.key")}` names
+  its file outright. Only the finished copy ships (backend fragment files are private, never served). The two
+  prefixes coexist in one string: `%{@t("help.topic")} for ${topicField}` resolves the pull on the backend and
+  the field value on the frontend.
 
-The boot check (`layoutTemplateProblems`) refuses a **malformed** template in any of `label` / `description` /
-`hint`, a **fragment pull** (above), and a `hint` referencing a bounds param its field lacks. A `label` /
-`description` `${…}` over the field's own data is **not** boot-checked (the data is dynamic); if it fails to
-resolve at render it shows **as written** with a `[kdr]` console warning rather than blanking the field.
+Boot checks (`layoutTemplateProblems` + `SchemaService.checkLayouts`): a **malformed** `${…}` **or** `%{…}`
+block, a **hint** referencing a bounds param its field lacks (`${max}` with no maximum), and a **frontend**
+`${@t(...)}` (a fragment pull must use the backend `%` prefix) all fail the boot. A field-data `${…}` is not
+boot-checked (dynamic) — an unresolvable one renders **as written** with a `[kdr]` console warning. Whether a
+`%{@t}` pull actually resolves is checked at delivery for now (an unresolvable one degrades to the copy as
+written with a `[schema]` warning); a boot-time resolution check is tracked in #620.
 
 **Delivery (issue #585).** Both friendly surfaces carry a `layouts` map beside their `$defs` — the endpoint
 catalog under `EI.layouts`, the workflow view under `WVF.layouts` — built by one call,

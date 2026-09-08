@@ -32,10 +32,14 @@ import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.searchParamCollisions
 import com.dynamicruntime.common.gedra.withSearchProperties
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.layoutTemplateProblems
+import com.dynamicruntime.common.schema.resolveDeliveredLayouts
+import com.dynamicruntime.common.schema.SchLayout
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
@@ -54,6 +58,7 @@ import com.dynamicruntime.common.schema.requiredGateProblem
 import com.dynamicruntime.common.schema.requiredVisibleWhenProblems
 import com.dynamicruntime.common.schema.resolveOptionsSources
 import com.dynamicruntime.common.schema.visibleWhenProblems
+import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.addDays
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -388,6 +393,7 @@ class SchemaService : ServiceInitializer {
             val type = schemaStore.types[name]
             problems.addAll(layoutFieldProblems("Type '$name'", layout, type))
             problems.addAll(layoutTemplateProblems("Type '$name'", layout, type))
+            problems.addAll(layoutBackendBlockProblems("Type '$name'", layout))
         }
         for ((client, store) in clientStores) {
             // A client sharing the global document has nothing of its own to check.
@@ -397,6 +403,7 @@ class SchemaService : ServiceInitializer {
                 val type = store.types[name]
                 problems.addAll(layoutFieldProblems("Type '$name' (client '$client')", layout, type))
                 problems.addAll(layoutTemplateProblems("Type '$name' (client '$client')", layout, type))
+                problems.addAll(layoutBackendBlockProblems("Type '$name' (client '$client')", layout))
             }
         }
         if (problems.isNotEmpty()) {
@@ -405,6 +412,29 @@ class SchemaService : ServiceInitializer {
                     problems.joinToString("\n"),
             )
         }
+    }
+
+    /**
+     * Malformed **backend** `%{...}` blocks in a layout's copy (issue #605) -- the registry-free half of the
+     * fragment-pull check. A layout `label` / `description` / `hint` may carry a `%{@t("…")}` pull resolved at
+     * delivery; an unterminated or empty `%{...}` block would otherwise fail per request, so it is caught here
+     * at boot. Whether a well-formed pull actually *resolves* (its target file and key exist) is a cross-service
+     * check that needs the fragment registry, which is not available to this startup-phase service -- see #620;
+     * an unresolvable pull degrades gracefully at delivery in the meantime ([resolveDeliveredLayouts]).
+     */
+    private fun layoutBackendBlockProblems(where: String, layout: SchLayout): List<String> {
+        val problems = mutableListOf<String>()
+        for (field in layout.fields) {
+            for ((kind, text) in listOf(SL.label to field.label, SL.description to field.description, SL.hint to field.hint)) {
+                if (text == null || MarkdownFragmentService.backendPassPrefix !in text) {
+                    continue
+                }
+                for (issue in text.analyzeTemplate(MarkdownFragmentService.backendPassPrefix).issues) {
+                    problems.add("$where: the '${SCH.layout}' $kind for '${field.field}' has a malformed backend block: ${issue.message}")
+                }
+            }
+        }
+        return problems
     }
 
     /**
@@ -1042,7 +1072,7 @@ class SchemaService : ServiceInitializer {
                 // The layouts for exactly the types the closure carries (issue #585): what the friendly forms
                 // off-workflow (`NewFormPage`, `EditFormPage`, the read-only view) join to a type by name. Over
                 // the surface's own store, so a client that overlaid or narrowed a type gets that variant's.
-                EI.layouts to surface.schema.layoutsFor(defs),
+                EI.layouts to resolveDeliveredLayouts(cxt, surface.schema.layoutsFor(defs)),
             )
             val providers = svc?.optionsProviders.orEmpty()
             return resolveOptionsSources(cxt, result, providers)

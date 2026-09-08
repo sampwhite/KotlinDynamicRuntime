@@ -171,8 +171,10 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         // The type's `g-layout` (issue #585): friendly copy for the form, kept out of the served schema and
         // delivered beside it. Names every field, `notes` included, so acme -- whose overlay drops `notes` --
         // inherits this layout **pruned** to the three properties it kept. Delivered but not yet rendered.
-        layout {
-            field(ST.topic, label = "Topic", description = "Pick the subject the answers are about.")
+        layout(fragmentFileId = SF.formHelp) {
+            // `topic`'s description is a backend fragment pull (issue #605): `%{@t("questionnaire.topicHelp")}`
+            // resolves against SF.formHelp server-side at delivery, so only the finished copy reaches the page.
+            field(ST.topic, label = "Topic", description = "%{@t(\"questionnaire.topicHelp\")}")
             field(ST.notes, label = "Anything else?")
             field(ST.hasIssue, label = "Did you hit a problem?")
             field(ST.explanation, label = "What went wrong", hint = "Only asked when a problem is flagged.")
