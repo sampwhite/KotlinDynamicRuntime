@@ -402,6 +402,15 @@ body {
    run the width of a wide window. */
 .markdown p, .markdown li, .markdown blockquote, .markdown h1, .markdown h2, .markdown h3 { max-width: 80ch; }
 .markdown h1, .markdown h2, .markdown h3 { margin: 20px 0 8px; }
+/* Inline-UI Markdown (issue #631, the `inlineUi` prop): Markdown rendered as a piece of UI -- a heading with
+   its line directly beneath and no lead-in -- rather than as a document. Only the look differs from
+   `.markdown`; the renderer emits the same semantic HTML. Heading and body both take the muted section-heading
+   colour (`--text-muted`), so the heading matches the form's other section headings and its follow-up line
+   reads as part of the same unit rather than a heading over brighter body text. */
+.markdown-inline-ui > :first-child { margin-top: 0; }
+.markdown-inline-ui h1, .markdown-inline-ui h2, .markdown-inline-ui h3 { margin: 0 0 1px; color: var(--text-muted); }
+.markdown-inline-ui p { margin: 0; color: var(--text-muted); }
+.markdown-inline-ui > :last-child { margin-bottom: 2px; }
 /* `markdown-inline` is a phrase rendered inside markup the caller owns (MarkdownInline): it shares these
    inline looks, but never the block spacing above -- it has no line-height or margins of its own. */
 .markdown code, .markdown-inline code {
