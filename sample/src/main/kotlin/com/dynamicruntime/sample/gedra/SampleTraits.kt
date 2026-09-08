@@ -139,6 +139,12 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
             type = SCT.number
             derived = true
         }
+        // A layout `hint` (issue #587) over the field's bounds context: `${'$'}{min}` / `${'$'}{max}` resolve to this
+        // field's own minimum/maximum on the frontend, replacing the derived "range: 2000 to 2100". The boot
+        // check confirms the placeholders name bounds the field actually declares.
+        layout {
+            field(ST.year, label = "Reporting year", hint = $$"Any year from ${min} to ${max}.")
+        }
     }
 
     // A merge sends a fragment -- a page updates a few keys of a large entry. That fragment is now accepted on

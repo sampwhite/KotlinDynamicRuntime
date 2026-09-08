@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -284,4 +285,87 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
     val props = type.properties.keys
     return layout.fieldNames.filterNot { it in props }
         .map { "$where: '${SCH.layout}' names field '$it', which the type does not declare." }
+}
+
+/**
+ * The template parameters a layout `${'$'}{…}` may reference, **per context** (issue #587, `thoughts-schema-direction.md`
+ * §10). Only the injected-param contexts live here: their vocabulary is fixed and known at boot, so a placeholder
+ * naming a param the field's context does not provide is caught like a mistyped key. The field's **own data**
+ * (what a `label` / `description` resolves against) is not here -- it is dynamic, so no boot check can enumerate it.
+ *
+ * The **bounds** context is the first and, in this stage, only one: a numeric/bounded field's `min` / `max`, for a
+ * `hint` that replaces the derived `range: X to Y`. A name appears only when the field actually declares that
+ * bound, so `${'$'}{max}` on a field with no maximum is a boot failure.
+ */
+@Suppress("ConstPropertyName")
+object LayoutCtx {
+    /** The declared lower bound (`minimum` / `minLength` / `minItems`), when the field has one. */
+    const val min = "min"
+
+    /** The declared upper bound (`maximum` / `maxLength` / `maxItems`), when the field has one. */
+    const val max = "max"
+}
+
+/** The bounds-context param names [type] provides: [LayoutCtx.min] when it declares a minimum, [LayoutCtx.max]
+ *  when it declares a maximum (issue #587). The boot check holds a `hint` template's references against this. */
+fun boundsContextNames(type: SchType): Set<String> = buildSet {
+    if (type.minBound != null) add(LayoutCtx.min)
+    if (type.maxBound != null) add(LayoutCtx.max)
+}
+
+/** The bounds-context data [type] supplies to a `hint` template (issue #587): each provided bound as a
+ *  **number**, keyed by [LayoutCtx.min] / [LayoutCtx.max]. Kept numeric rather than pre-formatted so a hint may
+ *  compute on it -- `${'$'}{max - min}`, `${'$'}{max > 2000}` -- which string operands would refuse (`numOf` in
+ *  `ScriptEval` never coerces a string); a bare `${'$'}{min}` still renders cleanly because `Any?.fmt` trims a whole
+ *  value (`2000.0` -> `"2000"`). The same names [boundsContextNames] validates, so the boot check and the render
+ *  agree on the vocabulary. */
+fun boundsContextData(type: SchType): Map<String, Any?> = buildMap {
+    type.minBound?.let { put(LayoutCtx.min, it) }
+    type.maxBound?.let { put(LayoutCtx.max, it) }
+}
+
+/**
+ * The problems with a layout's copy **templates** -- `label` / `description` / `hint` -- against the field they
+ * annotate (issues #587, #605), the boot check for §10's frontend substitution:
+ *  - a **malformed** template (an unterminated `${'$'}{...}`, an empty block) fails, on any of the three;
+ *  - a **fragment pull** `${'$'}{@t("ns.key")}` fails until #605 wires fragment resolution -- it would otherwise
+ *    render as raw text, exactly the "parses clean, renders wrong" the layout boot checks exist to prevent;
+ *  - a **hint** additionally may reference only its field's bounds params: a `${'$'}{max}` on a field with no maximum
+ *    fails, like a mistyped key. A `label` / `description` resolves against the field's own **dynamic** data, so
+ *    its `${'$'}{...}` data paths are not checked here (no boot can enumerate them).
+ * [type] is the object the layout annotates; a field it does not declare is reported by [layoutFieldProblems]
+ * and skipped here.
+ */
+fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): List<String> {
+    if (type == null) return emptyList()
+    val problems = mutableListOf<String>()
+    for (field in layout.fields) {
+        val prop = type.properties[field.field] ?: continue
+        for ((kind, text) in listOf(SL.label to field.label, SL.description to field.description, SL.hint to field.hint)) {
+            if (text == null) continue
+            val analysis = text.analyzeTemplate()
+            for (issue in analysis.issues) {
+                problems.add("$where: the '${SCH.layout}' $kind for '${field.field}' is a malformed template: ${issue.message}")
+            }
+            if (analysis.refs.isNotEmpty()) {
+                problems.add(
+                    "$where: the '${SCH.layout}' $kind for '${field.field}' uses a fragment pull ('@t'), which layout " +
+                        "copy does not resolve yet (see #605). Use literal copy for now.",
+                )
+            }
+            if (kind == SL.hint) {
+                val allowed = boundsContextNames(prop.valueType)
+                for (path in analysis.paths.required + analysis.paths.optional) {
+                    val name = path.substringBefore('.')
+                    if (name !in allowed) {
+                        problems.add(
+                            $$"$$where: the '$${SCH.layout}' hint for '$${field.field}' references '${$$path}', but this " +
+                                "field's bounds context provides ${if (allowed.isEmpty()) "no params (it declares no minimum or maximum)" else allowed.sorted().joinToString(", ")}.",
+                        )
+                    }
+                }
+            }
+        }
+    }
+    return problems
 }

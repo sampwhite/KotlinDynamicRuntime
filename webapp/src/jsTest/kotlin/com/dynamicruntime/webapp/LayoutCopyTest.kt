@@ -11,10 +11,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * Pure-logic coverage for the label/description cascade (issue #586): [layoutCopy] returns the layout's copy
- * (with a `${'$'}{…}` resolved against the field's own data) when a layout addresses the field, and null
- * otherwise -- which is what makes the render site fall back to the schema `title` / `description`, then to the
- * humanized key. The render wiring itself is browser-driven; this pins the rule that decides the words.
+ * Pure-logic coverage for the layout copy cascade (issues #586, #587): [layoutCopy] returns a [LayoutCopy] with
+ * the layout's `label` / `description` (resolved against the field's own data) and `hint` (resolved against the
+ * field's **bounds** context, `${'$'}{min}` / `${'$'}{max}`) when a layout addresses the field, else null — which is
+ * what makes the render site fall back to the schema's `title` / `description` and the derived bound hint. The
+ * render wiring is browser-driven; this pins the rule that decides the words.
  */
 class LayoutCopyTest {
     private val type: SchType = parseSchemaTypes(
@@ -25,6 +26,8 @@ class LayoutCopyTest {
                 SCH.properties to mapOf(
                     "topic" to mapOf(SCH.type to SCT.string, SCH.title to "Schema topic title"),
                     "notes" to mapOf(SCH.type to SCT.string),
+                    // A bounded numeric field, for the hint's bounds context.
+                    "year" to mapOf(SCH.type to SCT.integer, SCH.minimum to 2000, SCH.maximum to 2100),
                 ),
             ),
         ),
@@ -38,45 +41,52 @@ class LayoutCopyTest {
         fields = listOf(
             SchLayoutField("topic", label = "Topic", description = "Pick the subject.", hint = null),
             SchLayoutField("notes", label = "Notes about \${topic}", description = null, hint = null),
+            SchLayoutField("year", label = null, description = null, hint = "Any year from \${min} to \${max}."),
         ),
     )
 
     @Test
     fun theLayoutLabelAndDescriptionOverrideTheSchema() {
-        val (label, description) = layoutCopy(type, "topic", emptyMap(), optsWith(layout))
-        assertEquals("Topic", label)
-        assertEquals("Pick the subject.", description)
+        val copy = layoutCopy(type, "topic", emptyMap(), optsWith(layout))!!
+        assertEquals("Topic", copy.label)
+        assertEquals("Pick the subject.", copy.description)
+        assertNull(copy.hint)
     }
 
     @Test
-    fun aSubstitutionResolvesAgainstTheObjectsOwnValues() {
-        // `notes` has no description override -> null -> the render falls back to the schema's (none here).
-        val (label, description) = layoutCopy(type, "notes", mapOf("topic" to "Travel"), optsWith(layout))
-        assertEquals("Notes about Travel", label)
-        assertNull(description)
+    fun aLabelSubstitutionResolvesAgainstTheObjectsOwnValues() {
+        // `notes` overrides only the label; description falls through (null).
+        val copy = layoutCopy(type, "notes", mapOf("topic" to "Travel"), optsWith(layout))!!
+        assertEquals("Notes about Travel", copy.label)
+        assertNull(copy.description)
     }
 
     @Test
-    fun noLayoutForTheFieldLeavesBothNullSoTheSchemaTitleWins() {
+    fun theHintResolvesAgainstTheFieldsBoundsContext() {
+        // `${min}` / `${max}` come from the field's own minimum/maximum, not the object's values.
+        val copy = layoutCopy(type, "year", emptyMap(), optsWith(layout))!!
+        assertEquals("Any year from 2000 to 2100.", copy.hint)
+        assertNull(copy.label)
+    }
+
+    @Test
+    fun noLayoutForTheFieldReturnsNullSoTheSchemaWins() {
         // A layout that addresses no such field, and a form with no layouts at all: both fall through.
-        assertEquals(null to null, layoutCopy(type, "topic", emptyMap(), optsWith(null)))
+        assertNull(layoutCopy(type, "topic", emptyMap(), optsWith(null)))
         val partial = SchLayout("acme", listOf(SchLayoutField("notes", "Notes", null, null)))
-        assertEquals(null to null, layoutCopy(type, "topic", emptyMap(), optsWith(partial)))
+        assertNull(layoutCopy(type, "topic", emptyMap(), optsWith(partial)))
     }
 
     @Test
     fun theWireDocumentingViewIgnoresLayoutsEntirely() {
         // Not friendly (the catalog): layouts are never consulted, so the key/title path is left to decide.
-        val (label, description) = layoutCopy(type, "topic", emptyMap(), FormOpts(friendly = false, layouts = mapOf("acme.Q" to layout)))
-        assertNull(label)
-        assertNull(description)
+        assertNull(layoutCopy(type, "topic", emptyMap(), FormOpts(friendly = false, layouts = mapOf("acme.Q" to layout))))
     }
 
     @Test
     fun aBrokenSubstitutionFallsBackToTheCopyAsWritten() {
         // A `${'$'}{…}` the data cannot resolve must not blank the label; it shows as written rather than throwing.
         val broken = SchLayout("acme", listOf(SchLayoutField("topic", "Label \${missing.deep.path}", null, null)))
-        val (label, _) = layoutCopy(type, "topic", emptyMap(), optsWith(broken))
-        assertEquals("Label \${missing.deep.path}", label)
+        assertEquals("Label \${missing.deep.path}", layoutCopy(type, "topic", emptyMap(), optsWith(broken))!!.label)
     }
 }
