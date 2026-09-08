@@ -128,7 +128,7 @@ val CreationWorkflowForm = FC<CreationWorkflowFormProps> { props ->
                     // The layout's heading override (issue #605) renders as Markdown -- a `%{@t(...)}` pull is
                     // already resolved server-side, so this is finished copy (a header plus body). Absent, the
                     // schema title stands as a plain `h2`.
-                    trait.layout?.label?.let { Markdown { source = it } } ?: h2 { +traitHeading(trait) }
+                    trait.layout?.label?.let { Markdown { source = it; inlineUi = true } } ?: h2 { +traitHeading(trait) }
                     if (trait.traitId in unmetTraits) {
                         p {
                             className = ClassName("error-text")

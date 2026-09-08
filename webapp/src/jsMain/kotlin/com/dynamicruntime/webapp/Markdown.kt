@@ -24,11 +24,21 @@ import web.cssom.ClassName
 external interface MarkdownProps : Props {
     var source: String
     var linkResolver: ((String) -> String)?
+    /**
+     * **Inline-UI** rendering (issue #631): when true the block renders `class="markdown markdown-inline-ui"`,
+     * whose CSS makes Markdown read as a piece of *UI* rather than a document -- collapsed lead-in and
+     * inter-block margins so a header-plus-line is one compact unit, with heading and body both in the muted section-heading colour.
+     * Absent/false keeps the roomy document look every other caller wants. Ignored by [MarkdownInline], which
+     * is already a bare phrase. (Named `inlineUi` -- the house `Ui`, as in `UiBlock` -- so more inline-UI
+     * tweaks can gather under it.)
+     */
+    var inlineUi: Boolean?
 }
 
 val Markdown = FC<MarkdownProps> { props ->
     div {
-        className = ClassName("markdown")
+        // `markdown-inline-ui` (issue #631) is the inline-UI opt-in; see [MarkdownProps.inlineUi].
+        className = ClassName(if (props.inlineUi == true) "markdown markdown-inline-ui" else "markdown")
         // A same-document `#anchor` (a table-of-contents link) scrolls in-page rather than letting the app's
         // hash router consume it (issue #492); everything else, including an in-app `#doc=` route link, is
         // left to the browser.
