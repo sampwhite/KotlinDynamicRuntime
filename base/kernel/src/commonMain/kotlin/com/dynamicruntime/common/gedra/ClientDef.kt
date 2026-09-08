@@ -97,6 +97,12 @@ object CLD {
     /** Schema type name for the [ClientDef.toInfo] dump. */
     const val infoTypeName = "ClientInfo"
 
+    /** The namespace `clientCatalogSchema` declares [infoTypeName] in; its value is that name. */
+    const val catalogNamespace = "clientCatalog"
+
+    /** [infoTypeName] qualified by [catalogNamespace] -- the canonical `ClientInfo`, for a cross-namespace `$ref`. */
+    const val infoTypeQualified = "$catalogNamespace.$infoTypeName"
+
     /**
      * The id under which the clients-a-caller-may-name choice list is registered (issue #413).
      *

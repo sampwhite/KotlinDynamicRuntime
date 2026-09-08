@@ -25,7 +25,7 @@ import com.dynamicruntime.common.user.ADEP
  * full-scope under the `admin` section; `clientAdmin` now names the opposite thing -- the client-*scoped*
  * administration section -- and one name reading both ways was the ambiguity #466 cleared.
  */
-fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "clientCatalog") {
+fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogNamespace) {
     ClientDef.defineInfoType(this)
 
     listEndpoint(

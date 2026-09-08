@@ -131,8 +131,40 @@ fun SchTypesBuilder.traitEntry(
     description: String? = null,
     primaryKey: List<String> = emptyList(),
     dataSchema: SchTypeBuilder.() -> Unit,
+): Map<String, Any?> = traitEntryOf(name, traitId, appliesTo.map { it.name }, description, primaryKey, dataSchema)
+
+/**
+ * The entry type for a **config** trait (issue #316): exactly what [traitEntry] builds -- the same envelope,
+ * the same named data type, the same keying rules -- bound to config kinds instead of data kinds.
+ *
+ * A sibling rather than a widening of [traitEntry] to `Set<GedraKind>`, because the widening admits a
+ * combination that means nothing (a trait on a form document *and* on a config bundle) and would leave every
+ * consumer of a data trait's `appliesTo` to re-check the kind it was handed. The two functions share their body
+ * through [traitEntryOf]; only the binding's type differs.
+ */
+fun SchTypesBuilder.configTraitEntry(
+    name: String,
+    traitId: String,
+    appliesTo: Set<GedraConfigType>,
+    description: String? = null,
+    primaryKey: List<String> = emptyList(),
+    dataSchema: SchTypeBuilder.() -> Unit,
+): Map<String, Any?> = traitEntryOf(name, traitId, appliesTo.map { it.name }, description, primaryKey, dataSchema)
+
+/**
+ * The shared body of [traitEntry] and [configTraitEntry]: the binding arrives as the kinds' **names**, which
+ * is all the generated document carries, so the data and config kinds meet only here -- as strings on the
+ * `g-appliesTo` keyword -- and nowhere in the type system.
+ */
+private fun SchTypesBuilder.traitEntryOf(
+    name: String,
+    traitId: String,
+    appliesToNames: List<String>,
+    description: String?,
+    primaryKey: List<String>,
+    dataSchema: SchTypeBuilder.() -> Unit,
 ): Map<String, Any?> {
-    if (appliesTo.isEmpty()) {
+    if (appliesToNames.isEmpty()) {
         throw KdrException.mkConv(
             "Trait '$traitId' says it applies to no kind of gedra, so nothing could ever carry it. Name the " +
                 "kinds it attaches to.",
@@ -211,7 +243,7 @@ fun SchTypesBuilder.traitEntry(
     variantBranch(name, GE.traitId, traitId, description) {
         // Kind names, not abbreviations: this is a document meant to be read, and the enum name is the
         // settled vocabulary. Sorted so rebuilding the same trait produces the same bytes.
-        data[GE.appliesTo] = appliesTo.map { it.name }.sorted()
+        data[GE.appliesTo] = appliesToNames.sorted()
         property(GE.data, "This entry's own data, as its trait defines it.", required = true) {
             data.putAll(builtData)
         }

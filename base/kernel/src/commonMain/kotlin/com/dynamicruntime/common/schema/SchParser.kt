@@ -343,6 +343,7 @@ fun parseNode(
         // An object's content is deliberately not kept: there is nothing to consume it, and a ride-along raw
         // map would be a field nobody reads that still has to be maintained.
         derived = map[SCH.derived].let { it == true || it is Map<*, *> },
+        schemaDocument = map[SCH.schemaDocument] == true,
         variants = variants,
         condition = parseCondition(name, map),
         default = map[SCH.default],

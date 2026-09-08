@@ -983,4 +983,54 @@ class SchValidatorTest : StringSpec({
             listOf("reason" to SchFailCode.missingRequired)
         result.value.toJsonMapOrEmpty()["status"] shouldBe "open"
     }
+
+    // --- g-schemaDocument (issue #316) -------------------------------------------
+
+    // A property holding a JSON Schema type body is validated by *parsing* it with the schema store's own parser,
+    // not against a schema for schema: what the parser refuses is reported, and the value is returned as written.
+    "a schema-document property validates by parsing the value" {
+        val types = parseSchemaTypes(
+            mapOf(
+                "t.Holder" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf("schema" to mapOf(SCH.type to SCT.kObject, SCH.schemaDocument to true)),
+                ),
+            ),
+        )
+        val holder = types.getValue("t.Holder")
+        holder.properties.getValue("schema").valueType.schemaDocument shouldBe true
+
+        // A well-formed type body passes, untouched.
+        val good = mapOf("schema" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("name" to mapOf(SCH.type to SCT.string))))
+        validate(holder, good).shouldBeEmpty()
+
+        // A body the parser refuses -- here a property whose $ref names nothing -- is ONE badValue carrying the
+        // parser's reason as its cause. One, because the parser stops at the first defect; that is the
+        // trade-off of reusing it. (A *bare* top-level $ref is not a defect to the parser -- it is a name it
+        // never has to resolve -- so the refusal has to be provoked where the parser actually looks.)
+        val bad = mapOf(
+            "schema" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf("x" to mapOf(SCH.dRef to "#/\$defs/t.Nope")),
+            ),
+        )
+        val failures = validate(holder, bad)
+        failures shouldHaveSize 1
+        failures[0].code shouldBe SchFailCode.badValue
+        failures[0].path shouldContain "schema"
+        failures[0].cause.shouldNotBeNull()
+        failures[0].message shouldContain "t.Nope"
+        // A different parse-level defect, to show it is the parser's judgement and not a $ref check: a union
+        // that declares no branches.
+        val noBranches = mapOf("schema" to mapOf(SCH.oneOf to emptyList<Any?>()))
+        validate(holder, noBranches).single().code shouldBe SchFailCode.badValue
+
+        // ...unless the referenced type is among the existing ones a caller supplied -- a caller holding a
+        // compiled store passes its types, and the same body is then fine.
+        val existing = parseSchemaTypes(mapOf("t.Nope" to mapOf(SCH.type to SCT.string)))
+        validate(holder, bad, SchOpts(existingTypes = existing)).shouldBeEmpty()
+
+        // Not an object at all is the ordinary wrong-type failure, before any parsing is attempted.
+        validate(holder, mapOf("schema" to "text")).first().code shouldBe SchFailCode.wrongType
+    }
 })

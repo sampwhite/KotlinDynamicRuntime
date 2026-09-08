@@ -208,6 +208,15 @@ object SCH {
      */
     const val derived = "g-derived"
 
+    /**
+     * A property whose value is itself a **JSON Schema type body** (issue #316), validated by parsing it with
+     * the same parser the schema store uses rather than against a schema for schema -- which would be a large
+     * `$defs` pile to keep in step with every keyword, and subtly wrong the first time somebody forgot. The
+     * precedent is a date field, which validates by parsing rather than by describing ISO 8601. What the parser
+     * does not understand, the check does not claim to have checked. Declared with `schemaDocument()`.
+     */
+    const val schemaDocument = "g-schemaDocument"
+
     /** A labeled choice list on a property (array of `{label, value}` entries). */
     const val options = "g-options"
 

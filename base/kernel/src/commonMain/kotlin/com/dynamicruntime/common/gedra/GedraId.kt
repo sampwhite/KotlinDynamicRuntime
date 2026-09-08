@@ -46,9 +46,9 @@ enum class GedraStorageType(val idAbbrev: String) {
     /**
      * Definitions — clients, workflows, traits — which are revisioned and pinned per environment.
      *
-     * Reserved here so the abbreviation cannot be claimed by anything else and the intent is visible, but it
-     * has no kinds yet: config storage is a later design, and parsing a `gc.` id says so rather than failing
-     * in some way a reader would have to interpret.
+     * Reserved here so the abbreviation cannot be claimed by anything else and the intent is visible. Its one
+     * kind is [GedraConfigType.configDoc] (issue #292): a bundle of definitions, which config *traits* bind to
+     * (issue #316) the way data traits bind to a [GedraDataType].
      */
     configStore("gc"),
 }
@@ -61,6 +61,11 @@ enum class GedraStorageType(val idAbbrev: String) {
  * three illegal states representable — both set, neither set, and one that disagrees with the storage type —
  * each prevented only by a rule somebody has to remember. Here [storageType] is *derived* from the kind, so it
  * cannot contradict it, and there is no state to validate.
+ *
+ * **The split question is closed (issue #316).** #298 recorded that if traits bound to data kinds only, this
+ * interface would have one implementer's worth of purpose -- the evidence that would have justified splitting
+ * [GedraId] into data and config variants, a split #292 decided against. Config traits ([GedraConfigTrait])
+ * bind to [GedraConfigType] through it, so it has its second real user, and [GedraId] stays one class.
  */
 interface GedraKind {
     /** This kind's two-character abbreviation in an id; see [GID.kindAbbrevLength]. */
@@ -75,10 +80,10 @@ interface GedraKind {
  * enum and the vocabulary cannot drift: `userData` rather than `user`, `formDoc` rather than "document",
  * `wfData` as the half of "workflow" that is captured data rather than rules.
  *
- * `wfDef` is deliberately absent. A workflow *definition* is config, so it belongs to the config enum — which
- * makes the `wfDef` / `wfData` split the codebase already settled land exactly on the `gc` / `gd` split. Both
- * will abbreviate to `wf`, which is safe because the first segment already says which is meant, and reads
- * well: `gd.wf.` is a workflow's data, `gc.wf.` is its rules.
+ * `wfDef` is deliberately absent. A workflow *definition* is config, and #292 settled that definitions travel
+ * together in one [GedraConfigType.configDoc] bundle rather than each as a kind of its own -- so there is no
+ * `gc.wf.` id, and a definition is addressed inside its bundle. `wfData` keeps the `wf` abbreviation for the
+ * half of "workflow" that is captured data rather than rules.
  */
 @Suppress("EnumEntryName")
 enum class GedraDataType(override val idAbbrev: String) : GedraKind {

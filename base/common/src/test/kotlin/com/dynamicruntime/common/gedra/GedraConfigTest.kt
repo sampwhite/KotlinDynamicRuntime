@@ -5,6 +5,8 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.schema.schemaDefs
+import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -136,5 +138,82 @@ class GedraConfigTest : StringSpec({
                 trait("NameEntry", "title", setOf(GedraDataType.formDoc)) { property("title", "Two.") }
             }
         }.message.shouldNotBeNull() shouldContain "silently replace"
+    }
+
+    // --- config traits (issue #316) ---------------------------------------------
+
+    // A config trait is a sibling of a data trait, not a widening: it binds to config kinds, and it is filed
+    // where the data unions and the patch keying -- every consumer of `traits` -- will never see it.
+    "a config trait binds to config kinds and stays out of the data traits" {
+        val config = gedraConfig(cxt, "storedConfig", "globalconfig") {
+            trait("NameEntry", "name", setOf(GedraDataType.formDoc)) {
+                property("name", "The name.", required = true)
+            }
+            configTrait("ClientDefEntry", "clientDef", setOf(GedraConfigType.configDoc), "A stored client definition.") {
+                property("clientId", "Which client.", required = true)
+            }
+        }
+        config.configTraits.keys.toList() shouldContainExactly listOf("clientDef")
+        config.traits.keys.toList() shouldContainExactly listOf("name")
+        config.stateTraits.isEmpty() shouldBe true
+        config.configTraits.getValue("clientDef").appliesTo shouldBe setOf(GedraConfigType.configDoc)
+        // The generated entry type says which config kind may carry it, the way a data trait's names its data
+        // kinds -- the one place the two bindings meet, as names on a keyword.
+        config.defs.getValue("globalconfig.ClientDefEntry").toJsonMapOrEmpty()[GE.appliesTo] shouldBe listOf("configDoc")
+        // And it is built by the same machinery: a named data type the entry refers to.
+        val types = parseSchemaTypes(config.defs)
+        types.getValue("globalconfig.ClientDefEntry").properties.getValue(GE.data).refName shouldBe
+            "globalconfig.ClientDefData"
+    }
+
+    // One global id space and one namespace of generated types across data, state and config traits, so the
+    // refusals a data trait gets, a config trait gets too -- in either order.
+    "a config trait cannot reuse a data trait's id, or its generated type, in one config" {
+        val byId = shouldThrow<KdrException> {
+            gedraConfig(cxt, "c", "globalconfig") {
+                trait("NameEntry", "name", setOf(GedraDataType.formDoc)) { property("name", "N.", required = true) }
+                configTrait("NameCfgEntry", "name", setOf(GedraConfigType.configDoc)) { property("x", "X.") }
+            }
+        }
+        (byId.message ?: "") shouldContain "declared twice"
+        val byType = shouldThrow<KdrException> {
+            gedraConfig(cxt, "c", "globalconfig") {
+                configTrait("SameEntry", "one", setOf(GedraConfigType.configDoc)) { property("x", "X.") }
+                trait("SameEntry", "two", setOf(GedraDataType.formDoc)) { property("y", "Y.") }
+            }
+        }
+        (byType.message ?: "") shouldContain "both generate"
+    }
+
+    "a config trait has to apply to some config kind" {
+        val ex = shouldThrow<KdrException> {
+            gedraConfig(cxt, "c", "globalconfig") {
+                configTrait("LostEntry", "lost", emptySet()) { property("x", "X.") }
+            }
+        }
+        (ex.message ?: "") shouldContain "applies to no kind"
+    }
+
+    // The traits a stored client configuration is made of. Three, not #611's four: tasks live inside their
+    // workflow, so the workflow trait carries them (see `coreConfigTraits`).
+    "the core config traits declare the pieces a stored client configuration is made of" {
+        val config = coreConfigTraits(cxt)
+        config.configTraits.keys.toList() shouldContainExactly listOf(CCT.clientDef, CCT.workflowDef, CCT.schemaDef)
+        config.traits.isEmpty() shouldBe true
+        // The client and workflow traits *refer to* the canonical types rather than redeclaring them, so this
+        // config's types resolve only beside those -- which is how they are compiled at boot, and what
+        // `existingTypes` is for. The client trait names `clientCatalog.ClientInfo`, not a local copy.
+        val canonical = parseSchemaTypes(
+            WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+        )
+        val types = parseSchemaTypes(config.defs, existingTypes = canonical)
+        types.getValue("globalconfig.ClientDefEntry").properties.getValue(GE.data).refName shouldBe CLD.infoTypeQualified
+        // The schema-definition trait is the one #316 exists for: its body is checked by parsing it.
+        val schemaData = types.getValue("globalconfig.SchemaDefEntry").properties.getValue(GE.data).valueType
+        schemaData.properties.getValue(CCT.schema).valueType.schemaDocument shouldBe true
+        // Keyed as #611 says: workflows by id, schema definitions by type name; the client is single-instance.
+        config.configTraits.getValue(CCT.workflowDef).primaryKey shouldBe listOf(CCT.workflowId)
+        config.configTraits.getValue(CCT.schemaDef).primaryKey shouldBe listOf(CCT.typeName)
+        config.configTraits.getValue(CCT.clientDef).primaryKey shouldBe emptyList()
     }
 })

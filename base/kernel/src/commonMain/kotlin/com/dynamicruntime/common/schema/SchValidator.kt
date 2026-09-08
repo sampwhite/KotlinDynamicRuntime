@@ -238,6 +238,12 @@ class SchOpts(
      * down the tree.
      */
     val skipCompleteness: Boolean = false,
+    /**
+     * The types a `g-schemaDocument` value may `$ref` (issue #316) -- the compiled store's, supplied by a
+     * caller that has one. Empty by default, so a document referring to anything outside itself fails to
+     * parse: honest for a standalone check, and a caller with a live store passes that store's types.
+     */
+    val existingTypes: Map<String, SchType> = emptyMap(),
 ) {
     /**
      * These options with [skipCompleteness] set to [v] -- the same instance when it already matches, so the
@@ -358,6 +364,11 @@ fun validateValue(
     // count before `emptyIsAbsent` drops anything or a default is injected. (A trimmed string is the cleaned
     // value, since edge whitespace is not content the length bound should count.)
     checkBounds(type, effective, path, failures)
+    // A schema-document object is validated by parsing it, not by walking it as properties (issue #316): the
+    // whole value is the candidate, and an open object with no declared properties has nothing else to check.
+    if (jsonType == SCT.kObject && type.schemaDocument) {
+        return validateSchemaDocument(type, effective, path, failures, opts)
+    }
     return when (jsonType) {
         SCT.kObject -> validateObject(type, effective as Map<*, *>, path, coerce, failures, opts)
         SCT.array -> validateArray(type, effective as List<*>, path, coerce, failures, opts)
@@ -848,6 +859,52 @@ fun coerceStringToObject(
     }
     return validateValue(type, map, path, coerce, failures, opts)
 }
+
+/**
+ * Validates a `g-schemaDocument` object (issue #316): the value is a JSON Schema type body, and it is checked
+ * by **parsing** it with [parseSchemaTypes] -- the same parser the schema store runs -- rather than against a
+ * schema for schema. That gets the checking the parser already does and that matters -- a `oneOf` without a
+ * discriminator, a branch with no `const`, a property/item/branch `$ref` to a type nothing defines -- and
+ * degrades honestly: what the parser does not check, this does not claim to have checked.
+ *
+ * **The parser is not a complete validator, so this is not either**, and the gap is worth naming because #316
+ * exists to catch bad schemas: `parseSchemaTypes` leaves a *bare, top-level* `$ref` unresolved (it resolves
+ * refs only in property, item and branch positions), and it does not reject an unrecognized `type` value. A
+ * caller that needs those rejected -- the config write endpoint (#613) -- has to add the check; this reports
+ * only what the parser refuses.
+ *
+ * The same shape as [validateDate]: parse, and turn the parser's refusal into one [SchFailCode.badValue]
+ * carrying it as the cause. **One** failure, not a list -- the parser stops at the first defect, unlike the
+ * fragment check, which is the trade-off of reusing it. A `$ref` resolves against [SchOpts.existingTypes],
+ * so a caller holding a compiled store passes its types and a standalone check passes none.
+ *
+ * The value is returned untouched: a schema body is text to be stored as written, not a shape to coerce.
+ */
+fun validateSchemaDocument(
+    type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>, opts: SchOpts,
+): Any? {
+    // Guards a **direct** caller (the #613 endpoint validating a raw submitted body); unreachable from
+    // [validateValue], where the kObject type check has already established a map before the short-circuit.
+    val body = value as? Map<*, *>
+    if (body == null) {
+        failures.add(type.failure(path, SchFailCode.wrongType, "This must be a schema definition (an object)."))
+        return value
+    }
+    try {
+        parseSchemaTypes(mapOf(schemaDocumentCandidate to body), opts.existingTypes)
+    } catch (e: KdrException) {
+        failures.add(
+            type.failure(
+                path, SchFailCode.badValue,
+                "This is not a valid schema definition: ${e.message ?: "the parser refused it"}", cause = e,
+            ),
+        )
+    }
+    return value
+}
+
+/** The name a `g-schemaDocument` candidate is parsed under; it exists only for the duration of the parse. */
+private const val schemaDocumentCandidate = "schemaDocumentCandidate"
 
 /**
  * Validates a date-format string field, honoring **which** date format it declares (issue #189).

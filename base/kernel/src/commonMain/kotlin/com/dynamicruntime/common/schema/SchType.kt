@@ -170,6 +170,11 @@ class SchType(
      * here so the frontend reads the hint off the same parsed model it reads every other schema fact from.
      */
     val presentation: String? = null,
+    /**
+     * Custom `g-schemaDocument` keyword (resolved): this object's value is a JSON Schema type body, validated
+     * by parsing it (issue #316). See `validateSchemaDocument`.
+     */
+    val schemaDocument: Boolean = false,
 )
 
 /**
