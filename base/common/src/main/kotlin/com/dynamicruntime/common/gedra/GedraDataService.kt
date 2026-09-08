@@ -33,6 +33,14 @@ object GDBG {
     /** `_debug` tag: report the scope the listing ran with. */
     const val explainScope = "explainScope"
 
+    /**
+     * `_debug` tag (issue #600): read gedra state from **SQL** rather than the states cache. Outside a
+     * transaction the resident states cache is trusted completely, so a state read never queries; this tag
+     * activates the otherwise-dormant SQL path, for diagnosing a suspected stale cache or confirming the two
+     * agree. Fenced to a test / env-debug instance, as every `_debug` tag is.
+     */
+    const val stateFromSql = "stateFromSql"
+
     /** `_meta` key the tag writes under. */
     const val scopeExplained = "scopeExplained"
 
@@ -289,11 +297,11 @@ class GedraDataService : ServiceInitializer {
         sqlCxt.sqlDb.queryOneEnabled(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), mapOf(GD.gedraId to gedraId.fullId))
 
     /**
-     * Serves a gedra's state entries from [statesCache], or null when it cannot -- which [readState] turns into
-     * its SQL query, so the cache only ever saves a round trip and never changes an answer. The state twin of
-     * [cachedGedra]: [scope] is applied **per row** by [admitsRow] (the state row carries the same ownership
-     * columns as a data row), and a row the scope refuses returns null here so the caller re-asks SQL, which
-     * refuses it too -- the same one-wasted-query-on-a-denied-probe trade the data lookup makes.
+     * Serves a gedra's state entries from the resident [statesCache], or null when the cache is absent, holds no
+     * row for the gedra, or the [scope] refuses the row -- which [readStates] reads as **empty state** (the
+     * states cache is whole, so a miss is a definitive absence, not a reason to query). The state twin of
+     * [cachedGedra] on the read half: [scope] is applied **per row** by [admitsRow], the state row carrying the
+     * same ownership columns as a data row, so a caller can no more widen a state read than a data read.
      */
     private fun cachedState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): List<Map<String, Any?>>? {
         val cache = statesCache ?: return null
@@ -306,25 +314,58 @@ class GedraDataService : ServiceInitializer {
     /**
      * Reads a gedra's state entries (issue #596), **scope-checked exactly as [queryGedra] reads a data row** --
      * the scope half is composed by [SqlScopeUtil], so this and a listing cannot disagree, and a row the [scope]
-     * refuses returns empty rather than throwing. Served from [statesCache] first (issue #598), the SQL below
-     * being the fall-back on a miss. Returns the state entries, or empty when the gedra has no state row.
+     * refuses returns empty rather than throwing. Served from the resident [statesCache] (issue #598). Returns
+     * the state entries, or empty when the gedra has no state row. A convenience over [readStates] for one gedra.
      */
-    fun readState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): List<Map<String, Any?>> {
-        cachedState(cxt, gedraId, scope)?.let { return it }
+    fun readState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): List<Map<String, Any?>> =
+        readStates(cxt, listOf(gedraId), scope)[gedraId.fullId] ?: emptyList()
+
+    /**
+     * The state entries of several gedras at once (issue #600), keyed by `gedraId.fullId` -- what the forms
+     * listing's `withStates` reads over a page. Every requested id gets an entry, empty when it has no state.
+     *
+     * **Outside a transaction the resident states cache is trusted completely** -- the general rule for the
+     * whole-table caches: a miss is a definitive "no state", not a reason to query, because the cache holds
+     * every state row (issue #598). Reading through the cache per id (the same [cachedState] a single read uses,
+     * so a batch can no more widen a scope than a single read) is the whole of it. SQL is reached only when
+     * there is **no cache to trust** (the disable/edge case) or when
+     * `_debug=stateFromSql` ([GDBG.stateFromSql]) forces it for diagnosis; that path reads each id under one
+     * shared session. State read inside a write's transaction does not come here -- it goes straight to SQL
+     * ([readStateRowUnderLock]), since mid-transaction the cache is not the source of truth.
+     */
+    fun readStates(cxt: KdrCxt, gedraIds: List<GedraId>, scope: ReadScope): Map<String, List<Map<String, Any?>>> {
+        if (gedraIds.isEmpty()) return emptyMap()
+        val cache = statesCache
+        if (cache != null && !cxt.hasDebugDiagnostic(GDBG.stateFromSql)) {
+            return gedraIds.associate { it.fullId to (cachedState(cxt, it, scope) ?: emptyList()) }
+        }
+        return readStatesFromSql(cxt, gedraIds, scope)
+    }
+
+    /**
+     * Reads each of [gedraIds]' state from SQL under **one shared session**, scope-checked by [SqlScopeUtil].
+     * The dormant path [readStates] takes only when there is no cache to trust or `_debug=stateFromSql` forces
+     * it. The scope conditions and binds are the same for every id, so the statement is built once and only
+     * `gedraId` varies. Every id gets an entry, empty when it has no state row.
+     */
+    private fun readStatesFromSql(cxt: KdrCxt, gedraIds: List<GedraId>, scope: ReadScope): Map<String, List<Map<String, Any?>>> {
+        val out = LinkedHashMap<String, List<Map<String, Any?>>>()
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraStatesTable(cxt)
-        val data = mutableMapOf<String, Any?>(GD.gedraId to gedraId.fullId)
+        val scopeData = mutableMapOf<String, Any?>()
         val conditions = mutableListOf("c:${GD.gedraId} = :${GD.gedraId}")
-        conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, data))
+        conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, scopeData))
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "qGedraStateById${scope.shapeKey}", table.columns,
             "select * from t:${GDT.gedraDataStates} where ${conditions.joinToString(" and ")}",
         )
-        var row: Map<String, Any?>? = null
         sqlCxt.sqlDb.withSession(cxt) {
-            row = sqlCxt.sqlDb.queryOneEnabled(cxt, stmt, data)
+            for (gedraId in gedraIds) {
+                val row = sqlCxt.sqlDb.queryOneEnabled(cxt, stmt, scopeData + mapOf(GD.gedraId to gedraId.fullId))
+                out[gedraId.fullId] = row?.get(GD.data).toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
+            }
         }
-        return row?.get(GD.data).toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
+        return out
     }
 
     /**

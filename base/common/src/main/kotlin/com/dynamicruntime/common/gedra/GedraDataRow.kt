@@ -189,6 +189,19 @@ class GedraDataRow(
                     derived = true
                     userBlockProperties()
                 }
+                // The gedra's state entries (issue #600), attached to a listed row when `withStates` is asked
+                // for. Read from the states cache, never sent to create nor stored on the data row -- so it is
+                // **output only**, unlike derived-but-declared-on-both displayValues/owner: those are a leaf
+                // array and an object, while this is a `$ref` into the StateEntry union, and there is no reason
+                // to drag that union into every create/patch input schema's closure for a field a caller never
+                // sends. Absent, not empty, when not requested.
+                if (!forInput) {
+                    property(GDF.states, "The gedra's state entries, present when 'withStates' is requested (issue #600).") {
+                        type = SCT.array
+                        items { ref("${GCFG.globalNamespace}.${GU.stateUnionName}") }
+                        derived = true
+                    }
+                }
                 // An instruction about the write, so it belongs to the sent shape and to nothing else.
                 if (forInput) {
                     property(GDF.allowAdditionalTraits, additionalTraitsHint) { type = SCT.boolean }

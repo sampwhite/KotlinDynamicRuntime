@@ -21,10 +21,12 @@ object GSX {
  * [GedraDataCache].
  *
  * A **second** cache rather than folding state into [GedraDataCache], for the reason #596 split the tables:
- * state rows stay small and change in batches, where a data row can grow large and is pruned. So the state
- * cache can stay **whole and resident** even when the data cache has had to shed rows to fit heap -- which is
- * what turns "what state is this gedra in?" into a memory hit rather than a query, and is the substrate the
- * `withStates` read (issue #600) and the deferred batch recompute both build on.
+ * state rows stay small and change in batches, where a data row can grow large. So the state cache can hold
+ * every state row **whole** -- its small payloads kept in full -- where the data cache may one day trim each
+ * row down to a minimum search set to fit memory (a filtering of a row's *payload*, never a dropping of rows,
+ * so presence stays reliable either way). That is what turns "what state is this gedra in?" into a memory hit
+ * rather than a query, and is the substrate the `withStates` read (issue #600) and the deferred batch recompute
+ * both build on.
  *
  * Read the same way [GedraDataCache] is: the payload is the **raw stored row**, not a [GedraDataRow]. A
  * `GedraDataRow` is mutable, so a shared instance would let one caller's edit become everyone's, and extracting
