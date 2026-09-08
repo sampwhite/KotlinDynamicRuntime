@@ -105,7 +105,7 @@ class SampleComponent : ComponentDefinition {
                 // data serving both, with nothing removed for either.
                 item { set(SB.id, SB.perimeter); set(SB.label, "Perimeter"); set(UIB.cfactExpression, BOOT.edge) }
                 // Still in the list, and never shown. `#never` is how something is taken away without merging
-                // learning to delete: the item is here to be read, which is what answers "why is this gone?".
+                // learning to delete: the item is here to be read, which is what answers "why is this gone?"
                 item { set(SB.id, SB.retired); set(SB.label, "Retired"); set(UIB.cfactExpression, CFACT.neverName) }
             }
         },

@@ -17,7 +17,7 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * Run per request at each friendly surface's delivery (the endpoint catalog and the workflow view), because the
  * resolution is per caller (a client's fragment overlays). A string with no `%` is left untouched -- nothing to
- * resolve. A pull that cannot resolve degrades to the copy **as written** with a `[schema]` warning, rather than
+ * resolve. A pull that cannot resolve degrades to the copy **as written** with a `[<schema>]` warning, rather than
  * faulting the whole catalog or view response. That fallback is the safety net for **every** miss today: the
  * boot checks so far catch a *malformed* block (`SchemaService.checkLayouts`) and the frontend-pass problems
  * (`layoutTemplateProblems`), but whether a well-formed pull's file and key actually **resolve** is a

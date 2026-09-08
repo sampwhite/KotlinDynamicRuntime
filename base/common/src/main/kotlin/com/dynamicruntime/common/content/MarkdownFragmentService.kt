@@ -763,7 +763,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             }
             type(checkTypeName) {
                 type = SCT.kObject
-                // A list of these renders as a table (issue #540), verdict-coloured, one row per file.
+                // A list of these renders as a table (issue #540), verdict-colored, one row per file.
                 presentation = PRES.table
                 property(FCHK.fileId, "The fragment file checked.", required = true) {
                     presentation = PRES.identifier
