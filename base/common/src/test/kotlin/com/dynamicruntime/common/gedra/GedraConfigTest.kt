@@ -194,26 +194,81 @@ class GedraConfigTest : StringSpec({
         (ex.message ?: "") shouldContain "applies to no kind"
     }
 
-    // The traits a stored client configuration is made of. Three, not #611's four: tasks live inside their
-    // workflow, so the workflow trait carries them (see `coreConfigTraits`).
-    "the core config traits declare the pieces a stored client configuration is made of" {
+    // The traits a stored client configuration is made of -- one slot per field of a GedraConfig (issue #625),
+    // so a stored config round-trips faithfully rather than losing what it had no slot for. No task slot: a
+    // task lives inside its workflow.
+    "the core config traits declare a slot for every piece of a stored client configuration" {
         val config = coreConfigTraits(cxt)
-        config.configTraits.keys.toList() shouldContainExactly listOf(CCT.clientDef, CCT.workflowDef, CCT.schemaDef)
+        config.configTraits.keys.toList() shouldContainExactly listOf(
+            CCT.clientDef, CCT.traitDef, CCT.stateTraitDef, CCT.usageDef, CCT.workflowDef,
+            CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef,
+        )
         config.traits.isEmpty() shouldBe true
+        // Keyed as #611/#625 say: workflows by id, schema by type name, the trait/state/usage slots by trait id,
+        // fragments/uiBlocks by their overlay id, cfacts by name; the client is single-instance.
+        config.configTraits.getValue(CCT.clientDef).primaryKey shouldBe emptyList()
+        config.configTraits.getValue(CCT.workflowDef).primaryKey shouldBe listOf(CCT.workflowId)
+        config.configTraits.getValue(CCT.schemaDef).primaryKey shouldBe listOf(CCT.typeName)
+        config.configTraits.getValue(CCT.traitDef).primaryKey shouldBe listOf(CCT.traitId)
+        config.configTraits.getValue(CCT.stateTraitDef).primaryKey shouldBe listOf(CCT.traitId)
+        config.configTraits.getValue(CCT.usageDef).primaryKey shouldBe listOf(CCT.traitId)
+        config.configTraits.getValue(CCT.fragmentDef).primaryKey shouldBe listOf(CCT.fileId)
+        config.configTraits.getValue(CCT.uiBlockDef).primaryKey shouldBe listOf(CCT.blockId)
+        config.configTraits.getValue(CCT.cfactDef).primaryKey shouldBe listOf(CCT.name)
+    }
+
+    "the referenced slots point at the canonical shapes, and the schema-doc slots parse their body" {
+        val config = coreConfigTraits(cxt)
         // The client and workflow traits *refer to* the canonical types rather than redeclaring them, so this
-        // config's types resolve only beside those -- which is how they are compiled at boot, and what
-        // `existingTypes` is for. The client trait names `clientCatalog.ClientInfo`, not a local copy.
+        // config's types resolve only beside those -- how they are compiled at boot, and what `existingTypes`
+        // is for. The client trait names `clientCatalog.ClientInfo`, not a local copy.
         val canonical = parseSchemaTypes(
             WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
         )
         val types = parseSchemaTypes(config.defs, existingTypes = canonical)
         types.getValue("globalconfig.ClientDefEntry").properties.getValue(GE.data).refName shouldBe CLD.infoTypeQualified
-        // The schema-definition trait is the one #316 exists for: its body is checked by parsing it.
+        // A trait declaration stores its data shape as a parsed schema document (the trait-vs-schema line), not
+        // the entry types it generates -- and #316's schema slot does the same for a directly-declared type.
+        val traitData = types.getValue("globalconfig.TraitDefEntry").properties.getValue(GE.data).valueType
+        traitData.properties.getValue(CCT.dataSchema).valueType.schemaDocument shouldBe true
         val schemaData = types.getValue("globalconfig.SchemaDefEntry").properties.getValue(GE.data).valueType
         schemaData.properties.getValue(CCT.schema).valueType.schemaDocument shouldBe true
-        // Keyed as #611 says: workflows by id, schema definitions by type name; the client is single-instance.
-        config.configTraits.getValue(CCT.workflowDef).primaryKey shouldBe listOf(CCT.workflowId)
-        config.configTraits.getValue(CCT.schemaDef).primaryKey shouldBe listOf(CCT.typeName)
-        config.configTraits.getValue(CCT.clientDef).primaryKey shouldBe emptyList()
+    }
+
+    // A trait declaration is stored, its generated entry/data types are not: the slot's data has the DSL
+    // inputs, and no `TraitDefEntry`-produced entry type leaks into the stored shape (issue #625).
+    "a trait-declaration slot stores the declaration inputs, bounding appliesTo to the data kinds" {
+        val config = coreConfigTraits(cxt)
+        val canonical = parseSchemaTypes(
+            WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+        )
+        val traitData = parseSchemaTypes(config.defs, existingTypes = canonical)
+            .getValue("globalconfig.TraitDefEntry").properties.getValue(GE.data).valueType
+        traitData.properties.keys.toList() shouldContainExactly
+            listOf(CCT.traitId, CCT.typeName, CCT.appliesTo, CCT.primaryKey, CCT.description, CCT.dataSchema)
+        // `appliesTo` is an array bounded to the data-kind names -- a stored trait cannot apply to a kind that
+        // is not one.
+        traitData.properties.getValue(CCT.appliesTo).valueType.itemType.shouldNotBeNull()
+            .options.shouldNotBeNull().map { it.value } shouldContainExactly GedraDataType.entries.map { it.name }
+    }
+
+    // The enum-bounded fields on the other slots hold their closed sets (issue #625): a stored config cannot
+    // carry an unrecognized usage kind or state class, and the cfact slot keeps its declaration shape.
+    "the enum-bounded slot fields carry their closed sets, and cfactDef keeps its declaration shape" {
+        val types = parseSchemaTypes(
+            coreConfigTraits(cxt).defs,
+            existingTypes = parseSchemaTypes(
+                WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+            ),
+        )
+        fun slotData(entryType: String) = types.getValue("globalconfig.$entryType").properties.getValue(GE.data).valueType
+
+        slotData("UsageDefEntry").properties.getValue(CCT.kind).valueType
+            .options.shouldNotBeNull().map { it.value } shouldContainExactly UsageKind.entries.map { it.name }
+        slotData("StateTraitDefEntry").properties.getValue(CCT.stateClass).valueType
+            .options.shouldNotBeNull().map { it.value } shouldContainExactly StateTraitClass.entries.map { it.name }
+        // Declaration only: name/group/description/toFrontend, and nothing that could author a production.
+        slotData("CFactDefEntry").properties.keys.toList() shouldContainExactly
+            listOf(CCT.name, CCT.group, CCT.description, CCT.toFrontend)
     }
 })
