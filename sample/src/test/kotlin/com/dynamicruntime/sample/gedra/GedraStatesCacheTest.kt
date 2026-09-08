@@ -113,7 +113,7 @@ class GedraStatesCacheTest : StringSpec({
         cache.checkRefresh(cxt)
         cache.snapshot.get(cache.idOf(ben.fullId)).shouldNotBeNull()
 
-        // A gedra that never had state written has no cached row, and reads empty.
+        // A gedra that never had state written has no cached row and reads empty.
         val stateless = aForm(benId, "No state here")
         cache.snapshot.get(cache.idOf(stateless.fullId)) shouldBe null
         svc.readState(cxt, stateless, ReadScope.ofClient(client)) shouldBe emptyList()

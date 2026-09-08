@@ -36,6 +36,7 @@ object GSX {
  * `kind` index: the state table carries no `gedraKind` column (the id carries the kind), and no state listing
  * filters by kind.
  */
+@Suppress("ConstPropertyName")
 object GedraStatesCache {
     /**
      * The row count past which a load warns the states table has outgrown caching. There is at most one state
