@@ -68,6 +68,38 @@ class GedraTrait(
 }
 
 /**
+ * One **config** trait (issue #316): a trait whose entries are stored on a config bundle rather than on a data
+ * gedra -- the client definition, a workflow, a schema definition -- which is how a database gets to answer
+ * *when* and *by whom* about configuration, the thing source-declared config never needed.
+ *
+ * A **sibling** of [GedraTrait], not a widening of its [GedraTrait.appliesTo] to `Set<GedraKind>`. The
+ * widening would admit a combination that means nothing (one trait on a form document and on a config
+ * bundle), and every runtime consumer of a data trait's binding filters `kind in appliesTo` with a data kind --
+ * the entry and edit unions, the patch keying -- so a config trait in that collection would have to be filtered
+ * back out of each. Kept apart instead, the way [GedraConfig.stateTraits] is kept apart from
+ * [GedraConfig.traits], so the data machinery never sees one. The two still share one global trait-id space
+ * and one namespace of generated types.
+ *
+ * Config traits are **hardwired**: what may be stored into config is fixed by the runtime, never contributed by
+ * a component and never authored by a client. So they are few, and complex where a data trait is a handful of
+ * fields; see `coreConfigTraits`.
+ */
+class GedraConfigTrait(
+    /** Globally unique id, and the discriminator value in a stored entry -- shared space with data traits. */
+    val traitId: String,
+    /** Fully qualified name of the entry type this trait generated. */
+    val typeName: String,
+    /** The config kinds that may carry an entry of this trait; never empty. */
+    val appliesTo: Set<GedraConfigType>,
+    /** The schema of the trait's own `data`, as [GedraTrait.dataSchema] is. */
+    val dataSchema: Map<String, Any?>,
+    /** The ordered key fields within the data telling several entries apart; empty when single-instance. */
+    val primaryKey: List<String> = emptyList(),
+) {
+    override fun toString(): String = "$traitId -> $typeName"
+}
+
+/**
  * How a **state** trait behaves under recomputation, and who may write it (issue #597, decision 2 of the gedra
  * states design). The flag is set once on the trait declaration and decides both, so the two questions -- "is a
  * batch safe to overwrite this?" and "may this actor write it?" -- cannot come to disagree.
@@ -134,6 +166,12 @@ class GedraConfig(
      * per-client variant). Each carries a non-null [GedraTrait.stateClass].
      */
     val stateTraits: Map<String, GedraTrait> = emptyMap(),
+    /**
+     * Its **config** traits (issue #316), keyed by [GedraConfigTrait.traitId] -- the traits a *stored*
+     * configuration's entries are instances of. Kept apart from [traits] for the reason [stateTraits] is: the
+     * data unions and the patch keying read [traits] and must never see one of these.
+     */
+    val configTraits: Map<String, GedraConfigTrait> = emptyMap(),
     /**
      * The `$defs` this config contributes, keyed by qualified type name.
      *
@@ -237,6 +275,14 @@ class GedraConfigBuilder(
      */
     @Suppress("MemberVisibilityCanBePrivate")
     val stateTraits: MutableMap<String, GedraTrait> = LinkedHashMap()
+
+    /**
+     * The **config** traits declared in this block (issue #316); see [configTrait]. Apart from [traits] and
+     * [stateTraits] so no data consumer reaches one, while all three share one global id space
+     * ([checkTraitIsNew] scans them together).
+     */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val configTraits: MutableMap<String, GedraConfigTrait> = LinkedHashMap()
 
     /** The fragment overlays declared in this block; see [fragmentOverlay]. */
     @Suppress("MemberVisibilityCanBePrivate")
@@ -452,8 +498,58 @@ class GedraConfigBuilder(
         stateTrait(typeName, traitId, appliesTo, stateClass, description, primaryKey) { ref(dataType) }
     }
 
-    /** Refuses a trait id or a generated type name this config has already used, across data **and** state traits. */
+    /**
+     * Declares a **config** trait (issue #316) -- the same machinery as [trait] (one entry type keyed on
+     * [GE.traitId], with [primaryKey] and the stored envelope), bound to config kinds and filed under
+     * [configTraits] so the data unions never see it. See [GedraConfigTrait] for why it is a sibling of
+     * [trait] rather than a widening of it.
+     */
+    fun configTrait(
+        typeName: String,
+        traitId: String,
+        appliesTo: Set<GedraConfigType>,
+        description: String? = null,
+        primaryKey: List<String> = emptyList(),
+        dataSchema: SchTypeBuilder.() -> Unit,
+    ) {
+        val qualified = qualifyTypeName(typeName, namespace)
+        checkTraitIsNew(qualified, traitId)
+        val built = configTraitEntry(typeName, traitId, appliesTo, description, primaryKey, dataSchema)
+        configTraits[traitId] = GedraConfigTrait(traitId, qualified, appliesTo, built, primaryKey)
+    }
+
+    /** A config trait whose data shape is a type declared elsewhere -- see [configTrait] and the [trait] ref form. */
+    fun configTrait(
+        typeName: String,
+        traitId: String,
+        appliesTo: Set<GedraConfigType>,
+        dataType: String,
+        description: String? = null,
+        primaryKey: List<String> = emptyList(),
+    ) {
+        configTrait(typeName, traitId, appliesTo, description, primaryKey) { ref(dataType) }
+    }
+
+    /**
+     * Refuses a trait id or a generated type name this config has already used, across data, state **and**
+     * config traits (issue #316 added the third, sharing the one id space and the one namespace of types).
+     */
     private fun checkTraitIsNew(qualified: String, traitId: String) {
+        // Config traits are checked first, so a data or state trait reusing a config trait's id or type is
+        // refused too; the two scans below then cover data and state as they always have.
+        configTraits[traitId]?.let {
+            throw KdrException.mkConv(
+                "Trait '$traitId' is declared twice in one config, as '${it.typeName}' and as '$qualified'. " +
+                    "A trait id identifies one definition; two of them are either one trait declared twice " +
+                    "or two concepts sharing a name.",
+            )
+        }
+        configTraits.values.firstOrNull { it.typeName == qualified }?.let {
+            throw KdrException.mkConv(
+                "Traits '${it.traitId}' and '$traitId' both generate the type '$qualified'. The second " +
+                    "would silently replace the first, so it is refused here instead.",
+            )
+        }
         (traits[traitId] ?: stateTraits[traitId])?.let {
             throw KdrException.mkConv(
                 "Trait '$traitId' is declared twice in one config, as '${it.typeName}' and as '$qualified'. " +
@@ -514,6 +610,7 @@ fun gedraConfig(
         namespace = namespace,
         traits = builder.traits.toMap(),
         stateTraits = builder.stateTraits.toMap(),
+        configTraits = builder.configTraits.toMap(),
         defs = builder.defs.toMap(),
         client = builder.clientDef,
         cfacts = builder.cfacts.toList(),

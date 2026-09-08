@@ -156,4 +156,17 @@ class GedraConfigCollectorTest : StringSpec({
         collector.traits.getValue("name").typeName shouldBe "other.NameEntry"
         collector.issues.shouldBeEmpty()
     }
+
+    // Config traits (issue #316) join the one global id space: a config trait may not reuse a data trait's id
+    // declared by another config, any more than a state trait may.
+    "a config trait id cannot reuse a data trait's id, across configs" {
+        val collector = GedraConfigCollector()
+        collector.add(devCxt, nameConfig()) shouldBe true
+        val clash = gedraConfig(devCxt, "storedConfig", GCFG.globalNamespace) {
+            configTrait("NameCfgEntry", "name", setOf(GedraConfigType.configDoc)) { property("x", "X.") }
+        }
+        val ex = shouldThrow<KdrException> { collector.add(devCxt, clash) }
+        (ex.message ?: "") shouldContain "Trait 'name'"
+        collector.configTraits().shouldBeEmpty()
+    }
 })
