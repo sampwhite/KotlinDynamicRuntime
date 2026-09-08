@@ -110,6 +110,28 @@ class SchLayoutTest : StringSpec({
         layoutFieldProblems("Type 'acme.Q'", badLayout, null).size shouldBe 1
     }
 
+    "a block-level heading (label) round-trips and is boot-checked as copy (issue #605)" {
+        val type = parseSchemaTypes(mapOfDefs("acme.Q" to typeBody(withLayout = false)))["acme.Q"]
+        // A backend pull heading parses, round-trips through toJsonMap, and passes the frontend-pass check
+        // (the `%{...}` block is invisible to the `$` pass, and resolution is validated elsewhere).
+        val ok = parseSchLayout("Type 'acme.Q'", mapOf(
+            SL.label to """%{@t("help.heading")}""",
+            SL.schemaFields to listOf(mapOf(SL.field to "topic")),
+        ))
+        ok.label shouldBe """%{@t("help.heading")}"""
+        ok.toJsonMap()[SL.label] shouldBe """%{@t("help.heading")}"""
+        layoutTemplateProblems("Type 'acme.Q'", ok, type) shouldBe emptyList()
+
+        // A frontend `${@t}` heading is refused -- a layout fragment pull uses the backend `%{@t}`.
+        val frontend = parseSchLayout("Type 'acme.Q'", mapOf(
+            SL.label to $$"""${@t("help.heading")}""",
+            SL.schemaFields to listOf(mapOf(SL.field to "topic")),
+        ))
+        val problems = layoutTemplateProblems("Type 'acme.Q'", frontend, type)
+        problems.size shouldBe 1
+        problems.single() shouldContain "heading"
+    }
+
     "layoutFieldProblems refuses a layout on a non-object type by naming the real mistake" {
         // An array has no property set to render; the message says so rather than listing every field as undeclared.
         val arrayType = parseSchemaTypes(

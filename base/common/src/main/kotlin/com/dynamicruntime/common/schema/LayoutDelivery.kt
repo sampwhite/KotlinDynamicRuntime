@@ -32,6 +32,15 @@ fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String
     return layouts.mapValues { (typeName, block) ->
         val body = block.toJsonMapOrEmpty()
         val fileId = body[SL.fragmentFileId].toOptStr()
+        fun pass(what: String, text: String): String = try {
+            svc.layoutBackendPass(cxt, text, fileId)
+        } catch (e: Throwable) {
+            LogSchema.warn(cxt) {
+                "Layout '$typeName' $what has an unresolvable backend pull; delivering it as written. ${e.message}"
+            }
+            text
+        }
+        val heading = (body[SL.label] as? String)?.let { if (MarkdownFragmentService.backendPassPrefix in it) pass("heading", it) else it }
         val fields = body[SL.schemaFields].toJsonListOfMaps().map { field ->
             val resolved = LinkedHashMap<String, Any?>(field)
             for (copyKey in listOf(SL.label, SL.description, SL.hint)) {
@@ -41,18 +50,14 @@ fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String
                 if (MarkdownFragmentService.backendPassPrefix !in text) {
                     continue
                 }
-                resolved[copyKey] = try {
-                    svc.layoutBackendPass(cxt, text, fileId)
-                } catch (e: Throwable) {
-                    LogSchema.warn(cxt) {
-                        "Layout '$typeName' field '${field[SL.field].toOptStr()}' $copyKey has an unresolvable " +
-                            "backend pull; delivering it as written. ${e.message}"
-                    }
-                    text
-                }
+                resolved[copyKey] = pass("field '${field[SL.field].toOptStr()}' $copyKey", text)
             }
             resolved
         }
-        body + (SL.schemaFields to fields)
+        buildMap {
+            putAll(body)
+            heading?.let { put(SL.label, it) }
+            put(SL.schemaFields, fields)
+        }
     }
 }

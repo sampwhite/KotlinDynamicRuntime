@@ -40,7 +40,6 @@ import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.layoutTemplateProblems
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.schema.SchLayout
-import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
@@ -425,15 +424,19 @@ class SchemaService : ServiceInitializer {
      */
     private fun layoutBackendBlockProblems(where: String, layout: SchLayout): List<String> {
         val problems = mutableListOf<String>()
-        for (field in layout.fields) {
-            for ((kind, text) in listOf(SL.label to field.label, SL.description to field.description, SL.hint to field.hint)) {
-                if (text == null || MarkdownFragmentService.backendPassPrefix !in text) {
-                    continue
-                }
-                for (issue in text.analyzeTemplate(MarkdownFragmentService.backendPassPrefix).issues) {
-                    problems.add("$where: the '${SCH.layout}' $kind for '${field.field}' has a malformed backend block: ${issue.message}")
-                }
+        fun checkBackendBlocks(what: String, text: String?) {
+            if (text == null || MarkdownFragmentService.backendPassPrefix !in text) {
+                return
             }
+            for (issue in text.analyzeTemplate(MarkdownFragmentService.backendPassPrefix).issues) {
+                problems.add("$where: the '${SCH.layout}' $what has a malformed backend block: ${issue.message}")
+            }
+        }
+        checkBackendBlocks("heading", layout.label)
+        for (field in layout.fields) {
+            checkBackendBlocks("${field.field}'s label", field.label)
+            checkBackendBlocks("${field.field}'s description", field.description)
+            checkBackendBlocks("${field.field}'s hint", field.hint)
         }
         return problems
     }

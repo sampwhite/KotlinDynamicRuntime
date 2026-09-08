@@ -22,6 +22,13 @@ import com.dynamicruntime.common.util.toOptStr
 class SchLayout(
     /** The fragment file the block's `${'$'}{…}` substitutions resolve against, declared once for the block. */
     val fragmentFileId: String?,
+    /**
+     * The type's **heading** override (issue #605): the copy a surface shows *for the type as a whole*, shadowing
+     * the data type's `title`-as-heading default (`thoughts-workflow-layouts.md` §5). Rendered as Markdown, and
+     * resolved like any layout copy -- a `%{@t(...)}` backend fragment pull, a `${'$'}{…}` field value. Null leaves
+     * the schema `title` as the heading. Distinct from a field entry's `label` only by living on the block.
+     */
+    val label: String?,
     /** The per-field overrides, in declaration order. */
     val fields: List<SchLayoutField>,
 ) : JsonMappable {
@@ -42,6 +49,7 @@ class SchLayout(
     private val jsonMap: Map<String, Any?> by lazy {
         val out = LinkedHashMap<String, Any?>()
         fragmentFileId?.let { out[SL.fragmentFileId] = it }
+        label?.let { out[SL.label] = it }
         out[SL.schemaFields] = fields.map { it.toJsonMap() }
         out
     }
@@ -57,7 +65,7 @@ class SchLayout(
      */
     fun prunedTo(props: Set<String>): SchLayout {
         val kept = fields.filter { it.field in props }
-        return if (kept.size == fields.size) this else SchLayout(fragmentFileId, kept)
+        return if (kept.size == fields.size) this else SchLayout(fragmentFileId, label, kept)
     }
 }
 
@@ -87,7 +95,7 @@ class SchLayoutField(
  * the raw-map escape hatch because the sample's layouts are read by people, and the sets [SL.blockKeys] /
  * [SL.fieldKeys] the parser is strict about are then spelled once, here.
  */
-class SchLayoutBuilder(private val fragmentFileId: String?) {
+class SchLayoutBuilder(private val fragmentFileId: String?, private val label: String? = null) {
     private val fields = mutableListOf<SchLayoutField>()
 
     /** One field's overrides; each is optional. */
@@ -96,12 +104,12 @@ class SchLayoutBuilder(private val fragmentFileId: String?) {
     }
 
     /** The finished block, as the JSON `g-layout` value. */
-    fun build(): Map<String, Any?> = SchLayout(fragmentFileId, fields.toList()).toJsonMap()
+    fun build(): Map<String, Any?> = SchLayout(fragmentFileId, label, fields.toList()).toJsonMap()
 }
 
 /** Attaches a `g-layout` to the type being built; see [SchLayoutBuilder]. Replaces one declared earlier. */
-fun SchTypeBuilder.layout(fragmentFileId: String? = null, block: SchLayoutBuilder.() -> Unit) {
-    data[SCH.layout] = SchLayoutBuilder(fragmentFileId).apply(block).build()
+fun SchTypeBuilder.layout(fragmentFileId: String? = null, label: String? = null, block: SchLayoutBuilder.() -> Unit) {
+    data[SCH.layout] = SchLayoutBuilder(fragmentFileId, label).apply(block).build()
 }
 
 /**
@@ -159,8 +167,12 @@ object SL {
     /** On the block: the fragment file its `${'$'}{…}` substitutions resolve against. */
     const val fragmentFileId = "fragmentFileId"
 
+    // Note: [label] doubles as a block key (the type's heading override, issue #605) and a field key (a
+    // property's label); the two are told apart by nesting, not by name -- "label" is the override word at
+    // either level (`thoughts-workflow-layouts.md` §5).
+
     /** Every key a `g-layout` block may carry. */
-    val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId)
+    val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label)
 
     /** Every key a [schemaFields] entry may carry. */
     val fieldKeys: Set<String> = setOf(field, label, description, hint)
@@ -185,7 +197,7 @@ fun parseSchLayout(where: String, raw: Map<String, Any?>): SchLayout {
             ?: throw KdrException("$where: a '${SL.schemaFields}' entry has no '${SL.field}'.")
         SchLayoutField(field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr())
     }
-    return SchLayout(raw[SL.fragmentFileId].toOptStr(), fields)
+    return SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields)
 }
 
 private fun refuseUnknownKeys(where: String, what: String, present: Set<String>, allowed: Set<String>) {
@@ -339,6 +351,20 @@ fun boundsContextData(type: SchType): Map<String, Any?> = buildMap {
 fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): List<String> {
     if (type == null) return emptyList()
     val problems = mutableListOf<String>()
+    // The block-level heading override (issue #605): a copy string like any other, but not a field, so it takes
+    // the malformed and refuse-frontend-pull checks and not the bounds check.
+    layout.label?.let { text ->
+        val analysis = text.analyzeTemplate()
+        for (issue in analysis.issues) {
+            problems.add("$where: the '${SCH.layout}' heading is a malformed template: ${issue.message}")
+        }
+        if (analysis.refs.isNotEmpty()) {
+            problems.add(
+                $$"$$where: the '$${SCH.layout}' heading uses a frontend fragment pull ('${@t}'); a layout fragment " +
+                    "pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
+            )
+        }
+    }
     for (field in layout.fields) {
         val prop = type.properties[field.field] ?: continue
         for ((kind, text) in listOf(SL.label to field.label, SL.description to field.description, SL.hint to field.hint)) {
@@ -349,8 +375,8 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
             }
             if (analysis.refs.isNotEmpty()) {
                 problems.add(
-                    "$where: the '${SCH.layout}' $kind for '${field.field}' uses a fragment pull ('@t'), which layout " +
-                        "copy does not resolve yet (see #605). Use literal copy for now.",
+                    $$"$$where: the '$${SCH.layout}' $$kind for '$${field.field}' uses a frontend fragment pull ('${@t}'); " +
+                        "a layout fragment pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
                 )
             }
             if (kind == SL.hint) {
