@@ -7,6 +7,9 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.schema.isScalarType
 import com.dynamicruntime.common.schema.typeRefPath
+import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toJsonStr
 import kotlin.time.Instant
 
 /**
@@ -433,6 +436,32 @@ fun Map<String, Any?>.asStoredEntry(
     GE.createdBy to createdBy,
     GE.updatedBy to updatedBy,
 )
+
+/**
+ * Whether a stored [existing] entry already holds exactly [newData] (issue #626), so an update to it changes
+ * nothing and its `updated` stamps must not move -- **diff before stamp**. Absent [existing] is never
+ * "unchanged": a first write is always a change.
+ *
+ * The comparison is in the stored, **JSON-native** form, because the two sides do not arrive alike. [newData]
+ * is schema-coerced -- a `date` field is a `LocalDate`, a `date-time` an `Instant`, not the string it
+ * serializes to -- while the stored side was read back from JSON as text and numbers. A coerced value never
+ * equals its stored text, so comparing them raw would report every date-bearing entry as changed. Round-tripping
+ * both through the JSON writer -- the one place a date becomes its wire form (`fmt`) -- puts them in one shape;
+ * the map compare is then structural and order-insensitive, so re-sending the same keys in another order is not
+ * a change. Both sides are normalized rather than only [newData], because a prior edit to the same entry earlier
+ * in one patch leaves *coerced* data in [existing] too.
+ *
+ * The pure, reusable half of diff-before-stamp: the config write path (#613) diffs its trait data the same way,
+ * and applying it to the data patch closes the #592 gap where an `addOrReplace` reported an entry `applied` even
+ * when it carried identical data.
+ */
+fun entryDataUnchanged(existing: Map<String, Any?>?, newData: Map<String, Any?>): Boolean {
+    existing ?: return false
+    return jsonNativeForm(newData) == jsonNativeForm(existing[GE.data].toJsonMapOrEmpty())
+}
+
+/** [data] as the map it serializes to and parses back from -- coerced values (dates, numbers) become their wire form. */
+private fun jsonNativeForm(data: Map<String, Any?>): Map<String, Any?> = data.toJsonStr().jsonMap() ?: emptyMap()
 
 /**
  * Holds a trait's `data` to an object: absent means object, an explicit object is fine, and anything else is

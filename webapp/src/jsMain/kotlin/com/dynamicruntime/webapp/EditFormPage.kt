@@ -218,10 +218,11 @@ val EditFormPage = FC<Props> {
                                         // Back to the listing (issue #592): filtered as it was, and with the
                                         // just-saved form flagged so the list flashes it -- "here is the form
                                         // you saved", the confirmation, not a screen to click away from. Every
-                                        // successful save flashes: the patch always writes the entry (an
-                                        // `addOrReplace` reports applied even for identical data), so a save
-                                        // that changed nothing cannot be told from one that did, and marking
-                                        // the form the caller was just editing is the honest, useful cue.
+                                        // successful save flashes, deliberately, even one that changed nothing.
+                                        // The backend now reports per-entry `applied` honestly (#626), so a
+                                        // no-op could be told apart -- but flashing the form the caller was just
+                                        // editing is the confirmation they asked for either way, whether or not
+                                        // the bytes moved.
                                         val search = formsSearchHashParams(formsSearchFromHash(hashParams()))
                                         val flag = id?.let { listOf(HP.highlight to it) } ?: emptyList()
                                         navigateHash(listOf(HP.page to HMENU.pageForms) + search + flag)

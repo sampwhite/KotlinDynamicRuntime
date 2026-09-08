@@ -105,6 +105,60 @@ class GedraPatchTest : StringSpec({
         after[GE.updatedAt] shouldNotBe before[GE.updatedAt]
     }
 
+    // Diff before stamp (issue #626): a replace whose data equals what is stored changes nothing, so the
+    // entry's `updated` half does NOT move and the edit reports not-applied. This is what makes `applied` mean
+    // "changed anything", the gap #592 recorded.
+    "an identical replace changes nothing and reports not applied" {
+        val before = entriesOf(alice, docId).getValue(GT.name)
+        cxt.instanceConfig.clock.advanceBy(2.seconds)
+        val results = alice.postItems(
+            // The stored name is "Again" from the previous edit; replacing it with "Again" is a no-op.
+            GEP.patch,
+            patch(docId to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.name to "Again")))),
+        )
+        results.single()[GPF.outcomes].toJsonListOfMaps().single()[GPF.applied] shouldBe false
+        val after = entriesOf(alice, docId).getValue(GT.name)
+        // The whole envelope is untouched -- the update half most of all, though time moved on between saves.
+        after[GE.updatedAt] shouldBe before[GE.updatedAt]
+        after[GE.updatedBy] shouldBe before[GE.updatedBy]
+        after[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Again"
+    }
+
+    // A merge that folds in only keys already equal to what is stored resolves to the same data, so it is a
+    // no-op too (issue #626) -- the diff is on the resolved data, not on whether a verb "wrote".
+    "a merge that resolves to the stored data is a no-op" {
+        val id = create(
+            alice,
+            mapOf(GE.traitId to ST.questionnaire, GE.data to mapOf(ST.topic to "Travel", ST.notes to "only note")),
+        )
+        val before = entriesOf(alice, id).getValue(ST.questionnaire)
+        cxt.instanceConfig.clock.advanceBy(2.seconds)
+        val results = alice.postItems(
+            // Merging `{topic: "Travel"}` over stored `{topic: "Travel", notes: "only note"}` changes nothing.
+            GEP.patch,
+            patch(id to listOf(edit(GedraEditAction.addOrMerge, ST.questionnaire, mapOf(ST.topic to "Travel")))),
+        )
+        results.single()[GPF.outcomes].toJsonListOfMaps().single()[GPF.applied] shouldBe false
+        entriesOf(alice, id).getValue(ST.questionnaire)[GE.updatedAt] shouldBe before[GE.updatedAt]
+    }
+
+    // The case the string-only traits above cannot exercise (issue #626): a trait with a **date** field. The
+    // supplied data arrives coerced -- `visitedOn` is a `LocalDate`, not the "2026-01-15" it is stored as -- so
+    // the diff has to compare in the stored JSON form, or every re-send of a date-bearing entry reads as a
+    // change. `siteVisit` declares `visitedOn` as a `dayOnlyDate()`.
+    "an identical replace of a date-bearing entry is still a no-op" {
+        val visit = mapOf(ST.address to mapOf(ST.country to "gb"), ST.visitedOn to "2026-01-15")
+        val id = create(alice, mapOf(GE.traitId to ST.siteVisit, GE.data to visit))
+        val before = entriesOf(alice, id).getValue(ST.siteVisit)
+        cxt.instanceConfig.clock.advanceBy(2.seconds)
+        val results = alice.postItems(
+            GEP.patch,
+            patch(id to listOf(edit(GedraEditAction.addOrReplace, ST.siteVisit, visit))),
+        )
+        results.single()[GPF.outcomes].toJsonListOfMaps().single()[GPF.applied] shouldBe false
+        entriesOf(alice, id).getValue(ST.siteVisit)[GE.updatedAt] shouldBe before[GE.updatedAt]
+    }
+
     // What `addOrMerge` is for: a page owns the answers it shows and says nothing about the rest.
     "a merge keeps the keys it did not mention" {
         val id = create(

@@ -1028,6 +1028,13 @@ class GedraDataService : ServiceInitializer {
         } else {
             supplied
         }
+        // Diff before stamp (issue #626): an update whose data equals what is stored changes nothing, so the
+        // entry -- and its `updated` stamps -- is left as it is, and the edit reports not-applied. Covers a
+        // `replace` with identical data and a `merge` that resolves to it. `GedraEditOutcome.applied` then means
+        // "changed anything", which is what its schema already documents (and what #592 could not rely on).
+        if (entryDataUnchanged(existing, data)) {
+            return false
+        }
         byKey[key] = mkStoredEntry(cxt, edit.traitId, data, existing, now)
         return true
     }
