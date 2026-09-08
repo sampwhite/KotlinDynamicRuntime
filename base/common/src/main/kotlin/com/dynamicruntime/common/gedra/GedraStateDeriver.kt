@@ -33,7 +33,7 @@ interface GedraStateDeriver {
     /**
      * The state entries this deriver computes from [row]'s current data -- each a `{traitId, data}` map for a
      * derived state trait it owns, keyed by that trait's `primaryKey`. Returns empty when it has nothing to
-     * record for this gedra. The entries are stamped, validated, keyed and written by the caller (`writeState`),
+     * record for this gedra. The entries are stamped, validated, keyed, and written by the caller (`writeState`),
      * so this returns the same shape a caller of `writeState` would pass.
      */
     fun derive(cxt: KdrCxt, row: GedraDataRow): List<Map<String, Any?>>
