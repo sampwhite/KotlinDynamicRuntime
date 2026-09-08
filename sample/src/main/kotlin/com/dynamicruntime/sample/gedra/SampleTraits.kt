@@ -190,7 +190,13 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
             // it as Markdown in place of the schema title, leaving the served schema's title untouched.
             // `topic`'s description is a backend fragment pull too: `%{@t("questionnaire.topicHelp")}` resolves
             // against SF.formHelp server-side at delivery, so only the finished copy reaches the page.
-            field(ST.topic, label = "Topic", description = "%{@t(\"questionnaire.topicHelp\")}")
+            // The error override (issue #588): the form's own wording for an invalid topic, resolved on the
+            // frontend over the failure's params -- the offending `${'$'}{value}` and the `${'$'}{options}` list --
+            // shadowing the framework's "not a valid option" message. Base `topic` offers no options, so this
+            // only fires for a client that adds them (acme does); the copy is inert but valid on the base.
+            field(ST.topic, label = "Topic", description = "%{@t(\"questionnaire.topicHelp\")}") {
+                invalidOption($$"""We don't cover the topic "${value}" here. Choose one of: ${options}.""")
+            }
             field(ST.notes, label = "Anything else?")
             field(ST.hasIssue, label = "Did you hit a problem?")
             field(ST.explanation, label = "What went wrong", hint = "Only asked when a problem is flagged.")

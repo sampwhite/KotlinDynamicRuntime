@@ -456,6 +456,19 @@ class SchemaService : ServiceInitializer {
             checkBackendBlocks("${field.field}'s label", field.label)
             checkBackendBlocks("${field.field}'s description", field.description)
             checkBackendBlocks("${field.field}'s hint", field.hint)
+            // An error override (issue #588) is frontend `${'$'}{…}`-only; delivery does not run the backend pass
+            // over it, so a `%{…}` block there would ship raw. Refuse any -- not merely a malformed one --
+            // rather than let it render as literal text.
+            for ((codeKey, message) in field.errors) {
+                if (MarkdownFragmentService.backendPassPrefix in message &&
+                    message.analyzeTemplate(MarkdownFragmentService.backendPassPrefix).blockCount > 0
+                ) {
+                    problems.add(
+                        "$where: the '${SCH.layout}' error '$codeKey' for '${field.field}' uses a backend block " +
+                            "('%{…}'); a layout error message supports only frontend parameter substitution (see #588).",
+                    )
+                }
+            }
         }
         return problems
     }

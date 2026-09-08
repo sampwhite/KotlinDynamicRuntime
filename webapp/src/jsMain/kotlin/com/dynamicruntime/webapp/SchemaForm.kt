@@ -3,11 +3,13 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.PSTAT
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchLayout
+import com.dynamicruntime.common.schema.errorContextData
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchVariants
@@ -99,7 +101,18 @@ class FormOpts(
  * **bounds context** (`${'$'}{min}` / `${'$'}{max}`), a different data set -- which is why they are resolved together
  * here, each against its own context, rather than at the render site.
  */
-class LayoutCopy(val label: String?, val description: String?, val hint: String?)
+class LayoutCopy(
+    val label: String?,
+    val description: String?,
+    val hint: String?,
+    /**
+     * The field's **error override** templates (issue #588), by `SchFailCode` name (plus `default`), left
+     * **unresolved** here: an error message resolves against its *failure's* params (the offending value, the
+     * option list, the bound), which are not known until a failure is in hand -- so [layoutErrorMessage]
+     * resolves one per [SchFailure] at render time, unlike the copy above which resolves once per field.
+     */
+    val errors: Map<String, String> = emptyMap(),
+)
 
 /**
  * Resolve one layout template [text] against [data], **fail-safe** (issues #586, #587): plain copy (no `$`)
@@ -133,7 +146,21 @@ internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, 
         label = field.label?.let { resolveLayoutTemplate(it, values) },
         description = field.description?.let { resolveLayoutTemplate(it, values) },
         hint = field.hint?.let { resolveLayoutTemplate(it, boundsData()) },
+        // Kept unresolved -- resolved per failure by layoutErrorMessage, against that failure's params.
+        errors = field.errors,
     )
+}
+
+/**
+ * The layout's wording for failure [f] on field [name] of type [prop] (issue #588), or null to leave the
+ * framework's own message (or the `g-errors` floor) in place. The override is looked up by the failure's code,
+ * then `default`, and resolved -- fail-safe, like all layout copy -- against the failure's params
+ * ([errorContextData]: the offending [value], the option list, the bound), the same `${'$'}{…}` machinery the
+ * templated hint uses. This is where message *variation* is homed, so it wins over the built-in wording.
+ */
+internal fun layoutErrorMessage(copy: LayoutCopy?, prop: SchProperty, name: String, value: Any?, f: SchFailure): String? {
+    val template = copy?.errors?.let { it[f.code.name] ?: it[SCH.errorDefault] } ?: return null
+    return resolveLayoutTemplate(template, errorContextData(f.code, prop.valueType, name, value, f.options))
 }
 
 /**
@@ -738,7 +765,7 @@ private fun ChildrenBuilder.renderField(
     }
 
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages, opts, copy) {
+    fieldFrame(name, prop, required, path, messages, opts, copy, value = value) {
         widget(
             vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) },
             // A hint declared at *this* use site wins over one on the (shared) target type -- the same
@@ -768,6 +795,8 @@ private fun ChildrenBuilder.fieldFrame(
     messages: List<SchFailure>,
     opts: FormOpts,
     copy: LayoutCopy? = null,
+    // The field's current value, so a layout error override can echo the offending value (issue #588).
+    value: Any? = null,
     rowContent: ChildrenBuilder.() -> Unit = {},
 ) {
     div {
@@ -786,7 +815,7 @@ private fun ChildrenBuilder.fieldFrame(
     // thing for an output type; this is the input side, which is the one someone is about to type into. The
     // layout's `hint` (issue #587), already resolved against the field's bounds, shadows the derived range.
     boundHint(prop.valueType, copy?.hint)
-    fieldErrors(path, messages)
+    fieldErrors(path, messages) { f -> layoutErrorMessage(copy, prop, name, value, f) }
 }
 
 /**
@@ -817,7 +846,13 @@ private fun rowClass(messages: List<SchFailure>): String = if (messages.isEmpty(
  * is already sitting on the field it is about, and the path's job (saying which field) is done by position.
  * The listing at the bottom of the page keeps the path, since that surface has no field to sit next to.
  */
-private fun ChildrenBuilder.fieldErrors(path: String, messages: List<SchFailure>) {
+private fun ChildrenBuilder.fieldErrors(
+    path: String,
+    messages: List<SchFailure>,
+    // The layout's error override for a failure (issue #588), or null to fall through. Default: no override,
+    // which is every caller but the one field frame that carries a layout.
+    override: (SchFailure) -> String? = { null },
+) {
     if (messages.isEmpty()) return
     // One block per field rather than loose paragraphs, so the control can point `aria-describedby` at all of
     // its messages with a single id.
@@ -826,10 +861,11 @@ private fun ChildrenBuilder.fieldErrors(path: String, messages: List<SchFailure>
         messages.forEach { f ->
             p {
                 className = ClassName("field-error")
-                // The schema's own wording when it has any, and *only* that: someone filling in a form does
-                // not need to be told the JSON type of what they got wrong. The listing at the foot of the
-                // page keeps both, because that surface is documenting the wire (issue #202).
-                +"${f.userMessage ?: f.message}${choicesSuffix(f)}"
+                // The layout's per-code override wins when present, shown alone (its author decides whether to
+                // name the choices, via `${'$'}{options}`); else the schema's own `g-errors` wording, and *only*
+                // that -- someone filling in a form does not need the JSON type of what they got wrong. The
+                // listing at the foot of the page keeps both, because that surface documents the wire (#202, #588).
+                +(override(f) ?: "${f.userMessage ?: f.message}${choicesSuffix(f)}")
             }
         }
     }
@@ -895,7 +931,7 @@ private fun ChildrenBuilder.renderNestedObject(
     val dataDriven = recursive || !required
     val messages = errors.messagesAt(path)
 
-    fieldFrame(name, prop, required, path, messages, opts, copy) {
+    fieldFrame(name, prop, required, path, messages, opts, copy, value = value) {
         if (dataDriven && editable) {
             // Adding or removing the whole branch invalidates anything reported inside it, which is why the
             // edit is noted against this field rather than against whatever it contained.
@@ -948,7 +984,7 @@ private fun ChildrenBuilder.renderObjectList(
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages, opts, copy)
+    fieldFrame(name, prop, required, path, messages, opts, copy, value = value)
 
     val typeName = elementType.name
     val childSeen = if (typeName != null) seen + typeName else seen
@@ -1027,7 +1063,7 @@ private fun ChildrenBuilder.renderScalarList(
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages, opts, copy)
+    fieldFrame(name, prop, required, path, messages, opts, copy, value = value)
 
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
@@ -1525,7 +1561,7 @@ private fun ChildrenBuilder.renderTable(
     opts: FormOpts,
     copy: LayoutCopy? = null,
 ) {
-    fieldFrame(name, prop, required, path, errors.messagesAt(path), opts, copy)
+    fieldFrame(name, prop, required, path, errors.messagesAt(path), opts, copy, value = value)
     schemaTable(elementType, value.toJsonListOrEmpty(), opts)
 }
 
