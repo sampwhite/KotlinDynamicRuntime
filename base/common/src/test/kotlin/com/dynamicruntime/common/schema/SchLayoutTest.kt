@@ -280,9 +280,9 @@ class SchLayoutTest : StringSpec({
                 SchLayoutField("year", "Plain copy, no pull", null, null),                    // no %{...} -> skipped
             ),
         )
-        fun resolve(fileId: String, nsKey: String): LayoutPullHit = when {
-            fileId == "help" && nsKey == "q.heading" -> LayoutPullHit(fileFound = true, backend = true, keyPresent = true)
-            fileId == "other" && nsKey == "q.topicHelp" -> LayoutPullHit(fileFound = true, backend = true, keyPresent = false)
+        fun resolve(fileId: String, nsKey: String): LayoutPullHit = when (fileId) {
+            "help" if nsKey == "q.heading" -> LayoutPullHit(fileFound = true, backend = true, keyPresent = true)
+            "other" if nsKey == "q.topicHelp" -> LayoutPullHit(fileFound = true, backend = true, keyPresent = false)
             else -> LayoutPullHit(fileFound = false, backend = false, keyPresent = false)
         }
         val problems = layoutPullProblems("Type 'X'", layout, ::resolve)
@@ -296,7 +296,7 @@ class SchLayoutTest : StringSpec({
             SchLayoutField("a", """%{@t("nofile.ns.k")}""", null, null),
             SchLayoutField("b", """%{@t("frontendFile.ns.k")}""", null, null),
         ))
-        fun resolve(fileId: String, nsKey: String): LayoutPullHit = when (fileId) {
+        fun resolve(fileId: String, @Suppress("unused") nsKey: String): LayoutPullHit = when (fileId) {
             "nofile" -> LayoutPullHit(fileFound = false, backend = false, keyPresent = false)
             "frontendFile" -> LayoutPullHit(fileFound = true, backend = false, keyPresent = true) // found, not backend
             else -> LayoutPullHit(fileFound = true, backend = true, keyPresent = true)
