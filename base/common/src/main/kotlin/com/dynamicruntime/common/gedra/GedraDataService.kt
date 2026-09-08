@@ -41,6 +41,16 @@ object GDBG {
      */
     const val stateFromSql = "stateFromSql"
 
+    /**
+     * `_debug` tag (issue #640): read gedra **data** from SQL rather than the resident `GedraDataCache` -- the
+     * companion of `stateFromSql` for the data cache. Outside a transaction that cache is trusted completely (a
+     * by-id miss is a definitive "no such gedra", not a reason to query), so this tag activates the
+     * otherwise-dormant SQL read `queryGedra` would take, and diverts a cacheable `listGedras` to SQL too, for
+     * diagnosing a suspected stale cache or confirming the two agree. Fenced to a test / env-debug instance, as
+     * every `_debug` tag is.
+     */
+    const val dataFromSql = "dataFromSql"
+
     /** `_meta` key the tag writes under. */
     const val scopeExplained = "scopeExplained"
 
@@ -87,7 +97,9 @@ class GedraDataService : ServiceInitializer {
 
     /**
      * The in-memory `GedraData` cache, or null when the table-cache service is absent (see [GedraDataCache]).
-     * Every lookup below consults it first and falls back to SQL on a miss, so its absence costs queries and
+     * Outside a transaction it is trusted completely -- a by-id [queryGedra] treats a miss as a definitive
+     * absence rather than querying (issue #640); SQL is reached only when it is absent, when a listing scope has
+     * no client key to look a row up by, or when `_debug=dataFromSql` forces it. Its absence costs queries and
      * nothing else.
      */
     var dataCache: SqlTableCache<Map<String, Any?>>? = null
@@ -107,15 +119,16 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * Serves a by-id lookup from [dataCache], or null when it cannot -- which the caller turns into its SQL
-     * query, so the cache only ever saves a round trip and never changes an answer.
+     * Serves a by-id lookup from [dataCache], or null. Since the cache holds every row, [queryGedra] trusts that
+     * null as a definitive absence (issue #640) rather than re-asking SQL -- it queries only when there is no
+     * cache, or when `_debug=dataFromSql` forces it. Null means one of: no cache, no row held, or the scope
+     * refuses the row.
      *
      * The scope is applied **per row** by [admitsRow], the way `UserService.queryAdministrableUser` already
      * does it, not by composing a predicate: composing one would be a second implementation of what
-     * `SqlScopeUtil` exists to be the only copy of. A row the scope refuses returns null here, and the caller
-     * re-asks SQL, which refuses it too -- one wasted query on a denied cross-scope probe, in exchange for the
-     * cached path having no way to *widen* an answer. The refusal is tested on the raw row *before* extracting
-     * it, so a denied probe does not pay for an extraction it will throw away.
+     * `SqlScopeUtil` exists to be the only copy of. A row the scope refuses returns null -- the cached path has
+     * no way to *widen* an answer, only to refuse one exactly as the SQL `where` would. The refusal is tested on
+     * the raw row *before* extracting it, so a denied probe does not pay for an extraction it will throw away.
      */
     private fun cachedGedra(cxt: KdrCxt, fullId: String, scope: ReadScope): GedraDataRow? {
         val cache = dataCache ?: return null
@@ -711,7 +724,23 @@ class GedraDataService : ServiceInitializer {
         if (gedraId.dataType != kind) {
             return null
         }
-        cachedGedra(cxt, gedraId.fullId, scope)?.let { return it }
+        // Outside a transaction the resident cache is trusted completely: it holds every row, so a miss is a
+        // definitive absence, not a reason to query. This is a pre-transaction read -- `deleteGedra` and the
+        // patch admit phase re-read under the lock with SQL -- so trusting it here touches no under-lock read.
+        // SQL is reached only when there is no cache to trust or `_debug=dataFromSql` forces it for diagnosis.
+        val cache = dataCache
+        if (cache != null && !cxt.hasDebugDiagnostic(GDBG.dataFromSql)) {
+            return cachedGedra(cxt, gedraId.fullId, scope)
+        }
+        return queryGedraFromSql(cxt, gedraId, scope)
+    }
+
+    /**
+     * Reads the gedra [gedraId] names from SQL, scope-checked by [SqlScopeUtil], or null when the scope refuses
+     * it or no enabled row matches. The dormant path [queryGedra] takes only when there is no cache to trust or
+     * `_debug=dataFromSql` ([GDBG.dataFromSql]) forces it -- the by-id counterpart of [readStatesFromSql].
+     */
+    private fun queryGedraFromSql(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): GedraDataRow? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
         val data = mutableMapOf<String, Any?>(GD.gedraId to gedraId.fullId)
@@ -1206,8 +1235,10 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * Serves [listGedras] from [dataCache], or returns null when it cannot -- the same fall-back-to-SQL
-     * contract [cachedGedra] has, so the cache only ever saves work and never changes an answer.
+     * Serves [listGedras] from [dataCache], or returns null when it cannot -- a **genuine** SQL fallback, unlike
+     * the by-id [cachedGedra] whose miss [queryGedra] now trusts as an absence: a listing scope with no client
+     * key is structurally uncacheable (below), not merely missing. Either way the cache only narrows to the rows
+     * SQL would return and never widens.
      *
      * **It can only serve a scope that names a client.** The `clientKind` index is keyed by client (issue
      * #363: cache by client, and by kind within a client), so a scope with no client -- an `allClients`
@@ -1281,7 +1312,11 @@ class GedraDataService : ServiceInitializer {
         offset: Int = 0,
         rowFilter: ((GedraDataRow) -> Boolean)? = null,
     ): GedraListPage {
-        cachedListGedras(cxt, kind, scope, limit, offset, rowFilter)?.let { return it }
+        // `_debug=dataFromSql` bypasses the cache for diagnosis, the same tag `queryGedra` honors; the SQL below
+        // is then taken for every scope, not only the no-client shapes the cache cannot key on.
+        if (!cxt.hasDebugDiagnostic(GDBG.dataFromSql)) {
+            cachedListGedras(cxt, kind, scope, limit, offset, rowFilter)?.let { return it }
+        }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
         val data = mutableMapOf<String, Any?>(GD.gedraKind to kind.name)

@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.gedra.GD
+import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.gedra.GDX
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
@@ -108,6 +109,28 @@ class GedraDataCacheTest : StringSpec({
         svc.queryGedra(cxt, caraDocId, kind, ReadScope(client = client, userId = caraId)).shouldNotBeNull()
         svc.queryGedra(cxt, caraDocId, kind, ReadScope(client = client, userId = cyrusId)).shouldBeNull()
         svc.queryGedra(cxt, caraDocId, kind, ReadScope(client = "someOtherClient")).shouldBeNull()
+    }
+
+    "the dataFromSql debug tag reads a by-id gedra through SQL and agrees with the cache" {
+        val svc = service()
+        val kind = GedraDataType.formDoc
+        val scope = ReadScope(client = client, userId = caraId)
+
+        // The default read trusts the resident cache; `_debug=dataFromSql` (issue #640) activates the otherwise
+        // -dormant SQL read, so a suspected stale cache can be checked against it. Both answer the same. The
+        // *divert* to SQL is asserted rigorously through the `explainScope` diagnostic on the listing in
+        // `UsageSearchTest`; here the by-id path is exercised end to end over the boot context, which
+        // `mkTestBootCxt` makes a test instance so the fenced tag is honored. The tag is restored so it does not
+        // leak into the sibling tests that share this instance.
+        val viaCache = svc.queryGedra(cxt, caraDocId, kind, scope).shouldNotBeNull()
+        val held = cxt.debug
+        cxt.debug = GDBG.dataFromSql
+        val viaSql = try {
+            svc.queryGedra(cxt, caraDocId, kind, scope).shouldNotBeNull()
+        } finally {
+            cxt.debug = held
+        }
+        viaSql.gedraId.fullId shouldBe viaCache.gedraId.fullId
     }
 
     "a document created after the first load is picked up; an unwritten key is empty" {
