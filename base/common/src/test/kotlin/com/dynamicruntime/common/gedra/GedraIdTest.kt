@@ -200,6 +200,51 @@ class GedraIdTest : StringSpec({
         unknown.baseId shouldBe "other"
         cache.size shouldBe 1
     }
+
+    // --- revisions (issue #612) -------------------------------------------------
+
+    "a config id knows its revision and its revision class, and moves between them" {
+        val rev3 = GedraId.parse("gc.cd.acme.main~3")
+        rev3.revision shouldBe 3
+        rev3.revisionClass().fullId shouldBe "gc.cd.acme.main"
+        rev3.revisionClass().revision.shouldBeNull()
+        // The class is its own class, and a revision round-trips through it.
+        val cls = rev3.revisionClass()
+        cls.revisionClass() shouldBe cls
+        cls.withRevision(3) shouldBe rev3
+        cls.withRevision(4).fullId shouldBe "gc.cd.acme.main~4"
+        GedraId.of(GedraConfigType.configDoc, "acme", "main", "3") shouldBe rev3
+    }
+
+    // Spelled the one way its integer prints, so `~3`, `~03` and `~+3` cannot be three ids for one revision --
+    // and refused on both ways in, since parse and of are separate constructions.
+    "a config revision has to be a whole number spelled the one way" {
+        for (bad in listOf("abc", "3a", "007")) {
+            shouldThrow<KdrException> { GedraId.parse("gc.cd.acme.main~$bad") }
+                .message.shouldNotBeNull() shouldContain "revision"
+            shouldThrow<KdrException> { GedraId.of(GedraConfigType.configDoc, "acme", "main", bad) }
+                .message.shouldNotBeNull() shouldContain "revision"
+        }
+        // A sign is not even a legal part character, so these fall to the general part check.
+        for (bad in listOf("+3", "-1")) {
+            shouldThrow<KdrException> { GedraId.parse("gc.cd.acme.main~$bad") }
+        }
+    }
+
+    "a data id's suffix is a child index, not a revision, and stays free-form" {
+        // Nothing reads it back, and tightening it would refuse ids already stored.
+        GedraId.parse("gd.fd.acme.e123~7").revision.shouldBeNull()
+        GedraId.parse("gd.fd.acme.e123~x_1").suffix shouldBe "x_1"
+        GedraId.parse("gd.fd.acme.e123").revision.shouldBeNull()
+    }
+
+    // The transforms are config-only, and fail loudly on a data id rather than forging a different-looking one
+    // by dropping or setting a child index.
+    "the revision transforms refuse a data id" {
+        val dataId = GedraId.parse("gd.fd.acme.e123~7")
+        shouldThrow<KdrException> { dataId.revisionClass() }.message.shouldNotBeNull() shouldContain "config-id"
+        shouldThrow<KdrException> { dataId.withRevision(2) }.message.shouldNotBeNull() shouldContain "config-id"
+    }
 })
 
 /** Applies [check] to every element, reporting which one failed. */
