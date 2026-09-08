@@ -1,9 +1,12 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
+import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * What a client is *for* -- the purpose it was created to serve (issue #343).
@@ -282,6 +285,33 @@ class ClientDef(
     }
 
     companion object {
+        /**
+         * A [ClientDef] from a stored [toInfo] dump (issue #613) -- the inverse of [toInfo], for reassembling a
+         * client definition off a config row. Reads only what [toInfo] writes: `testFeatures` is a test-only
+         * field the `ClientInfo` shape does not carry, so a reassembled client has none, which is correct for
+         * one authored as data. Fields absent from the map take their declared defaults. The map is assumed
+         * schema-valid (the slot validated it against `ClientInfo`), so a required field missing is a fault.
+         */
+        fun fromInfo(m: Map<String, Any?>): ClientDef = ClientDef(
+            clientId = m[CLD.clientId].toOptStr() ?: throw KdrException.mkConv("A stored client has no '${CLD.clientId}'."),
+            name = m[CLD.name].toOptStr() ?: throw KdrException.mkConv("A stored client has no '${CLD.name}'."),
+            description = m[CLD.description].toOptStr(),
+            usageType = enumOf(ClientUsageType.entries, m[CLD.usageType].toOptStr(), CLD.usageType),
+            audience = enumOf(ClientAudience.entries, m[CLD.audience].toOptStr(), CLD.audience),
+            webResourcesId = m[CLD.webResourcesId].toOptStr(),
+            enabledEnvironments = m[CLD.enabledEnvironments].toJsonListOfStrings().toSet(),
+            preload = m[CLD.preload] as? Boolean ?: false,
+            staticConfig = m[CLD.staticConfig] as? Boolean ?: false,
+            extendsFromClientId = m[CLD.extendsFromClientId].toOptStr(),
+            domainPrefix = m[CLD.domainPrefix].toOptStr(),
+            customDomain = m[CLD.customDomain].toOptStr(),
+            includedTraits = m[CLD.includedTraits].toJsonListOfStrings(),
+        )
+
+        private fun <E : Enum<E>> enumOf(values: List<E>, name: String?, field: String): E =
+            values.firstOrNull { it.name == name }
+                ?: throw KdrException.mkConv("A stored client's '$field' is '$name', not one of ${values.map { it.name }}.")
+
         /** The shape of the [toInfo] dump. */
         fun defineInfoType(builder: SchTypesBuilder) {
             builder.type(CLD.infoTypeName) {

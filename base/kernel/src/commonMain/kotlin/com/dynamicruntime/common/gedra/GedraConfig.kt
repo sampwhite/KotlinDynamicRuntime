@@ -302,6 +302,15 @@ class GedraConfigBuilder(
         fragments.add(fragmentInline(fileId, origin = configOrigin(), client = configClient, build = build))
     }
 
+    /**
+     * A fragment overlay from a **pre-built** content map (issue #613) -- how reassembly restores one stored on
+     * a config row, where the content is already `namespace -> key -> value` and there is no builder block to
+     * run. The stamp (this config's client and origin) is applied here, as it is for the authored form.
+     */
+    fun fragmentOverlay(fileId: String, content: Map<String, Map<String, String>>) {
+        fragments.add(FragmentSource(fileId, isOverlay = true, client = configClient, origin = configOrigin(), load = { content }))
+    }
+
     /** How a contribution from this config identifies itself in a report. */
     private fun configOrigin(): String = if (configName.isEmpty()) "a Gedra config" else "config '$configName'"
 
@@ -319,6 +328,11 @@ class GedraConfigBuilder(
      */
     fun uiBlockOverlay(blockId: String, build: UiBlockBuilder.() -> Unit) {
         uiBlocks.add(uiBlockOverlay(blockId, origin = configOrigin(), client = configClient, build = build))
+    }
+
+    /** A UiBlock overlay from a **pre-built** content map (issue #613) -- how reassembly restores a stored one. */
+    fun uiBlockOverlay(blockId: String, content: Map<String, Any?>) {
+        uiBlocks.add(UiBlockSource(blockId, isOverlay = true, client = configClient, origin = configOrigin(), content = content))
     }
 
     /** The client this config defines, if it declared one; see [defineClient]. */
@@ -392,8 +406,8 @@ class GedraConfigBuilder(
      * holding every contributor: a name is unique across components *and* every config of one client, and no
      * single config can see enough to say so.
      */
-    fun cfact(name: String, group: String, description: String) {
-        cfacts.add(CFactDef(name, group, description))
+    fun cfact(name: String, group: String, description: String, toFrontend: Boolean = false) {
+        cfacts.add(CFactDef(name, group, description, toFrontend))
     }
 
     /**
