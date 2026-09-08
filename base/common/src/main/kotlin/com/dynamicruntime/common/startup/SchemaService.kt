@@ -38,8 +38,11 @@ import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.layoutTemplateProblems
+import com.dynamicruntime.common.schema.layoutPullProblems
+import com.dynamicruntime.common.schema.LayoutPullHit
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.schema.SchLayout
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
@@ -385,26 +388,40 @@ class SchemaService : ServiceInitializer {
      * object -- and that layout naming a property the client dropped is the sanctioned outcome (pruned on
      * delivery), not a mistake, so it is skipped rather than allowed to take the node down.
      */
-    @KdrPrivate
-    fun checkLayouts() {
-        val problems = LinkedHashSet<String>()
+    /**
+     * The layouts a boot check must examine, each with the `where` label, `client` and resolved `type` it needs
+     * (issue #620). One place decides *which* layouts get checked -- every global layout, and on a client
+     * variant only a layout the client supplied itself -- so [checkLayouts] and [checkLayoutPulls] cannot drift
+     * apart on that rule.
+     *
+     * A variant that narrowed a type inherits global's layout **by reference** (the same object); it is skipped
+     * because its field/template checks are identical to global's, and its fragment pulls resolve identically
+     * too: a client always merges the global fragment layers plus its own, `mergeFragmentLayers` only adds or
+     * overrides keys (never removes), and a backend file stays backend, so a pull that resolves globally
+     * resolves for every client. Checking global once therefore covers the inherited case for both checks.
+     */
+    private fun forEachLayoutToCheck(action: (where: String, client: String?, layout: SchLayout, type: SchType?) -> Unit) {
         fun rawLayout(defs: Map<String, Any?>, name: String): Any? = (defs[name] as? Map<*, *>)?.get(SCH.layout)
         for ((name, layout) in collectLayouts(schemaStore.defs)) {
-            val type = schemaStore.types[name]
-            problems.addAll(layoutFieldProblems("Type '$name'", layout, type))
-            problems.addAll(layoutTemplateProblems("Type '$name'", layout, type))
-            problems.addAll(layoutBackendBlockProblems("Type '$name'", layout))
+            action("Type '$name'", null, layout, schemaStore.types[name])
         }
         for ((client, store) in clientStores) {
             // A client sharing the global document has nothing of its own to check.
             if (store.defs === schemaStore.defs) continue
             for ((name, layout) in collectLayouts(store.defs)) {
                 if (rawLayout(store.defs, name) === rawLayout(schemaStore.defs, name)) continue // inherited
-                val type = store.types[name]
-                problems.addAll(layoutFieldProblems("Type '$name' (client '$client')", layout, type))
-                problems.addAll(layoutTemplateProblems("Type '$name' (client '$client')", layout, type))
-                problems.addAll(layoutBackendBlockProblems("Type '$name' (client '$client')", layout))
+                action("Type '$name' (client '$client')", client, layout, store.types[name])
             }
+        }
+    }
+
+    @KdrPrivate
+    fun checkLayouts() {
+        val problems = LinkedHashSet<String>()
+        forEachLayoutToCheck { where, _, layout, type ->
+            problems.addAll(layoutFieldProblems(where, layout, type))
+            problems.addAll(layoutTemplateProblems(where, layout, type))
+            problems.addAll(layoutBackendBlockProblems(where, layout))
         }
         if (problems.isNotEmpty()) {
             throw KdrException(
@@ -419,8 +436,10 @@ class SchemaService : ServiceInitializer {
      * fragment-pull check. A layout `label` / `description` / `hint` may carry a `%{@t("…")}` pull resolved at
      * delivery; an unterminated or empty `%{...}` block would otherwise fail per request, so it is caught here
      * at boot. Whether a well-formed pull actually *resolves* (its target file and key exist) is a cross-service
-     * check that needs the fragment registry, which is not available to this startup-phase service -- see #620;
-     * an unresolvable pull degrades gracefully at delivery in the meantime ([resolveDeliveredLayouts]).
+     * check that needs the fragment registry, which is not available to this startup-phase service: it runs in
+     * the regular phase, in `LayoutCheckService` via [checkLayoutPulls] (issue #620). So a literal pull that
+     * misses is now refused at boot; only a *computed* or guarded pull can miss at delivery, where it degrades
+     * gracefully ([resolveDeliveredLayouts]).
      */
     private fun layoutBackendBlockProblems(where: String, layout: SchLayout): List<String> {
         val problems = mutableListOf<String>()
@@ -437,6 +456,23 @@ class SchemaService : ServiceInitializer {
             checkBackendBlocks("${field.field}'s label", field.label)
             checkBackendBlocks("${field.field}'s description", field.description)
             checkBackendBlocks("${field.field}'s hint", field.hint)
+        }
+        return problems
+    }
+
+    /**
+     * The layout **fragment-pull resolution** problems (issue #620) -- the cross-service half of the layout boot
+     * check the startup-phase [checkLayouts] cannot do, because it needs the fragment registry that a regular
+     * service (`LayoutCheckService`) holds. It walks the same layouts [checkLayouts] does (via
+     * [forEachLayoutToCheck]) and hands each to [layoutPullProblems] with a client-bound [resolve]. Returns the
+     * problems; the caller decides whether an empty result is required. [resolve] answers whether a
+     * `(fileId, namespace.key)` resolves as a backend pull for the given client -- the one thing that needs the
+     * registry, injected so this stays free of a dependency on the fragment service.
+     */
+    fun checkLayoutPulls(resolve: (client: String?, fileId: String, nsKey: String) -> LayoutPullHit): List<String> {
+        val problems = mutableListOf<String>()
+        forEachLayoutToCheck { where, client, layout, _ ->
+            problems.addAll(layoutPullProblems(where, layout) { fileId, nsKey -> resolve(client, fileId, nsKey) })
         }
         return problems
     }

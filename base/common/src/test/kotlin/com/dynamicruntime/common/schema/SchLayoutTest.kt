@@ -267,4 +267,55 @@ class SchLayoutTest : StringSpec({
         )))
         layoutTemplateProblems("Type 'acme.R'", layout, boundedType) shouldBe emptyList()
     }
+
+    // --- the fragment-pull resolution check (issue #620), driven by a fake resolver ---
+
+    "layoutPullProblems resolves backend pulls per copy string and reports only the ones that miss" {
+        val layout = SchLayout(
+            fragmentFileId = "help",
+            label = """%{@t("q.heading")}""",                 // two-part -> help.q.heading (resolves)
+            fields = listOf(
+                SchLayoutField("topic", """%{@t("other.q.topicHelp")}""", null, null), // three-part, key missing
+                SchLayoutField("notes", """%{@t("q.notes") ?: "Notes"}""", null, null), // guarded -> skipped
+                SchLayoutField("year", "Plain copy, no pull", null, null),                    // no %{...} -> skipped
+            ),
+        )
+        fun resolve(fileId: String, nsKey: String): LayoutPullHit = when (fileId) {
+            "help" if nsKey == "q.heading" -> LayoutPullHit(fileFound = true, backend = true, keyPresent = true)
+            "other" if nsKey == "q.topicHelp" -> LayoutPullHit(fileFound = true, backend = true, keyPresent = false)
+            else -> LayoutPullHit(fileFound = false, backend = false, keyPresent = false)
+        }
+        val problems = layoutPullProblems("Type 'X'", layout, ::resolve)
+        problems.size shouldBe 1
+        problems.single() shouldContain "topic"
+        problems.single() shouldContain "q.topicHelp"
+    }
+
+    "layoutPullProblems tells a missing file from a frontend-file pull" {
+        val layout = SchLayout("help", null, listOf(
+            SchLayoutField("a", """%{@t("nofile.ns.k")}""", null, null),
+            SchLayoutField("b", """%{@t("frontendFile.ns.k")}""", null, null),
+        ))
+        fun resolve(fileId: String, @Suppress("unused") nsKey: String): LayoutPullHit = when (fileId) {
+            "nofile" -> LayoutPullHit(fileFound = false, backend = false, keyPresent = false)
+            "frontendFile" -> LayoutPullHit(fileFound = true, backend = false, keyPresent = true) // found, not backend
+            else -> LayoutPullHit(fileFound = true, backend = true, keyPresent = true)
+        }
+        val problems = layoutPullProblems("Type 'Y'", layout, ::resolve)
+        problems.size shouldBe 2
+        problems.any { it.contains("no fragment file 'nofile'") } shouldBe true
+        problems.any { it.contains("frontend file") } shouldBe true
+    }
+
+    "layoutPullProblems flags a key that is not a fileId.namespace.key reference, without resolving" {
+        // A bare one-part key composes to nothing that can name a file and key, so it is reported on its shape
+        // alone -- the resolver is never consulted (it would have nothing to look up).
+        val layout = SchLayout("help", null, listOf(
+            SchLayoutField("a", """%{@t("heading")}""", null, null),
+        ))
+        val problems = layoutPullProblems("Type 'Z'", layout) { _, _ ->
+            error("the resolver must not be called for a malformed pull key")
+        }
+        problems.single() shouldContain "is not a fileId.namespace.key reference"
+    }
 })

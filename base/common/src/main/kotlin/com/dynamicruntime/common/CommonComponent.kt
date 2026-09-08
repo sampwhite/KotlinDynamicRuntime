@@ -51,6 +51,7 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.uiblock.UiBlockService
+import com.dynamicruntime.common.startup.LayoutCheckService
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.Presence
 import com.dynamicruntime.common.startup.ServiceEntry
@@ -211,6 +212,9 @@ class CommonComponent : ComponentDefinition {
             service(::UiBlockService),
             // After the schema, client and fragment services it checks against (issue #533).
             service(::WorkflowService),
+            // Boot-validates layout `%{@t(...)}` fragment pulls (issue #620): a regular service, like
+            // WorkflowService, so both the startup schema and the fragment registry are available.
+            service(::LayoutCheckService),
             service(::InstanceConfigService),
             // Application-only, matching the schema they serve (issues #432, #433). An edge keeps the
             // dispatcher, the content servers and the instance config -- everything it needs to answer for

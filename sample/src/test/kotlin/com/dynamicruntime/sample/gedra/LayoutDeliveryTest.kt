@@ -8,6 +8,8 @@ import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.LayoutPullHit
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -95,5 +97,17 @@ class LayoutDeliveryTest : StringSpec({
         // Exactly the two collected traits that declare a layout -- no spurious entries.
         v[WVF.layouts].toJsonMapOrEmpty().keys shouldBe setOf(questionnaire, expenseReport)
         v[SCH.dDefs].toJsonMapOrEmpty()[questionnaire].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
+    }
+
+    "checkLayoutPulls (issue #620) finds the questionnaire's real backend pulls, and passes them when they resolve" {
+        val schema = SchemaService.get(cxt)
+        // A resolver that resolves nothing: every literal pull the real layouts carry is reported -- the
+        // questionnaire's block heading and its topic description both pull from a backend fragment.
+        val allMiss = schema.checkLayoutPulls { _, _, _ -> LayoutPullHit(fileFound = false, backend = false, keyPresent = false) }
+        allMiss.any { it.contains("heading") } shouldBe true
+        allMiss.any { it.contains("topic") } shouldBe true
+        // A resolver that resolves everything: no problems -- what LayoutCheckService sees against the real files,
+        // which is why the sample boots at all.
+        schema.checkLayoutPulls { _, _, _ -> LayoutPullHit(fileFound = true, backend = true, keyPresent = true) } shouldBe emptyList()
     }
 })
