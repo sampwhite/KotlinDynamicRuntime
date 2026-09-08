@@ -466,11 +466,84 @@ class GedraDataService : ServiceInitializer {
         // Ownership and audit come from the context, never from the caller: `client`, `org` and `userId` from
         // the bound owner, `createdBy`/`updatedBy` from the actor, and `enabled` true.
         SqlTopicUtil.prepForStdExecute(cxt, table, data)
+        // Extracted from the stamped map, so a deriver reads exactly what is stored, and this is also returned.
+        val row = GedraDataRow.extract(gedraService, data)
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranCreate, null, mapOf(GD.gedraId to gedraId.fullId)) {
             sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
+            // Initial derived state (issue #599), written on the SAME GedraDataTran lock so data and state
+            // commit together -- the `writeState` call nests on the lock this transaction already holds. This is
+            // what lets a form record its state (a survey's "unfinished", say) even on a plain API create or a
+            // bad import, not only in an interactive workflow step.
+            //
+            // Derived state is a projection of the data and is recomputable (a later batch rebuilds it), so a
+            // deriver whose output does not validate must **not** fail an otherwise-valid create -- nor, in the
+            // middle of an import, leave the docs before it committed while the rest are rejected (the phase-one
+            // validation of `importGedras` covers the data, not the derivation). A validation fault is logged
+            // and the create proceeds with no state; it is rejected before any state row is written, so the data
+            // insert already on this transaction is untouched. A deriver's own programming error is not caught
+            // here -- it should surface, not be swallowed -- so only the validation `KdrException` is.
+            try {
+                val initialState = computeInitialState(cxt, row)
+                if (initialState.isNotEmpty()) {
+                    writeState(cxt, gedraId, initialState)
+                }
+            } catch (e: KdrException) {
+                LogGedra.warn(cxt) { "Skipped invalid initial state for '${gedraId.fullId}': ${e.message}" }
+            }
         }
-        return GedraDataRow.extract(gedraService, data)
+        return row
     }
+
+    /**
+     * The initial **derived** state for a freshly written gedra (issue #599): every registered [GedraStateDeriver]
+     * that applies to [row]'s kind and whose opt-in feature is enabled for its client, run and concatenated. Run
+     * by [insertStoredGedra] inside the data write's transaction, so state lands even on a plain create/import.
+     */
+    private fun computeInitialState(cxt: KdrCxt, row: GedraDataRow): List<Map<String, Any?>> =
+        SchemaService.get(cxt).stateDerivers()
+            .filter { row.kind in it.appliesTo && featureEnabled(cxt, it.featureName) }
+            .flatMap { it.derive(cxt, row) }
+
+    /**
+     * Whether a deriver's opt-in [featureName] is on: a null feature always runs; a named one runs only on a
+     * **test instance** whose gedra's client lists it in [ClientDef.testFeatures] (issue #599). So a demo
+     * derivation stays off production and off clients that did not ask for it.
+     */
+    private fun featureEnabled(cxt: KdrCxt, featureName: String?): Boolean {
+        if (featureName == null) return true
+        if (!cxt.instanceConfig.isTestInstance) return false
+        val client = ClientService.get(cxt).present(cxt.client) ?: return false
+        return featureName in client.testFeatures
+    }
+
+    /**
+     * The cfact names a form's stored state asserts (issue #599) -- read from its [GT.cfacts] state entries'
+     * [GT.facts], and **narrowed to the cfacts the caller's registry still declares**. The read half of the
+     * state→cfact bridge: these are the `targetFacts` a form contributes to `CFactRegistry.assemble`, which
+     * refuses an undeclared name. State is durable, so a name a component or client once declared may since be
+     * gone (a component removed, a cfact renamed), and a form read under another client's registry may name a
+     * cfact that client never declared -- an unknown fact cannot be present, so it is dropped rather than made
+     * to throw. Reads through [readState], so it is cache-first and scope-checked exactly as any other state
+     * read; a caller the [scope] refuses sees an empty set, never another form's cfacts.
+     */
+    fun formCfacts(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): Set<String> {
+        val declared = SchemaService.get(cxt).cfactsFor(cxt.client).names
+        return readState(cxt, gedraId, scope)
+            .filter { it[GE.traitId].toOptStr() == GT.cfacts }
+            .flatMap { (it[GE.data].toJsonMapOrEmpty()[GT.facts] as? List<*>).orEmpty().mapNotNull { f -> f.toOptStr() } }
+            .filter { it in declared }
+            .toSet()
+    }
+
+    /**
+     * The cfacts present for [cxt] **about the form** [gedraId] (issue #599): the request-scoped cfacts unioned
+     * with the form's stored-state cfacts ([formCfacts]) as `targetFacts`. This is the state→cfact bridge whole
+     * -- what a workflow-eligibility expression will evaluate against (its consumer arrives with the workflows).
+     * It cannot throw on a stale stored cfact, because [formCfacts] has already dropped any name the registry
+     * does not declare -- the guarantee `assemble` needs.
+     */
+    fun assembleFormCfacts(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): Set<String> =
+        SchemaService.get(cxt).cfactsFor(cxt.client).assemble(cxt, formCfacts(cxt, gedraId, scope))
 
     /**
      * Imports form documents on behalf of the owner bound to [cxt] (issue #545). Each [docs] entry is a copied

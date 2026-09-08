@@ -20,6 +20,7 @@ import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.ClientTraitUsage
+import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
@@ -444,6 +445,12 @@ class SchemaService : ServiceInitializer {
      * exactly what those unions declare.
      */
     fun gedraStateTraits(): List<GedraTrait> = collector?.gedraConfigs?.stateTraits() ?: emptyList()
+
+    /**
+     * The registered state derivations (issue #599) -- what `GedraDataService` runs on create/import to compute
+     * a gedra's initial derived state. Empty on a node whose components registered none.
+     */
+    fun stateDerivers(): List<GedraStateDeriver> = collector?.stateDerivers ?: emptyList()
 
     /** The trait-usage rules [client] applies (issue #537) -- what a listing's columns are computed from. */
     fun traitUsagesFor(client: String): List<ClientTraitUsage> =

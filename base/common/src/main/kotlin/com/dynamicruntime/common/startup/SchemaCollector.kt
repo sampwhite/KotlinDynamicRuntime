@@ -8,6 +8,7 @@ import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
+import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchOptionsProvider
@@ -91,6 +92,18 @@ class SchemaCollector(
 
     /** What decides each declared cfact for a request, keyed by name; a subset of [cfacts]. */
     val cfactSources: MutableMap<String, CFactSource> = LinkedHashMap()
+
+    /**
+     * The state derivations components registered (issue #599) -- functions that compute a gedra's derived
+     * state from its data, run on create/import. Kotlin, so component-contributed, like a [CFactSource]; the
+     * state traits they fill are declared separately (as data) through `gedraConfig { stateTrait(...) }`.
+     */
+    val stateDerivers: MutableList<GedraStateDeriver> = mutableListOf()
+
+    /** Registers a state derivation (issue #599); order is preserved but does not matter, as each owns its own traits. */
+    fun addStateDeriver(deriver: GedraStateDeriver) {
+        stateDerivers.add(deriver)
+    }
 
     /**
      * The cfacts each client's own configs declared, in arrival order (issue #455).

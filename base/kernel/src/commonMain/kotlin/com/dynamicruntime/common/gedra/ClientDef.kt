@@ -234,6 +234,15 @@ class ClientDef(
      * determined by its own definition when somebody other than us depends on it.**
      */
     val includedTraits: List<String> = emptyList(),
+    /**
+     * A free-form set of enabled **test/demo** feature names (issue #599) -- unvalidated, so adding a feature
+     * needs no enum change: a feature just asks "is my name in this client's set?". It gates *behavior*, not
+     * schema, so it does not breach the global-state invariant (decision 3 of the gedra-states design) -- e.g.
+     * whether this client runs the demo `traitPresenceByYear` state derivation, while the trait's schema stays
+     * global. **Honored only on a test instance** (`isTestInstance`), so a name listed here can never switch a
+     * demo behavior on in production; it is the client-level counterpart of the endpoint `forTestingOnly` fence.
+     */
+    val testFeatures: Set<String> = emptySet(),
 ) {
     /** Whether [enabledEnvironments] holds [env] -- the whole of whether this client is present on a node. */
     fun isEnabledIn(env: String): Boolean = env in enabledEnvironments

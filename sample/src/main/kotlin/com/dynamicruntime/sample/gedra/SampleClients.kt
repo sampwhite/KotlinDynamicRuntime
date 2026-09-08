@@ -155,6 +155,9 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 // Named one at a time rather than by group, which is what leaves `managerApproval` out.
                 // `siteVisit` is here so the interior alteration below has something to reach it through.
                 includedTraits = listOf(ST.expenseReport, ST.questionnaire, ST.siteVisit),
+                // Opt in to the demo state derivation (issue #599): on a test instance, acme's forms get
+                // `traitPresenceByYear` computed on create. A test-only behavior toggle, not a schema variant.
+                testFeatures = setOf(ST.captureTraitPresenceByYear),
             ),
         )
 

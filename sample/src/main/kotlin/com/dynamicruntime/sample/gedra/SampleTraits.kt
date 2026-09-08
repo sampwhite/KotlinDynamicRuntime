@@ -2,12 +2,18 @@ package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.StateTraitClass
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.layout
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptStr
 
 /** The sample traits' names, kept beside the config that declares them. */
 @Suppress("ConstPropertyName")
@@ -88,6 +94,13 @@ object ST {
     const val externalIdEntry = "ExternalIdEntry"
     const val externalSource = "externalSource"
     const val externalRef = "externalRef"
+
+    // --- phase D (issue #599): the demo state derivation's opt-in feature, and a demo cfact for the bridge ---
+    /** Test/demo feature name a client lists in `testFeatures` to run the `traitPresenceByYear` derivation. */
+    const val captureTraitPresenceByYear = "captureTraitPresenceByYear"
+
+    /** A demo cfact a form's stored state can assert, exercising the state→cfact bridge (issue #599). */
+    const val sampleFormReady = "sampleFormReady"
 }
 
 /**
@@ -279,5 +292,39 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
             maxLength = 64
         }
         property(ST.externalRef, "The id that store uses for this gedra.", required = true) { maxLength = 256 }
+    }
+
+    // A demo cfact (issue #599) declared globally, so a form's `cfacts` state may assert it and the state→cfact
+    // bridge (`GedraDataService.assembleFormCfacts`) can union it into what an eligibility expression sees.
+    // Nothing computes it as a request source; a form's stored state is what makes it present, which is the
+    // whole point of the bridge. The real producer is the survey (a later phase).
+    cfact(ST.sampleFormReady, "sampleState", "The sample form has recorded that it is ready -- a demo form-state cfact.")
+}
+
+/**
+ * The demo state derivation (issue #599): reads a formDoc's data entries and records, per year, which trait ids
+ * carry data that year -- filling the `traitPresenceByYear` state trait. The design's end-to-end vehicle: a
+ * *derived*, non-workflow state keyed by a dimension (`year`) that is not `workflowId`, computed on create and
+ * import and read back through the states cache.
+ *
+ * Gated by [ST.captureTraitPresenceByYear]: it runs only on a test instance for a client that lists that
+ * feature (acme does), so it neither reaches production nor surprises a client that did not ask for it.
+ */
+object TraitPresenceByYearDeriver : GedraStateDeriver {
+    override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
+    override val featureName: String = ST.captureTraitPresenceByYear
+
+    override fun derive(cxt: KdrCxt, row: GedraDataRow): List<Map<String, Any?>> {
+        // Group trait ids by the `year` each entry's data carries -- expenseReport and yearly both have one; a
+        // trait with no year simply contributes to no year. A sorted map + set keep the output deterministic.
+        val byYear = sortedMapOf<Long, MutableSet<String>>()
+        for (entry in row.entries) {
+            val traitId = entry[GE.traitId].toOptStr() ?: continue
+            val year = entry[GE.data].toJsonMapOrEmpty()[ST.year].toOptLong() ?: continue
+            byYear.getOrPut(year) { sortedSetOf() }.add(traitId)
+        }
+        return byYear.map { (year, traits) ->
+            mapOf(GE.traitId to ST.traitPresenceByYear, GE.data to mapOf(ST.year to year, ST.presentTraits to traits.toList()))
+        }
     }
 }
