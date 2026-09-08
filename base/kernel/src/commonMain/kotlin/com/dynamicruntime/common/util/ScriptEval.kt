@@ -13,10 +13,10 @@ import com.dynamicruntime.common.exception.KdrException
  *
  *  - **A numeric operator reads a numeric string as a number; nothing else does** (issue #608). The operator
  *    has declared it wants a number, so `${count + 1}` on a `"3"` is `4` -- a cleanly-numeric string is coerced
- *    (an exact, full-string parse). `"3abc"` is still a type error, which is the useful outcome: it names a
- *    value that arrived as text and is not a number. Everywhere an operator is *not* involved a string stays
- *    text: equality is same-kind (`"1" == 1` is a mismatch) and a function names its kinds (`abs("3")` is a
- *    mismatch), so coercion is the operators' rule, not a global one.
+ *    (the whole string, once trimmed, must parse as a finite number). `"3abc"` is still a type error, which is
+ *    the useful outcome: it names a value that arrived as text and is not a number. Everywhere an operator is
+ *    *not* involved a string stays text: equality is same-kind (`"1" == 1` is a mismatch) and a function names
+ *    its kinds (`abs("3")` is a mismatch), so coercion is the operators' rule, not a global one.
  *  - **Truth**: null is false; a boolean is itself; a number is true when non-zero; a string is true when
  *    non-empty; a map or list is true when non-empty. Anything else is true.
  *  - **`+ - * / %` are arithmetic.** Each operand is a number or a cleanly-numeric string; anything else is
@@ -24,8 +24,9 @@ import com.dynamicruntime.common.exception.KdrException
  *    would print.
  *  - **`~` joins text**, formatting each side with [fmt]. Separate from `+` so neither operator is ever
  *    ambiguous about what it is doing. Most templates need no operator at all -- `n=${count}` already
- *    concatenates by juxtaposition; `~` is for composing inside an expression, e.g., a ternary branch. It never
- *    coerces -- it always wants text -- which is the mirror of the arithmetic rule.
+ *    concatenates by juxtaposition; `~` is for composing inside an expression, e.g., a ternary branch. It
+ *    formats each side rather than coercing it to a number -- the mirror of the arithmetic rule -- so `1 ~ "x"`
+ *    is `"1x"`, while an absent side is still a type error (there is no text an absent value should become).
  *  - **Numbers stay integral where they start.** Two `Long`s divide as integers (`7 / 2` is 3); one `Double`
  *    makes the result a `Double`. A coerced integer string is a `Long`, so `"7" / "2"` is 3 too.
  *  - **`< > <= >=` compare numerically**, each side a number or a cleanly-numeric string. Two plain strings are
@@ -331,9 +332,13 @@ fun numOf(v: Any?): Any? = when (v) {
 /**
  * [v] as a number for a **numeric operator** (`+ - * / %`, unary `-`, and `< > <= >=`), or null when it is not
  * one (issue #608). Unlike [numOf] this coerces a **cleanly-numeric string**: the whole string, once trimmed,
- * must parse as a number, so `"42"` is `42L` and `"2.9"` is `2.9`, while `"2100abc"` (or `""`) stays null and
- * the operator reports a type mismatch. Integer strings stay `Long` so `"7" / "2"` is `3`, matching a literal
- * `7 / 2`; a fractional string makes it a `Double`.
+ * must parse as a *finite* number, so `"42"` is `42L` and `"2.9"` is `2.9`, while `"2100abc"`, `""`, and the
+ * non-finite spellings `"NaN"` / `"Infinity"` (which `toDoubleOrNull` would otherwise accept) stay null and the
+ * operator reports a type mismatch. Barring the non-finite ones matters: `NaN` sorts above every number under
+ * `Double.compareTo`, so `${n > 5}` on `"NaN"` would silently pass rather than fault, and an infinity renders as
+ * the literal `null` (see [fmt]) -- the same "an infinity that would print" the divide-by-zero guard exists to
+ * stop. Integer strings stay `Long` so `"7" / "2"` is `3`, matching a literal `7 / 2`; a fractional string
+ * makes it a `Double`.
  *
  * Trimming first is deliberate on two counts: it matches the schema layer's `allowCoerce` (`ConvertUtil`), the
  * coercion this issue is bringing the operators in line with, and it keeps `" 42"` an integer -- without it,
@@ -347,7 +352,7 @@ fun numOf(v: Any?): Any? = when (v) {
  * comparison and `${flag == "true"}` on a real boolean still names the mistake.
  */
 private fun numOperand(v: Any?): Any? =
-    numOf(v) ?: (v as? String)?.trim()?.let { it.toLongOrNull() ?: it.toDoubleOrNull() }
+    numOf(v) ?: (v as? String)?.trim()?.let { it.toLongOrNull() ?: it.toDoubleOrNull()?.takeIf { d -> d.isFinite() } }
 
 private fun toD(n: Any?): Double = when (n) {
     is Long -> n.toDouble()

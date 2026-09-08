@@ -69,6 +69,10 @@ class ScriptExprTest : StringSpec({
         evl($$"${n - 1}", mapOf("n" to " 42 ")) shouldBe "41" // trimmed, and still an integer (not a double)
         // Not cleanly a number -> still a type error.
         errorCode($$"${n - 1}", mapOf("n" to "2100abc")) shouldBe ScriptError.typeMismatch
+        // The non-finite spellings toDoubleOrNull would accept are refused too (issue #608): NaN would sort
+        // above every number in a comparison, and an infinity would render as the literal `null`.
+        errorCode($$"${n > 5}", mapOf("n" to "NaN")) shouldBe ScriptError.typeMismatch
+        errorCode($$"${n * 2}", mapOf("n" to "Infinity")) shouldBe ScriptError.typeMismatch
     }
 
     "unary minus negates" {
