@@ -142,6 +142,23 @@ class GedraPatchTest : StringSpec({
         entriesOf(alice, id).getValue(ST.questionnaire)[GE.updatedAt] shouldBe before[GE.updatedAt]
     }
 
+    // The case the string-only traits above cannot exercise (issue #626): a trait with a **date** field. The
+    // supplied data arrives coerced -- `visitedOn` is a `LocalDate`, not the "2026-01-15" it is stored as -- so
+    // the diff has to compare in the stored JSON form, or every re-send of a date-bearing entry reads as a
+    // change. `siteVisit` declares `visitedOn` as a `dayOnlyDate()`.
+    "an identical replace of a date-bearing entry is still a no-op" {
+        val visit = mapOf(ST.address to mapOf(ST.country to "gb"), ST.visitedOn to "2026-01-15")
+        val id = create(alice, mapOf(GE.traitId to ST.siteVisit, GE.data to visit))
+        val before = entriesOf(alice, id).getValue(ST.siteVisit)
+        cxt.instanceConfig.clock.advanceBy(2.seconds)
+        val results = alice.postItems(
+            GEP.patch,
+            patch(id to listOf(edit(GedraEditAction.addOrReplace, ST.siteVisit, visit))),
+        )
+        results.single()[GPF.outcomes].toJsonListOfMaps().single()[GPF.applied] shouldBe false
+        entriesOf(alice, id).getValue(ST.siteVisit)[GE.updatedAt] shouldBe before[GE.updatedAt]
+    }
+
     // What `addOrMerge` is for: a page owns the answers it shows and says nothing about the rest.
     "a merge keeps the keys it did not mention" {
         val id = create(
