@@ -9,6 +9,7 @@ import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkUniqueId
 import com.dynamicruntime.common.util.toOptInstant
@@ -74,6 +75,9 @@ class GedraConfigService : ServiceInitializer {
         slotPrimaryKeys = coreConfigTraits(cxt).configTraits.mapValues { it.value.primaryKey }
     }
 
+    /** The config slots a bundle may carry -- the config-trait ids (issue #627), for refusing an unknown one. */
+    fun knownSlots(): Set<String> = slotPrimaryKeys.keys
+
     private fun configTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GCT.gedraConfig]
         ?: throw KdrException("${GCT.gedraConfig} table is not registered in the schema store.")
 
@@ -100,6 +104,20 @@ class GedraConfigService : ServiceInitializer {
             throw KdrException.mkInput(
                 "Config '${config.gedraId}' is owned by the '${GID.globalClient}' client, which is the runtime's. " +
                     "A stored config belongs to a real client.",
+            )
+        }
+        // The general rule the `globalconfig` refusal above is one case of (#292): a namespace has one owner, and
+        // a client may only author into its own or an unclaimed one. This is the write-time half of the check
+        // `GedraConfigCollector.firstProblem` runs at load; it catches authoring into any namespace a kept config
+        // already holds -- `globalconfig`, or another client's component namespace. A namespace no config has
+        // claimed reads null and is allowed (it becomes this client's on the first write); two data-authored
+        // configs racing for one unclaimed namespace is the load-time collision #614 resolves, which nothing here
+        // can see before either is stored.
+        val nsOwner = SchemaService.get(cxt).gedraNamespaceOwner(config.namespace)
+        if (nsOwner != null && nsOwner != config.gedraId.client) {
+            throw KdrException.mkInput(
+                "Config '${config.gedraId}' declares its types in namespace '${config.namespace}', which belongs " +
+                    "to '$nsOwner'. A client may only author into a namespace it owns.",
             )
         }
         // Refuses a config carrying config traits (they are hardwired, never stored); produces one raw entry
@@ -180,7 +198,7 @@ class GedraConfigService : ServiceInitializer {
         val stmt = latestQuery(sqlCxt, table)
         var row: Map<String, Any?>? = null
         sqlCxt.sqlDb.withSession(cxt) {
-            row = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(GC.configId to configId.fullId))
+            row = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(GC.configId to configId.fullId, PF.client to cxt.client))
                 .firstOrNull { it[PF.enabled] == true }
         }
         return row?.let { GedraConfigRow.extract(gedraService, it) }
@@ -205,19 +223,28 @@ class GedraConfigService : ServiceInitializer {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(PF.client to cxt.client))
         }
         // The rows are ordered class then version-desc, so the first enabled row of each class is its latest.
+        // The SQL order groups revisions; the *listing* order is recency, as the doc promises and `listGedras`
+        // does -- so the config just written is at the top rather than wherever its name sorts.
         val latestByClass = LinkedHashMap<String, Map<String, Any?>>()
         for (row in rows.filter { it[PF.enabled] == true }) {
             val cls = row[GC.configId].toOptStr() ?: continue
             latestByClass.putIfAbsent(cls, row)
         }
         return latestByClass.values.map { GedraConfigRow.extract(gedraService, it) }
+            .sortedByDescending { it.updatedAt ?: Instant.DISTANT_PAST }
     }
 
-    /** The "latest revision of this class" query -- ordered so the first enabled row is the latest. */
+    /**
+     * The "latest revision of this class" query -- ordered so the first enabled row is the latest, and confined
+     * to the caller's own client (issue #627 review). The config id already carries a client, so a same-client
+     * read is unchanged; the predicate is defense in depth, so a caller that comes to hold an id built for
+     * another client -- a future id-taking endpoint, a lineage id resolved elsewhere -- reads null rather than
+     * that client's row, the way `SqlScopeUtil` confines the data reads rather than trusting the id.
+     */
     private fun latestQuery(sqlCxt: SqlCxt, table: KdrTable) = SqlStmtUtil.prepareSql(
         sqlCxt, "qGedraConfigLatest", table.columns,
         "select * from t:${GCT.gedraConfig} where c:${GC.configId} = :${GC.configId} " +
-            "order by c:${GC.version} desc",
+            "and c:${PF.client} = :${PF.client} order by c:${GC.version} desc",
     )
 
     /**
@@ -226,8 +253,9 @@ class GedraConfigService : ServiceInitializer {
      * `queryStatement` because the lock this transaction holds is on [GCT.gedraConfigTran], not on these rows.
      */
     private fun readLatestUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, configId: GedraId): GedraConfigRow? {
-        val row = sqlCxt.sqlDb.queryStatement(cxt, latestQuery(sqlCxt, table), mapOf(GC.configId to configId.fullId))
-            .firstOrNull { it[PF.enabled] == true } ?: return null
+        val row = sqlCxt.sqlDb.queryStatement(
+            cxt, latestQuery(sqlCxt, table), mapOf(GC.configId to configId.fullId, PF.client to cxt.client),
+        ).firstOrNull { it[PF.enabled] == true } ?: return null
         return GedraConfigRow.extract(gedraService, row)
     }
 

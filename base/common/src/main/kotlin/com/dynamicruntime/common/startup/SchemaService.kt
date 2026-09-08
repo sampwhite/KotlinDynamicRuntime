@@ -471,6 +471,9 @@ class SchemaService : ServiceInitializer {
      */
     fun gedraTraitsFor(client: String): List<GedraTrait> = collector?.gedraConfigs?.traitsFor(client) ?: emptyList()
 
+    /** Who owns a gedra-config [namespace] (issue #627), or null when no kept config has claimed it. */
+    fun gedraNamespaceOwner(namespace: String): String? = collector?.gedraConfigs?.namespaceOwner(namespace)
+
     /**
      * The gedra **state** traits in force (issue #597) -- every one, since state is global and a client does not
      * vary the set (decision 3), which is why this takes no client. Each carries its `primaryKey` and its

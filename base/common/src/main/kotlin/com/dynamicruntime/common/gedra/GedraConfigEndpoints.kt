@@ -174,7 +174,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         val name = requireName(request)
         val namespace = request[CFEP.namespaceField].toOptStr()
             ?: throw KdrException.mkInput("A configuration bundle must name its '${CFEP.namespaceField}'.")
-        val slots = slotsOf(request[CFEP.slots])
+        val slots = slotsOf(request[CFEP.slots], GedraConfigService.get(c).knownSlots())
         // Reassemble the bundle into a GedraConfig (which re-runs the builder, so its contents are validated as
         // source would be), then write it. The client is the caller's own, never the body's -- the config id is
         // built from `c.client`, so a bundle cannot be filed under another client.
@@ -229,9 +229,29 @@ private fun configId(cxt: KdrCxt, name: String): GedraId = GedraId.of(GedraConfi
 private fun requireName(request: Map<String, Any?>): String = request[CFEP.name].toOptStr()
     ?: throw KdrException.mkInput("A configuration must be named by its '${CFEP.name}'.")
 
-/** Coerces a bundle's `slots` (slot -> array of entry objects) to the shape [reassembleGedraConfig] takes. */
-private fun slotsOf(raw: Any?): Map<String, List<Map<String, Any?>>> =
-    raw.toJsonMapOrEmpty().mapValues { (_, v) -> v.toJsonListOfMaps() }
+/**
+ * Coerces a bundle's `slots` (slot -> array of entry objects) to the shape [reassembleGedraConfig] takes, after
+ * refusing what would otherwise be dropped silently: a slot name that is not one of [knownSlots] (a typo, which
+ * `reassembleGedraConfig` reads past by name), and a slot whose value is not an array (`toJsonListOfMaps` turns
+ * a bare object into an empty list). Either is a lost slot -- and since a bundle write is authoritative, a lost
+ * slot is a *deleted* one -- so it is a 400 rather than a quiet no-op.
+ */
+private fun slotsOf(raw: Any?, knownSlots: Set<String>): Map<String, List<Map<String, Any?>>> {
+    val map = raw.toJsonMapOrEmpty()
+    val unknown = map.keys - knownSlots
+    if (unknown.isNotEmpty()) {
+        throw KdrException.mkInput(
+            "Unknown config slot(s): ${unknown.joinToString(", ")}. A bundle's slots are " +
+                "${knownSlots.joinToString(", ")}.",
+        )
+    }
+    return map.mapValues { (slot, v) ->
+        if (v !is List<*>) {
+            throw KdrException.mkInput("Config slot '$slot' must be an array of entries.")
+        }
+        v.toJsonListOfMaps()
+    }
+}
 
 /** A listing summary of one config revision. */
 private fun summaryOf(row: GedraConfigRow): Map<String, Any?> = dropNulls(

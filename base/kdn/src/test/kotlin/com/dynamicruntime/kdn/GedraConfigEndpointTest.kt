@@ -4,7 +4,9 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.CLC
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -16,7 +18,9 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.ints.shouldBeLessThan
 import io.kotest.matchers.shouldNotBe
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The config edit endpoints (issue #627), driven over the in-process HTTP client so the `clientAdmin` section
@@ -121,5 +125,64 @@ class GedraConfigEndpointTest : StringSpec({
             CFEP.bundleWrite,
             mapOf(CFEP.name to "x", CFEP.namespaceField to namespace, CFEP.slots to slots("x")),
         )
+    }
+
+    "an unknown slot key is refused rather than silently dropped" {
+        // A typo'd slot name would be read past by the reassembler and, since a bundle write is authoritative,
+        // its intended slot would be deleted. Refused as bad input instead.
+        admin().expectError(
+            EXC.badInput,
+            CFEP.bundleWrite,
+            mapOf(
+                CFEP.name to "typo",
+                CFEP.namespaceField to namespace,
+                CFEP.slots to mapOf("cfactDefs" to listOf(mapOf(CCT.name to "x", CCT.group to "g", CCT.description to "d"))),
+            ),
+        )
+    }
+
+    "a slot whose value is not an array is refused" {
+        admin().expectError(
+            EXC.badInput,
+            CFEP.bundleWrite,
+            mapOf(
+                CFEP.name to "notarray",
+                CFEP.namespaceField to namespace,
+                // An object, not an array -- which would coerce to an empty slot and delete it.
+                CFEP.slots to mapOf(CCT.cfactDef to mapOf(CCT.name to "x")),
+            ),
+        )
+    }
+
+    "authoring into another client's namespace is refused" {
+        // The caller's client is `public`; `hubconfig` belongs to `hub`, so the general ownership rule refuses
+        // it -- the same rule the reserved-namespace refusal is one case of.
+        val u = admin()
+        u.selfClient() shouldNotBe CL.hub // guard: the test only means something from a non-hub client
+        u.expectError(
+            EXC.badInput,
+            CFEP.bundleWrite,
+            mapOf(
+                CFEP.name to "hijack",
+                CFEP.namespaceField to CLC.namespaceOf(CL.hub),
+                CFEP.slots to mapOf(
+                    CCT.cfactDef to listOf(mapOf(CCT.name to "x", CCT.group to "g", CCT.description to "d")),
+                ),
+            ),
+        )
+    }
+
+    "the listing is ordered by recency, most-recently-written first" {
+        val u = admin()
+        cxt.instanceConfig.clock.freeze()
+        // `older` is written first, then the clock advances and `newer` is written -- so by recency `newer`
+        // precedes `older`, the opposite of their alphabetical order, which is what tells the two rules apart.
+        writeBundle(u, "aaa_older", "older")
+        cxt.instanceConfig.clock.advanceBy(5.seconds)
+        writeBundle(u, "zzz_newer", "newer")
+
+        val names = u.getItems(CFEP.bundles).map { it[CFEP.name].toOptStr() }
+        names.indexOf("zzz_newer") shouldBeLessThan names.indexOf("aaa_older")
+        cxt.instanceConfig.clock.unfreeze()
     }
 })
