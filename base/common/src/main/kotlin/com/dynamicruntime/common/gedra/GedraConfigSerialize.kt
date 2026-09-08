@@ -2,12 +2,11 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.context.KdrCxtBase
-import com.dynamicruntime.common.gedra.workflow.WfDef
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.qualifyTypeName
 import com.dynamicruntime.common.schema.refTargetName
-import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -31,6 +30,16 @@ import com.dynamicruntime.common.util.toOptStr
  * persist and consume what this produces.
  */
 fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?>>> {
+    // A stored config is a client's, and config traits are hardwired by the runtime (#316) -- never authored as
+    // data, never on a row. One carrying them cannot be stored faithfully (its slots have no home and their
+    // generated types would misfile as directly-declared ones), so refuse it here rather than silently corrupt
+    // the round trip. In practice only `coreConfigTraits` itself has any, and it is not something anyone stores.
+    if (config.configTraits.isNotEmpty()) {
+        throw KdrException.mkConv(
+            "Config '${config.gedraId}' declares config traits (${config.configTraits.keys}), which are hardwired " +
+                "and cannot be stored on a row. Only a client configuration is stored.",
+        )
+    }
     val generated = generatedTypeNames(config)
     val out = linkedMapOf<String, List<Map<String, Any?>>>()
     config.client?.let { out[CCT.clientDef] = listOf(it.toInfo()) }
@@ -128,6 +137,9 @@ private fun traitToEntry(config: GedraConfig, trait: GedraTrait): Map<String, An
     put(CCT.typeName, trait.typeName)
     put(CCT.appliesTo, trait.appliesTo.map { it.name })
     if (trait.primaryKey.isNotEmpty()) put(CCT.primaryKey, trait.primaryKey)
+    // The description lives on the generated entry type, not on `GedraTrait` (`traitEntry` puts it there via
+    // `variantBranch`), so read it back from there -- otherwise a store/load cycle strips a trait's docs.
+    config.defs[trait.typeName].toJsonMapOrEmpty()[SCH.description].toOptStr()?.let { put(CCT.description, it) }
     val inlineName = inlineDataTypeName(config, trait)
     put(CCT.dataSchema, if (inlineName != null) config.defs[inlineName] ?: trait.dataSchema else trait.dataSchema)
     trait.stateClass?.let { put(CCT.stateClass, it.name) }
@@ -155,13 +167,14 @@ private fun GedraConfigBuilder.reassembleTrait(entry: Map<String, Any?>, state: 
     val appliesTo = entry[CCT.appliesTo].toJsonListOfStrings()
         .mapNotNull { name -> GedraDataType.entries.firstOrNull { it.name == name } }.toSet()
     val primaryKey = entry[CCT.primaryKey].toJsonListOfStrings()
+    val description = entry[CCT.description].toOptStr()
     val dataSchema = entry[CCT.dataSchema].toJsonMapOrEmpty()
     if (state) {
         val stateClass = StateTraitClass.entries.firstOrNull { it.name == entry[CCT.stateClass].toOptStr() }
             ?: StateTraitClass.asserted
-        stateTrait(typeName, traitId, appliesTo, stateClass, primaryKey = primaryKey) { data.putAll(dataSchema) }
+        stateTrait(typeName, traitId, appliesTo, stateClass, description, primaryKey) { data.putAll(dataSchema) }
     } else {
-        trait(typeName, traitId, appliesTo, primaryKey = primaryKey) { data.putAll(dataSchema) }
+        trait(typeName, traitId, appliesTo, description, primaryKey) { data.putAll(dataSchema) }
     }
 }
 

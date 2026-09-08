@@ -2,8 +2,12 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
@@ -29,7 +33,7 @@ class GedraConfigSerializeTest : StringSpec({
                 enabledEnvironments = setOf(ENV.unit, ENV.local),
             ),
         )
-        trait("AcmeNoteEntry", "acmeNote", setOf(GedraDataType.formDoc)) {
+        trait("AcmeNoteEntry", "acmeNote", setOf(GedraDataType.formDoc), "A note on the doc.") {
             property("text", "The note.", required = true)
         }
         type("AcmeShared") {
@@ -79,6 +83,16 @@ class GedraConfigSerializeTest : StringSpec({
         reassembled.defs.keys shouldContain "acmeconfig.AcmeShared"
         // The inline trait's data really was carried as a body, not a bare ref, so its shape survives.
         reassembled.defs["acmeconfig.AcmeNoteData"].toString().contains("text") shouldBe true
+        // The trait's description lives on its generated entry type, and survives the round trip -- it is read
+        // back from there on serialize and put back by `trait(...)` on reassembly (issue #613 review).
+        reassembled.defs["acmeconfig.AcmeNoteEntry"].toJsonMapOrEmpty()[SCH.description] shouldBe "A note on the doc."
+    }
+
+    // Config traits are hardwired, never stored -- so a config carrying them (only `coreConfigTraits` does) is
+    // refused rather than silently misfiled (issue #613 review).
+    "a config carrying config traits is refused, since they cannot be stored" {
+        val ex = shouldThrow<KdrException> { gedraConfigToEntries(coreConfigTraits(cxt)) }
+        (ex.message ?: "").contains("config traits") shouldBe true
     }
 
     "an inline trait stores its data body; a shared-ref trait stores a ref" {
