@@ -40,7 +40,6 @@ import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.layoutTemplateProblems
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.schema.SchLayout
-import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType

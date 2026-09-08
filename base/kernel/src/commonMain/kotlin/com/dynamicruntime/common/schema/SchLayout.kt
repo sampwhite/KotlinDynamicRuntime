@@ -360,7 +360,7 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
         }
         if (analysis.refs.isNotEmpty()) {
             problems.add(
-                "$where: the '${SCH.layout}' heading uses a frontend fragment pull ('${'$'}{@t}'); a layout fragment " +
+                $$"$$where: the '$${SCH.layout}' heading uses a frontend fragment pull ('${@t}'); a layout fragment " +
                     "pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
             )
         }
@@ -375,7 +375,7 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
             }
             if (analysis.refs.isNotEmpty()) {
                 problems.add(
-                    "$where: the '${SCH.layout}' $kind for '${field.field}' uses a frontend fragment pull ('${'$'}{@t}'); " +
+                    $$"$$where: the '$${SCH.layout}' $$kind for '$${field.field}' uses a frontend fragment pull ('${@t}'); " +
                         "a layout fragment pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
                 )
             }

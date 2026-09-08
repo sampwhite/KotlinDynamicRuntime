@@ -95,7 +95,7 @@ class WorkflowViewTest : StringSpec({
         v.containsKey(WFD.tasks) shouldBe false
     }
 
-    "the view carries a self-contained \$defs: the trait data types it references, and no more" {
+    $$"the view carries a self-contained $defs: the trait data types it references, and no more" {
         // globex: the one data type its `name` trait renders against, present in the response's own \$defs so a
         // page resolves the ref without a second fetch. The schemaRef names exactly that key.
         val g = creationView(globex, SC.globex)

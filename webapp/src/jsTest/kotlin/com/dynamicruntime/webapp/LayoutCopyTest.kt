@@ -41,8 +41,8 @@ class LayoutCopyTest {
         label = null,
         fields = listOf(
             SchLayoutField("topic", label = "Topic", description = "Pick the subject.", hint = null),
-            SchLayoutField("notes", label = "Notes about \${topic}", description = null, hint = null),
-            SchLayoutField("year", label = null, description = null, hint = "Any year from \${min} to \${max}."),
+            SchLayoutField("notes", label = $$"Notes about ${topic}", description = null, hint = null),
+            SchLayoutField("year", label = null, description = null, hint = $$"Any year from ${min} to ${max}."),
         ),
     )
 
@@ -87,7 +87,7 @@ class LayoutCopyTest {
     @Test
     fun aBrokenSubstitutionFallsBackToTheCopyAsWritten() {
         // A `${'$'}{…}` the data cannot resolve must not blank the label; it shows as written rather than throwing.
-        val broken = SchLayout("acme", null, listOf(SchLayoutField("topic", "Label \${missing.deep.path}", null, null)))
-        assertEquals("Label \${missing.deep.path}", layoutCopy(type, "topic", emptyMap(), optsWith(broken))!!.label)
+        val broken = SchLayout("acme", null, listOf(SchLayoutField("topic", $$"Label ${missing.deep.path}", null, null)))
+        assertEquals($$"Label ${missing.deep.path}", layoutCopy(type, "topic", emptyMap(), optsWith(broken))!!.label)
     }
 }
