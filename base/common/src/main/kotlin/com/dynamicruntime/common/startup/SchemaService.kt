@@ -32,15 +32,14 @@ import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.searchParamCollisions
 import com.dynamicruntime.common.gedra.withSearchProperties
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.layoutFieldProblems
-import com.dynamicruntime.common.content.MarkdownFragmentService
-import com.dynamicruntime.common.schema.SchLayout
-import com.dynamicruntime.common.util.analyzeTemplate
-import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.layoutTemplateProblems
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
+import com.dynamicruntime.common.schema.SchLayout
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
@@ -59,6 +58,7 @@ import com.dynamicruntime.common.schema.requiredGateProblem
 import com.dynamicruntime.common.schema.requiredVisibleWhenProblems
 import com.dynamicruntime.common.schema.resolveOptionsSources
 import com.dynamicruntime.common.schema.visibleWhenProblems
+import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.addDays
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -414,15 +414,6 @@ class SchemaService : ServiceInitializer {
         }
     }
 
-    /**
-     * The problems with a layout's **backend** fragment pulls (issue #605) -- a `%{@t("…")}` in a `label` /
-     * `description` / `hint` that names no fragment this deployment has. Complements [layoutTemplateProblems]
-     * (which runs the frontend `${…}` pass): this runs the `%`-prefix pass, reports a malformed backend block,
-     * and resolves every **literal**, un-guarded pull against [client]'s fragments -- a two-part key against the
-     * layout's `fragmentFileId`, a three-part key outright -- failing the boot on a miss, the same rule
-     * `checkFragments` holds a fragment file's own pulls to. A guarded pull (`%{@t(x) ?: "…"}`) and a computed
-     * key are left to the delivery's graceful fallback, exactly as the fragment layer leaves them.
-     */
     /**
      * Malformed **backend** `%{...}` blocks in a layout's copy (issue #605) -- the registry-free half of the
      * fragment-pull check. A layout `label` / `description` / `hint` may carry a `%{@t("…")}` pull resolved at
