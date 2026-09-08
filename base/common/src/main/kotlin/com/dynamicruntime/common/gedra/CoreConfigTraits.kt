@@ -145,6 +145,11 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     ) {
         property(CCT.traitId, "The trait this usage rule is for.", required = true)
         property(CCT.label, "The column label the listing shows.", required = true)
+        // A string-script template, stored as text -- but unlike `dataSchema`/`schema`, which parse their body
+        // via `schemaDocument()`, nothing checks this expression here. It matters because a malformed one fails
+        // *silently*: `TraitUsage` evaluates it with `evalTemplate` under a `runCatching { }.getOrDefault("")`,
+        // so a typo blanks the column for every row rather than surfacing. The write path (#627) should
+        // parse-validate it (`checkTemplateSyntax`) at store time, the way it validates a schema body.
         property(CCT.display, "The string-script expression evaluated against the trait's data for the value.", required = true)
         property(CCT.kind, "How the value reads -- what a search treats it as.") { options(UsageKind.entries) }
         property(CCT.substring, "For a string value, whether the search also offers a substring match.") {

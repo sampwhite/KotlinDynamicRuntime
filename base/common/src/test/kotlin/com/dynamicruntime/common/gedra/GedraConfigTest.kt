@@ -251,4 +251,24 @@ class GedraConfigTest : StringSpec({
         traitData.properties.getValue(CCT.appliesTo).valueType.itemType.shouldNotBeNull()
             .options.shouldNotBeNull().map { it.value } shouldContainExactly GedraDataType.entries.map { it.name }
     }
+
+    // The enum-bounded fields on the other slots hold their closed sets (issue #625): a stored config cannot
+    // carry an unrecognized usage kind or state class, and the cfact slot keeps its declaration shape.
+    "the enum-bounded slot fields carry their closed sets, and cfactDef keeps its declaration shape" {
+        val types = parseSchemaTypes(
+            coreConfigTraits(cxt).defs,
+            existingTypes = parseSchemaTypes(
+                WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+            ),
+        )
+        fun slotData(entryType: String) = types.getValue("globalconfig.$entryType").properties.getValue(GE.data).valueType
+
+        slotData("UsageDefEntry").properties.getValue(CCT.kind).valueType
+            .options.shouldNotBeNull().map { it.value } shouldContainExactly UsageKind.entries.map { it.name }
+        slotData("StateTraitDefEntry").properties.getValue(CCT.stateClass).valueType
+            .options.shouldNotBeNull().map { it.value } shouldContainExactly StateTraitClass.entries.map { it.name }
+        // Declaration only: name/group/description/toFrontend, and nothing that could author a production.
+        slotData("CFactDefEntry").properties.keys.toList() shouldContainExactly
+            listOf(CCT.name, CCT.group, CCT.description, CCT.toFrontend)
+    }
 })
