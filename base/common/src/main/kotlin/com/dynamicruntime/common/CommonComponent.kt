@@ -24,6 +24,7 @@ import com.dynamicruntime.common.gedra.GedraService
 import com.dynamicruntime.common.gedra.clientCatalogSchema
 import com.dynamicruntime.common.gedra.coreClients
 import com.dynamicruntime.common.gedra.coreTraits
+import com.dynamicruntime.common.gedra.gedraConfigSchema
 import com.dynamicruntime.common.gedra.gedraConfigTables
 import com.dynamicruntime.common.gedra.gedraDataTables
 import com.dynamicruntime.common.gedra.gedraSchema
@@ -145,6 +146,7 @@ class CommonComponent : ComponentDefinition {
         // Gedra config storage (issue #612): the two tables a stored client configuration lives in, keyed so
         // every revision of one config locks on one root row. Nothing reads or writes them yet (#613, #614).
         collector.addTables(gedraConfigTables(cxt), appOnly)
+        collector.addModule(gedraConfigSchema(cxt), appOnly)
     }
 
     /** The app-bar menu, registered as a UiBlock (issue #458) so its items can be varied without an `if`. */
