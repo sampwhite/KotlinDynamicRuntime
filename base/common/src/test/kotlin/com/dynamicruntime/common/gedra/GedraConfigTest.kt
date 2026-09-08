@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.schema.schemaDefs
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
@@ -199,9 +200,14 @@ class GedraConfigTest : StringSpec({
         val config = coreConfigTraits(cxt)
         config.configTraits.keys.toList() shouldContainExactly listOf(CCT.clientDef, CCT.workflowDef, CCT.schemaDef)
         config.traits.isEmpty() shouldBe true
-        // The workflow trait *refers to* the definition schema rather than redeclaring it, so this config's types
-        // resolve only beside it -- which is how they are compiled at boot, and what `existingTypes` is for.
-        val types = parseSchemaTypes(config.defs, existingTypes = parseSchemaTypes(WfDefSchema.defs(cxt)))
+        // The client and workflow traits *refer to* the canonical types rather than redeclaring them, so this
+        // config's types resolve only beside those -- which is how they are compiled at boot, and what
+        // `existingTypes` is for. The client trait names `clientCatalog.ClientInfo`, not a local copy.
+        val canonical = parseSchemaTypes(
+            WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+        )
+        val types = parseSchemaTypes(config.defs, existingTypes = canonical)
+        types.getValue("globalconfig.ClientDefEntry").properties.getValue(GE.data).refName shouldBe CLD.infoTypeQualified
         // The schema-definition trait is the one #316 exists for: its body is checked by parsing it.
         val schemaData = types.getValue("globalconfig.SchemaDefEntry").properties.getValue(GE.data).valueType
         schemaData.properties.getValue(CCT.schema).valueType.schemaDocument shouldBe true

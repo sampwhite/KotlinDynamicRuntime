@@ -863,9 +863,15 @@ fun coerceStringToObject(
 /**
  * Validates a `g-schemaDocument` object (issue #316): the value is a JSON Schema type body, and it is checked
  * by **parsing** it with [parseSchemaTypes] -- the same parser the schema store runs -- rather than against a
- * schema for schema. That gets the checking that already exists and matters (an unknown storage abbreviation, a
- * `oneOf` without a discriminator, a branch with no `const`, a `$ref` to nothing) and degrades honestly: what
- * the parser does not understand, this does not claim to have checked.
+ * schema for schema. That gets the checking the parser already does and that matters -- a `oneOf` without a
+ * discriminator, a branch with no `const`, a property/item/branch `$ref` to a type nothing defines -- and
+ * degrades honestly: what the parser does not check, this does not claim to have checked.
+ *
+ * **The parser is not a complete validator, so this is not either**, and the gap is worth naming because #316
+ * exists to catch bad schemas: `parseSchemaTypes` leaves a *bare, top-level* `$ref` unresolved (it resolves
+ * refs only in property, item and branch positions), and it does not reject an unrecognized `type` value. A
+ * caller that needs those rejected -- the config write endpoint (#613) -- has to add the check; this reports
+ * only what the parser refuses.
  *
  * The same shape as [validateDate]: parse, and turn the parser's refusal into one [SchFailCode.badValue]
  * carrying it as the cause. **One** failure, not a list -- the parser stops at the first defect, unlike the
@@ -877,6 +883,8 @@ fun coerceStringToObject(
 fun validateSchemaDocument(
     type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>, opts: SchOpts,
 ): Any? {
+    // Guards a **direct** caller (the #613 endpoint validating a raw submitted body); unreachable from
+    // [validateValue], where the kObject type check has already established a map before the short-circuit.
     val body = value as? Map<*, *>
     if (body == null) {
         failures.add(type.failure(path, SchFailCode.wrongType, "This must be a schema definition (an object)."))

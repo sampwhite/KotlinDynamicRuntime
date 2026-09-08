@@ -157,6 +157,23 @@ class GedraConfigCollectorTest : StringSpec({
         collector.issues.shouldBeEmpty()
     }
 
+    // The union-feeding accessors partition by trait flavor (issue #316): `traitsFor` and `stateTraits`
+    // manufacture the data and state unions, and a config trait must reach neither, or a `ClientDefEntry` branch
+    // would land in a form document's data union. Asserted at the accessors, not just at the config's maps,
+    // because the accessors are what the union builders actually read.
+    "the collector keeps config traits out of the data and state accessors" {
+        val collector = GedraConfigCollector()
+        val mixed = gedraConfig(devCxt, "mixed", GCFG.globalNamespace) {
+            trait("DName", "dname", setOf(GedraDataType.formDoc)) { property("dname", "D.", required = true) }
+            stateTrait("SName", "sname", setOf(GedraDataType.formDoc), StateTraitClass.asserted) { property("sname", "S.") }
+            configTrait("CName", "cname", setOf(GedraConfigType.configDoc)) { property("cname", "C.") }
+        }
+        collector.add(devCxt, mixed) shouldBe true
+        collector.traitsFor(GID.globalClient).map { it.traitId } shouldContainExactly listOf("dname")
+        collector.stateTraits().map { it.traitId } shouldContainExactly listOf("sname")
+        collector.configTraits().map { it.traitId } shouldContainExactly listOf("cname")
+    }
+
     // Config traits (issue #316) join the one global id space: a config trait may not reuse a data trait's id
     // declared by another config, any more than a state trait may.
     "a config trait id cannot reuse a data trait's id, across configs" {

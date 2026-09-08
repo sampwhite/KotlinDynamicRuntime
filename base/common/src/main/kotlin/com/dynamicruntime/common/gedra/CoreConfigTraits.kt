@@ -34,12 +34,14 @@ object CCT {
  * standalone task definition to key an entry by. The workflow trait carries its tasks. If per-task accounting
  * turns out to matter under the diff-before-stamp rule (#613), splitting them out is additive.
  *
- * Two of the three bind to shapes that already exist as schema: the client definition to `ClientInfo`
- * ([ClientDef.defineInfoType]) and the workflow to the definition schema under [WFD.namespace] -- which is
- * *referenced*, not redeclared, so this config's types resolve only beside that schema, exactly as they will at
- * boot where every component's `$defs` are compiled together. The third, the schema definition, is the one that
- * has no schema of its own to bind to: its body is validated by **parsing** it (`schemaDocument()`), the reason
- * #316 exists.
+ * Two of the three bind to shapes that already exist as schema, and both by **reference** rather than by
+ * redeclaring: the client definition to the canonical `ClientInfo` ([CLD.infoTypeQualified], the one
+ * `clientCatalogSchema` declares) and the workflow to the definition schema under [WFD.namespace]. Referencing
+ * rather than minting a copy is what keeps this config in step -- a field added to the real `ClientInfo` reaches
+ * the stored client definition with no second declaration to remember. Both refs resolve at boot, where every
+ * component's `$defs` are compiled together (`clientCatalogSchema` and the workflow schema are always present).
+ * The third, the schema definition, is the one that has no schema of its own to bind to: its body is validated
+ * by **parsing** it (`schemaDocument()`), the reason #316 exists.
  *
  * **Declared, not yet contributed.** Nothing registers this config with a component: the entries it describes
  * are stored by #613 and loaded by #614, and until a row can hold one, contributing these types would put three
@@ -47,10 +49,9 @@ object CCT {
  * definitions by type name, the client single-instance.
  */
 fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.configName, GCFG.globalNamespace) {
-    ClientDef.defineInfoType(this)
     configTrait(
         "ClientDefEntry", CCT.clientDef, setOf(GedraConfigType.configDoc),
-        dataType = CLD.infoTypeName,
+        dataType = CLD.infoTypeQualified,
         description = "The client this configuration defines, as a stored entry.",
     )
     configTrait(
