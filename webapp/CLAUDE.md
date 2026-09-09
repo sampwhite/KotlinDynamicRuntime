@@ -217,9 +217,28 @@ the single-choice field. It does not fix it here (tried; no observable differenc
 rather than left in looking load-bearing). Standard tags-mode behavior, and acceptable, but if an open
 multi-select ever becomes a surface people use a lot, this is what to improve.
 
-**Testing note, and it is the good news:** an `AutoComplete` **can** be driven by the browser tools — typing
-and clicking an option both work — because its control is a real `<input>`. A plain antd `Select` cannot be
-(see `deferred-work.md`), so an open choice field is the one choice widget an agent can verify end to end.
+**Testing note — measured, on the `#page=debug&tool=choice` debug page (`DebugChoicePage.kt`).** An
+`AutoComplete` is driven by *typing*, because the typed text **is** its value; no popup is involved. A plain
+`Select` resisted the browser tools for three independent reasons, none of them a bug in the widget:
+
+1. In a **hidden** browser pane `requestAnimationFrame` never fires, so antd's popup freezes at the first
+   frame of its open animation — **0×0** — and a closed one lingers fully drawn at the first frame of its
+   close. A coordinate click on what a screenshot shows lands on the page behind, and antd closes the popup as
+   an outside click. Screenshots show the *opposite* of the true state; measure the DOM instead.
+2. With `virtual` on (the default) the `role="option"` items are a 0×0 accessibility mirror with **no click
+   handler** (the visible items have the handler and no role), so a click by accessibility ref cannot select.
+   `virtual = false` puts the roles on the real items.
+3. The tools' `key` action sends `keyCode`/`which` = 0, and rc-select's list navigation switches on `which`,
+   so ArrowDown/Enter from it are inert. `type` is fine.
+
+**What drives one, with the popup still frozen:** click the combobox to open it (it opens on mousedown), then
+from `javascript_tool` dispatch `KeyboardEvent`s to the inner `<input>` with `keyCode`/`which` set
+(`Object.defineProperty`), keydown + keyup per key, yielding a microtask (`await null`) between keys so React
+commits the move before Enter. Measured on single, `mode="multiple"`, `virtual=false` and `showSearch`, and
+confirmed on the Users page's Access-level select with **no change to the widget**: it has no `id` prop, but its
+inner `<input>` is the editor's first `.ant-select input` and is `document.activeElement` once opened (antd
+generates an id for it anyway). Setting `theme.token.motion = false` on a `ConfigProvider` removes the
+animation, and then a coordinate click on an option selects as well.
 
 ## Errors: never a blank page (issue #223)
 
@@ -370,6 +389,7 @@ test drive it with nothing but a link:
 #page=debug                  index of what is available
 #page=debug&tool=state       resolved app config + refresh generation
 #page=debug&tool=fault       throws while rendering -> the page boundary catches
+#page=debug&tool=choice      the antd choice widgets, instrumented with an event trace (see "Choice widgets")
 #<any page>&fault=shell      throws in the app bar   -> the backstop catches
 ```
 
