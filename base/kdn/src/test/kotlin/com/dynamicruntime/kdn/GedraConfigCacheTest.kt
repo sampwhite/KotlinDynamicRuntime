@@ -99,4 +99,26 @@ class GedraConfigCacheTest : StringSpec({
             svc.configCache = held
         }
     }
+
+    // Two configs written in the same millisecond share an `updatedAt`, and the two sources feed the listing in
+    // different orders (SQL by class id, the cache by load order) -- so only a total order keeps them agreeing.
+    "configs written in the same millisecond list in one order from the cache and from SQL" {
+        val svc = service()
+        cxt.instanceConfig.clock.freeze()
+        try {
+            for (n in listOf("tieZulu", "tieAlpha")) {
+                svc.writeConfig(asClient(), gedraConfig(cxt, n, "${client}config", client) { cfact("t", "grp", n) })
+            }
+            val viaCache = svc.listConfigs(asClient()).map { it.gedraId.fullId }
+            val held = svc.configCache
+            svc.configCache = null
+            val viaSql = try { svc.listConfigs(asClient()).map { it.gedraId.fullId } } finally { svc.configCache = held }
+            viaSql shouldContainExactly viaCache
+            // The tie resolves by id, descending -- so the order is a fact of the data, not of the source.
+            val tied = viaCache.filter { it.contains("tie") }
+            tied shouldContainExactly tied.sortedDescending()
+        } finally {
+            cxt.instanceConfig.clock.unfreeze()
+        }
+    }
 })

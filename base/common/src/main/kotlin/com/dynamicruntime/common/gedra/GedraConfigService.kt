@@ -269,9 +269,21 @@ class GedraConfigService : ServiceInitializer {
     }
 
     /**
+     * The order [listConfigs] returns: most recently written first, with the revision id breaking a tie so the
+     * order is **total** (issue #615 review). It has to be total because the two sources feed the sort in
+     * different orders -- SQL by `configId asc`, the cache in load order -- and the sort is stable, so two configs
+     * written in the same millisecond would otherwise come back in one order from the cache and the other from
+     * SQL. The same shape as `GedraDataService.gedraListOrder`, for the same reason.
+     */
+    private val configListOrder: Comparator<GedraConfigRow> =
+        compareByDescending<GedraConfigRow> { it.updatedAt ?: Instant.DISTANT_PAST }
+            .thenByDescending { it.gedraId.fullId }
+
+    /**
      * The latest revision of each class among [rows] (by the shared [latestRevisionRow] rule), extracted and
-     * ordered most-recently-written first. The single reduction both [listConfigs] paths run, so the cached
-     * listing and the SQL listing are the same computation over different row sources.
+     * ordered by [configListOrder]. The single reduction both [listConfigs] paths run, so the cached listing and
+     * the SQL listing are the same computation over different row sources -- which is only enough because the
+     * order it applies is total.
      */
     private fun latestPerClass(rows: List<Map<String, Any?>>): List<GedraConfigRow> =
         rows.groupBy { it[GC.configId].toOptStr() ?: "" }
@@ -279,7 +291,7 @@ class GedraConfigService : ServiceInitializer {
             .values
             .mapNotNull { latestRevisionRow(it) }
             .map { GedraConfigRow.extract(gedraService, it) }
-            .sortedByDescending { it.updatedAt ?: Instant.DISTANT_PAST }
+            .sortedWith(configListOrder)
 
     /**
      * The "latest revision of this class" query -- ordered so the first enabled row is the latest, and confined
