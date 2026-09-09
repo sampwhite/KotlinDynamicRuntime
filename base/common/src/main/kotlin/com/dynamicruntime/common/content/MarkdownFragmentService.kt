@@ -536,6 +536,26 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         }
     }
 
+    /**
+     * Replaces [client]'s fragment overlays with [sources] and forgets every merge done for that client (issue
+     * #616). The registry the boot assembled is rewritten with the client's old layers removed and the new ones
+     * added; then each `fileId|client` merge is dropped **together with its `byBuildId` row** -- the build id is
+     * a content hash, so a versioned URL minted from the old merge must stop answering rather than keep serving
+     * the copy the reload replaced. Shared merges and other clients' are untouched. Called under the reload
+     * lock, so the read-modify-write of the registry is not raced by another reload.
+     */
+    fun reloadClient(cxt: KdrCxt, client: String, sources: List<FragmentSource>) {
+        val kept = registeredFragmentSources(cxt).filter { it.client != client }
+        cxt.instanceConfig.put(FRAG.registryKey, kept + sources)
+        val suffix = "|$client"
+        for ((key, merged) in effectiveCache.entries.toList()) {
+            if (key.endsWith(suffix)) {
+                effectiveCache.remove(key)
+                byBuildId.remove("${key.removeSuffix(suffix)}|${merged.buildId}")
+            }
+        }
+    }
+
     /** The content of [fileId] that [buildId] names, or null when this node has no such version of it. */
     fun fragmentsWithBuildId(cxt: KdrCxt, fileId: String, buildId: String): EffectiveFragments? {
         val key = "$fileId|$buildId"

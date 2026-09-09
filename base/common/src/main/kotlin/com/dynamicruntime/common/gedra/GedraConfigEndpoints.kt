@@ -54,12 +54,14 @@ object CFEP {
     const val bundleWrite = "/${SECT.clientAdmin}/config/bundle/write"
     const val bundlePublish = "/${SECT.clientAdmin}/config/bundle/publish"
     const val traits = "/${SECT.clientAdmin}/config/traits"
+    const val reload = "/${SECT.clientAdmin}/config/reload"
 
     // --- type names ---
     const val bundleType = "ConfigBundle"
     const val bundleWriteType = "ConfigBundleWrite"
     const val summaryType = "ConfigSummary"
     const val traitEntryType = "ConfigTraitEntry"
+    const val reloadResultType = "ConfigReloadResult"
 
     // --- field names (each matches its value) ---
     const val name = "name"
@@ -73,6 +75,9 @@ object CFEP {
     const val entries = "entries"
     const val createdAt = "createdAt"
     const val updatedAt = "updatedAt"
+    const val loaded = "loaded"
+    const val evictedTypes = "evictedTypes"
+    const val issues = "issues"
 }
 
 fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace) {
@@ -220,6 +225,36 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
             ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
         row.entries
+    }
+
+    type(CFEP.reloadResultType) {
+        type = SCT.kObject
+        description = "What reloading a client's stored configuration on this node did."
+        property(CFEP.client, "The client reloaded.", required = true)
+        property(CFEP.loaded, "How many stored configurations the node now runs for the client.", required = true) { type = SCT.integer }
+        property(CFEP.evictedTypes, "Compiled-type cache entries dropped for the client's endpoints.", required = true) { type = SCT.integer }
+        property(CFEP.issues, "Problems reported while taking the configurations, as messages.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+    }
+
+    // The mechanism the multi-node sync trigger (#618) will call, exposed for an administrator to call by hand:
+    // this node re-reads the caller's client's stored configuration and rebuilds that client's derived state
+    // without a restart (issue #616). Per client only -- the caller's own, as every endpoint here is.
+    generalEndpoint(
+        CFEP.reload,
+        "Reloads this client's stored configuration on this node, without a restart.",
+        HttpMethod.POST,
+        outputRef = CFEP.reloadResultType,
+    ) { c, _ ->
+        val result = GedraConfigReload.reloadClient(c, c.client)
+        linkedMapOf(
+            CFEP.client to result.client,
+            CFEP.loaded to result.loaded,
+            CFEP.evictedTypes to result.evictedTypes,
+            CFEP.issues to result.issues.map { it.message },
+        )
     }
 }
 

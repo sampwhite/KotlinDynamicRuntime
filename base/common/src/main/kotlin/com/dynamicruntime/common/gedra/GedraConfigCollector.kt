@@ -229,6 +229,42 @@ class GedraConfigCollector {
         return false
     }
 
+    /**
+     * Un-registers [config] -- the exact reverse of [keep] -- so a client's stored configuration can be
+     * **replaced** on a running node (issue #616). Every claim the config made is withdrawn: its entry, its
+     * trait ownerships of all three kinds, and its namespace claim, the last only if it was the claimant (a
+     * namespace is first-come, so a config that merely used one another config claimed leaves the claim). Nothing
+     * else in the collector is touched, so a client's *source* configs stay in place while its data-loaded one
+     * is swapped out. Returns whether the config was held.
+     */
+    fun remove(config: GedraConfig): Boolean {
+        if (configsById.remove(config.gedraId.fullId) == null) {
+            return false
+        }
+        for (traitId in config.traits.keys) {
+            if (traitConfigs[traitId]?.gedraId == config.gedraId) {
+                traitOwners.remove(traitId); traitConfigs.remove(traitId)
+            }
+        }
+        for (traitId in config.stateTraits.keys) {
+            if (stateTraitConfigs[traitId]?.gedraId == config.gedraId) {
+                stateTraitOwners.remove(traitId); stateTraitConfigs.remove(traitId)
+            }
+        }
+        for (traitId in config.configTraits.keys) {
+            if (configTraitConfigs[traitId]?.gedraId == config.gedraId) {
+                configTraitOwners.remove(traitId); configTraitConfigs.remove(traitId)
+            }
+        }
+        // Withdraw the namespace claim only when no other kept config of the same owner still uses it.
+        if (namespaceOwners[config.namespace] == config.gedraId.client &&
+            configsById.values.none { it.namespace == config.namespace }
+        ) {
+            namespaceOwners.remove(config.namespace)
+        }
+        return true
+    }
+
     private fun keep(config: GedraConfig) {
         configsById[config.gedraId.fullId] = config
         namespaceOwners.putIfAbsent(config.namespace, config.gedraId.client)

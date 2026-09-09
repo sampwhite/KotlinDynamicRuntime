@@ -88,9 +88,38 @@ class SchemaService : ServiceInitializer {
     @KdrPrivate
     var isInit: Boolean = false
 
+    /**
+     * Everything a request resolves against, published as **one** immutable object under a `@Volatile`
+     * reference (issue #616): the global store, the per-client variants, and the cfact registries. They are
+     * coupled -- every store carries the same endpoint map, and a client's cfacts and its variant must be from
+     * the same configuration -- so they change together or not at all. A reader that has read the reference
+     * holds a consistent set for as long as it likes; a reload assembles a new one off to the side and swaps
+     * it in, the pattern `InternCache` uses. A request already in flight keeps the store it started with,
+     * because `KdrCxt.getSchema` memoizes per request.
+     */
+    class SchemaSnapshot(
+        val store: KdrSchemaStore,
+        val clientStores: Map<String, KdrSchemaStore>,
+        val cfactRegistries: CFactRegistries,
+    )
+
+    @Volatile
+    private var snapshot: SchemaSnapshot = SchemaSnapshot(KdrSchemaStore(), emptyMap(), CFactRegistries.empty)
+
+    /** Serializes reloads against each other; readers never take it. */
+    private val reloadLock = Any()
+
     /** The compiled schema store; empty until [checkInit] runs. */
-    var schemaStore: KdrSchemaStore = KdrSchemaStore()
-        private set
+    val schemaStore: KdrSchemaStore get() = snapshot.store
+
+    /**
+     * Retained from the boot for a running-node reload (issue #616): the forms-listing query type **before** the
+     * global usage parameters were merged onto it -- the collector's copy is overwritten with the augmented one
+     * at boot, so this is the only pristine copy -- and the shared endpoint set the client copies are minted
+     * from. Both are the inputs a single client's rebuild needs and that nothing else retains.
+     */
+    private var queryBase: Any? = null
+    private var sharedEndpoints: Map<String, KdrEndpoint> = emptyMap()
 
     /**
      * The options providers components contributed, keyed by the id a `g-optionsSource` names (issue #413).
@@ -152,6 +181,7 @@ class SchemaService : ServiceInitializer {
         // inherit global's parameters too).
         val queryName = formDocsQueryDefName()
         val queryBase = collected.defs[queryName]
+        this.queryBase = queryBase
         if (queryBase != null) {
             collected.defs[queryName] = withSearchProperties(queryBase, collected.gedraConfigs.usagesFor(GID.globalClient))
         }
@@ -177,8 +207,8 @@ class SchemaService : ServiceInitializer {
         // (The endpoints' access rules are checked in RequestService.checkInit, which owns them and runs in
         // the later service tier -- see the note there on why it cannot live here.)
 
-        schemaStore = store
-        cxt.instanceConfig.put(KdrSchemaStore.key, store)
+        sharedEndpoints = endpoints
+        publish(cxt, SchemaSnapshot(store, emptyMap(), CFactRegistries.empty))
         // Built after the global store, from it (issue #356). A variant is the same document with one
         // client's overlays applied and re-parsed, so it cannot exist until the document is complete.
         val variants = buildClientVariants(cxt, collected, store, queryBase)
@@ -194,7 +224,7 @@ class SchemaService : ServiceInitializer {
         val varyingClients = variants.keys + collected.clientCFacts.keys
         val clientEndpoints = buildClientEndpoints(cxt, availableEndpoints, varyingClients)
         if (clientEndpoints.isEmpty()) {
-            clientStores = variants
+            publish(cxt, SchemaSnapshot(store, variants, CFactRegistries.empty))
         } else {
             // Every store carries the **same** endpoint map, the final one. A variant built before the copies
             // existed would hold the map from before them, so anything resolving an endpoint through a
@@ -202,16 +232,7 @@ class SchemaService : ServiceInitializer {
             // parsed -- only the endpoint map changes -- so this costs a map merge and no re-parsing.
             val allEndpoints = endpoints + clientEndpoints.associateBy { it.collationKey }
             val withClients = KdrSchemaStore(types, allEndpoints, tables, collected.defs)
-            clientStores = varyingClients.associateWith { client ->
-                // A client that varies nothing about *schema* gets the global document with the full endpoint
-                // map -- present in this map rather than absent, because `hasEndpoints` reads it to decide
-                // whether to advertise the copies that were just made for that client. It is the very same
-                // store object, so its derived layouts and served defs are computed once and shared.
-                variants[client]?.let { KdrSchemaStore(it.types, allEndpoints, it.tables, it.defs) } ?: withClients
-            }
-            schemaStore = withClients
-            cxt.instanceConfig.put(KdrSchemaStore.key, withClients)
-            cxt.schemaStore = withClients
+            publish(cxt, SchemaSnapshot(withClients, wrapVariants(variants, varyingClients, withClients, allEndpoints), CFactRegistries.empty))
         }
         optionsProviders = collected.optionsProviders.toMap()
         checkOptionsSources(optionsProviders)
@@ -219,7 +240,7 @@ class SchemaService : ServiceInitializer {
         // been heard, and a client's declarations can only be held to "add, never redefine" against a
         // complete global set. Once built, it never changes -- which is what makes a registry something an
         // expression can be parsed against once and evaluated many times.
-        cfactRegistries = buildCFactRegistries(collected.cfacts, collected.cfactSources, collected.clientCFacts)
+        publish(cxt, snapshot.withCfacts(buildCFactRegistries(collected.cfacts, collected.cfactSources, collected.clientCFacts)))
         // After the registry exists (issue #545): a `g-visibleWhen` expression that does not parse would otherwise
         // fault the catalog at request time -- for one caller, on one surface -- rather than at boot.
         checkVisibleWhen()
@@ -494,8 +515,7 @@ class SchemaService : ServiceInitializer {
      * The cfacts each scope knows about (issue #455): the global set, and the additions of each client that
      * made any. Empty until [checkInit] runs.
      */
-    var cfactRegistries: CFactRegistries = CFactRegistries.empty
-        private set
+    val cfactRegistries: CFactRegistries get() = snapshot.cfactRegistries
 
     /**
      * The cfacts [client] may write in an expression: their own registry when they add any, otherwise the
@@ -545,8 +565,69 @@ class SchemaService : ServiceInitializer {
      * The schema each client sees, for the clients that vary something. Absent from this map means the global
      * store; see [storeFor].
      */
-    @KdrPrivate
-    var clientStores: Map<String, KdrSchemaStore> = emptyMap()
+    val clientStores: Map<String, KdrSchemaStore> get() = snapshot.clientStores
+
+    /** Publishes [next] as the set every new request resolves against, and mirrors the global store where it is read. */
+    private fun publish(cxt: KdrCxt, next: SchemaSnapshot) {
+        snapshot = next
+        cxt.instanceConfig.put(KdrSchemaStore.key, next.store)
+        cxt.schemaStore = next.store
+    }
+
+    private fun SchemaSnapshot.withCfacts(cfacts: CFactRegistries) = SchemaSnapshot(store, clientStores, cfacts)
+
+    /**
+     * Every varying client's store re-wrapped with the **same, final** endpoint map. A client that varies
+     * nothing about *schema* gets the global document with the full map -- present rather than absent, because
+     * `hasEndpoints` reads it to decide whether to advertise the copies just made for that client. Types and
+     * defs are reused as parsed; only the map changes, so this costs a merge and no re-parsing. Shared by the
+     * boot and by [reloadClient], which is why one client's endpoint change re-wraps every store: they all carry
+     * one map by identity, so a variant built against an older map would not find the very copies it is for.
+     */
+    private fun wrapVariants(
+        variants: Map<String, KdrSchemaStore>,
+        varyingClients: Set<String>,
+        withClients: KdrSchemaStore,
+        allEndpoints: Map<String, KdrEndpoint>,
+    ): Map<String, KdrSchemaStore> = varyingClients.associateWith { client ->
+        variants[client]?.let { KdrSchemaStore(it.types, allEndpoints, it.tables, it.defs) } ?: withClients
+    }
+
+    /**
+     * Rebuilds [client]'s derived schema off the current collector and swaps it in atomically (issue #616):
+     * its variant store, every client's endpoint copies (re-minted, since the copy set follows the varying set),
+     * every store re-wrapped with the new endpoint map, and its cfact registry. Assembled off to the side and
+     * published in one reference swap, so a request sees the old set or the new one and never a mix; anything
+     * that throws -- a variant that fails the narrowing check, a cfact a client may not redeclare -- throws
+     * **before** the swap and leaves the running set untouched. Serialized against other reloads.
+     *
+     * Returns the collation keys of [client]'s endpoint copies before and after, which is exactly the set of
+     * path-keyed type-cache entries the caller must evict: the copies' paths name the client, so their cached
+     * types are the ones a changed variant invalidates and no shared entry is touched.
+     */
+    fun reloadClient(cxt: KdrCxt, client: String): Set<String> = synchronized(reloadLock) {
+        val collected = collector ?: throw KdrException("$serviceName.reloadClient ran before onCreate.")
+        val current = snapshot
+        val global = current.store
+        val before = global.endpoints.values.filter { it.client == client }.map { it.collationKey }.toSet()
+
+        val variant = buildClientVariants(cxt, collected, global, queryBase, onlyClient = client)[client]
+        val variants = (current.clientStores - client) + (variant?.let { mapOf(client to it) } ?: emptyMap())
+        val varyingClients = variants.keys + collected.clientCFacts.keys
+        val clientEndpoints = buildClientEndpoints(cxt, sharedEndpoints.values, varyingClients)
+        val allEndpoints = sharedEndpoints + clientEndpoints.associateBy { it.collationKey }
+        val withClients = KdrSchemaStore(global.types, allEndpoints, global.tables, global.defs)
+        // Only this client's cfact registry is rebuilt (through the same additive-only check the boot runs); the
+        // rest are carried across by reference, since a client's registry is global plus its own.
+        val own = collected.clientCFacts[client].orEmpty()
+        val rebuilt = buildCFactRegistries(collected.cfacts, collected.cfactSources, mapOf(client to own)).byClient[client]
+        val byClient = (current.cfactRegistries.byClient - client) + (rebuilt?.let { mapOf(client to it) } ?: emptyMap())
+        val cfacts = CFactRegistries(current.cfactRegistries.global, byClient)
+
+        publish(cxt, SchemaSnapshot(withClients, wrapVariants(variants, varyingClients, withClients, allEndpoints), cfacts))
+        val after = allEndpoints.values.filter { it.client == client }.map { it.collationKey }.toSet()
+        before + after
+    }
 
     /**
      * The compiled schema [client] sees: their variant, or the global store when they have none (issue #356).

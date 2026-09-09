@@ -196,6 +196,19 @@ class RequestService : ServiceInitializer {
     private val outputTypeCache = ConcurrentHashMap<String, SchType>()
 
     /**
+     * Drops the compiled types cached under [collationKeys] (issue #616), so the next request to each re-parses
+     * against the store now published. A client reload changes that client's variant, and the copies whose
+     * paths name the client are exactly the entries parsed against it -- the caller passes their keys, before
+     * and after the reload, and no shared entry is touched. Absent keys are ignored.
+     */
+    fun evictTypes(collationKeys: Collection<String>) {
+        for (key in collationKeys) {
+            inputTypeCache.remove(key)
+            outputTypeCache.remove(key)
+        }
+    }
+
+    /**
      * Content servers consulted (in registration order) before endpoint dispatch, so a
      * service like the portal can serve HTML/static content from within the request
      * pipeline. Registered by services during their init; see [ContentServer].

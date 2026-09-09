@@ -37,6 +37,7 @@ class ClientService : ServiceInitializer {
     private var isInit: Boolean = false
 
     /** Every client this deployment declares, keyed by id, in contribution order. Present or not. */
+    @Volatile
     var clients: Map<String, ClientDef> = emptyMap()
         private set
 
@@ -85,6 +86,20 @@ class ClientService : ServiceInitializer {
                 "present in '$env': ${present.joinToString(", ").ifEmpty { "(none)" }}.",
         )
         isInit = true
+    }
+
+    /**
+     * Re-runs the client checks over the current collector and swaps the result in (issue #616): the one way a
+     * running node's client set follows a reloaded configuration. The whole check runs rather than one client's,
+     * because the checks are relational (a client extends another; a definition is dropped for what it includes)
+     * and only a complete pass can answer them; the map is replaced by reference, so readers see the old set or
+     * the new. A problem that would have refused the boot throws before the swap.
+     */
+    fun recheck(cxt: KdrCxt) {
+        val collected = collector ?: throw KdrException("$serviceName.recheck ran before onCreate.")
+        val result = checkClientDefs(cxt, collected.gedraConfigs)
+        clients = result.clients
+        issues = result.issues
     }
 
     @Suppress("ConstPropertyName")

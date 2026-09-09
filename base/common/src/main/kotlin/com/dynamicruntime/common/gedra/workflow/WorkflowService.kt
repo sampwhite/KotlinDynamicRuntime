@@ -24,7 +24,8 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 class WorkflowService : ServiceInitializer {
     override val serviceName: String = WorkflowService.serviceName
 
-    /** The registries, once built; [WorkflowRegistries.empty] before. */
+    /** The registries, once built; [WorkflowRegistries.empty] before. Volatile: a reload swaps it (issue #616). */
+    @Volatile
     var registries: WorkflowRegistries = WorkflowRegistries.empty
         private set
 
@@ -44,10 +45,22 @@ class WorkflowService : ServiceInitializer {
         SchemaService.get(cxt).checkInit(cxt)
         val fragmentService = MarkdownFragmentService.get(cxt)
 
-        val mode = gedraConfigCheckMode(cxt)
         val found = mutableListOf<GedraConfigIssue>()
+        registries = build(cxt, collector, clientService, fragmentService, found)
+        issues = found.toList()
+        isInit = true
+    }
+
+    /** The whole build over the current collector; run at boot, and again by [reloadClient]. */
+    private fun build(
+        cxt: KdrCxt,
+        collector: SchemaCollector,
+        clientService: ClientService,
+        fragmentService: MarkdownFragmentService,
+        found: MutableList<GedraConfigIssue>,
+    ): WorkflowRegistries {
         val clients: Map<String, ClientDef?> = clientService.presentClients.associateBy { it.clientId }
-        registries = buildWorkflowRegistries(
+        return buildWorkflowRegistries(
             cxt, collector.gedraConfigs, clients,
             overlaidTypes = { collector.clientOverlays[it]?.keys ?: emptySet() },
             fragments = { client, fileId, namespace, key ->
@@ -59,10 +72,26 @@ class WorkflowService : ServiceInitializer {
                     )
                 }
             },
-            mode = mode, issues = found,
+            mode = gedraConfigCheckMode(cxt), issues = found,
         )
-        issues = found.toList()
-        isInit = true
+    }
+
+    /**
+     * Rebuilds [client]'s workflow registry off the current collector and swaps it in (issue #616). The whole
+     * build runs -- it is the one place every check lives, and a client's registry is global plus its own, so
+     * the global half comes out identical -- and only this client's entry is taken from it, published by
+     * copy-on-write over the registries the other clients keep. A problem that would have refused the boot
+     * throws here before anything is published, leaving the running registries as they were.
+     */
+    fun reloadClient(cxt: KdrCxt, client: String) {
+        val collector = SchemaCollector.get(cxt)
+            ?: throw KdrException("$serviceName.reloadClient ran with no schema collector.")
+        val found = mutableListOf<GedraConfigIssue>()
+        val rebuilt = build(cxt, collector, ClientService.get(cxt), MarkdownFragmentService.get(cxt), found)
+        val current = registries
+        val byClient = (current.byClient - client) + (rebuilt.byClient[client]?.let { mapOf(client to it) } ?: emptyMap())
+        registries = WorkflowRegistries(current.global, byClient)
+        issues = issues + found
     }
 
     /** The registry [client] sees; see [WorkflowRegistries.forClient]. */

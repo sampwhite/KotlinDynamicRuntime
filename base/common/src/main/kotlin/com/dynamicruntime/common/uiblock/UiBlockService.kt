@@ -83,6 +83,19 @@ class UiBlockService : ServiceInitializer {
         }
     }
 
+    /**
+     * Replaces [client]'s UiBlock overlays with [sources] and forgets that client's merges and parsed predicates
+     * (issue #616). The predicates go too, and must: they were parsed against the client's cfact **names**, and
+     * a reload can change that vocabulary, so a predicate kept across it could name a cfact the client no
+     * longer declares. Shared entries and other clients' are untouched. Called under the reload lock.
+     */
+    fun reloadClient(cxt: KdrCxt, client: String, sources: List<UiBlockSource>) {
+        val kept = registeredUiBlocks(cxt).filter { it.client != client }
+        cxt.instanceConfig.put(UIB.registryKey, kept + sources)
+        mergedCache.keys.removeIf { it.endsWith("|$client") }
+        predicateCache.keys.removeIf { it.startsWith("$client|") }
+    }
+
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "UiBlockService"

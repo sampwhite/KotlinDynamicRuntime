@@ -217,6 +217,31 @@ class SchemaCollector(
         return true
     }
 
+    /**
+     * Withdraws [config] -- the reverse of [addGedraConfig], for replacing a client's stored configuration on a
+     * running node (issue #616). Its defs leave the client's overlay map and its cfacts the client's list, key
+     * by key, so a source config of the same client that contributed beside it is untouched. Only a non-global
+     * config is ever withdrawn: a global one is a component's, declared in source, and never reloaded.
+     */
+    fun removeGedraConfig(config: GedraConfig): Boolean {
+        if (!gedraConfigs.remove(config)) {
+            return false
+        }
+        val client = config.gedraId.client
+        if (client != GID.globalClient) {
+            clientOverlays[client]?.let { overlay ->
+                config.defs.keys.forEach { overlay.remove(it) }
+                if (overlay.isEmpty()) clientOverlays.remove(client)
+            }
+            clientCFacts[client]?.let { list ->
+                val names = config.cfacts.map { it.name }.toSet()
+                list.removeAll { it.name in names }
+                if (list.isEmpty()) clientCFacts.remove(client)
+            }
+        }
+        return true
+    }
+
     /** Adds contributed table definitions (from a `tableModule`) into the collector. */
     fun addTables(tables: List<KdrTable>) {
         this.tables.addAll(tables)
