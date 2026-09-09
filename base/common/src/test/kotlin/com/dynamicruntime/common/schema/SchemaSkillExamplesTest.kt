@@ -150,6 +150,7 @@ class SchemaSkillExamplesTest : StringSpec({
                 layout(fragmentFileId = "acme") {
                     field("topic", label = "Topic", description = "Pick the subject.")
                     field("hasIssue", label = "Has issue?")
+                    string(LAYSTR.formErrorHint, "Fix the highlighted fields and try again.")
                 }
             }
         }
@@ -160,6 +161,7 @@ class SchemaSkillExamplesTest : StringSpec({
                 mapOf(SL.field to "topic", SL.label to "Topic", SL.description to "Pick the subject."),
                 mapOf(SL.field to "hasIssue", SL.label to "Has issue?"),
             ),
+            SL.strings to mapOf(LAYSTR.formErrorHint to "Fix the highlighted fields and try again."),
         )
         // "Never read into SchType ... stripped from the served schema ... delivered out-of-band."
         val layouts = collectLayouts(defs)

@@ -41,6 +41,55 @@ class SchLayoutTest : StringSpec({
         layout.fields[1].description shouldBe null
     }
 
+    "parseSchLayout reads a form-level strings block and round-trips it (issue #641)" {
+        val block = mapOf(
+            SL.schemaFields to listOf(mapOf(SL.field to "topic", SL.label to "Topic")),
+            SL.strings to mapOf(LAYSTR.formErrorHint to "Fix the flagged fields."),
+        )
+        val layout = parseSchLayout("Type 'X'", block)
+        layout.strings shouldBe mapOf(LAYSTR.formErrorHint to "Fix the flagged fields.")
+        // Re-serializes to the same block (the delivery form), so the frontend parses back what the store held.
+        layout.toJsonMap()[SL.strings] shouldBe mapOf(LAYSTR.formErrorHint to "Fix the flagged fields.")
+    }
+
+    "the SchLayoutBuilder writes a strings block a component can override (issue #641)" {
+        val built = SchLayoutBuilder(fragmentFileId = null).apply {
+            field("topic", label = "Topic")
+            string(LAYSTR.formErrorSummary, "Please fix these before saving.")
+        }.build()
+        built[SL.strings] shouldBe mapOf(LAYSTR.formErrorSummary to "Please fix these before saving.")
+    }
+
+    "parseSchLayout refuses an unknown layout-string key -- a typo must not render nothing (issue #641)" {
+        val bad = mapOf(
+            SL.schemaFields to listOf(mapOf(SL.field to "topic")),
+            SL.strings to mapOf("formErorHint" to "typo"),
+        )
+        shouldThrow<KdrException> { parseSchLayout("Type 'X'", bad) }.message shouldContain "formErorHint"
+    }
+
+    "parseSchLayout refuses a non-object strings block, and a non-string value (issue #641)" {
+        shouldThrow<KdrException> {
+            parseSchLayout("Type 'X'", mapOf(SL.schemaFields to listOf(mapOf(SL.field to "topic")), SL.strings to "nope"))
+        }
+        shouldThrow<KdrException> {
+            parseSchLayout(
+                "Type 'X'",
+                mapOf(SL.schemaFields to listOf(mapOf(SL.field to "topic")), SL.strings to mapOf(LAYSTR.formErrorHint to 5)),
+            )
+        }
+    }
+
+    "prunedTo carries the block-level strings through a narrowing (issue #641)" {
+        val block = mapOf(
+            SL.schemaFields to listOf(mapOf(SL.field to "topic"), mapOf(SL.field to "hasIssue")),
+            SL.strings to mapOf(LAYSTR.formErrorHint to "Fix the flagged fields."),
+        )
+        val pruned = parseSchLayout("Type 'X'", block).prunedTo(setOf("topic"))
+        pruned.fieldNames shouldBe listOf("topic")
+        pruned.strings shouldBe mapOf(LAYSTR.formErrorHint to "Fix the flagged fields.")
+    }
+
     "parseSchLayout refuses a field entry with no 'field'" {
         val bad = mapOf(SL.schemaFields to listOf(mapOf(SL.label to "Orphan")))
         shouldThrow<KdrException> { parseSchLayout("Type 'X'", bad) }
