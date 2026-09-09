@@ -464,11 +464,6 @@ class RequestService : ServiceInitializer {
         val tableCaches = SqlTableCacheService.get(cxt)
         tableCaches.beginRequest(cxt)
         try {
-            // Bring this node's client configuration current with its peers before serving (issue #618) --
-            // throttled and in memory unless a peer's change is waiting, the same request-driven coherence the
-            // caches use. Inside the try so that even a non-Exception Throwable escaping it still runs
-            // endRequest in the finally. Null on a node with no config surface (an edge), which has nothing to sync.
-            ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
             dispatch(cxt, handler, focus)
         } finally {
             tableCaches.endRequest(cxt)
@@ -542,6 +537,13 @@ class RequestService : ServiceInitializer {
                 // application path, so endpoint definitions never carry the context root.
                 val endpoint = cxt.getSchema().endpoints["$appPath:$method"]
                 if (endpoint != null) {
+                    // Only an endpoint that consumes client configuration brings this node current with its peers
+                    // first (issue #618): the sync is opt-in per endpoint, not a blanket per-request cost, so
+                    // health, ops, auth and static traffic never touch the sync row. Throttled and in memory
+                    // unless a peer's change is waiting; null on a node with no config surface (an edge).
+                    if (endpoint.needsClientConfig) {
+                        ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
+                    }
                     executeEndpoint(cxt, handler, endpoint)
                 }
             } else {

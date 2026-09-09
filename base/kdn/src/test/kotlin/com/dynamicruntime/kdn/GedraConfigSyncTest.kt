@@ -17,6 +17,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.shouldBe
 
 /**
  * Multi-node config sync (issue #618): a change reloaded on one node reaches the others through the shared
@@ -126,5 +127,15 @@ class GedraConfigSyncTest : StringSpec({
         Thread.sleep(ClientSyncService.checkThrottleMs + 50)
         ClientSyncService.get(nodeB).checkSync(nodeB)
         tcTraits(nodeB) shouldNotContain "tierQ"       // B followed the toggle, not just content dates
+    }
+
+    "only endpoints that consume client config carry the sync opt-in" {
+        // The dispatcher runs checkSync (issue #618) only for an endpoint marked needsClientConfig, so the
+        // trigger is opt-in rather than a blanket per-request cost. The form surface, which validates against a
+        // client's configured schema, opts in; health, which does not, stays off.
+        val endpoints = nodeA.getSchema().endpoints
+        endpoints["/gedra/formDoc/create:POST"]?.needsClientConfig shouldBe true
+        endpoints["/gedra/formDoc:GET"]?.needsClientConfig shouldBe true
+        endpoints["/health:GET"]?.needsClientConfig shouldBe false
     }
 })

@@ -103,8 +103,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         inputRef = GU.inputName(formDoc),
         // The form surface a client's own application calls, so it is part of the published API (issue #489);
         // the per-client copies inherit this. Marks are on the five here at once, so the set reads as one
-        // decision.
+        // decision. `needsClientConfig` is the sync opt-in (issue #618): a form document is validated against
+        // the client's configured schema, so the node runs current config before serving one -- the whole form
+        // surface carries it, for the same reason the publicApi marks do.
         publicApi = true,
+        needsClientConfig = true,
     ) { c, request ->
         val entries = request[GDF.entries].toJsonListOfMaps()
         GedraDataService.get(c)
@@ -121,6 +124,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             field(GDF.gedraId, "Id of the form document to fetch.", required = true)
         },
         publicApi = true,
+        needsClientConfig = true,
     ) { c, request ->
         val fullId = request[GDF.gedraId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.gedraId} is required.")
@@ -152,6 +156,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             field(GDF.gedraId, "Id of the form document to delete.", required = true)
         },
         publicApi = true,
+        needsClientConfig = true,
     ) { c, request ->
         val fullId = request[GDF.gedraId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.gedraId} is required.")
@@ -221,6 +226,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         hasNumAvailable = true,
         inputRef = GEP.formDocsQuery,
         publicApi = true,
+        needsClientConfig = true,
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
         val offset = (request[EP.offset] as? Number)?.toInt() ?: 0
@@ -287,6 +293,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             }
         },
         publicApi = true,
+        needsClientConfig = true,
     ) { c, request ->
         // Floored at 0 like the user search: the auto-appended `limit` is deliberately unbounded, so a
         // negative one would otherwise reach `List.take` and throw a 500 rather than the harmless empty page
@@ -386,6 +393,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             }
         },
         publicApi = true,
+        needsClientConfig = true,
     ) { c, request ->
         val callerScope = ReadScopeRules.forCaller(c)
         // The target owner: the named user (resolved within the caller's scope, so an ordinary caller reaches
@@ -483,6 +491,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             field(GDF.allowAdditionalTraits, GedraDataRow.additionalTraitsHint) { type = SCT.boolean }
         },
         publicApi = true,
+        needsClientConfig = true,
     ) { c, request ->
         val gedraService = GedraService.get(c)
         val byKind = LinkedHashMap<GedraDataType, List<GedraPatchTarget>>()
@@ -531,6 +540,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             field(GDF.workflowId, "The workflow to resolve; omit for the client's creation workflow.")
         },
         publicApi = true,
+        needsClientConfig = true,
     ) { c, request ->
         val registry = WorkflowService.get(c).forClient(c.client)
         val requested = request[GDF.workflowId].toOptStr()
@@ -577,6 +587,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             }
         },
         publicApi = true,
+        needsClientConfig = true,
     ) { c, request ->
         val workflowId = request[GDF.workflowId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
