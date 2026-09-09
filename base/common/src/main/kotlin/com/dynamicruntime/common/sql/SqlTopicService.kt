@@ -108,6 +108,32 @@ class SqlTopicService : ServiceInitializer {
     }
 
     /**
+     * Reconciles [topicName] from an **explicit** [tables] list and caches it, for the boot-time stored-config
+     * load (issue #614) that must read a topic **before** the schema store exists. The ordinary
+     * [getOrCreateTopic] reads its tables from `cxt.getSchema()`, which is empty until `SchemaService.checkInit`
+     * compiles the store -- and the load has to run before that, so the configs are in the collector when the
+     * store is built. This takes the topic's whole table set from the collector instead, so the read does not
+     * depend on the store; and because it caches into [topics], a later [getOrCreateTopic] returns this same
+     * topic without consulting the store, so every ordinary read path (`mkSqlCxt`) works unchanged afterward.
+     *
+     * It resolves the database selection first ([checkInit], idempotent), because this may run before the
+     * startup pass reaches [SqlTopicService]'s own `checkInit`, and [getOrCreateDatabase] reads [isInMemory] --
+     * which still holds its default until then, so a real deployment would otherwise pick in-memory H2.
+     */
+    fun reconcileTopicFromTables(cxt: KdrCxt, topicName: String, tables: List<KdrTable>): SqlTopic {
+        topics[topicName]?.let { return it }
+        synchronized(topics) {
+            topics[topicName]?.let { return it }
+            checkInit(cxt) // resolve isInMemory / DB selection if the startup pass has not reached us yet
+            val db = getOrCreateDatabase(cxt)
+            val sqlTopic = SqlTopic(topicName, db, tables)
+            sqlTopic.init(SqlCxt(cxt, sqlTopic))
+            topics[topicName] = sqlTopic
+            return sqlTopic
+        }
+    }
+
+    /**
      * Resolves the (single, shared) database for this instance, building it from the resolved configuration
      * on first use. Configuration comes from an explicit `db` config, else the `KDR_DB_*` environment, else
      * [isInMemory] (which, when true, forces in-memory H2 — see [SqlDbBuilder.resolveDbConfig]).

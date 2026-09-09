@@ -136,13 +136,13 @@ class GedraConfigService : ServiceInitializer {
             result = when {
                 // No revision yet: this is version 1.
                 latest == null ->
-                    insertRevision(wcxt, sqlCxt, table, configId, 1, newBySlot, priorByKey, impliedDelete, null)
+                    insertRevision(wcxt, sqlCxt, table, configId, 1, config.namespace, newBySlot, priorByKey, impliedDelete, null)
                 // Latest is still editable: rewrite it in place at the same version.
                 !latest.isPublished ->
-                    updateRevision(wcxt, sqlCxt, table, latest, newBySlot, priorByKey, impliedDelete)
+                    updateRevision(wcxt, sqlCxt, table, latest, config.namespace, newBySlot, priorByKey, impliedDelete)
                 // Latest is published: start the next revision.
                 else ->
-                    insertRevision(wcxt, sqlCxt, table, configId, latest.version + 1, newBySlot, priorByKey, impliedDelete, latest)
+                    insertRevision(wcxt, sqlCxt, table, configId, latest.version + 1, config.namespace, newBySlot, priorByKey, impliedDelete, latest)
             }
         }
         return result!!
@@ -278,6 +278,7 @@ class GedraConfigService : ServiceInitializer {
         table: KdrTable,
         configId: GedraId,
         version: Int,
+        namespace: String,
         newBySlot: Map<String, List<Map<String, Any?>>>,
         priorByKey: Map<String, Map<String, Any?>>,
         impliedDelete: Boolean,
@@ -301,6 +302,9 @@ class GedraConfigService : ServiceInitializer {
         // Carry the prior revision's unknown keys across the bump, the same forward-compatibility promise an
         // in-place edit keeps through `GedraConfigRow.storedData`.
         val stored = LinkedHashMap<String, Any?>(prior?.extra ?: emptyMap())
+        // The namespace, so the boot loader (#614) can reassemble this config faithfully even when it declares
+        // no types to recover it from.
+        if (namespace.isNotEmpty()) stored[GC.namespace] = namespace
         stored[GD.entries] = entries
         data[GC.data] = stored
         val row = GedraConfigRow.extract(gedraService, data)
@@ -319,10 +323,13 @@ class GedraConfigService : ServiceInitializer {
         sqlCxt: SqlCxt,
         table: KdrTable,
         latest: GedraConfigRow,
+        namespace: String,
         newBySlot: Map<String, List<Map<String, Any?>>>,
         priorByKey: Map<String, Map<String, Any?>>,
         impliedDelete: Boolean,
     ): GedraConfigRow {
+        // The config being written is authoritative on the namespace -- a prior row may predate it being stored.
+        latest.namespace = namespace
         val stmt = SqlTopicUtil.mkPartialUpdateStmt(
             sqlCxt, table, "uGedraConfigData",
             "c:${GC.data} = :${GC.data}", "c:${GC.gedraId} = :${GC.gedraId}",

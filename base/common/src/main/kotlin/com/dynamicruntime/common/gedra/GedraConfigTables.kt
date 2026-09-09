@@ -54,6 +54,15 @@ object GC {
 
     /** Everything the revision holds, as a map: its config traits (#613), plus whatever later keys arrive. */
     const val data = "data"
+
+    /**
+     * A key **inside** the [data] map (not a column): the namespace the config's generated types live in (issue
+     * #614). A config is stored as already-qualified type names, so the namespace is otherwise unrecoverable for
+     * a config that declares no types -- and the boot loader must reassemble the config faithfully, including
+     * the namespace ownership its collector claims. Written by the config write path from `GedraConfig.namespace`,
+     * read back by [GedraConfigRow].
+     */
+    const val namespace = "namespace"
 }
 
 /**
