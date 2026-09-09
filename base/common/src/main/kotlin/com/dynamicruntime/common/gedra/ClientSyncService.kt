@@ -43,20 +43,23 @@ class ClientSyncService : ServiceInitializer {
     @Volatile
     private var lastCheckMs: Long = 0L
 
+    /** Per client, the epoch-ms before which not to retry a reload that just failed -- so a persistent fault is
+     * not a full reload (and an error log) on every request. Cleared on the next success. */
+    private val retryAfterMs = ConcurrentHashMap<String, Long>()
+
     private var enabled: Boolean = false
 
     override fun checkReady(cxt: KdrCxt) {
         enabled = GedraConfigLoadService.get(cxt).loadEnabled(cxt)
         if (!enabled) return
-        // Announce what this node loaded (so a peer behind it catches up), then take that as the baseline this
-        // node is already current with. Both read the boot loader's per-client markers.
+        // Announce what this node loaded, so a peer behind it catches up. Then baseline from that same set --
+        // NOT from the shared row: a peer that advanced a client's marker between the loader's read and now must
+        // not be taken as already-synced, or this node would serve stale config until the next change. Baselining
+        // from our own load means the first checkSync sees any such gap (shared > loaded) and closes it.
         val loaded = GedraConfigLoadService.get(cxt).loadedMarkers()
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, clientSyncTopic)
         ClientSyncTracking.announce(cxt, sqlCxt, loaded)
-        val shared = ClientSyncTracking.readMarkers(cxt, sqlCxt)
-        // Baseline: every client the shared row knows, at its current marker -- this node just loaded the
-        // current configuration for all of them, so it is caught up to all of them and reloads none at first.
-        lastSynced.putAll(shared)
+        lastSynced.putAll(loaded)
     }
 
     /**
@@ -71,18 +74,31 @@ class ClientSyncService : ServiceInitializer {
         val now = System.currentTimeMillis()
         if (now - lastCheckMs < checkThrottleMs) return
         lastCheckMs = now
-        try {
-            val sqlCxt = SqlTopicService.mkSqlCxt(cxt, clientSyncTopic)
-            val shared = ClientSyncTracking.readMarkers(cxt, sqlCxt)
-            for ((client, marker) in shared) {
-                val seen = lastSynced[client]
-                if (seen == null || marker > seen) {
-                    GedraConfigReload.reloadClient(cxt, client)
-                    lastSynced[client] = marker
-                }
-            }
+        val shared = try {
+            ClientSyncTracking.readMarkers(cxt, SqlTopicService.mkSqlCxt(cxt, clientSyncTopic))
         } catch (e: Exception) {
-            LogStartup.error(cxt, "Client-config sync check failed; retrying on the next request.", e)
+            LogStartup.error(cxt, "Client-config sync could not read the shared markers; retrying next request.", e)
+            return
+        }
+        for ((client, marker) in shared) {
+            val seen = lastSynced[client]
+            if (seen != null && marker <= seen) continue
+            // Back off a client whose reload keeps failing, so one bad client is not a full reload plus an error
+            // log on every request across the cluster. A per-client catch also keeps its failure from skipping
+            // the clients iterated after it.
+            val after = retryAfterMs[client]
+            if (after != null && now < after) continue
+            try {
+                val result = GedraConfigReload.reloadClient(cxt, client)
+                // Record what was actually consumed, not the shared marker: a reload that read a not-yet-refreshed
+                // config cache (#615) consumed older config, and leaving lastSynced below the shared marker is
+                // what makes the next window retry it. Falls back to the shared marker when nothing was consumed.
+                lastSynced[client] = result.marker ?: marker
+                retryAfterMs.remove(client)
+            } catch (e: Exception) {
+                LogStartup.error(cxt, "Client-config sync reload of '$client' failed; will retry after a backoff.", e)
+                retryAfterMs[client] = now + failBackoffMs
+            }
         }
     }
 
@@ -105,6 +121,9 @@ class ClientSyncService : ServiceInitializer {
 
         /** At most one shared-row read this often per node; the twin of the cache's 250ms state-read throttle. */
         const val checkThrottleMs = 250L
+
+        /** After a client's reload throws, wait at least this long before retrying it (issue #618). */
+        const val failBackoffMs = 30_000L
 
         fun get(cxt: KdrCxt): ClientSyncService = cxt.instanceConfig.get(serviceName) as? ClientSyncService
             ?: throw KdrException("The $serviceName is not available on this node.")

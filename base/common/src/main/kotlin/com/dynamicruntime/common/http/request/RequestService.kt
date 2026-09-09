@@ -463,11 +463,12 @@ class RequestService : ServiceInitializer {
         // exactly one dispatcher, and one subscriber.
         val tableCaches = SqlTableCacheService.get(cxt)
         tableCaches.beginRequest(cxt)
-        // Bring this node's client configuration current with its peers before serving (issue #618) -- throttled
-        // and in memory unless a peer's change is waiting, the same request-driven coherence the caches use.
-        // Null on a node with no config surface (an edge), which has nothing to sync.
-        ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
         try {
+            // Bring this node's client configuration current with its peers before serving (issue #618) --
+            // throttled and in memory unless a peer's change is waiting, the same request-driven coherence the
+            // caches use. Inside the try so that even a non-Exception Throwable escaping it still runs
+            // endRequest in the finally. Null on a node with no config surface (an edge), which has nothing to sync.
+            ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
             dispatch(cxt, handler, focus)
         } finally {
             tableCaches.endRequest(cxt)

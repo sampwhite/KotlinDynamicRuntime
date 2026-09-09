@@ -6,7 +6,9 @@ import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
+import kotlin.time.Instant
 
 /**
  * The configuration **protection tier** (issue #617), read and written on the [GCT.gedraConfigControl] table.
@@ -64,6 +66,43 @@ object GedraConfigControl {
             row = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(PF.client to client, GC.environment to env)).firstOrNull()
         }
         return row?.get(GC.publishedOnly) == true
+    }
+
+    /**
+     * When [client]'s tier last changed in [env] (issue #618): the control row's own `updatedAt`, or null when
+     * it has no enabled row. A tier toggle changes what the client consumes without touching any content row --
+     * switching to published-only makes the consumed set *older* -- so this date is folded into the sync marker,
+     * or a monotonic-max announce would never carry a toggle to peers.
+     */
+    fun controlMarker(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, client: String, env: String): Instant? {
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qGedraConfigControlOne", table.columns,
+            "select * from t:${GCT.gedraConfigControl} where c:${PF.client} = :${PF.client} " +
+                "and c:${GC.environment} = :${GC.environment} and c:${PF.enabled} = true",
+        )
+        var row: Map<String, Any?>? = null
+        sqlCxt.sqlDb.withSession(cxt) {
+            row = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(PF.client to client, GC.environment to env)).firstOrNull()
+        }
+        return row?.get(PF.updatedAt).toOptInstant()
+    }
+
+    /** Every client's tier date in [env] (issue #618): client id -> when its tier last changed, for the boot load. */
+    fun controlMarkers(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, env: String): Map<String, Instant> {
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qGedraConfigControlByEnvAll", table.columns,
+            "select * from t:${GCT.gedraConfigControl} where c:${GC.environment} = :${GC.environment} " +
+                "and c:${PF.enabled} = true",
+        )
+        var rows: List<Map<String, Any?>> = emptyList()
+        sqlCxt.sqlDb.withSession(cxt) { rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(GC.environment to env)) }
+        val out = HashMap<String, Instant>()
+        for (row in rows) {
+            val client = row[PF.client].toOptStr() ?: continue
+            val at = row[PF.updatedAt].toOptInstant() ?: continue
+            out[client] = at
+        }
+        return out
     }
 
     /**

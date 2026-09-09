@@ -8,6 +8,8 @@ import com.dynamicruntime.common.gedra.ClientSyncService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.startup.SchemaService
@@ -78,5 +80,51 @@ class GedraConfigSyncTest : StringSpec({
         val before = traitsOn(nodeB)
         ClientSyncService.get(nodeB).checkSync(nodeB)
         traitsOn(nodeB) shouldContainAll before
+    }
+
+    "a published-only toggle propagates even though it makes the consumed revisions older" {
+        // The tier toggle (#617) is the case a content-only marker misses: switching a client to published-only
+        // makes it consume an OLDER revision, so nothing in a content-date marker moves, and a monotonic-max
+        // announce would carry nothing to peers. The fix folds the tier row's own date into the marker.
+        val tc = "tiersync"
+        fun tcClient(node: KdrCxt) = node.mkSubContext("tiersync", tc).also { it.userId = 16000L }
+        fun tcTraits(node: KdrCxt) = SchemaService.get(node).gedraTraitsFor(tc).map { it.traitId }
+        fun writeTc(node: KdrCxt, vararg traits: String) {
+            val config = gedraConfig(node, "${tc}cfg", "${tc}config", tc) {
+                defineClient(
+                    ClientDef(
+                        clientId = tc, name = tc, usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+                for (t in traits) trait("${t}Entry", t, setOf(GedraDataType.formDoc), "The $t trait.") { property("v", "A value.") }
+            }
+            GedraConfigService.get(node).writeConfig(tcClient(node), config)
+        }
+        fun reloadAnnounce(node: KdrCxt) {
+            val r = GedraConfigReload.reloadClient(node, tc)
+            ClientSyncService.get(node).announceAndMark(node, tc, r.marker)
+        }
+
+        // v1 published (tierP), then v2 unpublished adds tierQ. Free tier consumes the latest, so tierQ is live.
+        writeTc(nodeA, "tierP")
+        GedraConfigService.get(nodeA).publish(tcClient(nodeA), GedraId.of(GedraConfigType.configDoc, tc, "${tc}cfg"))
+        writeTc(nodeA, "tierP", "tierQ")
+        reloadAnnounce(nodeA)
+        tcTraits(nodeA) shouldContain "tierQ"
+
+        Thread.sleep(ClientSyncService.checkThrottleMs + 50)
+        ClientSyncService.get(nodeB).checkSync(nodeB)
+        tcTraits(nodeB) shouldContain "tierQ"          // B has caught up to the latest
+
+        // A toggles published-only and reloads: it now consumes the published v1, dropping tierQ. The consumed
+        // content got older, so ONLY the tier row's date makes this a change B can see.
+        GedraConfigService.get(nodeA).setPublishedOnly(tcClient(nodeA), tc, true)
+        reloadAnnounce(nodeA)
+        tcTraits(nodeA) shouldNotContain "tierQ"
+
+        Thread.sleep(ClientSyncService.checkThrottleMs + 50)
+        ClientSyncService.get(nodeB).checkSync(nodeB)
+        tcTraits(nodeB) shouldNotContain "tierQ"       // B followed the toggle, not just content dates
     }
 })

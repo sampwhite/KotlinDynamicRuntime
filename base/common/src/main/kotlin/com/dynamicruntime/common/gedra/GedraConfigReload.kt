@@ -61,7 +61,12 @@ object GedraConfigReload {
         // of each class, or the latest *published* one for a published-only (or static) client.
         val bound = if (cxt.client == client) cxt else cxt.mkSubContext("configReload", client)
         val currentRows = configService.currentConfigs(bound, client)
-        val marker = currentRows.mapNotNull { it.updatedAt }.maxOrNull()
+        // The marker peers compare against (issue #618) is the newest of what this client now consumes: the
+        // newest consumed revision, and the tier row's own date -- because a tier toggle (#617) changes what is
+        // consumed without touching a content row, and can even make the consumed set older, so a content-only
+        // marker with a monotonic-max announce would never carry a toggle to the other nodes.
+        val contentMarker = currentRows.mapNotNull { it.updatedAt }.maxOrNull()
+        val marker = listOfNotNull(contentMarker, configService.tierMarker(bound, client)).maxOrNull()
         val fresh = currentRows.map { loader.toConfig(cxt, it) }
         // The extends rule a data config is held to, against the source-code clients alone.
         val loadedIds = loader.allLoadedIds()

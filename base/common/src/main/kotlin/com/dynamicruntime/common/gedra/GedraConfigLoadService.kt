@@ -143,6 +143,9 @@ class GedraConfigLoadService : ServiceInitializer {
         val mode = gedraConfigCheckMode(cxt)
 
         var loaded = 0
+        // The newest date this node actually took per client (issue #618), so the restart announce reflects what
+        // the node runs -- not a row it selected but then dropped as malformed or extends-invalid.
+        val takenMarkers = HashMap<String, Instant>()
         for (row in rows) {
             val config = try {
                 reassemble(cxt, row)
@@ -169,28 +172,30 @@ class GedraConfigLoadService : ServiceInitializer {
             if (collector.addGedraConfig(cxt, config)) {
                 appendOverlays(cxt, config)
                 recordLoaded(config.gedraId.client, loadedFor(config.gedraId.client) + config)
+                val at = row[PF.updatedAt].toOptInstant()
+                if (at != null) {
+                    val takenClient = config.gedraId.client
+                    val existing = takenMarkers[takenClient]
+                    if (existing == null || at > existing) takenMarkers[takenClient] = at
+                }
                 loaded++
             }
         }
         if (loaded > 0) {
             LogStartup.info(cxt) { "Loaded $loaded stored client configuration(s) at boot." }
         }
-        // The newest configuration date this node loaded per client (issue #618) -- the marker `ClientSyncService`
-        // announces so a peer that has not caught up learns this restarted node is ahead. Computed from the very
-        // rows selected, before they were reassembled, so it reflects exactly what was taken.
-        recordRestartLoad(markersOf(rows))
-    }
-
-    /** Per client, the newest `updatedAt` among the selected revision rows (issue #618). */
-    private fun markersOf(rows: List<Map<String, Any?>>): Map<String, Instant> {
-        val out = HashMap<String, Instant>()
-        for (row in rows) {
-            val client = row[PF.client].toOptStr() ?: continue
-            val at = row[PF.updatedAt].toOptInstant() ?: continue
-            val existing = out[client]
-            if (existing == null || at > existing) out[client] = at
+        // Fold in each client's tier date (issue #618): a client running published-only by a toggle has that
+        // toggle as part of what it consumes, so a peer that toggled it while this node was down is ahead even
+        // when no revision changed. The marker `ClientSyncService` announces is then the newest of what this
+        // node actually took and the tier state it took it under.
+        val controlMarkers = controlTable?.let {
+            GedraConfigControl.controlMarkers(cxt, SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic), it, cxt.instanceConfig.env)
+        } ?: emptyMap()
+        for ((markerClient, at) in controlMarkers) {
+            val existing = takenMarkers[markerClient]
+            if (existing == null || at > existing) takenMarkers[markerClient] = at
         }
-        return out
+        recordRestartLoad(takenMarkers)
     }
 
     /** The latest enabled revision of every stored config, across all clients. */
