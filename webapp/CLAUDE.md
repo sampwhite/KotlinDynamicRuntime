@@ -252,6 +252,13 @@ so deleting an entry is its **Action** Select → `deleteOrNoOp`; and a section 
 Trait-id *and* Action Selects at once, and its `Data` object must be added (`Add data`) before the trait's
 fields appear. So a choice widget no longer needs to be handed to a person to verify.
 
+**That the UI *can* be driven is not a reason to prefer it.** Call the endpoint whenever the question is about
+the backend or the data — seeding a form, checking that a save landed, exercising a validation rule: one
+`fetch` is simpler, faster and less fragile than a page. Drive the UI only when the UI itself is what is being
+validated — that a control renders the right choices, that an invalid choice shows the right message, that a
+save navigates where it should. The run above used the API as the witness after every save for exactly this
+reason.
+
 ## Errors: never a blank page (issue #223)
 
 A throw during render used to unmount the whole React tree and leave an empty body — the least informative
