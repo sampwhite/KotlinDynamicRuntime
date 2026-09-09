@@ -36,8 +36,9 @@ class ConfigReloadResult(
  *
  * **Phase two publishes, in a fixed order.** Each service rebuilds the client's derived state off the
  * collectors and swaps it in under its own reference: the schema (variant, endpoint copies, cfacts, in one
- * snapshot), the client set, the workflow registries, the fragment and UiBlock overlays, and finally the
- * path-keyed type-cache entries for the client's endpoint copies are dropped. A request in flight keeps the
+ * snapshot) with its path-keyed type-cache entries dropped right behind it, the client set, the fragment and
+ * UiBlock overlays, and then the workflow registries -- overlays before workflows, as at boot, because a
+ * workflow is admitted by validating its labels against the fragments. A request in flight keeps the
  * store it started with; a new request sees a whole new set. What this does **not** promise is atomicity
  * *across* those services: a rebuild that throws part-way (a check that would have refused the boot) leaves
  * the earlier swaps in place. That is deliberate rather than papered over -- the collectors already hold the
@@ -84,12 +85,19 @@ object GedraConfigReload {
         val issues = collector.gedraConfigs.issues.drop(issuesBefore)
 
         // --- phase two: rebuild and publish, in order ---
+        // The schema swap and the eviction of its path-keyed types go together, back to back: a request between
+        // them would resolve against the new store but find a type parsed against the old one. The two cannot be
+        // made one atomic step without versioning the cache, so the window is kept to the unavoidable minimum.
         val typeKeys = SchemaService.get(cxt).reloadClient(cxt, client)
-        ClientService.get(cxt).recheck(cxt)
-        WorkflowService.get(cxt).reloadClient(cxt, client)
-        MarkdownFragmentService.get(cxt).reloadClient(cxt, client, taken.flatMap { it.fragments })
-        UiBlockService.get(cxt).reloadClient(cxt, client, taken.flatMap { it.uiBlocks })
         RequestService.get(cxt).evictTypes(typeKeys)
+        ClientService.get(cxt).recheck(cxt)
+        // Overlays before workflows, as at boot: admitting a workflow validates its labels against the
+        // fragments, so the fragments a revision adds must be in place before its workflows are judged.
+        MarkdownFragmentService.get(cxt).reloadClient(
+            cxt, client, previous.flatMap { it.fragments }, taken.flatMap { it.fragments },
+        )
+        UiBlockService.get(cxt).reloadClient(cxt, client, previous.flatMap { it.uiBlocks }, taken.flatMap { it.uiBlocks })
+        WorkflowService.get(cxt).reloadClient(cxt, client)
 
         LogStartup.info(cxt) { "Reloaded client '$client': ${taken.size} stored configuration(s), ${typeKeys.size} type-cache entries dropped." }
         ConfigReloadResult(client, taken.size, typeKeys.size, issues)

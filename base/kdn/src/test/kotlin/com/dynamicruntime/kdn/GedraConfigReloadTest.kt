@@ -1,5 +1,7 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.FRAG
+import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
@@ -125,5 +127,21 @@ class GedraConfigReloadTest : StringSpec({
         val result = admin.postData(CFEP.reload, emptyMap())
         result[CFEP.client] shouldBe admin.selfClient()
         (result[CFEP.loaded] as Number).toInt() shouldBe GedraConfigLoadService.get(own).loadedFor(admin.selfClient()!!).size
+    }
+
+    // A client's source-code overlay -- a component's, appended to the registry at boot beside the stored ones
+    // -- must survive that client's reload; only the stored layers are swapped.
+    "a reload keeps the client's source-code fragment overlays" {
+        val client = "reloadsrc"
+        val sourceLayer = FragmentSource("home", isOverlay = true, client = client, origin = "a component") {
+            mapOf("home" to mapOf("title" to "Source Title"))
+        }
+        val registry = (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.filterIsInstance<FragmentSource>().orEmpty()
+        cxt.instanceConfig.put(FRAG.registryKey, registry + sourceLayer)
+
+        storeAndReload(client, "rlSrc")
+        storeAndReload(client, "rlSrc", "rlSrc2")
+        val after = (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.filterIsInstance<FragmentSource>().orEmpty()
+        after.any { it === sourceLayer } shouldBe true
     }
 })

@@ -625,6 +625,19 @@ class SchemaService : ServiceInitializer {
         val cfacts = CFactRegistries(current.cfactRegistries.global, byClient)
 
         publish(cxt, SchemaSnapshot(withClients, wrapVariants(variants, varyingClients, withClients, allEndpoints), cfacts))
+        // The validations the boot runs on the published set -- a `g-visibleWhen` that does not parse, a
+        // `g-layout` naming a field its type lacks, a search parameter colliding with a listing field -- read the
+        // published snapshot, so they run after the swap; a failure restores the prior snapshot and rethrows,
+        // which refuses the reload exactly as the boot would have refused the configuration, with the running
+        // set as it was (the review of #616 caught these being skipped, so a bad config faulted per request).
+        try {
+            checkVisibleWhen()
+            checkSearchParamNames(cxt, collected)
+            checkLayouts()
+        } catch (e: Exception) {
+            publish(cxt, current)
+            throw e
+        }
         val after = allEndpoints.values.filter { it.client == client }.map { it.collationKey }.toSet()
         before + after
     }

@@ -91,7 +91,9 @@ class WorkflowService : ServiceInitializer {
         val current = registries
         val byClient = (current.byClient - client) + (rebuilt.byClient[client]?.let { mapOf(client to it) } ?: emptyMap())
         registries = WorkflowRegistries(current.global, byClient)
-        issues = issues + found
+        // The build is the whole node's, so `found` is the whole node's current problem set: it replaces the
+        // last one rather than being appended to it, or every reload would re-add every scope's issues.
+        issues = found.toList()
     }
 
     /** The registry [client] sees; see [WorkflowRegistries.forClient]. */
