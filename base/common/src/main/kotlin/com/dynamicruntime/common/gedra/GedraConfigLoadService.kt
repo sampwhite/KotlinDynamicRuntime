@@ -67,6 +67,7 @@ class GedraConfigLoadService : ServiceInitializer {
 
     private var schemaCollector: SchemaCollector? = null
     private var sqlTopicService: SqlTopicService? = null
+    private var isInit: Boolean = false
 
     /** Config problems found while loading, in order -- empty unless a production node degraded (issue #303). */
     val issues: MutableList<GedraConfigIssue> = mutableListOf()
@@ -80,6 +81,15 @@ class GedraConfigLoadService : ServiceInitializer {
     }
 
     override fun checkInit(cxt: KdrCxt) {
+        // Idempotent, and it must be: this is a startup service a later one may force to have run by calling
+        // `checkInit` directly (as `WorkflowService` forces its peers), and unlike them this pass *adds* to the
+        // collector -- so a second, unguarded run would re-add every config and the collector would then report
+        // each as contributed twice, refusing the boot. Marked done as soon as it commits to running (there are
+        // several early returns below, and a strict-mode problem throws to fail the boot rather than retrying).
+        if (isInit) {
+            return
+        }
+        isInit = true
         val collector = schemaCollector ?: throw KdrException("$serviceName.checkInit ran before onCreate.")
         val sql = sqlTopicService ?: throw KdrException("$serviceName.checkInit ran before onCreate.")
 

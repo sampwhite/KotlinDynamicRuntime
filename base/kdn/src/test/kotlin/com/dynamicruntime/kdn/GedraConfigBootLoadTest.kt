@@ -9,10 +9,13 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.startup.SchemaService
+import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -86,5 +89,37 @@ class GedraConfigBootLoadTest : StringSpec({
         // than degrading), and an unloadable stored config is that same kind of problem.
         val ex = shouldThrow<KdrException> { Startup.mkTestBootCxt("cfgLoad2b", "cfgBootLoad2b", db) }
         (ex.message ?: "").contains("template") shouldBe true
+    }
+
+    "a stored config's fragment overlay is served after a restart, and a re-load does not double it" {
+        val db = mapOf("KDR_DB_NAME" to "cfgBootLoad_frag", "KDR_LOAD_STORED_CONFIG" to "true")
+        val client = "fragclient"
+
+        val cxt1 = Startup.mkTestBootCxt("cfgLoad1c", "cfgBootLoad1c", db)
+        // A config that overlays the shipped `home` fragment for its own client (`home.title` exists in the
+        // base file, so the overlay is not orphaned) and defines the client so the overlay has a variant.
+        val config = gedraConfig(cxt1, "fragcfg", "fragclientconfig", client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = "Frag Client",
+                    usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            fragmentOverlay("home") { namespace("home") { key("title", "Boot Overlaid Title") } }
+        }
+        GedraConfigService.get(cxt1).writeConfig(writer(cxt1, client), config)
+
+        // The restart loads the config and folds its overlay into the fragment registry the content service
+        // reads, so the client's people are served the overlaid copy (a caller with no client sees the base).
+        val cxt2 = Startup.mkTestBootCxt("cfgLoad2c", "cfgBootLoad2c", db)
+        ClientService.get(cxt2).known(client).shouldNotBeNull()
+        val asClient = cxt2.mkSubContext("read", client)
+        MarkdownFragmentService.get(cxt2).resolveFragment(asClient, "home", "home", "title") shouldBe "Boot Overlaid Title"
+
+        // Forcing the load again -- as a later startup service may -- is a no-op rather than a second add, which
+        // the collector would reject as "contributed twice" and refuse the boot over.
+        shouldNotThrowAny { GedraConfigLoadService.get(cxt2).checkInit(cxt2) }
+        ClientService.get(cxt2).known(client).shouldNotBeNull()
     }
 })
