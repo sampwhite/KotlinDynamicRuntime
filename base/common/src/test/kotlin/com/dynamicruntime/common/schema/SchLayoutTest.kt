@@ -318,4 +318,84 @@ class SchLayoutTest : StringSpec({
         }
         problems.single() shouldContain "is not a fileId.namespace.key reference"
     }
+
+    // --- the error override (issue #588) ---
+
+    // An object with an unbounded string and a bounded integer, for the per-code param checks below.
+    val errType: SchType? = parseSchemaTypes(mapOfDefs("acme.Q" to mapOf(
+        SCH.type to SCT.kObject,
+        SCH.properties to mapOf(
+            "topic" to mapOf(SCH.type to SCT.string),
+            "year" to mapOf(SCH.type to SCT.integer, SCH.minimum to 2000, SCH.maximum to 2100),
+        ),
+    )))["acme.Q"]
+
+    "an error override round-trips through parseSchLayout and toJsonMap" {
+        val raw = mapOf(SL.schemaFields to listOf(mapOf(
+            SL.field to "topic",
+            SL.errors to mapOf(SchFailCode.invalidOption.name to "Pick a real one.", SCH.errorDefault to "Bad topic."),
+        )))
+        val field = parseSchLayout("Type 'X'", raw).fieldFor("topic")!!
+        field.errors shouldBe mapOf(SchFailCode.invalidOption.name to "Pick a real one.", SCH.errorDefault to "Bad topic.")
+        // Re-serialized and re-parsed, the override survives -- the wire form carries it.
+        parseSchLayout("Type 'X'", parseSchLayout("Type 'X'", raw).toJsonMap()).fieldFor("topic")!!.errors shouldBe field.errors
+    }
+
+    "a mistyped SchFailCode key in an error override fails the parse" {
+        val raw = mapOf(SL.schemaFields to listOf(mapOf(
+            SL.field to "topic",
+            SL.errors to mapOf("typoWrong" to "Nope."),
+        )))
+        shouldThrow<KdrException> { parseSchLayout("Type 'X'", raw) }.message shouldContain "typoWrong"
+    }
+
+    "layoutTemplateProblems passes an error template that uses only its failure code's params" {
+        val ok = SchLayout("acme", null, listOf(
+            // invalidOption offers the value and the option list; belowMinimum offers the bound (year is bounded).
+            SchLayoutField("topic", null, null, null, mapOf(SchFailCode.invalidOption.name to $$"Not ${value}; choose ${options}.")),
+            SchLayoutField("year", null, null, null, mapOf(SchFailCode.belowMinimum.name to $$"At least ${min}.")),
+        ))
+        layoutTemplateProblems("Type 'acme.Q'", ok, errType) shouldBe emptyList()
+    }
+
+    "layoutTemplateProblems flags an error template referencing a param its failure code lacks" {
+        // ${max} is not part of an invalidOption's context, so it is caught like a mistyped key.
+        val bad = SchLayout("acme", null, listOf(
+            SchLayoutField("topic", null, null, null, mapOf(SchFailCode.invalidOption.name to $$"Up to ${max}.")),
+        ))
+        layoutTemplateProblems("Type 'acme.Q'", bad, errType).single() shouldContain "max"
+    }
+
+    "a default error message may reference only the field name" {
+        val bad = SchLayout("acme", null, listOf(
+            SchLayoutField("topic", null, null, null, mapOf(SCH.errorDefault to $$"You gave ${value}.")),
+        ))
+        layoutTemplateProblems("Type 'acme.Q'", bad, errType).single() shouldContain "value"
+        val ok = SchLayout("acme", null, listOf(
+            SchLayoutField("topic", null, null, null, mapOf(SCH.errorDefault to $$"Problem with ${field}.")),
+        ))
+        layoutTemplateProblems("Type 'acme.Q'", ok, errType) shouldBe emptyList()
+    }
+
+    "a malformed error template fails the boot" {
+        val bad = SchLayout("acme", null, listOf(
+            SchLayoutField("topic", null, null, null, mapOf(SchFailCode.badValue.name to $$"Bad ${value")),
+        ))
+        layoutTemplateProblems("Type 'acme.Q'", bad, errType).single() shouldContain "malformed"
+    }
+
+    "errorContextNames and errorContextData agree, per failure code" {
+        val topic = errType!!.properties["topic"]!!.valueType
+        val year = errType.properties["year"]!!.valueType
+        errorContextNames(SchFailCode.invalidOption, topic) shouldBe setOf("field", "value", "options")
+        errorContextNames(SchFailCode.missingRequired, topic) shouldBe setOf("field")
+        errorContextNames(SchFailCode.belowMinimum, year) shouldBe setOf("field", "value", "min")
+        errorContextNames(null, topic) shouldBe setOf("field") // the `default` key
+
+        val opts = listOf(SchOption("a", "Apples"), SchOption("b", "Bananas"))
+        errorContextData(SchFailCode.invalidOption, topic, "topic", "x", opts) shouldBe
+            mapOf("field" to "topic", "value" to "x", "options" to "Apples, Bananas")
+        errorContextData(SchFailCode.belowMinimum, year, "year", 1999L, null).keys shouldBe setOf("field", "value", "min")
+        errorContextData(SchFailCode.missingRequired, topic, "topic", null, null) shouldBe mapOf("field" to "topic")
+    }
 })

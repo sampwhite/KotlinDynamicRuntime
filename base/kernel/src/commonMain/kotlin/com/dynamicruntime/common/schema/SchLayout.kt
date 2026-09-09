@@ -76,6 +76,16 @@ class SchLayoutField(
     val label: String?,
     val description: String?,
     val hint: String?,
+    /**
+     * The **error override** (issue #588): the form's message for a failure against this field, keyed by
+     * [SchFailCode] name (plus `default`), shadowing the framework's built-in wording and the `g-errors`
+     * validator floor (issue #589) when present. Resolved on the frontend and `${'$'}{…}`-capable over the
+     * per-failure-code params ([errorContextNames]), the same machinery the templated hint uses -- this is
+     * where message *variation* is homed, without overlaying a whole property to change one error key. Empty
+     * when the layout says nothing about this field's errors, which reads as "fall through" the same way a null
+     * copy override does. Keys are boot-checked against the code enum, so a mistyped key fails the boot.
+     */
+    val errors: Map<String, String> = emptyMap(),
 ) : JsonMappable {
     /** The entry as written in a `schemaFields` list; see [SchLayout.toJsonMap]. */
     override fun toJsonMap(): Map<String, Any?> {
@@ -84,6 +94,7 @@ class SchLayoutField(
         label?.let { out[SL.label] = it }
         description?.let { out[SL.description] = it }
         hint?.let { out[SL.hint] = it }
+        if (errors.isNotEmpty()) out[SL.errors] = errors
         return out
     }
 }
@@ -98,9 +109,21 @@ class SchLayoutField(
 class SchLayoutBuilder(private val fragmentFileId: String?, private val label: String? = null) {
     private val fields = mutableListOf<SchLayoutField>()
 
-    /** One field's overrides; each is optional. */
-    fun field(name: String, label: String? = null, description: String? = null, hint: String? = null) {
-        fields.add(SchLayoutField(name, label, description, hint))
+    /** One field's overrides; each is optional. The [errors] block (issue #588) declares the form's wording per
+     *  [SchFailCode], reusing `g-errors`' own [SchErrors] builder so the named-per-code functions are identical. */
+    fun field(
+        name: String,
+        label: String? = null,
+        description: String? = null,
+        hint: String? = null,
+        errors: (SchErrors.() -> Unit)? = null,
+    ) {
+        val errMap = errors?.let { block ->
+            val data = LinkedHashMap<String, Any?>()
+            SchErrors(data).block()
+            data.mapValues { it.value.toOptStr().orEmpty() }
+        } ?: emptyMap()
+        fields.add(SchLayoutField(name, label, description, hint, errMap))
     }
 
     /** The finished block, as the JSON `g-layout` value. */
@@ -164,6 +187,10 @@ object SL {
     /** On a [schemaFields] entry: the hint that shadows the derived bound hint. */
     const val hint = "hint"
 
+    /** On a [schemaFields] entry: the error override (issue #588) -- a `{ SchFailCode-name -> message }` block
+     *  (plus `default`), the form's wording for a failure against the field, shadowing the built-in message. */
+    const val errors = "errors"
+
     /** On the block: the fragment file its `${'$'}{…}` substitutions resolve against. */
     const val fragmentFileId = "fragmentFileId"
 
@@ -175,7 +202,7 @@ object SL {
     val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label)
 
     /** Every key a [schemaFields] entry may carry. */
-    val fieldKeys: Set<String> = setOf(field, label, description, hint)
+    val fieldKeys: Set<String> = setOf(field, label, description, hint, errors)
 }
 
 /**
@@ -195,7 +222,11 @@ fun parseSchLayout(where: String, raw: Map<String, Any?>): SchLayout {
         refuseUnknownKeys(where, "a '${SL.schemaFields}' entry", m.keys, SL.fieldKeys)
         val field = m[SL.field].toOptStr()
             ?: throw KdrException("$where: a '${SL.schemaFields}' entry has no '${SL.field}'.")
-        SchLayoutField(field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr())
+        // The error override reuses `g-errors`' own parser (issue #588): the same key validation against the
+        // SchFailCode enum, and the same reserved-object-form tolerance, so the two ways to key a message off a
+        // failure code cannot drift on what a valid key is.
+        val errors = parseErrorMessages(m[SL.errors], "$where field '$field'")
+        SchLayoutField(field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors)
     }
     return SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields)
 }
@@ -337,6 +368,77 @@ fun boundsContextData(type: SchType): Map<String, Any?> = buildMap {
 }
 
 /**
+ * The template parameters a layout **error override** message may reference, **per [SchFailCode]** (issue #588,
+ * `thoughts-schema-direction.md` §10). This is the vocabulary the design calls "the feature": a `${'$'}{…}` in a
+ * `belowMinimum` message may name the bound, an `invalidOption` message the choice list, and so on -- what a
+ * message can refer to is decided by *which failure* it is for, not one flat set. The names known at boot
+ * ([errorContextNames]) and the data the frontend supplies ([errorContextData]) are defined together, the same
+ * pairing (and for the same don't-let-them-drift reason) as [boundsContextNames] / [boundsContextData].
+ */
+@Suppress("ConstPropertyName")
+object LayoutErrCtx {
+    /** The offending value, as the field currently holds it. Absent for a failure with no value to show
+     *  ([SchFailCode.missingRequired], [SchFailCode.additionalProperty]). */
+    const val value = "value"
+
+    /** The property's name -- the one param every failure can offer, and all a `default` message may use. */
+    const val field = "field"
+
+    /** The field's valid choices as a readable list, for an [SchFailCode.invalidOption] message. */
+    const val options = "options"
+
+    // [LayoutCtx.min] / [LayoutCtx.max] are reused for the bound a `belowMinimum` / `aboveMaximum` message names.
+}
+
+/**
+ * The param names a layout error message for [code] on field [type] may reference (issue #588) -- what
+ * [layoutTemplateProblems] holds an error template's `${'$'}{…}` against, so a placeholder the failure cannot
+ * provide (a `${'$'}{max}` for an `invalidOption`, a `${'$'}{value}` for a `missingRequired`) fails the boot like a
+ * mistyped key. [code] is null for the `default` key, which may match any failure and so is allowed only the
+ * one param present for every one of them ([LayoutErrCtx.field]).
+ */
+fun errorContextNames(code: SchFailCode?, type: SchType): Set<String> = buildSet {
+    add(LayoutErrCtx.field)
+    if (code == null) return@buildSet
+    // A value exists for every failure except a property that is missing or one that is not a field at all.
+    if (code != SchFailCode.missingRequired && code != SchFailCode.additionalProperty) add(LayoutErrCtx.value)
+    when (code) {
+        SchFailCode.invalidOption -> add(LayoutErrCtx.options)
+        SchFailCode.belowMinimum -> if (type.minBound != null) add(LayoutCtx.min)
+        SchFailCode.aboveMaximum -> if (type.maxBound != null) add(LayoutCtx.max)
+        else -> {}
+    }
+}
+
+/**
+ * The data a layout error message for [code] resolves against (issue #588) -- the runtime counterpart of
+ * [errorContextNames], built where the failure is rendered (the frontend). [fieldName] is the property's name,
+ * [value] its current value (the offending one), and [options] the failure's choice list. Only the params
+ * [errorContextNames] names for [code] are put, so the render and the boot check agree on the vocabulary; a
+ * bound comes from [type], the choice list is joined to a readable string. A pure function, defined here beside
+ * the names for the same reason [boundsContextData] is.
+ */
+fun errorContextData(
+    code: SchFailCode,
+    type: SchType,
+    fieldName: String,
+    value: Any?,
+    options: List<SchOption>?,
+): Map<String, Any?> = buildMap {
+    put(LayoutErrCtx.field, fieldName)
+    if (code != SchFailCode.missingRequired && code != SchFailCode.additionalProperty) {
+        value?.let { put(LayoutErrCtx.value, it) }
+    }
+    when (code) {
+        SchFailCode.invalidOption ->
+            options?.let { opts -> put(LayoutErrCtx.options, opts.joinToString(", ") { it.label }) }
+        SchFailCode.belowMinimum -> type.minBound?.let { put(LayoutCtx.min, it) }
+        SchFailCode.aboveMaximum -> type.maxBound?.let { put(LayoutCtx.max, it) }
+        else -> {}
+    }
+}
+
+/**
  * The problems with a layout's copy **templates** -- `label` / `description` / `hint` -- against the field they
  * annotate (issues #587, #605), the boot check for §10's frontend substitution:
  *  - a **malformed** template (an unterminated `${'$'}{...}`, an empty block) fails, on any of the three;
@@ -389,6 +491,34 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
                                 "field's bounds context provides ${if (allowed.isEmpty()) "no params (it declares no minimum or maximum)" else allowed.sorted().joinToString(", ")}.",
                         )
                     }
+                }
+            }
+        }
+        // The error override (issue #588): each message is a frontend `${'$'}{…}` template over its failure code's
+        // params. Its keys are already validated against the code enum by `parseErrorMessages`; here the message
+        // itself is checked -- malformed, a fragment pull (not supported in error copy this stage), or a `${'$'}{…}`
+        // the failure cannot provide -- the same "parses clean, renders wrong" the other copy checks prevent.
+        for ((codeKey, message) in field.errors) {
+            // A valid key is a SchFailCode name or `default`; `default` (code == null) may match any failure.
+            val code = SchFailCode.entries.firstOrNull { it.name == codeKey }
+            val analysis = message.analyzeTemplate()
+            for (issue in analysis.issues) {
+                problems.add("$where: the '${SCH.layout}' error '$codeKey' for '${field.field}' is a malformed template: ${issue.message}")
+            }
+            if (analysis.refs.isNotEmpty()) {
+                problems.add(
+                    $$"$$where: the '$${SCH.layout}' error '$$codeKey' for '$${field.field}' uses a fragment pull ('${@t}'); " +
+                        "a layout error message supports only frontend parameter substitution (see #588).",
+                )
+            }
+            val allowed = errorContextNames(code, prop.valueType)
+            for (path in analysis.paths.required + analysis.paths.optional) {
+                val name = path.substringBefore('.')
+                if (name !in allowed) {
+                    problems.add(
+                        $$"$$where: the '$${SCH.layout}' error '$$codeKey' for '$${field.field}' references '${$$path}', but a " +
+                            $$"'$$codeKey' failure provides $${allowed.sorted().joinToString(", ")}.",
+                    )
                 }
             }
         }
