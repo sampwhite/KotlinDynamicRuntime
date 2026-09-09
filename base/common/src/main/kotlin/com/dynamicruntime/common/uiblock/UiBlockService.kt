@@ -83,6 +83,21 @@ class UiBlockService : ServiceInitializer {
         }
     }
 
+    /**
+     * Swaps [removed] for [added] among [client]'s UiBlock overlays and forgets that client's merges and parsed
+     * predicates (issue #616). Only the layers named are withdrawn, matched by identity, so a client's
+     * source-code overlays stay while its stored ones are replaced. The predicates go too, and must: they were
+     * parsed against the client's cfact **names**, and a reload can change that vocabulary, so a predicate kept
+     * across it could name a cfact the client no longer declares. Shared entries and other clients' are
+     * untouched. Called under the reload lock.
+     */
+    fun reloadClient(cxt: KdrCxt, client: String, removed: List<UiBlockSource>, added: List<UiBlockSource>) {
+        val kept = registeredUiBlocks(cxt).filter { held -> removed.none { it === held } }
+        cxt.instanceConfig.put(UIB.registryKey, kept + added)
+        mergedCache.keys.removeIf { it.endsWith("|$client") }
+        predicateCache.keys.removeIf { it.startsWith("$client|") }
+    }
+
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "UiBlockService"

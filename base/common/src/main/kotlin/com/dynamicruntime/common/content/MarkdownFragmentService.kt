@@ -536,6 +536,28 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         }
     }
 
+    /**
+     * Swaps [removed] for [added] among [client]'s fragment overlays and forgets every merge done for that
+     * client (issue #616). Only the layers named are withdrawn -- matched by identity, since they are the very
+     * objects the boot appended -- so a client's **source-code** overlays, contributed by a component beside its
+     * stored ones, stay in place while the stored ones are replaced (the review of #616 caught a client-wide
+     * filter dropping them). Then each `fileId|client` merge is dropped **together with its `byBuildId` row**:
+     * the build id is a content hash, so a versioned URL minted from the old merge must stop answering rather
+     * than keep serving the copy the reload replaced. Shared merges and other clients' are untouched. Called
+     * under the reload lock, so the read-modify-write of the registry is not raced by another reload.
+     */
+    fun reloadClient(cxt: KdrCxt, client: String, removed: List<FragmentSource>, added: List<FragmentSource>) {
+        val kept = registeredFragmentSources(cxt).filter { held -> removed.none { it === held } }
+        cxt.instanceConfig.put(FRAG.registryKey, kept + added)
+        val suffix = "|$client"
+        for ((key, merged) in effectiveCache.entries.toList()) {
+            if (key.endsWith(suffix)) {
+                effectiveCache.remove(key)
+                byBuildId.remove("${key.removeSuffix(suffix)}|${merged.buildId}")
+            }
+        }
+    }
+
     /** The content of [fileId] that [buildId] names, or null when this node has no such version of it. */
     fun fragmentsWithBuildId(cxt: KdrCxt, fileId: String, buildId: String): EffectiveFragments? {
         val key = "$fileId|$buildId"

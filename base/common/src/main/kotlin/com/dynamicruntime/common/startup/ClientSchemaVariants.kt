@@ -42,6 +42,12 @@ fun buildClientVariants(
     collected: SchemaCollector,
     global: KdrSchemaStore,
     queryBase: Any?,
+    /**
+     * Restrict the build to this one client (issue #616): a running-node reload rebuilds a single client's
+     * variant off the current collector, over the very same per-client body the boot runs for every client --
+     * so a reloaded variant and a booted one are the same computation. Null builds every varying client.
+     */
+    onlyClient: String? = null,
 ): Map<String, KdrSchemaStore> {
     val defsByClient = collected.gedraConfigs.configs.mapNotNull { it.client }.associateBy { it.clientId }
     // A client that only declares usage rules (issue #538) varies its listing's search fields without
@@ -56,6 +62,7 @@ fun buildClientVariants(
     // iterating those alone would miss it -- a client that narrows its trait set purely by declaration is the
     // ordinary case.
     val clients = (collected.clientOverlays.keys + defsByClient.keys + usageClients).toSet()
+        .let { all -> if (onlyClient == null) all else all.filter { it == onlyClient }.toSet() }
     if (clients.isEmpty()) {
         return emptyMap()
     }

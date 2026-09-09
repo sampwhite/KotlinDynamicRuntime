@@ -72,6 +72,21 @@ class GedraConfigLoadService : ServiceInitializer {
     /** Config problems found while loading, in order -- empty unless a production node degraded (issue #303). */
     val issues: MutableList<GedraConfigIssue> = mutableListOf()
 
+    /**
+     * The data-loaded configs now in the collector, by client (issue #616). The collector does not know a
+     * source config from a stored one, and a reload must replace only the stored ones -- so this is the record
+     * of exactly what a reload has to withdraw. Written at boot here and kept current by the reload.
+     */
+    private val loadedByClient = HashMap<String, List<GedraConfig>>()
+
+    /** The data-loaded configs currently in the collector for [client]. */
+    fun loadedFor(client: String): List<GedraConfig> = synchronized(loadedByClient) { loadedByClient[client].orEmpty() }
+
+    /** Records that [configs] are now the data-loaded configs in the collector for [client]. */
+    fun recordLoaded(client: String, configs: List<GedraConfig>) = synchronized(loadedByClient) {
+        if (configs.isEmpty()) loadedByClient.remove(client) else loadedByClient[client] = configs
+    }
+
     override fun onCreate(cxt: KdrCxt) {
         // Both peers are constructed in the factory pass before any `onCreate`, so they are resolvable here even
         // though their own `checkInit` has not run.
@@ -150,6 +165,7 @@ class GedraConfigLoadService : ServiceInitializer {
             // fragment/UiBlock overlays are then folded in, gated on the take exactly as the boot loop does.
             if (collector.addGedraConfig(cxt, config)) {
                 appendOverlays(cxt, config)
+                recordLoaded(config.gedraId.client, loadedFor(config.gedraId.client) + config)
                 loaded++
             }
         }
@@ -182,10 +198,17 @@ class GedraConfigLoadService : ServiceInitializer {
     }
 
     /** Turns one stored row into a [GedraConfig] via [reassembleGedraConfig], recovering the namespace it needs. */
-    private fun reassemble(cxt: KdrCxt, rowMap: Map<String, Any?>): GedraConfig {
+    private fun reassemble(cxt: KdrCxt, rowMap: Map<String, Any?>): GedraConfig =
         // Parse the id rather than intern it: GedraService is a regular service and does not exist yet.
-        val row = GedraConfigRow.extract(rowMap) { GedraId.parse(it) }
-        return reassembleGedraConfig(cxt, row.configId.baseId, namespaceOf(row), row.client, row.entriesBySlot())
+        toConfig(cxt, GedraConfigRow.extract(rowMap) { GedraId.parse(it) })
+
+    /** A stored [row] as the [GedraConfig] it holds -- the one reassembly the boot load and a reload (#616) share. */
+    fun toConfig(cxt: KdrCxt, row: GedraConfigRow): GedraConfig =
+        reassembleGedraConfig(cxt, row.configId.baseId, namespaceOf(row), row.client, row.entriesBySlot())
+
+    /** The ids of every data-loaded config now in the collector, across clients. */
+    fun allLoadedIds(): Set<String> = synchronized(loadedByClient) {
+        loadedByClient.values.flatten().map { it.gedraId.fullId }.toSet()
     }
 
     /**
@@ -212,7 +235,7 @@ class GedraConfigLoadService : ServiceInitializer {
      * config cannot become the base another extends -- "only the source-code definition is pulled in") and must
      * be a [ClientUsageType.template] ("only a template may be named"). A config that extends nothing is fine.
      */
-    private fun extendsProblem(config: GedraConfig, sourceClients: Map<String, ClientDef>): GedraConfigIssue? {
+    fun extendsProblem(config: GedraConfig, sourceClients: Map<String, ClientDef>): GedraConfigIssue? {
         val parentId = config.client?.extendsFromClientId ?: return null
         val parent = sourceClients[parentId]
             ?: return GedraConfigIssue(
