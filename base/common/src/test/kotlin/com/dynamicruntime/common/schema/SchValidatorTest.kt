@@ -930,7 +930,7 @@ class SchValidatorTest : StringSpec({
         }
         errorMessageProblems("Type 'F'", pull).any { it.contains("fragment pull") } shouldBe true
         val backend = errType("bk") {
-            property("score", "S") { type = SCT.integer; errors { default($$"""See %{@t("x.y")}.""") } }
+            property("score", "S") { type = SCT.integer; errors { default("""See %{@t("x.y")}.""") } }
         }
         errorMessageProblems("Type 'F'", backend, backendPrefix = '%').any { it.contains("backend block") } shouldBe true
     }
@@ -1103,7 +1103,7 @@ class SchValidatorTest : StringSpec({
         val bad = mapOf(
             "schema" to mapOf(
                 SCH.type to SCT.kObject,
-                SCH.properties to mapOf("x" to mapOf(SCH.dRef to "#/\$defs/t.Nope")),
+                SCH.properties to mapOf("x" to mapOf(SCH.dRef to $$"#/$defs/t.Nope")),
             ),
         )
         val failures = validate(holder, bad)
@@ -1112,7 +1112,7 @@ class SchValidatorTest : StringSpec({
         failures[0].path shouldContain "schema"
         failures[0].cause.shouldNotBeNull()
         failures[0].message shouldContain "t.Nope"
-        // A different parse-level defect, to show it is the parser's judgement and not a $ref check: a union
+        // A different parse-level defect, to show it is the parser's judgment and not a $ref check: a union
         // that declares no branches.
         val noBranches = mapOf("schema" to mapOf(SCH.oneOf to emptyList<Any?>()))
         validate(holder, noBranches).single().code shouldBe SchFailCode.badValue
