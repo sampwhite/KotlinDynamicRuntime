@@ -10,6 +10,7 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.sql.cache.SqlTableCache
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkUniqueId
@@ -305,6 +306,81 @@ class GedraConfigService : ServiceInitializer {
         "select * from t:${GCT.gedraConfig} where c:${GC.configId} = :${GC.configId} " +
             "and c:${PF.client} = :${PF.client} order by c:${GC.version} desc",
     )
+
+    /** The [GCT.gedraConfigControl] table from the schema store, where a client's protection tier is stored (#617). */
+    private fun controlTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GCT.gedraConfigControl]
+        ?: throw KdrException("${GCT.gedraConfigControl} table is not registered in the schema store.")
+
+    /**
+     * Whether [client] consumes only its published configuration in this node's environment (issue #617): its
+     * `staticConfig` (a source tier, forced on) **or** its toggled state. The one place the tier collapses to
+     * the single question the loader and the reload ask. Reads `staticConfig` from the source-code client
+     * definitions -- the configs that are not data-loaded -- since static is the source tier.
+     */
+    fun publishedOnly(cxt: KdrCxt, client: String): Boolean {
+        if (client in staticClients(cxt)) return true
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
+        return GedraConfigControl.isToggledPublishedOnly(cxt, sqlCxt, controlTable(cxt), client, cxt.instanceConfig.env)
+    }
+
+    /** The clients a source-code definition marks `staticConfig`; the source configs are the not-data-loaded ones. */
+    private fun staticClients(cxt: KdrCxt): Set<String> {
+        val loadedIds = GedraConfigLoadService.get(cxt).allLoadedIds()
+        val collector = SchemaCollector.get(cxt) ?: return emptySet()
+        return GedraConfigControl.staticClients(collector.gedraConfigs.configs.filter { it.gedraId.fullId !in loadedIds })
+    }
+
+    /**
+     * Sets [client]'s published-only state in this node's environment (issue #617), refusing a `staticConfig`
+     * client -- its tier is fixed in source and is not the toggle's to change. Returns the effective state after
+     * the write, which for a non-static client is [value].
+     */
+    fun setPublishedOnly(cxt: KdrCxt, client: String, value: Boolean): Boolean {
+        if (client in staticClients(cxt)) {
+            throw KdrException.mkInput(
+                "Client '$client' is statically configured: its configuration comes from source in production, " +
+                    "so the published-only tier cannot be toggled for it.",
+            )
+        }
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
+        GedraConfigControl.setPublishedOnly(cxt, sqlCxt, controlTable(cxt), client, cxt.instanceConfig.env, value)
+        return value
+    }
+
+    /**
+     * The configuration [client] should **consume** now (issue #617), one [GedraConfigRow] per class: its
+     * latest revision, or -- when the client is published-only -- its latest *published* revision, and nothing
+     * for a class that has none. This is the tier-aware read the reload (#616) loads from, distinct from
+     * [listConfigs], which serves the editing surface and always shows the latest.
+     */
+    fun currentConfigs(cxt: KdrCxt, client: String): List<GedraConfigRow> {
+        val publishedOnly = publishedOnly(cxt, client)
+        val rowsByClass = listRevisionRows(cxt, client)
+        return rowsByClass.mapNotNull { classRows ->
+            val chosen = if (publishedOnly) latestPublishedRow(classRows) else latestRevisionRow(classRows)
+            chosen?.let { GedraConfigRow.extract(gedraService, it) }
+        }
+    }
+
+    /** Every enabled revision row of [client]'s configs, grouped by class -- the raw material both list reads reduce. */
+    private fun listRevisionRows(cxt: KdrCxt, client: String): List<List<Map<String, Any?>>> {
+        // The cache holds every client's rows, so it serves this regardless of which client is asked for; SQL
+        // is the fallback on a miss, as everywhere else.
+        configCache?.let { cache ->
+            cache.checkRefresh(cxt)
+            return GedraConfigCache.rowsForClient(cache, client)
+                .groupBy { it[GC.configId].toOptStr() ?: "" }.filterKeys { it.isNotEmpty() }.values.toList()
+        }
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
+        val table = configTable(cxt)
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qGedraConfigRowsForClient", table.columns,
+            "select * from t:${GCT.gedraConfig} where c:${PF.client} = :${PF.client} and c:${PF.enabled} = true",
+        )
+        var rows: List<Map<String, Any?>> = emptyList()
+        sqlCxt.sqlDb.withSession(cxt) { rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(PF.client to client)) }
+        return rows.groupBy { it[GC.configId].toOptStr() ?: "" }.filterKeys { it.isNotEmpty() }.values.toList()
+    }
 
     /**
      * The latest revision of [configId] as it stands inside the transaction, or null when the class has no

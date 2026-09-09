@@ -18,6 +18,7 @@ const val gedraConfigTopic = "gedraConfig"
 object GCT {
     const val gedraConfigTran = "GedraConfigTran"
     const val gedraConfig = "GedraConfig"
+    const val gedraConfigControl = "GedraConfigControl"
 }
 
 /** Column names for the gedra config tables. */
@@ -54,6 +55,18 @@ object GC {
 
     /** Everything the revision holds, as a map: its config traits (#613), plus whatever later keys arrive. */
     const val data = "data"
+
+    // --- protection tier (#617), on the control table ---
+
+    /** The environment a control row governs -- a client's tier is per-environment. */
+    const val environment = "environment"
+
+    /**
+     * Whether this client, in this environment, consumes only its **published** configuration (issue #617). The
+     * runtime tier-2 state, toggled per client per environment; `ClientDef.staticConfig` is the source-code tier
+     * that forces it on and refuses the toggle. Absent (no row) means the free tier -- the latest revision.
+     */
+    const val publishedOnly = "publishedOnly"
 
     /**
      * A key **inside** the [data] map (not a column): the namespace the config's generated types live in (issue
@@ -126,5 +139,17 @@ fun gedraConfigTables(cxt: KdrCxt): List<KdrTable> =
             // The in-memory cache reloads by asking for the rows changed since it last looked (#615), a
             // predicate on `updatedAt` run on every node; without this index that is a full scan.
             index(PF.updatedAt)
+        }
+        // The protection tier (#617): one row per (client, environment) saying whether that client, in that
+        // environment, consumes only its published configuration. Deployment-shared like the config rows and
+        // owned by the client, never narrower -- `forClient()` for the same reason the config tables take it.
+        // Absent means the free tier, so a client that has never toggled needs no row.
+        table(GCT.gedraConfigControl, "One client's configuration protection tier in one environment (#617).") {
+            column(GC.environment, "The environment this tier applies in.", required = true)
+            column(GC.publishedOnly, "Whether this client consumes only its published configuration here.") {
+                type = SCT.boolean
+            }
+            primaryKey(PF.client, GC.environment)
+            forClient()
         }
     }

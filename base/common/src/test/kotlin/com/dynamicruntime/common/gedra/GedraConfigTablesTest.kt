@@ -28,11 +28,23 @@ class GedraConfigTablesTest : StringSpec({
     val tables = gedraConfigTables(KdrCxt.mkSimpleCxt("gedraConfigTablesDef"))
     fun table(name: String) = tables.single { it.tableName == name }
 
-    "two tables, on a topic of their own" {
-        tables.map { it.tableName } shouldContainExactly listOf(GCT.gedraConfigTran, GCT.gedraConfig)
+    "three tables, on a topic of their own" {
+        tables.map { it.tableName } shouldContainExactly
+            listOf(GCT.gedraConfigTran, GCT.gedraConfig, GCT.gedraConfigControl)
         tables.map { it.topic }.toSet() shouldBe setOf(gedraConfigTopic)
         // Apart from the data topic on purpose: a config write must never contend with a data write.
         gedraConfigTopic shouldNotBe gedraDataTopic
+    }
+
+    // The protection-tier control table (issue #617): one row per (client, environment), owned by the client,
+    // and NOT transactional -- a second transactional table in this topic would force every config write to
+    // name the lock it takes, and a tier toggle is a plain keyed upsert with no revision race to serialize.
+    "the control table is keyed by client and environment, owned by a client, and not transactional" {
+        val control = table(GCT.gedraConfigControl)
+        control.primaryKey shouldBe listOf(PF.client, GC.environment)
+        control.isTransactional shouldBe false
+        control.features shouldBe setOf(TableFeature.client)
+        control.columnsByName.getValue(GC.publishedOnly).schema[SCH.type] shouldBe SCT.boolean
     }
 
     "the root is keyed by the revision class, carries the lock, and is owned by a client and nothing narrower" {

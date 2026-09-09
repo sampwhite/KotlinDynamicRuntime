@@ -55,9 +55,10 @@ object GedraConfigReload {
         val loader = GedraConfigLoadService.get(cxt)
         val configService = GedraConfigService.get(cxt)
 
-        // The client's current stored configuration: the latest revision of each class it owns.
+        // The client's current stored configuration, by its protection tier (issue #617): the latest revision
+        // of each class, or the latest *published* one for a published-only (or static) client.
         val bound = if (cxt.client == client) cxt else cxt.mkSubContext("configReload", client)
-        val fresh = configService.listConfigs(bound).map { loader.toConfig(cxt, it) }
+        val fresh = configService.currentConfigs(bound, client).map { loader.toConfig(cxt, it) }
         // The extends rule a data config is held to, against the source-code clients alone.
         val loadedIds = loader.allLoadedIds()
         val sourceClients = collector.gedraConfigs.configs
