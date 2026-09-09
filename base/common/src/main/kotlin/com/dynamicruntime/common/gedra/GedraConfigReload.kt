@@ -19,6 +19,8 @@ class ConfigReloadResult(
     val evictedTypes: Int,
     /** Problems the collector reported while taking the configs (a degraded production node). */
     val issues: List<GedraConfigIssue>,
+    /** The newest configuration date the client now runs at (issue #618): what the sync tracking announces. */
+    val marker: kotlin.time.Instant?,
 )
 
 /**
@@ -58,7 +60,9 @@ object GedraConfigReload {
         // The client's current stored configuration, by its protection tier (issue #617): the latest revision
         // of each class, or the latest *published* one for a published-only (or static) client.
         val bound = if (cxt.client == client) cxt else cxt.mkSubContext("configReload", client)
-        val fresh = configService.currentConfigs(bound, client).map { loader.toConfig(cxt, it) }
+        val currentRows = configService.currentConfigs(bound, client)
+        val marker = currentRows.mapNotNull { it.updatedAt }.maxOrNull()
+        val fresh = currentRows.map { loader.toConfig(cxt, it) }
         // The extends rule a data config is held to, against the source-code clients alone.
         val loadedIds = loader.allLoadedIds()
         val sourceClients = collector.gedraConfigs.configs
@@ -101,6 +105,6 @@ object GedraConfigReload {
         WorkflowService.get(cxt).reloadClient(cxt, client)
 
         LogStartup.info(cxt) { "Reloaded client '$client': ${taken.size} stored configuration(s), ${typeKeys.size} type-cache entries dropped." }
-        ConfigReloadResult(client, taken.size, typeKeys.size, issues)
+        ConfigReloadResult(client, taken.size, typeKeys.size, issues, marker)
     }
 }

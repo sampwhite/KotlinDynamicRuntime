@@ -23,6 +23,7 @@ import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
+import com.dynamicruntime.common.gedra.ClientSyncService
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import org.eclipse.jetty.server.Handler
@@ -462,6 +463,10 @@ class RequestService : ServiceInitializer {
         // exactly one dispatcher, and one subscriber.
         val tableCaches = SqlTableCacheService.get(cxt)
         tableCaches.beginRequest(cxt)
+        // Bring this node's client configuration current with its peers before serving (issue #618) -- throttled
+        // and in memory unless a peer's change is waiting, the same request-driven coherence the caches use.
+        // Null on a node with no config surface (an edge), which has nothing to sync.
+        ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
         try {
             dispatch(cxt, handler, focus)
         } finally {

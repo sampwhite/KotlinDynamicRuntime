@@ -252,6 +252,8 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         outputRef = CFEP.reloadResultType,
     ) { c, _ ->
         val result = GedraConfigReload.reloadClient(c, c.client)
+        // Announce to peers that this node reloaded newer configuration (issue #618), so a node behind catches up.
+        ClientSyncService.get(c).announceAndMark(c, c.client, result.marker)
         linkedMapOf(
             CFEP.client to result.client,
             CFEP.loaded to result.loaded,

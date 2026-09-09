@@ -16,7 +16,9 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
+import kotlin.time.Instant
 
 /**
  * Loads stored client configurations from the database into the schema collector at boot, beside the
@@ -173,7 +175,22 @@ class GedraConfigLoadService : ServiceInitializer {
         if (loaded > 0) {
             LogStartup.info(cxt) { "Loaded $loaded stored client configuration(s) at boot." }
         }
-        recordRestartLoad(cxt, loaded)
+        // The newest configuration date this node loaded per client (issue #618) -- the marker `ClientSyncService`
+        // announces so a peer that has not caught up learns this restarted node is ahead. Computed from the very
+        // rows selected, before they were reassembled, so it reflects exactly what was taken.
+        recordRestartLoad(markersOf(rows))
+    }
+
+    /** Per client, the newest `updatedAt` among the selected revision rows (issue #618). */
+    private fun markersOf(rows: List<Map<String, Any?>>): Map<String, Instant> {
+        val out = HashMap<String, Instant>()
+        for (row in rows) {
+            val client = row[PF.client].toOptStr() ?: continue
+            val at = row[PF.updatedAt].toOptInstant() ?: continue
+            val existing = out[client]
+            if (existing == null || at > existing) out[client] = at
+        }
+        return out
     }
 
     /** The latest enabled revision of every stored config, across all clients. */
@@ -285,14 +302,23 @@ class GedraConfigLoadService : ServiceInitializer {
     }
 
     /**
-     * Where a restart's "I just loaded newer config" announcement will go (issue #618): a write to a
-     * `ClientSyncTracking` table so peers that have not reloaded learn they are behind. Nothing is written yet
-     * -- #611 puts the write here so a single obvious place holds it when #618 arrives.
+     * The newest configuration date this node loaded per client at boot (issue #618). Held in memory for
+     * [ClientSyncService] to announce and to seed its baseline from, once it initializes (a regular service, so
+     * after this startup one): the announce cannot happen here, before the sync topic's tables are reconciled.
      */
-    @Suppress("UNUSED_PARAMETER")
-    private fun recordRestartLoad(cxt: KdrCxt, loadedCount: Int) {
-        // #618: record this node's restart load into ClientSyncTracking here.
+    private var loadedMarkers: Map<String, Instant> = emptyMap()
+
+    /** Records the per-client markers of this node's restart load (issue #618); read by [ClientSyncService]. */
+    private fun recordRestartLoad(markers: Map<String, Instant>) {
+        loadedMarkers = markers
     }
+
+    /** The per-client markers this node loaded at boot -- what a restart announces to peers (issue #618). */
+    fun loadedMarkers(): Map<String, Instant> = loadedMarkers
+
+    /** Whether this node loads (and therefore syncs) stored configuration -- persistent, or forced by the flag. */
+    fun loadEnabled(cxt: KdrCxt): Boolean =
+        cxt.getEnvBool(loadEnvVar) ?: !SqlTopicService.get(cxt).isInMemory
 
     @Suppress("ConstPropertyName")
     companion object {
