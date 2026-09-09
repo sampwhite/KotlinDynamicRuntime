@@ -240,6 +240,25 @@ inner `<input>` is the editor's first `.ant-select input` and is `document.activ
 generates an id for it anyway). Setting `theme.token.motion = false` on a `ConfigProvider` removes the
 animation, and then a coordinate click on an option selects as well.
 
+**Simpler still, and what a full flow was driven with:** open the Select the same way, then dispatch a `click`
+to the visible `.ant-select-item-option` whose `title` is the wanted label, found inside the dropdown that
+contains `<inputId>_list` — a pick *by label*, no arrow counting. The whole acme sequence has been driven this
+way end to end from the browser tools, verified against `GET /gedra/acme/formDoc` (`item.entries`) after each
+save: create a form on the creation page (two Selects, text inputs, submit), then on the Edit form delete the
+questionnaire entry and add it back. Buttons are reached by accessibility ref or clicked by text from
+`javascript_tool` (`+ Add`, `Add data`, `Save changes`). Two things about the Edit form that cost a wrong turn
+each: a section's `✕` removes the **edit**, not the entry ("Save sends only the sections you leave in place"),
+so deleting an entry is its **Action** Select → `deleteOrNoOp`; and a section added with `+ Add` shows its
+Trait-id *and* Action Selects at once, and its `Data` object must be added (`Add data`) before the trait's
+fields appear. So a choice widget no longer needs to be handed to a person to verify.
+
+**That the UI *can* be driven is not a reason to prefer it.** Call the endpoint whenever the question is about
+the backend or the data — seeding a form, checking that a save landed, exercising a validation rule: one
+`fetch` is simpler, faster and less fragile than a page. Drive the UI only when the UI itself is what is being
+validated — that a control renders the right choices, that an invalid choice shows the right message, that a
+save navigates where it should. The run above used the API as the witness after every save for exactly this
+reason.
+
 ## Errors: never a blank page (issue #223)
 
 A throw during render used to unmount the whole React tree and leave an empty body — the least informative
