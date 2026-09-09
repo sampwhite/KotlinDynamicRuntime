@@ -47,7 +47,14 @@ class GedraConfigRow(
     /** The config-trait entries this revision holds, each an envelope over one slot's data (see [entriesBySlot]). */
     var entries: List<Map<String, Any?>> = emptyList()
 
-    /** Whatever else the stored [GC.data] map held, [GD.entries] promoted out -- carried through unchanged. */
+    /**
+     * The namespace the config's generated types live in (issue #614), read from [GC.namespace] in the stored
+     * map. Empty for a row written before the namespace was persisted, or one that never carried it; the boot
+     * loader falls back to recovering it from a stored qualified type name in that case.
+     */
+    var namespace: String = ""
+
+    /** Whatever else the stored [GC.data] map held, [GD.entries] and [GC.namespace] promoted out. */
     var extra: Map<String, Any?> = emptyMap()
 
     var createdAt: Instant? = null
@@ -77,6 +84,7 @@ class GedraConfigRow(
      */
     fun storedData(entries: List<Map<String, Any?>>): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>(extra)
+        if (namespace.isNotEmpty()) out[GC.namespace] = namespace
         out[GD.entries] = entries
         return out
     }
@@ -86,18 +94,28 @@ class GedraConfigRow(
          * Builds a typed row from a stored [GCT.gedraConfig] map, taking the shared instance of its id from
          * [gedraService] so every reader of one revision holds the same [GedraId] object.
          */
-        fun extract(gedraService: GedraService, data: Map<String, Any?>): GedraConfigRow {
+        fun extract(gedraService: GedraService, data: Map<String, Any?>): GedraConfigRow =
+            extract(data) { gedraService.readId(it) }
+
+        /**
+         * As [extract], but resolving the id through [idOf] rather than [GedraService] -- for the boot loader
+         * (issue #614), which runs in the startup tier before [GedraService] (a regular service) exists and so
+         * passes `GedraId::parse`. Interning is only a shared-instance optimization; a parsed id is a correct
+         * id, so the load path loses nothing but the interning.
+         */
+        fun extract(data: Map<String, Any?>, idOf: (String) -> GedraId): GedraConfigRow {
             val fullId = data[GC.gedraId].toOptStr()
                 ?: throw KdrException("A ${GCT.gedraConfig} row is missing its ${GC.gedraId}.")
             val row = GedraConfigRow(
-                gedraId = gedraService.readId(fullId),
+                gedraId = idOf(fullId),
                 client = data[PF.client].toOptStr() ?: "",
             )
             row.publishedAt = data[GC.publishedAt].toOptInstant()
             row.enabled = data[PF.enabled] == true
             val stored = data[GC.data].toJsonMapOrEmpty()
             row.entries = stored[GD.entries].toJsonListOfMaps()
-            row.extra = stored - GD.entries
+            row.namespace = stored[GC.namespace].toOptStr() ?: ""
+            row.extra = stored - GD.entries - GC.namespace
             row.createdAt = data[PF.createdAt].toOptInstant()
             row.updatedAt = data[PF.updatedAt].toOptInstant()
             return row

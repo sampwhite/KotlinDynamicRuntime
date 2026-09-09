@@ -18,6 +18,7 @@ import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraService
@@ -174,18 +175,22 @@ class CommonComponent : ComponentDefinition {
         fragmentFiles(AFRAG.auth, AFRAG.profile, HFRAG.home, FRAG.errors, FRAG.sample)
 
     /**
-     * Startup services -- fully initialized before regular services. [ClientService] leads (issue #343),
-     * because schema compilation is heading toward being per-client and a variant cannot be built before it
-     * is known which clients there are; nothing depends on that ordering yet, which is when it is cheap to
-     * establish. Schema compilation comes next, and must be ready before the topic service reads the compiled
-     * table definitions; [NodeService] is here so the node's identity and basic facts are known early;
-     * [SqlTopicService] is here so that by the time any regular service's `onCreate` runs -- notably
-     * [InstanceConfigService], which queries the database in its own -- the database configuration is
-     * resolved *and* every topic's tables exist (issue #162). Regular services (and future startup services)
-     * may need all of them during their init.
+     * Startup services -- fully initialized before regular services. [GedraConfigLoadService] leads (issue
+     * #614): it reads stored client configurations into the schema collector, and every consumer below reads
+     * that collector, so the stored configs have to be in it before any of them run. It bootstraps its own
+     * database read against the collector's raw tables, so it does not need the schema store the services below
+     * build. [ClientService] is next (issue #343), because schema compilation is heading toward being
+     * per-client and a variant cannot be built before it is known which clients there are; nothing depends on
+     * that ordering yet, which is when it is cheap to establish. Schema compilation comes next, and must be
+     * ready before the topic service reads the compiled table definitions; [NodeService] is here so the node's
+     * identity and basic facts are known early; [SqlTopicService] is here so that by the time any regular
+     * service's `onCreate` runs -- notably [InstanceConfigService], which queries the database in its own -- the
+     * database configuration is resolved *and* every topic's tables exist (issue #162). Regular services (and
+     * future startup services) may need all of them during their init.
      */
     override fun startupServices(cxt: KdrCxt): List<ServiceEntry> =
         listOf(
+            service(::GedraConfigLoadService),
             service(::ClientService), service(::SchemaService),
             service(::NodeService), service(::SqlTopicService),
         )

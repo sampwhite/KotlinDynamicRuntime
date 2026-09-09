@@ -294,6 +294,9 @@ private fun dropNulls(map: Map<String, Any?>): Map<String, Any?> =
  * rather than for display, storing it becomes worthwhile.
  */
 private fun deriveNamespace(row: GedraConfigRow): String {
+    // The persisted namespace (issue #614) is authoritative; the derivation below is the fallback for a row
+    // written before it was stored.
+    if (row.namespace.isNotEmpty()) return row.namespace
     val bySlot = row.entriesBySlot()
     for (slot in listOf(CCT.traitDef, CCT.stateTraitDef, CCT.schemaDef)) {
         for (entry in bySlot[slot].orEmpty()) {
