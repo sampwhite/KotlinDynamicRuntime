@@ -130,7 +130,8 @@ class GedraConfigLoadService : ServiceInitializer {
         val contentTable = configTables.firstOrNull { it.tableName == GCT.gedraConfig } ?: return
         sql.reconcileTopicFromTables(cxt, gedraConfigTopic, configTables)
 
-        val rows = readLatestConfigRows(cxt, contentTable)
+        val controlTable = configTables.firstOrNull { it.tableName == GCT.gedraConfigControl }
+        val rows = readLatestConfigRows(cxt, contentTable, controlTable)
         if (rows.isEmpty()) {
             return
         }
@@ -176,7 +177,7 @@ class GedraConfigLoadService : ServiceInitializer {
     }
 
     /** The latest enabled revision of every stored config, across all clients. */
-    private fun readLatestConfigRows(cxt: KdrCxt, contentTable: KdrTable): List<Map<String, Any?>> {
+    private fun readLatestConfigRows(cxt: KdrCxt, contentTable: KdrTable, controlTable: KdrTable?): List<Map<String, Any?>> {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         // Ordered class then version-desc, so the first enabled row of each class is its latest -- the same
         // reduction `GedraConfigService.listConfigs` does, but across every client rather than one.
@@ -188,14 +189,26 @@ class GedraConfigLoadService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, emptyMap())
         }
-        // Reduced by the one shared "which revision is current" rule (issue #615), so the loader and the config
-        // cache cannot disagree about it even though the loader reads the table directly.
+        // Which clients consume published-only here (issue #617): their toggled state, plus the source-code
+        // static clients (`staticConfig` forces the tier on). At boot every collected config is a source one,
+        // so `staticClients` reads the whole set. A class of a published-only client takes its latest *published*
+        // revision, and loads nothing when it has none.
+        val env = cxt.instanceConfig.env
+        val toggled = controlTable?.let { GedraConfigControl.publishedOnlyClients(cxt, sqlCxt, it, env) } ?: emptySet()
+        val publishedOnly = toggled + GedraConfigControl.staticClients(collector().gedraConfigs.configs)
         return rows.filter { it[PF.enabled] == true }
             .groupBy { it[GC.configId].toOptStr() ?: "" }
             .filterKeys { it.isNotEmpty() }
             .values
-            .mapNotNull { latestRevisionRow(it) }
+            .mapNotNull { classRows ->
+                val client = classRows.first()[PF.client].toOptStr()
+                if (client != null && client in publishedOnly) latestPublishedRow(classRows) else latestRevisionRow(classRows)
+            }
     }
+
+    /** The schema collector, resolved in `onCreate`. */
+    private fun collector(): SchemaCollector = schemaCollector
+        ?: throw KdrException("$serviceName used its collector before onCreate.")
 
     /** Turns one stored row into a [GedraConfig] via [reassembleGedraConfig], recovering the namespace it needs. */
     private fun reassemble(cxt: KdrCxt, rowMap: Map<String, Any?>): GedraConfig =

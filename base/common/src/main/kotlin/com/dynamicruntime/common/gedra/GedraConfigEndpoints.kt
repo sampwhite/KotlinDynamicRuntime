@@ -55,6 +55,7 @@ object CFEP {
     const val bundlePublish = "/${SECT.clientAdmin}/config/bundle/publish"
     const val traits = "/${SECT.clientAdmin}/config/traits"
     const val reload = "/${SECT.clientAdmin}/config/reload"
+    const val publishedOnly = "/${SECT.clientAdmin}/config/publishedOnly"
 
     // --- type names ---
     const val bundleType = "ConfigBundle"
@@ -62,6 +63,7 @@ object CFEP {
     const val summaryType = "ConfigSummary"
     const val traitEntryType = "ConfigTraitEntry"
     const val reloadResultType = "ConfigReloadResult"
+    const val tierType = "ConfigTier"
 
     // --- field names (each matches its value) ---
     const val name = "name"
@@ -78,6 +80,7 @@ object CFEP {
     const val loaded = "loaded"
     const val evictedTypes = "evictedTypes"
     const val issues = "issues"
+    const val publishedOnlyField = "publishedOnly"
 }
 
 fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace) {
@@ -255,6 +258,34 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
             CFEP.evictedTypes to result.evictedTypes,
             CFEP.issues to result.issues.map { it.message },
         )
+    }
+
+    type(CFEP.tierType) {
+        type = SCT.kObject
+        description = "A client's configuration protection tier in this environment (issue #617)."
+        property(CFEP.client, "The client.", required = true)
+        property(CFEP.publishedOnlyField, "Whether the client consumes only its published configuration here.", required = true) {
+            type = SCT.boolean
+        }
+    }
+
+    // The published-only tier toggle (issue #617): sets whether the caller's client consumes only its published
+    // configuration on nodes in this environment. Per the caller's own client, as every endpoint here is;
+    // refused for a `staticConfig` client, whose tier is fixed in source. The runtime effect follows on the
+    // next reload -- this records the state, `POST config/reload` rebuilds against it.
+    generalEndpoint(
+        CFEP.publishedOnly,
+        "Sets whether this client consumes only its published configuration on nodes in this environment.",
+        HttpMethod.POST,
+        outputRef = CFEP.tierType,
+        inputFields = {
+            field(CFEP.publishedOnlyField, "Whether to consume published configuration only.", required = true) { type = SCT.boolean }
+        },
+    ) { c, request ->
+        val value = request[CFEP.publishedOnlyField] as? Boolean
+            ?: throw KdrException.mkInput("'${CFEP.publishedOnlyField}' is required.")
+        val effective = GedraConfigService.get(c).setPublishedOnly(c, c.client, value)
+        linkedMapOf(CFEP.client to c.client, CFEP.publishedOnlyField to effective)
     }
 }
 
