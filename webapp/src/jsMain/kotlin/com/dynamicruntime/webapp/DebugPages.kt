@@ -41,6 +41,9 @@ const val debugToolState = "state"
 /** The tool that renders a server-provided content element whose text pulls a fragment on the frontend (#505). */
 const val debugToolFragment = "fragment"
 
+/** The tool that lays out the antd choice widgets, instrumented, for checking what browser automation can drive. */
+const val debugToolChoice = "choice"
+
 /**
  * Hash parameter that makes the **shell** fail (`#fault=shell`), rather than the page.
  *
@@ -105,6 +108,7 @@ val DebugPage = FC<Props> {
         // so it works only on a test instance -- offer it nowhere else, even to an env-debug operator who can
         // reach this page (issue #517). A hand-typed URL falls back to the index rather than a guaranteed error.
         debugToolFragment -> if (appConfig().isTestInstance) DebugFragment {} else DebugIndex {}
+        debugToolChoice -> DebugChoice {}
         else -> DebugIndex {}
     }
 }
@@ -154,6 +158,14 @@ val DebugIndex = FC<Props> {
                     +"Fault: fail the shell"
                 }
                 +" — throws in the app bar, so the backstop boundary is seen to catch."
+            }
+            li {
+                a {
+                    href = "#page=debug&$debugToolParam=$debugToolChoice"
+                    +"Choice widgets"
+                }
+                +(" — the antd choice controls, instrumented with an event trace, for checking which of them " +
+                    "browser automation can drive.")
             }
         }
     }

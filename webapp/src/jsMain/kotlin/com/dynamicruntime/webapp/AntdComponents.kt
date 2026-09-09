@@ -116,6 +116,24 @@ external interface SelectProps : PropsWithChildren {
     var style: dynamic
     /** antd passes the new value (a string, or an array for multi-select). */
     var onChange: ((value: dynamic) -> Unit)?
+    /**
+     * The id antd puts on the inner `<input>`, and the stem of the popup's ids: the listbox is `<id>_list` and
+     * its options `<id>_list_<index>`. That is what makes one particular Select locatable from outside --
+     * the reason the choice-widget debug tool sets one on every case.
+     */
+    var id: String?
+    /**
+     * Whether the popup is a virtual list (antd's default, `true`). It changes more than scrolling: with it on,
+     * the `role="option"` items live in a zero-size accessibility mirror that has **no click handler**, while
+     * the visible, clickable items carry no role at all -- so anything that finds an option through the
+     * accessibility tree finds the one element that cannot select it. `false` puts the roles and the click
+     * handler on the same visible elements. See `DebugChoice` for the measured behavior.
+     */
+    var virtual: Boolean?
+    /** Makes the control a real text input that narrows the popup as you type. Boolean form only here. */
+    var showSearch: Boolean?
+    /** Fires as the popup opens (`true`) and closes (`false`). antd 6's name; `onDropdownVisibleChange` is deprecated. */
+    var onOpenChange: ((open: Boolean) -> Unit)?
 }
 
 external val Select: ComponentType<SelectProps>
@@ -169,6 +187,10 @@ external interface AutoCompleteProps : PropsWithChildren {
      * reachable when a long list eventually needs it -- but read that note before reaching for it.
      */
     var filterOption: dynamic
+    /** The id of the inner `<input>` and the stem of the popup's ids; see [SelectProps.id]. */
+    var id: String?
+    /** Fires as the popup opens and closes; see [SelectProps.onOpenChange]. */
+    var onOpenChange: ((open: Boolean) -> Unit)?
 }
 
 external val AutoComplete: ComponentType<AutoCompleteProps>
