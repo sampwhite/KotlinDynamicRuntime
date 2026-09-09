@@ -101,6 +101,9 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         // what a client-specific surface should be.
         publicApi = endpoint.publicApi,
         tags = endpoint.tags,
+        // A per-client copy consumes the same client configuration the base does, so it carries the sync opt-in
+        // (issue #618) too -- dropping it left every client-dynamic path syncing nothing, stale to a peer's change.
+        needsClientConfig = endpoint.needsClientConfig,
         // Likewise the list-paging flags (issue #499): the copy shares the output schema, so it must share
         // whether the executor populates `numAvailable` / `hasMore` -- otherwise a client copy of a paged
         // listing declares those fields but never fills them, failing validation (or silently dropping paging).

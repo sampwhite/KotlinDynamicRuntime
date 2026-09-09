@@ -137,5 +137,36 @@ class GedraConfigSyncTest : StringSpec({
         endpoints["/gedra/formDoc/create:POST"]?.needsClientConfig shouldBe true
         endpoints["/gedra/formDoc:GET"]?.needsClientConfig shouldBe true
         endpoints["/health:GET"]?.needsClientConfig shouldBe false
+        // The per-client copy of a config-consuming endpoint carries the flag too (else a client-dynamic path
+        // would sync nothing). "tiersync" is a varying client by now, so its copies exist.
+        endpoints["/gedra/tiersync/formDoc/create:POST"]?.needsClientConfig shouldBe true
+    }
+
+    "a client a peer adds is resolvable on another node after it syncs" {
+        // The regression the miss-path sync guards against (issue #611/#618): a client that did not exist when
+        // node B booted. Its per-client endpoints are absent until B pulls the peer's change -- which the
+        // dispatcher now does on a lookup miss, and which checkSync effects here directly.
+        val nc = "arrivalco"
+        fun ncClient(node: KdrCxt) = node.mkSubContext("arrival", nc).also { it.userId = 17000L }
+        val config = gedraConfig(nodeA, "${nc}cfg", "${nc}config", nc) {
+            defineClient(
+                ClientDef(
+                    clientId = nc, name = nc, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            trait("arrivalEntry", "arrival", setOf(GedraDataType.formDoc), "The arrival trait.") { property("v", "A value.") }
+        }
+        GedraConfigService.get(nodeA).writeConfig(ncClient(nodeA), config)
+        val result = GedraConfigReload.reloadClient(nodeA, nc)
+        ClientSyncService.get(nodeA).announceAndMark(nodeA, nc, result.marker)
+
+        val ncKey = "/gedra/$nc/formDoc/create:POST"
+        nodeA.getSchema().endpoints[ncKey]?.needsClientConfig shouldBe true   // A minted the copy on its reload
+        nodeB.getSchema().endpoints[ncKey] shouldBe null                      // B has never seen this client
+
+        Thread.sleep(ClientSyncService.checkThrottleMs + 50)
+        ClientSyncService.get(nodeB).checkSync(nodeB)
+        nodeB.getSchema().endpoints[ncKey]?.needsClientConfig shouldBe true   // now present after the sync
     }
 })
