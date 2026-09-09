@@ -19,6 +19,8 @@ import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldStartWith
 
 /**
  * Searching the forms list by a trait a client declared a usage rule for (issue #538). The parameters come from
@@ -138,6 +140,24 @@ class UsageSearchTest : StringSpec({
         // ...filtered over the cache's client+kind index, not the SQL fall-back (the diagnostic names which ran).
         val explained = resp[EP.meta].toJsonMapOrEmpty()[GDBG.scopeExplained].toJsonMapOrEmpty()
         explained[GDBG.statement] shouldBe "cache:${GDX.clientKind}"
+    }
+
+    "the dataFromSql debug tag diverts a client-scoped search off the cache to SQL" {
+        // The same client-scoped search as above, but `_debug=dataFromSql` (issue #640) bypasses the gedra
+        // cache. The diagnostic then names the SQL statement rather than the cache index -- proof the divert
+        // reached SQL -- and the answer is unchanged, because the two paths agree. Both tags are passed at once:
+        // one to divert, one to report which path ran.
+        val admin = TestUser.create(cxt, "sql-divert-admin@acme.test", level = ROLE.admin, userClient = SC.acme)
+        val unique = "Quill Sqlpath"
+        postAudit(admin, unique)
+        val resp = admin.client.sendJsonGetRequest(
+            clientPath(GEP.formDocs, SC.acme),
+            mapOf(exact(SC.siteAudit) to unique, EP.debug to "${GDBG.dataFromSql},${GDBG.explainScope}"),
+        )
+        resp[EP.items].toJsonListOfMaps().map { displayValue(it, SC.siteAudit) } shouldBe listOf(unique)
+        val explained = resp[EP.meta].toJsonMapOrEmpty()[GDBG.scopeExplained].toJsonMapOrEmpty()
+        explained[GDBG.statement] shouldNotBe "cache:${GDX.clientKind}"
+        explained[GDBG.statement].toString() shouldStartWith "qGedraData"
     }
     // The free-text term (issue #562): one box searched across every text field, ANDed with per-field filters.
     "the free-text term searches the text fields at once, and stacks with a per-field filter" {
