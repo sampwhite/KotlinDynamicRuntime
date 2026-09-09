@@ -23,6 +23,7 @@ import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
+import com.dynamicruntime.common.gedra.ClientSyncService
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import org.eclipse.jetty.server.Handler
@@ -534,11 +535,30 @@ class RequestService : ServiceInitializer {
             if (focus == ContextFocus.api) {
                 // Endpoints are keyed by "path:method" (KdrEndpoint.collationKey) on the context-root-stripped
                 // application path, so endpoint definitions never carry the context root.
-                val endpoint = cxt.getSchema().endpoints["$appPath:$method"]
+                val key = "$appPath:$method"
+                var endpoint = cxt.getSchema().endpoints[key]
+                // Bring this node current with its peers (issue #618) when the endpoint consumes client
+                // configuration -- opt-in, so health, ops and auth traffic touch nothing -- OR when nothing
+                // matched: a peer may have added this client's endpoints (#611) and this node has not caught up,
+                // so a miss must sync and retry rather than 404 blind. Throttled and in memory unless a change is
+                // waiting; a no-op on a node with no config surface (an edge).
+                if (endpoint == null || endpoint.needsClientConfig) {
+                    ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
+                    // A sync may have reloaded and published a new schema store. getSchema caches per context, so
+                    // drop the cached one and re-resolve -- to serve the fresh configuration in this same request,
+                    // and to find an endpoint the reload just added.
+                    cxt.schemaStore = null
+                    endpoint = cxt.getSchema().endpoints[key]
+                }
                 if (endpoint != null) {
                     executeEndpoint(cxt, handler, endpoint)
                 }
             } else {
+                // Content servers render config-derived material too -- a client's markdown fragment and UI-block
+                // overlays (issue #618) -- so bring this node current before serving. The whole content focus is
+                // covered rather than per endpoint, since a content request carries no endpoint metadata to opt
+                // in with; still throttled and in memory unless a peer's change is waiting.
+                ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
                 for (server in contentServers) {
                     if (server.serve(cxt, handler)) {
                         break

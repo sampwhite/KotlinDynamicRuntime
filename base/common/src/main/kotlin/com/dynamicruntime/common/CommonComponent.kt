@@ -17,6 +17,8 @@ import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.ClientSyncService
+import com.dynamicruntime.common.gedra.clientSyncTables
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigService
@@ -152,6 +154,8 @@ class CommonComponent : ComponentDefinition {
         // Gedra config storage (issue #612): the two tables a stored client configuration lives in, keyed so
         // every revision of one config locks on one root row. Nothing reads or writes them yet (#613, #614).
         collector.addTables(gedraConfigTables(cxt), appOnly)
+        // Client-config multi-node sync tracking (issue #618), in its own topic.
+        collector.addTables(clientSyncTables(cxt), appOnly)
         collector.addModule(gedraConfigSchema(cxt), appOnly)
     }
 
@@ -241,6 +245,7 @@ class CommonComponent : ComponentDefinition {
             service(::GedraService, roles = setOf(BOOT.app)),
             service(::GedraDataService, roles = setOf(BOOT.app)),
             service(::GedraConfigService, roles = setOf(BOOT.app)),
+            service(::ClientSyncService, roles = setOf(BOOT.app)),
         )
 
     /** Load just ahead of the standard components (demonstrates relative priority). */

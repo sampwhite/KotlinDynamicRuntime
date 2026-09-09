@@ -140,6 +140,15 @@ class KdrEndpoint(
      */
     val clientShaped: Boolean = false,
     /**
+     * Whether serving this endpoint depends on the node running **current** client configuration (issue #618),
+     * so the dispatcher brings this node in sync with its peers (via [com.dynamicruntime.common.gedra.ClientSyncService])
+     * before the handler runs. Its own axis, distinct from [clientShaped] (which is about a per-client path copy)
+     * and [publicApi] (advertisement): most endpoints -- health, ops, auth, static -- do not consume client
+     * config and pay nothing, while the ones that validate or answer from a client's configured schema opt in.
+     * A no-op on a node with no config surface.
+     */
+    val needsClientConfig: Boolean = false,
+    /**
      * (List endpoints only.) Whether the output declares `hasMore` / `numAvailable`, so the executor knows to
      * populate them (issue #499). For a handler that returns a plain `List` the executor fills them from the
      * uncapped size; a [ListPage] supplies its own. `numAvailable` defaults **on** when the endpoint has a
@@ -274,13 +283,15 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         publicApi: Boolean = false,
         /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
         tags: Set<String> = emptySet(),
+        /** Sync this node's client configuration before serving (issue #618); see [KdrEndpoint.needsClientConfig]. */
+        needsClientConfig: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output,
-                forTestingOnly, handler, publicApi = publicApi, tags = tags),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig),
         )
     }
 
@@ -307,13 +318,15 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
          * [listEndpoint]'s own note anticipated one of the others would eventually want.
          */
         clientShaped: Boolean = false,
+        /** Sync this node's client configuration before serving (issue #618); see [KdrEndpoint.needsClientConfig]. */
+        needsClientConfig: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.item, "The single resource item returned by the endpoint.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.item, namespace, description, fields, typeRef, false, output,
-                forTestingOnly, handler, publicApi = publicApi, tags = tags, clientShaped = clientShaped),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags, clientShaped = clientShaped, needsClientConfig = needsClientConfig),
         )
     }
 
@@ -352,6 +365,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
          * parameters nothing passes, which read as options rather than as the record of a decision.
          */
         clientShaped: Boolean = false,
+        /** Sync this node's client configuration before serving (issue #618); see [KdrEndpoint.needsClientConfig]. */
+        needsClientConfig: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         // Default numAvailable on when there is a `limit` to trim by; a caller can still force it either way.
@@ -361,7 +376,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output,
                 forTestingOnly, handler, publicApi = publicApi, tags = tags, clientShaped = clientShaped,
-                hasMore = hasMore, hasNumAvailable = reportsNumAvailable),
+                needsClientConfig = needsClientConfig, hasMore = hasMore, hasNumAvailable = reportsNumAvailable),
         )
     }
 
@@ -388,6 +403,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         publicApi: Boolean = false,
         /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
         tags: Set<String> = emptySet(),
+        /** Sync this node's client configuration before serving (issue #618); see [KdrEndpoint.needsClientConfig]. */
+        needsClientConfig: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = SchTypeBuilder(cxt, namespace).also {
@@ -397,7 +414,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.file, namespace, description, fields, typeRef, false, output,
-                forTestingOnly, handler, publicApi = publicApi, tags = tags),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig),
         )
     }
 
@@ -430,13 +447,15 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         publicApi: Boolean = false,
         /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
         tags: Set<String> = emptySet(),
+        /** Sync this node's client configuration before serving (issue #618); see [KdrEndpoint.needsClientConfig]. */
+        needsClientConfig: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) describing the uploaded file.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.file, namespace, description, fields, typeRef, false, output,
-                forTestingOnly, handler, publicApi = publicApi, tags = tags),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig),
         )
     }
 

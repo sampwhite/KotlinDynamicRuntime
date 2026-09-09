@@ -16,7 +16,9 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
+import kotlin.time.Instant
 
 /**
  * Loads stored client configurations from the database into the schema collector at boot, beside the
@@ -141,6 +143,9 @@ class GedraConfigLoadService : ServiceInitializer {
         val mode = gedraConfigCheckMode(cxt)
 
         var loaded = 0
+        // The newest date this node actually took per client (issue #618), so the restart announce reflects what
+        // the node runs -- not a row it selected but then dropped as malformed or extends-invalid.
+        val takenMarkers = HashMap<String, Instant>()
         for (row in rows) {
             val config = try {
                 reassemble(cxt, row)
@@ -167,13 +172,30 @@ class GedraConfigLoadService : ServiceInitializer {
             if (collector.addGedraConfig(cxt, config)) {
                 appendOverlays(cxt, config)
                 recordLoaded(config.gedraId.client, loadedFor(config.gedraId.client) + config)
+                val at = row[PF.updatedAt].toOptInstant()
+                if (at != null) {
+                    val takenClient = config.gedraId.client
+                    val existing = takenMarkers[takenClient]
+                    if (existing == null || at > existing) takenMarkers[takenClient] = at
+                }
                 loaded++
             }
         }
         if (loaded > 0) {
             LogStartup.info(cxt) { "Loaded $loaded stored client configuration(s) at boot." }
         }
-        recordRestartLoad(cxt, loaded)
+        // Fold in each client's tier date (issue #618): a client running published-only by a toggle has that
+        // toggle as part of what it consumes, so a peer that toggled it while this node was down is ahead even
+        // when no revision changed. The marker `ClientSyncService` announces is then the newest of what this
+        // node actually took and the tier state it took it under.
+        val controlMarkers = controlTable?.let {
+            GedraConfigControl.controlMarkers(cxt, SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic), it, cxt.instanceConfig.env)
+        } ?: emptyMap()
+        for ((markerClient, at) in controlMarkers) {
+            val existing = takenMarkers[markerClient]
+            if (existing == null || at > existing) takenMarkers[markerClient] = at
+        }
+        recordRestartLoad(takenMarkers)
     }
 
     /** The latest enabled revision of every stored config, across all clients. */
@@ -285,14 +307,23 @@ class GedraConfigLoadService : ServiceInitializer {
     }
 
     /**
-     * Where a restart's "I just loaded newer config" announcement will go (issue #618): a write to a
-     * `ClientSyncTracking` table so peers that have not reloaded learn they are behind. Nothing is written yet
-     * -- #611 puts the write here so a single obvious place holds it when #618 arrives.
+     * The newest configuration date this node loaded per client at boot (issue #618). Held in memory for
+     * [ClientSyncService] to announce and to seed its baseline from, once it initializes (a regular service, so
+     * after this startup one): the announce cannot happen here, before the sync topic's tables are reconciled.
      */
-    @Suppress("UNUSED_PARAMETER")
-    private fun recordRestartLoad(cxt: KdrCxt, loadedCount: Int) {
-        // #618: record this node's restart load into ClientSyncTracking here.
+    private var loadedMarkers: Map<String, Instant> = emptyMap()
+
+    /** Records the per-client markers of this node's restart load (issue #618); read by [ClientSyncService]. */
+    private fun recordRestartLoad(markers: Map<String, Instant>) {
+        loadedMarkers = markers
     }
+
+    /** The per-client markers this node loaded at boot -- what a restart announces to peers (issue #618). */
+    fun loadedMarkers(): Map<String, Instant> = loadedMarkers
+
+    /** Whether this node loads (and therefore syncs) stored configuration -- persistent, or forced by the flag. */
+    fun loadEnabled(cxt: KdrCxt): Boolean =
+        cxt.getEnvBool(loadEnvVar) ?: !SqlTopicService.get(cxt).isInMemory
 
     @Suppress("ConstPropertyName")
     companion object {

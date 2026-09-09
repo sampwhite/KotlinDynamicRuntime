@@ -323,6 +323,16 @@ class GedraConfigService : ServiceInitializer {
         return GedraConfigControl.isToggledPublishedOnly(cxt, sqlCxt, controlTable(cxt), client, cxt.instanceConfig.env)
     }
 
+    /**
+     * When [client]'s protection tier last changed in this node's environment (issue #618), or null if it has
+     * never toggled. Part of the sync marker: a tier toggle changes what the client consumes without changing
+     * any content row (see [GedraConfigControl.controlMarker]).
+     */
+    fun tierMarker(cxt: KdrCxt, client: String): Instant? {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
+        return GedraConfigControl.controlMarker(cxt, sqlCxt, controlTable(cxt), client, cxt.instanceConfig.env)
+    }
+
     /** The clients a source-code definition marks `staticConfig`; the source configs are the not-data-loaded ones. */
     private fun staticClients(cxt: KdrCxt): Set<String> {
         val loadedIds = GedraConfigLoadService.get(cxt).allLoadedIds()
