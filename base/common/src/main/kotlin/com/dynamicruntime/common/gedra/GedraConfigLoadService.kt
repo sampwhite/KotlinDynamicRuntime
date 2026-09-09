@@ -172,12 +172,13 @@ class GedraConfigLoadService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, emptyMap())
         }
-        val latestByClass = LinkedHashMap<String, Map<String, Any?>>()
-        for (row in rows.filter { it[PF.enabled] == true }) {
-            val cls = row[GC.configId].toOptStr() ?: continue
-            latestByClass.putIfAbsent(cls, row)
-        }
-        return latestByClass.values.toList()
+        // Reduced by the one shared "which revision is current" rule (issue #615), so the loader and the config
+        // cache cannot disagree about it even though the loader reads the table directly.
+        return rows.filter { it[PF.enabled] == true }
+            .groupBy { it[GC.configId].toOptStr() ?: "" }
+            .filterKeys { it.isNotEmpty() }
+            .values
+            .mapNotNull { latestRevisionRow(it) }
     }
 
     /** Turns one stored row into a [GedraConfig] via [reassembleGedraConfig], recovering the namespace it needs. */

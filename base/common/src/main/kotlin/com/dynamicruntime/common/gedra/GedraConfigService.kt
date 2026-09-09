@@ -9,6 +9,7 @@ import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkUniqueId
@@ -65,11 +66,22 @@ class GedraConfigService : ServiceInitializer {
 
     private lateinit var gedraService: GedraService
 
+    /**
+     * The in-memory `GedraConfig` cache (issue #615), or null when the table-cache service is absent (see
+     * [GedraConfigCache]). [readLatest] and [listConfigs] consult it first and fall back to SQL on a miss, so
+     * its absence costs queries and nothing else. Public so a test can null it around a call to force the SQL
+     * the cached answer must equal.
+     */
+    var configCache: SqlTableCache<Map<String, Any?>>? = null
+
     /** Per slot ([CCT] trait id), the ordered primary-key fields its entries are addressed by (issue #625). */
     private lateinit var slotPrimaryKeys: Map<String, List<String>>
 
     override fun checkInit(cxt: KdrCxt) {
         gedraService = GedraService.get(cxt)
+        // Registered during this pass so the cache service's own checkReady -- which runs after every service's
+        // checkInit -- performs the initial load at startup rather than in a request.
+        configCache = GedraConfigCache.register(cxt)
         // The config-trait vocabulary is the source of truth for how each slot's entries are keyed, read once
         // here rather than rebuilt per write. A single-instance slot (the client) has an empty key.
         slotPrimaryKeys = coreConfigTraits(cxt).configTraits.mapValues { it.value.primaryKey }
@@ -193,6 +205,7 @@ class GedraConfigService : ServiceInitializer {
      */
     fun readLatest(cxt: KdrCxt, configClassId: GedraId): GedraConfigRow? {
         val configId = configClassId.revisionClass()
+        cachedLatest(cxt, configId)?.let { return it }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         val table = configTable(cxt)
         val stmt = latestQuery(sqlCxt, table)
@@ -211,6 +224,7 @@ class GedraConfigService : ServiceInitializer {
      * configs and few revisions each. The listing surface behind the config catalog.
      */
     fun listConfigs(cxt: KdrCxt): List<GedraConfigRow> {
+        cachedList(cxt)?.let { return it }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         val table = configTable(cxt)
         val stmt = SqlStmtUtil.prepareSql(
@@ -225,14 +239,59 @@ class GedraConfigService : ServiceInitializer {
         // The rows are ordered class then version-desc, so the first enabled row of each class is its latest.
         // The SQL order groups revisions; the *listing* order is recency, as the doc promises and `listGedras`
         // does -- so the config just written is at the top rather than wherever its name sorts.
-        val latestByClass = LinkedHashMap<String, Map<String, Any?>>()
-        for (row in rows.filter { it[PF.enabled] == true }) {
-            val cls = row[GC.configId].toOptStr() ?: continue
-            latestByClass.putIfAbsent(cls, row)
-        }
-        return latestByClass.values.map { GedraConfigRow.extract(gedraService, it) }
-            .sortedByDescending { it.updatedAt ?: Instant.DISTANT_PAST }
+        return latestPerClass(rows.filter { it[PF.enabled] == true })
     }
+
+    /**
+     * Serves [readLatest] from [configCache], or null when it cannot -- which the caller turns into its SQL
+     * query, so the cache only ever saves a round trip and never changes an answer. The class's rows come off
+     * the [GCX.configId] index and the pair is reduced by the one shared rule ([GedraConfigCache.revisionsOf]);
+     * the caller's client is then checked **per row** on the one row found, exactly the confinement the SQL
+     * carries as its `client` predicate, so the cached path has no way to widen a read.
+     */
+    private fun cachedLatest(cxt: KdrCxt, configId: GedraId): GedraConfigRow? {
+        val cache = configCache ?: return null
+        cache.checkRefresh(cxt)
+        val latest = GedraConfigCache.revisionsOf(cache, configId.fullId)?.latest ?: return null
+        if (latest[PF.client].toOptStr() != cxt.client) return null
+        return GedraConfigRow.extract(gedraService, latest)
+    }
+
+    /**
+     * Serves [listConfigs] from [configCache], or null when it cannot. Served from the [GCX.client] index -- an
+     * index that already *is* the scope, so no predicate is composed in memory -- and reduced by the same
+     * [latestPerClass] the SQL path uses, so the two cannot page or order differently.
+     */
+    private fun cachedList(cxt: KdrCxt): List<GedraConfigRow>? {
+        val cache = configCache ?: return null
+        cache.checkRefresh(cxt)
+        return latestPerClass(GedraConfigCache.rowsForClient(cache, cxt.client))
+    }
+
+    /**
+     * The order [listConfigs] returns: most recently written first, with the revision id breaking a tie so the
+     * order is **total** (issue #615 review). It has to be total because the two sources feed the sort in
+     * different orders -- SQL by `configId asc`, the cache in load order -- and the sort is stable, so two configs
+     * written in the same millisecond would otherwise come back in one order from the cache and the other from
+     * SQL. The same shape as `GedraDataService.gedraListOrder`, for the same reason.
+     */
+    private val configListOrder: Comparator<GedraConfigRow> =
+        compareByDescending<GedraConfigRow> { it.updatedAt ?: Instant.DISTANT_PAST }
+            .thenByDescending { it.gedraId.fullId }
+
+    /**
+     * The latest revision of each class among [rows] (by the shared [latestRevisionRow] rule), extracted and
+     * ordered by [configListOrder]. The single reduction both [listConfigs] paths run, so the cached listing and
+     * the SQL listing are the same computation over different row sources -- which is only enough because the
+     * order it applies is total.
+     */
+    private fun latestPerClass(rows: List<Map<String, Any?>>): List<GedraConfigRow> =
+        rows.groupBy { it[GC.configId].toOptStr() ?: "" }
+            .filterKeys { it.isNotEmpty() }
+            .values
+            .mapNotNull { latestRevisionRow(it) }
+            .map { GedraConfigRow.extract(gedraService, it) }
+            .sortedWith(configListOrder)
 
     /**
      * The "latest revision of this class" query -- ordered so the first enabled row is the latest, and confined
