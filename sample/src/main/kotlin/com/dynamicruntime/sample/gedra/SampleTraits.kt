@@ -135,6 +135,15 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
             type = SCT.integer
             minimum = 2000
             maximum = 2100
+            // A `g-errors` message with ${'$'}{…} substitution (issue #589): the validator resolves it against
+            // the failure's params -- the declared bound and the offending value -- so the `400` envelope and a
+            // form's client-side validation get one resolved copy. Distinct from the layout `hint` below, which
+            // the *friendly* form renders and which a wire-documenting surface ignores; this wording is the
+            // schema's own, shown wherever the field is validated (the endpoint form included).
+            errors {
+                belowMinimum($$"We keep reports back to ${min}; ${value} is earlier than that.")
+                aboveMaximum($$"Reports run no later than ${max}; ${value} is beyond that.")
+            }
         }
         property(ST.perItemAmount, "Amount claimed for one item.") { type = SCT.number }
         property(ST.itemCount, "How many items are claimed.") { type = SCT.integer }

@@ -3,6 +3,8 @@ package com.dynamicruntime.common.schema
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.analyzeTemplate
+import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.deepClone
@@ -163,9 +165,40 @@ fun SchType.userMessage(code: SchFailCode): String? =
     errorMessages[code.name] ?: errorMessages[SCH.errorDefault]
 
 /**
- * A failure against this field, carrying whatever the field's `g-errors` says about [code]. Used in place of
- * constructing [SchFailure] directly so that resolution cannot be forgotten at one site out of nineteen — the
- * kind of omission whose only symptom is one message quietly not being customizable.
+ * The `g-errors` message for [code], with its `${'$'}{…}` substitutions resolved against **this failure's** params
+ * (issue #589): the offending [value], the [options] list, and this field's bound -- the same per-failure-code
+ * vocabulary ([errorContextData]) a layout error override uses, evaluated here in the validator so the `400`
+ * envelope and a form's client-side validation get one resolved copy. [path]'s last segment is the field name.
+ *
+ * Fail-safe, like all schema-supplied copy: plain text (no `${'$'}`) is returned untouched, and a template the
+ * failure cannot fill -- a `${'$'}{value}` where there is no value -- shows **as written** rather than blanking the
+ * message. Only literal `${'$'}{…}` in a well-formed template is meant here; the boot check ([errorMessageProblems])
+ * already refused a malformed one, a fragment pull, or a placeholder outside the code's vocabulary.
+ */
+private fun SchType.resolvedUserMessage(
+    code: SchFailCode,
+    path: String,
+    value: Any?,
+    options: List<SchOption>?,
+): String? {
+    val template = userMessage(code) ?: return null
+    if ('$' !in template) {
+        return template
+    }
+    val field = path.substringAfterLast('.').substringBefore('[')
+    return try {
+        template.evalTemplate(errorContextData(code, this, field, value, options))
+    } catch (e: KdrException) {
+        template
+    }
+}
+
+/**
+ * A failure against this field, carrying whatever the field's `g-errors` says about [code] -- with its `${'$'}{…}`
+ * params resolved against the failure (issue #589; see [resolvedUserMessage]). Used in place of constructing
+ * [SchFailure] directly so that resolution cannot be forgotten at one site out of nineteen — the kind of
+ * omission whose only symptom is one message quietly not being customizable. [value] is the offending value the
+ * `${'$'}{value}` param renders; it defaults to null (a failure with no value to show).
  */
 @KdrPrivate
 fun SchType.failure(
@@ -173,8 +206,78 @@ fun SchType.failure(
     code: SchFailCode,
     message: String,
     options: List<SchOption>? = null,
+    value: Any? = null,
     cause: KdrException? = null,
-): SchFailure = SchFailure(path, code, message, options, cause, userMessage(code))
+): SchFailure = SchFailure(path, code, message, options, cause, resolvedUserMessage(code, path, value, options))
+
+/**
+ * The problems with a field's `g-errors` message **templates** (issue #589) -- the boot check for §10's
+ * substitution, walking [type] and every type beneath it (its properties, array items, union branches) because
+ * `g-errors` sits on a *field's* type, at any depth. For each message: a malformed `${'$'}{…}`, a fragment pull
+ * (`${'$'}{@t}`, not supported in a g-errors message), and a `${'$'}{…}` the failure code cannot provide are each
+ * reported -- the same "parses clean, renders wrong" the layout copy checks prevent, against the shared
+ * [errorContextNames] vocabulary. The *keys* are already validated against the code enum by `parseErrorMessages`.
+ *
+ * [backendPrefix] (when given) additionally refuses a backend block in a message -- a `%{…}` that this stage does
+ * not resolve and would ship raw. Passed as a bare `Char` rather than referencing the content layer's constant,
+ * so this stays in the kernel beside the vocabulary it checks. [seen] guards shared `$ref` types against being
+ * walked twice; a caller checking many top-level types shares one set so each type is checked once.
+ */
+@KdrPrivate
+fun errorMessageProblems(
+    where: String,
+    type: SchType,
+    seen: MutableList<SchType> = ArrayList(),
+    backendPrefix: Char? = null,
+): List<String> {
+    val problems = mutableListOf<String>()
+    fun walk(w: String, t: SchType) {
+        if (seen.any { it === t }) {
+            return
+        }
+        seen.add(t)
+        for ((codeKey, message) in t.errorMessages) {
+            // A valid key is a SchFailCode name or `default` (code == null), which may match any failure.
+            val code = SchFailCode.entries.firstOrNull { it.name == codeKey }
+            val analysis = message.analyzeTemplate()
+            for (issue in analysis.issues) {
+                problems.add("$w: the '${SCH.errors}' message for '$codeKey' is a malformed template: ${issue.message}")
+            }
+            if (analysis.refs.isNotEmpty()) {
+                problems.add(
+                    $$"$$w: the '$${SCH.errors}' message for '$$codeKey' uses a fragment pull ('${@t}'); " +
+                        "a g-errors message supports only parameter substitution (see #589).",
+                )
+            }
+            if (backendPrefix != null && backendPrefix in message &&
+                message.analyzeTemplate(backendPrefix).blockCount > 0
+            ) {
+                problems.add(
+                    "$w: the '${SCH.errors}' message for '$codeKey' uses a backend block ('$backendPrefix{…}'); " +
+                        "a g-errors message supports only frontend parameter substitution (see #589).",
+                )
+            }
+            val allowed = errorContextNames(code, t)
+            for (p in analysis.paths.required + analysis.paths.optional) {
+                val name = p.substringBefore('.')
+                if (name !in allowed) {
+                    problems.add(
+                        $$"$$w: the '$${SCH.errors}' message for '$$codeKey' references '${$$p}', but a " +
+                            $$"'$$codeKey' failure provides $${allowed.sorted().joinToString(", ")}.",
+                    )
+                }
+            }
+        }
+        for ((name, prop) in t.properties) walk("$w field '$name'", prop.valueType)
+        t.itemType?.let { walk("$w item", it) }
+        t.variants?.let { v ->
+            for (b in v.branches) walk("$w branch", b)
+            v.defaultBranch?.let { walk("$w branch", it) }
+        }
+    }
+    walk(where, type)
+    return problems
+}
 
 /**
  * Knobs that adjust what a validation run *produces*, for a caller whose needs differ from the wire
@@ -343,7 +446,7 @@ fun validateValue(
     if (constValue != null && !constMatches(constValue, effective)) {
         failures.add(
             type.failure(path, SchFailCode.invalidOption, "'$effective' is not '$constValue'.",
-                listOf(SchOption(constValue.toOptStr() ?: "", constValue.toOptStr() ?: "")))
+                listOf(SchOption(constValue.toOptStr() ?: "", constValue.toOptStr() ?: "")), value = effective)
         )
         return effective
     }
@@ -356,7 +459,7 @@ fun validateValue(
     if (options != null && !type.openOptions) {
         val choice = effective as? String
         if (choice == null || options.none { it.value == choice }) {
-            failures.add(type.failure(path, SchFailCode.invalidOption, "'$effective' is not a valid option.", options))
+            failures.add(type.failure(path, SchFailCode.invalidOption, "'$effective' is not a valid option.", options, value = effective))
         }
         return effective
     }
@@ -405,7 +508,7 @@ fun validateVariant(
     opts: SchOpts,
 ): Any? {
     if (value !is Map<*, *>) {
-        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type), value = value))
         return value
     }
     val discriminatorPath = childPath(path, variants.discriminator)
@@ -426,7 +529,7 @@ fun validateVariant(
         failures.add(
             type.failure(
                 discriminatorPath, SchFailCode.invalidOption, "'$raw' is not a valid option.",
-                variants.values.map { SchOption(it, it) },
+                variants.values.map { SchOption(it, it) }, value = raw,
             ),
         )
         return value
@@ -619,7 +722,7 @@ fun checkCondition(
                 "'$name' is only allowed when '${condition.property}' is '$decider'."
             }
             failures.add(
-                target?.failure(at, SchFailCode.notAllowed, message)
+                target?.failure(at, SchFailCode.notAllowed, message, value = map[name])
                     ?: SchFailure(at, SchFailCode.notAllowed, message),
             )
         }
@@ -693,7 +796,7 @@ fun coerceMismatch(
 ): Any? {
     if (!type.allowCoerce) {
         // A plain type check decided the value is wrong; its content was never inspected.
-        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type), value = value))
         return value
     }
     return when (type.jsonType) {
@@ -703,7 +806,7 @@ fun coerceMismatch(
         SCT.string -> {
             if (value == null) {
                 // Nothing to render; a plain null-vs-string type check.
-                failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+                failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type), value = value))
                 value
             } else {
                 value.toString()
@@ -712,7 +815,7 @@ fun coerceMismatch(
         SCT.array -> coerceStringToArray(type, value, path, coerce, failures, opts)
         SCT.kObject -> coerceStringToObject(type, value, path, coerce, failures, opts)
         else -> {
-            failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+            failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type), value = value))
             value
         }
     }
@@ -730,12 +833,12 @@ fun coerceNumericString(
 ): Any? {
     val s = value as? String
     if (s == null) {
-        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type), value = value))
         return value
     }
     val parsed = parse(s)
     if (parsed == null) {
-        failures.add(type.failure(path, SchFailCode.badValue, "'$s' is not a valid ${type.jsonType}."))
+        failures.add(type.failure(path, SchFailCode.badValue, "'$s' is not a valid ${type.jsonType}.", value = s))
         return value
     }
     return parsed
@@ -787,7 +890,7 @@ fun parseExactBool(s: String): Boolean? {
 fun coerceStringToBool(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
     val s = value as? String
     if (s == null) {
-        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type), value = value))
         return value
     }
     val b = parseExactBool(s)
@@ -801,6 +904,7 @@ fun coerceStringToBool(type: SchType, value: Any?, path: String, coerce: Boolean
                 SchFailCode.badValue,
                 "'$s' is not a recognizable boolean. Use one of: " +
                     "${trueSpellings.joinToString("/")} or ${falseSpellings.joinToString("/")}.",
+                value = s,
             ),
         )
         return value
@@ -820,14 +924,14 @@ fun coerceStringToArray(
 ): Any? {
     val s = value as? String
     if (s == null) {
-        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type), value = value))
         return value
     }
     val list: List<Any?> = if (s.firstOrNull { it > ' ' } == '[') {
         try {
             s.jsonArray() ?: emptyList()
         } catch (e: KdrException) {
-            failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON array.", cause = e))
+            failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON array.", cause = e, value = s))
             return value
         }
     } else {
@@ -844,17 +948,17 @@ fun coerceStringToObject(
 ): Any? {
     val s = value as? String
     if (s == null) {
-        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type)))
+        failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type), value = value))
         return value
     }
     val map = try {
         s.jsonMap()
     } catch (e: KdrException) {
-        failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON object.", cause = e))
+        failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON object.", cause = e, value = s))
         return value
     }
     if (map == null) {
-        failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON object."))
+        failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON object.", value = s))
         return value
     }
     return validateValue(type, map, path, coerce, failures, opts)
@@ -887,7 +991,7 @@ fun validateSchemaDocument(
     // [validateValue], where the kObject type check has already established a map before the short-circuit.
     val body = value as? Map<*, *>
     if (body == null) {
-        failures.add(type.failure(path, SchFailCode.wrongType, "This must be a schema definition (an object)."))
+        failures.add(type.failure(path, SchFailCode.wrongType, "This must be a schema definition (an object).", value = value))
         return value
     }
     try {
@@ -896,7 +1000,7 @@ fun validateSchemaDocument(
         failures.add(
             type.failure(
                 path, SchFailCode.badValue,
-                "This is not a valid schema definition: ${e.message ?: "the parser refused it"}", cause = e,
+                "This is not a valid schema definition: ${e.message ?: "the parser refused it"}", cause = e, value = value,
             ),
         )
     }
@@ -941,20 +1045,20 @@ fun validateDate(type: SchType, value: Any?, path: String, coerce: Boolean, fail
                 else if (lenient) value.parseDayLenient()
                 else value.parseDay()
             is LocalDate -> if (lenient) value.toStartOfDay() else {
-                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a timestamp, not a day."))
+                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a timestamp, not a day.", value = value))
                 return value
             }
             is Instant -> if (lenient) value.toDay() else {
-                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a day, not a timestamp."))
+                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a day, not a timestamp.", value = value))
                 return value
             }
             else -> {
-                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a date string."))
+                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a date string.", value = value))
                 return value
             }
         }
     } catch (e: KdrException) {
-        failures.add(type.failure(path, SchFailCode.badValue, "'$value' is not a valid date.", cause = e))
+        failures.add(type.failure(path, SchFailCode.badValue, "'$value' is not a valid date.", cause = e, value = value))
         return value
     }
     return if (coerce && type.allowCoerce) parsed else value
@@ -1001,10 +1105,10 @@ fun checkBounds(type: SchType, value: Any?, path: String, failures: MutableList<
     if (min == null && max == null) return
     val measured = measureFor(type.jsonType, value) ?: return
     if (min != null && measured < min) {
-        failures.add(type.failure(path, SchFailCode.belowMinimum, boundMsg(type.jsonType, min, atLeast = true)))
+        failures.add(type.failure(path, SchFailCode.belowMinimum, boundMsg(type.jsonType, min, atLeast = true), value = value))
     }
     if (max != null && measured > max) {
-        failures.add(type.failure(path, SchFailCode.aboveMaximum, boundMsg(type.jsonType, max, atLeast = false)))
+        failures.add(type.failure(path, SchFailCode.aboveMaximum, boundMsg(type.jsonType, max, atLeast = false), value = value))
     }
 }
 
@@ -1046,7 +1150,7 @@ fun checkVisible(type: SchType, value: Any?, path: String, failures: MutableList
     failures.add(
         type.failure(
             path, SchFailCode.badValue,
-            "Character ${hit.second} at position ${hit.first} is not a visible character.",
+            "Character ${hit.second} at position ${hit.first} is not a visible character.", value = value,
         )
     )
 }
@@ -1077,7 +1181,7 @@ fun applyOuterWhitespace(type: SchType, value: Any?, path: String, failures: Mut
                 failures.add(
                     type.failure(
                         path, SchFailCode.badValue,
-                        "Value has leading or trailing whitespace, which is not allowed here.",
+                        "Value has leading or trailing whitespace, which is not allowed here.", value = value,
                     )
                 )
             }

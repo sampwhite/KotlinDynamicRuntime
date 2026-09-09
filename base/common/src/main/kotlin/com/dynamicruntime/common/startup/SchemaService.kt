@@ -36,6 +36,7 @@ import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.schema.collectLayouts
+import com.dynamicruntime.common.schema.errorMessageProblems
 import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.layoutTemplateProblems
 import com.dynamicruntime.common.schema.layoutPullProblems
@@ -229,7 +230,42 @@ class SchemaService : ServiceInitializer {
         // A `g-layout` naming a field its type does not declare is caught at boot (issue #584), not discovered
         // as a control that renders nothing.
         checkLayouts()
+        // A `g-errors` message whose `${'$'}{…}` names a param its failure code does not provide is caught at boot
+        // (issue #589), the same way its keys already are -- not discovered as a template that renders as itself.
+        checkErrorMessages()
         isInit = true
+    }
+
+    /**
+     * Refuses a `g-errors` message template that could not render right (issue #589): a malformed `${'$'}{…}`, a
+     * fragment pull, a `%{…}` backend block, or a `${'$'}{…}` naming a param the failure code cannot provide. Walks
+     * every type -- global and each client's own variants -- and every field beneath it (`errorMessageProblems`
+     * recurses), sharing one visited-set so a shared `$ref` type is checked once. The substitution itself is
+     * resolved in the kernel validator (`SchType.failure`); this is the boot half that keeps a bad template from
+     * shipping.
+     */
+    @KdrPrivate
+    fun checkErrorMessages() {
+        val problems = LinkedHashSet<String>()
+        val seen = ArrayList<SchType>()
+        fun checkStore(label: String, types: Map<String, SchType>) {
+            for ((name, type) in types) {
+                problems.addAll(
+                    errorMessageProblems("Type '$name'$label", type, seen, MarkdownFragmentService.backendPassPrefix),
+                )
+            }
+        }
+        checkStore("", schemaStore.types)
+        for ((client, store) in clientStores) {
+            if (store.defs === schemaStore.defs) continue
+            checkStore(" (client '$client')", store.types)
+        }
+        if (problems.isNotEmpty()) {
+            throw KdrException(
+                "Refusing to start: ${problems.size} problem(s) with '${SCH.errors}' message template(s).\n" +
+                    problems.joinToString("\n"),
+            )
+        }
     }
 
     /**

@@ -843,6 +843,98 @@ class SchValidatorTest : StringSpec({
         validate(t, mapOf("score" to "x")).single().userMessage shouldBe null
     }
 
+    // --- g-errors ${…} substitution over the failure's params (issue #589) --------------------------------
+
+    "an invalidOption message substitutes the offending value and the option list" {
+        val types = parseSchemaTypes(
+            schemaDefs(cxt, "s1") {
+                type("Form") {
+                    type = SCT.kObject
+                    property("topic", "Topic") {
+                        option("a", "Apples")
+                        option("b", "Bananas")
+                        errors { invalidOption($$"""We don't offer "${value}". Try: ${options}.""") }
+                    }
+                }
+            },
+        )
+        val f = validate(types["s1.Form"].shouldNotBeNull(), mapOf("topic" to "cherry")).single()
+        f.code shouldBe SchFailCode.invalidOption
+        f.userMessage shouldBe """We don't offer "cherry". Try: Apples, Bananas."""
+        // Beside, not instead of: the built-in wording still stands for a wire-documenting surface.
+        f.message shouldBe "'cherry' is not a valid option."
+    }
+
+    "a bound message substitutes the bound and the value" {
+        val types = parseSchemaTypes(
+            schemaDefs(cxt, "s2") {
+                type("Form") {
+                    type = SCT.kObject
+                    property("age", "Age") {
+                        type = SCT.integer
+                        minimum = 18
+                        errors { belowMinimum($$"Must be at least ${min}; you gave ${value}.") }
+                    }
+                }
+            },
+        )
+        validate(types["s2.Form"].shouldNotBeNull(), mapOf("age" to 17)).single().userMessage shouldBe
+            "Must be at least 18; you gave 17."
+    }
+
+    "a default message may name the field, even where there is no value" {
+        val types = parseSchemaTypes(
+            schemaDefs(cxt, "s3") {
+                type("Form") {
+                    type = SCT.kObject
+                    property("score", "A score", required = true) {
+                        type = SCT.integer
+                        errors { missingRequired($$"${field} is required.") }
+                    }
+                }
+            },
+        )
+        validate(types["s3.Form"].shouldNotBeNull(), emptyMap<String, Any?>()).single().userMessage shouldBe "score is required."
+    }
+
+    // --- g-errors substitution boot check (errorMessageProblems) ------------------------------------------
+
+    fun errType(ns: String, build: SchTypeBuilder.() -> Unit): SchType =
+        parseSchemaTypes(schemaDefs(cxt, ns) { type("F") { type = SCT.kObject; build() } })["$ns.F"]!!
+
+    "errorMessageProblems passes a message using only its failure code's params" {
+        val t = errType("ok") {
+            property("age", "Age") {
+                type = SCT.integer
+                minimum = 18
+                errors { belowMinimum($$"At least ${min}, got ${value}.") }
+            }
+        }
+        errorMessageProblems("Type 'F'", t) shouldBe emptyList()
+    }
+
+    "errorMessageProblems flags a param the failure code cannot provide" {
+        // `${max}` is not part of an invalidOption's context, so it is caught like a mistyped key.
+        val t = errType("bad") {
+            property("topic", "Topic") {
+                option("a", "A")
+                errors { invalidOption($$"Up to ${max}.") }
+            }
+        }
+        errorMessageProblems("Type 'F'", t).single() shouldContain "max"
+    }
+
+    "errorMessageProblems refuses a fragment pull and a backend block" {
+        val pull = errType("p") {
+            property("score", "S") { type = SCT.integer; errors { default($$"""See ${@t("x.y")}.""") } }
+        }
+        errorMessageProblems("Type 'F'", pull).any { it.contains("fragment pull") } shouldBe true
+        val backend = errType("bk") {
+            property("score", "S") { type = SCT.integer; errors { default($$"""See %{@t("x.y")}.""") } }
+        }
+        errorMessageProblems("Type 'F'", backend, backendPrefix = '%').any { it.contains("backend block") } shouldBe true
+    }
+
     // --- const, including the non-string kinds (issue #253) -------------------
 
     // A regression: `const` was compared by stringifying both sides with `toOptStr`, which yields null for
