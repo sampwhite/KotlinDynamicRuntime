@@ -7,6 +7,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -51,8 +52,8 @@ class GedraConfigTierTest : StringSpec({
 
     /** The trait ids the consumption read would build this client's schema from now. */
     fun consumedTraits(client: String): List<String> =
-        svc().currentConfigs(asClient(client), client).flatMap { it.entriesBySlot()["traitDef"].orEmpty() }
-            .mapNotNull { it["traitId"] as? String }
+        svc().currentConfigs(asClient(client), client).flatMap { it.entriesBySlot()[CCT.traitDef].orEmpty() }
+            .mapNotNull { it[CCT.traitId] as? String }
 
     "the free tier consumes the latest revision, published or not" {
         val client = "tierfree"

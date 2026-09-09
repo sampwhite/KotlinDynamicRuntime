@@ -307,11 +307,7 @@ class GedraConfigService : ServiceInitializer {
             "and c:${PF.client} = :${PF.client} order by c:${GC.version} desc",
     )
 
-    /**
-     * The latest revision of [configId] as it stands inside the transaction, or null when the class has no
-     * enabled revision yet. Ordered by version so the first enabled row is the latest; read with
-     * `queryStatement` because the lock this transaction holds is on [GCT.gedraConfigTran], not on these rows.
-     */
+    /** The [GCT.gedraConfigControl] table from the schema store, where a client's protection tier is stored (#617). */
     private fun controlTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GCT.gedraConfigControl]
         ?: throw KdrException("${GCT.gedraConfigControl} table is not registered in the schema store.")
 
@@ -386,7 +382,12 @@ class GedraConfigService : ServiceInitializer {
         return rows.groupBy { it[GC.configId].toOptStr() ?: "" }.filterKeys { it.isNotEmpty() }.values.toList()
     }
 
-        private fun readLatestUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, configId: GedraId): GedraConfigRow? {
+    /**
+     * The latest revision of [configId] as it stands inside the transaction, or null when the class has no
+     * enabled revision yet. Ordered by version so the first enabled row is the latest; read with
+     * `queryStatement` because the lock this transaction holds is on [GCT.gedraConfigTran], not on these rows.
+     */
+    private fun readLatestUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, configId: GedraId): GedraConfigRow? {
         val row = sqlCxt.sqlDb.queryStatement(
             cxt, latestQuery(sqlCxt, table), mapOf(GC.configId to configId.fullId, PF.client to cxt.client),
         ).firstOrNull { it[PF.enabled] == true } ?: return null

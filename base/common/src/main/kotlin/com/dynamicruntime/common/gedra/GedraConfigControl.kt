@@ -77,7 +77,10 @@ object GedraConfigControl {
             sqlCxt, "qGedraConfigControlPk", table, listOf(PF.client, GC.environment),
         )
         sqlCxt.sqlDb.withSession(cxt) {
-            val existing = sqlCxt.sqlDb.queryOneStatement(cxt, selectStmt, keys)
+            // Read enabled-only: a disabled row (a future clear-the-tier path) reads as absent, so the insert
+            // path takes it and `prepForStdExecute` re-enables it -- an update would leave it disabled and every
+            // reader, which filters on enabled, would ignore the toggle.
+            val existing = sqlCxt.sqlDb.queryOneEnabled(cxt, selectStmt, keys)
             if (existing == null) {
                 val data = mutableMapOf<String, Any?>(PF.client to client, GC.environment to env, GC.publishedOnly to value)
                 SqlTopicUtil.prepForStdExecute(cxt, table, data)
