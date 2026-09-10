@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -45,7 +46,7 @@ class GedraConfigSerializeTest : StringSpec({
             property("by", "Who marked it done.")
         }
         traitUsage("acmeNote", "Note", "text", UsageKind.string)
-        workflow("acmeWf", WfEntry.survey) { task("t1", "First") { trait("acmeNote"); save("s", "Save") } }
+        workflow("acmeWf", WfEntry.survey) { task("t1", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
         fragmentOverlay("help") { namespace("copy") { key("title", "Help") } }
         uiBlockOverlay("menu") { set("title", "Menu") }
         cfact("acmeReady", "acme", "When acme is set up", toFrontend = true)

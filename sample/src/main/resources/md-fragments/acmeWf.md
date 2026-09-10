@@ -6,3 +6,16 @@
 
 # +label Answer an issues question and enter your expense report
 # +save Create expense form
+
+/- The survey workflow's tasks (issue #656): the owner revisits the same data after creation. Two tasks, one
+   namespace each. -/
+
+# @details
+
+# +label Review your expense report
+# +save Save changes
+
+# @extra
+
+# +label Revisit the issues questionnaire
+# +save Save changes

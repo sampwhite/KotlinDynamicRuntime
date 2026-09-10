@@ -62,6 +62,15 @@ class WorkflowRegistryTest : StringSpec({
         }
     }
 
+    fun survey(id: String, vararg traits: String, label: String = "Review"): GedraConfigBuilderBlock = {
+        workflow(id, WfEntry.survey) {
+            task("only", label) {
+                traits.forEach { trait(it) }
+                save("go", label, WfSaveKind.edit)
+            }
+        }
+    }
+
     /** Every file is a backend file holding `identify.label` and nothing else. */
     val fragments = WfFragmentLookup { _, fileId, ns, key ->
         when (fileId) {
@@ -111,11 +120,36 @@ class WorkflowRegistryTest : StringSpec({
     }
 
     "an entry kind that is not built is refused" {
+        // `normal` is the still-unbuilt kind; `creation` and `survey` are admitted.
         val bad = client(devCxt, "acme", listOf("name")) {
-            workflow("later", WfEntry.survey) { task("a", "A") { trait("name"); save("s", "S") } }
+            workflow("later", WfEntry.normal) { task("a", "A") { trait("name"); save("s", "S") } }
         }
         val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), bad)) }
         e.message shouldContain "not built yet"
+    }
+
+    "a survey workflow is admitted, beside the creation workflow in one scope" {
+        val configs = listOf(
+            globalTraits(devCxt),
+            client(devCxt, "acme", listOf("name", "report")) {
+                creation("createForm", "name")(this)
+                survey("reviewForm", "report")(this)
+            },
+        )
+        val (regs, issues) = build(devCxt, configs)
+        issues.shouldBeEmpty()
+        val acme = regs.forClient("acme")
+        acme.creation.shouldNotBeNull().def.workflowId shouldBe "createForm"
+        acme.survey.shouldNotBeNull().def.workflowId shouldBe "reviewForm"
+    }
+
+    "a second survey workflow in one scope is refused" {
+        val bad = client(devCxt, "acme", listOf("name", "report")) {
+            survey("one", "name")(this)
+            survey("two", "report")(this)
+        }
+        val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), bad)) }
+        e.message shouldContain "second survey workflow"
     }
 
     "a workflow collecting a trait its client does not support is refused" {
@@ -168,7 +202,7 @@ class WorkflowRegistryTest : StringSpec({
             client(devCxt, "acme", listOf("name")) {
                 // An unbuilt entry kind collecting an unsupported trait, and two creation workflows: three
                 // refusals in strict mode, none here.
-                workflow("later", WfEntry.survey) { task("a", "A") { trait("report"); save("s", "S") } }
+                workflow("later", WfEntry.normal) { task("a", "A") { trait("report"); save("s", "S") } }
                 creation("one", "name")(this)
                 creation("two", "name")(this)
             },

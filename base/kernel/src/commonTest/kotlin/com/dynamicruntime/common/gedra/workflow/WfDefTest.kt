@@ -106,10 +106,41 @@ class WfDefTest {
     }
 
     @Test
+    fun surveyWorkflowRules() {
+        fun surveyTask(id: String) = WfTask(id, id, listOf(WfTraitRef("a")), listOf(WfSave("s", "S", WfSaveKind.edit)))
+
+        // A survey may have several tasks (a creation workflow may not), up to the ceiling, with `edit` saves.
+        val ok = WfDef("review", WfEntry.survey, (1..WfDef.surveyMaxTasks).map { surveyTask("t$it") })
+        assertEquals(WfDef.surveyMaxTasks, ok.tasks.size)
+        assertTrue(ok.showTaskList)
+
+        // More than the ceiling, a `create` save, and a save-less task are each refused.
+        assertFailsWith<KdrException> {
+            WfDef("review", WfEntry.survey, (1..WfDef.surveyMaxTasks + 1).map { surveyTask("t$it") })
+        }
+        assertFailsWith<KdrException> {
+            WfDef("review", WfEntry.survey, listOf(WfTask("t", "T", listOf(WfTraitRef("a")), listOf(WfSave("s", "S", WfSaveKind.create)))))
+        }
+        assertFailsWith<KdrException> {
+            WfDef("review", WfEntry.survey, listOf(WfTask("t", "T", listOf(WfTraitRef("a")), emptyList())))
+        }
+
+        // The full data path: a survey built in source, its `edit` save admitted by the definition schema.
+        val built = WfDefBuilder("review", WfEntry.survey).apply {
+            task("details", "Details") { trait("expenseReport"); save("save", "Save changes", WfSaveKind.edit) }
+            task("extra", "Extra") { trait("questionnaire", required = false); save("save2", "Save", WfSaveKind.edit) }
+        }.build()
+        val def = parseWfDef(cxt, built)
+        assertEquals(WfEntry.survey, def.entry)
+        assertEquals(WfSaveKind.edit, def.tasks.first().saves.single().kind)
+    }
+
+    @Test
     fun multiTaskModelDerivesStatusPerTask() {
-        // Not a creation workflow -- the multi-task branch a one-task fixture never reaches.
-        val income = task("income", "income")
-        val assets = task("assets", "assets", "assetNotes" to false)
+        // Not a creation workflow -- the multi-task branch a one-task fixture never reaches. A survey's saves
+        // are `edit`, which its structural check requires.
+        val income = task("income", "income", saveKind = WfSaveKind.edit)
+        val assets = task("assets", "assets", "assetNotes" to false, saveKind = WfSaveKind.edit)
         val def = WfDef("survey", WfEntry.survey, listOf(income, assets))
         assertTrue(def.showTaskList)
         assertEquals(assets, def.task("assets"))
@@ -147,13 +178,13 @@ class WfDefTest {
         assertEquals(ref, WfRef.parseOrNull(ref.text))
     }
 
-    private fun task(id: String, vararg required: String): WfTask =
-        WfTask(id, id, required.map { WfTraitRef(it) }, listOf(WfSave("save", "Save", WfSaveKind.create)))
+    private fun task(id: String, vararg required: String, saveKind: WfSaveKind = WfSaveKind.create): WfTask =
+        WfTask(id, id, required.map { WfTraitRef(it) }, listOf(WfSave("save", "Save", saveKind)))
 
-    private fun task(id: String, required: String, optional: Pair<String, Boolean>): WfTask =
+    private fun task(id: String, required: String, optional: Pair<String, Boolean>, saveKind: WfSaveKind = WfSaveKind.create): WfTask =
         WfTask(
             id, id,
             listOf(WfTraitRef(required), WfTraitRef(optional.first, optional.second)),
-            listOf(WfSave("save", "Save", WfSaveKind.create)),
+            listOf(WfSave("save", "Save", saveKind)),
         )
 }

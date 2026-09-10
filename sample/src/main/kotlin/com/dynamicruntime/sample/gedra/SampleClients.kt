@@ -17,6 +17,7 @@ import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.uiblock.UIB
@@ -57,6 +58,17 @@ object SW {
     const val createForm = "createForm"
     const val identify = "identify"
     const val create = "create"
+
+    /**
+     * Acme's survey workflow (issue #656): the owner revisits the same form data outside creation. Two tasks,
+     * to exercise the survey's multi-task allowance (creation is capped at one) and the task list. Its labels
+     * come from the same `acmeWf` backend fragment file the creation workflow uses.
+     */
+    const val reviewForm = "reviewForm"
+    const val details = "details"
+    const val extra = "extra"
+    const val saveDetails = "saveDetails"
+    const val saveExtra = "saveExtra"
 }
 
 /** The sample UiBlock and the keys inside it (issue #457). */
@@ -273,6 +285,24 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 trait(ST.questionnaire, required = false)
                 layout(listOf(ST.questionnaire, ST.expenseReport))
                 save(SW.create, "%{@t(\"${SF.acmeWf}.${SW.identify}.save\")}")
+            }
+        }
+
+        // --- a survey workflow (issue #656) ----------------------------------------------------------------
+        //
+        // The second face of the create/edit paradigm: an owner revisits the same global form data outside
+        // creation, over the very traits the creation workflow collected. Two tasks -- which a creation
+        // workflow may not have -- so the survey exercises the multi-task allowance and the task list, and its
+        // saves are `edit` (they update the existing form, they do not create a second one). Labels come from
+        // the same `acmeWf` backend fragment file, so the survey's own labels ride the label boot check too.
+        workflow(SW.reviewForm, WfEntry.survey) {
+            task(SW.details, "%{@t(\"${SF.acmeWf}.${SW.details}.label\")}") {
+                trait(ST.expenseReport)
+                save(SW.saveDetails, "%{@t(\"${SF.acmeWf}.${SW.details}.save\")}", WfSaveKind.edit)
+            }
+            task(SW.extra, "%{@t(\"${SF.acmeWf}.${SW.extra}.label\")}") {
+                trait(ST.questionnaire, required = false)
+                save(SW.saveExtra, "%{@t(\"${SF.acmeWf}.${SW.extra}.save\")}", WfSaveKind.edit)
             }
         }
 

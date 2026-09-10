@@ -4,6 +4,7 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.kdn.Startup
@@ -54,6 +55,21 @@ class WorkflowBootTest : StringSpec({
         globex.def.tasks.single().requiredTraitIds shouldBe listOf(GT.name)
         globex.def.tasks.single().label shouldBe "Name the form"
         globex.def.showTaskList shouldBe false
+    }
+
+    "acme also sees a survey workflow -- two edit-save tasks, beside its creation workflow" {
+        val survey = service.forClient(SC.acme).survey.shouldNotBeNull()
+        survey.def.entry shouldBe WfEntry.survey
+        survey.ref.workflowId shouldBe SW.reviewForm
+        survey.def.showTaskList shouldBe true
+        survey.def.tasks.map { it.id } shouldBe listOf(SW.details, SW.extra)
+        survey.def.tasks.flatMap { it.saves }.map { it.kind }.toSet() shouldBe setOf(WfSaveKind.edit)
+        // Its labels ride the same backend fragment file, so the pull resolved at boot like creation's.
+        survey.def.tasks.first().label shouldContain "@t("
+        // Two single-instance kinds coexist in one scope: the creation workflow is still resolvable.
+        service.forClient(SC.acme).creation.shouldNotBeNull().ref.workflowId shouldBe SW.createForm
+        // globex declares no survey, and none is global, so it inherits none.
+        service.forClient(SC.globex).survey.shouldBeNull()
     }
 
     "the definition schema and the two workflow cfacts are published" {
