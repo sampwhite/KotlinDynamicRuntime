@@ -205,9 +205,14 @@ val EditFormPage = FC<Props> {
                         loading = running
                         onClick = {
                             val check = checkInput(targetType, values)
-                            failures = check.failures
+                            // An addOrReplace must carry complete data; checkInput does not demand it (the edit's
+                            // data is an optionalContents fragment), so surface that completeness inline rather
+                            // than as the server's form-level "carries no data" (issue #662).
+                            val completeness = editDataCompletenessFailures(targetType, values)
+                            val allFailures = check.failures + completeness
+                            failures = allFailures.ifEmpty { null }
                             revalidate = false
-                            val payload = check.payload
+                            val payload = if (completeness.isEmpty()) check.payload else null
                             if (payload == null) {
                                 focusRequest += 1
                             } else {

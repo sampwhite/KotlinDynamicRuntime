@@ -13,9 +13,15 @@ import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SchFailCode
+import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.childPath
+import com.dynamicruntime.common.schema.indexPath
+import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 
 /*
  * Shared helpers for the gedra form-document pages (issue #408): discovering the client-scoped endpoints in the
@@ -186,6 +192,49 @@ fun seededEdits(form: Map<String, Any?>): List<Map<String, Any?>> =
  */
 fun formDocPatchBody(target: Map<String, Any?>): Map<String, Any?> =
     mapOf(GPF.targets to mapOf(GedraDataType.formDoc.name to listOf(target)))
+
+/**
+ * Completeness failures the edit form should show inline before submit (issue #662), one patch target's worth.
+ *
+ * An edit's `data` is a `g-optionalContents` fragment, so the form's ordinary `checkInput` does not demand a
+ * complete object -- which is right for a merge, but an **addOrReplace** takes the supplied data *whole*
+ * (`GedraDataService.applyEdit`), so it must be complete. The server settles that (`checkStoredEntries`) and,
+ * for the switch case where the old trait's data was dropped, rejects it with a form-level "carries no data".
+ * This surfaces the same rule inline instead: each `addOrReplace` edit's data is validated against its trait's
+ * data **type** -- not the optionalContents property, so `required` is enforced -- and the missing-required failures re-pathed
+ * to the edit's place in the target (`${GPF.edits}[i].${GE.data}.<field>`), the same path space `checkInput` and
+ * the form walk, so they mark the field.
+ *
+ * A **merge** is partial by design and a **delete** needs only its key, so both are left to the server as
+ * before. [targetType] is the one-target patch shape ([formDocPatchTargetType]); [values] is that target as the
+ * form holds it. Pure, and covered under `jsNodeTest`.
+ */
+fun editDataCompletenessFailures(targetType: SchType?, values: Map<String, Any?>): List<SchFailure> {
+    val editsUnion = targetType?.properties?.get(GPF.edits)?.valueType?.itemType ?: return emptyList()
+    val out = mutableListOf<SchFailure>()
+    values[GPF.edits].toJsonListOfMaps().forEachIndexed { i, edit ->
+        if (edit[GED.action].toOptStr() != GedraEditAction.addOrReplace.name) return@forEachIndexed
+        val traitId = edit[GE.traitId].toOptStr() ?: return@forEachIndexed
+        val dataType = editsUnion.variants?.select(traitId)?.properties?.get(GE.data)?.valueType
+            ?: return@forEachIndexed
+        val prefix = childPath(indexPath(GPF.edits, i), GE.data)
+        val supplied = edit[GE.data]
+        if (supplied == null) {
+            // Absent data: an addOrReplace needs some, but an absent nested object renders collapsed behind an
+            // "Add" control with no child fields drawn, so a per-field failure would mark nothing. One failure on
+            // the data field itself, which that "Add" row does show.
+            out += SchFailure(prefix, SchFailCode.missingRequired, "Add this entry's data, or switch the action to delete.")
+        } else {
+            // Present (possibly seeded empty): its fields are on screen, so mark each missing required one. Only
+            // the completeness failures checkInput skipped -- `optionalContents` waives `required` alone, so a
+            // wrong type or a bad option is already reported there and adding it here would double it.
+            validate(dataType, supplied.toJsonMapOrEmpty())
+                .filter { it.code == SchFailCode.missingRequired }
+                .forEach { f -> out += f.copy(path = if (f.path.isEmpty()) prefix else childPath(prefix, f.path)) }
+        }
+    }
+    return out
+}
 
 /**
  * The trait entry union inside a form-document type -- the `entries` array's element -- or null when [type] is
