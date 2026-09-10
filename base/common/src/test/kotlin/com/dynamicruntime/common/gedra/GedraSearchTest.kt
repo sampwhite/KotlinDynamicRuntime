@@ -166,4 +166,32 @@ class GedraSearchTest : StringSpec({
         // A trait a client could not have generated -- typed, but with neither ending -- still reads as a control.
         decodeSearchParam("year", mapOf(SCH.type to SCT.number), setOf("year")).role shouldBe SearchRole.exact
     }
+
+    "compareForSort orders a number column by value, not lexically" {
+        // "10" after "2" ascending -- a lexical sort would put "10" first.
+        compareForSort("2", "10", UsageKind.number, descending = false) shouldBe -1
+        compareForSort("2", "10", UsageKind.number, descending = true) shouldBe 1
+    }
+
+    "compareForSort orders a date column chronologically" {
+        compareForSort("2024-01-01", "2024-03-01", UsageKind.date, descending = false) shouldBe -1
+        compareForSort("2024-01-01", "2024-03-01", UsageKind.date, descending = true) shouldBe 1
+    }
+
+    "compareForSort orders a string column case-insensitively" {
+        compareForSort("apple", "Banana", UsageKind.string, descending = false) shouldBe -1
+        compareForSort("apple", "Apple", UsageKind.string, descending = false) shouldBe 0
+    }
+
+    "compareForSort puts a blank or unreadable value last, in either direction" {
+        // Blank vs a value: blank is always the greater (sorts after), ascending and descending alike.
+        compareForSort("", "5", UsageKind.number, descending = false) shouldBe 1
+        compareForSort("", "5", UsageKind.number, descending = true) shouldBe 1
+        compareForSort("5", "", UsageKind.number, descending = true) shouldBe -1
+        // A non-numeric value in a number column reads as no value -- last, like a blank.
+        compareForSort("n/a", "5", UsageKind.number, descending = false) shouldBe 1
+        // Two blanks are equal, so the caller's id tiebreak decides.
+        compareForSort("", "", UsageKind.string, descending = false) shouldBe 0
+    }
+
 })

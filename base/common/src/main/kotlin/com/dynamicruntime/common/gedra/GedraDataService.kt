@@ -1262,6 +1262,7 @@ class GedraDataService : ServiceInitializer {
         limit: Int,
         offset: Int,
         rowFilter: ((GedraDataRow) -> Boolean)?,
+        sort: GedraSort?,
     ): GedraListPage? {
         val cache = dataCache ?: return null
         val client = scope.client ?: return null
@@ -1274,19 +1275,21 @@ class GedraDataService : ServiceInitializer {
         // No search: extraction is deferred past the page window, so only the rows actually returned are built,
         // and `numAvailable` is the whole scope-matched set. `rowsMatched` means what the SQL path's does --
         // how many rows the scope admitted, not how many the page returned.
-        if (rowFilter == null) {
+        if (rowFilter == null && sort == null) {
             explainScope(cxt, scope, "cache:${GDX.clientKind}", matched.size)
             val page = matched.asSequence().drop(offset).take(limit).map { GedraDataRow.extract(gedraService, it) }.toList()
             return GedraListPage(page, matched.size)
         }
-        // A search runs the predicate in memory over the client+kind index before paging (issue #538): every
-        // scope-matched row is extracted so its display value can be tested, and `numAvailable` is the count
-        // that survived the search -- so the page and its total are both over the searched set. This is the
-        // in-memory ceiling the design accepts; the same predicate filters the SQL path's rows post-query.
-        val filtered = matched.asSequence().map { GedraDataRow.extract(gedraService, it) }.filter(rowFilter).toList()
-        explainScope(cxt, scope, "cache:${GDX.clientKind}", filtered.size)
-        val page = filtered.asSequence().drop(offset).take(limit).toList()
-        return GedraListPage(page, filtered.size)
+        // A search or a chosen sort runs in memory over the client+kind index before paging (issues #538, #666):
+        // every scope-matched row is extracted so its display value can be tested and ordered, `numAvailable` is
+        // the count that survived, and the page and its total are both over that set. A sort re-orders the
+        // matched-and-filtered rows in place of the default; the same shape filters/orders the SQL path's rows.
+        val extracted = matched.asSequence().map { GedraDataRow.extract(gedraService, it) }
+        val filtered = (rowFilter?.let { extracted.filter(it) } ?: extracted).toList()
+        val ordered = sort?.let { orderBySort(filtered, it) } ?: filtered
+        explainScope(cxt, scope, "cache:${GDX.clientKind}", ordered.size)
+        val page = ordered.asSequence().drop(offset).take(limit).toList()
+        return GedraListPage(page, ordered.size)
     }
 
     /**
@@ -1311,11 +1314,12 @@ class GedraDataService : ServiceInitializer {
         limit: Int,
         offset: Int = 0,
         rowFilter: ((GedraDataRow) -> Boolean)? = null,
+        sort: GedraSort? = null,
     ): GedraListPage {
         // `_debug=dataFromSql` bypasses the cache for diagnosis, the same tag `queryGedra` honors; the SQL below
         // is then taken for every scope, not only the no-client shapes the cache cannot key on.
         if (!cxt.hasDebugDiagnostic(GDBG.dataFromSql)) {
-            cachedListGedras(cxt, kind, scope, limit, offset, rowFilter)?.let { return it }
+            cachedListGedras(cxt, kind, scope, limit, offset, rowFilter, sort)?.let { return it }
         }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
@@ -1342,7 +1346,7 @@ class GedraDataService : ServiceInitializer {
         // `rows` is the whole scoped, ordered set (the SQL carries no limit). Without a search, the page window
         // is applied here -- the same place `limit` always was -- and extraction is after it, so only the
         // returned rows are built; `numAvailable` is the whole set, matching the cache path.
-        if (rowFilter == null) {
+        if (rowFilter == null && sort == null) {
             explainScope(cxt, scope, stmt.name, rows.size)
             val page = rows.asSequence()
                 .drop(offset)
@@ -1351,14 +1355,35 @@ class GedraDataService : ServiceInitializer {
                 .toList()
             return GedraListPage(page, rows.size)
         }
-        // The SQL fallback filters after its query (issue #538): the predicate is over the display value, which
-        // is not a column, so it cannot be a `where`. Every scoped row is extracted and tested, then paged --
-        // the stated in-memory ceiling, the same shape the cache path applies.
-        val filtered = rows.asSequence().map { GedraDataRow.extract(gedraService, it) }.filter(rowFilter).toList()
-        explainScope(cxt, scope, stmt.name, filtered.size)
-        val page = filtered.asSequence().drop(offset).take(limit).toList()
-        return GedraListPage(page, filtered.size)
+        // The SQL fallback filters and sorts after its query (issues #538, #666): a display value is not a
+        // column, so neither a `where` nor an `order by` can reach it. Every scoped row is extracted, filtered,
+        // ordered, then paged -- the stated in-memory ceiling, the same shape the cache path applies.
+        val extracted = rows.asSequence().map { GedraDataRow.extract(gedraService, it) }
+        val filtered = (rowFilter?.let { extracted.filter(it) } ?: extracted).toList()
+        val ordered = sort?.let { orderBySort(filtered, it) } ?: filtered
+        explainScope(cxt, scope, stmt.name, ordered.size)
+        val page = ordered.asSequence().drop(offset).take(limit).toList()
+        return GedraListPage(page, ordered.size)
     }
+
+    /**
+     * A chosen sort over a gedra listing (issue #666): [keyOf] gives the row's value for the sort column (a
+     * display value, or a protocol date as text), compared as [kind] in the [descending] direction. Composed
+     * with the id tiebreak so the order stays total; the default order applies when no sort is chosen.
+     */
+    class GedraSort(val kind: UsageKind, val descending: Boolean, val keyOf: (GedraDataRow) -> String)
+
+    /** [rows] ordered by [sort] (issue #666): each row's key computed **once**, then compared by kind and
+     *  direction, with the id descending as the total tiebreak (as the default order ends). */
+    private fun orderBySort(rows: List<GedraDataRow>, sort: GedraSort): List<GedraDataRow> =
+        rows.map { it to sort.keyOf(it) }
+            .sortedWith(
+                Comparator { a, b ->
+                    val c = compareForSort(a.second, b.second, sort.kind, sort.descending)
+                    if (c != 0) c else b.first.gedraId.fullId.compareTo(a.first.gedraId.fullId)
+                },
+            )
+            .map { it.first }
 
     /** One page of a gedra listing: the [rows] returned, and [numAvailable] -- how many the scope admits in all. */
     class GedraListPage(val rows: List<GedraDataRow>, val numAvailable: Int)

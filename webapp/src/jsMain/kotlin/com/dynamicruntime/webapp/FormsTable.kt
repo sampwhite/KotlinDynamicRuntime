@@ -6,6 +6,7 @@ import react.create
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.div
 import web.cssom.ClassName
+import com.dynamicruntime.common.gedra.GSORT
 
 /**
  * The caller's form documents as an antd table: one row per form, most recently written first as the endpoint
@@ -60,6 +61,17 @@ external interface FormsTableProps : Props {
 
     /** Performs the delete of a form, then (the parent) reloads the page. */
     var onConfirmDelete: (String) -> Unit
+
+    /** The column the list is currently sorted by (issue #666) -- a display trait id, or `updated` / `created`
+     *  -- or null for the default order. Drives which header shows the sort arrow. */
+    var sortColumn: String?
+
+    /** Whether the current sort is descending. */
+    var sortDescending: Boolean
+
+    /** Called when a header sort changes: the new column (a trait id, or `updated`/`created`) and direction, or
+     *  null when the sort is cleared (back to the default order). The parent re-fetches. */
+    var onSort: (column: String?, descending: Boolean) -> Unit
 }
 
 val FormsTable = FC<FormsTableProps> { props ->
@@ -80,17 +92,32 @@ val FormsTable = FC<FormsTableProps> { props ->
         tableLayout = "fixed"
         pagination = false
         rowKey = "key"
+        // Server-side sort (issue #666): antd reports the header the caller clicked and its direction; the
+        // dataIndex maps back to the endpoint's sort key (a display column is `display_<traitId>`). Order is
+        // undefined on the third click, which clears the sort back to the default order.
+        onChange = { _, _, sorter ->
+            val order = sorter.order as? String
+            val field = sorter.field as? String
+            if (order == null || field == null) {
+                props.onSort(null, false)
+            } else {
+                props.onSort(field.removePrefix("display_"), order == "descend")
+            }
+        }
         val cols = buildList {
             // Namespaced key: a usage trait id must not shadow the reserved row key ("key") or a fixed column
             // ("contains"/"owner"/"updated"/"created"/"actions") -- overwriting the row key would break which
             // form a click opens.
-            displayCols.forEach { add(column(it.label, displayColKey(it.traitId), 160)) }
+            // Sortable (issue #666): a display column orders by its trait, the date columns by their value. The
+            // header arrow is antd's, controlled from `sortColumn`/`sortDescending`; the sort key sent to the
+            // endpoint is the trait id (or `updated`/`created`), which the click maps back to via the dataIndex.
+            displayCols.forEach {
+                add(sortableColumn(it.label, displayColKey(it.traitId), it.traitId, 160, props.sortColumn, props.sortDescending))
+            }
             add(column("Contains", "contains", null))
             if (props.showOwner) add(ownerColumn())
-            // The order is most recently written first (issue #562); the arrow says so without offering a
-            // sort the endpoint does not take.
-            add(column("Updated ↓", "updated", 175))
-            add(column("Created", "created", 175))
+            add(sortableColumn("Updated", GSORT.updated, GSORT.updated, 175, props.sortColumn, props.sortDescending))
+            add(sortableColumn("Created", GSORT.created, GSORT.created, 175, props.sortColumn, props.sortDescending))
             if (anyActions) add(actionsColumn(props))
         }
         columns = cols.toTypedArray()
@@ -264,6 +291,26 @@ private fun minTableWidth(cols: List<dynamic>): dynamic {
 /** The antd row/column key for a display column: a trait id, namespaced so it cannot shadow the reserved
  *  row key ("key") or the fixed "contains"/"owner"/"updated"/"created"/"actions" columns (issue #537). */
 private fun displayColKey(traitId: String): String = "display_$traitId"
+
+/**
+ * An antd column that sorts server-side (issue #666): `sorter = true` with a **controlled** `sortOrder`, so the
+ * arrow reflects [sortColumn]/[descending] the parent holds rather than antd sorting the page itself. [sortKey]
+ * is the endpoint's key for this column (a trait id, or `updated`/`created`); [dataIndex] is the row-data key
+ * (namespaced for a display column), so the two differ for a display column and coincide for a date column.
+ */
+private fun sortableColumn(
+    title: String,
+    dataIndex: String,
+    sortKey: String,
+    width: Int?,
+    sortColumn: String?,
+    descending: Boolean,
+): dynamic {
+    val c = column(title, dataIndex, width)
+    c.sorter = true
+    c.sortOrder = if (sortColumn == sortKey) (if (descending) "descend" else "ascend") else null
+    return c
+}
 
 /** Builds an antd column config `{ title, dataIndex, key, width? }`. */
 private fun column(title: String, dataIndex: String, width: Int?): dynamic {

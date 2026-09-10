@@ -214,6 +214,19 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             emptyIsAbsent = true
             allowCoerce = true
         }
+        // The sort (issue #666): a column to order by -- a display trait id, or `updated`/`created` -- and a
+        // direction. Absent means the default (most recently written first). Not admin-gated: any caller may
+        // order the rows they can already see. Open text, since the column names a client's own trait; an
+        // unknown column falls back to the default order rather than faulting a stale bookmark.
+        property(GSORT.sort, "Order by this column: a display trait id, or `${GSORT.updated}` / `${GSORT.created}`. Defaults to most recently written.") {
+            emptyIsAbsent = true
+        }
+        property(GSORT.sortDir, "Sort direction. Defaults to ascending when a column is named.") {
+            emptyIsAbsent = true
+            option(GSORT.asc, "Ascending")
+            option(GSORT.desc, "Descending")
+            openOptions()
+        }
     }
 
     listEndpoint(
@@ -240,8 +253,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // before paging, so the page and its `numAvailable` are both over the matched set (see `listGedras`).
         val usages = SchemaService.get(c).traitUsagesFor(c.client)
         val filter = searchFilter(c, request, usages)
+        val sort = gedraSortFor(c, request, usages)
         val svc = GedraDataService.get(c)
-        val page = svc.listGedras(c, formDoc, scope, limit, offset, filter)
+        val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort)
         // Attach each form's state (issue #600) only when asked. One batch read over the page's ids -- cache-
         // first off the resident states cache, the misses (a form with no state, or a cache-absent node) sharing
         // one session -- read with the same `scope` that admitted the rows, so the state a caller sees is
@@ -622,6 +636,32 @@ private fun resolveTargetUser(c: KdrCxt, request: Map<String, Any?>, callerScope
  * so both sides read through the same parse. Applied by [GedraDataService.listGedras] before paging, over the
  * cache's client+kind index (the SQL fallback filters its query's rows), with the stated in-memory ceiling.
  */
+/**
+ * The sort a listing request asks for (issue #666), or null for the default order. The `sort` column is a
+ * display trait id -- ordered by that trait's value under its declared [UsageKind] -- or `updated` / `created`,
+ * the row's protocol dates. An unknown column returns null (the default order) rather than faulting, so a stale
+ * bookmark still lists. The direction is `desc` when [GSORT.sortDir] says so, ascending otherwise. The trait's
+ * value is read the same way the column shows it ([computeDisplayValues] for just that usage).
+ */
+private fun gedraSortFor(
+    cxt: KdrCxt,
+    request: Map<String, Any?>,
+    usages: List<ClientTraitUsage>,
+): GedraDataService.GedraSort? {
+    val column = request[GSORT.sort].toOptStr()?.ifBlank { null } ?: return null
+    val descending = request[GSORT.sortDir].toOptStr()?.equals(GSORT.desc, ignoreCase = true) == true
+    return when (column) {
+        GSORT.updated -> GedraDataService.GedraSort(UsageKind.date, descending) { it.updatedAt?.toString() ?: "" }
+        GSORT.created -> GedraDataService.GedraSort(UsageKind.date, descending) { it.createdAt?.toString() ?: "" }
+        else -> {
+            val usage = usages.firstOrNull { it.traitId == column } ?: return null
+            GedraDataService.GedraSort(usage.kind, descending) { row ->
+                computeDisplayValues(cxt, row, listOf(usage)).firstOrNull()?.get(UF.value).toOptStr() ?: ""
+            }
+        }
+    }
+}
+
 private fun searchFilter(
     c: KdrCxt,
     request: Map<String, Any?>,
