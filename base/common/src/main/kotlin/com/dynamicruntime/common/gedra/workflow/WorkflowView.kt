@@ -100,6 +100,9 @@ fun resolveWorkflowView(
             WVF.facts to taskFacts.toList(),
         )
         task.layout?.let { raw[WFD.layout] = linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name) }
+        // When resolved against an existing form (a survey edit), carry that task's current entries so the page
+        // seeds each field with its stored value. A creation view has none, so the field is simply absent.
+        if (entries.isNotEmpty()) raw[WVF.entries] = entries
         // The content pipeline, per task: the request facts (hoisted) plus this task's own, then drop anything
         // gated on a cfact they do not satisfy. A no-op on today's model (no conditions), real on tomorrow's.
         return filterByCFacts(raw, requestFacts + taskFacts, cfacts::parse)

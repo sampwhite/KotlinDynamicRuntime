@@ -14,6 +14,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
@@ -537,20 +538,31 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         HttpMethod.GET,
         outputRef = GEP.workflowViewType,
         inputFields = {
-            field(GDF.workflowId, "The workflow to resolve; omit for the client's creation workflow.")
+            field(GDF.workflowId, "The workflow to resolve; omit for the caller's creation workflow, or with a gedraId its survey.")
+            field(GDF.gedraId, "An existing form to resolve against, seeding each field with its data; with no workflowId this resolves the client's survey.")
         },
         publicApi = true,
         needsClientConfig = true,
     ) { c, request ->
         val registry = WorkflowService.get(c).forClient(c.client)
         val requested = request[GDF.workflowId].toOptStr()
-        val declared = if (requested != null) {
-            registry.workflow(requested)
+        val gedraId = request[GDF.gedraId].toOptStr()
+        // A workflowId names one directly; otherwise the singleton kind is deduced from whether a form was
+        // named -- a form means "edit its survey", none means "create". Both singletons resolve by kind, so a
+        // caller never needs to know the id up front (issue #658).
+        val declared = when {
+            requested != null -> registry.workflow(requested)
                 ?: throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
-        } else {
-            registry.creation
+            gedraId != null -> registry.survey
+            else -> registry.creation
         }
-        if (declared == null) noWorkflowView() else resolveWorkflowView(c, declared)
+        if (declared == null) {
+            noWorkflowView()
+        } else {
+            // A named form seeds each task from its current entries -- which also makes completeness real.
+            val entriesByTask = if (gedraId == null) emptyMap() else surveyEntriesByTask(c, declared, gedraId)
+            resolveWorkflowView(c, declared, entriesByTask)
+        }
     }
 
     // --- the workflow save (issue #535) -------------------------------------------------------------------
@@ -565,7 +577,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             type = SCT.array
             items { type = SCT.string }
         }
-        property(WSF.item, "When saved: the created form document, as create returns it.") { ref(docType) }
+        property(WSF.item, "When saved: the created form document, or the updated one for a survey edit.") { ref(docType) }
     }
 
     // Saves the entries a workflow task collected, with the workflow's gate (issue #535). A refused save is a
@@ -573,14 +585,16 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     // fields to finish; a mistake (unknown task/save, a trait the task does not collect) is a loud 400.
     generalEndpoint(
         GEP.workflowSave,
-        "Saves a workflow task's entries. On a satisfied `create` save, creates the form and answers with it; " +
-            "on an incomplete one, answers with the unmet required traits (not an error).",
+        "Saves a workflow task's entries. A `create` save creates the form (or, if incomplete, answers with the " +
+            "unmet required traits -- not an error); a survey `edit` save updates the form named by gedraId and " +
+            "recomputes its survey state.",
         HttpMethod.POST,
         outputRef = GEP.workflowSaveType,
         inputFields = {
             field(GDF.workflowId, "The workflow being saved.", required = true)
             field(GDF.taskId, "The task whose entries these are.", required = true)
             field(GDF.saveId, "The save option chosen within the task.", required = true)
+            field(GDF.gedraId, "The form an edit save updates; omit for a create save, which makes a new form.")
             field(GDF.entries, "The entries the task collected, each an instance of a trait the task declares.", required = true) {
                 type = SCT.array
                 items { ref("${GCFG.globalNamespace}.${GU.unionName(formDoc)}") }
@@ -595,7 +609,31 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             ?: throw KdrException("No workflow '$workflowId' for this caller.", code = EXC.notFound)
         val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
         val saveId = request[GDF.saveId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.saveId} is required.")
-        saveWorkflow(c, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps())
+        saveWorkflow(c, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps(), request[GDF.gedraId].toOptStr())
+    }
+}
+
+/**
+ * The form's current entries, split into the map [resolveWorkflowView] seeds a survey view from (issue #658):
+ * for each task, the form's entries whose trait the task collects. The read is the caller's own scope, so a
+ * form out of reach answers 404 -- the resolver itself reads no gedra, keeping it a pure function of the
+ * definition and the schema, so the one gedra read a survey view needs lives here in the handler layer.
+ */
+private fun surveyEntriesByTask(cxt: KdrCxt, declared: WfDeclared, fullId: String): Map<String, List<Map<String, Any?>>> {
+    val row = GedraDataService.get(cxt).queryGedra(cxt, fullId, GedraDataType.formDoc, ReadScopeRules.forCaller(cxt))
+        ?: throw KdrException("No form '$fullId' for this caller.", code = EXC.notFound)
+    // Confine the form to the client whose survey we resolved (`cxt.client`): `registry.survey` is that client's,
+    // and an `allClients` caller could otherwise name a form in another client that scope alone would admit --
+    // seeding one client's survey with another's data. The edit save is already guarded this way (checkPathClient).
+    if (row.client != cxt.client) {
+        throw KdrException.mkInput(
+            "Form '$fullId' belongs to client '${row.client}', and this survey view is for '${cxt.client}'. " +
+                "Use that client's own survey view.",
+        )
+    }
+    return declared.def.tasks.associate { task ->
+        val traitIds = task.traits.map { it.traitId }.toSet()
+        task.id to row.entries.filter { it[GE.traitId].toOptStr() in traitIds }
     }
 }
 

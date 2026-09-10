@@ -559,6 +559,34 @@ class GedraDataService : ServiceInitializer {
             .flatMap { it.derive(cxt, row) }
 
     /**
+     * Recomputes a gedra's **derived** state after its data changed (issue #658), and writes it -- what a survey
+     * edit runs so the form's completeness/validity follows the edit. Recomputable by construction: it re-runs
+     * the derivers on the current row and replaces every derived entry, but **preserves the asserted ones**
+     * untouched, since asserted state (an approval, an external sync marker) is not a function of the form's data
+     * and a data edit must never recompute it away (the design's "recomputation vs external assertion").
+     *
+     * Its own transaction rather than the data write's: derived state is a projection, so a failure here leaves
+     * recomputable staleness a later edit or batch corrects, never a torn write -- and a bad deriver is logged
+     * and swallowed, exactly as on create, so it cannot fail an edit that already committed.
+     *
+     * When it becomes a shared primitive (several asserted writers, a batch), the derived/asserted partition
+     * here is what a class-aware `writeState` mode would lift out; today the survey is its one caller.
+     */
+    fun recomputeDerivedState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope) {
+        val kind = gedraId.dataType ?: return
+        val row = queryGedra(cxt, gedraId.fullId, kind, scope) ?: return
+        val stateClassOf = SchemaService.get(cxt).gedraStateTraits().associate { it.traitId to it.stateClass }
+        val preservedAsserted = readState(cxt, gedraId, scope).filter {
+            stateClassOf[it[GE.traitId].toOptStr()] == StateTraitClass.asserted
+        }
+        try {
+            writeState(cxt, gedraId, preservedAsserted + computeInitialState(cxt, row))
+        } catch (e: KdrException) {
+            LogGedra.warn(cxt) { "Skipped invalid recomputed state for '${gedraId.fullId}': ${e.message}" }
+        }
+    }
+
+    /**
      * Whether a deriver's opt-in [featureName] is on: a null feature always runs; a named one runs only on a
      * **test instance** whose gedra's client lists it in [ClientDef.testFeatures] (issue #599). So a demo
      * derivation stays off production and off clients that did not ask for it.
