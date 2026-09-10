@@ -411,18 +411,6 @@ val SchemaForm = FC<SchemaFormProps> { props ->
 }
 
 /** Renders an object type's fields, threading the cycle-guard [seen] set (visited `$ref` type names). */
-/**
- * The direct object properties of [type] whose value type declares a primary key (issue #642), each mapped to
- * its key fields -- the fields to hoist to [type]'s own level and hide inside the object. Only a single keyed
- * **object** promotes: a keyed array or union is left alone, since "alongside the choice" has no meaning there.
- * This is the shape a trait's `data` takes on an edit branch, but the rule names no trait -- it knows only that
- * an object property is keyed, the way the keyed-element labelling does. Pure, so a jsNodeTest can pin which fields lift.
- */
-fun promotableKeys(type: SchType): Map<String, List<String>> =
-    type.properties
-        .filterValues { isStructuredObject(it.valueType) && it.valueType.primaryKey.isNotEmpty() }
-        .mapValues { it.value.valueType.primaryKey }
-
 private fun ChildrenBuilder.renderObject(
     type: SchType,
     values: Map<String, Any?>,
@@ -455,6 +443,22 @@ private fun ChildrenBuilder.renderObject(
         undeclaredField(childKeyOf(at, path) ?: at, at, messages)
     }
 }
+
+/**
+ * The direct object properties of [type] whose value type declares a primary key (issue #642), each mapped to
+ * its key fields -- the fields to hoist to [type]'s own level and hide inside the object. Only a single keyed
+ * **object** promotes: a keyed array or union is left alone (`isStructuredObject` counts a union, so a union is
+ * excluded explicitly), since "alongside the choice" has no meaning for a list or a branch set. This is the
+ * shape a trait's `data` takes on an edit branch, but the rule names no trait -- it knows only that an object
+ * property is keyed, the way the keyed-element labelling does. Pure, so a jsNodeTest can pin which fields lift.
+ */
+fun promotableKeys(type: SchType): Map<String, List<String>> =
+    type.properties
+        .filterValues {
+            it.valueType.variants == null && it.valueType.jsonType == SCT.kObject &&
+                it.valueType.primaryKey.isNotEmpty()
+        }
+        .mapValues { it.value.valueType.primaryKey }
 
 /**
  * Renders a type's declared properties, applying its conditional-presence rule if it has one (issue #253).
@@ -504,10 +508,22 @@ private fun ChildrenBuilder.renderProperties(
     for ((objName, keyFields) in promoted) {
         val objType = type.properties[objName]?.valueType ?: continue
         val subMap = (values[objName] as? Map<*, *>)?.toJsonMapOrEmpty() ?: emptyMap()
+        // A key is drawn from the nested object, so the nested object's own rules decide it -- the same guards
+        // the property loop below applies, evaluated here against that object and its values (issue #642), so
+        // the promotion cannot turn a derived or gated key into an editable box the schema says nobody supplies.
+        val objCond = objType.condition
+        val objForbidden = objCond?.forbiddenWhen(objCond.holds(subMap)) ?: emptySet()
+        val objAlsoRequired = objCond?.requiredWhen(objCond.holds(subMap)) ?: emptySet()
         for (keyName in keyFields) {
             val keyProp = objType.properties[keyName] ?: continue
+            val derived = keyProp.valueType.derived
+            if (opts.friendly && derived) continue
+            if (editable && keyProp.visibleWhen?.let { !opts.gateAllows(it) } == true) continue
+            if (keyName in objForbidden && isBlankValue(subMap[keyName])) continue
             renderField(
-                keyName, keyProp, keyName in objType.required, subMap[keyName], seen, editable,
+                keyName, keyProp,
+                (keyName in objType.required || keyName in objAlsoRequired) && !derived,
+                subMap[keyName], seen, editable && !derived,
                 childPath(childPath(path, objName), keyName), errors,
                 emit = { newVal ->
                     val cur = (values[objName] as? Map<*, *>)?.toJsonMapOrEmpty() ?: emptyMap()

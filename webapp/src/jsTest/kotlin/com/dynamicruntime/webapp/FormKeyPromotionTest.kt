@@ -47,6 +47,31 @@ class FormKeyPromotionTest {
                 "data" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to "t.Keyed")),
             ),
         ),
+        // A *union* under `data`: not promotable. isStructuredObject counts a union, so the rule excludes it
+        // by `variants == null` -- else, were a union ever keyed, its key would draw once promoted and again
+        // inside the chosen branch. Its branches carry a const discriminator, as a real discriminated union must.
+        "t.UA" to mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf(
+                "kind" to mapOf(SCH.type to SCT.string, SCH.const to "a"),
+                "year" to mapOf(SCH.type to SCT.integer),
+            ),
+        ),
+        "t.UB" to mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf("kind" to mapOf(SCH.type to SCT.string, SCH.const to "b")),
+        ),
+        "t.Union" to mapOf(
+            SCH.oneOf to listOf(mapOf(SCH.dRef to "t.UA"), mapOf(SCH.dRef to "t.UB")),
+            SCH.discriminator to mapOf(SCH.propertyName to "kind"),
+            // A key on the union itself: parseSchemaTypes stores it (SchParser), so without the `variants == null`
+            // guard the old rule would have promoted this -- the double-render the review caught.
+            SCH.primaryKey to listOf("year"),
+        ),
+        "t.UnionBranch" to mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf("data" to mapOf(SCH.dRef to "t.Union")),
+        ),
     )
 
     private fun type(name: String) = parseSchemaTypes(defs()).getValue(name)
@@ -64,6 +89,12 @@ class FormKeyPromotionTest {
     @Test
     fun aKeyedArrayPropertyDoesNotPromote() {
         assertTrue(promotableKeys(type("t.ArrayBranch")).isEmpty())
+    }
+
+    @Test
+    fun aKeyedUnionPropertyDoesNotPromote() {
+        // isStructuredObject admits a union; promotion must not, or the key renders twice (issue #642 review).
+        assertTrue(promotableKeys(type("t.UnionBranch")).isEmpty())
     }
 
     @Test
