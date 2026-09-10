@@ -251,7 +251,7 @@ be anonymous is redirected to a Google sign-in they cannot complete and will not
 The trigger is observable: the first route added for a backend whose application serves the public.
 
 - **Per-route anonymous access.** `EdgeProxyHandler` decides to challenge from the context root alone, so the
-  answer is the same for every backend. The route entry of `kd2-design/thoughts-edge-server.md` §7 already
+  answer is the same for every backend. The route entry of `kdr-deployment/thoughts-edge-server.md` §7 already
   anticipates this with an `allowNoEnvAuth` flag — a root not carrying it is challenged, one carrying it is
   forwarded as-is. Needs the route table, so it lands with that rather than before it.
 
@@ -344,7 +344,7 @@ The point at which a client needs custom workflows that both **own copy** and **
 -- a workflow choosing which fragment to show by a key rather than inlining the text. That is what makes a
 client-owned fragment file and a declarative selector worth building; until then a client overlays existing
 component copy and that is enough. Design and full rationale live in the fragment design doc,
-`kd2-design/thoughts-on-fragments.md` (private `sampwhite/Actions`).
+`kdr-design/thoughts-on-fragments.md` (private `sampwhite/Actions`).
 
 - **Client-defined template (fragment) files** *(from the "client-declared fragments" iteration in the design
   doc).* Let a client declare its own **base** fragment files -- new fileIds, not just overlays of

@@ -255,7 +255,7 @@ class WfTask(
  *
  * There are **no states and no transitions**. A task's status is derived from the entries present
  * ([WfEngine]), "who may act" is a cfact, and a form's engagement with a workflow will live in a companion
- * states table -- the model `kd2-design/thoughts-workflow-poc.md` (private `sampwhite/Actions`) describes,
+ * states table -- the model `kdr-design/thoughts-workflow-poc.md` (private `sampwhite/Actions`) describes,
  * replacing the state machine #381
  * shipped and #533 retired. Pure Kotlin in `base/kernel`, so the frontend can read the same definition the
  * backend enforces.

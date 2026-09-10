@@ -2,7 +2,7 @@
 
 **Status: superseded.** Phase 1 of this design shipped as issue #381 and was **retired under issue #533**
 before phases 2–4 were built; the replacement is tracked by issue #532, with its design notes in the private
-`sampwhite/Actions` repo (`kd2-design/thoughts-workflow-poc.md`, `kd2-design/thoughts-gedra-states.md`). Two
+`sampwhite/Actions` repo (`kdr-design/thoughts-workflow-poc.md`, `kdr-design/thoughts-gedra-states.md`). Two
 ideas carry forward: the **soft-validation seam** — a completeness gate stops an advance and never fails a
 write; see the soft-validation section of `gedra-patch.md` — and completeness as **presence of an entry, not a
 judgment of its content**. The rest of this document is left as written, as the record of a design that was
