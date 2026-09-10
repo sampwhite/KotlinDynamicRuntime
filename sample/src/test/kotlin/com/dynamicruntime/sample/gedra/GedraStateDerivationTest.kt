@@ -46,9 +46,11 @@ class GedraStateDerivationTest : StringSpec({
 
         // The derivation ran in the create transaction: the form now has traitPresenceByYear state for 2024,
         // recording that its expenseReport trait carried data that year -- read back with no separate write.
+        // acme also carries survey state now (issue #657), so assert this deriver's entry specifically rather
+        // than the whole set.
         val state = service().readState(acme, gid, ReadScope.ofClient(SC.acme))
-        traitIds(state) shouldContainExactly listOf(ST.traitPresenceByYear)
-        val data = state.single()[GE.data].toJsonMapOrEmpty()
+        traitIds(state) shouldContain ST.traitPresenceByYear
+        val data = state.first { it[GE.traitId].toOptStr() == ST.traitPresenceByYear }[GE.data].toJsonMapOrEmpty()
         data[ST.year].toOptLong() shouldBe 2024L
         (data[ST.presentTraits] as? List<*>).orEmpty().map { it.toOptStr() } shouldContainExactly listOf(ST.expenseReport)
     }
