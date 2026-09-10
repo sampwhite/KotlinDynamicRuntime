@@ -347,6 +347,7 @@ class WfDef(
 
     override fun toString(): String = "$workflowId (${entry.name}, ${tasks.size} task(s))"
 
+    @Suppress("ConstPropertyName")
     companion object {
         /**
          * The most tasks a [WfEntry.survey] workflow may have. The design expects a survey to be a short
