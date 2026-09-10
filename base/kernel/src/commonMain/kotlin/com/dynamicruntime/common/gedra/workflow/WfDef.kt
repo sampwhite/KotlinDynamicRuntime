@@ -142,26 +142,36 @@ object WFC {
 }
 
 /**
- * How a workflow is entered. A closed set, so an enum. Only [creation] is built (issue #533); a definition
- * declaring another is refused at boot rather than accepted and inert.
+ * How a workflow is entered. A closed set, so an enum. [creation] (issue #533) and [survey] (issue #656) are
+ * built; a definition declaring [normal] is refused at boot rather than accepted and inert.
  */
 @Suppress("EnumEntryName")
 enum class WfEntry {
     /** Runs when a form document is created: one task, one save, and the save creates the document. */
     creation,
 
-    /** An initial survey the owner completes before other workflows apply. Not built yet. */
+    /**
+     * An owner revisits a form's global data outside any one workflow -- the second face of the create/edit
+     * paradigm (issue #656). One to three tasks (`WfDef.surveyMaxTasks`), saves of kind [WfSaveKind.edit], and
+     * at most one per scope.
+     */
     survey,
 
     /** Chosen by the user from the workflows a form is eligible for. Not built yet. */
     normal,
 }
 
-/** What a save does. Only [create] exists; the seam later saves (submit, approve, export) land on. */
+/**
+ * What a save does. [create] makes a new form (a creation workflow); [edit] updates an existing one (a survey
+ * workflow, issue #656). The seam later saves -- submit, approve, export -- land on.
+ */
 @Suppress("EnumEntryName")
 enum class WfSaveKind {
     /** Creates the form document from the entries the task collected. */
     create,
+
+    /** Updates an existing form document with the entries the task collected -- how a survey edits a form. */
+    edit,
 }
 
 /** How a task's traits are edited. Only [inline] exists; a pop-up editor is a later variation. */
@@ -298,6 +308,31 @@ class WfDef(
                 )
             }
         }
+        if (entry == WfEntry.survey) {
+            // A survey may have several tasks (a creation workflow may not), but a small, fixed few: it is a
+            // questionnaire an owner finishes in one sitting, not a multi-stage process. More than the ceiling
+            // is refused rather than silently working, since the design does not group a survey's tasks.
+            if (tasks.size > surveyMaxTasks) {
+                throw KdrException.mkConv(
+                    "Survey workflow '$workflowId' has ${tasks.size} tasks; a survey has at most " +
+                        "$surveyMaxTasks, since it is a short questionnaire an owner completes in one sitting.",
+                )
+            }
+            tasks.firstOrNull { it.saves.isEmpty() }?.let {
+                throw KdrException.mkConv(
+                    "Survey workflow '$workflowId' task '${it.id}' has no save; every survey task needs a save, " +
+                        "since a task with no way to persist its edits cannot advance the survey.",
+                )
+            }
+            // A survey edits an existing form; a `create` save would make a second one. So every survey save is
+            // an `edit`, the mirror of the creation-only `create` gate above.
+            tasks.flatMap { it.saves }.firstOrNull { it.kind != WfSaveKind.edit }?.let {
+                throw KdrException.mkConv(
+                    "Survey workflow '$workflowId' has a save '${it.id}' of kind '${it.kind}'; a survey edits an " +
+                        "existing form, so its saves are '${WfSaveKind.edit}'.",
+                )
+            }
+        }
     }
 
     /** The task named, or null. */
@@ -311,6 +346,15 @@ class WfDef(
     val showTaskList: Boolean get() = tasks.size > 1
 
     override fun toString(): String = "$workflowId (${entry.name}, ${tasks.size} task(s))"
+
+    companion object {
+        /**
+         * The most tasks a [WfEntry.survey] workflow may have. The design expects a survey to be a short
+         * questionnaire an owner finishes in one sitting -- "I do not expect there to ever be more than three"
+         * -- so a survey with more is refused rather than silently split into task groups it does not have.
+         */
+        const val surveyMaxTasks = 3
+    }
 }
 
 /**

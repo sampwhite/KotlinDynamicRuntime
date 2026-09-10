@@ -36,6 +36,9 @@ class WorkflowRegistry(
     /** The creation workflow of this scope, or null when it has none. At most one, by check. */
     val creation: WfDeclared? = workflows.values.firstOrNull { it.def.entry == WfEntry.creation }
 
+    /** The survey workflow of this scope, or null when it has none. At most one, by check (issue #656). */
+    val survey: WfDeclared? = workflows.values.firstOrNull { it.def.entry == WfEntry.survey }
+
     /** The workflow named, or null. */
     fun workflow(id: String): WfDeclared? = workflows[id]
 
@@ -72,13 +75,14 @@ fun interface WfFragmentLookup {
  * dropping what does not hold up (issue #533).
  *
  * **Shadowing.** A client sees the global workflows plus its own; its own **replaces** a global one of the
- * same id, and a client declaring **any** creation workflow replaces the global creation workflow for that
- * client -- the same overlay rule every other config layer follows, so a deployment can ship a default a
- * client customizes. The at-most-one-creation check runs *after* shadowing, on what the client actually sees.
+ * same id, and a client declaring a **singleton-kind** workflow (a creation or a survey, of which a scope has
+ * at most one) replaces the global one of that kind for that client -- the same overlay rule every other config
+ * layer follows, so a deployment can ship a default a client customizes. The at-most-one-per-singleton-kind
+ * check runs *after* shadowing, on what the client actually sees.
  *
  * **What is checked**, per scope and per workflow -- each a thing that would otherwise fail silently or late:
  *
- * - The entry kind is one that is built. Only `creation` is; a `survey` or `normal` declared today would be
+ * - The entry kind is one that is built. `creation` and `survey` are; a `normal` declared today would be
  *   accepted and inert, which is worse than a refusal.
  * - Every trait a task collects is one the scope may use: the client's supported set, or for a global
  *   workflow the traits global can see. A workflow naming a trait its client cannot store would fail at the
@@ -87,7 +91,7 @@ fun interface WfFragmentLookup {
  *   **backend** file, a present key -- unless the pull guards its own absence. The same static check the
  *   fragment service runs over files, applied to the labels a definition carries; a frontend pull (`${...}`)
  *   binds at request time and is the author's assertion, as it is everywhere.
- * - At most one creation workflow per scope, after shadowing.
+ * - At most one workflow of each single-instance kind (creation, survey) per scope, after shadowing.
  *
  * No cfact expressions are checked, because the model carries none yet (selectors are deferred); when it does,
  * they parse here against the scope's registry, as UiBlocks' do.
@@ -108,6 +112,13 @@ fun buildWorkflowRegistries(
     mode: BootCheckMode,
     issues: MutableList<GedraConfigIssue>,
 ): WorkflowRegistries {
+    // The entry kinds that are implemented; a workflow declaring any other is dropped rather than run
+    // half-built. `normal` joins this when it lands.
+    val builtEntries = setOf(WfEntry.creation, WfEntry.survey)
+    // The entry kinds a scope has at most one of: declaring one takes over that kind, and a second is refused.
+    // `normal` will be many-per-form, so it is deliberately not here even once it is built.
+    val singletonEntries = setOf(WfEntry.creation, WfEntry.survey)
+
     fun declaredIn(owner: String): List<WfDeclared> = configs.configs
         .filter { it.gedraId.client == owner }
         .flatMap { bundle -> bundle.workflows.values.map { WfDeclared(bundle, it) } }
@@ -124,10 +135,13 @@ fun buildWorkflowRegistries(
         if (mode == BootCheckMode.off) {
             return true
         }
-        if (w.def.entry != WfEntry.creation) {
+        if (w.def.entry !in builtEntries) {
             reportConfigProblem(
                 cxt, mode,
-                problem(scope, w, "is entered by '${w.def.entry}', which is not built yet; only '${WfEntry.creation}' is."),
+                problem(
+                    scope, w,
+                    "is entered by '${w.def.entry}', which is not built yet; only ${builtEntries.joinToString(" and ") { "'$it'" }} are.",
+                ),
                 issues,
             )
             return false
@@ -162,10 +176,12 @@ fun buildWorkflowRegistries(
     fun assemble(scope: String?, inherited: Map<String, WfDeclared>, own: List<WfDeclared>, usable: Set<String>): WorkflowRegistry {
         val out = LinkedHashMap(inherited)
         val admitted = own.filter { admits(scope, it, usable) }
-        // A client declaring a creation workflow takes over creation for itself: the inherited one is
-        // shadowed whatever its id, since "how a form is created here" has exactly one answer.
-        if (admitted.any { it.def.entry == WfEntry.creation }) {
-            out.entries.removeAll { it.value.def.entry == WfEntry.creation }
+        // A client declaring a singleton-kind workflow takes that kind over for itself: the inherited one is
+        // shadowed whatever its id, since "how a form is created / surveyed here" has exactly one answer.
+        for (kind in singletonEntries) {
+            if (admitted.any { it.def.entry == kind }) {
+                out.entries.removeAll { it.value.def.entry == kind }
+            }
         }
         // Own bundles on top of the inherited ones. Inherited-then-own is shadowing; own-then-own -- two bundles
         // of one scope naming one workflow -- is a collision, refused the way two configs declaring one trait
@@ -186,20 +202,23 @@ fun buildWorkflowRegistries(
             }
             out[w.def.workflowId] = w
         }
-        // After shadowing: what this scope actually sees may still hold two, from two of its own bundles.
-        val creations = out.values.filter { it.def.entry == WfEntry.creation }
-        if (mode != BootCheckMode.off && creations.size > 1) {
-            for (extra in creations.drop(1)) {
-                reportConfigProblem(
-                    cxt, mode,
-                    problem(
-                        scope, extra,
-                        "is a second creation workflow beside '${creations.first().ref}'. A scope creates a " +
-                            "form one way; keeping the first declared.",
-                    ),
-                    issues,
-                )
-                out.remove(extra.def.workflowId)
+        // After shadowing: what this scope actually sees may still hold two of a singleton kind, from two of
+        // its own bundles.
+        if (mode != BootCheckMode.off) {
+            for (kind in singletonEntries) {
+                val ofKind = out.values.filter { it.def.entry == kind }
+                for (extra in ofKind.drop(1)) {
+                    reportConfigProblem(
+                        cxt, mode,
+                        problem(
+                            scope, extra,
+                            "is a second $kind workflow beside '${ofKind.first().ref}'. A scope has one $kind " +
+                                "workflow; keeping the first declared.",
+                        ),
+                        issues,
+                    )
+                    out.remove(extra.def.workflowId)
+                }
             }
         }
         return WorkflowRegistry(scope, out)
