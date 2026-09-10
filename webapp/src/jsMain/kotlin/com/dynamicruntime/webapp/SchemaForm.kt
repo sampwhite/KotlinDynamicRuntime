@@ -675,7 +675,7 @@ private fun ChildrenBuilder.renderVariant(
                     } else {
                         // Carry what the new branch would still accept, and drop the rest (see the note above and
                         // [valuesAfterBranchSwitch]); `branch` here is the branch selected *before* the switch.
-                        emitAll(valuesAfterBranchSwitch(values, name, branch, variants.select(picked), picked))
+                        emitAll(valuesAfterBranchSwitch(values, name, branch, variants.select(picked), picked, seedObjects = opts.friendly))
                     }
                 }
                 markInvalid(asDynamic(), describedBy)
@@ -755,6 +755,10 @@ fun valuesAfterBranchSwitch(
     from: SchType?,
     to: SchType?,
     picked: String?,
+    // Seed the new branch's plain-object properties to an empty map (issue #662), so a data-entry form shows
+    // their fields to fill rather than an "Add" control -- the edit union's `data` in particular, dropped by the
+    // switch. Off by default: only a friendly form asks for it; the wire-documenting catalog leaves them absent.
+    seedObjects: Boolean = false,
 ): Map<String, Any?> {
     val kept = when {
         to == null -> emptyMap()
@@ -768,7 +772,15 @@ fun valuesAfterBranchSwitch(
             fieldCarriesAcrossBranches(fromProp.valueType, toProp.valueType)
         }
     }
-    return kept + (discriminator to picked)
+    var out = kept + (discriminator to picked)
+    if (seedObjects && to != null) {
+        for ((name, prop) in to.properties) {
+            val vt = prop.valueType
+            val plainObject = vt.variants == null && vt.jsonType == SCT.kObject && vt.properties.isNotEmpty()
+            if (plainObject && out[name] == null) out = out + (name to emptyMap<String, Any?>())
+        }
+    }
+    return out
 }
 
 /**
