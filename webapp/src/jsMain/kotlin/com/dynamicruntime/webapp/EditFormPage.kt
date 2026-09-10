@@ -178,6 +178,8 @@ val EditFormPage = FC<Props> {
                     this.values = values
                     editable = true
                     friendly = true
+                    // Promote a keyed trait's primary key out of `data`, up beside the trait choice (issue #642).
+                    promoteKeys = true
                     // The caller's delivered cfacts (issue #564), so a g-visibleWhen field this caller should
                     // not see is hidden here. The backend enforces the condition regardless of what is drawn.
                     cfacts = cat.cfacts
