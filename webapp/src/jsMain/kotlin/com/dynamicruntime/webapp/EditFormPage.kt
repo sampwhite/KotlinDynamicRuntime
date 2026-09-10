@@ -251,7 +251,7 @@ val EditFormPage = FC<Props> {
                 // and are overridable through the edited type's layout.
                 failures?.let { fs ->
                     formFailureSummary(
-                        fs, appConfig().envAuthDebug, targetType.name?.let { cat.layouts[it] },
+                        fs, appConfig().envAuthDebug, formTraitLayouts(targetType, cat.layouts),
                         defaultSummary = "Please fix these before saving",
                         defaultHint = "Fix highlighted errors in entered data before saving.",
                     )

@@ -240,7 +240,7 @@ val NewFormPage = FC<Props> {
                 // and are overridable through the created type's layout.
                 failures?.let { fs ->
                     formFailureSummary(
-                        fs, appConfig().envAuthDebug, inputType?.name?.let { cat.layouts[it] },
+                        fs, appConfig().envAuthDebug, formTraitLayouts(inputType, cat.layouts),
                         defaultSummary = "Please fix these before creating the form",
                         defaultHint = "Fix highlighted errors in entered data before creating the form.",
                     )
