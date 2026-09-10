@@ -49,8 +49,6 @@ val NewFormPage = FC<Props> {
     var focusRequest by useState(0)
     var running by useState(false)
     var runError by useState<DisplayError?>(null)
-    // The stored row the create call returned, kept whole so the success screen can say what was made, not only
-    // its id (issue #408).
     var loadError by useState<DisplayError?>(null)
     // Named to avoid colliding with the `Button { loading = running }` prop below: an unqualified `loading`
     // inside that builder resolves to this local and fires its setter on every render — an infinite loop.
