@@ -3,7 +3,10 @@ package com.dynamicruntime.common
 import com.dynamicruntime.common.cfact.addCoreCFacts
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.SurveyStateDeriver
+import com.dynamicruntime.common.gedra.workflow.addSurveyCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
+import com.dynamicruntime.common.gedra.workflow.surveyStateConfig
 import com.dynamicruntime.common.cfact.cfactSchema
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
@@ -86,6 +89,10 @@ class CommonComponent : ComponentDefinition {
         addCoreCFacts(collector)
         // The two workflow target facts (issue #533), declared everywhere for the reason the core ones are.
         addWorkflowCFacts(collector)
+        // The two survey form-facts (issue #657), and the deriver that fills them: a form records its survey
+        // state on any create/import path, so a plain create or a bad import is recorded, not only a workflow step.
+        addSurveyCFacts(collector)
+        collector.addStateDeriver(SurveyStateDeriver)
         // The workflow definition schema, published so the types a definition is validated against are the
         // same ones a catalog or a frontend can read.
         collector.defs.putAll(WfDefSchema.defs(cxt))
@@ -168,7 +175,8 @@ class CommonComponent : ComponentDefinition {
      * than in a sample, because these are part of what the runtime is -- and because anything a test needs to
      * reach has to come from a component that always loads.
      */
-    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(coreTraits(cxt)) + coreClients(cxt)
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> =
+        listOf(coreTraits(cxt), surveyStateConfig(cxt)) + coreClients(cxt)
 
     /**
      * The fragment files `base/common` ships. `errors` and `sample` are here as much as the widget-group
