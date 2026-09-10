@@ -218,11 +218,20 @@ fun editDataCompletenessFailures(targetType: SchType?, values: Map<String, Any?>
         val dataType = editsUnion.variants?.select(traitId)?.properties?.get(GE.data)?.valueType
             ?: return@forEachIndexed
         val prefix = childPath(indexPath(GPF.edits, i), GE.data)
-        // Only the completeness failures checkInput skipped: `optionalContents` waives `required` alone, so a
-        // wrong type or a bad option is already reported there -- adding them here would double them on the field.
-        validate(dataType, edit[GE.data].toJsonMapOrEmpty())
-            .filter { it.code == SchFailCode.missingRequired }
-            .forEach { f -> out += f.copy(path = if (f.path.isEmpty()) prefix else childPath(prefix, f.path)) }
+        val supplied = edit[GE.data]
+        if (supplied == null) {
+            // Absent data: an addOrReplace needs some, but an absent nested object renders collapsed behind an
+            // "Add" control with no child fields drawn, so a per-field failure would mark nothing. One failure on
+            // the data field itself, which that "Add" row does show.
+            out += SchFailure(prefix, SchFailCode.missingRequired, "Add this entry's data, or switch the action to delete.")
+        } else {
+            // Present (possibly seeded empty): its fields are on screen, so mark each missing required one. Only
+            // the completeness failures checkInput skipped -- `optionalContents` waives `required` alone, so a
+            // wrong type or a bad option is already reported there and adding it here would double it.
+            validate(dataType, supplied.toJsonMapOrEmpty())
+                .filter { it.code == SchFailCode.missingRequired }
+                .forEach { f -> out += f.copy(path = if (f.path.isEmpty()) prefix else childPath(prefix, f.path)) }
+        }
     }
     return out
 }

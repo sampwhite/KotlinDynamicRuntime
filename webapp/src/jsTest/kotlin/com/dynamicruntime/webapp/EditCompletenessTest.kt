@@ -68,8 +68,19 @@ class EditCompletenessTest {
         val failures = editDataCompletenessFailures(
             target, targetValues(edit(GedraEditAction.addOrReplace.name, emptyMap())),
         )
-        // The missing `topic` is pathed to the edit's place, the same path space the form walks.
+        // Data is present (an empty object, as a switch seeds it) so its fields are on screen: the missing
+        // `topic` is pathed to that field, the same path space the form walks.
         assertEquals(listOf("${GPF.edits}[0].${GE.data}.topic"), failures.map { it.path })
+    }
+
+    @Test
+    fun addOrReplaceWithAbsentDataFlagsTheDataRow() {
+        // Absent data (the user removed the section's data) renders collapsed, so the failure lands on the data
+        // field itself -- not on hidden child fields, which would mark nothing (issue #662 review).
+        val failures = editDataCompletenessFailures(
+            target, targetValues(edit(GedraEditAction.addOrReplace.name, null)),
+        )
+        assertEquals(listOf("${GPF.edits}[0].${GE.data}"), failures.map { it.path })
     }
 
     @Test
