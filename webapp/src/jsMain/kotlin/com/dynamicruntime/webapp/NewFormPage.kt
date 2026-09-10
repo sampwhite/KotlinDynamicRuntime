@@ -14,7 +14,6 @@ import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
-import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.useEffect
@@ -28,9 +27,10 @@ private val formScope = MainScope()
 /**
  * A page for **creating a form document**: it fills the endpoint's client-scoped input schema through the same
  * schema-driven [SchemaForm] the endpoint catalog uses, then posts it (issue #408). The gedra-form helpers it
- * shares with the list page -- endpoint discovery, [summarizeForm] -- live in `GedraForms.kt`.
+ * shares with the list page -- endpoint discovery -- live in `GedraForms.kt`.
  *
- * A successful create confirms in place with a short summary and offers to open the new form in the list.
+ * A successful create returns to the My forms listing with the new row flashed (issue #663), the same
+ * confirmation the edit form's save gives, rather than a separate in-place screen.
  *
  * Where the catalog is a developer tool over *every* endpoint, this is one endpoint with the scaffolding
  * removed: no method/path heading, no raw-schema views, no request-JSON editor. What stays is the part a person
@@ -49,9 +49,6 @@ val NewFormPage = FC<Props> {
     var focusRequest by useState(0)
     var running by useState(false)
     var runError by useState<DisplayError?>(null)
-    // The stored row the create call returned, kept whole so the success screen can say what was made, not only
-    // its id (issue #408).
-    var createdItem by useState<Map<String, Any?>?>(null)
     var loadError by useState<DisplayError?>(null)
     // Named to avoid colliding with the `Button { loading = running }` prop below: an unqualified `loading`
     // inside that builder resolves to this local and fires its setter on every render — an infinite loop.
@@ -100,62 +97,6 @@ val NewFormPage = FC<Props> {
                 className = ClassName("subtitle")
                 +("This account's surface has no form to create. A client defines the traits its forms are " +
                     "built from; yours declares none yet.")
-            }
-            createdItem != null -> {
-                // A create confirms in place with what was made -- the title if the form has one, the traits it
-                // carries, and when it was created -- and offers to open it in the list (issue #408).
-                val summary = summarizeForm(createdItem!!, entriesUnionOf(cat.inputType(ep)))
-                p {
-                    className = ClassName("form-ok")
-                    +"✓ Form created."
-                }
-                // A named form leads with its name; an unnamed one is not given a fake title -- what it *is*
-                // (the traits below) carries the identity instead.
-                summary.title?.let {
-                    h2 { +it }
-                }
-                if (summary.traitLabels.isNotEmpty()) {
-                    p {
-                        className = ClassName("subtitle")
-                        +("Contains: " + summary.traitLabels.joinToString(", "))
-                    }
-                }
-                summary.createdAt?.let {
-                    p {
-                        className = ClassName("subtitle")
-                        +"Created $it"
-                    }
-                }
-                p {
-                    className = ClassName("type-hint")
-                    +"Reference id"
-                }
-                p {
-                    className = ClassName("code")
-                    +summary.gedraId
-                }
-                div {
-                    className = ClassName("row")
-                    Button {
-                        type = "primary"
-                        // Opens the just-created form in the list page, addressed by its id (issue #408).
-                        onClick = { navigateHash(listOf(HP.page to HMENU.pageForms, HP.gedra to summary.gedraId)) }
-                        +"View form"
-                    }
-                    Button {
-                        onClick = {
-                            values = emptyMap()
-                            failures = null
-                            revalidate = false
-                            runError = null
-                            createdItem = null
-                        }
-                        +"Create another"
-                    }
-                    // The list is the hub, and it is the only way here (the nav item is gone since #417), so the
-                    // success screen offers a link straight back to it rather than only into the new form.
-                    backToListing(HMENU.pageForms)
-                }
             }
             else -> {
                 val inputType = cat.inputType(ep)
@@ -213,10 +154,18 @@ val NewFormPage = FC<Props> {
                                 formScope.launch {
                                     try {
                                         val response = SchemaCatalogApi.invoke(ep, payload)
-                                        createdItem = response[EP.item].toJsonMapOrEmpty()
+                                        // Back to the listing (issue #663), flashing the new row -- the same
+                                        // confirmation the edit form's save gives (issue #592) -- rather than an
+                                        // in-place screen. No running=false here: this navigation unmounts the page.
+                                        val newId = response[EP.item].toJsonMapOrEmpty()[GDF.gedraId] as? String
+                                        navigateHash(
+                                            listOf(HP.page to HMENU.pageForms) +
+                                                (newId?.let { listOf(HP.highlight to it) } ?: emptyList()),
+                                        )
                                     } catch (e: Throwable) {
+                                        // Only the failure path stays on the page, so re-enable the button here
+                                        // rather than in a finally that would run after a create has navigated away.
                                         runError = userFacingError(e)
-                                    } finally {
                                         running = false
                                     }
                                 }
