@@ -92,6 +92,11 @@ class FormOpts(
      * `description`, which is what the catalog and every read-only-of-the-wire caller wants.
      */
     val layouts: Map<String, SchLayout> = emptyMap(),
+    /**
+     * Promote a keyed object property's primary-key fields to the object's own level (issue #642); see
+     * [SchemaFormProps.promoteKeys]. Off by default, so only the form that opts in reshapes.
+     */
+    val promoteKeys: Boolean = false,
 )
 
 /**
@@ -290,6 +295,14 @@ external interface SchemaFormProps : Props {
      * has no edits to report.
      */
     var onFieldEdit: ((String) -> Unit)?
+    /**
+     * Promote a keyed object property's primary-key fields out of the nested object and up to its own level
+     * (issue #642) -- for the edit form, so a trait's key shows beside the trait choice rather than buried in
+     * `data`, and a delete is key-only with an empty data section. Purely presentational: the value stays in
+     * wire shape (the key is read and written inside the nested object), so the submitted payload is unchanged.
+     * Optional, off by default -- only the edit form sets it, so every other form is unaffected.
+     */
+    var promoteKeys: Boolean?
 }
 
 /**
@@ -387,6 +400,7 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         omit = props.omit?.toSet() ?: emptySet(),
         gateAllows = buildCfactGate(props.cfacts),
         layouts = props.layouts ?: emptyMap(),
+        promoteKeys = props.promoteKeys == true,
     )
     div {
         className = ClassName("schema-form")
@@ -406,6 +420,9 @@ private fun ChildrenBuilder.renderObject(
     errors: FieldErrors,
     onChange: (Map<String, Any?>) -> Unit,
     opts: FormOpts,
+    // Fields to leave out of this object's render (issue #642): the primary-key fields a parent promoted, drawn
+    // there instead. Applies to this object only; children start fresh.
+    hideFields: Set<String> = emptySet(),
 ) {
     type.variants?.let { variants ->
         renderVariant(type, variants, values, seen, editable, path, errors, onChange, opts)
@@ -418,7 +435,7 @@ private fun ChildrenBuilder.renderObject(
         }
         return
     }
-    renderProperties(type, values, seen, editable, path, errors, onChange, opts)
+    renderProperties(type, values, seen, editable, path, errors, onChange, opts, hideFields = hideFields)
     // Then anything reported against a key this object does not declare. Nothing above draws these -- there is
     // no property to render -- so without this they exist only in the listing at the foot of the page, which
     // is precisely the "named somewhere you cannot go" problem this issue is about.
@@ -426,6 +443,22 @@ private fun ChildrenBuilder.renderObject(
         undeclaredField(childKeyOf(at, path) ?: at, at, messages)
     }
 }
+
+/**
+ * The direct object properties of [type] whose value type declares a primary key (issue #642), each mapped to
+ * its key fields -- the fields to hoist to [type]'s own level and hide inside the object. Only a single keyed
+ * **object** promotes: a keyed array or union is left alone (`isStructuredObject` counts a union, so a union is
+ * excluded explicitly), since "alongside the choice" has no meaning for a list or a branch set. This is the
+ * shape a trait's `data` takes on an edit branch, but the rule names no trait -- it knows only that an object
+ * property is keyed, the way the keyed-element labelling does. Pure, so a jsNodeTest can pin which fields lift.
+ */
+fun promotableKeys(type: SchType): Map<String, List<String>> =
+    type.properties
+        .filterValues {
+            it.valueType.variants == null && it.valueType.jsonType == SCT.kObject &&
+                it.valueType.primaryKey.isNotEmpty()
+        }
+        .mapValues { it.value.valueType.primaryKey }
 
 /**
  * Renders a type's declared properties, applying its conditional-presence rule if it has one (issue #253).
@@ -449,6 +482,9 @@ private fun ChildrenBuilder.renderProperties(
     onChange: (Map<String, Any?>) -> Unit,
     opts: FormOpts,
     skip: String? = null,
+    // Fields to leave out of this object's loop (issue #642): a primary-key field a parent hoisted out, drawn
+    // there instead of here. The discriminator [skip] is the sibling case -- drawn by the union above.
+    hideFields: Set<String> = emptySet(),
 ) {
     // A conditional-presence rule decides, from what the watched field currently holds, which properties are
     // required and which may not appear at all.
@@ -463,8 +499,48 @@ private fun ChildrenBuilder.renderProperties(
         if (condition == null || edited != condition.property) next
         else next - condition.forbiddenWhen(condition.holds(next))
 
+    // Primary-key promotion (issue #642): when opted in, a keyed object property's key fields are drawn here,
+    // at this object's own level -- right under a union's trait choice, drawn just above -- and hidden inside
+    // the object below (its key names go down as that field's `hideFields`). Each promoted widget reads and
+    // writes the key *inside* the nested object, so the value never leaves wire shape and nothing is pushed
+    // back down on submit. Empty unless the caller opted in and a property is a keyed object.
+    val promoted = if (opts.promoteKeys) promotableKeys(type) else emptyMap()
+    for ((objName, keyFields) in promoted) {
+        val objType = type.properties[objName]?.valueType ?: continue
+        val subMap = (values[objName] as? Map<*, *>)?.toJsonMapOrEmpty() ?: emptyMap()
+        // A key is drawn from the nested object, so the nested object's own rules decide it -- the same guards
+        // the property loop below applies, evaluated here against that object and its values (issue #642), so
+        // the promotion cannot turn a derived or gated key into an editable box the schema says nobody supplies.
+        val objCond = objType.condition
+        val objForbidden = objCond?.forbiddenWhen(objCond.holds(subMap)) ?: emptySet()
+        val objAlsoRequired = objCond?.requiredWhen(objCond.holds(subMap)) ?: emptySet()
+        for (keyName in keyFields) {
+            val keyProp = objType.properties[keyName] ?: continue
+            val derived = keyProp.valueType.derived
+            if (opts.friendly && derived) continue
+            if (editable && keyProp.visibleWhen?.let { !opts.gateAllows(it) } == true) continue
+            if (keyName in objForbidden && isBlankValue(subMap[keyName])) continue
+            renderField(
+                keyName, keyProp,
+                (keyName in objType.required || keyName in objAlsoRequired) && !derived,
+                subMap[keyName], seen, editable && !derived,
+                childPath(childPath(path, objName), keyName), errors,
+                emit = { newVal ->
+                    val cur = (values[objName] as? Map<*, *>)?.toJsonMapOrEmpty() ?: emptyMap()
+                    onChange(values + (objName to (cur + (keyName to newVal))))
+                },
+                omit = {
+                    val cur = (values[objName] as? Map<*, *>)?.toJsonMapOrEmpty() ?: emptyMap()
+                    onChange(values + (objName to (cur - keyName)))
+                },
+                opts = opts,
+                copy = layoutCopy(objType, keyName, subMap, opts),
+            )
+        }
+    }
+
     type.properties.forEach { (name, prop) ->
-        if (name == skip) {
+        if (name == skip || name in hideFields) {
             return@forEach
         }
         // A field the form was told to omit, only at the root: an advanced flag an end-user form should not
@@ -518,6 +594,8 @@ private fun ChildrenBuilder.renderProperties(
             omit = { onChange(settle(values - name, name)) },
             opts = opts,
             copy = copy,
+            // A keyed object property whose keys were promoted above hides them within itself (issue #642).
+            hideFields = promoted[name]?.toSet() ?: emptySet(),
         )
     }
 }
@@ -732,6 +810,8 @@ private fun ChildrenBuilder.renderField(
     omit: () -> Unit,
     opts: FormOpts,
     copy: LayoutCopy? = null,
+    // Fields to hide inside this field when it is a nested object (issue #642): its promoted primary-key fields.
+    hideFields: Set<String> = emptySet(),
 ) {
     val vt = prop.valueType
     val elementType = objectElementType(vt)
@@ -760,7 +840,7 @@ private fun ChildrenBuilder.renderField(
         return
     }
     if (isStructuredObject(vt)) {
-        renderNestedObject(name, prop, required, value, vt, seen, editable, path, errors, emit, omit, opts, copy)
+        renderNestedObject(name, prop, required, value, vt, seen, editable, path, errors, emit, omit, opts, copy, hideFields)
         return
     }
 
@@ -924,6 +1004,8 @@ private fun ChildrenBuilder.renderNestedObject(
     omit: () -> Unit,
     opts: FormOpts,
     copy: LayoutCopy? = null,
+    // Fields to leave out of this object (issue #642): its primary-key fields, promoted to the parent level.
+    hideFields: Set<String> = emptySet(),
 ) {
     val typeName = vt.name
     val recursive = typeName != null && typeName in seen
@@ -957,7 +1039,7 @@ private fun ChildrenBuilder.renderNestedObject(
     div {
         className = ClassName("nested")
         val childSeen = if (typeName != null) seen + typeName else seen
-        renderObject(vt, value.toJsonMapOrEmpty(), childSeen, editable, path, errors, { newSub -> emit(newSub) }, opts)
+        renderObject(vt, value.toJsonMapOrEmpty(), childSeen, editable, path, errors, { newSub -> emit(newSub) }, opts, hideFields)
     }
 }
 
