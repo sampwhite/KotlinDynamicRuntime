@@ -12,7 +12,6 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
 import react.Props
-import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
@@ -236,26 +235,15 @@ val NewFormPage = FC<Props> {
                     }
                 }
 
+                // The failure summary (issue #641): off debug, a single prompt -- the fields are already marked
+                // inline -- and the internal list only when the frontend is in debug. Both strings default here
+                // and are overridable through the created type's layout.
                 failures?.let { fs ->
-                    if (fs.isNotEmpty()) {
-                        h2 { +"Please fix these before creating the form" }
-                        fs.forEach { f ->
-                            p {
-                                className = ClassName("error-text")
-                                val text = "${f.path.ifEmpty { "(whole form)" }}: ${f.message}${choicesSuffix(f)}"
-                                if (f.path.isEmpty()) {
-                                    +text
-                                } else {
-                                    button {
-                                        className = ClassName("failure-jump")
-                                        asDynamic()["type"] = "button"
-                                        onClick = { focusField(f.path) }
-                                        +text
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    formFailureSummary(
+                        fs, appConfig().envAuthDebug, formTraitLayouts(inputType, cat.layouts),
+                        defaultSummary = "Please fix these before creating the form",
+                        defaultHint = "Fix highlighted errors in entered data before creating the form.",
+                    )
                 }
 
                 runError?.let { errorText("Couldn't create the form.", it) }

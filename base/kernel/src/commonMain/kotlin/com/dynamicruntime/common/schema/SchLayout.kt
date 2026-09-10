@@ -31,6 +31,14 @@ class SchLayout(
     val label: String?,
     /** The per-field overrides, in declaration order. */
     val fields: List<SchLayoutField>,
+    /**
+     * The type's **form-level strings** (issue #641): overridable copy a form shows for the type as a whole
+     * rather than for one field, keyed by [LAYSTR]. A surface holds a built-in default for each; a component
+     * sets one here on the base type and a client overrides it on their variant, so the wording a consumer sees
+     * can be altered without touching the surface. Empty when the layout says nothing about them, which reads as
+     * "use the built-in copy" the same way an absent field override does.
+     */
+    val strings: Map<String, String> = emptyMap(),
 ) : JsonMappable {
     /** The schema properties this layout addresses -- what the boot check holds against the type. */
     val fieldNames: List<String> = fields.map { it.field }
@@ -50,6 +58,7 @@ class SchLayout(
         val out = LinkedHashMap<String, Any?>()
         fragmentFileId?.let { out[SL.fragmentFileId] = it }
         label?.let { out[SL.label] = it }
+        if (strings.isNotEmpty()) out[SL.strings] = strings
         out[SL.schemaFields] = fields.map { it.toJsonMap() }
         out
     }
@@ -65,7 +74,7 @@ class SchLayout(
      */
     fun prunedTo(props: Set<String>): SchLayout {
         val kept = fields.filter { it.field in props }
-        return if (kept.size == fields.size) this else SchLayout(fragmentFileId, label, kept)
+        return if (kept.size == fields.size) this else SchLayout(fragmentFileId, label, kept, strings)
     }
 }
 
@@ -108,6 +117,13 @@ class SchLayoutField(
  */
 class SchLayoutBuilder(private val fragmentFileId: String?, private val label: String? = null) {
     private val fields = mutableListOf<SchLayoutField>()
+    private val strings = LinkedHashMap<String, String>()
+
+    /** A form-level layout string (issue #641), keyed by [LAYSTR]: the copy this type's forms show for the
+     *  message named by [key], overriding the surface's built-in default. */
+    fun string(key: String, value: String) {
+        strings[key] = value
+    }
 
     /** One field's overrides; each is optional. The [errors] block (issue #588) declares the form's wording per
      *  [SchFailCode], reusing `g-errors`' own [SchErrors] builder so the named-per-code functions are identical. */
@@ -127,7 +143,7 @@ class SchLayoutBuilder(private val fragmentFileId: String?, private val label: S
     }
 
     /** The finished block, as the JSON `g-layout` value. */
-    fun build(): Map<String, Any?> = SchLayout(fragmentFileId, label, fields.toList()).toJsonMap()
+    fun build(): Map<String, Any?> = SchLayout(fragmentFileId, label, fields.toList(), strings.toMap()).toJsonMap()
 }
 
 /** Attaches a `g-layout` to the type being built; see [SchLayoutBuilder]. Replaces one declared earlier. */
@@ -194,12 +210,16 @@ object SL {
     /** On the block: the fragment file its `${'$'}{…}` substitutions resolve against. */
     const val fragmentFileId = "fragmentFileId"
 
+    /** On the block: the form-level strings map (issue #641) -- a `{ LAYSTR-name -> copy }` block of overridable
+     *  wording the form shows for the type as a whole, not for one field. */
+    const val strings = "strings"
+
     // Note: [label] doubles as a block key (the type's heading override, issue #605) and a field key (a
     // property's label); the two are told apart by nesting, not by name -- "label" is the override word at
     // either level (`thoughts-workflow-layouts.md` §5).
 
     /** Every key a `g-layout` block may carry. */
-    val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label)
+    val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label, strings)
 
     /** Every key a [schemaFields] entry may carry. */
     val fieldKeys: Set<String> = setOf(field, label, description, hint, errors)
@@ -228,7 +248,30 @@ fun parseSchLayout(where: String, raw: Map<String, Any?>): SchLayout {
         val errors = parseErrorMessages(m[SL.errors], "$where field '$field'")
         SchLayoutField(field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors)
     }
-    return SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields)
+    val strings = parseLayoutStrings(where, raw[SL.strings])
+    return SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields, strings)
+}
+
+/**
+ * Parses and validates a `g-layout` block's `strings` map (issue #641): a `{ LAYSTR-name -> copy }` object.
+ * Absent parses to empty; a non-object, or a key outside [LAYSTR.keys], or a non-string value, fails the boot,
+ * the same strictness the block's other keys take -- a typo'd string name would otherwise render nothing.
+ */
+private fun parseLayoutStrings(where: String, raw: Any?): Map<String, String> {
+    if (raw == null) return emptyMap()
+    if (raw !is Map<*, *>) {
+        throw KdrException("$where: '${SL.strings}' must be an object.")
+    }
+    val map = raw.toJsonMapOrEmpty()
+    refuseUnknownKeys(where, "a '${SL.strings}' block", map.keys, LAYSTR.keys)
+    val out = LinkedHashMap<String, String>()
+    for ((key, value) in map) {
+        // A genuine string, not a coerced one: a number or boolean here is a mistake, and silently rendering
+        // "5" is the "parses clean, renders wrong" the layout checks exist to prevent.
+        out[key] = value as? String
+            ?: throw KdrException("$where: the '${SL.strings}' value for '$key' must be a string.")
+    }
+    return out
 }
 
 private fun refuseUnknownKeys(where: String, what: String, present: Set<String>, allowed: Set<String>) {
@@ -328,6 +371,28 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
     val props = type.properties.keys
     return layout.fieldNames.filterNot { it in props }
         .map { "$where: '${SCH.layout}' names field '$it', which the type does not declare." }
+}
+
+/**
+ * The vocabulary of **form-level layout strings** (issue #641): overridable copy a form shows for the type as a
+ * whole, not tied to a single field -- for example the wording over a validation-failure summary. Bare keys
+ * inside a `g-layout` block's `strings` map (see [SL.strings]); [keys] is the closed set the parser refuses
+ * anything outside of, so a component or client overrides a *known* message and a mistyped name fails the boot
+ * rather than silently rendering nothing. The default copy for each lives on the surface that renders it (the
+ * frontend); a layout carries only the overrides.
+ */
+@Suppress("ConstPropertyName")
+object LAYSTR {
+    /** The heading over a form's internal validation-failure list, shown only when the frontend is in debug
+     *  (issue #641). Off debug, the list and this heading are replaced by [formErrorHint]. */
+    const val formErrorSummary = "formErrorSummary"
+
+    /** The one-line prompt a form shows in place of the internal failure list when debug is off (issue #641) --
+     *  the errors are already marked inline on the fields, so this only points the consumer at them. */
+    const val formErrorHint = "formErrorHint"
+
+    /** Every key a `strings` block may carry; the boot check refuses anything outside it. */
+    val keys: Set<String> = setOf(formErrorSummary, formErrorHint)
 }
 
 /**
@@ -464,6 +529,20 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
             problems.add(
                 $$"$$where: the '$${SCH.layout}' heading uses a frontend fragment pull ('${@t}'); a layout fragment " +
                     "pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
+            )
+        }
+    }
+    // Each form-level string (issue #641) is copy like the heading: no field context, so it takes the malformed
+    // and refuse-frontend-pull checks and no param check. A `%{@t}` backend pull is resolved at delivery (#605).
+    for ((key, text) in layout.strings) {
+        val analysis = text.analyzeTemplate()
+        for (issue in analysis.issues) {
+            problems.add("$where: the '${SCH.layout}' string '$key' is a malformed template: ${issue.message}")
+        }
+        if (analysis.refs.isNotEmpty()) {
+            problems.add(
+                $$"$$where: the '$${SCH.layout}' string '$$key' uses a frontend fragment pull ('${@t}'); a layout " +
+                    "fragment pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
             )
         }
     }

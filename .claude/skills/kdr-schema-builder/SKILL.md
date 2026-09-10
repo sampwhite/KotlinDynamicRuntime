@@ -220,6 +220,8 @@ type("Questionnaire") {
     layout(fragmentFileId = "acme") {
         field("topic", label = "Topic", description = "Pick the subject.")
         field("hasIssue", label = "Has issue?")
+        // Form-level copy, overridable per client (issue #641). Keys are the LAYSTR vocabulary.
+        string(LAYSTR.formErrorHint, "Fix the highlighted fields and try again.")
     }
 }
 ```
@@ -233,13 +235,20 @@ is equivalent):
   "schemaFields": [
     { "field": "topic",    "label": "Topic", "description": "Pick the subject." },
     { "field": "hasIssue", "label": "Has issue?" }
-  ]
+  ],
+  "strings": { "formErrorHint": "Fix the highlighted fields and try again." }
 }
 ```
 
 - The block's vocabulary is the `SL` object (`schemaFields`, `field`, `label`, `description`, `hint`,
-  `fragmentFileId`). The parser is **strict**: an unknown key on the block or on an entry, a present block with
-  no entries, or a non-object value all fail the boot — a layout must never parse clean and render nothing.
+  `fragmentFileId`, `strings`). The parser is **strict**: an unknown key on the block or on an entry, a present
+  block with no entries, or a non-object value all fail the boot — a layout must never parse clean and render
+  nothing.
+- **Form-level strings** (`strings`, issue #641): a `{ LAYSTR-name → copy }` block of overridable wording a form
+  shows for the type as a whole rather than for one field — declared with `string(LAYSTR.key, "...")`. The keys
+  are the closed `LAYSTR` vocabulary (an unknown one fails the boot, like every other layout key); the default
+  copy for each lives on the surface that renders it, so a layout carries only overrides. A client may override
+  these on their variant like any other presentation key.
 - Only a **named type's own top-level** `g-layout` is collected. One nested on an inline sub-object is
   **refused** at boot (pull the sub-object out as a named type), not ignored.
 - **Boot check** (`checkLayouts`): a layout naming a field its type does not declare, or sitting on a union or
