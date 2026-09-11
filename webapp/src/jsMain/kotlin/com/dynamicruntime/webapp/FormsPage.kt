@@ -113,6 +113,11 @@ val FormsPage = FC<Props> {
     // and cleared after a beat so the flash is a one-time flourish, not a state a reload repeats.
     var highlightRowId by useState<String?>(null)
     val highlightTimer = useRef<Int>(null)
+    // Substitute feedback when the just-saved row is not on screen (issue #669): a create (or an edit) returns
+    // carrying the row's id to flash, but an active filter can exclude it, so the flash has nothing to land on.
+    // This note is then the only sign the save took. It persists until the next list action clears it (below) --
+    // clearing the filter, the natural next move, both dismisses it and reveals the row.
+    var savedOffscreenNote by useState<String?>(null)
     // Whether the grouped filter panel is open; closed by default so the search does not take the screen.
     var filtersOpen by useState(false)
     // A failure of a search or page reload, shown beside the controls so they stay on screen to be corrected --
@@ -165,8 +170,11 @@ val FormsPage = FC<Props> {
         rowConfirmDeleteId = null
         rowDeleteError = null
         // Any list action (paging, a new search, a delete reload) ends the just-saved flash, so it plays once
-        // on arrival and never re-runs when the rows are rebuilt (issue #592 review).
+        // on arrival and never re-runs when the rows are rebuilt (issue #592 review). The off-screen note goes
+        // with it (issue #669): a new fetch is the user acting, so the "you saved it but it's filtered out" clue
+        // has done its job -- most often the action is clearing the filter, which reveals the row itself.
         highlightRowId = null
+        savedOffscreenNote = null
         listLoading = true
         formsScope.launch {
             try {
@@ -267,7 +275,11 @@ val FormsPage = FC<Props> {
             viewingId = hashParams()[HP.gedra]
             // The just-saved form to flash (issue #592). Read here, before the hash-write effect rewrites the
             // hash from the applied search and drops it -- so a reload does not re-flash.
-            highlightRowId = hashParams()[HP.highlight]
+            val saved = hashParams()[HP.highlight]
+            highlightRowId = saved
+            // When the saved row is not on this freshly-loaded page and a filter is active, the flash lands on
+            // nothing, so leave a note instead (issue #669); the rule is a pure function so it is unit-tested.
+            savedOffscreenNote = savedNotShownNote(saved, appliedSearch, rows.map { it[GDF.gedraId] as? String })
             restored = true
         }
     }
@@ -458,7 +470,17 @@ val FormsPage = FC<Props> {
                         className = ClassName("row")
                         Button {
                             type = "primary"
-                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm, HP.from to HMENU.pageForms)) }
+                            // Carries the sort like the main "New form" button (issue #669 review): this branch
+                            // only renders when no filter is applied, so the search is empty, but a sort-only view
+                            // (a bookmarked sorted URL on an account with no forms) would otherwise lose its order
+                            // on the create round-trip. Kept identical to the other button so neither drifts.
+                            onClick = {
+                                navigateHash(
+                                    listOf(HP.page to HMENU.pageNewForm, HP.from to HMENU.pageForms) +
+                                        formsSearchHashParams(appliedSearch) +
+                                        sortHashParams(sortColumn, sortDescending),
+                                )
+                            }
                             +"Create a form"
                         }
                     }
@@ -473,9 +495,27 @@ val FormsPage = FC<Props> {
                         className = ClassName("row")
                         Button {
                             type = "primary"
-                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm, HP.from to HMENU.pageForms)) }
+                            // Carry the active search and sort into the create flow (issue #669), as the per-row
+                            // edit link carries them: NewFormPage sends them back on success, so a create returns to
+                            // the same filtered, sorted listing rather than the default one.
+                            onClick = {
+                                navigateHash(
+                                    listOf(HP.page to HMENU.pageNewForm, HP.from to HMENU.pageForms) +
+                                        formsSearchHashParams(appliedSearch) +
+                                        sortHashParams(sortColumn, sortDescending),
+                                )
+                            }
                             +"New form"
                         }
+                    }
+                }
+                // The saved-but-off-screen note (issue #669): shown when a create or edit returned to a filtered
+                // list the saved row is not in, so the flash had nothing to land on. `form-ok` -- the save did
+                // happen, which is the point being made -- and it clears on the next list action.
+                savedOffscreenNote?.let {
+                    p {
+                        className = ClassName("form-ok")
+                        +it
                     }
                 }
                 // Whose forms (issue #562): promoted above the search, and only for a caller who administers

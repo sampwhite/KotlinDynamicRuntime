@@ -158,10 +158,14 @@ val NewFormPage = FC<Props> {
                                         // confirmation the edit form's save gives (issue #592) -- rather than an
                                         // in-place screen. No running=false here: this navigation unmounts the page.
                                         val newId = response[EP.item].toJsonMapOrEmpty()[GDF.gedraId] as? String
-                                        navigateHash(
-                                            listOf(HP.page to HMENU.pageForms) +
-                                                (newId?.let { listOf(HP.highlight to it) } ?: emptyList()),
-                                        )
+                                        // Return to the *same* listing the create was launched from (issue #669):
+                                        // the originating search and sort ride in the hash (the "New form" button
+                                        // put them there), so this lands on the filtered, sorted list rather than the
+                                        // default one -- the same round-trip the edit form's save makes. A new row the
+                                        // active filter excludes simply is not flashed; the filter is the user's view.
+                                        val search = formsSearchHashParams(formsSearchFromHash(hashParams()))
+                                        val flag = newId?.let { listOf(HP.highlight to it) } ?: emptyList()
+                                        navigateHash(listOf(HP.page to HMENU.pageForms) + search + flag)
                                     } catch (e: Throwable) {
                                         // Only the failure path stays on the page, so re-enable the button here
                                         // rather than in a finally that would run after a create has navigated away.
