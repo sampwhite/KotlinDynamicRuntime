@@ -182,6 +182,17 @@ fun searchParamCollisions(usages: List<ClientTraitUsage>): List<String> =
     gedraSearchParams(usages).map { it.name }.filter { it in reservedQueryFieldNames }.distinct()
 
 /**
+ * The trait ids [usages] name more than once (issue #681), in first-seen order and without repeats -- the boot
+ * check for a client declaring two usages of the same trait. The whole presentation model is keyed by trait id:
+ * `computeDisplayValues`/`searchFilter` collapse a row's display values into a map keyed by it (a second usage's
+ * value silently overwrites the first's), `matchesSearch` reads a parameter's value by it, the sort resolves its
+ * column by it, and the frontend keys a column by it -- so a trait carrying two usages does not get two columns,
+ * it gets one broken one. Empty is the ordinary case; a non-empty result is a client-config mistake to report.
+ */
+fun duplicateUsageTraitIds(usages: List<ClientTraitUsage>): List<String> =
+    usages.groupBy { it.traitId }.filter { it.value.size > 1 }.keys.toList()
+
+/**
  * [baseDef] (a JSON-Schema object type -- the listing's stable query type) with the search properties [usages]
  * contribute merged into its `properties` (issue #538). The base is returned untouched when the usages
  * contribute nothing, so a scope with no usages shares the base rather than a distinct-but-equal copy -- which

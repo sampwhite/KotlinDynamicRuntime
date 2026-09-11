@@ -30,6 +30,7 @@ import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.gedraConfigCheckMode
 import com.dynamicruntime.common.gedra.reportConfigProblem
+import com.dynamicruntime.common.gedra.duplicateUsageTraitIds
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.searchParamCollisions
 import com.dynamicruntime.common.gedra.withSearchProperties
@@ -245,9 +246,10 @@ class SchemaService : ServiceInitializer {
         // After the registry exists (issue #545): a `g-visibleWhen` expression that does not parse would otherwise
         // fault the catalog at request time -- for one caller, on one surface -- rather than at boot.
         checkVisibleWhen()
-        // A trait-usage search parameter that collides with a reserved listing field (issue #538) is caught
-        // here rather than left to silently drop the search at merge time.
-        checkSearchParamNames(cxt, collected)
+        // Trait-usage rules that would not present as declared -- a search parameter colliding with a reserved
+        // listing field (issue #538), or two usages for one trait id (issue #681) -- are caught here rather than
+        // left to silently drop the search or collide at request time.
+        checkUsageRules(cxt, collected)
         // A `g-layout` naming a field its type does not declare is caught at boot (issue #584), not discovered
         // as a control that renders nothing.
         checkLayouts()
@@ -290,16 +292,24 @@ class SchemaService : ServiceInitializer {
     }
 
     /**
-     * Refuses (or warns, per the client-config check mode) a trait-usage rule whose generated search parameter
-     * would collide with a reserved forms-listing field (issue #538): a usage on a trait named `user`, say,
-     * mints an exact parameter `user` that would otherwise try to overwrite the listing's own user filter. The
-     * merge in `withSearchProperties` keeps the reserved field regardless, so the effect is a silently
-     * unsearchable trait -- worth reporting so the client learns their usage did not take.
+     * Refuses (or warns, per the client-config check mode) a client whose trait-usage rules would not present as
+     * declared. Two checks, over one pass of the usage set each scope's listing actually generates from -- its
+     * own if it declared any, else global's (`usagesFor`) -- across the same scopes: `global`, and every client
+     * that declared a usage. Both read that one set per scope, so they cannot come to disagree about which scopes
+     * or usages they judge.
      *
-     * Every scope that declares usages is checked, plus `global`, drawn through `usagesFor` so the check reads
-     * exactly the set each scope's listing would generate its parameters from.
+     * - A **search parameter colliding with a reserved forms-listing field** (issue #538): a usage on a trait
+     *   named `user`, say, mints an exact parameter `user` that would otherwise overwrite the listing's own user
+     *   filter. `withSearchProperties` keeps the reserved field regardless, so the effect is a silently
+     *   unsearchable trait -- worth reporting so the client learns their usage did not take.
+     * - **Two usage rules for one trait id** (issue #681): the presentation model is keyed by trait id
+     *   throughout -- the display-value map, the search predicate's value lookup, the sort's column resolution,
+     *   and the frontend's column key -- so a second usage does not add a second column; it silently collides
+     *   with the first (the display map keeps the last, the sort takes the first, both columns share one key),
+     *   leaving that trait's search comparing against the wrong value. A trait presents once; two columns from
+     *   one trait would need a per-usage key.
      */
-    private fun checkSearchParamNames(cxt: KdrCxt, collected: SchemaCollector) {
+    private fun checkUsageRules(cxt: KdrCxt, collected: SchemaCollector) {
         val mode = gedraConfigCheckMode(cxt)
         if (mode == BootCheckMode.off) {
             return
@@ -310,22 +320,36 @@ class SchemaService : ServiceInitializer {
                 collected.gedraConfigs.configs.filter { it.usages.isNotEmpty() }.map { it.gedraId.client }
             ).distinct()
         for (scope in usageScopes) {
-            val collisions = searchParamCollisions(collected.gedraConfigs.usagesFor(scope))
-            if (collisions.isEmpty()) {
-                continue
+            val usages = collected.gedraConfigs.usagesFor(scope)
+            val collisions = searchParamCollisions(usages)
+            if (collisions.isNotEmpty()) {
+                reportConfigProblem(
+                    cxt,
+                    mode,
+                    GedraConfigIssue(
+                        "Client '$scope' declares a trait usage whose search parameter(s) " +
+                            "${collisions.joinToString(", ")} collide with a reserved forms-listing field " +
+                            "(${reservedQueryFieldNames.joinToString(", ")}).",
+                        "Dropping the colliding search parameter; the column still shows, but that trait cannot " +
+                            "be searched. Rename the trait, or present it under a different one.",
+                    ),
+                    issues,
+                )
             }
-            reportConfigProblem(
-                cxt,
-                mode,
-                GedraConfigIssue(
-                    "Client '$scope' declares a trait usage whose search parameter(s) " +
-                        "${collisions.joinToString(", ")} collide with a reserved forms-listing field " +
-                        "(${reservedQueryFieldNames.joinToString(", ")}).",
-                    "Dropping the colliding search parameter; the column still shows, but that trait cannot " +
-                        "be searched. Rename the trait, or present it under a different one.",
-                ),
-                issues,
-            )
+            val duplicates = duplicateUsageTraitIds(usages)
+            if (duplicates.isNotEmpty()) {
+                reportConfigProblem(
+                    cxt,
+                    mode,
+                    GedraConfigIssue(
+                        "Client '$scope' declares more than one trait-usage rule for trait(s) " +
+                            "${duplicates.joinToString(", ")}; a trait presents as a single column.",
+                        "Keeping the rules as declared, but that trait's column, search and sort read only one " +
+                            "of them and collide. Declare one usage per trait.",
+                    ),
+                    issues,
+                )
+            }
         }
     }
 
@@ -668,7 +692,7 @@ class SchemaService : ServiceInitializer {
         // set as it was (the review of #616 caught these being skipped, so a bad config faulted per request).
         try {
             checkVisibleWhen()
-            checkSearchParamNames(cxt, collected)
+            checkUsageRules(cxt, collected)
             checkLayouts()
         } catch (e: Exception) {
             publish(cxt, current)
