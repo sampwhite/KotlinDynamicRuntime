@@ -8,10 +8,13 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WFC
@@ -145,5 +148,33 @@ class SurveyEditTest : StringSpec({
         res.containsKey(WSF.unmetTraits) shouldBe false
         surveyCompletion(gid)[SVY.complete] shouldBe false
         surveyCompletion(gid)[SVY.missingTraits].toJsonListOrEmpty() shouldContain "detail"
+    }
+
+    "a raw patch that completes the survey's data refreshes survey state -- not only the survey save (#675)" {
+        // Created without the required `detail`: incomplete.
+        val gid = create("note", "aside")
+        surveyCompletion(gid)[SVY.complete] shouldBe false
+
+        // Supply `detail` through the GENERIC patch endpoint, not the survey save. The post-write hook recomputes
+        // derived state on this path too, so the survey's completeness follows the raw edit -- the gap #675 closes.
+        user.postItems(
+            GEP.patch,
+            mapOf(
+                GPF.targets to mapOf(
+                    GedraDataType.formDoc.name to listOf(
+                        mapOf(
+                            GDF.gedraId to gid,
+                            GPF.edits to listOf(
+                                mapOf(
+                                    GED.action to GedraEditAction.addOrReplace.name,
+                                    GE.traitId to "detail", GE.data to mapOf("text" to "via raw patch"),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        surveyCompletion(gid)[SVY.complete] shouldBe true
     }
 })

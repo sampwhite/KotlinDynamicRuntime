@@ -9,6 +9,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraStateDeriver
+import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchOptionsProvider
@@ -103,6 +104,14 @@ class SchemaCollector(
     /** Registers a state derivation (issue #599); order is preserved but does not matter, as each owns its own traits. */
     fun addStateDeriver(deriver: GedraStateDeriver) {
         stateDerivers.add(deriver)
+    }
+
+    /** The post-write hooks (issue #675), fired after every gedra data write inside its transaction. */
+    val writeHooks: MutableList<GedraWriteHook> = mutableListOf()
+
+    /** Registers a post-write hook (issue #675); order is preserved and matters -- hooks run in registration order. */
+    fun addWriteHook(hook: GedraWriteHook) {
+        writeHooks.add(hook)
     }
 
     /**

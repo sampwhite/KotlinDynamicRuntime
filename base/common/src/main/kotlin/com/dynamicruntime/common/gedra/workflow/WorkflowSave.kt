@@ -69,15 +69,14 @@ fun saveWorkflow(
 }
 
 /**
- * A survey's `edit` save (issue #658): fold the collected entries into the existing form and recompute its
- * derived survey state.
+ * A survey's `edit` save (issue #658): fold the collected entries into the existing form.
  *
  * There is **no completeness gate** here, unlike a create: a survey may be saved part-finished, and its
  * incompleteness is recorded as state (for the CTA), not refused -- so this always saves. Each collected trait
  * is replaced wholesale ([GedraEditAction.addOrReplace]) with what the task supplied, through the ordinary
- * patch fold, so client-scope and validation are the patch endpoint's, unchanged. The data write done, the
- * form's derived state is recomputed while its asserted state is preserved
- * ([GedraDataService.recomputeDerivedState]), and the updated row is returned under [WSF.item].
+ * patch fold, so client-scope and validation are the patch endpoint's, unchanged. The form's derived survey
+ * state is recomputed by the patch's own post-write hook (issue #675), inside the same transaction, so this
+ * does not recompute it explicitly; it simply returns the updated row under [WSF.item].
  */
 private fun editForm(
     cxt: KdrCxt,
@@ -96,7 +95,6 @@ private fun editForm(
         GedraEdit(GedraEditAction.addOrReplace, traitId, data = entry[GE.data].toJsonMapOrEmpty())
     }
     svc.patchGedras(cxt, mapOf(GedraDataType.formDoc to listOf(GedraPatchTarget(id, edits))), scope)
-    svc.recomputeDerivedState(cxt, id, scope)
     val updated = svc.queryGedra(cxt, fullId, GedraDataType.formDoc, scope)
         ?: throw KdrException("The form '$fullId' could not be read back after its survey edit.", code = EXC.notFound)
     return linkedMapOf<String, Any?>(WSF.saved to true, WSF.item to updated.toJsonMap())
