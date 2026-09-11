@@ -194,4 +194,17 @@ class GedraSearchTest : StringSpec({
         compareForSort("", "", UsageKind.string, descending = false) shouldBe 0
     }
 
+
+    "GSORT.displayTraitId decodes a namespaced display column, and leaves a fixed or bare one alone" {
+        GSORT.displayTraitId("${GSORT.displayColumnPrefix}year") shouldBe "year"
+        // A trait named like a fixed column still decodes to its own id -- the namespacing is what prevents the
+        // collision (issue #666 review): `display_updated` is the trait `updated`, not the protocol date column.
+        GSORT.displayTraitId("${GSORT.displayColumnPrefix}${GSORT.updated}") shouldBe GSORT.updated
+        // A bare fixed column, or a bare name, is not a display key.
+        GSORT.displayTraitId(GSORT.updated) shouldBe null
+        GSORT.displayTraitId("year") shouldBe null
+        // The prefix alone names no trait.
+        GSORT.displayTraitId(GSORT.displayColumnPrefix) shouldBe null
+    }
+
 })

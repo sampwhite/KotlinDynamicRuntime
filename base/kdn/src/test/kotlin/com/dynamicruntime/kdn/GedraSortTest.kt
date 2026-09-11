@@ -71,4 +71,17 @@ class GedraSortTest : StringSpec({
         next.rows.map { nameOf(it) } shouldBe listOf("10", "")
         next.numAvailable shouldBe 4
     }
+
+    "sorting by the Contains composition puts trait-bearing rows first and a traitless one last" {
+        // The endpoint's `contains` sort key joins a row's trait ids; here the three name-bearing forms group
+        // together and the traitless one (blank composition) sorts last (issue #666 review).
+        val byContains = GedraDataService.GedraSort(UsageKind.string, descending = false) { row ->
+            row.entries.mapNotNull { it[GE.traitId].toOptStr() }.joinToString(", ")
+        }
+        val page = svc().listGedras(cxt, kind, scope, 50, 0, null, byContains)
+        page.rows.dropLast(1).all { nameOf(it).isNotEmpty() } shouldBe true
+        nameOf(page.rows.last()) shouldBe ""
+        page.numAvailable shouldBe 4
+    }
+
 })

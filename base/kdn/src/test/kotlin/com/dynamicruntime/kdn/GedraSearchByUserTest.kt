@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GPF
+import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
@@ -173,4 +174,24 @@ class GedraSearchByUserTest : StringSpec({
         rename(aliceDocId, "Alice edited")
         leaders() shouldBe listOf(aliceDocId, bobDocId)
     }
+
+    "an admin can sort the listing by owner, by the name the User column shows (issue #666)" {
+        fun aliceBobOrder(dir: String): List<String?> =
+            ada.getItems(GEP.formDocs, mapOf(GSORT.sort to GSORT.owner, GSORT.sortDir to dir))
+                .mapNotNull { it[GDF.gedraId].toOptStr() }
+                .filter { it == aliceDocId || it == bobDocId }
+        // Provisioned accounts have no name, so the sort key is the email: alice@ before bob@ ascending. Only
+        // the two docs' relative order is asserted, so other rows on the client do not disturb it.
+        aliceBobOrder(GSORT.asc) shouldBe listOf(aliceDocId, bobDocId)
+        aliceBobOrder(GSORT.desc) shouldBe listOf(bobDocId, aliceDocId)
+    }
+
+    "an ordinary user cannot sort by owner -- the admin-only column is ignored" {
+        // bob sends sort=owner; it is not honored (the column is admin-only), and he still sees only his own row.
+        bob.getItems(GEP.formDocs, mapOf(GSORT.sort to GSORT.owner)).map { it[GDF.gedraId].toOptStr() }.let {
+            it shouldContainAll listOf(bobDocId)
+            it shouldNotContain aliceDocId
+        }
+    }
+
 })

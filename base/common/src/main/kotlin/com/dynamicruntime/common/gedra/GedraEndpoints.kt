@@ -253,7 +253,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // before paging, so the page and its `numAvailable` are both over the matched set (see `listGedras`).
         val usages = SchemaService.get(c).traitUsagesFor(c.client)
         val filter = searchFilter(c, request, usages)
-        val sort = gedraSortFor(c, request, usages)
+        val sort = gedraSortFor(c, request, usages, scope)
         val svc = GedraDataService.get(c)
         val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort)
         // Attach each form's state (issue #600) only when asked. One batch read over the page's ids -- cache-
@@ -636,32 +636,6 @@ private fun resolveTargetUser(c: KdrCxt, request: Map<String, Any?>, callerScope
  * so both sides read through the same parse. Applied by [GedraDataService.listGedras] before paging, over the
  * cache's client+kind index (the SQL fallback filters its query's rows), with the stated in-memory ceiling.
  */
-/**
- * The sort a listing request asks for (issue #666), or null for the default order. The `sort` column is a
- * display trait id -- ordered by that trait's value under its declared [UsageKind] -- or `updated` / `created`,
- * the row's protocol dates. An unknown column returns null (the default order) rather than faulting, so a stale
- * bookmark still lists. The direction is `desc` when [GSORT.sortDir] says so, ascending otherwise. The trait's
- * value is read the same way the column shows it ([computeDisplayValues] for just that usage).
- */
-private fun gedraSortFor(
-    cxt: KdrCxt,
-    request: Map<String, Any?>,
-    usages: List<ClientTraitUsage>,
-): GedraDataService.GedraSort? {
-    val column = request[GSORT.sort].toOptStr()?.ifBlank { null } ?: return null
-    val descending = request[GSORT.sortDir].toOptStr()?.equals(GSORT.desc, ignoreCase = true) == true
-    return when (column) {
-        GSORT.updated -> GedraDataService.GedraSort(UsageKind.date, descending) { it.updatedAt?.toString() ?: "" }
-        GSORT.created -> GedraDataService.GedraSort(UsageKind.date, descending) { it.createdAt?.toString() ?: "" }
-        else -> {
-            val usage = usages.firstOrNull { it.traitId == column } ?: return null
-            GedraDataService.GedraSort(usage.kind, descending) { row ->
-                computeDisplayValues(cxt, row, listOf(usage)).firstOrNull()?.get(UF.value).toOptStr() ?: ""
-            }
-        }
-    }
-}
-
 private fun searchFilter(
     c: KdrCxt,
     request: Map<String, Any?>,
@@ -691,6 +665,58 @@ private fun searchFilter(
  * store no longer has, is simply absent -- their rows show no owner rather than faulting the page or naming
  * somebody the caller may not see.
  */
+/**
+ * The sort a listing request asks for (issue #666), or null for the default order. `updated` / `created` order
+ * by the row's protocol dates; a display column arrives namespaced (`display_<traitId>`, [GSORT.displayTraitId])
+ * and orders by that trait's value under its declared [UsageKind] -- the namespacing is what keeps a trait
+ * named like a fixed column from being read as one. An unknown column returns null (the default order) rather
+ * than faulting a stale bookmark. The direction is `desc` when [GSORT.sortDir] says so, ascending otherwise; the
+ * trait's value is read the way the column shows it ([computeDisplayValues] for just that usage).
+ */
+private fun gedraSortFor(
+    cxt: KdrCxt,
+    request: Map<String, Any?>,
+    usages: List<ClientTraitUsage>,
+    scope: ReadScope,
+): GedraDataService.GedraSort? {
+    val column = request[GSORT.sort].toOptStr()?.ifBlank { null } ?: return null
+    val descending = request[GSORT.sortDir].toOptStr()?.equals(GSORT.desc, ignoreCase = true) == true
+    return when {
+        column == GSORT.updated -> GedraDataService.GedraSort(UsageKind.date, descending) { it.updatedAt?.toString() ?: "" }
+        column == GSORT.created -> GedraDataService.GedraSort(UsageKind.date, descending) { it.createdAt?.toString() ?: "" }
+        // The "Contains" summary orders by the row's traits as text (issue #666). Its display shows friendly
+        // labels, but those are computed on the frontend (humanizeFieldName is not in the kernel); the trait ids
+        // sort in the same relative order for the ordinary case where a label is just the humanized id.
+        column == GSORT.contains -> GedraDataService.GedraSort(UsageKind.string, descending) { row ->
+            row.entries.mapNotNull { it[GE.traitId].toOptStr() }.joinToString(", ")
+        }
+        // The owner (the User column, issue #666): admin-only, as the column is -- an ordinary caller's rows are
+        // all their own. Ordered by the name the column shows (the name, else the email), resolved per owner and
+        // memoized so the whole matched set costs one lookup per distinct owner (the AuthUsers cache serves them
+        // in memory). A user beyond the caller's scope resolves to blank, which sorts last.
+        column == GSORT.owner -> {
+            if (!AdminRules.canManageUsers(cxt)) {
+                null
+            } else {
+                val names = HashMap<Long, String>()
+                GedraDataService.GedraSort(UsageKind.string, descending) { row ->
+                    names.getOrPut(row.userId) {
+                        UserService.get(cxt).queryUsersByIds(cxt, listOf(row.userId), scope)[row.userId]
+                            ?.let { it.name?.trim()?.ifEmpty { null } ?: it.publicName() } ?: ""
+                    }
+                }
+            }
+        }
+        else -> {
+            val traitId = GSORT.displayTraitId(column) ?: return null
+            val usage = usages.firstOrNull { it.traitId == traitId } ?: return null
+            GedraDataService.GedraSort(usage.kind, descending) { row ->
+                computeDisplayValues(cxt, row, listOf(usage)).firstOrNull()?.get(UF.value).toOptStr() ?: ""
+            }
+        }
+    }
+}
+
 private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>, scope: ReadScope): Map<Long, AuthUserRow> =
     UserService.get(c).queryUsersByIds(c, rows.map { it.userId }, scope)
 

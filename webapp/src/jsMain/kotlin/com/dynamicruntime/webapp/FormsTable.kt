@@ -92,17 +92,14 @@ val FormsTable = FC<FormsTableProps> { props ->
         tableLayout = "fixed"
         pagination = false
         rowKey = "key"
-        // Server-side sort (issue #666): antd reports the header the caller clicked and its direction; the
-        // dataIndex maps back to the endpoint's sort key (a display column is `display_<traitId>`). Order is
-        // undefined on the third click, which clears the sort back to the default order.
+        // Server-side sort (issue #666): antd reports the header the caller clicked and its direction. The
+        // dataIndex it reports **is** the endpoint's sort key -- a display column's is namespaced
+        // (`display_<traitId>`), which is exactly what keeps a trait named like a fixed column from colliding
+        // with it, so it is sent as-is. Order is undefined on the third click, which clears the sort.
         onChange = { _, _, sorter ->
             val order = sorter.order as? String
             val field = sorter.field as? String
-            if (order == null || field == null) {
-                props.onSort(null, false)
-            } else {
-                props.onSort(field.removePrefix("display_"), order == "descend")
-            }
+            if (order == null || field == null) props.onSort(null, false) else props.onSort(field, order == "descend")
         }
         val cols = buildList {
             // Namespaced key: a usage trait id must not shadow the reserved row key ("key") or a fixed column
@@ -110,14 +107,14 @@ val FormsTable = FC<FormsTableProps> { props ->
             // form a click opens.
             // Sortable (issue #666): a display column orders by its trait, the date columns by their value. The
             // header arrow is antd's, controlled from `sortColumn`/`sortDescending`; the sort key sent to the
-            // endpoint is the trait id (or `updated`/`created`), which the click maps back to via the dataIndex.
+            // endpoint is the column's dataIndex -- namespaced for a display column, `updated`/`created` for a date.
             displayCols.forEach {
-                add(sortableColumn(it.label, displayColKey(it.traitId), it.traitId, 160, props.sortColumn, props.sortDescending))
+                add(sortableColumn(it.label, displayColKey(it.traitId), 160, props.sortColumn, props.sortDescending))
             }
-            add(column("Contains", "contains", null))
-            if (props.showOwner) add(ownerColumn())
-            add(sortableColumn("Updated", GSORT.updated, GSORT.updated, 175, props.sortColumn, props.sortDescending))
-            add(sortableColumn("Created", GSORT.created, GSORT.created, 175, props.sortColumn, props.sortDescending))
+            add(sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending))
+            if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
+            add(sortableColumn("Updated", GSORT.updated, 175, props.sortColumn, props.sortDescending))
+            add(sortableColumn("Created", GSORT.created, 175, props.sortColumn, props.sortDescending))
             if (anyActions) add(actionsColumn(props))
         }
         columns = cols.toTypedArray()
@@ -186,8 +183,10 @@ private fun actionsColumn(props: FormsTableProps): dynamic {
  * in small type beneath, or the email alone. The backend sends `ownerName` only when the account has a name
  * that is not its email, so the cell renders what arrives rather than comparing the two.
  */
-private fun ownerColumn(): dynamic {
-    val c = column("User", "owner", 200)
+private fun ownerColumn(sortColumn: String?, descending: Boolean): dynamic {
+    // Sortable by the owner name (issue #666); the cell still renders the name-over-email block, so the sort key
+    // is the column's `owner` dataIndex while the render reads `ownerName`/`ownerEmail` off the row.
+    val c = sortableColumn("User", GSORT.owner, 200, sortColumn, descending)
     c.render = fun(_: dynamic, record: dynamic, _: dynamic): dynamic = FormOwnerCell.create {
         name = record.ownerName as? String
         email = record.ownerEmail as? String
@@ -290,25 +289,25 @@ private fun minTableWidth(cols: List<dynamic>): dynamic {
 
 /** The antd row/column key for a display column: a trait id, namespaced so it cannot shadow the reserved
  *  row key ("key") or the fixed "contains"/"owner"/"updated"/"created"/"actions" columns (issue #537). */
-private fun displayColKey(traitId: String): String = "display_$traitId"
+private fun displayColKey(traitId: String): String = GSORT.displayColumnPrefix + traitId
 
 /**
  * An antd column that sorts server-side (issue #666): `sorter = true` with a **controlled** `sortOrder`, so the
- * arrow reflects [sortColumn]/[descending] the parent holds rather than antd sorting the page itself. [sortKey]
- * is the endpoint's key for this column (a trait id, or `updated`/`created`); [dataIndex] is the row-data key
- * (namespaced for a display column), so the two differ for a display column and coincide for a date column.
+ * arrow reflects [sortColumn]/[descending] the parent holds rather than antd sorting the page itself. The
+ * [dataIndex] is both the row-data key and the endpoint's sort key -- namespaced (`display_<traitId>`) for a
+ * display column, so it cannot be read as a fixed `updated`/`created` column.
  */
 private fun sortableColumn(
     title: String,
     dataIndex: String,
-    sortKey: String,
     width: Int?,
     sortColumn: String?,
     descending: Boolean,
 ): dynamic {
     val c = column(title, dataIndex, width)
     c.sorter = true
-    c.sortOrder = if (sortColumn == sortKey) (if (descending) "descend" else "ascend") else null
+    // The dataIndex is the endpoint's sort key (a display column's is namespaced); the arrow shows only on it.
+    c.sortOrder = if (sortColumn == dataIndex) (if (descending) "descend" else "ascend") else null
     return c
 }
 

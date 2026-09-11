@@ -271,11 +271,33 @@ object GSORT {
     /** Sort by the row's created date. */
     const val created = "created"
 
+    /** Sort by the "Contains" summary -- the row's traits (issue #666), ordered by their ids as text. */
+    const val contains = "contains"
+
+    /** Sort by the owner (the User column, issue #666), by the name the column shows. Admin-only, as the column
+     *  is: an ordinary caller sees only their own rows, so there is no one to order by. */
+    const val owner = "owner"
+
     const val asc = "asc"
     const val desc = "desc"
 
-    /** The fixed (non-trait) columns a sort may name, beside a display trait id. */
-    val fixedColumns: Set<String> = setOf(updated, created)
+    /**
+     * The wire prefix a **display-column** sort key carries (issue #666), so a trait named like a fixed column
+     * (`updated`/`created`) cannot collide with it: a display column sorts under `display_<traitId>`, a fixed
+     * column under its bare name. The same `display_` the forms table keys its display *cells* by, kept here so
+     * the endpoint's decode and the table's encode read one constant.
+     */
+    const val displayColumnPrefix = "display_"
+
+    /** The display trait id a sort [column] names ([displayColumnPrefix] stripped), or null when it is a fixed
+     *  column (`updated`/`created`) or otherwise not a display key -- so a trait called `updated` still decodes
+     *  to its own value rather than the protocol date. */
+    fun displayTraitId(column: String): String? =
+        if (column.startsWith(displayColumnPrefix) && column.length > displayColumnPrefix.length) {
+            column.removePrefix(displayColumnPrefix)
+        } else {
+            null
+        }
 }
 
 /**
