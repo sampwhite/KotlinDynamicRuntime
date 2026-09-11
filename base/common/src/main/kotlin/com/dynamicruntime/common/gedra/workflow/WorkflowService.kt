@@ -60,7 +60,7 @@ class WorkflowService : ServiceInitializer {
         found: MutableList<GedraConfigIssue>,
     ): WorkflowRegistries {
         val clients: Map<String, ClientDef?> = clientService.presentClients.associateBy { it.clientId }
-        return buildWorkflowRegistries(
+        val registries = buildWorkflowRegistries(
             cxt, collector.gedraConfigs, clients,
             overlaidTypes = { collector.clientOverlays[it]?.keys ?: emptySet() },
             fragments = { client, fileId, namespace, key ->
@@ -74,6 +74,11 @@ class WorkflowService : ServiceInitializer {
             },
             mode = gedraConfigCheckMode(cxt), issues = found,
         )
+        // The second pass (issue #677): now that every component has registered its function kinds, resolve each
+        // definition's function usages into runnable functions, in place. A function that will not resolve is a
+        // config problem reported into `found`, exactly as an unusable trait is above.
+        resolveWorkflowFunctions(cxt, collector.gedraConfigs, collector.workflowFunctions, gedraConfigCheckMode(cxt), found)
+        return registries
     }
 
     /**

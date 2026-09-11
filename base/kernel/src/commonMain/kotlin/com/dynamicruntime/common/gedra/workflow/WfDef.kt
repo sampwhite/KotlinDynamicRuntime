@@ -38,6 +38,15 @@ object WFD {
     const val entry = "entry"
     const val tasks = "tasks"
 
+    /** The workflow function usages a def (global events) or a task (task events) declares (issue #677). */
+    const val functions = "functions"
+
+    /** The discriminator on a function usage: which function kind it is (like `traitId` for an entry). */
+    const val fn = "fn"
+
+    /** A function usage's run order within its scope's list (issue #677). */
+    const val priority = "priority"
+
     const val id = "id"
     const val label = "label"
     const val traits = "traits"
@@ -217,7 +226,17 @@ class WfTask(
     val traits: List<WfTraitRef>,
     val saves: List<WfSave>,
     val layout: WfLayout? = null,
+    functionUsages: List<WfFunctionUsage> = emptyList(),
 ) {
+    /** The task-scoped function **usages** this task declares (e.g. `prefillData`), in priority order (issue #677). */
+    val functionUsages: List<WfFunctionUsage> = functionUsages.sortedBy { it.priority }
+
+    /**
+     * The resolved task-scoped functions, filled in place by the `base:common` second pass once the creation
+     * registry is complete (issue #677); empty until then -- the two-pass initialization the design describes.
+     */
+    var resolvedFunctions: List<WfFunction> = emptyList()
+
     init {
         if (id.isEmpty()) {
             throw KdrException.mkConv("A workflow task has no id.")
@@ -277,12 +296,22 @@ class WfDef(
     val workflowId: String,
     val entry: WfEntry,
     tasks: List<WfTask>,
+    functionUsages: List<WfFunctionUsage> = emptyList(),
 ) {
     /** The tasks, in the order they are presented. */
     val tasks: List<WfTask> = tasks.toList()
 
     /** Tasks by id. */
     val tasksById: Map<String, WfTask> = tasks.associateBy { it.id }
+
+    /** The workflow-global function **usages** this def declares (e.g. `cfactCalc`), in priority order (issue #677). */
+    val functionUsages: List<WfFunctionUsage> = functionUsages.sortedBy { it.priority }
+
+    /**
+     * The resolved workflow-global functions, filled in place by the `base:common` second pass once the creation
+     * registry is complete (issue #677); empty until then -- the two-pass initialization the design describes.
+     */
+    var resolvedFunctions: List<WfFunction> = emptyList()
 
     init {
         if (!workflowId.isVariableName()) {
@@ -420,6 +449,11 @@ object WfDefSchema {
             property(WFD.layout, "How the task is drawn; declaration order and inline editing when absent.") {
                 ref(WFD.layoutType)
             }
+            property(WFD.functions, "Task-scoped function usages (e.g. prefillData); each a { fn, ... } block validated by its own kind.") {
+                type = SCT.array
+                allowCoerce = true
+                items { type = SCT.kObject }
+            }
         }
         type(WFD.defType) {
             type = SCT.kObject
@@ -430,6 +464,11 @@ object WfDefSchema {
                 type = SCT.array
                 allowCoerce = true
                 items { ref(WFD.taskType) }
+            }
+            property(WFD.functions, "Workflow-global function usages (e.g. cfactCalc); each a { fn, ... } block validated by its own kind.") {
+                type = SCT.array
+                allowCoerce = true
+                items { type = SCT.kObject }
             }
         }
     }
@@ -453,19 +492,26 @@ object WfDefSchema {
  * accepts; a divergence would store a definition that no longer round-trips. Pure over the model, so it lives
  * beside the parser rather than in a service.
  */
-fun WfDef.toJsonMap(): Map<String, Any?> = linkedMapOf(
-    WFD.workflowId to workflowId,
-    WFD.entry to entry.name,
-    WFD.tasks to tasks.map { task ->
-        buildMap {
-            put(WFD.id, task.id)
-            put(WFD.label, task.label)
-            put(WFD.traits, task.traits.map { linkedMapOf(WFD.traitId to it.traitId, WFD.required to it.required) })
-            put(WFD.saves, task.saves.map { linkedMapOf(WFD.id to it.id, WFD.label to it.label, WFD.kind to it.kind.name) })
-            task.layout?.let { put(WFD.layout, linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name)) }
-        }
-    },
-)
+fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
+    put(WFD.workflowId, workflowId)
+    put(WFD.entry, entry.name)
+    put(
+        WFD.tasks,
+        tasks.map { task ->
+            buildMap {
+                put(WFD.id, task.id)
+                put(WFD.label, task.label)
+                put(WFD.traits, task.traits.map { linkedMapOf(WFD.traitId to it.traitId, WFD.required to it.required) })
+                put(WFD.saves, task.saves.map { linkedMapOf(WFD.id to it.id, WFD.label to it.label, WFD.kind to it.kind.name) })
+                task.layout?.let { put(WFD.layout, linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name)) }
+                // A usage re-emits its own initialization data, so a code-built and a stored definition
+                // round-trip identically (issue #677).
+                if (task.functionUsages.isNotEmpty()) put(WFD.functions, task.functionUsages.map { it.toJsonMap() })
+            }
+        },
+    )
+    if (functionUsages.isNotEmpty()) put(WFD.functions, functionUsages.map { it.toJsonMap() })
+}
 
 /**
  * Reads a workflow definition from its JSON form: validates and coerces [raw] against [WfDefSchema], refusing
@@ -481,6 +527,9 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
                 result.failures.joinToString("; ") { "${it.path.ifEmpty { "(root)" }}: ${it.message}" },
         )
     }
+    // A function's own `{fn, ...}` shape is validated by its kind in `base:common`, not here: the kernel keeps
+    // each usage as data and the common second pass resolves it once the creation registry is complete (#677).
+    fun usagesOf(raw: Any?): List<WfFunctionUsage> = raw.toJsonListOfMaps().map { WfFunctionUsage(it) }
     val m = result.value.toJsonMapOrEmpty()
     return WfDef(
         workflowId = m[WFD.workflowId].toOptStr() ?: "",
@@ -504,8 +553,10 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
                         edit = lm[WFD.edit]?.let { enumNamed(WfEditMode.entries, it) } ?: WfEditMode.inline,
                     )
                 },
+                functionUsages = usagesOf(t[WFD.functions]),
             )
         },
+        functionUsages = usagesOf(m[WFD.functions]),
     )
 }
 
@@ -523,18 +574,29 @@ private fun <E : Enum<E>> enumNamed(entries: List<E>, value: Any?): E {
  */
 class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     private val tasks = mutableListOf<Map<String, Any?>>()
+    private val functions = mutableListOf<Map<String, Any?>>()
 
     /** Declares a task. */
     fun task(id: String, label: String, build: WfTaskBuilder.() -> Unit) {
         tasks.add(WfTaskBuilder(id, label).apply(build).build())
     }
 
+    /**
+     * Declares a workflow-global function usage (a `cfactCalc`, e.g.). Takes the function's **initialization
+     * data** -- the `{fn, ...}` map a per-`fn` builder in `base:common` emits (issue #677) -- since this builder
+     * produces the JSON form and the function's own kind validates it at parse.
+     */
+    fun function(initData: Map<String, Any?>) {
+        functions.add(initData)
+    }
+
     /** The definition as JSON, ready for [parseWfDef]. */
-    fun build(): Map<String, Any?> = linkedMapOf(
-        WFD.workflowId to workflowId,
-        WFD.entry to entry.name,
-        WFD.tasks to tasks.toList(),
-    )
+    fun build(): Map<String, Any?> = buildMap {
+        put(WFD.workflowId, workflowId)
+        put(WFD.entry, entry.name)
+        put(WFD.tasks, tasks.toList())
+        if (functions.isNotEmpty()) put(WFD.functions, functions.toList())
+    }
 }
 
 /** Authors one task's JSON; see [WfDefBuilder]. */
@@ -542,6 +604,15 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     private val traits = mutableListOf<Map<String, Any?>>()
     private val saves = mutableListOf<Map<String, Any?>>()
     private var layout: Map<String, Any?>? = null
+    private val functions = mutableListOf<Map<String, Any?>>()
+
+    /**
+     * Declares a task-scoped function usage (a `prefillData`, e.g.) -- the `{fn, ...}` initialization data a
+     * per-`fn` builder in `base:common` emits (issue #677), validated by its kind at parse.
+     */
+    fun function(initData: Map<String, Any?>) {
+        functions.add(initData)
+    }
 
     /** A trait this task collects; required unless said otherwise. */
     fun trait(traitId: String, required: Boolean = true) {
@@ -566,6 +637,7 @@ class WfTaskBuilder(private val id: String, private val label: String) {
             WFD.saves to saves.toList(),
         )
         layout?.let { out[WFD.layout] = it }
+        if (functions.isNotEmpty()) out[WFD.functions] = functions.toList()
         return out
     }
 }
