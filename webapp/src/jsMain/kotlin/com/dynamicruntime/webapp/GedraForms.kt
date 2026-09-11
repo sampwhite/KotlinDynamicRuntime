@@ -57,6 +57,21 @@ fun formsSearchFromHash(hp: Map<String, String>): Map<String, String> =
     hp.filterKeys { it !in formsNavKeys }.filterValues { it.isNotBlank() }
 
 /**
+ * The note to show when the form a create or edit just saved is **not on the returned listing** (issue #669),
+ * or null when it is on screen (so the row-flash is feedback enough) or nothing was saved. A saved row lands on
+ * page one under the default newest-first sort, so an active filter (`appliedSearch` non-empty) is the realistic
+ * reason it is absent; with no filter, absence is left unremarked. Neutral about create vs edit, since either
+ * reaches the same gap. [savedId] is the row's id, [rowIds] the ids on the loaded page. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun savedNotShownNote(savedId: String?, appliedSearch: Map<String, Any?>, rowIds: List<String?>): String? =
+    if (savedId != null && appliedSearch.isNotEmpty() && savedId !in rowIds) {
+        "The form you just saved isn't shown here — it doesn't match the current filter. Clear the filter to see it."
+    } else {
+        null
+    }
+
+/**
  * The applied forms [search] as hash params (issue #592): its non-blank entries, to merge beside the page and
  * the open form. The inverse of [formsSearchFromHash]. Pure, and covered under `jsNodeTest`.
  */

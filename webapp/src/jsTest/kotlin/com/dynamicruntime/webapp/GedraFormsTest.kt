@@ -426,4 +426,22 @@ class GedraFormsTest {
         assertEquals(mapOf("acmeSiteAuditContains" to "dana"), hashSearch.filterKeys { it in keys })
     }
 
+    /**
+     * The saved-but-off-screen note (issue #669): shown only when a row was saved, a filter is active, and the
+     * row is not on the loaded page -- so a create/edit that lands the row in view, or one with no filter, is
+     * silent (the flash is feedback enough), while a filtered-out save leaves a clue.
+     */
+    @Test
+    fun savedNotShownNoteAppearsOnlyForAFilteredOutSave() {
+        val filter = mapOf("acmeSiteAuditContains" to "dana")
+        // Saved, filtered, and absent from the page: the note appears.
+        assertTrue(savedNotShownNote("g.fd.acme.new", filter, listOf("g.fd.acme.a", "g.fd.acme.b")) != null)
+        // Saved and on the page: no note -- the flash shows it.
+        assertNull(savedNotShownNote("g.fd.acme.new", filter, listOf("g.fd.acme.new", "g.fd.acme.b")))
+        // A filter, but nothing was saved (an ordinary filtered view): no note.
+        assertNull(savedNotShownNote(null, filter, listOf("g.fd.acme.a")))
+        // Saved and absent, but no filter is active: left unremarked (a new row is on page one by default sort).
+        assertNull(savedNotShownNote("g.fd.acme.new", emptyMap(), listOf("g.fd.acme.a")))
+    }
+
 }
