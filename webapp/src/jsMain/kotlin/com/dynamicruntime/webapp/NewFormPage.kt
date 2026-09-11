@@ -15,8 +15,6 @@ import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
-import react.dom.html.ReactHTML.span
-import react.useEffect
 import react.useEffectOnce
 import react.useState
 import web.cssom.ClassName
@@ -36,6 +34,11 @@ private val formScope = MainScope()
  * removed: no method/path heading, no raw-schema views, no request-JSON editor. What stays is the part a person
  * filling in a form needs -- the fields, the validation, and the jump-to-failure.
  */
+// The create and edit pages are siblings -- both a card of state, a schema-driven form, and a save -- so their
+// state block and SchemaForm setup read alike. That resemblance is inherent to two React components doing the
+// same shape of thing; deduping it would need a state holder that reads worse than the likeness, so the
+// duplicated-fragment inspection is suppressed rather than chased (issue #671 follow-up).
+@Suppress("DuplicatedCode")
 val NewFormPage = FC<Props> {
     var endpoint by useState<EndpointInfo?>(null)
     var catalog by useState<Catalog?>(null)
@@ -73,13 +76,7 @@ val NewFormPage = FC<Props> {
         }
     }
 
-    // Send focus to the first failure once the render carrying it has committed. It has to be an effect: the row
-    // is addressed by a DOM id, which does not exist until React has drawn the failures the check just produced.
-    useEffect(focusRequest) {
-        if (focusRequest > 0) {
-            failures?.firstOrNull()?.let { focusField(it.path) }
-        }
-    }
+    useFocusOnFailure(focusRequest, failures)
 
     div {
         className = ClassName("card wide")
