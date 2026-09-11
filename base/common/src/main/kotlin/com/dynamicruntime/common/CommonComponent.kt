@@ -21,6 +21,7 @@ import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientSyncService
+import com.dynamicruntime.common.gedra.DerivedStateWriteHook
 import com.dynamicruntime.common.gedra.clientSyncTables
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
@@ -93,6 +94,9 @@ class CommonComponent : ComponentDefinition {
         // state on any create/import path, so a plain create or a bad import is recorded, not only a workflow step.
         addSurveyCFacts(collector)
         collector.addStateDeriver(SurveyStateDeriver)
+        // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
+        // its transaction. This is what makes a raw patch (not only the survey save) keep survey state fresh.
+        collector.addWriteHook(DerivedStateWriteHook)
         // The workflow definition schema, published so the types a definition is validated against are the
         // same ones a catalog or a frontend can read.
         collector.defs.putAll(WfDefSchema.defs(cxt))

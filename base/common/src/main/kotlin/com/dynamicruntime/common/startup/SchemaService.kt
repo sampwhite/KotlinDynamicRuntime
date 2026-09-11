@@ -21,6 +21,7 @@ import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.ClientTraitUsage
 import com.dynamicruntime.common.gedra.GedraStateDeriver
+import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
@@ -592,6 +593,9 @@ class SchemaService : ServiceInitializer {
      * a gedra's initial derived state. Empty on a node whose components registered none.
      */
     fun stateDerivers(): List<GedraStateDeriver> = collector?.stateDerivers ?: emptyList()
+
+    /** The registered post-write hooks (issue #675), in registration order. */
+    fun writeHooks(): List<GedraWriteHook> = collector?.writeHooks ?: emptyList()
 
     /** The trait-usage rules [client] applies (issue #537) -- what a listing's columns are computed from. */
     fun traitUsagesFor(client: String): List<ClientTraitUsage> =
