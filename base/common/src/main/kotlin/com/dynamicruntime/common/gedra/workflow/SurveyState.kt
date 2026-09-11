@@ -163,9 +163,13 @@ object SurveyStateDeriver : GedraStateDeriver {
         }
         val valid = invalidTraits.isEmpty()
 
+        // The survey's own two facts, plus whatever the survey workflow's cfactCalc functions emit from the same
+        // data (issue #678). Folding them into this one form-singleton `cfacts` entry -- rather than a second
+        // producer emitting a competing entry -- is the aggregation point this deriver's doc anticipated.
         val facts = buildList {
             if (complete) add(SVY.surveyComplete)
             if (valid) add(SVY.surveyValid)
+            addAll(runCfactCalc(cxt, def, entries, row.client).sorted())
         }
         return listOf(
             mapOf(
