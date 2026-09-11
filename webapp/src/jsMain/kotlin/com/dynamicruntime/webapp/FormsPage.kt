@@ -470,7 +470,17 @@ val FormsPage = FC<Props> {
                         className = ClassName("row")
                         Button {
                             type = "primary"
-                            onClick = { navigateHash(listOf(HP.page to HMENU.pageNewForm, HP.from to HMENU.pageForms)) }
+                            // Carries the sort like the main "New form" button (issue #669 review): this branch
+                            // only renders when no filter is applied, so the search is empty, but a sort-only view
+                            // (a bookmarked sorted URL on an account with no forms) would otherwise lose its order
+                            // on the create round-trip. Kept identical to the other button so neither drifts.
+                            onClick = {
+                                navigateHash(
+                                    listOf(HP.page to HMENU.pageNewForm, HP.from to HMENU.pageForms) +
+                                        formsSearchHashParams(appliedSearch) +
+                                        sortHashParams(sortColumn, sortDescending),
+                                )
+                            }
                             +"Create a form"
                         }
                     }
