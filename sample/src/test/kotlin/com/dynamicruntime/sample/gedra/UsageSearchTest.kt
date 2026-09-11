@@ -29,10 +29,11 @@ import io.kotest.matchers.string.shouldStartWith
  * only validates when the client actually declared it -- so a passing search here is also proof the per-client
  * variant carries the field.
  *
- * `globex` inherits the global `name` usage (searchable exact and by substring); `acme` overrides it with an
- * `Auditor` string (exact and substring) and a `Year` number (a `>=`/`<=` range) -- between them, every kind.
- * Each case uses a fresh user, so the rows it searches are its own (an ordinary caller's read scope is their own
- * rows), which also means these run through the SQL fall-back path; the cache path filters the same predicate.
+ * `globex` declares a `Name` string (exact and substring, the same rule the global default carries) and, over
+ * the multi-entry `yearly` trait, a `Year` number (a `>=`/`<=` range, issue #674); `acme` declares an `Auditor`
+ * string (exact and substring) and a `Year` number off the expense report -- between them, every kind. Each case
+ * uses a fresh user, so the rows it searches are its own (an ordinary caller's read scope is their own rows),
+ * which also means these run through the SQL fall-back path; the cache path filters the same predicate.
  */
 class UsageSearchTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(
@@ -63,6 +64,11 @@ class UsageSearchTest : StringSpec({
         mapOf(GDF.entries to listOf(mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to year)))),
     )
 
+    fun postYearly(user: TestUser, year: Int, note: String) = user.postItem(
+        clientPath(GEP.formDocCreate, SC.globex),
+        mapOf(GDF.entries to listOf(mapOf(GE.traitId to ST.yearly, GE.data to mapOf(ST.year to year, ST.note to note)))),
+    )
+
     "globex searches its Name column exact (case-insensitively) and by substring" {
         val user = TestUser.create(cxt, "name-search@globex.test", userClient = SC.globex)
         postName(user, "Quarterly plan")
@@ -74,11 +80,30 @@ class UsageSearchTest : StringSpec({
         // Exact, case-insensitive: the exact parameter is named for the trait (`name`).
         user.getItems(path, mapOf(exact(GT.name) to "quarterly plan"))
             .map { displayValue(it, GT.name) } shouldBe listOf("Quarterly plan")
-        // Substring: the contains parameter globex inherits because the global `name` usage asked for it.
+        // Substring: the contains parameter globex's own `name` usage asks for (the same rule the global default
+        // carries, re-declared so declaring the yearly usage does not cost globex its Name column).
         user.getItems(path, mapOf(contains(GT.name) to "budg"))
             .map { displayValue(it, GT.name) } shouldBe listOf("Annual budget")
         // A substring that matches neither: an empty page, not an error.
         user.getItems(path, mapOf(contains(GT.name) to "zzz")).size shouldBe 0
+    }
+
+    "globex searches its yearly Year column as a >= / <= range (issue #674)" {
+        val user = TestUser.create(cxt, "yearly-search@globex.test", userClient = SC.globex)
+        postYearly(user, 2021, "kickoff")
+        postYearly(user, 2023, "steady")
+        val path = clientPath(GEP.formDocs, SC.globex)
+
+        // The `yearly` trait's `year` is a number usage, so it searches as a range -- the same shape acme's
+        // expense Year does, here proving the yearly trait's data is reachable at all (it had no usage before).
+        user.getItems(path, mapOf(min(ST.yearly) to 2022))
+            .map { displayValue(it, ST.yearly) } shouldBe listOf("2023")
+        user.getItems(path, mapOf(max(ST.yearly) to 2022))
+            .map { displayValue(it, ST.yearly) } shouldBe listOf("2021")
+        user.getItems(path, mapOf(min(ST.yearly) to 2020, max(ST.yearly) to 2025))
+            .map { displayValue(it, ST.yearly) } shouldContainExactlyInAnyOrder listOf("2021", "2023")
+        // A range that excludes both: an empty page.
+        user.getItems(path, mapOf(min(ST.yearly) to 2030)).size shouldBe 0
     }
 
     "acme searches its Auditor column exact and by substring" {

@@ -383,4 +383,22 @@ private fun globexClient(cxt: KdrCxt): GedraConfig =
             property(ST.postcode, "Postal code, as written locally.")
             property(SC.what3words, "A three-word locator for the exact spot.")
         }
+
+        // --- trait-usage rules (issues #537, #538, #674) ------------------------------------------------
+        //
+        // globex takes every global trait, so it is the sample's home for the `yearly` trait -- the multi-entry
+        // one (issue #487), a record per year. Declaring a usage here is what makes its data a column, a search
+        // parameter, and (issue #666) a sort key; without a rule a stored field is invisible to all three, which
+        // is what #674 was filed about. The `yearly` usage reads `year` as a `number`, searchable as a `>=`/`<=`
+        // range and sorted numerically -- so globex's list can be sliced by reporting year.
+        //
+        // Two constraints shape this, both deliberate. Declaring any usage overrides the inherited global `name`
+        // column wholesale (`GedraConfigCollector.usagesFor`), so `name` is re-declared here to keep globex's Name
+        // column -- globex now shows Name and Year rather than Name alone. And a usage is keyed by its trait id
+        // everywhere (the display map, the search predicate, the sort, the frontend column key), so a trait gets
+        // **one** column: `year` and `note` cannot both be columns of the `yearly` trait without a per-usage key,
+        // which is the model change #674's second part is about. The column also reflects the *first* stored
+        // `yearly` entry, since a display expression reads one entry (`computeDisplayValues`).
+        traitUsage(GT.name, "Name", $$"${name}", substring = true)
+        traitUsage(ST.yearly, "Year", $$"${year}", UsageKind.number)
     }

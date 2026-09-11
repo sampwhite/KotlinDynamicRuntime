@@ -15,10 +15,10 @@ import io.kotest.matchers.shouldBe
 
 /**
  * A client's trait-usage rules drive its forms-list columns (issue #537) -- the first case of a client's
- * definition changing a page other than its own form. The `globex` client declares no usage of its own, so it
- * inherits the **global default** `name` column (`coreTraits`); the `acme` client declares its site-audit
- * `auditor`, which **overrides** the default -- two clients, two different columns, each computed on the
- * backend and attached to the list and read rows.
+ * definition changing a page other than its own form. `globex` declares a `name` column (the same rule the
+ * global default carries) beside a `Year` over the `yearly` trait (issue #674); `acme` declares its site-audit
+ * `auditor` and an expense `Year`, which **override** the global default -- two clients, different column sets,
+ * each computed on the backend and attached to the list and read rows.
  */
 class TraitUsageTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(
@@ -29,17 +29,22 @@ class TraitUsageTest : StringSpec({
 
     fun displayOf(row: Map<String, Any?>): List<Map<String, Any?>> = row[GDF.displayValues].toJsonListOfMaps()
 
-    "globex, declaring no usage of its own, inherits the default Name column" {
+    "globex shows the Name column it declares, beside its yearly Year column" {
         globex.postItem(
             clientPath(GEP.formDocCreate, SC.globex),
             mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Quarterly plan")))),
         )
         val row = globex.getItems(clientPath(GEP.formDocs, SC.globex)).first()
-        val display = displayOf(row).single()
-        display[UF.traitId] shouldBe GT.name
-        display[UF.label] shouldBe "Name"
-        display[UF.value] shouldBe "Quarterly plan"
-        display[UF.kind] shouldBe "string"
+        val name = displayOf(row).first { it[UF.traitId] == GT.name }
+        name[UF.label] shouldBe "Name"
+        name[UF.value] shouldBe "Quarterly plan"
+        name[UF.kind] shouldBe "string"
+        // The yearly Year column (issue #674): present on every row so the column set is uniform, a `number`, and
+        // blank here since this form carries a name and no yearly entry.
+        val year = displayOf(row).first { it[UF.traitId] == ST.yearly }
+        year[UF.label] shouldBe "Year"
+        year[UF.kind] shouldBe "number"
+        year[UF.value] shouldBe ""
     }
 
     "acme's own rules override the global default -- Auditor and Year columns, no Name" {
@@ -66,7 +71,7 @@ class TraitUsageTest : StringSpec({
             mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Read me")))),
         )[GDF.gedraId] as String
         val read = globex.getItem(clientPath(GEP.formDoc, SC.globex), mapOf(GDF.gedraId to id))
-        displayOf(read).single()[UF.value] shouldBe "Read me"
+        displayOf(read).first { it[UF.traitId] == GT.name }[UF.value] shouldBe "Read me"
     }
 
     "a row missing the presented trait gets an empty value, not a dropped column" {
@@ -77,8 +82,8 @@ class TraitUsageTest : StringSpec({
         )
         val rows = globex.getItems(clientPath(GEP.formDocs, SC.globex))
         val noName = rows.first { r -> r[GDF.entries].toJsonListOfMaps().none { it[GE.traitId] == GT.name } }
-        val display = displayOf(noName).single()
-        display[UF.label] shouldBe "Name"
-        display[UF.value] shouldBe ""
+        val name = displayOf(noName).first { it[UF.traitId] == GT.name }
+        name[UF.label] shouldBe "Name"
+        name[UF.value] shouldBe ""
     }
 })
