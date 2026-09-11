@@ -177,4 +177,66 @@ class SurveyEditTest : StringSpec({
         )
         surveyCompletion(gid)[SVY.complete] shouldBe true
     }
+
+    "a first state write from a non-owner patch is owned by the form's owner, not the patcher (#687)" {
+        val obClient = "ownbind687"
+        fun writeOb(withSurvey: Boolean) {
+            val config = gedraConfig(cxt, "${obClient}cfg", "${obClient}config", obClient) {
+                defineClient(
+                    ClientDef(
+                        clientId = obClient, name = obClient, usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+                trait("ObEntry", "obdetail", setOf(GedraDataType.formDoc), "The detail the survey requires.") {
+                    property("text", "A value.", required = true)
+                }
+                if (withSurvey) {
+                    workflow("obReview", WfEntry.survey) {
+                        task("only", "Review") { trait("obdetail"); save("save", "Save changes", WfSaveKind.edit) }
+                    }
+                }
+            }
+            GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", obClient).also { it.userId = 9000L }, config)
+            GedraConfigReload.reloadClient(cxt, obClient)
+        }
+
+        // The client starts with no survey, so the form is created with no state row -- the next write INSERTs
+        // the first one, the case whose ownership is stamped rather than preserved.
+        writeOb(withSurvey = false)
+        val owner = TestUser.create(cxt, "owner@$obClient.test", userClient = obClient)
+        val gid = owner.postItem(
+            GEP.formDocCreate,
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to "obdetail", GE.data to mapOf("text" to "v1")))),
+        )[GDF.gedraId].toOptStr().orEmpty()
+
+        // Add the survey live, then have a full admin -- a non-owner -- patch the owner's form. That fires the
+        // first survey-state write, triggered by someone other than the owner.
+        writeOb(withSurvey = true)
+        val admin = TestUser.createFullAdmin(cxt, "admin687@$obClient.test")
+        admin.postItems(
+            GEP.patch,
+            mapOf(
+                GPF.targets to mapOf(
+                    GedraDataType.formDoc.name to listOf(
+                        mapOf(
+                            GDF.gedraId to gid,
+                            GPF.edits to listOf(
+                                mapOf(
+                                    GED.action to GedraEditAction.addOrReplace.name,
+                                    GE.traitId to "obdetail", GE.data to mapOf("text" to "v2"),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        // The owner sees their form's survey state -- so the state row is owned by the owner (their scoped read
+        // admits it), not by the admin who triggered the write. Were it admin-owned, the owner's own-scoped
+        // withStates would not carry it.
+        val row = owner.getItems(GEP.formDocs, mapOf(GDF.withStates to true)).first { it[GDF.gedraId] == gid }
+        row[GDF.states].toJsonListOfMaps().mapNotNull { it[GE.traitId].toOptStr() } shouldContain SVY.surveyCompletion
+    }
 })

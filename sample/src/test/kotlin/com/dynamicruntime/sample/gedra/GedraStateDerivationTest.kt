@@ -113,30 +113,4 @@ class GedraStateDerivationTest : StringSpec({
         ids shouldContain SVY.surveyCompletion   // derived: recomputed
     }
 
-    "a first state write owns the row to the gedra's owner, not the acting context (issue #675)" {
-        // A client with no derivers, so the create writes no state -- the next write INSERTs the first state row,
-        // the one case whose ownership is stamped rather than preserved.
-        val client = "obown675"
-        val ownerId = 90601L
-        val actorId = 90602L
-        val ownerCxt = asUser(client, ownerId)
-        val gid = service().createGedra(
-            ownerCxt, GedraDataType.formDoc,
-            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Owned"))),
-        ).gedraId
-        service().readState(ownerCxt, gid, ReadScope.ofClient(client)).shouldBeEmpty()
-
-        // A DIFFERENT actor (an admin, say) writes the first state row, supplying the gedra as the owner.
-        val actorCxt = asUser(client, actorId)
-        val ownerRow = service().queryGedra(actorCxt, gid.fullId, GedraDataType.formDoc, ReadScope.ofClient(client))
-        service().writeState(
-            actorCxt, gid,
-            listOf(mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to emptyList<String>()))),
-            ownerRow = ownerRow,
-        )
-
-        // The state row belongs to the owner, not the actor: the owner's own-scope read sees it, the actor's does not.
-        traitIds(service().readState(ownerCxt, gid, ReadScope(client = client, userId = ownerId))) shouldContain GT.cfacts
-        service().readState(actorCxt, gid, ReadScope(client = client, userId = actorId)).shouldBeEmpty()
-    }
 })
