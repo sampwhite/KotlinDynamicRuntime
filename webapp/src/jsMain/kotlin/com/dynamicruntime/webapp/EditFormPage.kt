@@ -155,7 +155,7 @@ val EditFormPage = FC<Props> {
                 +"No form was named to edit."
             }
             notFound -> {
-                editNav()
+                formsBackToListing()
                 p {
                     className = ClassName("subtitle")
                     +"That form is not one you can edit."
@@ -166,7 +166,7 @@ val EditFormPage = FC<Props> {
                 +"This account's surface has no way to edit forms."
             }
             else -> {
-                editNav()
+                formsBackToListing()
                 p {
                     className = ClassName("subtitle")
                     +("Change an entry's fields, add a section for a new trait, or switch a section to delete. " +
@@ -270,16 +270,3 @@ val EditFormPage = FC<Props> {
     }
 }
 
-/**
- * The edit page's navigation row: a link back to **My forms** (the listing, issue #417), carrying the search
- * the caller was filtering by (issue #592) so returning lands on the same filtered list. A successful save
- * navigates there on its own (see the Save handler), so this is the way out *before* saving -- while editing,
- * and on the not-found branch.
- */
-private fun react.ChildrenBuilder.editNav() {
-    val search = formsSearchHashParams(formsSearchFromHash(hashParams()))
-    div {
-        className = ClassName("row")
-        backToListing(HMENU.pageForms, search)
-    }
-}

@@ -93,12 +93,16 @@ val NewFormPage = FC<Props> {
                 +"Loading…"
             }
             loadError != null -> errorText("Couldn't load the form.", loadError!!)
-            cat == null || ep == null -> p {
-                className = ClassName("subtitle")
-                +("This account's surface has no form to create. A client defines the traits its forms are " +
-                    "built from; yours declares none yet.")
+            cat == null || ep == null -> {
+                formsBackToListing()
+                p {
+                    className = ClassName("subtitle")
+                    +("This account's surface has no form to create. A client defines the traits its forms are " +
+                        "built from; yours declares none yet.")
+                }
             }
             else -> {
+                formsBackToListing()
                 val inputType = cat.inputType(ep)
                 p {
                     className = ClassName("subtitle")

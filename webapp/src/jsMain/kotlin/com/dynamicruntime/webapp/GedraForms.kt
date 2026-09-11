@@ -13,6 +13,10 @@ import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.home.HMENU
+import react.ChildrenBuilder
+import react.dom.html.ReactHTML.div
+import web.cssom.ClassName
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
@@ -77,6 +81,20 @@ fun savedNotShownNote(savedId: String?, appliedSearch: Map<String, Any?>, rowIds
  */
 fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String>> =
     search.entries.mapNotNull { (k, v) -> v.trim().ifEmpty { null }?.let { k to it } }
+
+/**
+ * The `← My forms` link atop a forms child page (issues #554, #671): the shared row + [backToListing], carrying
+ * the listing's search and sort back so a cancel/back returns to the same filtered, sorted list the child was
+ * opened from -- the sort rides through [formsSearchFromHash] as non-nav hash params (issues #592, #666, #669).
+ * Both the create and edit pages render this, so their way back cannot drift.
+ */
+fun ChildrenBuilder.formsBackToListing() {
+    val forward = formsSearchHashParams(formsSearchFromHash(hashParams()))
+    div {
+        className = ClassName("row")
+        backToListing(HMENU.pageForms, forward)
+    }
+}
 
 /** The declared query keys that are not applied-search values: paging, the owner-block flag, and the sort
  *  column and direction (#666) -- the sort rides its own hash params and state, never the applied search. */
