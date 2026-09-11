@@ -20,7 +20,7 @@ private val creationScope = MainScope()
  * client-configured, guided path; the picker is the generic developer one.
  */
 val CreationPage = FC<Props> {
-    var workflow by useState<WorkflowCreation?>(null)
+    var workflow by useState<WorkflowView?>(null)
     var noWorkflow by useState(false)
     var loading by useState(true)
     var loadError by useState<DisplayError?>(null)
@@ -54,7 +54,10 @@ val CreationPage = FC<Props> {
         }
         // No creation workflow: the generic trait picker, unchanged.
         noWorkflow -> NewFormPage {}
-        // A creation workflow: the guided form.
-        workflow != null -> CreationWorkflowForm { this.workflow = workflow!! }
+        // A creation workflow: the guided form (no gedraId -> the create save makes a new form).
+        workflow != null -> WorkflowForm {
+            view = workflow!!
+            gedraId = null
+        }
     }
 }
