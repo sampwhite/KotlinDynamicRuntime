@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
@@ -62,8 +63,9 @@ fun formsSearchFromHash(hp: Map<String, String>): Map<String, String> =
 fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String>> =
     search.entries.mapNotNull { (k, v) -> v.trim().ifEmpty { null }?.let { k to it } }
 
-/** The declared query keys that are not applied-search values: paging, and the owner-block flag. */
-private val formsNonSearchKeys = setOf(EP.offset, EP.limit, EI.includeUsers)
+/** The declared query keys that are not applied-search values: paging, the owner-block flag, and the sort
+ *  column and direction (#666) -- the sort rides its own hash params and state, never the applied search. */
+private val formsNonSearchKeys = setOf(EP.offset, EP.limit, EI.includeUsers, GSORT.sort, GSORT.sortDir)
 
 /**
  * The applied-search keys a listing's [inputSchema] actually declares (issue #592 review): its own property

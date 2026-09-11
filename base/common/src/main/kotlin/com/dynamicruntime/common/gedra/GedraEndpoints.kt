@@ -214,11 +214,16 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             emptyIsAbsent = true
             allowCoerce = true
         }
-        // The sort (issue #666): a column to order by -- a display trait id, or `updated`/`created` -- and a
+        // The sort (issue #666): a column to order by -- a display trait id, or a fixed column -- and a
         // direction. Absent means the default (most recently written first). Not admin-gated: any caller may
-        // order the rows they can already see. Open text, since the column names a client's own trait; an
-        // unknown column falls back to the default order rather than faulting a stale bookmark.
-        property(GSORT.sort, "Order by this column: a display trait id, or `${GSORT.updated}` / `${GSORT.created}`. Defaults to most recently written.") {
+        // order the rows they can already see (`${GSORT.owner}` is admin-only, as its column is, and is ignored
+        // otherwise). Open text, since the column names a client's own trait; an unknown column falls back to the
+        // default order rather than faulting a stale bookmark.
+        property(
+            GSORT.sort,
+            "Order by this column: a display trait id, or `${GSORT.updated}` / `${GSORT.created}` / " +
+                "`${GSORT.contains}` / `${GSORT.owner}` (owner is admin-only). Defaults to most recently written.",
+        ) {
             emptyIsAbsent = true
         }
         property(GSORT.sortDir, "Sort direction. Defaults to ascending when a column is named.") {
@@ -665,6 +670,12 @@ private fun searchFilter(
  * store no longer has, is simply absent -- their rows show no owner rather than faulting the page or naming
  * somebody the caller may not see.
  */
+private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>, scope: ReadScope): Map<Long, AuthUserRow> =
+    UserService.get(c).queryUsersByIds(c, rows.map { it.userId }, scope)
+
+/** The name the User column shows for [owner] (issue #666): the account's own name, else its public name. */
+private fun ownerSortName(owner: AuthUserRow): String = owner.name?.trim()?.ifEmpty { null } ?: owner.publicName()
+
 /**
  * The sort a listing request asks for (issue #666), or null for the default order. `updated` / `created` order
  * by the row's protocol dates; a display column arrives namespaced (`display_<traitId>`, [GSORT.displayTraitId])
@@ -691,20 +702,20 @@ private fun gedraSortFor(
             row.entries.mapNotNull { it[GE.traitId].toOptStr() }.joinToString(", ")
         }
         // The owner (the User column, issue #666): admin-only, as the column is -- an ordinary caller's rows are
-        // all their own. Ordered by the name the column shows (the name, else the email), resolved per owner and
-        // memoized so the whole matched set costs one lookup per distinct owner (the AuthUsers cache serves them
-        // in memory). A user beyond the caller's scope resolves to blank, which sorts last.
+        // all their own. Ordered by the name the column shows (the name, else the email). Resolved in the `prepare`
+        // hook by one batch read over the whole matched set ([ownersOf]) -- the cache answers what it holds and the
+        // misses share a single session, where a per-row lookup would open one session each on a cache-absent
+        // node. A user beyond the caller's scope is absent from the map, so `keyOf` reads blank, which sorts last.
         column == GSORT.owner -> {
             if (!AdminRules.canManageUsers(cxt)) {
                 null
             } else {
                 val names = HashMap<Long, String>()
-                GedraDataService.GedraSort(UsageKind.string, descending) { row ->
-                    names.getOrPut(row.userId) {
-                        UserService.get(cxt).queryUsersByIds(cxt, listOf(row.userId), scope)[row.userId]
-                            ?.let { it.name?.trim()?.ifEmpty { null } ?: it.publicName() } ?: ""
-                    }
-                }
+                GedraDataService.GedraSort(
+                    UsageKind.string,
+                    descending,
+                    prepare = { rows -> ownersOf(cxt, rows, scope).forEach { (id, owner) -> names[id] = ownerSortName(owner) } },
+                ) { row -> names[row.userId] ?: "" }
             }
         }
         else -> {
@@ -717,9 +728,6 @@ private fun gedraSortFor(
     }
 }
 
-private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>, scope: ReadScope): Map<Long, AuthUserRow> =
-    UserService.get(c).queryUsersByIds(c, rows.map { it.userId }, scope)
-
 /**
  * The owner block attached to a listed row (issue #580, flat keys in #562): a `{name?, email}` map under
  * [GDF.owner]. The email always, and a display name only when the account has one that is not the email --
@@ -731,7 +739,7 @@ private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>, scope: ReadScope): Map
 private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> {
     if (owner == null) return emptyMap()
     val email = owner.primaryId
-    val name = owner.name?.trim()?.ifEmpty { null } ?: owner.publicName()
+    val name = ownerSortName(owner)
     val block = if (name == email) mapOf(DUF.email to email) else mapOf(DUF.name to name, DUF.email to email)
     return mapOf(GDF.owner to block)
 }

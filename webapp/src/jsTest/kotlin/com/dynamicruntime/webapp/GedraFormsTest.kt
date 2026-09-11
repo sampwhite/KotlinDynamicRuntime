@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
@@ -406,14 +407,19 @@ class GedraFormsTest {
                 EI.includeUsers to emptyMap<String, Any?>(),
                 EI.user to emptyMap<String, Any?>(),
                 EI.q to emptyMap<String, Any?>(),
+                GSORT.sort to emptyMap<String, Any?>(),
+                GSORT.sortDir to emptyMap<String, Any?>(),
                 "acmeSiteAuditContains" to emptyMap<String, Any?>(),
             ),
         )
         val keys = formsSearchKeys(inputSchema)
         // Kept: the trait filter, the scope-bar user, the free-text q.
         assertTrue("acmeSiteAuditContains" in keys && EI.user in keys && EI.q in keys)
-        // Dropped: paging and the owner flag, even though declared.
+        // Dropped: paging, the owner flag, and the sort column/direction (#666) -- the sort rides its own hash
+        // params and state, so treating it as an applied filter would double-emit it and wrongly read the listing
+        // as narrowed (its empty state would never show).
         assertTrue(EP.offset !in keys && EP.limit !in keys && EI.includeUsers !in keys)
+        assertTrue(GSORT.sort !in keys && GSORT.sortDir !in keys)
         // A stale/hand-added key the schema no longer declares is not in the whitelist, so seeding drops it.
         assertTrue("staleTraitContains" !in keys)
         val hashSearch = mapOf("acmeSiteAuditContains" to "dana", "staleTraitContains" to "x", EP.offset to "50")

@@ -381,7 +381,8 @@ val FormsPage = FC<Props> {
                                         viewingId?.let { id ->
                                             navigateHash(
                                                 listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
-                                                    formsSearchHashParams(appliedSearch),
+                                                    formsSearchHashParams(appliedSearch) +
+                                                    sortHashParams(sortColumn, sortDescending),
                                             )
                                         }
                                     }
@@ -590,7 +591,8 @@ val FormsPage = FC<Props> {
                     onEdit = { id ->
                         navigateHash(
                             listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
-                                formsSearchHashParams(appliedSearch),
+                                formsSearchHashParams(appliedSearch) +
+                                sortHashParams(sortColumn, sortDescending),
                         )
                     }
                     confirmingDeleteId = rowConfirmDeleteId

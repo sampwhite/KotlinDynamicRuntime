@@ -1370,13 +1370,24 @@ class GedraDataService : ServiceInitializer {
      * A chosen sort over a gedra listing (issue #666): [keyOf] gives the row's value for the sort column (a
      * display value, or a protocol date as text), compared as [kind] in the [descending] direction. Composed
      * with the id tiebreak so the order stays total; the default order applies when no sort is chosen.
+     *
+     * [prepare], when set, is handed the whole matched set once before any key is read -- the hook a sort key
+     * that needs a batch read (the owner name, issue #666) uses to resolve every row in one query instead of one
+     * per [keyOf] call.
      */
-    class GedraSort(val kind: UsageKind, val descending: Boolean, val keyOf: (GedraDataRow) -> String)
+    class GedraSort(
+        val kind: UsageKind,
+        val descending: Boolean,
+        val prepare: ((List<GedraDataRow>) -> Unit)? = null,
+        val keyOf: (GedraDataRow) -> String,
+    )
 
-    /** [rows] ordered by [sort] (issue #666): each row's key computed **once**, then compared by kind and
-     *  direction, with the id descending as the total tiebreak (as the default order ends). */
-    private fun orderBySort(rows: List<GedraDataRow>, sort: GedraSort): List<GedraDataRow> =
-        rows.map { it to sort.keyOf(it) }
+    /** [rows] ordered by [sort] (issue #666): [GedraSort.prepare] run once over the whole set, then each row's key
+     *  computed **once** and compared by kind and direction, with the id descending as the total tiebreak (as the
+     *  default order ends). */
+    private fun orderBySort(rows: List<GedraDataRow>, sort: GedraSort): List<GedraDataRow> {
+        sort.prepare?.invoke(rows)
+        return rows.map { it to sort.keyOf(it) }
             .sortedWith(
                 Comparator { a, b ->
                     val c = compareForSort(a.second, b.second, sort.kind, sort.descending)
@@ -1384,6 +1395,7 @@ class GedraDataService : ServiceInitializer {
                 },
             )
             .map { it.first }
+    }
 
     /** One page of a gedra listing: the [rows] returned, and [numAvailable] -- how many the scope admits in all. */
     class GedraListPage(val rows: List<GedraDataRow>, val numAvailable: Int)
