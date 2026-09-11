@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.GedraWriteHook
+import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchOptionsProvider
@@ -112,6 +113,18 @@ class SchemaCollector(
     /** Registers a post-write hook (issue #675); order is preserved and matters -- hooks run in registration order. */
     fun addWriteHook(hook: GedraWriteHook) {
         writeHooks.add(hook)
+    }
+
+    /**
+     * The workflow function kinds components registered (issue #677) -- the Kotlin `create` half of a function,
+     * keyed by `fn`. `WorkflowService` organizes these by event and resolves them onto workflow definitions in a
+     * second pass; the *usages* that name them are data on the definitions.
+     */
+    val workflowFunctions: MutableList<WfFunctionCreation> = mutableListOf()
+
+    /** Registers a workflow function kind (issue #677), the same seam a deriver or a cfact source registers through. */
+    fun addWorkflowFunction(creation: WfFunctionCreation) {
+        workflowFunctions.add(creation)
     }
 
     /**

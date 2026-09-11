@@ -147,9 +147,36 @@ private val absenceErrors = setOf(
 
 /** Walks a dotted path through nested maps, keeping the pre-grammar error codes exactly as they were. */
 @KdrPrivate
-fun resolvePath(state: ScriptState, data: Map<String, Any?>, node: PathNode, tolerant: Boolean): Any? {
-    var current: Any? = data
-    for (segment in node.segments) {
+fun resolvePath(
+    state: ScriptState, data: Map<String, Any?>, node: PathNode, tolerant: Boolean, spreadArrays: Boolean = false,
+): Any? = resolveSegments(state, node, data, node.segments, tolerant, spreadArrays)
+
+/**
+ * The walk behind `resolvePath` -- shared so the strict template resolver and a workflow function's
+ * `pluckDataPath` speak one path language.
+ *
+ * With `spreadArrays` off (the template default) a segment whose value is not an object faults, or reads as
+ * null when `tolerant` -- exactly the original behavior. With it on, a segment reached while the value is a
+ * **list** applies the remaining path to each element and flattens one level (each element walked tolerantly;
+ * a miss contributes nothing), so `a.b` over `{"a":[{"b":1},{"b":2}]}` yields `[1, 2]`.
+ */
+@KdrPrivate
+fun resolveSegments(
+    state: ScriptState, node: PathNode, start: Any?, segments: List<String>, tolerant: Boolean, spreadArrays: Boolean,
+): Any? {
+    var current: Any? = start
+    for (i in segments.indices) {
+        if (spreadArrays && current is List<*>) {
+            val rest = segments.subList(i, segments.size)
+            return current.flatMap { element ->
+                when (val v = resolveSegments(state, node, element, rest, tolerant = true, spreadArrays = true)) {
+                    null -> emptyList()
+                    is List<*> -> v
+                    else -> listOf(v)
+                }
+            }
+        }
+        val segment = segments[i]
         val map = current as? Map<*, *>
         if (map == null) {
             if (tolerant) return null
@@ -175,6 +202,15 @@ fun resolvePath(state: ScriptState, data: Map<String, Any?>, node: PathNode, tol
     }
     return current
 }
+
+/**
+ * A value at dotted [dottedPath] in [data], for a **workflow function's input** (issue #677): tolerant of
+ * misses and **spreading across arrays** -- `a.b` over `{"a":[{"b":1},{"b":2}]}` yields `[1, 2]`. The
+ * function-side counterpart of the strict template resolution; both share `resolvePath`, so there is one path
+ * language and one implementation.
+ */
+fun pluckDataPath(data: Map<String, Any?>, dottedPath: String): Any? =
+    resolvePath(ScriptState(dottedPath, '$'), data, PathNode(dottedPath.split('.'), dottedPath), tolerant = true, spreadArrays = true)
 
 @KdrPrivate
 /** Returns a value or throws, never null -- the null-yielding positions are all in [evalNode]. */
