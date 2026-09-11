@@ -87,6 +87,13 @@ object WVF {
     const val facts = "facts"
 
     /**
+     * On a task: the form's **current entries** for that task's traits, present only when the view resolved
+     * against an existing gedra (a survey edit, issue #658) -- what seeds each field with its stored value. A
+     * creation view carries none, since there is no form yet. Each is a stored `{traitId, data, ...}` entry.
+     */
+    const val entries = "entries"
+
+    /**
      * On the view's top level: the caller's **frontend-delivered cfacts** (issue #569), `name -> present` over
      * the whole `toFrontend` vocabulary -- what the page evaluates a trait property's `g-visibleWhen` against, so
      * an admin-only field is hidden from an ordinary caller in a creation workflow exactly as it is on the

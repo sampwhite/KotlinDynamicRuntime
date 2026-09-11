@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
@@ -88,5 +89,27 @@ class GedraStateDerivationTest : StringSpec({
         )
         service().formCfacts(ctx, gid, scope) shouldBe setOf(ST.sampleFormReady)
         service().assembleFormCfacts(ctx, gid, scope) shouldContain ST.sampleFormReady
+    }
+
+    "recompute rebuilds derived state while preserving asserted state (issue #658)" {
+        val acme = asUser(SC.acme, 90504L)
+        val scope = ReadScope.ofClient(SC.acme)
+        val gid = service().createGedra(acme, GedraDataType.formDoc, listOf(expense(2024))).gedraId
+
+        // Assert an external-sync marker (asserted). `writeState` whole-replaces, so the derived state is
+        // momentarily gone -- exactly what a later data edit's recompute must recover from without losing the
+        // assertion, since an external fact is not a function of the form's data.
+        service().writeState(
+            acme, gid,
+            listOf(mapOf(GE.traitId to ST.externalId, GE.data to mapOf(ST.externalSource to "salesforce", ST.externalRef to "SF-1"))),
+        )
+
+        // The recompute rebuilds every derived entry (acme's survey completion and its year presence) and keeps
+        // the asserted one untouched.
+        service().recomputeDerivedState(acme, gid, scope)
+        val ids = traitIds(service().readState(acme, gid, scope))
+        ids shouldContain ST.externalId          // asserted: preserved
+        ids shouldContain ST.traitPresenceByYear // derived: recomputed
+        ids shouldContain SVY.surveyCompletion   // derived: recomputed
     }
 })
