@@ -13,7 +13,9 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.startup.SchemaService
@@ -24,6 +26,7 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain as shouldContainString
 import io.kotest.matchers.types.shouldBeSameInstanceAs
 import io.kotest.matchers.types.shouldNotBeSameInstanceAs
 
@@ -116,6 +119,66 @@ class GedraConfigReloadTest : StringSpec({
         schema().gedraTraitsFor(victim).map { it.traitId } shouldBe before
         GedraConfigLoadService.get(cxt).loadedFor(victim).size shouldBe 1
         schema().gedraTraitsFor(owner).map { it.traitId } shouldContain "rlShared"
+    }
+
+    // The case above throws from the collector, *before* the snapshot is published. A check that runs *after* the
+    // publish (checkVisibleWhen / checkUsageRules / checkLayouts) exercises the other half of the reload's
+    // guarantee: the try-block must restore the prior snapshot and rethrow. checkUsageRules is reachable here via
+    // its reserved-field collision (issue #538) -- a single usage that stores and deserializes cleanly, so the
+    // collector accepts it and the reload publishes before the check refuses it. Its *duplicate*-usage arm
+    // (issue #681) cannot be reached this way: the config slot refuses two entries of one key at serialization,
+    // well before the reload, so a duplicate reaches checkUsageRules only from a source config (covered by
+    // UsageRuleBootCheckTest). Its own instance, because a post-publish failure restores the snapshot but not the
+    // collector, so the refused config lingers and every later reload in this node would re-run the checks over it.
+    "a reload refused by a post-publish check restores the running set and rethrows (issue #538)" {
+        val own = Startup.mkTestBootCxt(
+            "cfgReloadRestore", "cfgReloadRestoreTest", mapOf("KDR_DB_NAME" to "cfgReload_restore"),
+        )
+        val client = "reloadcollide"
+        fun ownClient() = own.mkSubContext("restore", client).also { it.userId = 9100L }
+        fun ownSchema() = SchemaService.get(own)
+
+        // A valid first revision establishes the client, then the running store is captured.
+        val base = gedraConfig(own, "${client}base", ns(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            trait("rlSoloEntry", "rlSolo", setOf(GedraDataType.formDoc), "A trait.") {
+                property("text", "A value.", required = true)
+            }
+        }
+        GedraConfigService.get(own).writeConfig(ownClient(), base)
+        GedraConfigReload.reloadClient(own, client)
+        val storeBefore = ownSchema().storeFor(client)
+
+        // The refused revision: a single usage whose parameter name is a reserved listing field (EP.offset). It
+        // stores cleanly and the collector accepts it, so the reload publishes -- and checkUsageRules then refuses.
+        val bad = gedraConfig(own, "${client}collide", ns(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            trait("offsetEntry", EP.offset, setOf(GedraDataType.formDoc), "A trait named like a reserved field.") {
+                property("value", "A value.")
+            }
+            traitUsage(EP.offset, "Offset", $$"${value}", UsageKind.string)
+        }
+        GedraConfigService.get(own).writeConfig(ownClient(), bad)
+        val thrown = shouldThrow<KdrException> { GedraConfigReload.reloadClient(own, client) }
+        // The reserved-field message confirms it was checkUsageRules that refused it -- i.e. the failure came
+        // *after* the publish, which is the branch under test (an earlier guard would leave the snapshot untouched
+        // and pass the identity check below trivially).
+        thrown.fullMessage() shouldContainString "reserved forms-listing field"
+
+        // The running set is exactly what it was: the restore re-published the prior snapshot, so a request
+        // resolves the client to the identical store, which never carried the refused revision's type.
+        ownSchema().storeFor(client) shouldBeSameInstanceAs storeBefore
+        ownSchema().storeFor(client).types.keys shouldNotContain "${ns(client)}.offsetEntry"
     }
 
     // Its own database: an admin created without a client lands in `public`, and on the default in-memory
