@@ -166,4 +166,45 @@ class GedraSearchTest : StringSpec({
         // A trait a client could not have generated -- typed, but with neither ending -- still reads as a control.
         decodeSearchParam("year", mapOf(SCH.type to SCT.number), setOf("year")).role shouldBe SearchRole.exact
     }
+
+    "compareForSort orders a number column by value, not lexically" {
+        // "10" after "2" ascending -- a lexical sort would put "10" first.
+        compareForSort("2", "10", UsageKind.number, descending = false) shouldBe -1
+        compareForSort("2", "10", UsageKind.number, descending = true) shouldBe 1
+    }
+
+    "compareForSort orders a date column chronologically" {
+        compareForSort("2024-01-01", "2024-03-01", UsageKind.date, descending = false) shouldBe -1
+        compareForSort("2024-01-01", "2024-03-01", UsageKind.date, descending = true) shouldBe 1
+    }
+
+    "compareForSort orders a string column case-insensitively" {
+        compareForSort("apple", "Banana", UsageKind.string, descending = false) shouldBe -1
+        compareForSort("apple", "Apple", UsageKind.string, descending = false) shouldBe 0
+    }
+
+    "compareForSort puts a blank or unreadable value last, in either direction" {
+        // Blank vs a value: blank is always the greater (sorts after), ascending and descending alike.
+        compareForSort("", "5", UsageKind.number, descending = false) shouldBe 1
+        compareForSort("", "5", UsageKind.number, descending = true) shouldBe 1
+        compareForSort("5", "", UsageKind.number, descending = true) shouldBe -1
+        // A non-numeric value in a number column reads as no value -- last, like a blank.
+        compareForSort("n/a", "5", UsageKind.number, descending = false) shouldBe 1
+        // Two blanks are equal, so the caller's id tiebreak decides.
+        compareForSort("", "", UsageKind.string, descending = false) shouldBe 0
+    }
+
+
+    "GSORT.displayTraitId decodes a namespaced display column, and leaves a fixed or bare one alone" {
+        GSORT.displayTraitId("${GSORT.displayColumnPrefix}year") shouldBe "year"
+        // A trait named like a fixed column still decodes to its own id -- the namespacing is what prevents the
+        // collision (issue #666 review): `display_updated` is the trait `updated`, not the protocol date column.
+        GSORT.displayTraitId("${GSORT.displayColumnPrefix}${GSORT.updated}") shouldBe GSORT.updated
+        // A bare fixed column, or a bare name, is not a display key.
+        GSORT.displayTraitId(GSORT.updated) shouldBe null
+        GSORT.displayTraitId("year") shouldBe null
+        // The prefix alone names no trait.
+        GSORT.displayTraitId(GSORT.displayColumnPrefix) shouldBe null
+    }
+
 })

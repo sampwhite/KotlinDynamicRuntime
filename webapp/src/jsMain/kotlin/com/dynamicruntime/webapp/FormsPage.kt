@@ -5,6 +5,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.UF
+import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchType
@@ -25,6 +26,14 @@ import react.useEffectOnce
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+
+/** The sort request params (issue #666): the column and direction, or nothing for the default order. */
+private fun sortArgs(col: String?, descending: Boolean): Map<String, Any?> =
+    if (col == null) emptyMap() else mapOf(GSORT.sort to col, GSORT.sortDir to if (descending) GSORT.desc else GSORT.asc)
+
+/** The sort as hash params (issue #666): shareable and restored on mount, like the applied search. */
+private fun sortHashParams(col: String?, descending: Boolean): List<Pair<String, String>> =
+    if (col == null) emptyList() else listOf(GSORT.sort to col, GSORT.sortDir to if (descending) GSORT.desc else GSORT.asc)
 
 /** Coroutine scope for the forms page's suspend calls (the catalog fetch, the list page, and a single fetch). */
 private val formsScope = MainScope()
@@ -92,6 +101,11 @@ val FormsPage = FC<Props> {
     // draft, and paging/reloads carry the applied set so a filtered list stays filtered across pages.
     var searchDraft by useState<Map<String, String>>(emptyMap())
     var appliedSearch by useState<Map<String, String>>(emptyMap())
+    // The chosen sort (issue #666): a display trait id or `updated`/`created`, null for the default order, and a
+    // direction. Carried in the hash like the applied search, and passed to `loadPage` so paging and a new
+    // search keep it. The backend ignores an unknown column, so a stale sort in a bookmark still lists.
+    var sortColumn by useState<String?>(null)
+    var sortDescending by useState(false)
     // Whether the caller administers other users (issue #562), from the shell's UI-config. False until it
     // answers and false when it cannot, so the administrative controls are never drawn on a guess.
     var canManageUsers by useState(false)
@@ -139,7 +153,13 @@ val FormsPage = FC<Props> {
      * search parameters (issue #538), sent beside `limit`/`offset`; it is passed explicitly rather than read
      * from state so a reload never races a just-applied filter. Flips [listLoading] off when done.
      */
-    fun loadPage(ep: EndpointInfo, off: Int, search: Map<String, Any?>) {
+    fun loadPage(
+        ep: EndpointInfo,
+        off: Int,
+        search: Map<String, Any?>,
+        sortCol: String? = sortColumn,
+        sortDesc: Boolean = sortDescending,
+    ) {
         // A row's armed delete confirm belongs to the page it was armed on; paging away (or reloading after a
         // delete) drops it, so a primed "Yes" never lingers on a row the user has navigated past (issue #417).
         rowConfirmDeleteId = null
@@ -152,7 +172,8 @@ val FormsPage = FC<Props> {
             try {
                 val resp = SchemaCatalogApi.invoke(
                     ep,
-                    mapOf(EP.limit to formsPageSize, EP.offset to off) + search + includeUsersArg(canManageUsers),
+                    mapOf(EP.limit to formsPageSize, EP.offset to off) + search +
+                        sortArgs(sortCol, sortDesc) + includeUsersArg(canManageUsers),
                 )
                 rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                 numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
@@ -216,9 +237,16 @@ val FormsPage = FC<Props> {
                     val initialSearch = formsSearchFromHash(hashParams()).filterKeys { it in declaredKeys }
                     searchDraft = initialSearch
                     appliedSearch = initialSearch
+                    // The sort rides in the hash too (issue #666): restore it so a bookmarked or shared sorted
+                    // listing loads sorted. The freshly-read hash, not the state set below (not landed yet).
+                    val initialSortCol = hashParams()[GSORT.sort]?.ifBlank { null }
+                    val initialSortDesc = hashParams()[GSORT.sortDir]?.equals(GSORT.desc, ignoreCase = true) == true
+                    sortColumn = initialSortCol
+                    sortDescending = initialSortDesc
                     val resp = SchemaCatalogApi.invoke(
                         ep,
-                        mapOf(EP.limit to formsPageSize, EP.offset to 0) + initialSearch + includeUsersArg(canManage),
+                        mapOf(EP.limit to formsPageSize, EP.offset to 0) + initialSearch +
+                            sortArgs(initialSortCol, initialSortDesc) + includeUsersArg(canManage),
                     )
                     rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                     numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
@@ -293,7 +321,7 @@ val FormsPage = FC<Props> {
     // Keep the hash in step with the open form: opening one is a navigation and earns a history entry, so Back
     // returns to the list. A `g=` naming a form the page does not hold is corrected in place rather than pushed
     // onto -- the fetch still resolves it, but it is not a list row to page back to.
-    useEffect(viewingId, restored, rows, appliedSearch) {
+    useEffect(viewingId, restored, rows, appliedSearch, sortColumn, sortDescending) {
         if (!restored) {
             return@useEffect
         }
@@ -304,6 +332,7 @@ val FormsPage = FC<Props> {
             add(HP.page to HMENU.pageForms)
             viewingId?.let { add(HP.gedra to it) }
             addAll(formsSearchHashParams(appliedSearch))
+            addAll(sortHashParams(sortColumn, sortDescending))
         }
         val current = hashParams()[HP.gedra]
         val reachable = current == null || rows.any { it[GDF.gedraId] == current }
@@ -352,7 +381,8 @@ val FormsPage = FC<Props> {
                                         viewingId?.let { id ->
                                             navigateHash(
                                                 listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
-                                                    formsSearchHashParams(appliedSearch),
+                                                    formsSearchHashParams(appliedSearch) +
+                                                    sortHashParams(sortColumn, sortDescending),
                                             )
                                         }
                                     }
@@ -550,10 +580,19 @@ val FormsPage = FC<Props> {
                     canDelete = deleteEndpoint != null
                     showOwner = canManageUsers
                     highlightId = highlightRowId
+                    this.sortColumn = sortColumn
+                    this.sortDescending = sortDescending
+                    onSort = { col, desc ->
+                        sortColumn = col
+                        sortDescending = desc
+                        offset = 0
+                        listEndpoint?.let { loadPage(it, 0, appliedSearch, col, desc) }
+                    }
                     onEdit = { id ->
                         navigateHash(
                             listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
-                                formsSearchHashParams(appliedSearch),
+                                formsSearchHashParams(appliedSearch) +
+                                sortHashParams(sortColumn, sortDescending),
                         )
                     }
                     confirmingDeleteId = rowConfirmDeleteId

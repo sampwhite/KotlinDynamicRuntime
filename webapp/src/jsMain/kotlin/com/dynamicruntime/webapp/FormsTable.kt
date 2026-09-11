@@ -6,6 +6,7 @@ import react.create
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.div
 import web.cssom.ClassName
+import com.dynamicruntime.common.gedra.GSORT
 
 /**
  * The caller's form documents as an antd table: one row per form, most recently written first as the endpoint
@@ -60,6 +61,17 @@ external interface FormsTableProps : Props {
 
     /** Performs the delete of a form, then (the parent) reloads the page. */
     var onConfirmDelete: (String) -> Unit
+
+    /** The column the list is currently sorted by (issue #666) -- a display trait id, or `updated` / `created`
+     *  -- or null for the default order. Drives which header shows the sort arrow. */
+    var sortColumn: String?
+
+    /** Whether the current sort is descending. */
+    var sortDescending: Boolean
+
+    /** Called when a header sort changes: the new column (a trait id, or `updated`/`created`) and direction, or
+     *  null when the sort is cleared (back to the default order). The parent re-fetches. */
+    var onSort: (column: String?, descending: Boolean) -> Unit
 }
 
 val FormsTable = FC<FormsTableProps> { props ->
@@ -80,17 +92,29 @@ val FormsTable = FC<FormsTableProps> { props ->
         tableLayout = "fixed"
         pagination = false
         rowKey = "key"
+        // Server-side sort (issue #666): antd reports the header the caller clicked and its direction. The
+        // dataIndex it reports **is** the endpoint's sort key -- a display column's is namespaced
+        // (`display_<traitId>`), which is exactly what keeps a trait named like a fixed column from colliding
+        // with it, so it is sent as-is. Order is undefined on the third click, which clears the sort.
+        onChange = { _, _, sorter ->
+            val order = sorter.order as? String
+            val field = sorter.field as? String
+            if (order == null || field == null) props.onSort(null, false) else props.onSort(field, order == "descend")
+        }
         val cols = buildList {
             // Namespaced key: a usage trait id must not shadow the reserved row key ("key") or a fixed column
             // ("contains"/"owner"/"updated"/"created"/"actions") -- overwriting the row key would break which
             // form a click opens.
-            displayCols.forEach { add(column(it.label, displayColKey(it.traitId), 160)) }
-            add(column("Contains", "contains", null))
-            if (props.showOwner) add(ownerColumn())
-            // The order is most recently written first (issue #562); the arrow says so without offering a
-            // sort the endpoint does not take.
-            add(column("Updated ↓", "updated", 175))
-            add(column("Created", "created", 175))
+            // Sortable (issue #666): a display column orders by its trait, the date columns by their value. The
+            // header arrow is antd's, controlled from `sortColumn`/`sortDescending`; the sort key sent to the
+            // endpoint is the column's dataIndex -- namespaced for a display column, `updated`/`created` for a date.
+            displayCols.forEach {
+                add(sortableColumn(it.label, displayColKey(it.traitId), 160, props.sortColumn, props.sortDescending))
+            }
+            add(sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending))
+            if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
+            add(sortableColumn("Updated", GSORT.updated, 175, props.sortColumn, props.sortDescending))
+            add(sortableColumn("Created", GSORT.created, 175, props.sortColumn, props.sortDescending))
             if (anyActions) add(actionsColumn(props))
         }
         columns = cols.toTypedArray()
@@ -159,8 +183,10 @@ private fun actionsColumn(props: FormsTableProps): dynamic {
  * in small type beneath, or the email alone. The backend sends `ownerName` only when the account has a name
  * that is not its email, so the cell renders what arrives rather than comparing the two.
  */
-private fun ownerColumn(): dynamic {
-    val c = column("User", "owner", 200)
+private fun ownerColumn(sortColumn: String?, descending: Boolean): dynamic {
+    // Sortable by the owner name (issue #666); the cell still renders the name-over-email block, so the sort key
+    // is the column's `owner` dataIndex while the render reads `ownerName`/`ownerEmail` off the row.
+    val c = sortableColumn("User", GSORT.owner, 200, sortColumn, descending)
     c.render = fun(_: dynamic, record: dynamic, _: dynamic): dynamic = FormOwnerCell.create {
         name = record.ownerName as? String
         email = record.ownerEmail as? String
@@ -263,7 +289,27 @@ private fun minTableWidth(cols: List<dynamic>): dynamic {
 
 /** The antd row/column key for a display column: a trait id, namespaced so it cannot shadow the reserved
  *  row key ("key") or the fixed "contains"/"owner"/"updated"/"created"/"actions" columns (issue #537). */
-private fun displayColKey(traitId: String): String = "display_$traitId"
+private fun displayColKey(traitId: String): String = GSORT.displayColumnPrefix + traitId
+
+/**
+ * An antd column that sorts server-side (issue #666): `sorter = true` with a **controlled** `sortOrder`, so the
+ * arrow reflects [sortColumn]/[descending] the parent holds rather than antd sorting the page itself. The
+ * [dataIndex] is both the row-data key and the endpoint's sort key -- namespaced (`display_<traitId>`) for a
+ * display column, so it cannot be read as a fixed `updated`/`created` column.
+ */
+private fun sortableColumn(
+    title: String,
+    dataIndex: String,
+    width: Int?,
+    sortColumn: String?,
+    descending: Boolean,
+): dynamic {
+    val c = column(title, dataIndex, width)
+    c.sorter = true
+    // The dataIndex is the endpoint's sort key (a display column's is namespaced); the arrow shows only on it.
+    c.sortOrder = if (sortColumn == dataIndex) (if (descending) "descend" else "ascend") else null
+    return c
+}
 
 /** Builds an antd column config `{ title, dataIndex, key, width? }`. */
 private fun column(title: String, dataIndex: String, width: Int?): dynamic {

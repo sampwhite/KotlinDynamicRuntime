@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.gedra.SearchRole
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.decodeSearchParam
@@ -17,8 +18,8 @@ import react.useState
 import web.cssom.ClassName
 
 /** The fields on the reserved side of the listing query -- paging, the user scope, the free-text term, and the
- *  include-users flag -- not search fields, and never shown as one. */
-private val reservedQueryFields = setOf(EP.offset, EP.limit, EI.user, EI.q, EI.includeUsers)
+ *  include-users flag, and the sort column and direction (#666) -- not search fields, and never shown as one. */
+private val reservedQueryFields = setOf(EP.offset, EP.limit, EI.user, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir)
 
 /** How long a type-ahead waits after a keystroke before it fetches, so a fast typist makes one call not many. */
 private const val suggestDebounceMs = 200

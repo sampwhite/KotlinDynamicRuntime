@@ -170,7 +170,7 @@ fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedr
  * search parameter would land on one of these is refused at boot ([searchParamCollisions]); this guards the
  * merge regardless, so a slipped-through one cannot silently rewrite a stable field's schema.
  */
-val reservedQueryFieldNames: Set<String> = setOf(EP.offset, EP.limit, EI.user, EI.q, EI.includeUsers)
+val reservedQueryFieldNames: Set<String> = setOf(EP.offset, EP.limit, EI.user, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir)
 
 /**
  * The search parameter names [usages] would generate that collide with a [reservedQueryFieldNames] entry -- the
@@ -250,4 +250,79 @@ private fun compareBound(value: String, kind: UsageKind, query: String): Int? = 
     }
     // A string is never a bound; guarded by construction (a string usage makes no min/max param), null here.
     UsageKind.string -> null
+}
+
+/**
+ * The **sort** parameter names on the listing query (issue #666): which column to order by, and the direction.
+ * Reserved like the other stable field names so a client trait cannot mint a search parameter that collides
+ * with them (see [reservedQueryFieldNames], into which these are folded).
+ */
+@Suppress("ConstPropertyName")
+object GSORT {
+    /** The column to sort by: a display trait id, or [updated] / [created]. Absent means the default order. */
+    const val sort = "sort"
+
+    /** The direction: [asc] or [desc]. Absent (with a column named) means ascending. */
+    const val sortDir = "sortDir"
+
+    /** Sort by the row's last-updated date -- the listing's default column. */
+    const val updated = "updated"
+
+    /** Sort by the row's created date. */
+    const val created = "created"
+
+    /** Sort by the "Contains" summary -- the row's traits (issue #666), ordered by their ids as text. */
+    const val contains = "contains"
+
+    /** Sort by the owner (the User column, issue #666), by the name the column shows. Admin-only, as the column
+     *  is: an ordinary caller sees only their own rows, so there is no one to order by. */
+    const val owner = "owner"
+
+    const val asc = "asc"
+    const val desc = "desc"
+
+    /**
+     * The wire prefix a **display-column** sort key carries (issue #666), so a trait named like a fixed column
+     * (`updated`/`created`) cannot collide with it: a display column sorts under `display_<traitId>`, a fixed
+     * column under its bare name. The same `display_` the forms table keys its display *cells* by, kept here so
+     * the endpoint's decode and the table's encode read one constant.
+     */
+    const val displayColumnPrefix = "display_"
+
+    /** The display trait id a sort [column] names ([displayColumnPrefix] stripped), or null when it is a fixed
+     *  column (`updated`/`created`) or otherwise not a display key -- so a trait called `updated` still decodes
+     *  to its own value rather than the protocol date. */
+    fun displayTraitId(column: String): String? =
+        if (column.startsWith(displayColumnPrefix) && column.length > displayColumnPrefix.length) {
+            column.removePrefix(displayColumnPrefix)
+        } else {
+            null
+        }
+}
+
+/**
+ * Orders two display values [a] and [b] for a sort column of [kind] (issue #666). A blank value -- a row without
+ * the trait, or one whose value does not read as the kind -- sorts **last** whichever way [descending] points,
+ * since "no value" is not part of the ordered range; otherwise a number and a date compare by their parsed value
+ * and text case-insensitively, reversed for [descending]. The caller composes this with a total tiebreak (the
+ * id), so equal values still page in a stable order. The same string-then-parse-per-kind reading search's bounds
+ * use ([matchesOne]); pure, and tested in the kernel.
+ */
+fun compareForSort(a: String, b: String, kind: UsageKind, descending: Boolean): Int = when (kind) {
+    UsageKind.number -> nullsLastForSort(a.trim().toDoubleOrNull(), b.trim().toDoubleOrNull(), descending)
+    UsageKind.date -> nullsLastForSort(
+        runCatching { a.trim().parseDate() }.getOrNull(),
+        runCatching { b.trim().parseDate() }.getOrNull(),
+        descending,
+    )
+    UsageKind.string -> nullsLastForSort(a.trim().lowercase().ifEmpty { null }, b.trim().lowercase().ifEmpty { null }, descending)
+}
+
+/** Orders [a] against [b] with a null (a blank or unreadable value) always **last**, and the non-null pair
+ *  reversed for [descending] (issue #666). */
+private fun <T : Comparable<T>> nullsLastForSort(a: T?, b: T?, descending: Boolean): Int = when {
+    a == null && b == null -> 0
+    a == null -> 1
+    b == null -> -1
+    else -> if (descending) b.compareTo(a) else a.compareTo(b)
 }
