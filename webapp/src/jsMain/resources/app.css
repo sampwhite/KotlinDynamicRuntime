@@ -779,8 +779,9 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 
 .filter-well {
     display: grid;
-    /* `min(…, 100%)` keeps a track from exceeding the well on a narrow viewport: a fixed 480px minimum in a
-       255px well pushed the whole page to 553px wide on a phone (measured, issue #683). */
+    /* `min(…, 100%)` keeps a track from exceeding the well on a narrow viewport: a fixed minimum wider than the
+       well pushed the whole page wide on a phone (measured, issue #683). A from-to pair wider than its track
+       wraps instead -- see .filter-range. */
     grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
     gap: 12px 24px;
     padding: 12px;
@@ -788,10 +789,6 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     border-radius: 8px;
     background: var(--surface-page);
 }
-/* Wider tracks for controls that do not fit the default -- the users console's from-to pair of date-time
-   pickers (issue #683). */
-.filter-well.wide { grid-template-columns: repeat(auto-fill, minmax(min(480px, 100%), 1fr)); }
-
 .filter-well .filter-actions { grid-column: 1 / -1; }
 
 .filter-group { display: flex; flex-direction: column; gap: 4px; }

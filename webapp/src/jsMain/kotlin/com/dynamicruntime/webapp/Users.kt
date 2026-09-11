@@ -61,8 +61,9 @@ val Users = FC<Props> {
     var sortBy by useState(USF.lastEdited.at)
     var descending by useState(true)
     // Whether the filter well is open (issue #683). View state, not search state: it is not in the URL, so a
-    // shared link arrives with the well closed and the filters it carries said as chips.
-    var filtersOpen by useState(false)
+    // shared link arrives with the well closed and the filters it carries said as chips. Tuple form so the
+    // toggle is a functional update (`{ !it }`), the convention App.kt documents for its own counters.
+    val (filtersOpen, setFiltersOpen) = useState(false)
     // What the last search reported: how many matched in all, and whether the cap hid some.
     var numAvailable by useState(0)
     var hasMore by useState(false)
@@ -705,8 +706,10 @@ val Users = FC<Props> {
             // What the list is narrowed by, in words (issue #683), for the chips the closed well shows. Derived
             // from the very state `anyFilter` and `canReset` read, so a chip can never disagree with the count
             // or with whether Clear is offered -- and since the filters apply live, "in force" and "current" are
-            // one state, so there is no applied-vs-draft distinction for the chips to get wrong.
-            val chips = userFilterChips(textFilters, rangeFilters, sortBy, descending, showClient, ::localDateTime)
+            // one state, so there is no applied-vs-draft distinction for the chips to get wrong. The sort is a
+            // chip too (Clear resets it), but not a *filter*: the toggle counts only the filters.
+            val filtersInForce = userFilterChips(textFilters, rangeFilters)
+            val chips = filtersInForce + listOfNotNull(userSortChip(sortBy, descending))
 
             div {
                 className = ClassName("row")
@@ -716,7 +719,7 @@ val Users = FC<Props> {
                 }
                 // The filters live behind a toggle (issue #683), closed by default, so the table -- what the
                 // page is for -- is on screen without first scrolling past six controls and their hints.
-                filterToggle(filtersOpen, chips.size) { filtersOpen = !filtersOpen }
+                filterToggle(filtersOpen, filtersInForce.size, usersFiltersWellId) { setFiltersOpen { !it } }
                 // Offered only when there is something to undo, so it is not a permanent no-op button -- and
                 // here rather than inside the well, so the way back is on screen while the well is shut.
                 if (canReset) {
@@ -733,19 +736,15 @@ val Users = FC<Props> {
             // to `userSearchFieldSpecs` becomes a filter here with no further change. A substring field is a
             // text box (debounced, so a keystroke does not blur it); an exact field is a picker; a date-range
             // field is a pair of date-time pickers -- each firing at once, since a pick is a deliberate choice.
-            // Laid out as the forms list lays out its own (label above control, in the shared well), and the
-            // well asks for wide tracks because a from-to pair of date-time pickers does not fit the default.
-            filterWell(filtersOpen, wide = true) {
+            // Laid out as the forms list lays out its own: label above control, in the shared well. A field with
+            // no filter kind (sort-only) draws no control. A from-to pair wider than its track wraps (see
+            // `.filter-range`), so the well needs no special width for it.
+            filterWell(filtersOpen, usersFiltersWellId) {
                 for (spec in userSearchFieldSpecs) {
                     if (spec.allClientsOnly && !showClient) continue
-                    if (spec.filterKind == null) continue
-                    div {
-                        className = ClassName("filter-group")
-                        span {
-                            className = ClassName("filter-label")
-                            +spec.label
-                        }
-                        when (spec.filterKind) {
+                    val kind = spec.filterKind ?: continue
+                    filterGroup(spec.label) {
+                        when (kind) {
                             UserFilterKind.substring -> Input {
                                 value = textFilters[spec.name] ?: ""
                                 placeholder = "${spec.label} contains…"
@@ -791,7 +790,6 @@ val Users = FC<Props> {
                                     +"Leave either end empty for open-ended."
                                 }
                             }
-                            null -> {}
                         }
                     }
                 }
@@ -856,7 +854,9 @@ fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery {
     val ranges = buildMap {
         for (spec in userSearchFieldSpecs) {
             val keys = spec.rangeKeys ?: continue
-            val range = DateRange(hp[keys.first], hp[keys.second])
+            // A bound present but blank (`lastEditedAfter=` in a hand-edited link) is no bound: kept, it would
+            // count as a filter, be sent, and show as a chip with nothing after it (issue #683 review).
+            val range = DateRange(hp[keys.first]?.takeIf { it.isNotBlank() }, hp[keys.second]?.takeIf { it.isNotBlank() })
             if (!range.isEmpty) put(spec.name, range)
         }
     }
@@ -888,63 +888,52 @@ fun searchHashParams(query: UserSearchQuery): List<Pair<String, String>> =
         }
     }
 
-/**
- * The filters in force said in words, one chip each, for the summary the closed well shows (issue #683):
- * `Email contains "ada"`, `Client is "acme"`, `Last login 2026-08-01 – 2026-09-01`, `Edited ≥ …`, and a chip for
- * a non-default sort (`Sorted by Name, A–Z`), since the sort is state Clear resets too. Built from the shared
- * spec in its own order, so a field added there gets a chip with no further change; a blank term is no filter
- * (matching `anyFilter` and what the query sends); and a field the caller does not see (the client, off
- * `allClients`) gets none even when a shared link carries it, so a chip never names a control that is not
- * there. [fmtInstant] renders a bound for a person -- passed in so this stays pure: the console hands it the
- * browser's local-time formatting, a test the identity. Pure, and covered under `jsNodeTest`.
- */
-fun userFilterChips(
-    texts: Map<String, String>,
-    ranges: Map<String, DateRange>,
-    sortBy: String,
-    descending: Boolean,
-    showClient: Boolean,
-    fmtInstant: (String) -> String = { it },
-): List<String> {
-    val chips = ArrayList<String>()
-    for (spec in userSearchFieldSpecs) {
-        if (spec.allClientsOnly && !showClient) continue
-        val term = texts[spec.name]?.trim()?.ifEmpty { null }
-        when (spec.filterKind) {
-            UserFilterKind.substring -> term?.let { chips.add("${spec.label} contains \"$it\"") }
-            UserFilterKind.exact -> term?.let { chips.add("${spec.label} is \"$it\"") }
-            UserFilterKind.dateRange -> {
-                val lo = ranges[spec.name]?.after?.let(fmtInstant)
-                val hi = ranges[spec.name]?.before?.let(fmtInstant)
-                when {
-                    lo != null && hi != null -> chips.add("${spec.label} $lo – $hi")
-                    lo != null -> chips.add("${spec.label} ≥ $lo")
-                    hi != null -> chips.add("${spec.label} ≤ $hi")
-                }
-            }
-            null -> {}
-        }
-    }
-    if (sortBy != USF.lastEdited.at || !descending) {
-        val spec = userSearchFieldSpecsByName[sortBy]
-        // A date sorts by time and a text field alphabetically, and the words say which.
-        val direction = if (spec?.filterKind == UserFilterKind.dateRange) {
-            if (descending) "newest first" else "oldest first"
-        } else {
-            if (descending) "Z–A" else "A–Z"
-        }
-        chips.add("Sorted by ${spec?.label ?: sortBy}, $direction")
-    }
-    return chips
-}
+/** The filter well's element id, so the toggle can name what it controls (`aria-controls`). */
+private const val usersFiltersWellId = "users-filters"
 
 /**
- * A range bound as the person sees it in the picker -- the browser's local date and time -- for the chips. A
- * value that does not parse is shown as written rather than dropped, so a chip never hides a bound that is in
- * force. One `js` expression referencing only its parameter, the file's idiom for a browser call.
+ * The filters in force said in words, one chip each, for the summary the closed well shows (issue #683):
+ * `Email contains "ada"`, `Client is "acme"`, `Last login 2026-08-01 10:00 UTC – 2026-09-01 10:00 UTC`,
+ * `Edited ≥ …`. Built from the shared spec in its own order, so a field added there gets a chip with no further
+ * change, in the words the forms list's chips use ([textChip], [rangeChip]) so the two pages say the same thing
+ * -- and a blank value is no chip, matching `anyFilter` and what the query sends.
+ *
+ * A date bound reads as the table renders the column it filters -- [formatTimestamp], UTC to the minute -- so
+ * the chip and the rows it admitted are on one clock; a chip in local time beside a column in UTC would show
+ * one instant two ways. Every term in force is a chip, including one the caller's own well does not offer (the
+ * client, for a caller without `allClients`, carried in by a shared link): it still counts as a filter to Clear
+ * and to the count line, so it must be visible somewhere, and the chip is then the only somewhere. Pure, and
+ * covered under `jsNodeTest`.
  */
-private fun localDateTime(iso: String): String =
-    js("(function(){var d=new Date(iso);return isNaN(d.getTime())?iso:d.toLocaleString([],{dateStyle:'medium',timeStyle:'short'})})()") as String
+fun userFilterChips(texts: Map<String, String>, ranges: Map<String, DateRange>): List<String> =
+    userSearchFieldSpecs.mapNotNull { spec ->
+        when (spec.filterKind) {
+            UserFilterKind.substring -> textChip(spec.label, texts[spec.name], contains = true)
+            UserFilterKind.exact -> textChip(spec.label, texts[spec.name], contains = false)
+            UserFilterKind.dateRange -> ranges[spec.name]?.let { r ->
+                rangeChip(spec.label, r.after?.let(::formatTimestamp), r.before?.let(::formatTimestamp))
+            }
+            null -> null
+        }
+    }
+
+/**
+ * The sort as a chip when it is not the default (issue #683) -- `Sorted by Name, A–Z`, `Sorted by Last login,
+ * oldest first` -- since Clear resets the sort too and a person should see what Clear would undo. Not a filter,
+ * so not in the toggle's count: a sort narrows nothing. A date sorts by time and a text field alphabetically,
+ * and the words say which; "a date" is a spec with range keys, which a sort-only date (`dateSpec` with no
+ * filter kind) still has. Pure, and covered under `jsNodeTest`.
+ */
+fun userSortChip(sortBy: String, descending: Boolean): String? {
+    if (sortBy == USF.lastEdited.at && descending) return null
+    val spec = userSearchFieldSpecsByName[sortBy]
+    val direction = if (spec?.rangeKeys != null) {
+        if (descending) "newest first" else "oldest first"
+    } else {
+        if (descending) "Z–A" else "A–Z"
+    }
+    return "Sorted by ${spec?.label ?: sortBy}, $direction"
+}
 
 /**
  * The count line above the results (issue #411): how many are shown against how many matched, so an over-broad

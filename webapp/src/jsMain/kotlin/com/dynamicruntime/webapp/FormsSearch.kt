@@ -24,6 +24,9 @@ private val reservedQueryFields = setOf(EP.offset, EP.limit, EI.user, EI.q, EI.i
 /** How long a type-ahead waits after a keystroke before it fetches, so a fast typist makes one call not many. */
 private const val suggestDebounceMs = 200
 
+/** The filter well's element id, so the toggle can name what it controls (`aria-controls`). */
+private const val formsFiltersWellId = "forms-filters"
+
 /** At most this many user suggestions in the scope bar's dropdown -- a short list to pick from, not a listing. */
 const val maxUserSuggestions = 8
 
@@ -132,24 +135,14 @@ fun searchGroups(inputSchema: Map<String, Any?>): List<SearchGroup> {
  * is no filter. Pure, and covered under `jsNodeTest`.
  */
 fun activeFilterChips(groups: List<SearchGroup>, applied: Map<String, Any?>): List<String> = groups.mapNotNull { g ->
-    fun valueOf(name: String?): String? = name?.let { applied[it]?.toString()?.trim()?.ifEmpty { null } }
+    fun valueOf(name: String?): String? = name?.let { applied[it]?.toString() }
+    // The words -- and the rule that a blank value is no chip -- are the shared vocabulary in FilterPanel.kt,
+    // so this and the users console's chips read the same. The substring parameter wins when both are filled,
+    // as the one box that sends it does.
     if (g.isRange) {
-        val lo = valueOf(g.min)
-        val hi = valueOf(g.max)
-        when {
-            lo != null && hi != null -> "${g.label} $lo – $hi"
-            lo != null -> "${g.label} ≥ $lo"
-            hi != null -> "${g.label} ≤ $hi"
-            else -> null
-        }
+        rangeChip(g.label, valueOf(g.min), valueOf(g.max))
     } else {
-        val contains = valueOf(g.contains)
-        val exact = valueOf(g.exact)
-        when {
-            contains != null -> "${g.label} contains \"$contains\""
-            exact != null -> "${g.label} is \"$exact\""
-            else -> null
-        }
+        textChip(g.label, valueOf(g.contains), contains = true) ?: textChip(g.label, valueOf(g.exact), contains = false)
     }
 }
 
@@ -315,7 +308,7 @@ val FormsSearch = FC<FormsSearchProps> { props ->
                 +"Search"
             }
         }
-        filterToggle(props.panelOpen, chips.size) { props.onTogglePanel() }
+        filterToggle(props.panelOpen, chips.size, formsFiltersWellId) { props.onTogglePanel() }
         if (termApplied || chips.isNotEmpty()) {
             Button {
                 type = "link"
@@ -325,14 +318,9 @@ val FormsSearch = FC<FormsSearchProps> { props ->
         }
     }
     filterChips(chips, props.panelOpen)
-    filterWell(props.panelOpen) {
+    filterWell(props.panelOpen, formsFiltersWellId) {
         groups.forEach { group ->
-            div {
-                className = ClassName("filter-group")
-                span {
-                    className = ClassName("filter-label")
-                    +group.label
-                }
+            filterGroup(group.label) {
                 if (group.isRange) {
                     val hint = if (group.kind == UsageKind.date) " yyyy-mm-dd" else ""
                     div {

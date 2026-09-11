@@ -72,6 +72,17 @@ class UserSearchHashTest {
     }
 
     @Test
+    fun aBlankBoundInTheHashIsNoBound() {
+        // `lastEditedAfter=` from a hand-edited link: present but empty must not become a filter -- it would
+        // count toward Clear and the count line, be sent, and read as a chip with nothing after it (issue #683).
+        assertTrue(searchQueryFromHash(mapOf(USF.lastEdited.after to "")).ranges.isEmpty())
+        // A real bound beside a blank one keeps only the real one.
+        val q = searchQueryFromHash(mapOf(USF.lastEdited.after to "2026-01-01T00:00:00.000Z", USF.lastEdited.before to " "))
+        assertEquals("2026-01-01T00:00:00.000Z", q.ranges[USF.lastEdited.at]?.after)
+        assertEquals(null, q.ranges[USF.lastEdited.at]?.before)
+    }
+
+    @Test
     fun anUnknownSortKeyFallsBackToTheDefault() {
         // A hand-edited or stale link must not send a sort the endpoint would 400 on.
         assertEquals(USF.lastEdited.at, searchQueryFromHash(mapOf(USF.sortBy to "bogusField")).sortBy)
