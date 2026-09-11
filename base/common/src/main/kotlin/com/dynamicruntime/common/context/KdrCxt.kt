@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.context
 
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.splitComma
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
@@ -201,6 +203,15 @@ class KdrCxt(
     /** Cached read-only schema store; lazily populated via [getSchema]. */
     var schemaStore: KdrSchemaStore? = null
 
+    /**
+     * Whether this context's life is bounded to a single transaction (issue #687), set only by
+     * [mkTransactionSubContext]. It is what makes [bindTransactionOwner] safe: a transaction-scoped context is
+     * discarded when its transaction ends, so rebinding its owner cannot bleed the changed identity into a
+     * wider request. "Transaction" is any query→update cycle, not only a database one.
+     */
+    var transactionScoped: Boolean = false
+        private set
+
     /** Creates a sub context that inherits this context's bound [client]. */
     fun mkSubContext(subCxtName: String): KdrCxt = mkSubContext(subCxtName, client)
 
@@ -231,6 +242,49 @@ class KdrCxt(
         sub.traceId = traceId // ...so a sub context's log lines carry the same trace id
         sub.request = request // a sub context is part of the same request
         return sub
+    }
+
+    /**
+     * A sub context bounded to a single transaction (issue #687): [transactionScoped] is set, which is what lets
+     * its owner be rebound mid-transaction ([bindTransactionOwner]) safely -- the context is discarded when the
+     * transaction ends, so the change cannot bleed out. Create it **before** opening the transaction and run the
+     * transaction on it, so it owns the transaction's session; a nested write on it then reuses that session
+     * rather than deadlocking on a second connection.
+     *
+     * [keepSession] carries the parent's SQL session into the sub context (the default), so a transaction-scoped
+     * sub made *while a session is already active* shares it instead of polling a second connection. Pass false
+     * for multi-threaded fan-out, where each spawned context must take its own connection. Unlike [mkSubContext],
+     * which never carries the session, this one does by default -- that is the whole point.
+     */
+    fun mkTransactionSubContext(subCxtName: String, client: String = this.client, keepSession: Boolean = true): KdrCxt {
+        val sub = mkSubContext(subCxtName, client)
+        sub.transactionScoped = true
+        if (keepSession) sub.session.putAll(session)
+        return sub
+    }
+
+    /**
+     * Rebinds who *owns* the rows this context writes -- [userId]/[client]/[org] -- leaving who is *acting*
+     * ([userProfile]) alone, so audit stamps still name the actor (issue #687). The owner of a row is often known
+     * only after it is read inside the transaction (a gedra's owner, say), and a subsequent write must be owned
+     * by it, not by whoever triggered the write.
+     *
+     * Allowed **only on a [transactionScoped] context**, whose bounded life keeps the change from leaking into
+     * the wider request; on any other context it throws, since rebinding a request's own context would bleed the
+     * owner past the write. The ordinary construction-time binding (`mkSubContext(...).also { it.userId = ... }`)
+     * is unaffected -- this guards the *mid-life* rebind, not the setters.
+     */
+    fun bindTransactionOwner(userId: Long, client: String, org: String?) {
+        if (!transactionScoped) {
+            throw KdrException(
+                "bindTransactionOwner is only for a transaction-scoped context (mkTransactionSubContext); " +
+                    "rebinding a request's own context would bleed the owner past the transaction.",
+                code = EXC.internalError,
+            )
+        }
+        this.userId = userId
+        this.client = client
+        this.org = org
     }
 
     /**

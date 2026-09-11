@@ -38,6 +38,13 @@ class GedraWriteContext(val sqlCxt: SqlCxt, val row: GedraDataRow)
  * component load order). It is deliberately not here yet: with a single hook there is nothing to sort, so a sort
  * added now could not be exercised by a test -- and an untested sort is the kind of thing that is quietly wrong
  * until the second hook lands. So the sort waits for the second hook, which is also the first test of it.
+ *
+ * **Future: a per-hook context.** All hooks in one firing are handed the **same** `cxt`, so a hook that rebinds
+ * its owner ([com.dynamicruntime.common.context.KdrCxt.bindTransactionOwner], as [DerivedStateWriteHook] does to
+ * own its state to the gedra) would leak that rebind into a later hook that expected the actor's scope. Harmless
+ * with one hook; when the second lands, give each hook its own transaction-scoped context (a fresh
+ * `mkTransactionSubContext` sharing the session) so one hook's rebind cannot bleed into the next -- the same
+ * "waits for the second hook" call as the priority above.
  */
 fun interface GedraWriteHook {
     /** Run after [write]'s data write, inside its transaction. */

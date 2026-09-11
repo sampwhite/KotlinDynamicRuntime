@@ -183,7 +183,7 @@ class GedraDataService : ServiceInitializer {
 
     /**
      * Writes a gedra's **state** entries into the companion [GDT.gedraDataStates] table (issue #596), under the
-     * **same `GedraDataTran` lock** its data is written under -- so a later create or import can commit data and
+     * **same `GedraDataTran` lock** its data is written under -- so a later create or import can commit data and2
      * state in one transaction. An upsert: the first write inserts the state row, a later one replaces its
      * entries and advances `updatedAt` (strictly past, so the state cache -- issue #598 -- will see the change,
      * the same reason the patch path uses [SqlTopicUtil.nextUpdatedAt]).
@@ -198,12 +198,7 @@ class GedraDataService : ServiceInitializer {
      * scopes to the same owner as its gedra; [cxt] is therefore expected to be bound to that owner, as the create
      * and patch paths bind it. Returns the entries as stored (the envelope stamped on).
      */
-    fun writeState(
-        cxt: KdrCxt,
-        gedraId: GedraId,
-        entries: List<Map<String, Any?>>,
-        ownerRow: GedraDataRow? = null,
-    ): List<Map<String, Any?>> {
+    fun writeState(cxt: KdrCxt, gedraId: GedraId, entries: List<Map<String, Any?>>): List<Map<String, Any?>> {
         val kind = gedraId.dataType
             ?: throw KdrException.mkInput("'$gedraId' is not a data gedra, so it carries no state.")
         // The declared state traits, read once (state is global, so this is client-independent). Their keys drive
@@ -240,17 +235,9 @@ class GedraDataService : ServiceInitializer {
             val dataMap = linkedMapOf<String, Any?>(GD.entries to stored)
             if (existing == null) {
                 val row = mutableMapOf<String, Any?>(GD.gedraId to gedraId.fullId, GD.data to dataMap)
-                // A state row belongs to its **gedra's** owner, not the actor writing it -- an admin recompute on
-                // another user's form must not own that user's state (issue #675). Stamp ownership from the gedra
-                // when the caller supplies it; `prepForStdExecute`'s putIfAbsent then leaves it, while the actor
-                // still fills createdBy/updatedBy. Absent, ownership falls to `cxt`, which is the owner on the
-                // paths that pass none (a create's caller creates their own form). Ownership is immutable, so the
-                // update branch never restamps it -- only the insert needs this.
-                ownerRow?.let {
-                    row[PF.client] = it.client
-                    row[PF.userId] = it.userId
-                    it.org?.let { org -> row[PF.org] = org }
-                }
+                // Ownership (client/userId/org) is stamped from [cxt] -- which the write paths bind to the
+                // gedra's owner before the state write (a transaction-scoped context, issue #687), so a state row
+                // belongs to its gedra's owner rather than to whoever triggered the write.
                 SqlTopicUtil.prepForStdExecute(cxt, table, row)
                 sqlCxt.sqlDb.executeStatement(cxt, SqlTopicUtil.mkTableInsertStmt(sqlCxt, table), row)
             } else {
@@ -520,8 +507,13 @@ class GedraDataService : ServiceInitializer {
         creationWorkflowId: com.dynamicruntime.common.gedra.workflow.WfRef?,
     ): GedraDataRow {
         val gedraId = gedraService.intern(cxt.mkGedraId(kind, cxt.client, GedraIdContext.ui))
-        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
-        val table = gedraDataTable(cxt)
+        // Run the whole write on a transaction-scoped context created before the transaction (issue #687), so it
+        // owns the transaction's session and a post-write hook that rebinds the owner and writes state reuses
+        // that session rather than deadlocking on a second connection. It starts as the actor (the creator, whose
+        // data this is), which is exactly what the data insert should be stamped with.
+        val txCxt = cxt.mkTransactionSubContext(tranCreate)
+        val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
+        val table = gedraDataTable(txCxt)
         val stmt = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
         // The stored `data` map: the entries, and -- when a creation workflow made this gedra -- its
         // reference beside them, the one key promoted out of `extra` on read (issue #535).
@@ -535,16 +527,16 @@ class GedraDataService : ServiceInitializer {
         )
         // Ownership and audit come from the context, never from the caller: `client`, `org` and `userId` from
         // the bound owner, `createdBy`/`updatedBy` from the actor, and `enabled` true.
-        SqlTopicUtil.prepForStdExecute(cxt, table, data)
+        SqlTopicUtil.prepForStdExecute(txCxt, table, data)
         // Extracted from the stamped map, so a deriver reads exactly what is stored, and this is also returned.
         val row = GedraDataRow.extract(gedraService, data)
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranCreate, null, mapOf(GD.gedraId to gedraId.fullId)) {
-            sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
+            sqlCxt.sqlDb.executeStatement(txCxt, stmt, data)
             // The post-write hooks (issue #675), run on the SAME GedraDataTran lock so whatever they write commits
             // with the data. The built-in one records this form's initial derived state -- a survey's
             // "unfinished", say -- so it lands even on a plain API create or a bad import, not only in an
             // interactive workflow step. Import reaches here per doc, so every imported doc runs them too.
-            fireWriteHooks(cxt, sqlCxt, row)
+            fireWriteHooks(txCxt, sqlCxt, row)
         }
         return row
     }
@@ -577,11 +569,19 @@ class GedraDataService : ServiceInitializer {
      * approval, an external sync marker) is not a function of the data, so a data write must never recompute it
      * away (the design's "recomputation vs external assertion").
      *
-     * Derived state is a recomputable projection, so a deriver whose output does not validate must not fail an
-     * otherwise-valid write: the `KdrException` is logged and the state left as it was. A deriver's own
-     * programming error is not caught -- it should surface.
+     * [cxt] is the transaction-scoped context the write runs on (issue #687). It is rebound to the gedra's owner
+     * and client **first**, so the whole recompute runs in the gedra's scope, not the triggering actor's: the
+     * derivers' client-feature gating (`featureEnabled` reads `cxt.client`) and the state write's ownership both
+     * key off the gedra rather than off whoever happened to trigger the write (an admin patching another user's
+     * form, or a cross-client standalone recompute). Derived state is a recomputable projection, so a deriver
+     * whose output does not validate must not fail an otherwise-valid write: the `KdrException` is logged and the
+     * state left as it was. A deriver's own programming error is not caught -- it should surface.
      */
     fun recomputeDerivedStateUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow) {
+        // Bind to the gedra's owner and client before anything reads `cxt`, so the derivation, its feature
+        // gating, and the state write all run in the gedra's scope. Safe: `cxt` is the transaction-scoped
+        // context this write runs on, discarded when the transaction ends.
+        cxt.bindTransactionOwner(row.userId, row.client, row.org)
         val existing = readStateRowUnderLock(cxt, sqlCxt, gedraStatesTable(cxt), row.gedraId)
         val existingEntries = existing?.get(GD.data).toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
         val stateClassOf = SchemaService.get(cxt).gedraStateTraits().associate { it.traitId to it.stateClass }
@@ -593,9 +593,7 @@ class GedraDataService : ServiceInitializer {
         // to clear or update -- when a state row already exists.
         if (recomputed.isEmpty() && existing == null) return
         try {
-            // Pass the gedra `row` so a first state write is owned by the form's owner, not whoever triggered the
-            // recompute -- an admin patching another user's form does not own that user's state (issue #675).
-            writeState(cxt, row.gedraId, recomputed, ownerRow = row)
+            writeState(cxt, row.gedraId, recomputed)
         } catch (e: KdrException) {
             LogGedra.warn(cxt) { "Skipped invalid derived state for '${row.gedraId.fullId}': ${e.message}" }
         }
@@ -610,9 +608,13 @@ class GedraDataService : ServiceInitializer {
     fun recomputeDerivedState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope) {
         val kind = gedraId.dataType ?: return
         val row = queryGedra(cxt, gedraId.fullId, kind, scope) ?: return
-        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        // A transaction-scoped context created before the transaction (issue #687): it owns the session and the
+        // recompute rebinds its owner to the gedra's, so a standalone recompute owns state the same way the write
+        // hook does.
+        val txCxt = cxt.mkTransactionSubContext(tranRecompute)
+        val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranRecompute, null, mapOf(GD.gedraId to gedraId.fullId)) {
-            recomputeDerivedStateUnderLock(cxt, sqlCxt, row)
+            recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
         }
     }
 
@@ -1036,8 +1038,13 @@ class GedraDataService : ServiceInitializer {
         target: GedraPatchTarget,
         scope: ReadScope,
     ): GedraPatchResult {
-        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
-        val table = gedraDataTable(cxt)
+        // Run the whole target on a transaction-scoped context created before the transaction (issue #687): it
+        // owns the transaction's session, so the post-write hook's state write reuses it instead of deadlocking
+        // on a second connection, and the hook can rebind its owner to the gedra's. It starts as the actor, so
+        // the data update stamps the actor into `updatedBy` before any rebind.
+        val txCxt = cxt.mkTransactionSubContext(tranPatch)
+        val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
+        val table = gedraDataTable(txCxt)
         // The scope rides on the "write" as well as on the admit-phase read, exactly as the delete's does. It is
         // belt and braces -- admitting already refused anything out of reach -- and it costs one clause to
         // make the "write" itself unable to touch a row the caller may not, rather than relying on an earlier
@@ -1049,11 +1056,11 @@ class GedraDataService : ServiceInitializer {
             sqlCxt, tranPatch, null, mapOf(GD.gedraId to target.gedraId.fullId),
         ) {
             // Read under the lock: the admit-phase read was for permission, and a merge needs current data.
-            val row = readForPatch(cxt, sqlCxt, table, target.gedraId)
+            val row = readForPatch(txCxt, sqlCxt, table, target.gedraId)
             // Keyed by trait -- plus its primary-key value when the trait declares one (issue #487) -- because
             // that is how an edit names an entry, and the address is unique. Order is preserved so an unrelated
             // entry does not move when its neighbor changes.
-            val pkFieldsOf = pkFieldsOf(cxt, kind)
+            val pkFieldsOf = pkFieldsOf(txCxt, kind)
             val byKey = keyEntries(row.entries, pkFieldsOf)
             // Stamp the row's audit pair via the shared helper and take back the `updatedAt` it chose. It is
             // strictly past the row's current value (read under this lock), not merely "now": the gedra cache
@@ -1061,17 +1068,17 @@ class GedraDataService : ServiceInitializer {
             // a re-edit landing in the same millisecond as the last would otherwise be invisible to the cache
             // until the gedra's next write (see SqlTopicUtil.nextUpdatedAt). The entries carry that same instant
             // as their own `updated`, so the row column and the in-JSON stamp cannot disagree.
-            val now = checkNotNull(SqlTopicUtil.prepForStdUpdate(cxt, table, bind, row.updatedAt)) {
+            val now = checkNotNull(SqlTopicUtil.prepForStdUpdate(txCxt, table, bind, row.updatedAt)) {
                 "${GDT.gedraData} must declare ${PF.updatedAt} for a patch to stamp it."
             }
             for (edit in target.edits) {
-                outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(cxt, edit, byKey, pkFieldsOf(edit.traitId), now)))
+                outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(txCxt, edit, byKey, pkFieldsOf(edit.traitId), now)))
             }
             val entries = byKey.values.toList()
-            checkStoredEntries(cxt, kind, entries)
+            checkStoredEntries(txCxt, kind, entries)
             bind[GD.gedraId] = target.gedraId.fullId
             bind[GD.data] = row.storedData(entries)
-            val changed = sqlCxt.sqlDb.executeStatement(cxt, stmt, bind)
+            val changed = sqlCxt.sqlDb.executeStatement(txCxt, stmt, bind)
             // Zero rows means the gedra stopped being writable between admitting and applying -- deleted, or
             // moved out of reach. Silence here would report edits as applied that were not, which is the one
             // outcome the answer must never contain.
@@ -1085,7 +1092,7 @@ class GedraDataService : ServiceInitializer {
             // this form's derived state from the patched data, so state follows the edit on the raw patch path
             // exactly as on the survey save. `row` carries the post-edit entries so a deriver reads what is stored.
             row.entries = entries
-            fireWriteHooks(cxt, sqlCxt, row)
+            fireWriteHooks(txCxt, sqlCxt, row)
         }
         return GedraPatchResult(target.gedraId, outcomes)
     }
