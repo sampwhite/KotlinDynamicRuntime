@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.UF
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.kdn.Startup
@@ -45,6 +46,15 @@ class TraitUsageTest : StringSpec({
         year[UF.label] shouldBe "Year"
         year[UF.kind] shouldBe "number"
         year[UF.value] shouldBe ""
+    }
+
+    "a client declaring no usage of its own falls back to the global default Name column (issue #674 review)" {
+        // Both sample clients now declare their own usages, so this is what still exercises `usagesFor`'s global
+        // fallback: a client id with no config of its own resolves to the global usages -- the single `name`
+        // column `coreTraits` declares -- which is what preserves the pre-#537 Name column for any such client.
+        val usages = SchemaService.get(cxt).traitUsagesFor("nosuchclient")
+        usages.map { it.traitId } shouldBe listOf(GT.name)
+        usages.first().label shouldBe "Name"
     }
 
     "acme's own rules override the global default -- Auditor and Year columns, no Name" {

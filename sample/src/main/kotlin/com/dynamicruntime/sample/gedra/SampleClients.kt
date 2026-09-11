@@ -325,8 +325,9 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         // The first thing acme's config changes about a page other than its own form: its forms *list* shows
         // an "Auditor" column, pulled from the site-audit trait's `auditor` field. Declaring any usage of its
         // own **overrides** the global default `name` column (`GedraConfigCollector.usagesFor`), so acme -- which
-        // omits `name` -- shows Auditor and not a blank Name column, while globex, declaring none, inherits the
-        // default Name. Two clients, two different columns.
+        // omits `name` -- shows Auditor and not a blank Name column. globex declares its own too (Name, plus a
+        // Year over the yearly trait, #674); the global default is what a client declaring *no* usage inherits.
+        // Two clients, two different column sets.
         //
         // Both are also **searchable** (issue #538), and between them they exercise every search kind: Auditor
         // is a `string`, searchable exact and -- with `substring` -- by a contains parameter, since a name is
