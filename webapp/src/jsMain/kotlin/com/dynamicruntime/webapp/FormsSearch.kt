@@ -253,8 +253,9 @@ val FormsScopeBar = FC<FormsScopeBarProps> { props ->
  * field at once, and behind a toggle the per-trait filters the client's usage rules declared -- one text box
  * per text trait, a from-to pair per number or date -- so the list keeps the screen and the filters are there
  * when wanted. While the panel is closed, the applied filters are summarized as chips so a narrowed list never
- * looks like the whole. A text trait's box suggests the distinct values that trait takes, when the caller's
- * surface can supply them ([fetchValues]).
+ * looks like the whole -- the toggle, the chips and the well are the shell `FilterPanel.kt` shares with the
+ * users console (issue #683). A text trait's box suggests the distinct values that trait takes, when the
+ * caller's surface can supply them ([fetchValues]).
  *
  * The parent owns the values and every action; the widgets own only their own suggestion state and debounce.
  */
@@ -314,10 +315,7 @@ val FormsSearch = FC<FormsSearchProps> { props ->
                 +"Search"
             }
         }
-        Button {
-            onClick = { props.onTogglePanel() }
-            +(if (props.panelOpen) "Hide filters" else if (chips.isEmpty()) "Filters" else "Filters (${chips.size})")
-        }
+        filterToggle(props.panelOpen, chips.size) { props.onTogglePanel() }
         if (termApplied || chips.isNotEmpty()) {
             Button {
                 type = "link"
@@ -326,77 +324,64 @@ val FormsSearch = FC<FormsSearchProps> { props ->
             }
         }
     }
-    if (!props.panelOpen && chips.isNotEmpty()) {
-        div {
-            className = ClassName("forms-chips")
-            chips.forEach { chip ->
+    filterChips(chips, props.panelOpen)
+    filterWell(props.panelOpen) {
+        groups.forEach { group ->
+            div {
+                className = ClassName("filter-group")
                 span {
-                    className = ClassName("filter-chip")
-                    +chip
+                    className = ClassName("filter-label")
+                    +group.label
+                }
+                if (group.isRange) {
+                    val hint = if (group.kind == UsageKind.date) " yyyy-mm-dd" else ""
+                    div {
+                        className = ClassName("filter-range")
+                        boundInput(props, group.min, "from$hint")
+                        span {
+                            className = ClassName("type-hint")
+                            +"to"
+                        }
+                        boundInput(props, group.max, "to$hint")
+                    }
+                } else {
+                    group.text?.let { name ->
+                        val placeholder = if (group.contains != null) "contains" else "is exactly"
+                        val fetch = props.fetchValues
+                        if (fetch != null) {
+                            FilterValueBox {
+                                this.traitId = group.traitId
+                                this.placeholder = placeholder
+                                this.value = props.values[name] ?: ""
+                                this.onChange = { v -> props.onChange(name, v) }
+                                this.onSearch = { props.onSearch() }
+                                this.fetchValues = fetch
+                            }
+                        } else {
+                            Input {
+                                this.placeholder = placeholder
+                                value = props.values[name] ?: ""
+                                allowClear = true
+                                style = js("({ width: 260 })")
+                                onChange = { event -> props.onChange(name, event.target.value as? String ?: "") }
+                                onPressEnter = { props.onSearch() }
+                            }
+                        }
+                    }
                 }
             }
         }
-    }
-    if (props.panelOpen) {
         div {
-            className = ClassName("forms-filters")
-            groups.forEach { group ->
-                div {
-                    className = ClassName("filter-group")
-                    span {
-                        className = ClassName("filter-label")
-                        +group.label
-                    }
-                    if (group.isRange) {
-                        val hint = if (group.kind == UsageKind.date) " yyyy-mm-dd" else ""
-                        div {
-                            className = ClassName("filter-range")
-                            boundInput(props, group.min, "from$hint")
-                            span {
-                                className = ClassName("type-hint")
-                                +"to"
-                            }
-                            boundInput(props, group.max, "to$hint")
-                        }
-                    } else {
-                        group.text?.let { name ->
-                            val placeholder = if (group.contains != null) "contains" else "is exactly"
-                            val fetch = props.fetchValues
-                            if (fetch != null) {
-                                FilterValueBox {
-                                    this.traitId = group.traitId
-                                    this.placeholder = placeholder
-                                    this.value = props.values[name] ?: ""
-                                    this.onChange = { v -> props.onChange(name, v) }
-                                    this.onSearch = { props.onSearch() }
-                                    this.fetchValues = fetch
-                                }
-                            } else {
-                                Input {
-                                    this.placeholder = placeholder
-                                    value = props.values[name] ?: ""
-                                    allowClear = true
-                                    style = js("({ width: 260 })")
-                                    onChange = { event -> props.onChange(name, event.target.value as? String ?: "") }
-                                    onPressEnter = { props.onSearch() }
-                                }
-                            }
-                        }
-                    }
-                }
+            className = ClassName("row filter-actions")
+            Button {
+                type = "primary"
+                onClick = { props.onSearch() }
+                +"Apply filters"
             }
-            div {
-                className = ClassName("row filter-actions")
-                Button {
-                    type = "primary"
-                    onClick = { props.onSearch() }
-                    +"Apply filters"
-                }
-                Button {
-                    type = "link"
-                    onClick = { props.onClear() }
-                    +"Clear filters"
-                }
+            Button {
+                type = "link"
+                onClick = { props.onClear() }
+                +"Clear filters"
             }
         }
     }
