@@ -106,6 +106,24 @@ class GedraSearchTest : StringSpec({
         userProp[SCH.visibleWhen] shouldBe "hasAdminLevel"
     }
 
+    "duplicateUsageTraitIds names a trait declared more than once, once, in first-seen order" {
+        // Two usages of one trait id -- the case that silently collides (issue #681): reported once.
+        duplicateUsageTraitIds(listOf(usage("year", UsageKind.number), usage("year", UsageKind.string))) shouldBe
+            listOf("year")
+        // Distinct trait ids: nothing to report.
+        duplicateUsageTraitIds(listOf(usage("year", UsageKind.number), usage("note", UsageKind.string))) shouldBe
+            emptyList()
+        // Two distinct duplicates among singles: each named once, in the order first seen.
+        duplicateUsageTraitIds(
+            listOf(
+                usage("year", UsageKind.number),
+                usage("note", UsageKind.string),
+                usage("year", UsageKind.string),
+                usage("note", UsageKind.number),
+            ),
+        ) shouldBe listOf("year", "note")
+    }
+
     "withSearchProperties merges into the base and leaves a usage-less base untouched" {
         val base = mapOf(
             SCH.type to SCT.kObject,

@@ -30,6 +30,7 @@ import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.gedraConfigCheckMode
 import com.dynamicruntime.common.gedra.reportConfigProblem
+import com.dynamicruntime.common.gedra.duplicateUsageTraitIds
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.searchParamCollisions
 import com.dynamicruntime.common.gedra.withSearchProperties
@@ -248,6 +249,9 @@ class SchemaService : ServiceInitializer {
         // A trait-usage search parameter that collides with a reserved listing field (issue #538) is caught
         // here rather than left to silently drop the search at merge time.
         checkSearchParamNames(cxt, collected)
+        // Two usage rules for one trait id (issue #681): caught here rather than left to collide silently at
+        // request time, where the trait's column, search and sort would read the wrong one.
+        checkUsageTraitIds(cxt, collected)
         // A `g-layout` naming a field its type does not declare is caught at boot (issue #584), not discovered
         // as a control that renders nothing.
         checkLayouts()
@@ -323,6 +327,46 @@ class SchemaService : ServiceInitializer {
                         "(${reservedQueryFieldNames.joinToString(", ")}).",
                     "Dropping the colliding search parameter; the column still shows, but that trait cannot " +
                         "be searched. Rename the trait, or present it under a different one.",
+                ),
+                issues,
+            )
+        }
+    }
+
+    /**
+     * Refuses (or warns, per the client-config check mode) a client that declares **two usage rules for the same
+     * trait id** (issue #681). The presentation model is keyed by trait id throughout -- the display-value map,
+     * the search predicate's value lookup, the sort's column resolution, and the frontend's column key -- so a
+     * second usage does not add a second column; it silently collides with the first (the display map keeps the
+     * last, the sort takes the first, and both columns share one key), leaving that trait's search comparing
+     * against the wrong value. A trait presents once; two columns from one trait would need a per-usage key.
+     *
+     * Checked over the same scopes and through the same `usagesFor` as [checkSearchParamNames], so it reads the
+     * usage set each scope's listing actually presents from.
+     */
+    private fun checkUsageTraitIds(cxt: KdrCxt, collected: SchemaCollector) {
+        val mode = gedraConfigCheckMode(cxt)
+        if (mode == BootCheckMode.off) {
+            return
+        }
+        val issues = mutableListOf<GedraConfigIssue>()
+        val usageScopes = (
+            listOf(GID.globalClient) +
+                collected.gedraConfigs.configs.filter { it.usages.isNotEmpty() }.map { it.gedraId.client }
+            ).distinct()
+        for (scope in usageScopes) {
+            val duplicates = duplicateUsageTraitIds(collected.gedraConfigs.usagesFor(scope))
+            if (duplicates.isEmpty()) {
+                continue
+            }
+            reportConfigProblem(
+                cxt,
+                mode,
+                GedraConfigIssue(
+                    "Client '$scope' declares more than one trait-usage rule for trait(s) " +
+                        "${duplicates.joinToString(", ")}; a trait presents as a single column.",
+                    "Keeping the rules as declared, but that trait's column, search and sort read only one of " +
+                        "them and collide. Declare one usage per trait.",
                 ),
                 issues,
             )
@@ -669,6 +713,7 @@ class SchemaService : ServiceInitializer {
         try {
             checkVisibleWhen()
             checkSearchParamNames(cxt, collected)
+            checkUsageTraitIds(cxt, collected)
             checkLayouts()
         } catch (e: Exception) {
             publish(cxt, current)
