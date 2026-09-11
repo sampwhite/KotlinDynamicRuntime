@@ -117,6 +117,10 @@ val CreationWorkflowForm = FC<CreationWorkflowFormProps> { props ->
                 }
             }
         } else {
+            // A way back to the listing while filling the form out (issue #671): the success screen above has its
+            // own, but before creating there was none. The shared forms back link, so cancel returns to the same
+            // filtered, sorted listing -- the same one the trait-picker create page (NewFormPage) renders.
+            formsBackToListing()
             p {
                 className = ClassName("subtitle")
                 +task.label.ifBlank { "Fill in the form and create it." }
