@@ -14,7 +14,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import react.FC
 import react.Props
-import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
@@ -47,11 +46,15 @@ const val pageEditForm = "editForm"
  * entry, merge into it, or delete it) beside its data, seeded to "replace" so opening and saving is a faithful
  * round-trip. Adding a section adds a trait; switching one to delete removes it.
  */
+// Sibling of the create page (NewFormPage): the same shape of state block and schema-driven form, so the two
+// read alike. Inherent to two components doing the same job; the duplicated-fragment inspection is suppressed
+// rather than dedup'd into a worse-reading abstraction (issue #671 follow-up).
+@Suppress("DuplicatedCode")
 val EditFormPage = FC<Props> {
     // The form being edited, from the hash (`g=<id>`): initialized from the hash and kept in step with it, so
     // navigating to another edit URL reloads and re-seeds rather than leaving the previous form on screen --
     // where Save would patch the stale gedra (issue #417).
-    var gedraId by useState<String?>(hashParams()[HP.gedra])
+    var gedraId by useState(hashParams()[HP.gedra])
     var patchEndpoint by useState<EndpointInfo?>(null)
     var catalog by useState<Catalog?>(null)
     var values by useState<Map<String, Any?>>(emptyMap())
@@ -130,11 +133,7 @@ val EditFormPage = FC<Props> {
         }
     }
 
-    useEffect(focusRequest) {
-        if (focusRequest > 0) {
-            failures?.firstOrNull()?.let { focusField(it.path) }
-        }
-    }
+    useFocusOnFailure(focusRequest, failures)
 
     div {
         className = ClassName("card wide")
@@ -230,8 +229,8 @@ val EditFormPage = FC<Props> {
                                         // editing is the confirmation they asked for either way, whether or not
                                         // the bytes moved.
                                         val search = formsSearchHashParams(formsSearchFromHash(hashParams()))
-                                        val flag = id?.let { listOf(HP.highlight to it) } ?: emptyList()
-                                        navigateHash(listOf(HP.page to HMENU.pageForms) + search + flag)
+                                        // `id` is non-null in this branch (the null case is a separate `when` arm).
+                                        navigateHash(listOf(HP.page to HMENU.pageForms) + search + (HP.highlight to id))
                                     } catch (e: Throwable) {
                                         // Only the failure path stays on the page, so re-enable the button here
                                         // rather than in a `finally` that would run after a successful save has
