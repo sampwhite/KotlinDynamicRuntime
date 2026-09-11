@@ -93,12 +93,16 @@ val NewFormPage = FC<Props> {
                 +"Loading…"
             }
             loadError != null -> errorText("Couldn't load the form.", loadError!!)
-            cat == null || ep == null -> p {
-                className = ClassName("subtitle")
-                +("This account's surface has no form to create. A client defines the traits its forms are " +
-                    "built from; yours declares none yet.")
+            cat == null || ep == null -> {
+                newFormNav()
+                p {
+                    className = ClassName("subtitle")
+                    +("This account's surface has no form to create. A client defines the traits its forms are " +
+                        "built from; yours declares none yet.")
+                }
             }
             else -> {
+                newFormNav()
                 val inputType = cat.inputType(ep)
                 p {
                     className = ClassName("subtitle")
@@ -202,5 +206,20 @@ val NewFormPage = FC<Props> {
                 runError?.let { errorText("Couldn't create the form.", it) }
             }
         }
+    }
+}
+
+/**
+ * The `← My forms` link atop the create page (issue #671): the way out *before* creating -- while filling the
+ * form, and on the no-form-to-create dead-end -- since a successful create navigates back on its own. Carries the
+ * listing's search and sort (the sort rides as non-nav hash params) so cancel returns to the same filtered,
+ * sorted list the create was launched from, exactly as the edit page's back link does (issue #669). Abandoning a
+ * half-filled form discards its input, deliberately -- a confirm-on-dirty prompt would be a separate nicety.
+ */
+private fun react.ChildrenBuilder.newFormNav() {
+    val search = formsSearchHashParams(formsSearchFromHash(hashParams()))
+    div {
+        className = ClassName("row")
+        backToListing(HMENU.pageForms, search)
     }
 }
