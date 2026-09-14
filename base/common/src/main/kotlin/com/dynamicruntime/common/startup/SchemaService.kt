@@ -19,7 +19,9 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GU
+import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientTraitUsage
+import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.GedraTrait
@@ -600,6 +602,17 @@ class SchemaService : ServiceInitializer {
      * The collector is what the unions were built from, so this is the same set they select on.
      */
     fun gedraTraitsFor(client: String): List<GedraTrait> = collector?.gedraConfigs?.traitsFor(client) ?: emptyList()
+
+    /**
+     * The gedra traits [client] actually **supports** (issue #672) -- narrower than [gedraTraitsFor], which is
+     * what the client can *see* (its own plus every global trait). A client that omits a global trait can see
+     * but does not support it, and this is the set its forms are built from. [def] is the client's definition
+     * (its `includedTraits` drive the computation); null means the definition was dropped in a degraded boot, in
+     * which case a client supports what it sees. The same `supportedTraits` the workflow and variant builds use.
+     */
+    fun supportedGedraTraitsFor(client: String, def: ClientDef?): List<GedraTrait> =
+        collector?.let { supportedTraits(it.gedraConfigs, client, def, it.clientOverlays[client]?.keys ?: emptySet()) }
+            ?: emptyList()
 
     /** Who owns a gedra-config [namespace] (issue #627), or null when no kept config has claimed it. */
     fun gedraNamespaceOwner(namespace: String): String? = collector?.gedraConfigs?.namespaceOwner(namespace)

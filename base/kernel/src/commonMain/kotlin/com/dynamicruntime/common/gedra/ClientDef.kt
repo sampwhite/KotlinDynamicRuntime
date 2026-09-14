@@ -115,6 +115,32 @@ object CLD {
      * callback lives with the client endpoints. A literal at either end is a rename waiting to empty a list.
      */
     const val clientOptions = "clientOptions"
+
+    // --- the client-definition retrieve + summary endpoints (issue #672) ------------------------------------
+
+    /** Schema type name for one client's full definition (the `/admin/client/definition` retrieve, issue #672). */
+    const val definitionTypeName = "ClientDefinition"
+
+    /** Schema type name for one of a client's traits within [definitionTypeName] -- id, type, and data schema. */
+    const val traitInfoTypeName = "ClientTraitInfo"
+
+    /** Schema type name for one of a client's trait-usage rules within [definitionTypeName] (a listing column). */
+    const val usageInfoTypeName = "ClientUsageInfo"
+
+    /** Schema type name for a cross-client overview row (the `/admin/clients/summary` listing, issue #672). */
+    const val summaryTypeName = "ClientSummary"
+
+    // Definition-level field names on the retrieve/summary types (each matches its value). The per-trait and
+    // per-usage keys are NOT re-declared here: a trait's field names live on `CCT` beside `GedraTrait` and a
+    // usage's on `UF` beside `ClientTraitUsage`, so a renamed attribute is a single-file edit (CLAUDE.md).
+    /** The client's attributes, as [ClientDef.toInfo] writes them ([infoTypeName]). */
+    const val client = "client"
+    const val traits = "traits"
+    const val usages = "usages"
+    const val workflows = "workflows"
+    const val workflowIds = "workflowIds"
+    const val traitIds = "traitIds"
+    const val usageLabels = "usageLabels"
 }
 
 /**
@@ -330,7 +356,11 @@ data class ClientDef(
                 type = SCT.kObject
                 description = "A client this deployment carries, as it was declared."
                 property(CLD.clientId, "The client's unique key, embedded in every gedra id it owns.", required = true)
-                property(CLD.name, "The name presented to users as the name of the client.", required = true)
+                // `emptyIsAbsent = false`: an empty name is a real, handled state (`clientLabel` falls back to the
+                // id), so it must not read as a missing required field and fail validation (issue #672 review).
+                property(CLD.name, "The name presented to users as the name of the client.", required = true) {
+                    emptyIsAbsent = false
+                }
                 property(CLD.description, "An internal note about who, what or why.")
                 property(CLD.usageType, "What the client is for.", required = true) {
                     options(ClientUsageType.entries)
