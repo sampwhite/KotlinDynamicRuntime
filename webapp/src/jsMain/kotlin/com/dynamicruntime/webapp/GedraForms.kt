@@ -13,10 +13,12 @@ import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.home.HMENU
 import react.ChildrenBuilder
 import react.dom.html.ReactHTML.div
 import web.cssom.ClassName
+import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
@@ -46,11 +48,12 @@ import com.dynamicruntime.common.util.toOptStr
 fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substringAfter('/')
 
 /**
- * The forms hash's navigation keys -- the page, the open form, and the listing a child was opened from. Every
- * other key on a forms hash is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`),
- * because the forms search shares the endpoint's own arg names, the same arrangement the Users page uses.
+ * The forms hash's navigation keys -- the page, the open form, the listing a child was opened from, the
+ * arrival highlight, and the survey child page's edit-mode flag (issue #694). Every other key on a forms hash
+ * is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`), because the forms search
+ * shares the endpoint's own arg names, the same arrangement the Users page uses.
  */
-private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight)
+private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight, HP.edit)
 
 /**
  * The applied forms search read back out of a hash (issue #592): every param that is not a navigation key. So a
@@ -96,9 +99,9 @@ fun ChildrenBuilder.formsBackToListing() {
     }
 }
 
-/** The declared query keys that are not applied-search values: paging, the owner-block flag, and the sort
- *  column and direction (#666) -- the sort rides its own hash params and state, never the applied search. */
-private val formsNonSearchKeys = setOf(EP.offset, EP.limit, EI.includeUsers, GSORT.sort, GSORT.sortDir)
+/** The declared query keys that are not applied-search values: paging, the owner-block flag, the sort
+ *  column and direction (#666), and the always-on `withStates` (#694) -- none rides the applied search. */
+private val formsNonSearchKeys = setOf(EP.offset, EP.limit, EI.includeUsers, GSORT.sort, GSORT.sortDir, GDF.withStates)
 
 /**
  * The applied-search keys a listing's [inputSchema] actually declares (issue #592 review): its own property
@@ -285,6 +288,35 @@ fun entriesUnionOf(type: SchType?): SchType? = type?.properties?.get(GDF.entries
 /** One computed display value from a client's trait-usage rule (issue #537): a column and its cell. */
 class DisplayValue(val traitId: String, val label: String, val value: String)
 
+/**
+ * A form's global survey status for the forms-list column (issue #694), derived from its `surveyCompletion`
+ * state. Each carries the label the chip shows and the [PSTAT] colour class it renders in. **Invalid trumps
+ * incomplete**: data that fails schema is [invalid] even if a required trait is also missing.
+ */
+enum class SurveyStatus(val label: String, val pstat: String) {
+    valid("Valid", PSTAT.ok),
+    needsInfo("Needs Info", PSTAT.warning),
+    invalid("Invalid", PSTAT.error),
+}
+
+/**
+ * The [SurveyStatus] from a row's state entries (issue #694), or null when the form has no survey state — a
+ * client with no survey, or a row not yet computed — in which case the column shows nothing for it. Reads the
+ * `surveyCompletion` entry's `complete`/`valid` booleans; `!valid` → Invalid, else `!complete` → Needs Info,
+ * else Valid. Pure, covered under `jsNodeTest`.
+ */
+fun surveyStatusFrom(states: List<Map<String, Any?>>): SurveyStatus? {
+    val entry = states.firstOrNull { it[GE.traitId] == SVY.surveyCompletion } ?: return null
+    val data = entry[GE.data].toJsonMapOrEmpty()
+    val valid = data[SVY.valid] as? Boolean ?: return null
+    val complete = data[SVY.complete] as? Boolean ?: return null
+    return when {
+        !valid -> SurveyStatus.invalid
+        !complete -> SurveyStatus.needsInfo
+        else -> SurveyStatus.valid
+    }
+}
+
 class FormSummary(
     val gedraId: String,
     /**
@@ -308,6 +340,8 @@ class FormSummary(
     val ownerName: String? = null,
     /** The owner's email, from the row's `owner` block (issue #580); null for an ordinary caller's own rows. */
     val ownerEmail: String? = null,
+    /** The form's global survey status (issue #694), or null when it has no survey state — see [surveyStatusFrom]. */
+    val surveyStatus: SurveyStatus? = null,
 )
 
 /**
@@ -352,6 +386,9 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary 
         // read-only view read them one at a time; a block absent (an ordinary caller's own row) leaves both null.
         ownerName = owner[DUF.name] as? String,
         ownerEmail = owner[DUF.email] as? String,
+        // The global survey status (issue #694): present only when the row carried state (`withStates`), null
+        // for a client with no survey, in which case the list draws no status for the row.
+        surveyStatus = surveyStatusFrom(item[GDF.states].toJsonListOfMaps()),
     )
 }
 

@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
@@ -380,11 +381,14 @@ class GedraFormsTest {
         val applied = mapOf("acmeSiteAuditContains" to "dana", EI.user to "7", EI.q to "plan")
         val params = formsSearchHashParams(applied)
         // A hash as it would stand on the list, with navigation keys mixed in.
-        val hash = params.toMap() + mapOf(HP.page to "forms", HP.gedra to "gd.fd.acme.u1", HP.from to "forms")
+        // `edit=1` (issue #694) is the survey child page's own key: the chip's direct-to-edit link puts it in the
+        // hash the back link is built from, and it must not ride back into the listing as a "search".
+        val hash = params.toMap() +
+            mapOf(HP.page to "forms", HP.gedra to "gd.fd.acme.u1", HP.from to "forms", HP.edit to "1")
         assertEquals(applied, formsSearchFromHash(hash))
         // The navigation keys are never taken for search.
         val decoded = formsSearchFromHash(hash)
-        assertTrue(HP.page !in decoded && HP.gedra !in decoded && HP.from !in decoded)
+        assertTrue(HP.page !in decoded && HP.gedra !in decoded && HP.from !in decoded && HP.edit !in decoded)
         // A blank value is not a filter, so it neither encodes nor decodes.
         assertTrue(formsSearchHashParams(mapOf("x" to "  ")).isEmpty())
         assertEquals(emptyMap(), formsSearchFromHash(mapOf(HP.page to "forms", "x" to "")))
@@ -442,6 +446,66 @@ class GedraFormsTest {
         assertNull(savedNotShownNote(null, filter, listOf("g.fd.acme.a")))
         // Saved and absent, but no filter is active: left unremarked (a new row is on page one by default sort).
         assertNull(savedNotShownNote("g.fd.acme.new", emptyMap(), listOf("g.fd.acme.a")))
+    }
+
+    // --- survey status column (issue #694) --------------------------------------------------------------
+
+    /** A row's state entries carrying a `surveyCompletion` entry with the given booleans. */
+    private fun surveyStates(complete: Boolean?, valid: Boolean?): List<Map<String, Any?>> {
+        val data = buildMap<String, Any?> {
+            if (complete != null) put(SVY.complete, complete)
+            if (valid != null) put(SVY.valid, valid)
+        }
+        // A second, unrelated state entry too, so the finder must select by trait id rather than take the first.
+        return listOf(
+            mapOf(GE.traitId to "otherState", GE.data to mapOf("x" to 1)),
+            mapOf(GE.traitId to SVY.surveyCompletion, GE.data to data),
+        )
+    }
+
+    /**
+     * The status derivation (issue #694): invalid data trumps incompleteness, an incomplete-but-valid form
+     * needs info, and a complete-and-valid one is valid. The chip label and colour ride the enum.
+     */
+    @Test
+    fun derivesSurveyStatusInvalidTrumpsIncomplete() {
+        // Invalid whenever the present data fails schema, complete or not.
+        assertEquals(SurveyStatus.invalid, surveyStatusFrom(surveyStates(complete = false, valid = false)))
+        assertEquals(SurveyStatus.invalid, surveyStatusFrom(surveyStates(complete = true, valid = false)))
+        // Valid data but a required trait missing: needs info.
+        assertEquals(SurveyStatus.needsInfo, surveyStatusFrom(surveyStates(complete = false, valid = true)))
+        // Complete and valid: valid.
+        assertEquals(SurveyStatus.valid, surveyStatusFrom(surveyStates(complete = true, valid = true)))
+        // The chip contract each status renders under.
+        assertEquals("Needs Info" to "warning", SurveyStatus.needsInfo.label to SurveyStatus.needsInfo.pstat)
+        assertEquals("Invalid" to "error", SurveyStatus.invalid.label to SurveyStatus.invalid.pstat)
+        assertEquals("Valid" to "ok", SurveyStatus.valid.label to SurveyStatus.valid.pstat)
+    }
+
+    /** No survey state -> no status (a client with no survey, or a row not yet computed): the column shows
+     *  nothing for the row rather than guessing. Missing booleans are treated the same, defensively. */
+    @Test
+    fun surveyStatusIsNullWithoutSurveyState() {
+        assertNull(surveyStatusFrom(emptyList()))
+        assertNull(surveyStatusFrom(listOf(mapOf(GE.traitId to "otherState", GE.data to mapOf("x" to 1)))))
+        assertNull(surveyStatusFrom(surveyStates(complete = null, valid = null)))
+        assertNull(surveyStatusFrom(surveyStates(complete = true, valid = null)))
+    }
+
+    /** [summarizeForm] carries the survey status read from the row's `states` (issue #694), and none for a row
+     *  that carried no state (the listing fetched without `withStates`, or a client with no survey). */
+    @Test
+    fun summarizeReadsSurveyStatusFromStates() {
+        val item = mapOf(
+            GDF.gedraId to "gd.fd.acme.u20",
+            GDF.entries to emptyList<Any?>(),
+            GDF.states to listOf(
+                mapOf(GE.traitId to SVY.surveyCompletion, GE.data to mapOf(SVY.complete to false, SVY.valid to true)),
+            ),
+        )
+        assertEquals(SurveyStatus.needsInfo, summarizeForm(item, entriesUnion()).surveyStatus)
+        val bare = mapOf(GDF.gedraId to "gd.fd.acme.u21", GDF.entries to emptyList<Any?>())
+        assertNull(summarizeForm(bare, entriesUnion()).surveyStatus)
     }
 
 }

@@ -480,6 +480,11 @@ body {
    (both one class) and so would otherwise win on source order alone. Consecutive hints stay a tight group. */
 .card > .type-hint { margin-top: 14px; }
 .card > .type-hint + .type-hint { margin-top: 2px; }
+/* A subtitle after a control row -- the raw editor's page note under its back link -- takes the rhythm too, for
+   the same specificity tie as the hint above: `.subtitle` zeroes its own margin and, being one class like the
+   rhythm rule, wins on source order. Matches only after a `.row`, so a subtitle under a heading keeps the
+   heading's tight spacing (issue #694 review). */
+.card > .row + .subtitle { margin-top: 14px; }
 /* The endpoint browser needs room for the table and wide responses. */
 .card.wide { width: var(--content-width); }
 /* A table-first page: the content is a grid of many columns, so it takes the window rather than a chosen
@@ -578,6 +583,25 @@ input {
 .json-value { flex: 1 1 100%; margin: 4px 0 0; white-space: pre; }
 .nested { margin: 4px 0 8px 16px; padding-left: 12px; border-left: 2px solid var(--border); }
 
+/* Friendly forms (issue #694 review): a field's description captions it and stays tight (0), but the NEXT field
+   must not run straight into that description -- give each field group room to read as a group. Scoped to the
+   friendly (data-entry / read) form through the `friendly` class SchemaForm sets on its root, so the
+   wire-documenting catalog keeps the density the rhythm note on `.card` defends; and applied at any depth (a
+   descendant, not a child, combinator), because the raw editor's fields sit inside nested entry blocks and a
+   description-then-row pair is a group boundary wherever it occurs. A row straight after a row (no
+   description) stays flush. */
+.schema-form.friendly .subtitle + .row,
+.schema-form.friendly .type-hint + .row { margin-top: 12px; }
+
+/* The survey workflow form's sections (issue #694 review). Nothing inside a task is a direct child of the card,
+   so none of it took the card's rhythm: the task's Save sat flush under its last field, a trait's layout label
+   sat 2px under the task label where an h2 heading gets 28, and one task ran into the next at an ordinary 14.
+   A task is a section (28, like an h2); a layout label heads its trait like the h2 it replaces (28/12); the
+   Save takes the rhythm the raw editor's Save, a direct card child, already has (14). */
+.wf-task + .wf-task { margin-top: 28px; }
+.wf-trait > .markdown { margin: 28px 0 12px; }
+.wf-task > .row { margin-top: 14px; }
+
 /* Operator diagnostic pages (issue #540): the schema-driven presentation hints. */
 .op-verdict { font-weight: 600; margin: 8px 0 2px; }
 .op-asof { color: var(--text-faint); font-size: .85rem; margin: 0 0 12px; }
@@ -602,6 +626,10 @@ input {
 .op-status.info { background: rgba(129, 140, 248, .16); color: var(--accent-bright); }
 .op-status.warning { background: rgba(217, 119, 6, .18); color: var(--border-admin); }
 .op-status.error { background: rgba(248, 113, 113, .16); color: var(--danger); }
+/* A status chip that is also a link (issue #694): the forms list's Needs Info / Invalid chip goes straight into
+   the survey editor. Keeps the chip look; underlines on hover so it reads as a link. */
+a.op-status { text-decoration: none; cursor: pointer; }
+a.op-status:hover { text-decoration: underline; }
 
 /* presentation:table -- an array rendered as rows/columns. */
 .op-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
