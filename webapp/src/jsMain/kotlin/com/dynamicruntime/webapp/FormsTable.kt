@@ -7,6 +7,7 @@ import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.div
 import web.cssom.ClassName
 import com.dynamicruntime.common.gedra.GSORT
+import com.dynamicruntime.common.schema.PSTAT
 
 /**
  * The caller's form documents as an antd table: one row per form, most recently written first as the endpoint
@@ -44,8 +45,11 @@ external interface FormsTableProps : Props {
      */
     var showOwner: Boolean
 
-    /** Navigates to the edit page for a form. */
+    /** Navigates to the raw-data edit page for a form. */
     var onEdit: (String) -> Unit
+
+    /** Navigates to the survey Edit Form for a form (issue #694): the CTA on an Invalid / Needs Info row. */
+    var onSurveyEdit: (String) -> Unit
 
     /** The form whose Delete is armed (showing the inline confirm), or null when none is. */
     var confirmingDeleteId: String?
@@ -82,6 +86,9 @@ val FormsTable = FC<FormsTableProps> { props ->
     // The Actions column exists only when at least one action can be performed, so a read-only surface carries
     // no empty column.
     val anyActions = props.canEdit || props.canDelete
+    // Draw the Status column only when some row carries a survey status (issue #694): a client with no survey
+    // has none on any row, and an empty column would say nothing -- the same rule the User/Actions columns follow.
+    val anySurveyStatus = props.forms.any { it.second.surveyStatus != null }
     Table {
         size = "small"
         // Declared widths mean what they say (see `TableProps.tableLayout`): under the default auto layout the
@@ -113,6 +120,9 @@ val FormsTable = FC<FormsTableProps> { props ->
             }
             add(sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending))
             if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
+            // The global survey-status column (issue #694): a fixed, non-sortable column (its sort/filter is
+            // deferred to #695), rendering a status chip and a CTA on the unfinished rows.
+            if (anySurveyStatus) add(statusColumn(props))
             add(sortableColumn("Updated", GSORT.updated, 175, props.sortColumn, props.sortDescending))
             add(sortableColumn("Created", GSORT.created, 175, props.sortColumn, props.sortDescending))
             if (anyActions) add(actionsColumn(props))
@@ -130,6 +140,13 @@ val FormsTable = FC<FormsTableProps> { props ->
             row.created = summary.createdAt ?: ""
             row.ownerName = summary.ownerName
             row.ownerEmail = summary.ownerEmail
+            // The survey status for the fixed Status column (issue #694): its chip label + colour class, and
+            // whether it warrants the CTA (anything but Valid). Absent on a row with no survey state.
+            summary.surveyStatus?.let {
+                row.svyLabel = it.label
+                row.svyPstat = it.pstat
+                row.svyActionable = it != SurveyStatus.valid
+            }
             row
         }.toTypedArray()
         onRow = { record, _ ->
@@ -176,6 +193,64 @@ private fun actionsColumn(props: FormsTableProps): dynamic {
         }
     }
     return c
+}
+
+/**
+ * The global survey-status column (issue #694): a status chip, plus a CTA to the survey Edit Form on the
+ * unfinished (Invalid / Needs Info) rows. Like [actionsColumn], `onCell` stops a click inside the cell from
+ * reaching the row's own handler, so following the CTA does not also open the read-only view. A row with no
+ * survey status renders an em dash. The chip label/colour and the actionable flag are read off the row (set in
+ * the dataSource above), so the table stays free of the `SurveyStatus` enum itself.
+ */
+private fun statusColumn(props: FormsTableProps): dynamic {
+    val c = column("Status", "status", 150)
+    c.onCell = {
+        val cellProps: dynamic = js("({})")
+        cellProps.onClick = { event: dynamic -> event.stopPropagation() }
+        cellProps
+    }
+    c.render = fun(_: dynamic, record: dynamic, _: dynamic): dynamic {
+        return FormStatusCell.create {
+            this.label = record.svyLabel as? String
+            this.pstat = record.svyPstat as? String
+            this.actionable = record.svyActionable == true
+            this.id = record.key as String
+            this.onSurveyEdit = props.onSurveyEdit
+        }
+    }
+    return c
+}
+
+private external interface FormStatusCellProps : Props {
+    /** The status chip's label ("Valid"/"Needs Info"/"Invalid"), or null for a row with no survey status. */
+    var label: String?
+    /** The [PSTAT] colour class for the chip; null falls back to the neutral colour. */
+    var pstat: String?
+    /** Whether to offer the CTA (an unfinished row). */
+    var actionable: Boolean
+    var id: String
+    var onSurveyEdit: (String) -> Unit
+}
+
+/** One Status cell: the coloured chip, and — on an unfinished row — a link to the survey Edit Form. */
+private val FormStatusCell = FC<FormStatusCellProps> { props ->
+    val label = props.label
+    if (label == null) {
+        +"—"
+    } else {
+        span {
+            className = ClassName("op-status " + (props.pstat ?: PSTAT.info))
+            +label
+        }
+        if (props.actionable) {
+            Button {
+                type = "link"
+                size = "small"
+                onClick = { props.onSurveyEdit(props.id) }
+                +"Review"
+            }
+        }
+    }
 }
 
 /**

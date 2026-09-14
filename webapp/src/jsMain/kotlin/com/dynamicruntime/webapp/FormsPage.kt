@@ -181,7 +181,8 @@ val FormsPage = FC<Props> {
                 val resp = SchemaCatalogApi.invoke(
                     ep,
                     mapOf(EP.limit to formsPageSize, EP.offset to off) + search +
-                        sortArgs(sortCol, sortDesc) + includeUsersArg(canManageUsers),
+                        sortArgs(sortCol, sortDesc) + includeUsersArg(canManageUsers) +
+                        mapOf(GDF.withStates to true),
                 )
                 rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                 numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
@@ -254,7 +255,8 @@ val FormsPage = FC<Props> {
                     val resp = SchemaCatalogApi.invoke(
                         ep,
                         mapOf(EP.limit to formsPageSize, EP.offset to 0) + initialSearch +
-                            sortArgs(initialSortCol, initialSortDesc) + includeUsersArg(canManage),
+                            sortArgs(initialSortCol, initialSortDesc) + includeUsersArg(canManage) +
+                            mapOf(GDF.withStates to true),
                     )
                     rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                     numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
@@ -631,6 +633,15 @@ val FormsPage = FC<Props> {
                     onEdit = { id ->
                         navigateHash(
                             listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
+                                formsSearchHashParams(appliedSearch) +
+                                sortHashParams(sortColumn, sortDescending),
+                        )
+                    }
+                    // The survey-status CTA (issue #694): to the survey Edit Form, carrying the listing's filter
+                    // and sort like Edit does, so a return lands on the same list.
+                    onSurveyEdit = { id ->
+                        navigateHash(
+                            listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to id) +
                                 formsSearchHashParams(appliedSearch) +
                                 sortHashParams(sortColumn, sortDescending),
                         )

@@ -19,43 +19,9 @@ import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toOptStr
 
-/**
- * The names the survey's state and cfacts are stored and reported under (issue #657). Kept apart from [WFC]:
- * those are per-**task** target facts computed at render time; these are **form-singleton** facts about the
- * whole form, stored as `derived` state and read back through the state->cfact bridge.
- */
-@Suppress("ConstPropertyName")
-object SVY {
-    /**
-     * A form's survey has an entry for every trait it requires. Positive on purpose (present == good): a form
-     * with no computed state yet carries neither survey fact, which reads correctly as "not ready" rather than
-     * -- as a negated `surveyIncomplete` would -- falsely reading as complete. See the survey design doc.
-     */
-    const val surveyComplete = "surveyComplete"
-
-    /** A form's present survey-trait data passes its schema, ignoring missing required values. Positive, as [surveyComplete]. */
-    const val surveyValid = "surveyValid"
-
-    /** The friendly group the two survey cfacts present under. */
-    const val group = "Survey"
-
-    /** The `surveyCompletion` state trait's entry type: `globalconfig.SurveyCompletionEntry`. */
-    const val surveyCompletionEntry = "SurveyCompletionEntry"
-
-    /** The `surveyCompletion` state trait id -- a derived, form-singleton (unkeyed) projection. */
-    const val surveyCompletion = "surveyCompletion"
-
-    const val complete = "complete"
-    const val valid = "valid"
-    const val missingTraits = "missingTraits"
-    const val invalidTraits = "invalidTraits"
-
-    /** Under a [surveyCompletion] entry: the survey revision the projection was computed against, as `WfRef` text. */
-    const val computedAgainstSurveyRef = "computedAgainstSurveyRef"
-
-    /** The config bundle the survey state trait is declared in. */
-    const val stateBundle = "surveyState"
-}
+// `object SVY` (the survey state/cfact wire names) now lives in `base:kernel`
+// (`workflow/SurveyConstants.kt`, same package) so the frontend shares it (issue #694). This file keeps the
+// producer: the state config and the deriver below.
 
 /**
  * The survey's `derived` state trait (issue #657), declared globally like the state schema always is (a state
