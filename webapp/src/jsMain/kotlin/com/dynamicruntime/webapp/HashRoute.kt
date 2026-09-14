@@ -59,6 +59,13 @@ object HP {
     const val gedra = "g"
 
     /**
+     * Survey edit page: present (`edit=1`) to open the survey **in edit mode** rather than the read-only
+     * "View Info" view (issue #694) -- how the forms list's status chip lands a user straight on the fields
+     * needing attention, bypassing the read-only stop.
+     */
+    const val edit = "edit"
+
+    /**
      * Forms page: the gedra id of a form to **highlight** briefly in the list (issue #592) -- how a save
      * hands the just-edited form back to the listing. Transient: read once on arrival and dropped from the
      * hash by the page's own hash-write, so a reload does not re-flash it and the URL stays clean to share.

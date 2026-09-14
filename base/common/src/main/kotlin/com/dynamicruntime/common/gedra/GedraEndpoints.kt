@@ -14,7 +14,9 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
+import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
@@ -593,8 +595,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             noWorkflowView()
         } else {
             // A named form seeds each task from its current entries -- which also makes completeness real.
-            val entriesByTask = if (gedraId == null) emptyMap() else surveyEntriesByTask(c, declared, gedraId)
-            resolveWorkflowView(c, declared, entriesByTask)
+            val row = if (gedraId == null) null else surveyFormRow(c, gedraId)
+            val entriesByTask = row?.let { entriesByTaskOf(declared, it) } ?: emptyMap()
+            // The owner a prefillData function defaults from: the form's user for a survey, the caller for a
+            // creation view. Read only when the workflow actually declares a prefill (issue #679).
+            val ownerAttributes = prefillOwnerAttributes(c, declared, row?.userId ?: c.userId)
+            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes)
         }
     }
 
@@ -647,27 +653,46 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
 }
 
 /**
- * The form's current entries, split into the map [resolveWorkflowView] seeds a survey view from (issue #658):
- * for each task, the form's entries whose trait the task collects. The read is the caller's own scope, so a
- * form out of reach answers 404 -- the resolver itself reads no gedra, keeping it a pure function of the
- * definition and the schema, so the one gedra read a survey view needs lives here in the handler layer.
+ * The survey's form, read in the caller's own scope so a form out of reach answers 404 (issue #658), and
+ * confined to the client whose survey was resolved (`cxt.client`): `registry.survey` is that client's, and an
+ * `allClients` caller could otherwise name a form in another client that scope alone would admit -- seeding one
+ * client's survey with another's data. The edit save is already guarded this way (checkPathClient). The resolver
+ * itself reads no gedra, so the one read a survey view needs lives here in the handler layer.
  */
-private fun surveyEntriesByTask(cxt: KdrCxt, declared: WfDeclared, fullId: String): Map<String, List<Map<String, Any?>>> {
+private fun surveyFormRow(cxt: KdrCxt, fullId: String): GedraDataRow {
     val row = GedraDataService.get(cxt).queryGedra(cxt, fullId, GedraDataType.formDoc, ReadScopeRules.forCaller(cxt))
         ?: throw KdrException("No form '$fullId' for this caller.", code = EXC.notFound)
-    // Confine the form to the client whose survey we resolved (`cxt.client`): `registry.survey` is that client's,
-    // and an `allClients` caller could otherwise name a form in another client that scope alone would admit --
-    // seeding one client's survey with another's data. The edit save is already guarded this way (checkPathClient).
     if (row.client != cxt.client) {
         throw KdrException.mkInput(
             "Form '$fullId' belongs to client '${row.client}', and this survey view is for '${cxt.client}'. " +
                 "Use that client's own survey view.",
         )
     }
-    return declared.def.tasks.associate { task ->
+    return row
+}
+
+/** The form's current entries split per task (issue #658): each task's are the entries whose trait it collects. */
+private fun entriesByTaskOf(declared: WfDeclared, row: GedraDataRow): Map<String, List<Map<String, Any?>>> =
+    declared.def.tasks.associate { task ->
         val traitIds = task.traits.map { it.traitId }.toSet()
         task.id to row.entries.filter { it[GE.traitId].toOptStr() in traitIds }
     }
+
+/**
+ * The form owner's attributes a `prefillData` function may default a field from (issue #679) -- empty when the
+ * workflow declares no prefill (so an ordinary view pays no user read) or the owner cannot be read here. The
+ * owner is the form's user for a survey, the caller for a creation view; the attribute keys are [PFO]'s, the
+ * same ones `prefillFromOwner` names.
+ */
+private fun prefillOwnerAttributes(cxt: KdrCxt, declared: WfDeclared, ownerUserId: Long): Map<String, Any?> {
+    val wantsPrefill = declared.def.tasks.any { t -> t.resolvedFunctions.any { it.event == WfEventType.prefillData } }
+    if (!wantsPrefill || ownerUserId <= 0L) {
+        return emptyMap()
+    }
+    val owner = UserService.get(cxt)
+        .queryUsersByIds(cxt, listOf(ownerUserId), ReadScopeRules.forCaller(cxt))[ownerUserId]
+        ?: return emptyMap()
+    return mapOf(PFO.publicName to owner.publicName(), PFO.name to owner.name)
 }
 
 /**
@@ -744,13 +769,13 @@ private fun gedraSortFor(
 ): GedraDataService.GedraSort? {
     val column = request[GSORT.sort].toOptStr()?.ifBlank { null } ?: return null
     val descending = request[GSORT.sortDir].toOptStr()?.equals(GSORT.desc, ignoreCase = true) == true
-    return when {
-        column == GSORT.updated -> GedraDataService.GedraSort(UsageKind.date, descending) { it.updatedAt?.toString() ?: "" }
-        column == GSORT.created -> GedraDataService.GedraSort(UsageKind.date, descending) { it.createdAt?.toString() ?: "" }
+    return when (column) {
+        GSORT.updated -> GedraDataService.GedraSort(UsageKind.date, descending) { it.updatedAt?.toString() ?: "" }
+        GSORT.created -> GedraDataService.GedraSort(UsageKind.date, descending) { it.createdAt?.toString() ?: "" }
         // The "Contains" summary orders by the row's traits as text (issue #666). Its display shows friendly
         // labels, but those are computed on the frontend (humanizeFieldName is not in the kernel); the trait ids
         // sort in the same relative order for the ordinary case where a label is just the humanized id.
-        column == GSORT.contains -> GedraDataService.GedraSort(UsageKind.string, descending) { row ->
+        GSORT.contains -> GedraDataService.GedraSort(UsageKind.string, descending) { row ->
             row.entries.mapNotNull { it[GE.traitId].toOptStr() }.joinToString(", ")
         }
         // The owner (the User column, issue #666): admin-only, as the column is -- an ordinary caller's rows are
@@ -758,7 +783,7 @@ private fun gedraSortFor(
         // hook by one batch read over the whole matched set ([ownersOf]) -- the cache answers what it holds and the
         // misses share a single session, where a per-row lookup would open one session each on a cache-absent
         // node. A user beyond the caller's scope is absent from the map, so `keyOf` reads blank, which sorts last.
-        column == GSORT.owner -> {
+        GSORT.owner -> {
             if (!AdminRules.canManageUsers(cxt)) {
                 null
             } else {
@@ -773,7 +798,7 @@ private fun gedraSortFor(
         // The client (the Client column, issue #668): `allClients`-only, as the column is -- a caller who does not
         // see across clients has only their own client's rows, so there is nothing to order by (null = default
         // order). The client is a protocol column on the row, so it needs no per-row resolution.
-        column == GSORT.client ->
+        GSORT.client ->
             if (!AdminRules.canSeeAllClients(cxt)) null
             else GedraDataService.GedraSort(UsageKind.string, descending) { it.client }
         else -> {

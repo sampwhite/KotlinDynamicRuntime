@@ -186,7 +186,8 @@ val FormsPage = FC<Props> {
                 val resp = SchemaCatalogApi.invoke(
                     ep,
                     mapOf(EP.limit to formsPageSize, EP.offset to off) + search +
-                        sortArgs(sortCol, sortDesc) + includeUsersArg(canManageUsers),
+                        sortArgs(sortCol, sortDesc) + includeUsersArg(canManageUsers) +
+                        mapOf(GDF.withStates to true),
                 )
                 rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                 numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
@@ -208,7 +209,14 @@ val FormsPage = FC<Props> {
     }
 
     useEffectOnce {
-        onHashChange { viewingId = hashParams()[HP.gedra] }
+        // Only a hash that still names THIS page drives the open form. A hash change that leaves for another page
+        // (the survey editor, the raw editor) also carries `g=`; reading it here set `viewingId`, and the hash-sync
+        // effect below then rewrote the hash back to `page=forms&g=…` -- hijacking the departure into the in-page
+        // view. Found by #694's status-chip link; it also caught the Actions "Edit" link.
+        onHashChange {
+            val h = hashParams()
+            if (h[HP.page] == HMENU.pageForms) viewingId = h[HP.gedra]
+        }
     }
 
     // Clear the flash after a beat, so it plays once on arrival and a later re-render (paging, a reload) does
@@ -269,7 +277,8 @@ val FormsPage = FC<Props> {
                     val resp = SchemaCatalogApi.invoke(
                         ep,
                         mapOf(EP.limit to formsPageSize, EP.offset to 0) + initialSearch +
-                            sortArgs(initialSortCol, initialSortDesc) + includeUsersArg(canManage),
+                            sortArgs(initialSortCol, initialSortDesc) + includeUsersArg(canManage) +
+                            mapOf(GDF.withStates to true),
                     )
                     rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
                     numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
@@ -660,7 +669,6 @@ val FormsPage = FC<Props> {
                 FormsTable {
                     forms = rows.map { (it[GDF.gedraId] as? String ?: "") to summarizeForm(it, union) }
                     onView = { id -> viewingId = id }
-                    canEdit = patchEndpoint != null
                     canDelete = deleteEndpoint != null
                     showOwner = canManageUsers
                     showClient = canSeeAllClients
@@ -673,12 +681,18 @@ val FormsPage = FC<Props> {
                         offset = 0
                         listEndpoint?.let { loadPage(it, 0, appliedSearch, col, desc) }
                     }
-                    onEdit = { id ->
-                        navigateHash(
-                            listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
-                                formsSearchHashParams(appliedSearch) +
-                                sortHashParams(sortColumn, sortDescending),
-                        )
+                    // The listing's context (filter + sort) rides every hop to a child page, so its back link
+                    // returns to the same list.
+                    val listingContext = formsSearchHashParams(appliedSearch) + sortHashParams(sortColumn, sortDescending)
+                    // "View Info" (issue #694): the survey's read-only view, with its Edit toggle.
+                    onSurveyView = { id ->
+                        navigateHash(listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to id) + listingContext)
+                    }
+                    // The status chip's direct-to-edit link (issue #694): straight into the survey's edit mode,
+                    // bypassing the read-only stop -- a real href, so it is keyboard-reachable and can open in a
+                    // new tab.
+                    surveyEditHref = { id ->
+                        hashHref(listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to id, HP.edit to "1") + listingContext)
                     }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId

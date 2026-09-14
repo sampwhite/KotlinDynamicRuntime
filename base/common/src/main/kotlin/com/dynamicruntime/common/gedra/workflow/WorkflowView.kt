@@ -42,6 +42,7 @@ fun resolveWorkflowView(
     cxt: KdrCxt,
     declared: WfDeclared,
     entriesByTask: Map<String, List<Map<String, Any?>>> = emptyMap(),
+    ownerAttributes: Map<String, Any?> = emptyMap(),
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -100,9 +101,12 @@ fun resolveWorkflowView(
             WVF.facts to taskFacts.toList(),
         )
         task.layout?.let { raw[WFD.layout] = linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name) }
-        // When resolved against an existing form (a survey edit), carry that task's current entries so the page
-        // seeds each field with its stored value. A creation view has none, so the field is simply absent.
-        if (entries.isNotEmpty()) raw[WVF.entries] = entries
+        // The entries the page seeds each field from: the task's stored ones (a survey edit; a creation view has
+        // none), decorated with any prefillData defaults (issue #679). The prefill runs *after* `taskFacts`
+        // above, and over `entries` -- not the presented result -- so a default is presented as entered but never
+        // counts toward completeness. A real value always wins over a default.
+        val presented = runPrefillData(cxt, task, ownerAttributes, entries)
+        if (presented.isNotEmpty()) raw[WVF.entries] = presented
         // The content pipeline, per task: the request facts (hoisted) plus this task's own, then drop anything
         // gated on a cfact they do not satisfy. A no-op on today's model (no conditions), real on tomorrow's.
         return filterByCFacts(raw, requestFacts + taskFacts, cfacts::parse)
