@@ -69,7 +69,7 @@ val App = FC<Props> {
             // A page holding unsaved work may veto being left (issue #700) -- asked HERE, before the switch, so a
             // "stay" changes nothing: the page never unmounts and its edits are intact. The address bar is put
             // back to exactly where it was (replaceState, so no second hashchange), whatever the move was.
-            if (LeaveGuard.vetoesMoveTo(next)) {
+            if (LeaveGuard.vetoesMove(hashParams())) {
                 restoreUrl(oldUrl)
                 return@onHashChangeFrom
             }

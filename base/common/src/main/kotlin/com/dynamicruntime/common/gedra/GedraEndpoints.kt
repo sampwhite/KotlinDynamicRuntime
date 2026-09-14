@@ -31,6 +31,7 @@ import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
 // `GEP` (the endpoint paths and response type-names) now lives in `base/kernel` (GedraConstants.kt) so the
@@ -660,9 +661,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // call -- the save is the refresh. A create save has no form to resolve a survey against, so it answers as
         // before. The same helpers the view endpoint uses, so the two cannot drift.
         if (gedraId != null && result[WSF.saved] == true) {
-            val row = surveyFormRow(c, gedraId)
-            val view = resolveWorkflowView(c, declared, entriesByTaskOf(declared, row), prefillOwnerAttributes(c, declared, row.userId))
-            result + (WSF.view to view)
+            // From the row the save already read back and returned as `item` -- its entries and owner are all the
+            // resolver needs -- rather than reading it a second time; the client confinement the view endpoint's
+            // own read re-checks is already guaranteed here by the patch path.
+            val item = result[WSF.item].toJsonMapOrEmpty()
+            val entriesByTask = entriesByTaskOf(declared, item[GDF.entries].toJsonListOfMaps())
+            val owner = prefillOwnerAttributes(c, declared, item[GDF.userId].toOptLong() ?: c.userId)
+            result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner))
         } else {
             result
         }
@@ -690,9 +695,13 @@ private fun surveyFormRow(cxt: KdrCxt, fullId: String): GedraDataRow {
 
 /** The form's current entries split per task (issue #658): each task's are the entries whose trait it collects. */
 private fun entriesByTaskOf(declared: WfDeclared, row: GedraDataRow): Map<String, List<Map<String, Any?>>> =
+    entriesByTaskOf(declared, row.entries)
+
+/** The same split over entries already in hand as wire maps -- a save's returned item (issue #700). */
+private fun entriesByTaskOf(declared: WfDeclared, entries: List<Map<String, Any?>>): Map<String, List<Map<String, Any?>>> =
     declared.def.tasks.associate { task ->
         val traitIds = task.traits.map { it.traitId }.toSet()
-        task.id to row.entries.filter { it[GE.traitId].toOptStr() in traitIds }
+        task.id to entries.filter { it[GE.traitId].toOptStr() in traitIds }
     }
 
 /**

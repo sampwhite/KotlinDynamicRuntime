@@ -129,13 +129,13 @@ object WVF {
     const val status = "status"
 
     /**
-     * Under [status]: the friendly content failures of the task's present entries, each `{traitId, message}`,
-     * for the rail's invalid-task tooltip. Empty when the task's data passes its schema.
+     * Under [status]: the content failures of the task's present entries, for the rail's invalid-task tooltip.
+     * Each is the kernel's one failure wire shape (`SchFailure.toWireMap()`: path, code, message, and the schema
+     * author's `userMessage` when the field declares one) plus the `traitId` it belongs to -- so whatever reads a
+     * reported failure reads these too, and a tooltip can later point at the field. Empty when the task's data
+     * passes its schema.
      */
     const val problems = "problems"
-
-    /** In a [problems] entry: the friendly wording of one failure. */
-    const val message = "message"
 
     /**
      * On the view's top level: the id of the **earliest task still needing action** (issue #700) -- the first,

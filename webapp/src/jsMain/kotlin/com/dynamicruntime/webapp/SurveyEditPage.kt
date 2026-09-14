@@ -53,7 +53,10 @@ val SurveyEditPage = FC<Props> {
     // moment the edits are saved or reverted, so a clean page never nags.
     useEffect(dirty) {
         if (dirty) {
-            LeaveGuard.arm(pageSurveyEdit) {
+            // "Still here" is this page AND this form: a task switch stays; another form's survey -- the same
+            // page, but a keyed remount that would drop the edits -- is a leave.
+            val form = gedraId
+            LeaveGuard.arm({ h -> h[HP.page] == pageSurveyEdit && h[HP.gedra] == form }) {
                 LeaveGuard.confirmLeave("You have unsaved changes on this form. Leave the page and lose them?")
             }
         } else {

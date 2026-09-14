@@ -86,8 +86,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 
     // Seed every task's fields from its current entries (empty for a creation view). Trait ids are unique across
     // a workflow's tasks, so one map serves them all.
-    val seeded: Map<String, Map<String, Any?>> = wf.tasks.flatMap { seedValuesFromEntries(it.entries).entries }
-        .associate { it.key to it.value }
+    val seeded: Map<String, Map<String, Any?>> = seedValuesOf(wf)
 
     // A creation form is always editable; a survey edit starts read-only (the "View Info" view) unless the URL
     // asked for edit mode (issue #694, the forms-list chip's direct-to-edit link).
@@ -141,7 +140,12 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     // *this* task's (possibly server-canonicalized) values into the fields; other tasks keep
                     // what the user has typed. "Done" returns to read-only showing `stored`.
                     if (isEdit) {
-                        val storedNow = seedValuesFromEntries(outcome.item[GDF.entries].toJsonListOfMaps())
+                        // The refreshed snapshot comes from the returned VIEW's per-task entries -- the same
+                        // presented shape the seed used, prefill defaults included (issue #679) -- not the raw
+                        // stored item, or a prefilled task the user never touched would read as unsaved from here
+                        // on. The item is the fallback only for a save that carried no view.
+                        val storedNow = outcome.view?.let { v -> seedValuesOf(v) }
+                            ?: seedValuesFromEntries(outcome.item[GDF.entries].toJsonListOfMaps())
                         stored = storedNow
                         val savedTraitIds = task.traits.map { it.traitId }.toSet()
                         valuesByTrait = valuesByTrait + storedNow.filterKeys { it in savedTraitIds }
@@ -214,7 +218,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         val status = statuses[task.id]
         val mark = railMark(status)
         val unsaved = taskUnsaved(task, valuesByTrait, stored)
-        val explanation = railExplanation(status, unsaved)
+        // Name a missing trait the way the panel heads it (its schema title), so tooltip and heading agree.
+        val explanation = railExplanation(status, unsaved) { id ->
+            task.traits.firstOrNull { it.traitId == id }?.let(::traitHeading) ?: humanizeFieldName(id)
+        }
         button {
             className = ClassName(if (active) "wf-rail-item active" else "wf-rail-item")
             title = explanation

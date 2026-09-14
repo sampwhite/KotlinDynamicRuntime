@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.workflow.SVY
@@ -43,8 +44,12 @@ class WfTraitView(
 /** One save option a task offers: what a button says and what it does (`WfSaveKind.name`, e.g. create/edit). */
 class WfSaveView(val id: String, val label: String, val kind: String)
 
-/** One friendly content failure a task's data has (issue #700): which trait, and the wording to show. */
-class WfProblem(val traitId: String, val message: String)
+/**
+ * One content failure a task's data has (issue #700): which trait, the field [path] within its data, and the
+ * wording to show -- the schema author's `userMessage` when the field declares one, else the validator's
+ * `message`, the same rule a reported failure is read by anywhere else.
+ */
+class WfProblem(val traitId: String, val path: String, val message: String)
 
 /**
  * A task's status for the task rail (issue #700), as the view computed it: presence ([complete], [missingTraits])
@@ -112,8 +117,14 @@ private fun parseTaskStatus(raw: Any?): WfTaskStatus? {
         valid = s[SVY.valid] == true,
         missingTraits = s[SVY.missingTraits].toJsonListOfStrings(),
         invalidTraits = s[SVY.invalidTraits].toJsonListOfStrings(),
+        // Each problem is the kernel's own failure wire map (`SchFailure.toWireMap`) plus the trait it belongs to,
+        // read by the same constants every other reported failure is.
         problems = s[WVF.problems].toJsonListOfMaps().map {
-            WfProblem(it[GE.traitId].toOptStr() ?: "", it[WVF.message].toOptStr() ?: "")
+            WfProblem(
+                traitId = it[GE.traitId].toOptStr() ?: "",
+                path = it[EP.failurePath].toOptStr() ?: "",
+                message = it[EP.failureUserMessage].toOptStr() ?: it[EP.failureMessage].toOptStr() ?: "",
+            )
         },
     )
 }
@@ -186,15 +197,16 @@ fun railMark(status: WfTaskStatus?): RailMark = when {
 
 /**
  * What a rail mark means, in words, for the entry's tooltip and screen-reader label (issue #700): unsaved edits,
- * the required traits still missing (by their friendly names), each friendly problem, or -- when nothing else
- * applies -- "Complete". One line each, in that order.
+ * the required traits still missing (named by [nameOf] -- the rail passes the same heading the panel uses, so
+ * the two agree; the default humanizes the id), each friendly problem, or -- when nothing else applies --
+ * "Complete". One line each, in that order.
  */
-fun railExplanation(status: WfTaskStatus?, unsaved: Boolean): String {
+fun railExplanation(status: WfTaskStatus?, unsaved: Boolean, nameOf: (String) -> String = ::humanizeFieldName): String {
     val lines = buildList {
         if (unsaved) add("Unsaved changes")
         if (status == null || !status.complete) {
             val missing = status?.missingTraits.orEmpty()
-            add(if (missing.isEmpty()) "Not started" else "Needs information: " + missing.joinToString(", ") { humanizeFieldName(it) })
+            add(if (missing.isEmpty()) "Not started" else "Needs information: " + missing.joinToString(", ") { nameOf(it) })
         }
         status?.problems?.forEach { add(it.message) }
         if (isEmpty()) add("Complete")
@@ -226,6 +238,14 @@ fun seedValuesFromEntries(entries: List<Map<String, Any?>>): Map<String, Map<Str
     entries.mapNotNull { entry ->
         entry[GE.traitId].toOptStr()?.let { it to entry[GE.data].toJsonMapOrEmpty() }
     }.toMap()
+
+/**
+ * Every task's seed values in one map, keyed by trait id (trait ids are unique across a workflow's tasks) -- what
+ * the form starts from, and what it re-snapshots from the refreshed view a survey edit save returns (issue
+ * #700), so the two are the same *presented* shape (prefill defaults included) and never disagree about "unsaved".
+ */
+fun seedValuesOf(view: WorkflowView): Map<String, Map<String, Any?>> =
+    view.tasks.flatMap { seedValuesFromEntries(it.entries).entries }.associate { it.key to it.value }
 
 /**
  * The `entries` a save posts, from the values collected per trait (issue #536): each is a `{traitId, data}`

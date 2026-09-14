@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
@@ -185,8 +186,10 @@ class SurveyEditTest : StringSpec({
         status[SVY.invalidTraits].toJsonListOrEmpty() shouldContain "ndetail"
         val problems = status[WVF.problems].toJsonListOfMaps()
         problems.isNotEmpty() shouldBe true
+        // A problem is the kernel's failure wire map (path / code / message) plus the trait it belongs to.
         problems.first()[GE.traitId] shouldBe "ndetail"
-        (problems.first()[WVF.message] as String).isNotBlank() shouldBe true
+        (problems.first()[EP.failureMessage] as String).isNotBlank() shouldBe true
+        (problems.first()[EP.failurePath] as String).isNotBlank() shouldBe true
         // Invalid is "needs action" too, so the task is the focus even though it is complete.
         v[WVF.focusTask] shouldBe "only"
     }

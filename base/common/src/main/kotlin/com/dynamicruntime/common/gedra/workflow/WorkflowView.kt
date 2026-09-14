@@ -9,6 +9,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.collectDefClosure
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
+import com.dynamicruntime.common.schema.toWireMap
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.filterByCFacts
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -90,14 +91,12 @@ fun resolveWorkflowView(
 
     // The task's status for the task rail (issue #700): presence from the same engine `taskFacts` uses, content
     // from the survey's one validity rule (`surveyContentFailures`), so the rail agrees with the stored survey
-    // state and the forms list's status column. Each problem carries the schema author's own wording when the
-    // field declares some, else the validator's.
+    // state and the forms list's status column. Each problem is the kernel's own failure wire map plus its
+    // trait, so the page reads it by the same rule it reads any reported failure (the author's wording first).
     fun taskStatus(task: WfTask, entries: List<Map<String, Any?>>): Map<String, Any?> {
         val missing = WfEngine.missingTraits(task.requiredTraitIds, entries)
         val failures = surveyContentFailures(cxt, client, task.traits.map { it.traitId }.toSet(), entries)
-        val problems = failures.flatMap { (traitId, fs) ->
-            fs.map { f -> linkedMapOf<String, Any?>(GE.traitId to traitId, WVF.message to (f.userMessage ?: f.message)) }
-        }
+        val problems = failures.flatMap { (traitId, fs) -> fs.map { f -> f.toWireMap() + (GE.traitId to traitId) } }
         return linkedMapOf(
             SVY.complete to missing.isEmpty(),
             SVY.valid to failures.isEmpty(),
