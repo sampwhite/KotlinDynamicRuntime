@@ -44,6 +44,13 @@ external interface FormsTableProps : Props {
      */
     var showOwner: Boolean
 
+    /**
+     * Whether to draw the Client column (issue #668): true for a caller who administers across clients
+     * (`allClients`), whose listing spans clients. Every row already carries its client, so this is purely which
+     * callers see the column -- the cross-client counterpart of [showOwner].
+     */
+    var showClient: Boolean
+
     /** Navigates to the edit page for a form. */
     var onEdit: (String) -> Unit
 
@@ -113,6 +120,10 @@ val FormsTable = FC<FormsTableProps> { props ->
             }
             add(sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending))
             if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
+            // The Client column (issue #668), for a cross-client (`allClients`) caller, reading each row's own
+            // `client`. Sortable by the row's client protocol field (`allClients`-only on the backend, as the
+            // column is), keyed on `GSORT.client` -- both the row-data key and the endpoint's sort key.
+            if (props.showClient) add(sortableColumn("Client", GSORT.client, 140, props.sortColumn, props.sortDescending))
             add(sortableColumn("Updated", GSORT.updated, 175, props.sortColumn, props.sortDescending))
             add(sortableColumn("Created", GSORT.created, 175, props.sortColumn, props.sortDescending))
             if (anyActions) add(actionsColumn(props))
@@ -130,6 +141,8 @@ val FormsTable = FC<FormsTableProps> { props ->
             row.created = summary.createdAt ?: ""
             row.ownerName = summary.ownerName
             row.ownerEmail = summary.ownerEmail
+            // The Client column reads this under its `GSORT.client` dataIndex (issue #668).
+            row[GSORT.client] = summary.client.ifBlank { "—" }
             row
         }.toTypedArray()
         onRow = { record, _ ->

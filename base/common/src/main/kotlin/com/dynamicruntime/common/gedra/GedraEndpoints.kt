@@ -193,6 +193,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             emptyIsAbsent = true
             visibleWhen = CFACTS.hasAdminLevel
         }
+        // Confine the listing to one client (issue #668) -- the cross-client counterpart of the `user` filter.
+        // Shown to any admin (`g-visibleWhen`), but honored only for an `allClients` caller, whose scope spans
+        // clients; for anyone else the handler ignores it, since their scope cannot widen to a client they are
+        // not in. The frontend draws the control only for an `allClients` caller (the `canSeeAllClients` flag).
+        property(EI.client, "Confine the listing to one client. Honored only for a caller who sees across clients.") {
+            emptyIsAbsent = true
+            visibleWhen = CFACTS.hasAdminLevel
+        }
         // The free-text term (issue #562): one box that searches every text field at once, so a caller need
         // not know which column holds the value they remember. ANDed with any per-field filters also sent.
         property(EI.q, "Free text matched against every text search field (any field, case-insensitive substring).") {
@@ -217,13 +225,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         }
         // The sort (issue #666): a column to order by -- a display trait id, or a fixed column -- and a
         // direction. Absent means the default (most recently written first). Not admin-gated: any caller may
-        // order the rows they can already see (`${GSORT.owner}` is admin-only, as its column is, and is ignored
-        // otherwise). Open text, since the column names a client's own trait; an unknown column falls back to the
-        // default order rather than faulting a stale bookmark.
+        // order the rows they can already see (`${GSORT.owner}` and `${GSORT.client}` are admin/allClients-only,
+        // as their columns are, and are ignored otherwise). Open text, since the column names a client's own trait;
+        // an unknown column falls back to the default order rather than faulting a stale bookmark.
         property(
             GSORT.sort,
             "Order by this column: a display trait id, or `${GSORT.updated}` / `${GSORT.created}` / " +
-                "`${GSORT.contains}` / `${GSORT.owner}` (owner is admin-only). Defaults to most recently written.",
+                "`${GSORT.contains}` / `${GSORT.owner}` (admin-only) / `${GSORT.client}` (allClients-only). " +
+                "Defaults to most recently written.",
         ) {
             emptyIsAbsent = true
         }
@@ -250,10 +259,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
         val offset = (request[EP.offset] as? Number)?.toInt() ?: 0
         val callerScope = ReadScopeRules.forCaller(c)
-        // A named user narrows the scope to that user -- but only within what the caller may already see (see
-        // [resolveTargetUser]); no name is the caller's own scope.
-        val target = resolveTargetUser(c, request, callerScope)
-        val scope = if (target == null) callerScope else ReadScope.ofUser(target.userId)
+        // A client filter narrows an `allClients` caller's (unrestricted) scope to one client (issue #668); it is
+        // ignored for anyone else, whose scope cannot widen to a client they are not in. Naming a client that is
+        // not present just yields no rows, the same as a search matching nothing.
+        val clientFilter = (request[EI.client] as? String)?.trim()?.ifEmpty { null }?.takeIf { AdminRules.canSeeAllClients(c) }
+        val baseScope = if (clientFilter != null) ReadScope.ofClient(clientFilter) else callerScope
+        // A named user narrows further to that user -- but only within what the caller may already see (see
+        // [resolveTargetUser], resolved within the client-narrowed scope); no name is the client/caller scope.
+        val target = resolveTargetUser(c, request, baseScope)
+        val scope = if (target == null) baseScope else ReadScope.ofUser(target.userId)
         // The client's usage rules, read once: they drive both the display columns (issue #537) and the search
         // parameters (issue #538). A search parameter the caller filled becomes an in-memory predicate applied
         // before paging, so the page and its `numAvailable` are both over the matched set (see `listGedras`).
@@ -756,6 +770,12 @@ private fun gedraSortFor(
                 ) { row -> names[row.userId] ?: "" }
             }
         }
+        // The client (the Client column, issue #668): `allClients`-only, as the column is -- a caller who does not
+        // see across clients has only their own client's rows, so there is nothing to order by (null = default
+        // order). The client is a protocol column on the row, so it needs no per-row resolution.
+        column == GSORT.client ->
+            if (!AdminRules.canSeeAllClients(cxt)) null
+            else GedraDataService.GedraSort(UsageKind.string, descending) { it.client }
         else -> {
             val traitId = GSORT.displayTraitId(column) ?: return null
             val usage = usages.firstOrNull { it.traitId == traitId } ?: return null

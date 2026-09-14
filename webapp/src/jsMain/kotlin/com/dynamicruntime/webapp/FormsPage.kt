@@ -109,6 +109,11 @@ val FormsPage = FC<Props> {
     // Whether the caller administers other users (issue #562), from the shell's UI-config. False until it
     // answers and false when it cannot, so the administrative controls are never drawn on a guess.
     var canManageUsers by useState(false)
+    // Whether the caller administers across clients (issue #668), from the same UI-config. Gates the Client
+    // column and the filter-by-client control; false until known and when it cannot be learned.
+    var canSeeAllClients by useState(false)
+    // The clients to offer in the filter-by-client control (issue #668), fetched only for a cross-client caller.
+    var clientChoices by useState<List<ClientChoice>>(emptyList())
     // The row to flash on arrival (issue #592): the form just saved on the edit page, read from the hash once
     // and cleared after a beat so the flash is a one-time flourish, not a state a reload repeats.
     var highlightRowId by useState<String?>(null)
@@ -220,10 +225,17 @@ val FormsPage = FC<Props> {
     useEffectOnce {
         formsScope.launch {
             try {
-                // Whether the caller administers other users (issue #562): a failure to learn it leaves the
-                // administrative controls off, which is the safe reading -- the list itself still loads.
-                val canManage = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false)
+                // Whether the caller administers other users (issue #562) and across clients (issue #668): a
+                // failure to learn them leaves the administrative controls off, which is the safe reading -- the
+                // list itself still loads. One config fetch answers both.
+                val homeConfig = runCatching { HomeApi.fetchConfig() }.getOrNull()
+                val canManage = homeConfig?.canManageUsers == true
                 canManageUsers = canManage
+                canSeeAllClients = homeConfig?.canSeeAllClients == true
+                // The clients to offer in the filter, for a cross-client caller (issue #668).
+                if (canSeeAllClients) {
+                    clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
+                }
                 // The caller's own client-scoped surface, so the list is exactly what this caller may see.
                 val cat = SchemaCatalogApi.fetchCatalog()
                 catalog = cat
@@ -553,6 +565,32 @@ val FormsPage = FC<Props> {
                         }
                     }
                 }
+                // Filter by client (issue #668): a cross-client caller narrows the listing to one client. The
+                // client rides in the applied search like the user scope, so it is carried in the hash and across
+                // pages; clearing it goes back to every client. The Client column shows which client each row is
+                // in; this chooses one.
+                if (canSeeAllClients) {
+                    div {
+                        className = ClassName("row")
+                        span {
+                            className = ClassName("type-hint")
+                            +"Client:"
+                        }
+                        Select {
+                            value = appliedSearch[EI.client]?.ifBlank { null }
+                            options = clientOptions(clientChoices)
+                            allowClear = true
+                            placeholder = "All clients"
+                            style = js("({ minWidth: 220 })")
+                            onChange = { v ->
+                                val chosen = v as? String
+                                val kept = if (chosen.isNullOrBlank()) appliedSearch - EI.client else appliedSearch + (EI.client to chosen)
+                                searchDraft = kept
+                                applySearch(ep, kept)
+                            }
+                        }
+                    }
+                }
                 // The search the client's usage rules declared (issue #538, regrouped in #562): the list's own
                 // input schema names the parameters, so a client with no usage rules shows no box. Search and
                 // Apply promote the draft to the applied filter and reload from the top; Clear drops the term and
@@ -619,6 +657,7 @@ val FormsPage = FC<Props> {
                     canEdit = patchEndpoint != null
                     canDelete = deleteEndpoint != null
                     showOwner = canManageUsers
+                    showClient = canSeeAllClients
                     highlightId = highlightRowId
                     this.sortColumn = sortColumn
                     this.sortDescending = sortDescending

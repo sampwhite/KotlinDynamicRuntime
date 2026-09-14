@@ -270,6 +270,7 @@ class GedraFormsTest {
     fun carriesTheOwnerAndTheLastWriteWhenPresent() {
         val item = mapOf(
             GDF.gedraId to "gd.fd.acme.u10",
+            GDF.client to "acme",
             GDF.createdAt to "2026-08-21T19:49:51.568Z",
             GDF.updatedAt to "2026-08-22T08:05:00.000Z",
             GDF.owner to mapOf(DUF.name to "Ada", DUF.email to "ada@example.com"),
@@ -279,6 +280,8 @@ class GedraFormsTest {
         assertEquals("2026-08-22 08:05 UTC", info.updatedAt)
         assertEquals("Ada", info.ownerName)
         assertEquals("ada@example.com", info.ownerEmail)
+        // The owning client (issue #668) feeds the Client column for an allClients caller.
+        assertEquals("acme", info.client)
         // An ordinary caller's own row carries no owner, and a row without a write time has none to show.
         val bare = summarizeForm(mapOf(GDF.gedraId to "gd.fd.acme.u11", GDF.entries to emptyList<Any?>()), entriesUnion())
         assertNull(bare.updatedAt)

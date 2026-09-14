@@ -17,9 +17,11 @@ import react.useRef
 import react.useState
 import web.cssom.ClassName
 
-/** The fields on the reserved side of the listing query -- paging, the user scope, the free-text term, and the
- *  include-users flag, and the sort column and direction (#666) -- not search fields, and never shown as one. */
-private val reservedQueryFields = setOf(EP.offset, EP.limit, EI.user, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir)
+/** The fields on the reserved side of the listing query -- paging, the user and client scope, the free-text
+ *  term, the include-users flag, and the sort column and direction (#666, #668) -- not trait search fields, and
+ *  never shown as one; the user and client scopes have their own controls. */
+private val reservedQueryFields =
+    setOf(EP.offset, EP.limit, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir)
 
 /** How long a type-ahead waits after a keystroke before it fetches, so a fast typist makes one call not many. */
 private const val suggestDebounceMs = 200
