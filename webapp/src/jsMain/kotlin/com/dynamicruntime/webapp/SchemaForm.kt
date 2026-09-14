@@ -419,7 +419,9 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         promoteKeys = props.promoteKeys == true,
     )
     div {
-        className = ClassName("schema-form")
+        // `friendly` on the root lets the stylesheet give a data-entry / read form's field groups room to breathe
+        // while the wire-documenting catalog keeps its density (issue #694 review); see `.schema-form.friendly`.
+        className = ClassName(if (opts.friendly) "schema-form friendly" else "schema-form")
         // The root path is empty, which is what the validator starts from too, so `childPath` composes the
         // identical strings on both sides (see SchValidator's note on why these are shared).
         renderObject(props.type, props.values, emptySet(), props.editable, "", errors, props.onChange, opts)
