@@ -170,7 +170,8 @@ fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedr
  * search parameter would land on one of these is refused at boot ([searchParamCollisions]); this guards the
  * merge regardless, so a slipped-through one cannot silently rewrite a stable field's schema.
  */
-val reservedQueryFieldNames: Set<String> = setOf(EP.offset, EP.limit, EI.user, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir)
+val reservedQueryFieldNames: Set<String> =
+    setOf(EP.offset, EP.limit, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir)
 
 /**
  * The search parameter names [usages] would generate that collide with a [reservedQueryFieldNames] entry -- the
@@ -288,6 +289,10 @@ object GSORT {
     /** Sort by the owner (the User column, issue #666), by the name the column shows. Admin-only, as the column
      *  is: an ordinary caller sees only their own rows, so there is no one to order by. */
     const val owner = "owner"
+
+    /** Sort by the row's client (the Client column, issue #668). `allClients`-only, as the column is: a caller
+     *  who does not see across clients has only their own client's rows, so there is nothing to order by. */
+    const val client = "client"
 
     const val asc = "asc"
     const val desc = "desc"

@@ -37,6 +37,13 @@ object HFEAT {
      * frontend already asks "may I?" rather than "am I an admin?"
      */
     const val canManageUsers = "canManageUsers"
+
+    /**
+     * Whether this caller administers **across clients** (holds `allClients`, issue #668) -- the signal a
+     * cross-client surface keys on, like the forms list's Client column and its filter-by-client. A capability
+     * of the caller, distinct from [canManageUsers], which a client-scoped administrator also has.
+     */
+    const val canSeeAllClients = "canSeeAllClients"
 }
 
 /** Home UI-config response field (JSON key) names, under the shared `state` envelope entry. */

@@ -340,6 +340,9 @@ class FormSummary(
     val ownerName: String? = null,
     /** The owner's email, from the row's `owner` block (issue #580); null for an ordinary caller's own rows. */
     val ownerEmail: String? = null,
+    /** The owning client, from the row's `client` (issue #668): what the Client column shows for a caller who
+     *  administers across clients. Every row carries it; empty only when the row somehow arrived without one. */
+    val client: String = "",
     /** The form's global survey status (issue #694), or null when it has no survey state — see [surveyStatusFrom]. */
     val surveyStatus: SurveyStatus? = null,
 )
@@ -386,6 +389,9 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary 
         // read-only view read them one at a time; a block absent (an ordinary caller's own row) leaves both null.
         ownerName = owner[DUF.name] as? String,
         ownerEmail = owner[DUF.email] as? String,
+        // The owning client (issue #668), attached to every listed row; the Client column shows it for a caller
+        // who administers across clients.
+        client = item[GDF.client] as? String ?: "",
         // The global survey status (issue #694): present only when the row carried state (`withStates`), null
         // for a client with no survey, in which case the list draws no status for the row.
         surveyStatus = surveyStatusFrom(item[GDF.states].toJsonListOfMaps()),
