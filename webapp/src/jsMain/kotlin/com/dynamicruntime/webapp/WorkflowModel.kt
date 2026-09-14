@@ -39,15 +39,30 @@ class WfTraitView(
     val layout: SchLayout?,
 )
 
-/** One save option a task offers: what a button says and what it does. */
+/** One save option a task offers: what a button says and what it does (`WfSaveKind.name`, e.g. create/edit). */
 class WfSaveView(val id: String, val label: String, val kind: String)
 
-/** One task of the workflow: its traits in the order the page draws them, and its saves. */
-class WfTaskView(val id: String, val label: String, val traits: List<WfTraitView>, val saves: List<WfSaveView>)
+/**
+ * One task of the workflow: its traits in the order the page draws them, its saves, and — when the view was
+ * resolved against an existing form (a survey edit, issue #659) — that task's **current entries**, the source a
+ * page seeds its fields from. A creation view carries none, so [entries] defaults empty.
+ */
+class WfTaskView(
+    val id: String,
+    val label: String,
+    val traits: List<WfTraitView>,
+    val saves: List<WfSaveView>,
+    val entries: List<Map<String, Any?>> = emptyList(),
+)
 
-/** A resolved creation workflow, ready to render. */
-class WorkflowCreation(
+/**
+ * A resolved workflow view, ready to render (issue #536, #659). It serves both the **creation** workflow (no
+ * form yet) and a **survey** resolved against an existing form (each task seeded from its current [WfTaskView.entries]);
+ * [entry] says which (`WfEntry.name`, e.g. `"creation"`/`"survey"`).
+ */
+class WorkflowView(
     val workflowId: String,
+    val entry: String,
     val showTaskList: Boolean,
     val tasks: List<WfTaskView>,
     /**
@@ -62,18 +77,15 @@ class WorkflowCreation(
      * this is the whole closure, for a renderer that reaches a nested type by name.
      */
     val layouts: Map<String, SchLayout> = emptyMap(),
-) {
-    /** The single task of a creation workflow (exactly one, by the backend's boot rule). */
-    val task: WfTaskView get() = tasks.single()
-}
+)
 
 /**
- * Parses a `/gedra/workflow/view` `results` map into a [WorkflowCreation], or **null** when the client has no
- * creation workflow (`found=false`) — the signal the page uses to fall back to the trait picker. Each trait's
- * `schemaRef` is resolved against the view's `$defs`; a ref that names no carried type is a fault, since the
- * view is supposed to carry every type it points at.
+ * Parses a `/gedra/workflow/view` `results` map into a [WorkflowView], or **null** when the caller has no such
+ * workflow (`found=false`) — the signal the page uses (a create page falls back to the trait picker; a survey
+ * edit page reports there is no survey). Each trait's `schemaRef` is resolved against the view's `$defs`; a ref
+ * that names no carried type is a fault, since the view is supposed to carry every type it points at.
  */
-fun parseWorkflowView(results: Map<String, Any?>): WorkflowCreation? {
+fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
     if (results[WVF.found] != true) return null
     val defTypes = parseSchemaTypes(results[SCH.dDefs].toJsonMapOrEmpty())
     // The third closure (issue #585), keyed like `$defs`; a trait's layout is the entry under its type name.
@@ -93,11 +105,30 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowCreation? {
             saves = t[WFD.saves].toJsonListOfMaps().map { s ->
                 WfSaveView(s[WFD.id].toOptStr() ?: "", s[WFD.label].toOptStr() ?: "", s[WFD.kind].toOptStr() ?: "")
             },
+            // Present only for a survey view resolved against a form (issue #659) -- the seed for each field.
+            entries = t[WVF.entries].toJsonListOfMaps(),
         )
     }
     val cfacts = results[WVF.cfacts].toJsonMapOrEmpty().mapValues { it.value == true }
-    return WorkflowCreation(results[WFD.workflowId].toOptStr() ?: "", results[WVF.showTaskList] == true, tasks, cfacts, layouts)
+    return WorkflowView(
+        workflowId = results[WFD.workflowId].toOptStr() ?: "",
+        entry = results[WFD.entry].toOptStr() ?: "",
+        showTaskList = results[WVF.showTaskList] == true,
+        tasks = tasks,
+        cfacts = cfacts,
+        layouts = layouts,
+    )
 }
+
+/**
+ * The values to seed a task's fields from, keyed by trait id (issue #659): the inverse of [workflowSaveEntries].
+ * A task's [WfTaskView.entries] are `{traitId, data}` maps; this pulls each `data` out under its `traitId`, so a
+ * survey edit renders each field pre-filled with what is stored. A creation task has no entries, so this is empty.
+ */
+fun seedValuesFromEntries(entries: List<Map<String, Any?>>): Map<String, Map<String, Any?>> =
+    entries.mapNotNull { entry ->
+        entry[GE.traitId].toOptStr()?.let { it to entry[GE.data].toJsonMapOrEmpty() }
+    }.toMap()
 
 /**
  * The `entries` a save posts, from the values collected per trait (issue #536): each is a `{traitId, data}`
@@ -108,15 +139,23 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowCreation? {
 fun workflowSaveEntries(valuesByTrait: Map<String, Map<String, Any?>>): List<Map<String, Any?>> =
     valuesByTrait.map { (traitId, data) -> mapOf(GE.traitId to traitId, GE.data to data) }
 
-/** The body a workflow save posts: which workflow, task and save, and the collected entries. */
+/**
+ * The body a workflow save posts: which workflow, task and save, and the collected entries. A survey `edit`
+ * save (issue #659) also carries the [gedraId] of the form it updates; a create save omits it (null).
+ */
 fun workflowSaveBody(
     workflowId: String,
     taskId: String,
     saveId: String,
     entries: List<Map<String, Any?>>,
-): Map<String, Any?> = mapOf(
-    GDF.workflowId to workflowId, GDF.taskId to taskId, GDF.saveId to saveId, GDF.entries to entries,
-)
+    gedraId: String? = null,
+): Map<String, Any?> = buildMap {
+    put(GDF.workflowId, workflowId)
+    put(GDF.taskId, taskId)
+    put(GDF.saveId, saveId)
+    put(GDF.entries, entries)
+    gedraId?.let { put(GDF.gedraId, it) }
+}
 
 /** The outcome of a save: whether it happened, the required trait ids left unmet, and the created form. */
 class WorkflowSaveOutcome(val saved: Boolean, val unmetTraits: List<String>, val item: Map<String, Any?>)

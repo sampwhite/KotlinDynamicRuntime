@@ -272,7 +272,7 @@ external interface SchemaFormProps : Props {
     var cfacts: Map<String, Boolean>?
     /**
      * The per-type layouts (issue #586), keyed by qualified type name, from the surface's delivery
-     * ([Catalog.layouts] / [WorkflowCreation.layouts]). In **friendly** mode a field's `label` / `description`
+     * ([Catalog.layouts] / [WorkflowView.layouts]). In **friendly** mode a field's `label` / `description`
      * come from the layout for its enclosing type when it addresses the field, cascading over the schema's
      * `title` / `description`; absent (or in wire-documenting mode) the form is unchanged. A `${'$'}{…}` in the
      * copy is resolved against the object's own values through [evalTemplate].

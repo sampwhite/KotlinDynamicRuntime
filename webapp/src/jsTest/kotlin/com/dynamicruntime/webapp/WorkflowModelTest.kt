@@ -23,6 +23,7 @@ class WorkflowModelTest {
     private fun view(found: Boolean = true): Map<String, Any?> = mapOf(
         WVF.found to found,
         WFD.workflowId to "createForm",
+        WFD.entry to "creation",
         WVF.showTaskList to false,
         // The caller's delivered cfacts (issue #569): the whole frontend vocabulary, present-mapped.
         WVF.cfacts to mapOf("hasAdminLevel" to true, "hasEnvAuth" to false),
@@ -60,8 +61,9 @@ class WorkflowModelTest {
     fun parsesTasksTraitsSavesAndResolvesTheTraitTypeFromTheViewsOwnDefs() {
         val wf = parseWorkflowView(view())!!
         assertEquals("createForm", wf.workflowId)
+        assertEquals("creation", wf.entry)
         assertTrue(!wf.showTaskList)
-        val task = wf.task
+        val task = wf.tasks.single()
         assertEquals("identify", task.id)
         assertEquals("Name it", task.label)
         val trait = task.traits.single()
@@ -92,13 +94,13 @@ class WorkflowModelTest {
         // The third closure (issue #585): the trait's data type declares a layout, so the trait carries it,
         // joined by the very name its schemaRef resolved under.
         val wf = parseWorkflowView(view())!!
-        val trait = wf.task.traits.single()
+        val trait = wf.tasks.single().traits.single()
         assertEquals("globalconfig.NameData", trait.typeName)
         assertEquals("What is it called?", trait.layout?.fields?.single()?.label)
         assertEquals(setOf("globalconfig.NameData"), wf.layouts.keys)
         // A view with no layouts key parses to no layout on the trait, not a failure -- the type renders alone.
         val bare = parseWorkflowView(view() - WVF.layouts)!!
-        assertNull(bare.task.traits.single().layout)
+        assertNull(bare.tasks.single().traits.single().layout)
         assertTrue(bare.layouts.isEmpty())
     }
 
@@ -109,11 +111,46 @@ class WorkflowModelTest {
         assertEquals("name", entries.single()[GE.traitId])
         assertEquals(mapOf("name" to "My form"), entries.single()[GE.data])
 
+        // A create save carries no gedraId.
         val body = workflowSaveBody("createForm", "identify", "create", entries)
         assertEquals("createForm", body[GDF.workflowId])
         assertEquals("identify", body[GDF.taskId])
         assertEquals("create", body[GDF.saveId])
         assertEquals(entries, body[GDF.entries])
+        assertTrue(!body.containsKey(GDF.gedraId))
+
+        // A survey edit save carries the form's gedraId (issue #659).
+        val editBody = workflowSaveBody("reviewForm", "only", "save", entries, gedraId = "gd.fd.acme.u7")
+        assertEquals("gd.fd.acme.u7", editBody[GDF.gedraId])
+    }
+
+    @Test
+    fun parsesASurveyViewWithSeededEntriesAndItsKind() {
+        // A survey view (issue #659): the same shape plus WFD.entry="survey" and each task's current entries.
+        val surveyView = view().toMutableMap().apply {
+            put(WFD.entry, "survey")
+            put(
+                WFD.tasks,
+                listOf(
+                    mapOf(
+                        WFD.id to "only",
+                        WFD.label to "Review",
+                        WFD.traits to listOf(
+                            mapOf(WFD.traitId to "name", WFD.required to true, WVF.schemaRef to "#/${SCH.dDefs}/globalconfig.NameData"),
+                        ),
+                        WFD.saves to listOf(mapOf(WFD.id to "save", WFD.label to "Save changes", WFD.kind to "edit")),
+                        // The form's current entry for this task -- the seed source.
+                        WVF.entries to listOf(mapOf(GE.traitId to "name", GE.data to mapOf("name" to "Stored name"))),
+                    ),
+                ),
+            )
+        }
+        val wf = parseWorkflowView(surveyView)!!
+        assertEquals("survey", wf.entry)
+        val task = wf.tasks.single()
+        assertEquals("edit", task.saves.single().kind)
+        // seedValuesFromEntries is the inverse of workflowSaveEntries: {traitId -> data}.
+        assertEquals(mapOf("name" to mapOf("name" to "Stored name")), seedValuesFromEntries(task.entries))
     }
 
     @Test

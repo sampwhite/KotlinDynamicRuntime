@@ -4,12 +4,8 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
 import react.Props
-import react.dom.html.ReactHTML.div
-import react.dom.html.ReactHTML.h1
-import react.dom.html.ReactHTML.p
 import react.useEffectOnce
 import react.useState
-import web.cssom.ClassName
 
 private val creationScope = MainScope()
 
@@ -20,7 +16,7 @@ private val creationScope = MainScope()
  * client-configured, guided path; the picker is the generic developer one.
  */
 val CreationPage = FC<Props> {
-    var workflow by useState<WorkflowCreation?>(null)
+    var workflow by useState<WorkflowView?>(null)
     var noWorkflow by useState(false)
     var loading by useState(true)
     var loadError by useState<DisplayError?>(null)
@@ -39,22 +35,17 @@ val CreationPage = FC<Props> {
     }
 
     when {
-        loading -> div {
-            className = ClassName("card wide")
-            h1 { +"New form" }
-            p {
-                className = ClassName("subtitle")
-                +"Loading…"
-            }
-        }
-        loadError != null -> div {
-            className = ClassName("card wide")
-            h1 { +"New form" }
-            errorText("Couldn't load the form.", loadError!!)
+        loading -> LoadStateCard { title = "New form" }
+        loadError != null -> LoadStateCard {
+            title = "New form"
+            this.loadError = loadError
         }
         // No creation workflow: the generic trait picker, unchanged.
         noWorkflow -> NewFormPage {}
-        // A creation workflow: the guided form.
-        workflow != null -> CreationWorkflowForm { this.workflow = workflow!! }
+        // A creation workflow: the guided form (no gedraId -> the create save makes a new form).
+        workflow != null -> WorkflowForm {
+            view = workflow!!
+            gedraId = null
+        }
     }
 }

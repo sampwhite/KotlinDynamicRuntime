@@ -200,6 +200,7 @@ val App = FC<Props> {
                             pageNewForm -> CreationPage {}
                             pageForms -> FormsPage {}
                             pageEditForm -> EditFormPage {}
+                            pageSurveyEdit -> SurveyEditPage {}
                             // Resolved here rather than in `currentPage()` because the answer depends on the
                             // app config, which arrives asynchronously -- see `debugAllowed` above. Where the
                             // flag is off, this falls through to Home, so the route does not exist rather than
@@ -294,6 +295,7 @@ private fun currentPage(): String {
         params[HP.page] == pageNewForm -> pageNewForm
         params[HP.page] == pageForms -> pageForms
         params[HP.page] == pageEditForm -> pageEditForm
+        params[HP.page] == pageSurveyEdit -> pageSurveyEdit
         params[HP.page] == pageDebug -> pageDebug
         else -> "home"
     }
