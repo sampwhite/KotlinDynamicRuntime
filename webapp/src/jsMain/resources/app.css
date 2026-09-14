@@ -602,6 +602,30 @@ input {
 .wf-trait > .markdown { margin: 28px 0 12px; }
 .wf-task > .row { margin-top: 14px; }
 
+/* The survey's task rail (issue #700): a multi-task survey shows ONE task at a time, chosen from a left rail
+   whose entries carry the task's status mark and, orthogonally, an unsaved badge. Single-task surveys and the
+   creation form keep the single panel. The items are real buttons (keyboard reachable, `aria-current` on the
+   open one), restyled from the global `button`. */
+.wf-layout { display: flex; gap: 28px; align-items: flex-start; }
+.wf-rail { flex: 0 0 220px; display: flex; flex-direction: column; gap: 4px; }
+.wf-panel { flex: 1 1 auto; min-width: 0; }
+.wf-rail-item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 8px 10px; border-radius: 8px; text-align: left; font: inherit;
+    background: transparent; color: var(--text-muted); border: 1px solid transparent; cursor: pointer;
+}
+.wf-rail-item:hover { background: rgba(255, 255, 255, .05); color: var(--text); }
+.wf-rail-item[aria-current="true"], .wf-rail-item.active { background: rgba(255, 255, 255, .07); color: var(--text); border-color: var(--border); }
+.wf-rail-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The status mark, in the status chip's colours. "Incomplete" is a hollow ring in a faint colour, not a warning
+   colour, so a task that has not been started does not read as an error. */
+.wf-mark { flex: 0 0 auto; font-weight: 700; width: 1.1em; text-align: center; }
+.wf-mark-complete { color: var(--success); }
+.wf-mark-invalid { color: var(--border-admin); }
+.wf-mark-incomplete { color: var(--text-faint); }
+/* Unsaved edits: an overlay badge beside the mark -- a task can be both incomplete and unsaved. */
+.wf-unsaved { flex: 0 0 auto; color: var(--border-admin); font-size: .7rem; }
+
 /* Operator diagnostic pages (issue #540): the schema-driven presentation hints. */
 .op-verdict { font-weight: 600; margin: 8px 0 2px; }
 .op-asof { color: var(--text-faint); font-size: .85rem; margin: 0 0 12px; }

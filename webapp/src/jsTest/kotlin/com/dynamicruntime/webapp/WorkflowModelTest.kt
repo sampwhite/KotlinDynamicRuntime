@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
@@ -162,5 +163,105 @@ class WorkflowModelTest {
         val ok = parseSaveOutcome(mapOf(WSF.saved to true, WSF.item to mapOf(GDF.gedraId to "gd.fd.acme.u1")))
         assertTrue(ok.saved)
         assertEquals("gd.fd.acme.u1", ok.item[GDF.gedraId])
+        // No refreshed view on a create save (issue #700); a survey edit carries one, parsed like the view call's.
+        assertNull(ok.view)
+        val edited = parseSaveOutcome(mapOf(WSF.saved to true, WSF.item to emptyMap<String, Any?>(), WSF.view to view()))
+        assertEquals("createForm", edited.view?.workflowId)
+    }
+
+    // --- the task rail (issue #700) ---------------------------------------------------------------------
+
+    /** A task's [WVF.status] map, as the view computes it. */
+    private fun status(complete: Boolean, valid: Boolean, missing: List<String> = emptyList(), problems: List<Pair<String, String>> = emptyList()) =
+        mapOf(
+            SVY.complete to complete, SVY.valid to valid, SVY.missingTraits to missing,
+            SVY.invalidTraits to problems.map { it.first }.distinct(),
+            WVF.problems to problems.map { (t, m) -> mapOf(GE.traitId to t, WVF.message to m) },
+        )
+
+    /** A two-task survey view, each task collecting `name`, with the given statuses and focus task. */
+    private fun surveyView(aStatus: Map<String, Any?>?, bStatus: Map<String, Any?>?, focus: String?): Map<String, Any?> {
+        fun task(id: String, st: Map<String, Any?>?): Map<String, Any?> = buildMap {
+            put(WFD.id, id)
+            put(WFD.label, id.uppercase())
+            put(WFD.traits, listOf(mapOf(WFD.traitId to "name", WFD.required to true, WVF.schemaRef to "#/${SCH.dDefs}/globalconfig.NameData")))
+            put(WFD.saves, listOf(mapOf(WFD.id to "save", WFD.label to "Save", WFD.kind to "edit")))
+            st?.let { put(WVF.status, it) }
+        }
+        return view().toMutableMap().apply {
+            put(WFD.entry, "survey")
+            put(WFD.tasks, listOf(task("a", aStatus), task("b", bStatus)))
+            focus?.let { put(WVF.focusTask, it) }
+        }
+    }
+
+    /** The view's per-task status and its focus task parse through; a task carrying none has a null status. */
+    @Test
+    fun parsesTaskStatusAndTheFocusTask() {
+        val wf = parseWorkflowView(surveyView(status(true, true), status(true, false, problems = listOf("name" to "Too long.")), "b"))!!
+        assertEquals("b", wf.focusTask)
+        val a = wf.tasks[0].status!!
+        assertTrue(a.complete && a.valid && a.problems.isEmpty())
+        val b = wf.tasks[1].status!!
+        assertTrue(b.complete && !b.valid)
+        assertEquals(listOf("name"), b.invalidTraits)
+        assertEquals("Too long.", b.problems.single().message)
+        assertEquals("name", b.problems.single().traitId)
+        // The creation fixture carries no status and no focus task.
+        val creation = parseWorkflowView(view())!!
+        assertNull(creation.tasks.single().status)
+        assertNull(creation.focusTask)
+    }
+
+    /** The mark: absence wins over invalidity (an orange check says "complete"), and no status draws as not started. */
+    @Test
+    fun marksATaskByItsStatus() {
+        val wf = parseWorkflowView(surveyView(status(true, true), status(true, false, problems = listOf("name" to "x")), null))!!
+        assertEquals(RailMark.complete, railMark(wf.tasks[0].status))
+        assertEquals(RailMark.invalid, railMark(wf.tasks[1].status))
+        assertEquals(RailMark.incomplete, railMark(null))
+        // Incomplete AND invalid: the mark says incomplete; the problem still reaches the tooltip via the status.
+        val both = parseWorkflowView(surveyView(status(false, false, listOf("name"), listOf("name" to "x")), null, null))!!.tasks[0].status
+        assertEquals(RailMark.incomplete, railMark(both))
+        assertEquals(1, both!!.problems.size)
+    }
+
+    /** The task the page opens on: the URL's task if it is one of the view's, else the focus task, else the first. */
+    @Test
+    fun choosesTheInitialTask() {
+        val wf = parseWorkflowView(surveyView(status(true, true), status(false, true, listOf("name")), "b"))!!
+        assertEquals("a", initialTaskFor(wf, "a"))
+        assertEquals("b", initialTaskFor(wf, null))
+        assertEquals("b", initialTaskFor(wf, "not-a-task"))
+        val allDone = parseWorkflowView(surveyView(status(true, true), status(true, true), null))!!
+        assertEquals("a", initialTaskFor(allDone, null))
+    }
+
+    /** Unsaved is per task and client-side: a trait's working value differing from its stored one. */
+    @Test
+    fun detectsUnsavedEditsPerTask() {
+        val wf = parseWorkflowView(surveyView(status(true, true), status(true, true), null))!!
+        val stored = mapOf("name" to mapOf<String, Any?>("name" to "kept"))
+        assertTrue(!taskUnsaved(wf.tasks[0], stored, stored))
+        assertTrue(taskUnsaved(wf.tasks[0], mapOf("name" to mapOf<String, Any?>("name" to "changed")), stored))
+        // A trait with no working value and no stored value is not an edit; one side empty and the other not is.
+        assertTrue(!taskUnsaved(wf.tasks[0], emptyMap(), emptyMap()))
+        assertTrue(taskUnsaved(wf.tasks[0], emptyMap(), stored))
+    }
+
+    /** The tooltip / screen-reader wording: one line per thing to know, friendly trait names, else "Complete". */
+    @Test
+    fun explainsARailMarkInWords() {
+        val done = parseWorkflowView(surveyView(status(true, true), null, null))!!.tasks[0].status
+        assertEquals("Complete", railExplanation(done, unsaved = false))
+        assertEquals("Unsaved changes", railExplanation(done, unsaved = true))
+        val needs = parseWorkflowView(surveyView(status(false, true, listOf("expenseReport")), null, null))!!.tasks[0].status
+        assertEquals("Needs information: Expense report", railExplanation(needs, unsaved = false))
+        val bad = parseWorkflowView(surveyView(status(true, false, problems = listOf("name" to "Too long.")), null, null))!!.tasks[0].status
+        assertEquals("Too long.", railExplanation(bad, unsaved = false))
+        // Unsaved first, then what is missing, then each problem -- and no status at all reads as not started.
+        val both = parseWorkflowView(surveyView(status(false, false, listOf("name"), listOf("name" to "Too long.")), null, null))!!.tasks[0].status
+        assertEquals("Unsaved changes\nNeeds information: Name\nToo long.", railExplanation(both, unsaved = true))
+        assertEquals("Not started", railExplanation(null, unsaved = false))
     }
 }

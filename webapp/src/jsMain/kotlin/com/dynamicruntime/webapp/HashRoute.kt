@@ -65,6 +65,9 @@ object HP {
      */
     const val edit = "edit"
 
+    /** Survey edit page: the task the rail shows (issue #700); absent opens the earliest task needing action. */
+    const val task = "task"
+
     /**
      * Forms page: the gedra id of a form to **highlight** briefly in the list (issue #592) -- how a save
      * hands the just-edited form back to the listing. Transient: read once on arrival and dropped from the

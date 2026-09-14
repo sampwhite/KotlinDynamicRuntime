@@ -7,12 +7,15 @@ import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import react.ChildrenBuilder
 import react.FC
 import react.Props
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.span
 import react.useState
 import web.cssom.ClassName
 
@@ -39,6 +42,17 @@ external interface WorkflowFormProps : Props {
      * fail is not shown), or for a creation form.
      */
     var onRawEdit: (() -> Unit)?
+
+    /**
+     * The task the rail shows (issue #700), for a multi-task survey; ignored (every task renders) for a
+     * single-task survey or a creation form. The page chooses it from the URL or the view's earliest task
+     * needing action.
+     */
+    var activeTask: String?
+
+    /** Called when the user picks a task in the rail (issue #700); the page owns the choice, since it rides the
+     *  hash. Unset (with a single task) means no rail. */
+    var onSelectTask: ((String) -> Unit)?
 }
 
 /**
@@ -75,6 +89,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // The last-stored values, refreshed on each successful save. "Done" reverts the fields to this -- not the
     // first-render `seeded` snapshot -- so after a save it shows what was saved, not the pre-save values.
     var stored by useState(seeded)
+    // Each task's status for the rail (issue #700), refreshed from the view a survey edit save returns -- so
+    // saving one task can move another's mark (completing one can flip the earliest-actionable pointer).
+    var statuses by useState(wf.tasks.associate { it.id to it.status })
     var failuresByTrait by useState<Map<String, List<SchFailure>>>(emptyMap())
     var unmetTraits by useState<Set<String>>(emptySet())
     var savingTask by useState<String?>(null)
@@ -116,6 +133,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         stored = storedNow
                         val savedTraitIds = task.traits.map { it.traitId }.toSet()
                         valuesByTrait = valuesByTrait + storedNow.filterKeys { it in savedTraitIds }
+                        // The save is the refresh (issue #700): every task's status follows from the returned view.
+                        outcome.view?.let { v -> statuses = v.tasks.associate { it.id to it.status } }
                     }
                 } else {
                     // The create gate: the required traits still empty.
@@ -125,6 +144,84 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 runError = userFacingError(e)
             } finally {
                 savingTask = null
+            }
+        }
+    }
+
+    // One task's body -- the "TaskPanel" (issue #700): its label, each trait's form, and its Save while editing.
+    // The rail layout shows one of these at a time; the single-panel layout shows each task's in turn.
+    fun ChildrenBuilder.taskPanel(task: WfTaskView) {
+        div {
+            className = ClassName("wf-task")
+            if (wf.showTaskList && task.label.isNotBlank()) {
+                Markdown { source = task.label; inlineUi = true }
+            }
+            task.traits.forEach { trait ->
+                div {
+                    className = ClassName("wf-trait")
+                    trait.layout?.label?.let { Markdown { source = it; inlineUi = true } } ?: h2 { +traitHeading(trait) }
+                    if (trait.traitId in unmetTraits) {
+                        p {
+                            className = ClassName("error-text")
+                            +"This is required — please fill it in."
+                        }
+                    }
+                    SchemaForm {
+                        type = trait.type
+                        this.values = valuesOf(trait.traitId)
+                        editable = editing
+                        friendly = true
+                        this.cfacts = wf.cfacts
+                        this.layouts = wf.layouts
+                        this.failures = failuresByTrait[trait.traitId]
+                        onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
+                        onFieldEdit = { if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId }
+                    }
+                }
+            }
+            // The save is per task (each task's own entries), shown only while editing.
+            if (editing) {
+                div {
+                    className = ClassName("row")
+                    Button {
+                        type = "primary"
+                        loading = savingTask == task.id
+                        onClick = { onSave(task) }
+                        +saveFor(task).label
+                    }
+                }
+            }
+        }
+    }
+
+    // One rail entry (issue #700): the task's label, its status mark, and an unsaved badge when its working values
+    // differ from the stored ones. A real button, so it is keyboard reachable; `aria-current` names the open
+    // task, and the title / aria-label carry what the mark means -- a hover tooltip alone is not enough for
+    // touch or a screen reader.
+    fun ChildrenBuilder.railItem(task: WfTaskView, active: Boolean) {
+        val status = statuses[task.id]
+        val mark = railMark(status)
+        val unsaved = taskUnsaved(task, valuesByTrait, stored)
+        val explanation = railExplanation(status, unsaved)
+        button {
+            className = ClassName(if (active) "wf-rail-item active" else "wf-rail-item")
+            title = explanation
+            asDynamic()["aria-current"] = if (active) "true" else "false"
+            asDynamic()["aria-label"] = "${task.label}: $explanation"
+            onClick = { props.onSelectTask?.invoke(task.id) }
+            span {
+                className = ClassName("wf-mark wf-mark-${mark.name}")
+                +(if (mark == RailMark.incomplete) "○" else "✓")
+            }
+            span {
+                className = ClassName("wf-rail-label")
+                +task.label
+            }
+            if (unsaved) {
+                span {
+                    className = ClassName("wf-unsaved")
+                    +"●"
+                }
             }
         }
     }
@@ -209,48 +306,24 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 }
             }
 
-            wf.tasks.forEach { task ->
+            // A multi-task survey shows ONE task at a time, picked from the rail (issue #700) -- so there is one
+            // Save in view, and the other tasks' working values stay in state across the switch. A single-task
+            // survey and the creation form keep the single panel with their one task.
+            val active = props.activeTask
+            if (isEdit && wf.tasks.size > 1 && props.onSelectTask != null) {
                 div {
-                    className = ClassName("wf-task")
-                    if (wf.showTaskList && task.label.isNotBlank()) {
-                        Markdown { source = task.label; inlineUi = true }
+                    className = ClassName("wf-layout")
+                    div {
+                        className = ClassName("wf-rail")
+                        wf.tasks.forEach { railItem(it, active = it.id == active) }
                     }
-                    task.traits.forEach { trait ->
-                        div {
-                            className = ClassName("wf-trait")
-                            trait.layout?.label?.let { Markdown { source = it; inlineUi = true } } ?: h2 { +traitHeading(trait) }
-                            if (trait.traitId in unmetTraits) {
-                                p {
-                                    className = ClassName("error-text")
-                                    +"This is required — please fill it in."
-                                }
-                            }
-                            SchemaForm {
-                                type = trait.type
-                                this.values = valuesOf(trait.traitId)
-                                editable = editing
-                                friendly = true
-                                this.cfacts = wf.cfacts
-                                this.layouts = wf.layouts
-                                this.failures = failuresByTrait[trait.traitId]
-                                onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
-                                onFieldEdit = { if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId }
-                            }
-                        }
-                    }
-                    // The save is per task (each task's own entries), shown only while editing.
-                    if (editing) {
-                        div {
-                            className = ClassName("row")
-                            Button {
-                                type = "primary"
-                                loading = savingTask == task.id
-                                onClick = { onSave(task) }
-                                +saveFor(task).label
-                            }
-                        }
+                    div {
+                        className = ClassName("wf-panel")
+                        taskPanel(wf.tasks.firstOrNull { it.id == active } ?: wf.tasks.first())
                     }
                 }
+            } else {
+                wf.tasks.forEach { taskPanel(it) }
             }
 
             if (unmetTraits.isNotEmpty()) {
