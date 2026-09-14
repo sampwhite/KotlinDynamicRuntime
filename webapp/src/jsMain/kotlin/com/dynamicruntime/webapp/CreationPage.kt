@@ -4,12 +4,8 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
 import react.Props
-import react.dom.html.ReactHTML.div
-import react.dom.html.ReactHTML.h1
-import react.dom.html.ReactHTML.p
 import react.useEffectOnce
 import react.useState
-import web.cssom.ClassName
 
 private val creationScope = MainScope()
 
@@ -39,18 +35,10 @@ val CreationPage = FC<Props> {
     }
 
     when {
-        loading -> div {
-            className = ClassName("card wide")
-            h1 { +"New form" }
-            p {
-                className = ClassName("subtitle")
-                +"Loading…"
-            }
-        }
-        loadError != null -> div {
-            className = ClassName("card wide")
-            h1 { +"New form" }
-            errorText("Couldn't load the form.", loadError!!)
+        loading -> LoadStateCard { title = "New form" }
+        loadError != null -> LoadStateCard {
+            title = "New form"
+            this.loadError = loadError
         }
         // No creation workflow: the generic trait picker, unchanged.
         noWorkflow -> NewFormPage {}

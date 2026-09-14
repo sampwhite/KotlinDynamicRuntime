@@ -56,6 +56,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // A creation form is always editable; a survey edit starts read-only (the "View All Data" view).
     var editing by useState(!isEdit)
     var valuesByTrait by useState(seeded)
+    // The last-stored values, refreshed on each successful save. "Done" reverts the fields to this -- not the
+    // first-render `seeded` snapshot -- so after a save it shows what was saved, not the pre-save values.
+    var stored by useState(seeded)
     var failuresByTrait by useState<Map<String, List<SchFailure>>>(emptyMap())
     var unmetTraits by useState<Set<String>>(emptySet())
     var savingTask by useState<String?>(null)
@@ -87,12 +90,16 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 val outcome = WorkflowApi.save(body)
                 if (outcome.saved) {
                     savedItem = outcome.item
-                    // A survey edit stays on the form -- re-seed from what was stored and drop back to read-only,
-                    // so the "View All Data" view now shows the saved values. A create hands off to the
-                    // confirmation below.
+                    // A survey edit stays on the form and in edit mode -- a multi-task survey is saved one task
+                    // at a time, so exiting or re-seeding the whole form here would discard the other tasks'
+                    // in-progress edits. Refresh the stored snapshot from the whole updated form, then push only
+                    // *this* task's (possibly server-canonicalized) values into the fields; other tasks keep
+                    // what the user has typed. "Done" returns to read-only showing `stored`.
                     if (isEdit) {
-                        valuesByTrait = seedValuesFromEntries(outcome.item[GDF.entries].toJsonListOfMaps())
-                        editing = false
+                        val storedNow = seedValuesFromEntries(outcome.item[GDF.entries].toJsonListOfMaps())
+                        stored = storedNow
+                        val savedTraitIds = task.traits.map { it.traitId }.toSet()
+                        valuesByTrait = valuesByTrait + storedNow.filterKeys { it in savedTraitIds }
                     }
                 } else {
                     // The create gate: the required traits still empty.
@@ -147,83 +154,82 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 }
             }
         } else {
-
-        // The header row: the survey edit offers an Edit / Done toggle over the read-only "View All Data".
-        if (isEdit) {
-            div {
-                className = ClassName("row")
-                if (editing) {
-                    Button {
-                        onClick = { valuesByTrait = seeded; failuresByTrait = emptyMap(); unmetTraits = emptySet(); editing = false }
-                        +"Done"
-                    }
-                } else {
-                    Button {
-                        type = "primary"
-                        onClick = { editing = true }
-                        +"Edit"
-                    }
-                }
-                savedItem?.let {
-                    p {
-                        className = ClassName("form-ok")
-                        +"✓ Saved."
-                    }
-                }
-            }
-        }
-
-        wf.tasks.forEach { task ->
-            div {
-                className = ClassName("wf-task")
-                if (wf.showTaskList && task.label.isNotBlank()) {
-                    Markdown { source = task.label; inlineUi = true }
-                }
-                task.traits.forEach { trait ->
-                    div {
-                        className = ClassName("wf-trait")
-                        trait.layout?.label?.let { Markdown { source = it; inlineUi = true } } ?: h2 { +traitHeading(trait) }
-                        if (trait.traitId in unmetTraits) {
-                            p {
-                                className = ClassName("error-text")
-                                +"This is required — please fill it in."
-                            }
+            // The header row: the survey edit offers an Edit / Done toggle over the read-only "View All Data".
+            if (isEdit) {
+                div {
+                    className = ClassName("row")
+                    if (editing) {
+                        Button {
+                            onClick = { valuesByTrait = stored; failuresByTrait = emptyMap(); unmetTraits = emptySet(); editing = false }
+                            +"Done"
                         }
-                        SchemaForm {
-                            type = trait.type
-                            this.values = valuesOf(trait.traitId)
-                            editable = editing
-                            friendly = true
-                            this.cfacts = wf.cfacts
-                            this.layouts = wf.layouts
-                            this.failures = failuresByTrait[trait.traitId]
-                            onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
-                            onFieldEdit = { if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId }
-                        }
-                    }
-                }
-                // The save is per task (each task's own entries), shown only while editing.
-                if (editing) {
-                    div {
-                        className = ClassName("row")
+                    } else {
                         Button {
                             type = "primary"
-                            loading = savingTask == task.id
-                            onClick = { onSave(task) }
-                            +saveFor(task).label
+                            onClick = { editing = true }
+                            +"Edit"
+                        }
+                    }
+                    savedItem?.let {
+                        p {
+                            className = ClassName("form-ok")
+                            +"✓ Saved."
                         }
                     }
                 }
             }
-        }
 
-        if (unmetTraits.isNotEmpty()) {
-            p {
-                className = ClassName("form-stale")
-                +"Some required sections are empty — they are marked above."
+            wf.tasks.forEach { task ->
+                div {
+                    className = ClassName("wf-task")
+                    if (wf.showTaskList && task.label.isNotBlank()) {
+                        Markdown { source = task.label; inlineUi = true }
+                    }
+                    task.traits.forEach { trait ->
+                        div {
+                            className = ClassName("wf-trait")
+                            trait.layout?.label?.let { Markdown { source = it; inlineUi = true } } ?: h2 { +traitHeading(trait) }
+                            if (trait.traitId in unmetTraits) {
+                                p {
+                                    className = ClassName("error-text")
+                                    +"This is required — please fill it in."
+                                }
+                            }
+                            SchemaForm {
+                                type = trait.type
+                                this.values = valuesOf(trait.traitId)
+                                editable = editing
+                                friendly = true
+                                this.cfacts = wf.cfacts
+                                this.layouts = wf.layouts
+                                this.failures = failuresByTrait[trait.traitId]
+                                onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
+                                onFieldEdit = { if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId }
+                            }
+                        }
+                    }
+                    // The save is per task (each task's own entries), shown only while editing.
+                    if (editing) {
+                        div {
+                            className = ClassName("row")
+                            Button {
+                                type = "primary"
+                                loading = savingTask == task.id
+                                onClick = { onSave(task) }
+                                +saveFor(task).label
+                            }
+                        }
+                    }
+                }
             }
-        }
-        runError?.let { errorText(if (isEdit) "Couldn't save the form." else "Couldn't create the form.", it) }
+
+            if (unmetTraits.isNotEmpty()) {
+                p {
+                    className = ClassName("form-stale")
+                    +"Some required sections are empty — they are marked above."
+                }
+            }
+            runError?.let { errorText(if (isEdit) "Couldn't save the form." else "Couldn't create the form.", it) }
         }
     }
 }
@@ -231,3 +237,32 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 /** The heading for a trait section: its schema title if it has one, else a humanized trait id. */
 private fun traitHeading(trait: WfTraitView): String =
     trait.type.title?.takeIf { it.isNotBlank() } ?: humanizeFieldName(trait.traitId)
+
+external interface LoadStateCardProps : Props {
+    /** The page heading, shown while it loads or fails ("New form", "Edit form"). */
+    var title: String
+
+    /** The load failure to show; null renders the "Loading…" state instead. */
+    var loadError: DisplayError?
+}
+
+/**
+ * The load-state chrome shared by the workflow pages ([CreationPage], [SurveyEditPage]): a `card wide` carrying
+ * the page's [title] and either "Loading…" or the load error. Keeps the two pages from each hand-rolling the
+ * same scaffolding that differs only in the heading text.
+ */
+val LoadStateCard = FC<LoadStateCardProps> { props ->
+    div {
+        className = ClassName("card wide")
+        h1 { +props.title }
+        val err = props.loadError
+        if (err == null) {
+            p {
+                className = ClassName("subtitle")
+                +"Loading…"
+            }
+        } else {
+            errorText("Couldn't load the form.", err)
+        }
+    }
+}
