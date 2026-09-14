@@ -1,15 +1,11 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
-import com.dynamicruntime.common.context.ENVGRP
-import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
-import com.dynamicruntime.common.gedra.GedraConfig
-import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -56,14 +52,11 @@ import io.kotest.matchers.shouldBe
  * literal undeclared cfact is already refused at boot and so never reaches the runtime drop.
  */
 class CfactCalcTest : StringSpec({
-    // The strict client is defined at boot (a testFeatures flag does not survive a config write/reload), the
-    // survey client below as a runtime dynamic client -- the two ways a client reaches a running node.
-    val cxt = Startup.mkTestBootCxt(
-        "cfactCalc678", "cfactCalc678",
-        mapOf(StrictCfactFixture.loadFlag.name to "true"),
-        additionalComponents = listOf(StrictCfactFixture()),
-    )
+    val cxt = Startup.mkTestBootCxt("cfactCalc678", "cfactCalc678")
     val client = "cfactcalc678"
+    // A second client opting into strict unknown-cfact handling. Written purely over the API: on a test instance
+    // its testFeatures round-trips and is honored (issue #696), so no boot fixture is needed.
+    val strictClient = "cfactcalc678strict"
 
     fun asClient(c: String): KdrCxt = cxt.mkSubContext("setup", c).also { it.userId = 9000L }
 
@@ -99,6 +92,19 @@ class CfactCalcTest : StringSpec({
 
     GedraConfigService.get(cxt).writeConfig(asClient(client), config)
     GedraConfigReload.reloadClient(cxt, client)
+
+    val strictConfig = gedraConfig(cxt, "${strictClient}cfg", "${strictClient}config", strictClient) {
+        defineClient(
+            ClientDef(
+                clientId = strictClient, name = strictClient, usageType = ClientUsageType.dev,
+                audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                testFeatures = setOf(CFC.strictUnknownCfact),
+            ),
+        )
+    }
+    GedraConfigService.get(cxt).writeConfig(asClient(strictClient), strictConfig)
+    GedraConfigReload.reloadClient(cxt, strictClient)
+
     val user = TestUser.create(cxt, "u@$client.test", userClient = client)
 
     fun create(vararg choices: String): String =
@@ -180,7 +186,7 @@ class CfactCalcTest : StringSpec({
         runCfactCalc(cxt, def, entries = emptyList(), client = client) shouldBe emptySet()
 
         // The strict client escalates the same drop to an error.
-        shouldThrow<KdrException> { runCfactCalc(cxt, def, entries = emptyList(), client = StrictCfactFixture.strictClient) }
+        shouldThrow<KdrException> { runCfactCalc(cxt, def, entries = emptyList(), client = strictClient) }
     }
 })
 
@@ -190,36 +196,5 @@ private class GhostCfactFn(private val ghost: String) : CfactCalcFn {
     override val priority: Int = 0
     override fun computeCfacts(cxt: KdrCxt, params: CfactCalcParams) {
         params.emit(ghost)
-    }
-}
-
-/**
- * A boot fixture that defines one client opting into strict unknown-cfact handling ([CFC.strictUnknownCfact]).
- * Boot-defined rather than reloaded, because `testFeatures` is a boot-only field a config write/reload drops.
- */
-private class StrictCfactFixture : ComponentDefinition {
-    override val providerName: String = "strictCfactFixture"
-
-    override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
-
-    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
-        gedraConfig(cxt, "${strictClient}cfg", "${strictClient}config", strictClient) {
-            defineClient(
-                ClientDef(
-                    clientId = strictClient, name = strictClient, usageType = ClientUsageType.dev,
-                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit),
-                    testFeatures = setOf(CFC.strictUnknownCfact),
-                ),
-            )
-        },
-    )
-
-    @Suppress("ConstPropertyName")
-    companion object {
-        val loadFlag = EnvVarDef(
-            "KDR_LOAD_STRICT_CFACT_FIXTURE", group = ENVGRP.application, defaultDoc = "off",
-            description = "Test-only flag that loads the strict unknown-cfact client fixture.",
-        )
-        const val strictClient = "cfactcalc678strict"
     }
 }

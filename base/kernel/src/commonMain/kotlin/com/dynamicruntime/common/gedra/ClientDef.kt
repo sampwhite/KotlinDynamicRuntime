@@ -96,6 +96,7 @@ object CLD {
     const val domainPrefix = "domainPrefix"
     const val customDomain = "customDomain"
     const val includedTraits = "includedTraits"
+    const val testFeatures = "testFeatures"
 
     /** Schema type name for the [ClientDef.toInfo] dump. */
     const val infoTypeName = "ClientInfo"
@@ -162,7 +163,7 @@ fun SchTypeBuilder.clientAttribute() {
  * **Nothing here decides how a request is served.** This slice declares, validates, and finds a client; the
  * per-client schema, the absent-client gate, and domain routing are later work.
  */
-class ClientDef(
+data class ClientDef(
     /**
      * The unique key identifying this client, embedded in every [GedraId] it owns.
      *
@@ -250,6 +251,12 @@ class ClientDef(
      * whether this client runs the demo `traitPresenceByYear` state derivation, while the trait's schema stays
      * global. **Honored only on a test instance** (`isTestInstance`), so a name listed here can never switch a
      * demo behavior on in production; it is the client-level counterpart of the endpoint `forTestingOnly` fence.
+     *
+     * It round-trips through [toInfo] / [fromInfo] so it can be authored as stored data (issue #696), but the
+     * honored-only-on-a-test-instance guarantee is enforced structurally, not by every consumer: `ClientService`
+     * strips it from the *present* definition on a non-test instance (`checkClientDefs`), so a stored value that
+     * is cloned onto a real node is simply not there. A consumer therefore reads this field directly and trusts
+     * it; it is empty off a test instance whatever the stored row held.
      */
     val testFeatures: Set<String> = emptySet(),
 ) {
@@ -282,15 +289,19 @@ class ClientDef(
         if (domainPrefix != null) put(CLD.domainPrefix, domainPrefix)
         if (customDomain != null) put(CLD.customDomain, customDomain)
         put(CLD.includedTraits, includedTraits)
+        // Round-trips so it can be authored as data; a non-test instance strips it on the way back in
+        // (checkClientDefs), so emitting it here is safe -- the present definition it reads from has none.
+        if (testFeatures.isNotEmpty()) put(CLD.testFeatures, testFeatures.toList())
     }
 
     companion object {
         /**
          * A [ClientDef] from a stored [toInfo] dump (issue #613) -- the inverse of [toInfo], for reassembling a
-         * client definition off a config row. Reads only what [toInfo] writes: `testFeatures` is a test-only
-         * field the `ClientInfo` shape does not carry, so a reassembled client has none, which is correct for
-         * one authored as data. Fields absent from the map take their declared defaults. The map is assumed
-         * schema-valid (the slot validated it against `ClientInfo`), so a required field missing is a fault.
+         * client definition off a config row. Reads what [toInfo] writes, `testFeatures` included (issue #696):
+         * the raw stored value is reassembled here, and `ClientService` neutralizes it on a non-test instance
+         * (`checkClientDefs`), so this stays context-free. Fields absent from the map take their declared
+         * defaults. The map is assumed schema-valid (the slot validated it against `ClientInfo`), so a required
+         * field missing is a fault.
          */
         fun fromInfo(m: Map<String, Any?>): ClientDef = ClientDef(
             clientId = m[CLD.clientId].toOptStr() ?: throw KdrException.mkConv("A stored client has no '${CLD.clientId}'."),
@@ -306,6 +317,7 @@ class ClientDef(
             domainPrefix = m[CLD.domainPrefix].toOptStr(),
             customDomain = m[CLD.customDomain].toOptStr(),
             includedTraits = m[CLD.includedTraits].toJsonListOfStrings(),
+            testFeatures = m[CLD.testFeatures].toJsonListOfStrings().toSet(),
         )
 
         private fun <E : Enum<E>> enumOf(values: List<E>, name: String?, field: String): E =
@@ -341,6 +353,13 @@ class ClientDef(
                 property(CLD.domainPrefix, "A prefix on a core domain that routes to this client.")
                 property(CLD.customDomain, "A whole hostname the client configured for itself.")
                 property(CLD.includedTraits, "Trait ids and group names the client takes as they stand.") {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(
+                    CLD.testFeatures,
+                    "Test/demo feature names, honored only on a test instance (stripped elsewhere).",
+                ) {
                     type = SCT.array
                     items { type = SCT.string }
                 }
