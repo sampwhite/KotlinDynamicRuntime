@@ -13,12 +13,12 @@ import com.dynamicruntime.common.schema.PSTAT
 /**
  * The caller's form documents as an antd table: one row per form, most recently written first as the endpoint
  * returns them (issue #562), with a User column for a caller who sees other users' documents.
- * The list is the hub for the whole lifecycle (issue #417): a **row click** opens the raw read-only view
- * ("View All" -- every trait), and a per-row **Actions** column carries **View Info** (the survey's read-only
- * on-boarding view, with its Edit toggle; issue #694), **View All** (the same raw view the row click opens), and
- * Delete, so none needs the form opened first. The survey-status chip on an unfinished row is itself a link
- * straight into the survey's edit mode. Delete arms an inline confirm in the row rather than navigating, since
- * it is the one irreversible action here.
+ * The list is the hub for the whole lifecycle (issue #417): a **row click** is the default open -- the survey's
+ * **View Info** where the client has a survey, else the raw **View All** (issue #694) -- and a per-row
+ * **Actions** column carries **View Info** (the survey's read-only on-boarding view, with its Edit toggle),
+ * **View All** (the raw read-only view of every trait), and Delete, so none needs the form opened first. The
+ * survey-status chip on an unfinished row is itself a link straight into the survey's edit mode. Delete arms
+ * an inline confirm in the row rather than navigating, since it is the one irreversible action here.
  *
  * Presentational: every value is a [FormSummary] the parent already computed and every action is a callback the
  * parent owns, so the table itself knows nothing about gedra shapes or endpoints. An action a caller's surface
@@ -29,7 +29,7 @@ external interface FormsTableProps : Props {
     /** Each form's id paired with its summary, in display order. */
     var forms: List<Pair<String, FormSummary>>
 
-    /** Opens the read-only view of a form -- also what a row click does. */
+    /** Opens the raw read-only view of a form ("View All"); also the row click where the client has no survey. */
     var onView: (String) -> Unit
 
     /** Whether the caller's surface carries the delete endpoint, so a Delete action can work. */
@@ -154,7 +154,15 @@ val FormsTable = FC<FormsTableProps> { props ->
         }.toTypedArray()
         onRow = { record, _ ->
             val handlers: dynamic = js("({})")
-            handlers.onClick = { props.onView(record.key as String) }
+            // The row click is the default open (issue #694): the survey's "View Info" where the client has a
+            // survey -- the friendlier on-boarding view, with its Edit toggle and a "Raw edit" escape -- else the
+            // raw "View All". The same signal gates the Status column and the View Info action, so the three can
+            // never disagree about whether a survey exists (it is a proxy read off the loaded rows; a persistent
+            // store's pre-deriver rows fall back to View All until re-touched or batch-recomputed).
+            handlers.onClick = {
+                val id = record.key as String
+                if (anySurveyStatus) props.onSurveyView(id) else props.onView(id)
+            }
             handlers.style = js("({ cursor: 'pointer' })")
             // The just-saved form flashes on arrival from the edit page (issue #592).
             if (props.highlightId != null && record.key == props.highlightId) {
@@ -318,8 +326,9 @@ private val FormRowActions = FC<FormRowActionsProps> { props ->
                 +"View Info"
             }
         }
-        // The raw read-only view of every trait -- the same one a row click opens, made discoverable. The raw
-        // editor is reached from it (and from the survey view's "Raw edit"), never straight from the row.
+        // The raw read-only view of every trait, made discoverable (the row click goes here only where the client
+        // has no survey). The raw editor is reached from it (and from the survey view's "Raw edit"), never
+        // straight from the row.
         Button {
             type = "link"
             size = "small"
