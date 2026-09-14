@@ -56,4 +56,8 @@ object UF {
 
     /** How the value reads (`UsageKind`), for a search to filter on. */
     const val kind = "kind"
+
+    /** Whether a `string` usage also offers a contains search ([ClientTraitUsage.substring]); on the usage's own
+     *  wire projection, not a display value. Here so the one usage-field object owns every usage key. */
+    const val substring = "substring"
 }

@@ -31,9 +31,20 @@ class ClientCheckResult(
 fun checkClientDefs(cxt: KdrCxt, configs: GedraConfigCollector): ClientCheckResult {
     val mode = gedraConfigCheckMode(cxt)
     val declared = configs.configs.mapNotNull { config -> config.client?.let { config to it } }
+
+    // The one place `testFeatures` is confined to a test instance (issue #696): the *present* definition a
+    // non-test node holds carries none, whatever a stored row declared. Every consumer then reads the field
+    // directly and is correct by construction -- no per-consumer `isTestInstance` gate to forget -- and a stored
+    // value cloned onto a real node is simply not there. A boot-defined client is neutralized the same way.
+    val stripTestFeatures = !cxt.instanceConfig.isTestInstance
+    fun effective(def: ClientDef): ClientDef =
+        if (stripTestFeatures && def.testFeatures.isNotEmpty()) def.copy(testFeatures = emptySet()) else def
+
     if (mode == BootCheckMode.off) {
-        return ClientCheckResult(declared.associate { (_, def) -> def.clientId to def }, emptyList())
+        return ClientCheckResult(declared.associate { (_, def) -> def.clientId to effective(def) }, emptyList())
     }
+    // On a test instance effective() is the identity, so there is nothing to rebuild -- only a non-test node
+    // (which strips testFeatures) needs the map rebuilt below.
     val issues = mutableListOf<GedraConfigIssue>()
     val kept = LinkedHashMap<String, ClientDef>()
 
@@ -57,7 +68,8 @@ fun checkClientDefs(cxt: KdrCxt, configs: GedraConfigCollector): ClientCheckResu
             reportConfigProblem(cxt, mode, problem, issues)
         }
     }
-    return ClientCheckResult(kept, issues)
+    val clients = if (stripTestFeatures) kept.mapValuesTo(LinkedHashMap()) { effective(it.value) } else kept
+    return ClientCheckResult(clients, issues)
 }
 
 /** The first thing wrong with [def] judged on its own, or null. */

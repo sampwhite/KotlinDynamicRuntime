@@ -83,6 +83,7 @@ object CFEP {
     const val publishedOnlyField = "publishedOnly"
 }
 
+@Suppress("DuplicatedCode")
 fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace) {
 
     // A config's identity and accounting, without its contents -- what a listing row shows.
@@ -169,7 +170,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         val name = requireName(request)
         val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
             ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
-        bundleOf(row)
+        bundleOf(c, row)
     }
 
     generalEndpoint(
@@ -190,7 +191,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         // Authoritative by default: a bundle is the whole configuration, so a slot the bundle omits is dropped,
         // as the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
         val impliedDelete = request[CFEP.impliedDelete] as? Boolean ?: true
-        bundleOf(GedraConfigService.get(c).writeConfig(c, config, impliedDelete))
+        bundleOf(c, GedraConfigService.get(c).writeConfig(c, config, impliedDelete))
     }
 
     generalEndpoint(
@@ -227,7 +228,9 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         val name = requireName(request)
         val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
             ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
-        row.entries
+        // Redacted at the row (issue #696), the same source the bundle read uses -- so testFeatures a cloned
+        // config carries is not echoed off a test instance here either.
+        row.entriesForEmission(c.instanceConfig.isTestInstance)
     }
 
     type(CFEP.reloadResultType) {
@@ -334,16 +337,20 @@ private fun summaryOf(row: GedraConfigRow): Map<String, Any?> = dropNulls(
     ),
 )
 
-/** A whole config revision as a bundle: its summary plus its contents by slot. */
-private fun bundleOf(row: GedraConfigRow): Map<String, Any?> = dropNulls(
+/**
+ * A whole config revision as a bundle: its summary plus its contents by slot. The slots come from
+ * [GedraConfigRow.slotsForEmission], so `testFeatures` is stripped from the stored client definition off a test
+ * instance at the row -- the one redaction point the trait-level read shares (issue #696).
+ */
+private fun bundleOf(cxt: KdrCxt, row: GedraConfigRow): Map<String, Any?> = dropNulls(
     linkedMapOf(
         CFEP.name to row.configId.baseId,
-        CFEP.namespaceField to deriveNamespace(row),
+        CFEP.namespaceField to row.resolvedNamespace(),
         CFEP.client to row.client,
         CFEP.version to row.version,
         CFEP.published to row.isPublished,
         CFEP.publishedAt to row.publishedAt,
-        CFEP.slots to row.entriesBySlot(),
+        CFEP.slots to row.slotsForEmission(cxt.instanceConfig.isTestInstance),
         CFEP.createdAt to row.createdAt,
         CFEP.updatedAt to row.updatedAt,
     ),
@@ -352,27 +359,3 @@ private fun bundleOf(row: GedraConfigRow): Map<String, Any?> = dropNulls(
 /** Drops null-valued keys so an absent optional field (a null publish time, say) never reaches its validation. */
 private fun dropNulls(map: Map<String, Any?>): Map<String, Any?> =
     map.filterValues { it != null }
-
-/**
- * The namespace a stored config's generated types live in, recovered from a stored qualified type name (issue
- * #627). A trait or schema entry's `typeName` is qualified `namespace.Type`, so the prefix of the first one is
- * the config's namespace. A config that declares no types (only cfacts or usages, say) has none to recover and
- * needs none -- there is nothing to qualify -- so this reads empty, which round-trips to a write that supplies
- * the namespace itself. The stored row does not carry the namespace as a field; when #614 needs it structurally
- * rather than for display, storing it becomes worthwhile.
- */
-private fun deriveNamespace(row: GedraConfigRow): String {
-    // The persisted namespace (issue #614) is authoritative; the derivation below is the fallback for a row
-    // written before it was stored.
-    if (row.namespace.isNotEmpty()) return row.namespace
-    val bySlot = row.entriesBySlot()
-    for (slot in listOf(CCT.traitDef, CCT.stateTraitDef, CCT.schemaDef)) {
-        for (entry in bySlot[slot].orEmpty()) {
-            val typeName = entry[CCT.typeName].toOptStr()
-            if (typeName != null && '.' in typeName) {
-                return typeName.substringBefore('.')
-            }
-        }
-    }
-    return ""
-}

@@ -49,8 +49,8 @@ class GedraConfigRow(
 
     /**
      * The namespace the config's generated types live in (issue #614), read from [GC.namespace] in the stored
-     * map. Empty for a row written before the namespace was persisted, or one that never carried it; the boot
-     * loader falls back to recovering it from a stored qualified type name in that case.
+     * map. Empty for a row written before the namespace was persisted, or one that never carried it; use
+     * [resolvedNamespace] to recover it from a stored qualified type name in that case.
      */
     var namespace: String = ""
 
@@ -60,7 +60,7 @@ class GedraConfigRow(
     var createdAt: Instant? = null
     var updatedAt: Instant? = null
 
-    /** Whether this revision has been published, i.e. is no longer the editable latest. */
+    /** Whether this revision has been published, i.e., is no longer the editable latest. */
     val isPublished: Boolean get() = publishedAt != null
 
     /**
@@ -68,13 +68,65 @@ class GedraConfigRow(
      * [GE.data] -- which is exactly the `entriesBySlot` shape [reassembleGedraConfig] takes. The read-back
      * bridge from a stored row to a [GedraConfig]; the boot loader (#614) turns this into a config.
      */
-    fun entriesBySlot(): Map<String, List<Map<String, Any?>>> {
+    fun entriesBySlot(): Map<String, List<Map<String, Any?>>> = bySlot(entries)
+
+    /**
+     * The revision's entries as they may be **emitted** to a caller (issue #696): identical to [entries] on a
+     * test instance, but on any other node `testFeatures` is stripped from the stored client-definition entry.
+     * `testFeatures` is honored only on a test instance, so a value that reached a real node's stored config (by
+     * a clone or a promotion) must never be echoed back. This is the one place the raw stored config is redacted
+     * for emission, so every reader that hands the stored entries outward -- the whole-bundle read and the
+     * trait-level read alike -- inherits the guarantee rather than each remembering to strip.
+     */
+    fun entriesForEmission(isTestInstance: Boolean): List<Map<String, Any?>> {
+        if (isTestInstance) {
+            return entries
+        }
+        return entries.map { entry ->
+            if (entry[GE.traitId].toOptStr() != CCT.clientDef) {
+                entry
+            } else {
+                val data = entry[GE.data].toJsonMapOrEmpty()
+                if (CLD.testFeatures in data) entry + (GE.data to (data - CLD.testFeatures)) else entry
+            }
+        }
+    }
+
+    /** [entriesForEmission] grouped by slot -- the bundle read's shape, redacted at the same source. */
+    fun slotsForEmission(isTestInstance: Boolean): Map<String, List<Map<String, Any?>>> =
+        bySlot(entriesForEmission(isTestInstance))
+
+    private fun bySlot(entries: List<Map<String, Any?>>): Map<String, List<Map<String, Any?>>> {
         val out = LinkedHashMap<String, MutableList<Map<String, Any?>>>()
         for (entry in entries) {
             val slot = entry[GE.traitId].toOptStr() ?: continue
             out.getOrPut(slot) { mutableListOf() }.add(entry[GE.data].toJsonMapOrEmpty())
         }
         return out
+    }
+
+    /**
+     * The config's namespace (issue #614), authoritative from [namespace] when it was persisted, otherwise
+     * recovered from the qualified name of the first stored type -- a trait, state trait, or schema entry's
+     * `typeName` is `namespace.Type`, so its prefix is the config's namespace. A config that declares no types
+     * (only cfacts or usages) has none to recover and needs none, so this reads empty, which round-trips to a
+     * write that supplies the namespace itself. The one place the fallback lives, shared by the boot loader
+     * ([reassembleGedraConfig] via `GedraConfigLoadService`) and the bundle read, which each derived it before.
+     */
+    fun resolvedNamespace(): String {
+        if (namespace.isNotEmpty()) {
+            return namespace
+        }
+        val bySlot = entriesBySlot()
+        for (slot in listOf(CCT.traitDef, CCT.stateTraitDef, CCT.schemaDef)) {
+            for (entry in bySlot[slot].orEmpty()) {
+                val typeName = entry[CCT.typeName].toOptStr()
+                if (typeName != null && '.' in typeName) {
+                    return typeName.substringBefore('.')
+                }
+            }
+        }
+        return ""
     }
 
     /**

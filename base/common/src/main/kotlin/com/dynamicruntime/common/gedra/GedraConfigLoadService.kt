@@ -15,7 +15,6 @@ import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockSource
-import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
@@ -239,29 +238,11 @@ class GedraConfigLoadService : ServiceInitializer {
 
     /** A stored [row] as the [GedraConfig] it holds -- the one reassembly the boot load and a reload (#616) share. */
     fun toConfig(cxt: KdrCxt, row: GedraConfigRow): GedraConfig =
-        reassembleGedraConfig(cxt, row.configId.baseId, namespaceOf(row), row.client, row.entriesBySlot())
+        reassembleGedraConfig(cxt, row.configId.baseId, row.resolvedNamespace(), row.client, row.entriesBySlot())
 
     /** The ids of every data-loaded config now in the collector, across clients. */
     fun allLoadedIds(): Set<String> = synchronized(loadedByClient) {
         loadedByClient.values.flatten().map { it.gedraId.fullId }.toSet()
-    }
-
-    /**
-     * The namespace to reassemble a stored config in: the persisted [GedraConfigRow.namespace] (issue #614),
-     * falling back to the prefix of a stored qualified type name for a row written before it was persisted, and
-     * to empty when the config declares no types (in which case there is nothing to qualify and no namespace to
-     * own).
-     */
-    private fun namespaceOf(row: GedraConfigRow): String {
-        if (row.namespace.isNotEmpty()) return row.namespace
-        val bySlot = row.entriesBySlot()
-        for (slot in listOf(CCT.traitDef, CCT.stateTraitDef, CCT.schemaDef)) {
-            for (entry in bySlot[slot].orEmpty()) {
-                val typeName = entry[CCT.typeName].toOptStr()
-                if (typeName != null && '.' in typeName) return typeName.substringBefore('.')
-            }
-        }
-        return ""
     }
 
     /**

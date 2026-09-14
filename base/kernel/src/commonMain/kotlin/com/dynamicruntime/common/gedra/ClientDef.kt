@@ -96,6 +96,7 @@ object CLD {
     const val domainPrefix = "domainPrefix"
     const val customDomain = "customDomain"
     const val includedTraits = "includedTraits"
+    const val testFeatures = "testFeatures"
 
     /** Schema type name for the [ClientDef.toInfo] dump. */
     const val infoTypeName = "ClientInfo"
@@ -114,6 +115,32 @@ object CLD {
      * callback lives with the client endpoints. A literal at either end is a rename waiting to empty a list.
      */
     const val clientOptions = "clientOptions"
+
+    // --- the client-definition retrieve + summary endpoints (issue #672) ------------------------------------
+
+    /** Schema type name for one client's full definition (the `/admin/client/definition` retrieve, issue #672). */
+    const val definitionTypeName = "ClientDefinition"
+
+    /** Schema type name for one of a client's traits within [definitionTypeName] -- id, type, and data schema. */
+    const val traitInfoTypeName = "ClientTraitInfo"
+
+    /** Schema type name for one of a client's trait-usage rules within [definitionTypeName] (a listing column). */
+    const val usageInfoTypeName = "ClientUsageInfo"
+
+    /** Schema type name for a cross-client overview row (the `/admin/clients/summary` listing, issue #672). */
+    const val summaryTypeName = "ClientSummary"
+
+    // Definition-level field names on the retrieve/summary types (each matches its value). The per-trait and
+    // per-usage keys are NOT re-declared here: a trait's field names live on `CCT` beside `GedraTrait` and a
+    // usage's on `UF` beside `ClientTraitUsage`, so a renamed attribute is a single-file edit (CLAUDE.md).
+    /** The client's attributes, as [ClientDef.toInfo] writes them ([infoTypeName]). */
+    const val client = "client"
+    const val traits = "traits"
+    const val usages = "usages"
+    const val workflows = "workflows"
+    const val workflowIds = "workflowIds"
+    const val traitIds = "traitIds"
+    const val usageLabels = "usageLabels"
 }
 
 /**
@@ -162,7 +189,7 @@ fun SchTypeBuilder.clientAttribute() {
  * **Nothing here decides how a request is served.** This slice declares, validates, and finds a client; the
  * per-client schema, the absent-client gate, and domain routing are later work.
  */
-class ClientDef(
+data class ClientDef(
     /**
      * The unique key identifying this client, embedded in every [GedraId] it owns.
      *
@@ -250,6 +277,12 @@ class ClientDef(
      * whether this client runs the demo `traitPresenceByYear` state derivation, while the trait's schema stays
      * global. **Honored only on a test instance** (`isTestInstance`), so a name listed here can never switch a
      * demo behavior on in production; it is the client-level counterpart of the endpoint `forTestingOnly` fence.
+     *
+     * It round-trips through [toInfo] / [fromInfo] so it can be authored as stored data (issue #696), but the
+     * honored-only-on-a-test-instance guarantee is enforced structurally, not by every consumer: `ClientService`
+     * strips it from the *present* definition on a non-test instance (`checkClientDefs`), so a stored value that
+     * is cloned onto a real node is simply not there. A consumer therefore reads this field directly and trusts
+     * it; it is empty off a test instance whatever the stored row held.
      */
     val testFeatures: Set<String> = emptySet(),
 ) {
@@ -282,15 +315,19 @@ class ClientDef(
         if (domainPrefix != null) put(CLD.domainPrefix, domainPrefix)
         if (customDomain != null) put(CLD.customDomain, customDomain)
         put(CLD.includedTraits, includedTraits)
+        // Round-trips so it can be authored as data; a non-test instance strips it on the way back in
+        // (checkClientDefs), so emitting it here is safe -- the present definition it reads from has none.
+        if (testFeatures.isNotEmpty()) put(CLD.testFeatures, testFeatures.toList())
     }
 
     companion object {
         /**
          * A [ClientDef] from a stored [toInfo] dump (issue #613) -- the inverse of [toInfo], for reassembling a
-         * client definition off a config row. Reads only what [toInfo] writes: `testFeatures` is a test-only
-         * field the `ClientInfo` shape does not carry, so a reassembled client has none, which is correct for
-         * one authored as data. Fields absent from the map take their declared defaults. The map is assumed
-         * schema-valid (the slot validated it against `ClientInfo`), so a required field missing is a fault.
+         * client definition off a config row. Reads what [toInfo] writes, `testFeatures` included (issue #696):
+         * the raw stored value is reassembled here, and `ClientService` neutralizes it on a non-test instance
+         * (`checkClientDefs`), so this stays context-free. Fields absent from the map take their declared
+         * defaults. The map is assumed schema-valid (the slot validated it against `ClientInfo`), so a required
+         * field missing is a fault.
          */
         fun fromInfo(m: Map<String, Any?>): ClientDef = ClientDef(
             clientId = m[CLD.clientId].toOptStr() ?: throw KdrException.mkConv("A stored client has no '${CLD.clientId}'."),
@@ -306,6 +343,7 @@ class ClientDef(
             domainPrefix = m[CLD.domainPrefix].toOptStr(),
             customDomain = m[CLD.customDomain].toOptStr(),
             includedTraits = m[CLD.includedTraits].toJsonListOfStrings(),
+            testFeatures = m[CLD.testFeatures].toJsonListOfStrings().toSet(),
         )
 
         private fun <E : Enum<E>> enumOf(values: List<E>, name: String?, field: String): E =
@@ -318,7 +356,11 @@ class ClientDef(
                 type = SCT.kObject
                 description = "A client this deployment carries, as it was declared."
                 property(CLD.clientId, "The client's unique key, embedded in every gedra id it owns.", required = true)
-                property(CLD.name, "The name presented to users as the name of the client.", required = true)
+                // `emptyIsAbsent = false`: an empty name is a real, handled state (`clientLabel` falls back to the
+                // id), so it must not read as a missing required field and fail validation (issue #672 review).
+                property(CLD.name, "The name presented to users as the name of the client.", required = true) {
+                    emptyIsAbsent = false
+                }
                 property(CLD.description, "An internal note about who, what or why.")
                 property(CLD.usageType, "What the client is for.", required = true) {
                     options(ClientUsageType.entries)
@@ -341,6 +383,13 @@ class ClientDef(
                 property(CLD.domainPrefix, "A prefix on a core domain that routes to this client.")
                 property(CLD.customDomain, "A whole hostname the client configured for itself.")
                 property(CLD.includedTraits, "Trait ids and group names the client takes as they stand.") {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(
+                    CLD.testFeatures,
+                    "Test/demo feature names, honored only on a test instance (stripped elsewhere).",
+                ) {
                     type = SCT.array
                     items { type = SCT.string }
                 }

@@ -34,12 +34,12 @@ fun resolveWorkflowFunctions(
         for (def in bundle.workflows.values) {
             def.resolvedFunctions = resolveList(
                 cxt, client, def.workflowId, "the workflow", def.functionUsages, WfEventScope.global,
-                byFn, declaredCfacts, mode, issues,
+                byFn, declaredCfacts, collectedTraits = null, mode, issues,
             )
             for (task in def.tasks) {
                 task.resolvedFunctions = resolveList(
                     cxt, client, def.workflowId, "task '${task.id}'", task.functionUsages, WfEventScope.task,
-                    byFn, declaredCfacts, mode, issues,
+                    byFn, declaredCfacts, collectedTraits = task.traits.map { it.traitId }.toSet(), mode, issues,
                 )
             }
         }
@@ -56,6 +56,9 @@ private fun resolveList(
     scope: WfEventScope,
     byFn: Map<String, WfFunctionCreation>,
     declaredCfacts: Set<String>,
+    // The traits the placement collects, for the referenced-trait check; null on the workflow-global list, whose
+    // functions read anywhere in the form rather than one task's collected traits.
+    collectedTraits: Set<String>?,
     mode: BootCheckMode,
     issues: MutableList<GedraConfigIssue>,
 ): List<WfFunction> {
@@ -74,6 +77,8 @@ private fun resolveList(
         )
         val creation = byFn[usage.fn]
         val undeclaredCfacts = creation?.let { it.emittedCfacts(usage) - declaredCfacts } ?: emptySet()
+        val uncollectedTraits =
+            if (creation != null && collectedTraits != null) creation.referencedTraits(usage) - collectedTraits else emptySet()
         when {
             creation == null ->
                 drop("is not a registered workflow function")
@@ -81,6 +86,8 @@ private fun resolveList(
                 drop("is '${creation.event}' (${creation.event.scope}-scoped) and does not belong on a $scope list")
             undeclaredCfacts.isNotEmpty() ->
                 drop("emits cfact(s) ${undeclaredCfacts.sorted()} the client does not declare")
+            uncollectedTraits.isNotEmpty() ->
+                drop("references trait(s) ${uncollectedTraits.sorted()} the task does not collect")
             else -> {
                 // Only a KdrException means "bad initialization data" -- the create contract. Anything else is a
                 // defect in the creation itself, and is left to propagate rather than mislabeled and swallowed.
