@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import react.FC
 import react.Props
 import react.create
+import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.div
 import web.cssom.ClassName
@@ -12,9 +13,12 @@ import com.dynamicruntime.common.schema.PSTAT
 /**
  * The caller's form documents as an antd table: one row per form, most recently written first as the endpoint
  * returns them (issue #562), with a User column for a caller who sees other users' documents.
- * The list is the hub for the whole lifecycle (issue #417): a **row click** opens the read-only view, and a
- * per-row **Actions** column carries Edit and Delete so neither needs the form to be opened first. Delete arms
- * an inline confirm in the row rather than navigating, since it is the one irreversible action here.
+ * The list is the hub for the whole lifecycle (issue #417): a **row click** opens the raw read-only view
+ * ("View All" -- every trait), and a per-row **Actions** column carries **View Info** (the survey's read-only
+ * on-boarding view, with its Edit toggle; issue #694), **View All** (the same raw view the row click opens), and
+ * Delete, so none needs the form opened first. The survey-status chip on an unfinished row is itself a link
+ * straight into the survey's edit mode. Delete arms an inline confirm in the row rather than navigating, since
+ * it is the one irreversible action here.
  *
  * Presentational: every value is a [FormSummary] the parent already computed and every action is a callback the
  * parent owns, so the table itself knows nothing about gedra shapes or endpoints. An action a caller's surface
@@ -27,9 +31,6 @@ external interface FormsTableProps : Props {
 
     /** Opens the read-only view of a form -- also what a row click does. */
     var onView: (String) -> Unit
-
-    /** Whether the caller's surface carries the patch endpoint, so an Edit action can work (issue #417). */
-    var canEdit: Boolean
 
     /** Whether the caller's surface carries the delete endpoint, so a Delete action can work. */
     var canDelete: Boolean
@@ -45,11 +46,12 @@ external interface FormsTableProps : Props {
      */
     var showOwner: Boolean
 
-    /** Navigates to the raw-data edit page for a form. */
-    var onEdit: (String) -> Unit
+    /** Opens the survey's read-only "View Info" view for a form (issue #694), from which its Edit toggle edits. */
+    var onSurveyView: (String) -> Unit
 
-    /** Navigates to the survey Edit Form for a form (issue #694): the CTA on an Invalid / Needs Info row. */
-    var onSurveyEdit: (String) -> Unit
+    /** The `href` of the survey's **edit-mode** page for a form (issue #694) -- what the Needs Info / Invalid
+     *  status chip links to, landing straight on the fields and bypassing the read-only view. */
+    var surveyEditHref: (String) -> String
 
     /** The form whose Delete is armed (showing the inline confirm), or null when none is. */
     var confirmingDeleteId: String?
@@ -83,11 +85,10 @@ val FormsTable = FC<FormsTableProps> { props ->
     // (the backend attaches all of them), so any row's list gives the columns and their order. A client with
     // no usage rules has none, and `Contains` carries the identity, as it did before this was configurable.
     val displayCols = props.forms.firstOrNull()?.second?.displayValues ?: emptyList()
-    // The Actions column exists only when at least one action can be performed, so a read-only surface carries
-    // no empty column.
-    val anyActions = props.canEdit || props.canDelete
-    // Draw the Status column only when some row carries a survey status (issue #694): a client with no survey
-    // has none on any row, and an empty column would say nothing -- the same rule the User/Actions columns follow.
+    // Draw the Status column, and offer "View Info", only when some row carries a survey status (issue #694): a
+    // client with no survey has none on any row, so an empty column or a dead-end action would say nothing. (A
+    // persistent store's rows written before the survey deriver existed carry none until re-touched or
+    // batch-recomputed -- a documented, deferred gap.)
     val anySurveyStatus = props.forms.any { it.second.surveyStatus != null }
     Table {
         size = "small"
@@ -125,7 +126,8 @@ val FormsTable = FC<FormsTableProps> { props ->
             if (anySurveyStatus) add(statusColumn(props))
             add(sortableColumn("Updated", GSORT.updated, 175, props.sortColumn, props.sortDescending))
             add(sortableColumn("Created", GSORT.created, 175, props.sortColumn, props.sortDescending))
-            if (anyActions) add(actionsColumn(props))
+            // Always present: "View All" needs no endpoint, so there is always at least one action.
+            add(actionsColumn(props, showSurvey = anySurveyStatus))
         }
         columns = cols.toTypedArray()
         scroll = minTableWidth(cols)
@@ -145,7 +147,8 @@ val FormsTable = FC<FormsTableProps> { props ->
             summary.surveyStatus?.let {
                 row.svyLabel = it.label
                 row.svyPstat = it.pstat
-                row.svyActionable = it != SurveyStatus.valid
+                // The unfinished chip links straight into the survey's edit mode; Valid is a plain chip.
+                if (it != SurveyStatus.valid) row.svyEditHref = props.surveyEditHref(id)
             }
             row
         }.toTypedArray()
@@ -163,14 +166,15 @@ val FormsTable = FC<FormsTableProps> { props ->
 }
 
 /**
- * The per-row Actions column (issue #417): Edit and Delete, each shown only when its endpoint is on the surface.
- * Delete arms an inline confirm on the row it belongs to rather than acting on the first click. `onCell` stops
- * a click anywhere in this cell from bubbling to the row's own click handler, so using an action never also
- * opens the view. The cell content is a component ([FormRowActions]) rendered per row, since the render callback
- * must return a React node.
+ * The per-row Actions column (issue #417): **View Info** (the survey's read-only view; offered when the client
+ * has a survey, issue #694), **View All** (the raw read-only view of every trait -- the same one a row click
+ * opens), and Delete when its endpoint is on the surface. Delete arms an inline confirm on the row it belongs to
+ * rather than acting on the first click. `onCell` stops a click anywhere in this cell from bubbling to the row's
+ * own click handler, so using an action never also opens the view. The cell content is a component
+ * ([FormRowActions]) rendered per row, since the render callback must return a React node.
  */
-private fun actionsColumn(props: FormsTableProps): dynamic {
-    val c = column("Actions", "actions", 180)
+private fun actionsColumn(props: FormsTableProps, showSurvey: Boolean): dynamic {
+    val c = column("Actions", "actions", 230)
     // Any click inside the actions cell is for an action, not for opening the row -- keep it from reaching the
     // row's onClick.
     c.onCell = {
@@ -182,9 +186,10 @@ private fun actionsColumn(props: FormsTableProps): dynamic {
         val id = record.key as String
         return FormRowActions.create {
             this.id = id
-            this.canEdit = props.canEdit
+            this.showSurvey = showSurvey
+            this.onSurveyView = props.onSurveyView
+            this.onView = props.onView
             this.canDelete = props.canDelete
-            this.onEdit = props.onEdit
             this.confirming = props.confirmingDeleteId == id
             this.deleting = props.deletingId == id
             this.onArmDelete = props.onArmDelete
@@ -196,11 +201,12 @@ private fun actionsColumn(props: FormsTableProps): dynamic {
 }
 
 /**
- * The global survey-status column (issue #694): a status chip, plus a CTA to the survey Edit Form on the
- * unfinished (Invalid / Needs Info) rows. Like [actionsColumn], `onCell` stops a click inside the cell from
- * reaching the row's own handler, so following the CTA does not also open the read-only view. A row with no
- * survey status renders an em dash. The chip label/colour and the actionable flag are read off the row (set in
- * the dataSource above), so the table stays free of the `SurveyStatus` enum itself.
+ * The global survey-status column (issue #694): a status chip which, on an unfinished (Invalid / Needs Info)
+ * row, **is itself the link** straight into the survey's edit mode -- a real `<a href>`, so it is keyboard
+ * reachable and can open in a new tab; Valid is a plain chip. Like [actionsColumn], `onCell` stops a click
+ * inside the cell from reaching the row's own handler, so following the chip does not also open the raw view.
+ * A row with no survey status renders an em dash. The chip label/colour and the edit href are read off the row
+ * (set in the dataSource above), so the table stays free of the `SurveyStatus` enum itself.
  */
 private fun statusColumn(props: FormsTableProps): dynamic {
     val c = column("Status", "status", 150)
@@ -213,9 +219,7 @@ private fun statusColumn(props: FormsTableProps): dynamic {
         return FormStatusCell.create {
             this.label = record.svyLabel as? String
             this.pstat = record.svyPstat as? String
-            this.actionable = record.svyActionable == true
-            this.id = record.key as String
-            this.onSurveyEdit = props.onSurveyEdit
+            this.editHref = record.svyEditHref as? String
         }
     }
     return c
@@ -226,29 +230,27 @@ private external interface FormStatusCellProps : Props {
     var label: String?
     /** The [PSTAT] colour class for the chip; null falls back to the neutral colour. */
     var pstat: String?
-    /** Whether to offer the CTA (an unfinished row). */
-    var actionable: Boolean
-    var id: String
-    var onSurveyEdit: (String) -> Unit
+    /** The survey edit-mode href the chip links to on an unfinished row; null makes it a plain chip. */
+    var editHref: String?
 }
 
-/** One Status cell: the coloured chip, and — on an unfinished row — a link to the survey Edit Form. */
+/** One Status cell: the coloured chip -- a link straight into the survey's edit mode on an unfinished row. */
 private val FormStatusCell = FC<FormStatusCellProps> { props ->
     val label = props.label
-    if (label == null) {
-        +"—"
-    } else {
-        span {
-            className = ClassName("op-status " + (props.pstat ?: PSTAT.info))
+    val cls = ClassName("op-status " + (props.pstat ?: PSTAT.info))
+    val href = props.editHref
+    when {
+        label == null -> +"—"
+        href != null -> a {
+            className = cls
+            this.href = href
+            // Belt and braces with the column's onCell: the chip's own click must not also open the row.
+            onClick = { it.stopPropagation() }
             +label
         }
-        if (props.actionable) {
-            Button {
-                type = "link"
-                size = "small"
-                onClick = { props.onSurveyEdit(props.id) }
-                +"Review"
-            }
+        else -> span {
+            className = cls
+            +label
         }
     }
 }
@@ -293,9 +295,10 @@ private val FormOwnerCell = FC<FormOwnerCellProps> { props ->
 /** The one row's action buttons, resolved to this row's id -- see [actionsColumn]. */
 private external interface FormRowActionsProps : Props {
     var id: String
-    var canEdit: Boolean
+    var showSurvey: Boolean
+    var onSurveyView: (String) -> Unit
+    var onView: (String) -> Unit
     var canDelete: Boolean
-    var onEdit: (String) -> Unit
     var confirming: Boolean
     var deleting: Boolean
     var onArmDelete: (String) -> Unit
@@ -306,13 +309,22 @@ private external interface FormRowActionsProps : Props {
 private val FormRowActions = FC<FormRowActionsProps> { props ->
     span {
         className = ClassName("row-actions")
-        if (props.canEdit) {
+        // The survey's read-only on-boarding view (issue #694) -- only where the client has a survey.
+        if (props.showSurvey) {
             Button {
                 type = "link"
                 size = "small"
-                onClick = { props.onEdit(props.id) }
-                +"Edit"
+                onClick = { props.onSurveyView(props.id) }
+                +"View Info"
             }
+        }
+        // The raw read-only view of every trait -- the same one a row click opens, made discoverable. The raw
+        // editor is reached from it (and from the survey view's "Raw edit"), never straight from the row.
+        Button {
+            type = "link"
+            size = "small"
+            onClick = { props.onView(props.id) }
+            +"View All"
         }
         if (props.canDelete) {
             if (props.confirming) {

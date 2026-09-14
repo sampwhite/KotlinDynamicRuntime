@@ -24,6 +24,21 @@ external interface WorkflowFormProps : Props {
 
     /** The form a survey edit updates (issue #659); null for a creation workflow, which makes a new form. */
     var gedraId: String?
+
+    /**
+     * Whether a survey edit opens already in edit mode (issue #694): the forms-list status chip's direct-to-edit
+     * link sets it; the "View Info" action leaves it unset for the read-only view. Ignored for a creation form,
+     * which is always editable.
+     */
+    var initialEditing: Boolean?
+
+    /**
+     * Opens the **raw** editor for this form (issue #694), offered as a "Raw edit" link on the survey's read-only
+     * view. The survey is an on-boarding *subset* of traits; the raw editor edits every trait, including ones set
+     * by API or other workflows. Null when the caller's surface has no patch endpoint (a control that could only
+     * fail is not shown), or for a creation form.
+     */
+    var onRawEdit: (() -> Unit)?
 }
 
 /**
@@ -35,7 +50,7 @@ external interface WorkflowFormProps : Props {
  *  - **Creation** (`gedraId == null`): one task, always editable, its `create` save makes the form; on success
  *    the page confirms with the new id.
  *  - **Survey edit** (`gedraId != null`): the form's one-to-three tasks, each seeded from its current entries,
- *    shown **read-only with an Edit toggle** ("View All Data"); editing reveals each task's `edit` save, which
+ *    shown **read-only with an Edit toggle** ("View Info"); editing reveals each task's `edit` save, which
  *    updates the form. Saving does not gate on completeness -- an incomplete survey is recorded as state, not
  *    refused -- so a required trait left empty comes back only through the status column, not as a block here.
  *
@@ -53,8 +68,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     val seeded: Map<String, Map<String, Any?>> = wf.tasks.flatMap { seedValuesFromEntries(it.entries).entries }
         .associate { it.key to it.value }
 
-    // A creation form is always editable; a survey edit starts read-only (the "View All Data" view).
-    var editing by useState(!isEdit)
+    // A creation form is always editable; a survey edit starts read-only (the "View Info" view) unless the URL
+    // asked for edit mode (issue #694, the forms-list chip's direct-to-edit link).
+    var editing by useState(if (isEdit) props.initialEditing == true else true)
     var valuesByTrait by useState(seeded)
     // The last-stored values, refreshed on each successful save. "Done" reverts the fields to this -- not the
     // first-render `seeded` snapshot -- so after a save it shows what was saved, not the pre-save values.
@@ -172,6 +188,15 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             type = "primary"
                             onClick = { editing = true }
                             +"Edit"
+                        }
+                        // The raw editor, for the traits the survey does not show (issue #694): offered only when
+                        // the caller's surface carries the patch endpoint (the page decides; null hides it).
+                        props.onRawEdit?.let { rawEdit ->
+                            Button {
+                                type = "link"
+                                onClick = { rawEdit() }
+                                +"Raw edit"
+                            }
                         }
                     }
                     savedItem?.let {

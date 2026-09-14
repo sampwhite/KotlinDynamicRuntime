@@ -602,6 +602,10 @@ input {
 .op-status.info { background: rgba(129, 140, 248, .16); color: var(--accent-bright); }
 .op-status.warning { background: rgba(217, 119, 6, .18); color: var(--border-admin); }
 .op-status.error { background: rgba(248, 113, 113, .16); color: var(--danger); }
+/* A status chip that is also a link (issue #694): the forms list's Needs Info / Invalid chip goes straight into
+   the survey editor. Keeps the chip look; underlines on hover so it reads as a link. */
+a.op-status { text-decoration: none; cursor: pointer; }
+a.op-status:hover { text-decoration: underline; }
 
 /* presentation:table -- an array rendered as rows/columns. */
 .op-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
