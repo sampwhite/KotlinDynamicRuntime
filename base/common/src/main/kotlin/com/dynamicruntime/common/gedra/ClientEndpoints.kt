@@ -1,11 +1,17 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchOption
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * The administrative view of which clients this deployment carries (issue #343).
@@ -44,6 +50,145 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
     optionsProvider(CLD.clientOptions) { c, _ ->
         namableClients(c).map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
     }
+
+    // --- one client's full definition + trait schema, and a cross-client summary listing (issue #672) -------
+    //
+    // Both are full-scope (the `admin` section takes `allClients`), because they answer a cross-client question:
+    // an `allClients` administrator retrieves another client's rules so a formDocs surface can list, filter,
+    // edit and create in *that* client's terms. The frontend that consumes these arrives in a later slice
+    // (depends on #668); this is the backend they read from.
+    //
+    // `testFeatures` never leaks here: the retrieve projects `ClientDef.toInfo()` off the **present** definition,
+    // which `ClientService` has already neutralized on a non-test node (issue #696), so the field is simply
+    // absent off a test instance whatever the stored row held. No per-endpoint strip is needed.
+
+    // One of a client's traits: id, generated type name, applicable kinds, primary key, and its data schema --
+    // the `dataSchema` being the trait schema a form is built from.
+    type(CLD.traitInfoTypeName) {
+        type = SCT.kObject
+        description = "One of a client's traits: its id, generated type, applicable gedra kinds, primary key and data schema."
+        property(CLD.traitId, "The trait's globally unique id.", required = true)
+        property(CLD.typeName, "The fully qualified name of the entry type this trait generated.", required = true)
+        property(CLD.appliesTo, "The gedra kinds an entry of this trait may be carried on.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(CLD.primaryKey, "The data fields that tell several entries apart; empty when single-instance.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        // Free-form: the trait's own JSON Schema, whatever shape the trait declared.
+        property(CLD.dataSchema, "The JSON Schema of the trait's own data.", required = true) { type = SCT.kObject }
+    }
+
+    // One of a client's trait-usage rules -- a listing column and its search behavior (issues #537, #538).
+    type(CLD.usageInfoTypeName) {
+        type = SCT.kObject
+        description = "One of a client's trait-usage rules: a listing column and how its value searches."
+        property(CLD.traitId, "The trait whose value the column shows.", required = true)
+        property(CLD.label, "The column header.", required = true)
+        property(CLD.kind, "How the value is read and compared.", required = true) { options(UsageKind.entries) }
+        property(CLD.substring, "Whether a string column also offers a contains search.", required = true) { type = SCT.boolean }
+    }
+
+    type(CLD.definitionTypeName) {
+        type = SCT.kObject
+        description = "One client's full definition: its attributes, traits (with data schema), usage rules and workflow ids."
+        property(CLD.client, "The client's attributes.", required = true) { ref(CLD.infoTypeName) }
+        property(CLD.traits, "The traits this client supports, each with its data schema.", required = true) {
+            type = SCT.array
+            items { ref(CLD.traitInfoTypeName) }
+        }
+        property(CLD.usages, "The client's listing columns / search rules.", required = true) {
+            type = SCT.array
+            items { ref(CLD.usageInfoTypeName) }
+        }
+        property(CLD.workflows, "The ids of the workflows this client sees.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+    }
+
+    type(CLD.summaryTypeName) {
+        type = SCT.kObject
+        description = "A cross-client overview row: a client and a brief summary of what it defines."
+        property(CLD.clientId, "The client's unique key.", required = true)
+        property(CLD.name, "The client's presented name.", required = true)
+        property(CLD.workflowIds, "The ids of the workflows this client sees.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(CLD.traitIds, "The trait ids this client supports.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(CLD.usageLabels, "The client's listing-column labels.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+    }
+
+    itemEndpoint(
+        ADEP.clientDefinition,
+        "One client's full definition: its attributes, traits (with data schema), usage rules and workflow ids.",
+        HttpMethod.GET,
+        outputRef = CLD.definitionTypeName,
+        inputFields = { field(CLD.client, "The client to retrieve.", required = true) },
+    ) { c, request ->
+        val clientId = request[CLD.client].toOptStr()?.ifBlank { null }
+            ?: throw KdrException.mkInput("A '${CLD.client}' is required.")
+        // Only a present client (enabled in this environment) -- an absent one has no data or endpoints to act
+        // in, so it reads as not found rather than an error. `present` returns the neutralized definition.
+        ClientService.get(c).present(clientId)?.let { clientDefinitionOf(c, it) }
+    }
+
+    listEndpoint(
+        ADEP.clientSummaries,
+        "Every present client with a brief summary: its workflow ids, trait ids and usage-column labels.",
+        outputRef = CLD.summaryTypeName,
+        // The clients are a declared set loaded at boot, small enough that paging would pretend otherwise -- as
+        // the `/admin/clients` listing above says for the same reason.
+        noLimit = true,
+    ) { c, _ ->
+        namableClients(c).map { clientSummaryOf(c, it) }
+    }
+}
+
+/** One client's full definition for the retrieve endpoint (issue #672): its attributes, its traits with their
+ *  data schema, its usage rules, and the ids of the workflows it sees. Reads the *present* (neutralized)
+ *  definition and the compiled per-client schema, so `testFeatures` is already absent off a test instance. */
+private fun clientDefinitionOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
+    val schema = SchemaService.get(cxt)
+    val traits = schema.gedraTraitsFor(def.clientId).map { t ->
+        mapOf(
+            CLD.traitId to t.traitId,
+            CLD.typeName to t.typeName,
+            CLD.appliesTo to t.appliesTo.map { it.name },
+            CLD.primaryKey to t.primaryKey,
+            CLD.dataSchema to t.dataSchema,
+        )
+    }
+    val usages = schema.traitUsagesFor(def.clientId).map { u ->
+        mapOf(CLD.traitId to u.traitId, CLD.label to u.label, CLD.kind to u.kind.name, CLD.substring to u.substring)
+    }
+    return mapOf(
+        CLD.client to def.toInfo(),
+        CLD.traits to traits,
+        CLD.usages to usages,
+        CLD.workflows to WorkflowService.get(cxt).forClient(def.clientId).workflows.keys.toList(),
+    )
+}
+
+/** One row of the cross-client summary listing (issue #672): a client and short lists of what it defines. */
+private fun clientSummaryOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
+    val schema = SchemaService.get(cxt)
+    return mapOf(
+        CLD.clientId to def.clientId,
+        CLD.name to def.name,
+        CLD.workflowIds to WorkflowService.get(cxt).forClient(def.clientId).workflows.keys.toList(),
+        CLD.traitIds to schema.gedraTraitsFor(def.clientId).map { it.traitId },
+        CLD.usageLabels to schema.traitUsagesFor(def.clientId).map { it.label },
+    )
 }
 
 /**

@@ -45,6 +45,20 @@ object ADEP {
      * no question this listing answers that their own client's definition does not.
      */
     const val clients = "/${SECT.admin}/clients"
+
+    /**
+     * One client's full definition — its attributes, its traits (with their data schema), its trait-usage rules,
+     * and its workflow ids — for an `allClients` admin who needs to see or act in another client's rules (issue
+     * #672). Full-scope only, the same reason [clients] is: it names a client the caller need not belong to.
+     */
+    const val clientDefinition = "/${SECT.admin}/client/definition"
+
+    /**
+     * A cross-client overview: every present client with a little summary (its workflow ids, trait ids, and
+     * usage-column labels), the companion listing to [clientDefinition] (issue #672). Distinct from [clients],
+     * which is the lightweight `ClientInfo` listing the user-admin client picker reads.
+     */
+    const val clientSummaries = "/${SECT.admin}/clients/summary"
 }
 
 /**

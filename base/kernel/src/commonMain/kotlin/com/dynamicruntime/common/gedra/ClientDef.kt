@@ -115,6 +115,38 @@ object CLD {
      * callback lives with the client endpoints. A literal at either end is a rename waiting to empty a list.
      */
     const val clientOptions = "clientOptions"
+
+    // --- the client-definition retrieve + summary endpoints (issue #672) ------------------------------------
+
+    /** Schema type name for one client's full definition (the `/admin/client/definition` retrieve, issue #672). */
+    const val definitionTypeName = "ClientDefinition"
+
+    /** Schema type name for one of a client's traits within [definitionTypeName] -- id, type, and data schema. */
+    const val traitInfoTypeName = "ClientTraitInfo"
+
+    /** Schema type name for one of a client's trait-usage rules within [definitionTypeName] (a listing column). */
+    const val usageInfoTypeName = "ClientUsageInfo"
+
+    /** Schema type name for a cross-client overview row (the `/admin/clients/summary` listing, issue #672). */
+    const val summaryTypeName = "ClientSummary"
+
+    // Field names on the definition/summary types (each matches its value).
+    /** The client's attributes, as [ClientDef.toInfo] writes them ([infoTypeName]). */
+    const val client = "client"
+    const val traits = "traits"
+    const val usages = "usages"
+    const val workflows = "workflows"
+    const val traitId = "traitId"
+    const val typeName = "typeName"
+    const val appliesTo = "appliesTo"
+    const val primaryKey = "primaryKey"
+    const val dataSchema = "dataSchema"
+    const val label = "label"
+    const val kind = "kind"
+    const val substring = "substring"
+    const val workflowIds = "workflowIds"
+    const val traitIds = "traitIds"
+    const val usageLabels = "usageLabels"
 }
 
 /**
