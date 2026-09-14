@@ -750,11 +750,9 @@ textarea.json-edit.edited { border-color: var(--accent-bright); }
    not. */
 textarea.json-edit.json-field { min-height: 4.5rem; }
 
-/* The forms list's search (issue #562). The scope bar -- whose forms an administrator is looking at -- takes
-   the elevated-privilege tint the app bar uses for the same condition, so it reads as the administrative
-   control it is and not as one more filter. The filter panel is an inset well, closed by default; while it is
-   closed the applied filters are summarized as chips, which borrow the .bar-badge shape but not its shouting
-   uppercase, since they quote what the person typed. */
+/* The forms list's scope bar (issue #562) -- whose forms an administrator is looking at -- takes the
+   elevated-privilege tint the app bar uses for the same condition, so it reads as the administrative control it
+   is and not as one more filter. */
 .forms-scope {
     padding: 8px 12px;
     border: 1px solid var(--border-admin);
@@ -764,7 +762,10 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 
 .forms-scope-label { color: var(--text-muted); white-space: nowrap; }
 
-.forms-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* The collapsible filter shell the listing pages share (issues #562, #683; see FilterPanel.kt): an inset well
+   of controls, closed by default, and -- while it is closed -- the filters in force summarized as chips, which
+   borrow the .bar-badge shape but not its shouting uppercase, since they quote what the person typed. */
+.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .filter-chip {
     padding: 2px 8px;
@@ -776,23 +777,26 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     white-space: nowrap;
 }
 
-.forms-filters {
+.filter-well {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    /* `min(…, 100%)` keeps a track from exceeding the well on a narrow viewport: a fixed minimum wider than the
+       well pushed the whole page wide on a phone (measured, issue #683). A from-to pair wider than its track
+       wraps instead -- see .filter-range. */
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
     gap: 12px 24px;
     padding: 12px;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface-page);
 }
-
-.forms-filters .filter-actions { grid-column: 1 / -1; }
+.filter-well .filter-actions { grid-column: 1 / -1; }
 
 .filter-group { display: flex; flex-direction: column; gap: 4px; }
 
 .filter-label { font-size: 12px; color: var(--text-muted); }
 
-.filter-range { display: flex; align-items: center; gap: 8px; }
+/* A from-to pair wraps rather than overflowing its track when the window is narrower than both ends want. */
+.filter-range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 /* The User column's second line: the email under the name, quieter so the name leads. */
 .owner-email { display: block; font-size: 12px; color: var(--text-muted); }

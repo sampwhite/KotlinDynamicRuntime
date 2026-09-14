@@ -44,6 +44,7 @@ import react.dom.html.ReactHTML.textarea
 import react.dom.html.ReactHTML.th
 import react.dom.html.ReactHTML.thead
 import react.dom.html.ReactHTML.tr
+import react.useEffect
 import react.useState
 import web.cssom.ClassName
 import web.html.InputType
@@ -365,6 +366,21 @@ fun focusField(path: String) {
 }
 
 /**
+ * Sends focus to the first failing field once the render carrying [failures] has committed (issues #408, #417).
+ * An effect, not a direct call: the field is addressed by a DOM id that does not exist until React has drawn the
+ * failures a check produced. Keyed on [focusRequest] -- a counter a check bumps -- rather than on [failures], so
+ * clearing one failure by editing its field does not steal focus out of the field being fixed. Shared by the
+ * create and edit form pages, which drive the identical behaviour.
+ */
+fun useFocusOnFailure(focusRequest: Int, failures: List<SchFailure>?) {
+    useEffect(focusRequest) {
+        if (focusRequest > 0) {
+            failures?.firstOrNull()?.let { focusField(it.path) }
+        }
+    }
+}
+
+/**
  * A `g-visibleWhen` evaluator over the caller's delivered cfacts (issue #564): parses an expression with the
  * SAME kernel [CFactParser] the backend uses and matches it against the present ones. [cfacts] is the map the
  * catalog delivered -- every frontend cfact name to whether it is present -- so its keys are the parse
@@ -384,7 +400,7 @@ internal fun buildCfactGate(cfacts: Map<String, Boolean>?): (String) -> Boolean 
         cache.getOrPut(expression) {
             try {
                 CFactParser.parse(expression, allowed).matches(present)
-            } catch (e: Throwable) {
+            } catch (_: Throwable) {
                 true
             }
         }

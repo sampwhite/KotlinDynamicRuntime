@@ -3,6 +3,7 @@ package com.dynamicruntime.common
 import com.dynamicruntime.common.cfact.addCoreCFacts
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
 import com.dynamicruntime.common.gedra.workflow.SurveyStateDeriver
 import com.dynamicruntime.common.gedra.workflow.addSurveyCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
@@ -94,6 +95,9 @@ class CommonComponent : ComponentDefinition {
         // state on any create/import path, so a plain create or a bad import is recorded, not only a workflow step.
         addSurveyCFacts(collector)
         collector.addStateDeriver(SurveyStateDeriver)
+        // The first cfactCalc function (issue #678): a workflow's cfactCalc usages emit cfacts into the same
+        // form-singleton state the survey derives, run inside that recompute (not a standalone pass).
+        collector.addWorkflowFunction(ComputeCFactsFromDataCreation)
         // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
         // its transaction. This is what makes a raw patch (not only the survey save) keep survey state fresh.
         collector.addWriteHook(DerivedStateWriteHook)
