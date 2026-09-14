@@ -170,10 +170,11 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 }
             }
         } else {
-            // A way back to the listing while filling out a create form (issue #671, carried through the rename
-            // of CreationWorkflowForm to this shared component): the create success screen has its own, but the
-            // fill-out form otherwise had none. The survey edit uses the Edit / Done header row below instead.
-            if (!isEdit) formsBackToListing()
+            // A way back to the listing from the form (issue #671 for the create fill-out; extended to the survey
+            // in #694): the create success screen has its own, but the fill-out form, and the survey's read-only
+            // and edit views -- including an arrival straight into edit mode from the status chip -- otherwise
+            // had none. The shared forms back link, so it returns to the same filtered, sorted listing.
+            formsBackToListing()
             // The header row: the survey edit offers an Edit / Done toggle over the read-only "View All Data".
             if (isEdit) {
                 div {

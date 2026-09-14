@@ -48,11 +48,12 @@ import com.dynamicruntime.common.util.toOptStr
 fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substringAfter('/')
 
 /**
- * The forms hash's navigation keys -- the page, the open form, and the listing a child was opened from. Every
- * other key on a forms hash is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`),
- * because the forms search shares the endpoint's own arg names, the same arrangement the Users page uses.
+ * The forms hash's navigation keys -- the page, the open form, the listing a child was opened from, the
+ * arrival highlight, and the survey child page's edit-mode flag (issue #694). Every other key on a forms hash
+ * is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`), because the forms search
+ * shares the endpoint's own arg names, the same arrangement the Users page uses.
  */
-private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight)
+private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight, HP.edit)
 
 /**
  * The applied forms search read back out of a hash (issue #592): every param that is not a navigation key. So a

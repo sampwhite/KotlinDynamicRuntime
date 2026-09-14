@@ -381,11 +381,14 @@ class GedraFormsTest {
         val applied = mapOf("acmeSiteAuditContains" to "dana", EI.user to "7", EI.q to "plan")
         val params = formsSearchHashParams(applied)
         // A hash as it would stand on the list, with navigation keys mixed in.
-        val hash = params.toMap() + mapOf(HP.page to "forms", HP.gedra to "gd.fd.acme.u1", HP.from to "forms")
+        // `edit=1` (issue #694) is the survey child page's own key: the chip's direct-to-edit link puts it in the
+        // hash the back link is built from, and it must not ride back into the listing as a "search".
+        val hash = params.toMap() +
+            mapOf(HP.page to "forms", HP.gedra to "gd.fd.acme.u1", HP.from to "forms", HP.edit to "1")
         assertEquals(applied, formsSearchFromHash(hash))
         // The navigation keys are never taken for search.
         val decoded = formsSearchFromHash(hash)
-        assertTrue(HP.page !in decoded && HP.gedra !in decoded && HP.from !in decoded)
+        assertTrue(HP.page !in decoded && HP.gedra !in decoded && HP.from !in decoded && HP.edit !in decoded)
         // A blank value is not a filter, so it neither encodes nor decodes.
         assertTrue(formsSearchHashParams(mapOf("x" to "  ")).isEmpty())
         assertEquals(emptyMap(), formsSearchFromHash(mapOf(HP.page to "forms", "x" to "")))
