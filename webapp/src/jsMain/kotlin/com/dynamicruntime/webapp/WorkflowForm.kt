@@ -252,8 +252,8 @@ external interface LoadStateCardProps : Props {
 
 /**
  * The load-state chrome shared by the workflow pages ([CreationPage], [SurveyEditPage]): a `card wide` carrying
- * the page's [title] and either "Loading…" or the load error. Keeps the two pages from each hand-rolling the
- * same scaffolding that differs only in the heading text.
+ * the page's [LoadStateCardProps.title] and either "Loading…" or the load error. Keeps the two pages from each
+ * hand-rolling the same scaffolding that differs only in the heading text.
  */
 val LoadStateCard = FC<LoadStateCardProps> { props ->
     div {
