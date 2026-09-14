@@ -16,6 +16,7 @@ import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
+import react.useEffect
 import react.useState
 import web.cssom.ClassName
 
@@ -53,6 +54,12 @@ external interface WorkflowFormProps : Props {
     /** Called when the user picks a task in the rail (issue #700); the page owns the choice, since it rides the
      *  hash. Unset (with a single task) means no rail. */
     var onSelectTask: ((String) -> Unit)?
+
+    /**
+     * Told whether any task holds edits not yet saved (issue #700), each time that changes -- what the page arms
+     * the leave guard on. Client-side: a working value differing from the last stored one.
+     */
+    var onDirtyChange: ((Boolean) -> Unit)?
 }
 
 /**
@@ -97,6 +104,11 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     var savingTask by useState<String?>(null)
     var runError by useState<DisplayError?>(null)
     var savedItem by useState<Map<String, Any?>?>(null)
+
+    // Whether any task holds unsaved edits (issue #700): reported to the page when it changes, so the page can
+    // arm the leave guard while there is something to lose and disarm it once saved or reverted.
+    val anyUnsaved = isEdit && wf.tasks.any { taskUnsaved(it, valuesByTrait, stored) }
+    useEffect(anyUnsaved) { props.onDirtyChange?.invoke(anyUnsaved) }
 
     fun valuesOf(traitId: String): Map<String, Any?> = valuesByTrait[traitId] ?: emptyMap()
 

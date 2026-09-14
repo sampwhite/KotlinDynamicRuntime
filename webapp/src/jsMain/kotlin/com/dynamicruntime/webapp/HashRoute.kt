@@ -216,6 +216,68 @@ fun onHashChange(handler: () -> Unit) {
 }
 
 /**
+ * Like [onHashChange], but handed the URL the hash changed **from** (`HashChangeEvent.oldURL`), so the router
+ * can put a vetoed move back exactly -- whatever the move was (a click, Back, a typed URL) -- rather than
+ * guessing from state it recorded (issue #700).
+ */
+fun onHashChangeFrom(handler: (oldUrl: String) -> Unit) {
+    val listener: (dynamic) -> Unit = { e -> handler(e.oldURL as String) }
+    js("window.addEventListener('hashchange', listener)")
+}
+
+/** Puts the address bar back to [url] via `history.replaceState`: no history entry, and no `hashchange`. */
+fun restoreUrl(url: String) {
+    js("history.replaceState(null, '', url)")
+}
+
+/**
+ * A page's veto on being left while it holds unsaved work (issue #700). The survey editor **arms** it when a
+ * task has edits not yet saved and **disarms** it when they are saved or reverted; the router asks it on a
+ * hash change that names a *different* page, **before** switching, so a "stay" changes nothing -- the page never
+ * unmounts and its working state is intact. That ordering is the whole point: reverting from the leaving page's
+ * own `hashchange` listener is too late, because the router has already switched by the time a second
+ * hashchange could arrive. A hash change within the armed page (a task switch, Back between tasks) is never a
+ * leave. One slot, not a list: only the page on screen can hold unsaved work.
+ *
+ * Arming also sets `onbeforeunload`, so a reload, a closed tab or a typed address get the browser's own
+ * "leave site?" prompt -- the one exit a hash listener cannot see. A permitted in-app leave clears both.
+ */
+object LeaveGuard {
+    private var armedPage: String? = null
+    private var check: (() -> Boolean)? = null
+
+    /** Arms the guard for [page]: [check] answers true to allow a leave, false to stay. */
+    fun arm(page: String, check: () -> Boolean) {
+        armedPage = page
+        this.check = check
+        js("window.onbeforeunload = function (e) { e.preventDefault(); e.returnValue = ''; return ''; }")
+    }
+
+    /** Clears the guard and the browser prompt. Safe to call when not armed. */
+    fun disarm() {
+        armedPage = null
+        check = null
+        js("window.onbeforeunload = null")
+    }
+
+    /**
+     * The router's question on a hash change that resolves to [nextPage]: **true to stay** (the armed page
+     * vetoed the leave). A move within the armed page is never asked; a permitted leave disarms first, so the
+     * browser prompt does not outlive the page it belonged to.
+     */
+    fun vetoesMoveTo(nextPage: String): Boolean {
+        val armed = armedPage ?: return false
+        if (nextPage == armed) return false
+        if (check?.invoke() == false) return true
+        disarm()
+        return false
+    }
+
+    /** The browser's blocking confirm, for a guard's [check]. */
+    fun confirmLeave(message: String): Boolean = js("window.confirm(message)") as Boolean
+}
+
+/**
  * Navigates by setting `window.location.hash` from [params] -- unlike [replaceHash], this **does** fire
  * `hashchange`, so the [App] router switches pages and the [AppBar] re-reads its auth state. Empty [params]
  * clears the hash (home).

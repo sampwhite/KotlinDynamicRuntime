@@ -44,6 +44,22 @@ val SurveyEditPage = FC<Props> {
     var loadError by useState<DisplayError?>(null)
     // Whether the caller's surface carries the patch endpoint, so the raw-editor link can work (issue #694).
     var rawEditAvailable by useState(false)
+    // Whether the form holds edits not yet saved (issue #700), as WorkflowForm reports it.
+    var dirty by useState(false)
+
+    // The leave guard (issue #700): armed while there are unsaved edits, so leaving the page -- in-app (the
+    // router asks before switching) or by reload / closed tab (the browser's own prompt) -- warns first.
+    // Switching tasks never warns: the working copy survives a switch, and only a leave drops it. Disarmed the
+    // moment the edits are saved or reverted, so a clean page never nags.
+    useEffect(dirty) {
+        if (dirty) {
+            LeaveGuard.arm(pageSurveyEdit) {
+                LeaveGuard.confirmLeave("You have unsaved changes on this form. Leave the page and lose them?")
+            }
+        } else {
+            LeaveGuard.disarm()
+        }
+    }
 
     // Keep the open id in step with the hash: App is the router, and a hash-only surveyEdit->surveyEdit move
     // does not remount this page, so without this the first form would stay loaded under the new URL (mirrors
@@ -51,6 +67,10 @@ val SurveyEditPage = FC<Props> {
     useEffectOnce {
         onHashChange {
             val h = hashParams()
+            // Only a hash that still names THIS page drives its state (the lesson FormsPage learned in #694, and
+            // what the leave guard depends on): a vetoed leave shows this listener the other page's hash for a
+            // moment before the router puts the address back, and reading `g=` off it here would blank the form.
+            if (h[HP.page] != pageSurveyEdit) return@onHashChange
             gedraId = h[HP.gedra].orEmpty()
             // Back/forward between tasks (issue #700): the rail's own pushes fire no hashchange, so this only
             // runs for history moves and hand-typed URLs, and the state simply follows the hash.
@@ -138,6 +158,7 @@ val SurveyEditPage = FC<Props> {
                     requestedTask = id
                     pushHash(hashParams().filterKeys { it != HP.task }.toList() + (HP.task to id))
                 }
+                onDirtyChange = { dirty = it }
             }
         }
     }
