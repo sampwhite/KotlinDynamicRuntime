@@ -13,9 +13,7 @@ import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
-import com.dynamicruntime.common.util.mkUniqueId
 import com.dynamicruntime.common.util.toOptInstant
-import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
 
@@ -131,6 +129,17 @@ class GedraConfigService : ServiceInitializer {
             throw KdrException.mkInput(
                 "Config '${config.gedraId}' declares its types in namespace '${config.namespace}', which belongs " +
                     "to '$nsOwner'. A client may only author into a namespace it owns.",
+            )
+        }
+        // testFeatures is honored only on a test instance (issue #696). An explicit write that carries it on a
+        // non-test node is refused rather than silently stripped -- a caller that set the field deliberately
+        // should hear that it does not belong here, not be left thinking it took. (A future bulk clone/restore
+        // strips and logs instead, so a whole restore is not failed by one field; that path is #685's.)
+        val testFeatures = config.client?.testFeatures.orEmpty()
+        if (!cxt.instanceConfig.isTestInstance && testFeatures.isNotEmpty()) {
+            throw KdrException.mkInput(
+                "Config '${config.gedraId}' sets testFeatures ${testFeatures.sorted()}, which are honored only " +
+                    "on a test instance. This node is not one, so the write is refused.",
             )
         }
         // Refuses a config carrying config traits (they are hardwired, never stored); produces one raw entry
@@ -525,7 +534,7 @@ class GedraConfigService : ServiceInitializer {
                 stampedByKey[key] = if (entryDataUnchanged(existing, raw)) {
                     existing!! // unchanged: keep the stored envelope, both halves
                 } else {
-                    stampEntry(cxt, slot, raw, existing, now)
+                    mkStoredEntry(cxt, slot, raw, existing, now)
                 }
             }
         }
@@ -537,27 +546,6 @@ class GedraConfigService : ServiceInitializer {
             latest.entries.filter { keyOfStored(it) !in stampedByKey.keys }
         }
         return stampedByKey.values.toList() + carried
-    }
-
-    /**
-     * One config-trait entry stamped for storage: a new slot gets a fresh envelope, a changed one keeps who
-     * first wrote it and when while its `updated` half moves to [now] -- the config twin of
-     * `GedraDataService.mkStoredEntry`, over a slot's [data] rather than a trait's.
-     */
-    private fun stampEntry(cxt: KdrCxt, slot: String, data: Map<String, Any?>, existing: Map<String, Any?>?, now: Instant): Map<String, Any?> {
-        val actor = cxt.userProfile.userId
-        val base = linkedMapOf<String, Any?>(GE.traitId to slot, GE.data to data)
-        if (existing == null) {
-            return base.asStoredEntry(cxt.mkUniqueId(), GSRC.user, now, actor)
-        }
-        return base.asStoredEntry(
-            entryId = existing[GE.entryId].toOptStr() ?: cxt.mkUniqueId(),
-            source = GSRC.user,
-            createdAt = existing[GE.createdAt].toOptInstant() ?: now,
-            createdBy = existing[GE.createdBy].toOptLong() ?: actor,
-            updatedAt = now,
-            updatedBy = actor,
-        )
     }
 
     /** Folds stored entries into a map addressed by their slot key -- the diff source a write reads under lock. */

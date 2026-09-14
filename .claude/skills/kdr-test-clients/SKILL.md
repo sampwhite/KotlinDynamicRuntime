@@ -111,6 +111,14 @@ later schema rejects" test.
     `clientId`, `name`, `usageType` (`ClientUsageType`), `audience` (`ClientAudience`), and
     `enabledEnvironments` (include `ENV.unit` and `ENV.local` so a test node loads it). `staticConfig = true`
     pins it to source-only, published-only.
+    - **`testFeatures = setOf(...)`** — test/demo feature names honored only on a test instance (a demo state
+      derivation, a `cfactCalc` strict-unknown-cfact throw). It **round-trips through stored config (#696)**, so
+      on a test instance you author a test-feature client over the API the same `writeConfig` + `reloadClient`
+      way as any other — no boot-fixture component needed (`CfactCalcTest`'s strict client is the reference).
+      Off a test instance the guarantee is structural, not yours to enforce: `ClientService` neutralizes a
+      stored value on load (`checkClientDefs`) and an explicit `writeConfig` carrying it is **refused** — so a
+      test that forces `ACFG.isTestInstance = false` cannot write one, and reads never echo one (the bundle and
+      trait reads redact at `GedraConfigRow`). `TestFeaturesBoundaryTest` covers all three faces.
   - **`trait(typeName, traitId, appliesTo, description) { <SchTypeBuilder> }`** — a trait whose data shape is
     written inline; the `{ … }` is the `kdr-schema-builder` DSL. An overload takes `dataType` (a `$ref`) instead.
   - **`workflow(workflowId, entry: WfEntry) { <WfDefBuilder> }`** — a workflow definition (or `workflowFromMap`

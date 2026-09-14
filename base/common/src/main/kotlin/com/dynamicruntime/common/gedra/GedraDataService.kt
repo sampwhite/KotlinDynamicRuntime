@@ -619,13 +619,14 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * Whether a deriver's opt-in [featureName] is on: a null feature always runs; a named one runs only on a
-     * **test instance** whose gedra's client lists it in [ClientDef.testFeatures] (issue #599). So a demo
-     * derivation stays off production and off clients that did not ask for it.
+     * Whether a deriver's opt-in [featureName] is on: a null feature always runs; a named one runs only when the
+     * gedra's client lists it in [ClientDef.testFeatures] (issue #599). So a demo derivation stays off clients
+     * that did not ask for it. The **test-instance** half of the gate lives at the boundary now (issue #696):
+     * `ClientService` strips `testFeatures` from a non-test node's present definition, so `present(...)` already
+     * carries none there and the membership test is simply false -- no explicit `isTestInstance` check needed.
      */
     private fun featureEnabled(cxt: KdrCxt, featureName: String?): Boolean {
         if (featureName == null) return true
-        if (!cxt.instanceConfig.isTestInstance) return false
         val client = ClientService.get(cxt).present(cxt.client) ?: return false
         return featureName in client.testFeatures
     }
@@ -1177,31 +1178,6 @@ class GedraDataService : ServiceInitializer {
         }
         byKey[key] = mkStoredEntry(cxt, edit.traitId, data, existing, now)
         return true
-    }
-
-    /** The entry as it will be stored: a new envelope, or the existing one with its `updated` half moved on. */
-    private fun mkStoredEntry(
-        cxt: KdrCxt,
-        traitId: String,
-        data: Map<String, Any?>,
-        existing: Map<String, Any?>?,
-        now: Instant,
-    ): Map<String, Any?> {
-        val actor = cxt.userProfile.userId
-        val base = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to data)
-        if (existing == null) {
-            return base.asStoredEntry(cxt.mkUniqueId(), GSRC.user, now, actor)
-        }
-        // An entry that already exists keeps who made it and when; only the `updated` half moves, which is the
-        // whole reason the envelope carries both pairs.
-        return base.asStoredEntry(
-            entryId = existing[GE.entryId].toOptStr() ?: cxt.mkUniqueId(),
-            source = GSRC.user,
-            createdAt = existing[GE.createdAt].toOptInstant() ?: now,
-            createdBy = existing[GE.createdBy].toOptLong() ?: actor,
-            updatedAt = now,
-            updatedBy = actor,
-        )
     }
 
     /**
