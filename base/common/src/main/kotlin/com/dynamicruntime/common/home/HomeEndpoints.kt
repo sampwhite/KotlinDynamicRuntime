@@ -94,6 +94,9 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
             property(HFEAT.canManageUsers, "Whether the caller may create and edit other users.", required = true) {
                 type = SCT.boolean
             }
+            property(HFEAT.canSeeAllClients, "Whether the caller administers across clients (holds allClients).", required = true) {
+                type = SCT.boolean
+            }
         }
         property(UIC.state, "Dynamic state for constructing the home page.", required = true) {
             type = SCT.kObject
@@ -133,6 +136,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
                 HFEAT.leftBar to c.layoutFlag(HCFG.homeLeftBar, default = false),
                 HFEAT.inlineLinks to c.layoutFlag(HCFG.homeInlineLinks, default = false),
                 HFEAT.canManageUsers to AdminRules.canManageUsers(c),
+                HFEAT.canSeeAllClients to AdminRules.canSeeAllClients(c),
             ),
             UIC.state to buildMap {
                 put(HFLD.links, homeLinksFor(c))

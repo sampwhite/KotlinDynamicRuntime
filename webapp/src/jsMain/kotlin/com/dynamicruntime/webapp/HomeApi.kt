@@ -45,6 +45,9 @@ class HomeConfig(
     val user: UserProfile,
     /** Whether the caller may create and edit other users (drives the Users page, not just the menu). */
     val canManageUsers: Boolean,
+    /** Whether the caller administers across clients (holds allClients, issue #668) -- drives the forms list's
+     *  Client column and its filter-by-client. */
+    val canSeeAllClients: Boolean,
     /**
      * The source repository's blob base (`.../blob/<branch>`) for rewriting a document's interior links, or
      * null when the deployment configured none -- then a non-document interior link is left as written (#492).
@@ -89,6 +92,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         menu = menu,
         user = UserProfile.fromUserInfo(config.state[HFLD.userInfo].toJsonMapOrEmpty()),
         canManageUsers = config.features[HFEAT.canManageUsers] == true,
+        canSeeAllClients = config.features[HFEAT.canSeeAllClients] == true,
         sourceRepoBase = config.state[HFLD.sourceRepoBase] as? String,
     )
 }

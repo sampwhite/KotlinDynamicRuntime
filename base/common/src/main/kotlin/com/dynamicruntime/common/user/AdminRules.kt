@@ -144,6 +144,15 @@ object AdminRules {
      */
     fun canManageUsers(cxt: KdrCxt): Boolean = adminScope(cxt) != AdminScope.none
 
+    /**
+     * Whether the caller administers **across clients** -- holds `allClients` (issue #668). This is what shapes a
+     * cross-client surface: a Client column on the forms list, and the ability to filter it by client, are for a
+     * caller who sees more than one client, where [canManageUsers] (true for a client-scoped admin too) is not.
+     * Like [canManageUsers] it shapes the UI and is not the enforcement point; the section gate and
+     * `ReadScopeRules.forCaller` (which returns `unrestricted` only here) still decide what is actually served.
+     */
+    fun canSeeAllClients(cxt: KdrCxt): Boolean = adminScope(cxt) == AdminScope.allClients
+
     // The read scope moved to `ReadScopeRules.forCaller` (issue #225). It answers the same question for an
     // administrator and now also for everybody else, and a scope resolver named for administrators is one an
     // ordinary endpoint's author reads as "not for me" -- so it stopped being an admin rule once the widths

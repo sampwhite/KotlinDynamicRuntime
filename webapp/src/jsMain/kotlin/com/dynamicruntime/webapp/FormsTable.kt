@@ -22,7 +22,7 @@ import com.dynamicruntime.common.schema.PSTAT
  *
  * Presentational: every value is a [FormSummary] the parent already computed and every action is a callback the
  * parent owns, so the table itself knows nothing about gedra shapes or endpoints. An action a caller's surface
- * cannot perform is not offered ([canEdit]/[canDelete]), the same "do not show a control that cannot work" rule
+ * cannot perform is not offered ([canDelete]), the same "do not show a control that cannot work" rule
  * the view follows.
  */
 external interface FormsTableProps : Props {
@@ -45,6 +45,13 @@ external interface FormsTableProps : Props {
      * over -- and the backend sends no owner for them anyway.
      */
     var showOwner: Boolean
+
+    /**
+     * Whether to draw the Client column (issue #668): true for a caller who administers across clients
+     * (`allClients`), whose listing spans clients. Every row already carries its client, so this is purely which
+     * callers see the column -- the cross-client counterpart of [showOwner].
+     */
+    var showClient: Boolean
 
     /** Opens the survey's read-only "View Info" view for a form (issue #694), from which its Edit toggle edits. */
     var onSurveyView: (String) -> Unit
@@ -121,6 +128,10 @@ val FormsTable = FC<FormsTableProps> { props ->
             }
             add(sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending))
             if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
+            // The Client column (issue #668), for a cross-client (`allClients`) caller, reading each row's own
+            // `client`. Sortable by the row's client protocol field (`allClients`-only on the backend, as the
+            // column is), keyed on `GSORT.client` -- both the row-data key and the endpoint's sort key.
+            if (props.showClient) add(sortableColumn("Client", GSORT.client, 140, props.sortColumn, props.sortDescending))
             // The global survey-status column (issue #694): a fixed, non-sortable column (its sort/filter is
             // deferred to #695), rendering a status chip and a CTA on the unfinished rows.
             if (anySurveyStatus) add(statusColumn(props))
@@ -142,6 +153,8 @@ val FormsTable = FC<FormsTableProps> { props ->
             row.created = summary.createdAt ?: ""
             row.ownerName = summary.ownerName
             row.ownerEmail = summary.ownerEmail
+            // The Client column reads this under its `GSORT.client` dataIndex (issue #668).
+            row[GSORT.client] = summary.client.ifBlank { "—" }
             // The survey status for the fixed Status column (issue #694): its chip label + colour class, and
             // whether it warrants the CTA (anything but Valid). Absent on a row with no survey state.
             summary.surveyStatus?.let {
