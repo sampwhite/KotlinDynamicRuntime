@@ -7,6 +7,7 @@ import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.userSearchFieldSpecs
+import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.user.userSortKeys
 import com.dynamicruntime.common.util.isEmailAddress
 import kotlinx.coroutines.MainScope
@@ -59,6 +60,10 @@ val Users = FC<Props> {
     // The sort, driven by the table's column headers. Default: newest first, as the issue specifies.
     var sortBy by useState(USF.lastEdited.at)
     var descending by useState(true)
+    // Whether the filter well is open (issue #683). View state, not search state: it is not in the URL, so a
+    // shared link arrives with the well closed and the filters it carries said as chips. Tuple form so the
+    // toggle is a functional update (`{ !it }`), the convention App.kt documents for its own counters.
+    val (filtersOpen, setFiltersOpen) = useState(false)
     // What the last search reported: how many matched in all, and whether the cap hid some.
     var numAvailable by useState(0)
     var hasMore by useState(false)
@@ -693,83 +698,18 @@ val Users = FC<Props> {
             // follows, since the client is a distinction only to somebody who can see more than one.
             val showClient = config?.user?.roles?.contains(ROLE.allClients) == true
 
-            // The filter panel is rendered from the shared spec (issue #411, the SDUI extra credit): a field
-            // added to `userSearchFieldSpecs` becomes a filter here with no further change. A substring field is
-            // a text box (debounced, so a keystroke does not blur it); an exact field is a picker; a date-range
-            // field is a pair of date-time pickers -- each firing at once, since a pick is a deliberate choice.
-            for (spec in userSearchFieldSpecs) {
-                if (spec.allClientsOnly && !showClient) continue
-                when (spec.filterKind) {
-                    UserFilterKind.substring -> div {
-                        className = ClassName("row")
-                        span {
-                            className = ClassName("field-label")
-                            +spec.label
-                        }
-                        Input {
-                            value = textFilters[spec.name] ?: ""
-                            placeholder = "${spec.label} contains…"
-                            // A width of its own, so the panel can be as wide as the table needs without the
-                            // search boxes swallowing the difference (issue #462). `maxWidth` rather than
-                            // `width`, so a narrow browser still shrinks it.
-                            style = js("({ maxWidth: 420 })")
-                            onChange = { event -> setText(spec.name, event.target.value as String, immediate = false) }
-                        }
-                    }
-                    UserFilterKind.exact -> div {
-                        className = ClassName("row")
-                        span {
-                            className = ClassName("field-label")
-                            +spec.label
-                        }
-                        Select {
-                            // Exact fields render as a picker; today only the client, whose options are the
-                            // clients this caller may choose among.
-                            value = (textFilters[spec.name] ?: "").ifEmpty { null }
-                            options = clientOptions(clientChoices)
-                            placeholder = "Any ${spec.label.lowercase()}"
-                            allowClear = true
-                            style = js("({ minWidth: 180 })")
-                            onChange = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
-                        }
-                    }
-                    UserFilterKind.dateRange -> {
-                        val range = rangeFilters[spec.name] ?: DateRange()
-                        div {
-                            className = ClassName("row")
-                            span {
-                                className = ClassName("field-label")
-                                +spec.label
-                            }
-                            DatePicker {
-                                value = range.after?.let { dayjs(it) }?.takeIf { it.isValid() }
-                                showTime = true
-                                // Bounded for the same reason as the text boxes above; a date-time picker has
-                                // a known amount to show, so it gains nothing from being wider.
-                                style = js("({ maxWidth: 220 })")
-                                onChange = { date, _ -> setRange(spec.name, DateRange(date?.toISOString(), range.before)) }
-                            }
-                            DatePicker {
-                                value = range.before?.let { dayjs(it) }?.takeIf { it.isValid() }
-                                showTime = true
-                                style = js("({ maxWidth: 220 })")
-                                onChange = { date, _ -> setRange(spec.name, DateRange(range.after, date?.toISOString())) }
-                            }
-                        }
-                        p {
-                            className = ClassName("type-hint")
-                            +"The earliest and latest ${spec.label.lowercase()} time; leave either bound empty for open-ended."
-                        }
-                    }
-                    null -> {}
-                }
-            }
-
             // A whitespace-only term is kept in the map (so it can be typed) but filters nothing, so it does not
             // count as an active filter here -- matching what the query serialization actually sends.
             val anyFilter = textFilters.values.any { it.isNotBlank() } || rangeFilters.values.any { !it.isEmpty }
             // The sort counts as something to reset too, so Clear returns the whole view to its default.
             val canReset = anyFilter || sortBy != USF.lastEdited.at || !descending
+            // What the list is narrowed by, in words (issue #683), for the chips the closed well shows. Derived
+            // from the very state `anyFilter` and `canReset` read, so a chip can never disagree with the count
+            // or with whether Clear is offered -- and since the filters apply live, "in force" and "current" are
+            // one state, so there is no applied-vs-draft distinction for the chips to get wrong. The sort is a
+            // chip too (Clear resets it), but not a *filter*: the toggle counts only the filters.
+            val filtersInForce = userFilterChips(textFilters, rangeFilters)
+            val chips = filtersInForce + listOfNotNull(userSortChip(sortBy, descending))
 
             div {
                 className = ClassName("row")
@@ -777,12 +717,80 @@ val Users = FC<Props> {
                     onClick = { startCreate() }
                     +"Create user"
                 }
-                // Offered only when there is something to undo, so it is not a permanent no-op button.
+                // The filters live behind a toggle (issue #683), closed by default, so the table -- what the
+                // page is for -- is on screen without first scrolling past six controls and their hints.
+                filterToggle(filtersOpen, filtersInForce.size, usersFiltersWellId) { setFiltersOpen { !it } }
+                // Offered only when there is something to undo, so it is not a permanent no-op button -- and
+                // here rather than inside the well, so the way back is on screen while the well is shut.
                 if (canReset) {
                     Button {
                         type = "link"
                         onClick = { clearFilters() }
                         +"Clear filters"
+                    }
+                }
+            }
+            filterChips(chips, filtersOpen)
+
+            // The controls are rendered from the shared spec (issue #411, the SDUI extra credit): a field added
+            // to `userSearchFieldSpecs` becomes a filter here with no further change. A substring field is a
+            // text box (debounced, so a keystroke does not blur it); an exact field is a picker; a date-range
+            // field is a pair of date-time pickers -- each firing at once, since a pick is a deliberate choice.
+            // Laid out as the forms list lays out its own: label above control, in the shared well. A field with
+            // no filter kind (sort-only) draws no control. A from-to pair wider than its track wraps (see
+            // `.filter-range`), so the well needs no special width for it.
+            filterWell(filtersOpen, usersFiltersWellId) {
+                for (spec in userSearchFieldSpecs) {
+                    if (spec.allClientsOnly && !showClient) continue
+                    val kind = spec.filterKind ?: continue
+                    filterGroup(spec.label) {
+                        when (kind) {
+                            UserFilterKind.substring -> Input {
+                                value = textFilters[spec.name] ?: ""
+                                placeholder = "${spec.label} contains…"
+                                // Fills its track up to a cap, so a narrow browser still shrinks it (issue #462).
+                                style = js("({ width: '100%', maxWidth: 420 })")
+                                onChange = { event -> setText(spec.name, event.target.value as String, immediate = false) }
+                            }
+                            UserFilterKind.exact -> Select {
+                                // Exact fields render as a picker; today only the client, whose options are the
+                                // clients this caller may choose among.
+                                value = (textFilters[spec.name] ?: "").ifEmpty { null }
+                                options = clientOptions(clientChoices)
+                                placeholder = "Any ${spec.label.lowercase()}"
+                                allowClear = true
+                                style = js("({ minWidth: 180 })")
+                                onChange = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
+                            }
+                            UserFilterKind.dateRange -> {
+                                val range = rangeFilters[spec.name] ?: DateRange()
+                                div {
+                                    className = ClassName("filter-range")
+                                    DatePicker {
+                                        value = range.after?.let { dayjs(it) }?.takeIf { it.isValid() }
+                                        showTime = true
+                                        // Bounded: a date-time picker has a known amount to show, so it gains
+                                        // nothing from being wider.
+                                        style = js("({ maxWidth: 220 })")
+                                        onChange = { date, _ -> setRange(spec.name, DateRange(date?.toISOString(), range.before)) }
+                                    }
+                                    span {
+                                        className = ClassName("type-hint")
+                                        +"to"
+                                    }
+                                    DatePicker {
+                                        value = range.before?.let { dayjs(it) }?.takeIf { it.isValid() }
+                                        showTime = true
+                                        style = js("({ maxWidth: 220 })")
+                                        onChange = { date, _ -> setRange(spec.name, DateRange(range.after, date?.toISOString())) }
+                                    }
+                                }
+                                span {
+                                    className = ClassName("type-hint")
+                                    +"Leave either end empty for open-ended."
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -846,7 +854,9 @@ fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery {
     val ranges = buildMap {
         for (spec in userSearchFieldSpecs) {
             val keys = spec.rangeKeys ?: continue
-            val range = DateRange(hp[keys.first], hp[keys.second])
+            // A bound present but blank (`lastEditedAfter=` in a hand-edited link) is no bound: kept, it would
+            // count as a filter, be sent, and show as a chip with nothing after it (issue #683 review).
+            val range = DateRange(hp[keys.first]?.takeIf { it.isNotBlank() }, hp[keys.second]?.takeIf { it.isNotBlank() })
             if (!range.isEmpty) put(spec.name, range)
         }
     }
@@ -877,6 +887,53 @@ fun searchHashParams(query: UserSearchQuery): List<Pair<String, String>> =
             else -> k to v.toString()
         }
     }
+
+/** The filter well's element id, so the toggle can name what it controls (`aria-controls`). */
+private const val usersFiltersWellId = "users-filters"
+
+/**
+ * The filters in force said in words, one chip each, for the summary the closed well shows (issue #683):
+ * `Email contains "ada"`, `Client is "acme"`, `Last login 2026-08-01 10:00 UTC – 2026-09-01 10:00 UTC`,
+ * `Edited ≥ …`. Built from the shared spec in its own order, so a field added there gets a chip with no further
+ * change, in the words the forms list's chips use ([textChip], [rangeChip]) so the two pages say the same thing
+ * -- and a blank value is no chip, matching `anyFilter` and what the query sends.
+ *
+ * A date bound reads as the table renders the column it filters -- [formatTimestamp], UTC to the minute -- so
+ * the chip and the rows it admitted are on one clock; a chip in local time beside a column in UTC would show
+ * one instant two ways. Every term in force is a chip, including one the caller's own well does not offer (the
+ * client, for a caller without `allClients`, carried in by a shared link): it still counts as a filter to Clear
+ * and to the count line, so it must be visible somewhere, and the chip is then the only somewhere. Pure, and
+ * covered under `jsNodeTest`.
+ */
+fun userFilterChips(texts: Map<String, String>, ranges: Map<String, DateRange>): List<String> =
+    userSearchFieldSpecs.mapNotNull { spec ->
+        when (spec.filterKind) {
+            UserFilterKind.substring -> textChip(spec.label, texts[spec.name], contains = true)
+            UserFilterKind.exact -> textChip(spec.label, texts[spec.name], contains = false)
+            UserFilterKind.dateRange -> ranges[spec.name]?.let { r ->
+                rangeChip(spec.label, r.after?.let(::formatTimestamp), r.before?.let(::formatTimestamp))
+            }
+            null -> null
+        }
+    }
+
+/**
+ * The sort as a chip when it is not the default (issue #683) -- `Sorted by Name, A–Z`, `Sorted by Last login,
+ * oldest first` -- since Clear resets the sort too and a person should see what Clear would undo. Not a filter,
+ * so not in the toggle's count: a sort narrows nothing. A date sorts by time and a text field alphabetically,
+ * and the words say which; "a date" is a spec with range keys, which a sort-only date (`dateSpec` with no
+ * filter kind) still has. Pure, and covered under `jsNodeTest`.
+ */
+fun userSortChip(sortBy: String, descending: Boolean): String? {
+    if (sortBy == USF.lastEdited.at && descending) return null
+    val spec = userSearchFieldSpecsByName[sortBy]
+    val direction = if (spec?.rangeKeys != null) {
+        if (descending) "newest first" else "oldest first"
+    } else {
+        if (descending) "Z–A" else "A–Z"
+    }
+    return "Sorted by ${spec?.label ?: sortBy}, $direction"
+}
 
 /**
  * The count line above the results (issue #411): how many are shown against how many matched, so an over-broad
