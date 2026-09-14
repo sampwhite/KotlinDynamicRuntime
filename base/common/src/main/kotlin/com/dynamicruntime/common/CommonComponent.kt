@@ -4,6 +4,7 @@ import com.dynamicruntime.common.cfact.addCoreCFacts
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
+import com.dynamicruntime.common.gedra.workflow.PrefillFromOwnerCreation
 import com.dynamicruntime.common.gedra.workflow.SurveyStateDeriver
 import com.dynamicruntime.common.gedra.workflow.addSurveyCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
@@ -98,6 +99,9 @@ class CommonComponent : ComponentDefinition {
         // The first cfactCalc function (issue #678): a workflow's cfactCalc usages emit cfacts into the same
         // form-singleton state the survey derives, run inside that recompute (not a standalone pass).
         collector.addWorkflowFunction(ComputeCFactsFromDataCreation)
+        // The first prefillData function (issue #679): a task's prefillData usages default a field from the form
+        // owner's attributes as the view resolves -- presented as entered, never counted toward requiredness.
+        collector.addWorkflowFunction(PrefillFromOwnerCreation)
         // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
         // its transaction. This is what makes a raw patch (not only the survey save) keep survey state fresh.
         collector.addWriteHook(DerivedStateWriteHook)
