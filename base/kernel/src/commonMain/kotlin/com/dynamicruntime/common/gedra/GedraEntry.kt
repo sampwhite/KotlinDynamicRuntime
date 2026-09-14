@@ -91,6 +91,13 @@ object GE {
 object GSRC {
     /** A person is accountable: they entered it, edited it, or approved it. What a direct API call sets. */
     const val user = "user"
+
+    /**
+     * A default a `prefillData` function supplied as the view resolved (issue #679) -- offered, not entered.
+     * It rides on a **view-only** entry, never a stored one, so the frontend can present it as a default and
+     * tell it apart from data a person actually gave. It never counts toward a required trait.
+     */
+    const val prefill = "prefill"
 }
 
 /**
@@ -195,7 +202,7 @@ private fun SchTypesBuilder.traitEntryOf(
     if (primaryKey.isNotEmpty()) {
         if (SCH.dRef in declared) {
             throw KdrException.mkConv(
-                "Trait '$traitId' declares a primary key, but its data is a \$ref. A keyed trait has to declare " +
+                $$"Trait '$$traitId' declares a primary key, but its data is a $ref. A keyed trait has to declare " +
                     "its data inline, so the key and the fields it names are one type; put the key on the " +
                     "referenced type instead.",
             )
