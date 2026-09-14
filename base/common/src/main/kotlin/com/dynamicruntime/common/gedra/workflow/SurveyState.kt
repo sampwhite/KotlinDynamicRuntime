@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.StateTraitClass
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchFailCode
+import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
@@ -116,17 +117,7 @@ object SurveyStateDeriver : GedraStateDeriver {
         // created cleanly is always valid at create -- the interesting cases are a lenient import and a schema
         // narrowed after capture (the recompute path).
         val surveyTraitIds = def.tasks.flatMap { task -> task.traits.map { it.traitId } }.toSet()
-        val union = SchemaService.get(cxt).storeFor(row.client)
-            .types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
-        val invalidTraits = if (union == null) {
-            emptyList()
-        } else {
-            entries
-                .filter { it[GE.traitId].toOptStr() in surveyTraitIds && it[GE.data] != null }
-                .filter { entry -> validate(union, entry).any { it.code != SchFailCode.missingRequired } }
-                .mapNotNull { it[GE.traitId].toOptStr() }
-                .distinct()
-        }
+        val invalidTraits = surveyContentFailures(cxt, row.client, surveyTraitIds, entries).keys.toList()
         val valid = invalidTraits.isEmpty()
 
         // The survey's own two facts, plus whatever the survey workflow's cfactCalc functions emit from the same
@@ -151,4 +142,31 @@ object SurveyStateDeriver : GedraStateDeriver {
             mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to facts)),
         )
     }
+}
+
+/**
+ * The **content** failures of the [entries] whose trait is in [traitIds], keyed by trait id -- the survey's
+ * one rule for "invalid" (issue #657), shared with the task rail's per-task status (issue #700) so the two
+ * cannot disagree. Each present entry is validated against the client's formDoc entry union, the same union
+ * the write path checks against, keeping only failures that are not `missingRequired`: a missing required
+ * value is *incomplete*, not *invalid*. A trait with no such failures is absent from the map; the map is empty
+ * when the client has no union at all (no formDoc traits).
+ */
+fun surveyContentFailures(
+    cxt: KdrCxt,
+    client: String,
+    traitIds: Set<String>,
+    entries: List<Map<String, Any?>>,
+): Map<String, List<SchFailure>> {
+    val union = SchemaService.get(cxt).storeFor(client)
+        .types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"] ?: return emptyMap()
+    return entries
+        .filter { it[GE.traitId].toOptStr() in traitIds && it[GE.data] != null }
+        .mapNotNull { entry ->
+            val traitId = entry[GE.traitId].toOptStr() ?: return@mapNotNull null
+            val content = validate(union, entry).filter { it.code != SchFailCode.missingRequired }
+            if (content.isEmpty()) null else traitId to content
+        }
+        .groupBy({ it.first }, { it.second })
+        .mapValues { (_, lists) -> lists.flatten() }
 }

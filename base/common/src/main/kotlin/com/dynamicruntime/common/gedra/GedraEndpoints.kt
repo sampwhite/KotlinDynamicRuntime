@@ -603,6 +603,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             items { type = SCT.string }
         }
         property(WSF.item, "When saved: the created form document, or the updated one for a survey edit.") { ref(docType) }
+        property(
+            WSF.view,
+            "When saved by a survey edit: the refreshed workflow view -- each task's status and the earliest task " +
+                "needing action -- so the save is the refresh (issue #700).",
+        ) { ref(GEP.workflowViewType) }
     }
 
     // Saves the entries a workflow task collected, with the workflow's gate (issue #535). A refused save is a
@@ -634,7 +639,19 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             ?: throw KdrException("No workflow '$workflowId' for this caller.", code = EXC.notFound)
         val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
         val saveId = request[GDF.saveId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.saveId} is required.")
-        saveWorkflow(c, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps(), request[GDF.gedraId].toOptStr())
+        val gedraId = request[GDF.gedraId].toOptStr()
+        val result = saveWorkflow(c, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps(), gedraId)
+        // A survey edit answers with the refreshed view too (issue #700): re-resolved against the updated form,
+        // so the task rail's per-task statuses and its earliest-actionable task follow the save without a second
+        // call -- the save is the refresh. A create save has no form to resolve a survey against, so it answers as
+        // before. The same helpers the view endpoint uses, so the two cannot drift.
+        if (gedraId != null && result[WSF.saved] == true) {
+            val row = surveyFormRow(c, gedraId)
+            val view = resolveWorkflowView(c, declared, entriesByTaskOf(declared, row), prefillOwnerAttributes(c, declared, row.userId))
+            result + (WSF.view to view)
+        } else {
+            result
+        }
     }
 }
 

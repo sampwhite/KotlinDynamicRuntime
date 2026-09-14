@@ -110,6 +110,87 @@ class SurveyEditTest : StringSpec({
         (task[WVF.facts] as List<*>) shouldContain WFC.taskComplete
     }
 
+    "the survey view carries each task's status and names the earliest task needing action (#700)" {
+        // Created with only the optional `note`: the required `detail` is missing, so the one task is incomplete
+        // -- and valid, since absence is not invalidity -- and it is the task needing action.
+        val gid = create("note", "aside")
+        val v = user.getData(viewPath, mapOf(GDF.gedraId to gid))
+        val status = v[WFD.tasks].toJsonListOfMaps().single()[WVF.status].toJsonMapOrEmpty()
+        status[SVY.complete] shouldBe false
+        status[SVY.valid] shouldBe true
+        status[SVY.missingTraits].toJsonListOrEmpty() shouldContain "detail"
+        status[SVY.invalidTraits].toJsonListOrEmpty().shouldBeEmpty()
+        status[WVF.problems].toJsonListOrEmpty().shouldBeEmpty()
+        v[WVF.focusTask] shouldBe "only"
+
+        // Supplying `detail` completes the task; nothing needs action, so no focus task is named.
+        editSave(gid, "answered")[WSF.saved] shouldBe true
+        val done = user.getData(viewPath, mapOf(GDF.gedraId to gid))
+        done[WFD.tasks].toJsonListOfMaps().single()[WVF.status].toJsonMapOrEmpty()[SVY.complete] shouldBe true
+        done.containsKey(WVF.focusTask) shouldBe false
+    }
+
+    "a survey edit save answers with the refreshed view, so the save is the refresh (#700)" {
+        val gid = create("note", "aside")
+        val res = editSave(gid, "answered")
+        res[WSF.saved] shouldBe true
+        val view = res[WSF.view].toJsonMapOrEmpty()
+        view[WVF.found] shouldBe true
+        // The refreshed view reflects the save: the task is now complete, its seeded entry is the new value, and
+        // no task needs action any more.
+        val task = view[WFD.tasks].toJsonListOfMaps().single()
+        task[WVF.status].toJsonMapOrEmpty()[SVY.complete] shouldBe true
+        task[WVF.entries].toJsonListOfMaps().first { it[GE.traitId].toOptStr() == "detail" }[GE.data].toJsonMapOrEmpty()["text"] shouldBe "answered"
+        view.containsKey(WVF.focusTask) shouldBe false
+    }
+
+    "a schema narrowed after capture makes a task invalid, with the failure's friendly wording (#700)" {
+        // Its own client: narrowing the shared client's schema would break the sibling tests' longer values.
+        val nClient = "svyinvalid700"
+        fun writeN(maxLen: Int?) {
+            val config = gedraConfig(cxt, "${nClient}cfg", "${nClient}config", nClient) {
+                defineClient(
+                    ClientDef(
+                        clientId = nClient, name = nClient, usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+                trait("NarrowEntry", "ndetail", setOf(GedraDataType.formDoc), "The detail the survey requires.") {
+                    property("text", "A value.", required = true) { if (maxLen != null) maxLength = maxLen }
+                }
+                workflow("nReview", WfEntry.survey) {
+                    task("only", "Review") { trait("ndetail"); save("save", "Save changes", WfSaveKind.edit) }
+                }
+            }
+            GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", nClient).also { it.userId = 9000L }, config)
+            GedraConfigReload.reloadClient(cxt, nClient)
+        }
+
+        // Captured under the wide schema: a value longer than the narrowing to come.
+        writeN(maxLen = null)
+        val nUser = TestUser.create(cxt, "n@$nClient.test", userClient = nClient)
+        val gid = nUser.postItem(
+            GEP.formDocCreate,
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to "ndetail", GE.data to mapOf("text" to "far too long")))),
+        )[GDF.gedraId].toOptStr().orEmpty()
+
+        // Narrow the schema after capture, live: the stored value now fails its content check -- the design's
+        // own case for how a form becomes invalid (a create validates, so it never stores one).
+        writeN(maxLen = 3)
+        val v = nUser.getData(clientPath(GEP.workflowView, nClient), mapOf(GDF.gedraId to gid))
+        val status = v[WFD.tasks].toJsonListOfMaps().single()[WVF.status].toJsonMapOrEmpty()
+        // Present, so complete; failing on content, so invalid -- absence and invalidity are kept apart.
+        status[SVY.complete] shouldBe true
+        status[SVY.valid] shouldBe false
+        status[SVY.invalidTraits].toJsonListOrEmpty() shouldContain "ndetail"
+        val problems = status[WVF.problems].toJsonListOfMaps()
+        problems.isNotEmpty() shouldBe true
+        problems.first()[GE.traitId] shouldBe "ndetail"
+        (problems.first()[WVF.message] as String).isNotBlank() shouldBe true
+        // Invalid is "needs action" too, so the task is the focus even though it is complete.
+        v[WVF.focusTask] shouldBe "only"
+    }
+
     "a survey edit save folds new data into the form, and the returned item reflects it" {
         val gid = create("detail", "before")
         val res = editSave(gid, "after")
