@@ -231,9 +231,12 @@ val FormsPage = FC<Props> {
                 val homeConfig = runCatching { HomeApi.fetchConfig() }.getOrNull()
                 val canManage = homeConfig?.canManageUsers == true
                 canManageUsers = canManage
-                canSeeAllClients = homeConfig?.canSeeAllClients == true
+                // The freshly-read local, not the state set just above: that setter has not landed yet, so the
+                // clients fetch must branch on the value in hand, not the state variable (issue #668).
+                val seeAllClients = homeConfig?.canSeeAllClients == true
+                canSeeAllClients = seeAllClients
                 // The clients to offer in the filter, for a cross-client caller (issue #668).
-                if (canSeeAllClients) {
+                if (seeAllClients) {
                     clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
                 }
                 // The caller's own client-scoped surface, so the list is exactly what this caller may see.
@@ -607,7 +610,10 @@ val FormsPage = FC<Props> {
                         onChange = { name, value -> searchDraft = searchDraft + (name to value) }
                         onSearch = { applySearch(ep, searchDraft) }
                         onClear = {
-                            val kept = appliedSearch.filterKeys { it == EI.user }
+                            // Clear drops the trait filters and the free-text term, but keeps the scope controls,
+                            // which have their own controls outside this panel: the user scope (issue #562) and the
+                            // client scope (issue #668). Clearing either is done through its own control.
+                            val kept = appliedSearch.filterKeys { it == EI.user || it == EI.client }
                             searchDraft = kept
                             applySearch(ep, kept)
                         }
