@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.gedra.workflow
 
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+
 /**
  * The names the survey's state and cfacts are stored and reported under (issue #657). Kept apart from [WFC]:
  * those are per-**task** target facts computed at render time; these are **form-singleton** facts about the
@@ -41,4 +44,51 @@ object SVY {
 
     /** The config bundle the survey state trait is declared in. */
     const val stateBundle = "surveyState"
+
+    /**
+     * The forms-listing query parameter that filters by a form's survey status (issue #695), taking one of the
+     * [SVYS] values. Named for the survey rather than as a generic "status": a later form-singleton status gets
+     * a parameter of its own, and the listing composes them.
+     */
+    const val surveyStatus = "surveyStatus"
+}
+
+/**
+ * The three survey statuses a form's `surveyCompletion` state reads as (issue #694), as the forms list shows
+ * them and as its filter takes them (issue #695) -- one vocabulary on both sides of the wire. Derived by
+ * [surveyStatusOf], the one rule the status column and the backend filter share.
+ */
+@Suppress("ConstPropertyName")
+object SVYS {
+    /** Every required survey trait present, and the present data passes its schema. */
+    const val valid = "valid"
+
+    /** Present data passes, but a required survey trait is missing. */
+    const val needsInfo = "needsInfo"
+
+    /** Present data fails its schema, whether or not something is also missing. */
+    const val invalid = "invalid"
+
+    /** The three, in the order a control offers them. */
+    val all: List<String> = listOf(valid, needsInfo, invalid)
+}
+
+/**
+ * A form's survey status from its state entries (issues #694, #695), or null when the form has no survey state
+ * -- a client with no survey, or a row not yet computed -- in which case a column shows nothing and a filter
+ * matches nothing. Reads the [SVY.surveyCompletion] entry's `complete` / `valid` booleans: **invalid trumps
+ * incomplete** (`!valid` -> [SVYS.invalid], else `!complete` -> [SVYS.needsInfo], else [SVYS.valid]), so data
+ * that fails schema reads as invalid even when a required trait is also missing. Pure over maps, so the
+ * frontend's chip and the backend's filter run the same code.
+ */
+fun surveyStatusOf(states: List<Map<String, Any?>>): String? {
+    val entry = states.firstOrNull { it[GE.traitId] == SVY.surveyCompletion } ?: return null
+    val data = entry[GE.data].toJsonMapOrEmpty()
+    val valid = data[SVY.valid] as? Boolean ?: return null
+    val complete = data[SVY.complete] as? Boolean ?: return null
+    return when {
+        !valid -> SVYS.invalid
+        !complete -> SVYS.needsInfo
+        else -> SVYS.valid
+    }
 }

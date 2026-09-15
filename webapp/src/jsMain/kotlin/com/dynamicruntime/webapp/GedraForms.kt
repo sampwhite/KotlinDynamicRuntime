@@ -16,6 +16,8 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.SVYS
+import com.dynamicruntime.common.gedra.workflow.surveyStatusOf
 import com.dynamicruntime.common.home.HMENU
 import react.ChildrenBuilder
 import react.dom.html.ReactHTML.div
@@ -355,33 +357,29 @@ fun entriesUnionOf(type: SchType?): SchType? = type?.properties?.get(GDF.entries
 class DisplayValue(val traitId: String, val label: String, val value: String)
 
 /**
- * A form's global survey status for the forms-list column (issue #694), derived from its `surveyCompletion`
- * state. Each carries the label the chip shows and the [PSTAT] colour class it renders in. **Invalid trumps
- * incomplete**: data that fails schema is [invalid] even if a required trait is also missing.
+ * A form's global survey status for the forms-list column (issue #694) and its filter (issue #695): the
+ * kernel's [SVYS] value on the [wire], the label the chip and the filter's choice show, and the [PSTAT] colour
+ * class the chip renders in. The derivation itself is the kernel's `surveyStatusOf`, shared with the backend
+ * filter, so the column and the filter cannot disagree -- **invalid trumps incomplete** there.
  */
-enum class SurveyStatus(val label: String, val pstat: String) {
-    valid("Valid", PSTAT.ok),
-    needsInfo("Needs Info", PSTAT.warning),
-    invalid("Invalid", PSTAT.error),
+enum class SurveyStatus(val wire: String, val label: String, val pstat: String) {
+    valid(SVYS.valid, "Valid", PSTAT.ok),
+    needsInfo(SVYS.needsInfo, "Needs Info", PSTAT.warning),
+    invalid(SVYS.invalid, "Invalid", PSTAT.error),
+    ;
+
+    companion object {
+        /** The status a [SVYS] wire value names, or null for anything else. */
+        fun fromWire(value: String?): SurveyStatus? = entries.firstOrNull { it.wire == value }
+    }
 }
 
 /**
  * The [SurveyStatus] from a row's state entries (issue #694), or null when the form has no survey state — a
- * client with no survey, or a row not yet computed — in which case the column shows nothing for it. Reads the
- * `surveyCompletion` entry's `complete`/`valid` booleans; `!valid` → Invalid, else `!complete` → Needs Info,
- * else Valid. Pure, covered under `jsNodeTest`.
+ * client with no survey, or a row not yet computed — in which case the column shows nothing for it. The
+ * kernel's `surveyStatusOf`, mapped onto the enum; covered under `jsNodeTest`.
  */
-fun surveyStatusFrom(states: List<Map<String, Any?>>): SurveyStatus? {
-    val entry = states.firstOrNull { it[GE.traitId] == SVY.surveyCompletion } ?: return null
-    val data = entry[GE.data].toJsonMapOrEmpty()
-    val valid = data[SVY.valid] as? Boolean ?: return null
-    val complete = data[SVY.complete] as? Boolean ?: return null
-    return when {
-        !valid -> SurveyStatus.invalid
-        !complete -> SurveyStatus.needsInfo
-        else -> SurveyStatus.valid
-    }
-}
+fun surveyStatusFrom(states: List<Map<String, Any?>>): SurveyStatus? = SurveyStatus.fromWire(surveyStatusOf(states))
 
 class FormSummary(
     val gedraId: String,

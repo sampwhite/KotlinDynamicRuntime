@@ -1309,6 +1309,7 @@ class GedraDataService : ServiceInitializer {
         offset: Int,
         rowFilter: ((GedraDataRow) -> Boolean)?,
         sort: GedraSort?,
+        stateFilter: ((List<Map<String, Any?>>) -> Boolean)?,
     ): GedraListPage? {
         val cache = dataCache ?: return null
         val client = scope.client ?: return null
@@ -1321,7 +1322,7 @@ class GedraDataService : ServiceInitializer {
         // No search: extraction is deferred past the page window, so only the rows actually returned are built,
         // and `numAvailable` is the whole scope-matched set. `rowsMatched` means what the SQL path's does --
         // how many rows the scope admitted, not how many the page returned.
-        if (rowFilter == null && sort == null) {
+        if (rowFilter == null && sort == null && stateFilter == null) {
             explainScope(cxt, scope, "cache:${GDX.clientKind}", matched.size)
             val page = matched.asSequence().drop(offset).take(limit).map { GedraDataRow.extract(gedraService, it) }.toList()
             return GedraListPage(page, matched.size)
@@ -1331,7 +1332,7 @@ class GedraDataService : ServiceInitializer {
         // the count that survived, and the page and its total are both over that set. A sort re-orders the
         // matched-and-filtered rows in place of the default; the same shape filters/orders the SQL path's rows.
         val extracted = matched.asSequence().map { GedraDataRow.extract(gedraService, it) }
-        val filtered = (rowFilter?.let { extracted.filter(it) } ?: extracted).toList()
+        val filtered = applyStateFilter(cxt, (rowFilter?.let { extracted.filter(it) } ?: extracted).toList(), scope, stateFilter)
         val ordered = sort?.let { orderBySort(filtered, it) } ?: filtered
         explainScope(cxt, scope, "cache:${GDX.clientKind}", ordered.size)
         val page = ordered.asSequence().drop(offset).take(limit).toList()
@@ -1361,11 +1362,12 @@ class GedraDataService : ServiceInitializer {
         offset: Int = 0,
         rowFilter: ((GedraDataRow) -> Boolean)? = null,
         sort: GedraSort? = null,
+        stateFilter: ((List<Map<String, Any?>>) -> Boolean)? = null,
     ): GedraListPage {
         // `_debug=dataFromSql` bypasses the cache for diagnosis, the same tag `queryGedra` honors; the SQL below
         // is then taken for every scope, not only the no-client shapes the cache cannot key on.
         if (!cxt.hasDebugDiagnostic(GDBG.dataFromSql)) {
-            cachedListGedras(cxt, kind, scope, limit, offset, rowFilter, sort)?.let { return it }
+            cachedListGedras(cxt, kind, scope, limit, offset, rowFilter, sort, stateFilter)?.let { return it }
         }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
@@ -1392,7 +1394,7 @@ class GedraDataService : ServiceInitializer {
         // `rows` is the whole scoped, ordered set (the SQL carries no limit). Without a search, the page window
         // is applied here -- the same place `limit` always was -- and extraction is after it, so only the
         // returned rows are built; `numAvailable` is the whole set, matching the cache path.
-        if (rowFilter == null && sort == null) {
+        if (rowFilter == null && sort == null && stateFilter == null) {
             explainScope(cxt, scope, stmt.name, rows.size)
             val page = rows.asSequence()
                 .drop(offset)
@@ -1405,11 +1407,32 @@ class GedraDataService : ServiceInitializer {
         // column, so neither a `where` nor an `order by` can reach it. Every scoped row is extracted, filtered,
         // ordered, then paged -- the stated in-memory ceiling, the same shape the cache path applies.
         val extracted = rows.asSequence().map { GedraDataRow.extract(gedraService, it) }
-        val filtered = (rowFilter?.let { extracted.filter(it) } ?: extracted).toList()
+        val filtered = applyStateFilter(cxt, (rowFilter?.let { extracted.filter(it) } ?: extracted).toList(), scope, stateFilter)
         val ordered = sort?.let { orderBySort(filtered, it) } ?: filtered
         explainScope(cxt, scope, stmt.name, ordered.size)
         val page = ordered.asSequence().drop(offset).take(limit).toList()
         return GedraListPage(page, ordered.size)
+    }
+
+    /**
+     * Narrows [rows] to those whose **state entries** satisfy [stateFilter] (issue #695, the survey-status
+     * filter) -- a predicate over a row's state rather than over the row, since the status lives in the states
+     * table. Applied after the row filter and before sort and paging on both listing paths, so the page and its
+     * `numAvailable` are over the matched set. One batch [readStates] over the rows, read with the same [scope]
+     * that admitted them: outside a transaction the states cache is whole and trusted, so this is a map lookup
+     * per row, and a row with no state row gets an empty list -- which a status filter matches nothing against.
+     * The predicate is generic over the entries, so a second form-singleton status composes with this one.
+     */
+    private fun applyStateFilter(
+        cxt: KdrCxt,
+        rows: List<GedraDataRow>,
+        scope: ReadScope,
+        stateFilter: ((List<Map<String, Any?>>) -> Boolean)?,
+    ): List<GedraDataRow> {
+        val test = stateFilter ?: return rows
+        if (rows.isEmpty()) return rows
+        val states = readStates(cxt, rows.map { it.gedraId }, scope)
+        return rows.filter { test(states[it.gedraId.fullId].orEmpty()) }
     }
 
     /**

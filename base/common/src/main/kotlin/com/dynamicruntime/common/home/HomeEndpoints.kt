@@ -9,6 +9,7 @@ import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.uiblock.UiCall
@@ -97,6 +98,9 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
             property(HFEAT.canSeeAllClients, "Whether the caller administers across clients (holds allClients).", required = true) {
                 type = SCT.boolean
             }
+            property(HFEAT.hasSurvey, "Whether the caller's client declares a survey workflow (issue #695) -- the forms list then offers its survey-status filter.", required = true) {
+                type = SCT.boolean
+            }
         }
         property(UIC.state, "Dynamic state for constructing the home page.", required = true) {
             type = SCT.kObject
@@ -137,6 +141,9 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
                 HFEAT.inlineLinks to c.layoutFlag(HCFG.homeInlineLinks, default = false),
                 HFEAT.canManageUsers to AdminRules.canManageUsers(c),
                 HFEAT.canSeeAllClients to AdminRules.canSeeAllClients(c),
+                // The caller's own client's registry (issue #695): a cross-client admin working in another
+                // client's surface reads that client's rows, but the filter keys on where the caller belongs.
+                HFEAT.hasSurvey to (WorkflowService.get(c).forClient(c.client).survey != null),
             ),
             UIC.state to buildMap {
                 put(HFLD.links, homeLinksFor(c))

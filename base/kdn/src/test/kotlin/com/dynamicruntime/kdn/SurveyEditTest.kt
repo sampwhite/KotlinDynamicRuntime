@@ -18,6 +18,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.SVYS
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
@@ -32,6 +33,8 @@ import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
@@ -192,6 +195,40 @@ class SurveyEditTest : StringSpec({
         (problems.first()[EP.failurePath] as String).isNotBlank() shouldBe true
         // Invalid is "needs action" too, so the task is the focus even though it is complete.
         v[WVF.focusTask] shouldBe "only"
+
+        // The listing's survey-status filter (#695) reads the STORED state, which is re-derived on a write and
+        // not by a view -- so the form still lists as valid, and no write can change that today: every write
+        // re-validates the stored entries, so a patch to any trait of this form is refused ("would leave 1
+        // problem in the stored entries") until the long value is fixed. Stored `invalid` is what the design's
+        // deferred batch-recompute job produces; the filter's `invalid` value is covered by the shared rule's
+        // own tests until then.
+        fun listed(status: String): List<Any?> = nUser.getItems(GEP.formDocs, mapOf(SVY.surveyStatus to status)).map { it[GDF.gedraId] }
+        listed(SVYS.valid) shouldContain gid
+        listed(SVYS.invalid) shouldNotContain gid
+    }
+
+    "the listing filters by survey status over the states cache, and counts what matched (#695)" {
+        // One form the survey finds valid, one it finds needing information (its required `detail` absent).
+        val done = create("detail", "complete")
+        val needs = create("note", "aside only")
+        // The whole envelope, since the total (`numAvailable`) rides beside the items rather than under `results`.
+        fun page(status: String?): Map<String, Any?> =
+            user.client.sendJsonGetRequest(GEP.formDocs, buildMap { status?.let { put(SVY.surveyStatus, it) } })
+        fun ids(page: Map<String, Any?>): List<Any?> = page[EP.items].toJsonListOfMaps().map { it[GDF.gedraId] }
+
+        val valid = page(SVYS.valid)
+        ids(valid) shouldContain done
+        ids(valid) shouldNotContain needs
+        val needsInfo = page(SVYS.needsInfo)
+        ids(needsInfo) shouldContain needs
+        ids(needsInfo) shouldNotContain done
+        // Applied before paging: the total is the matched set, not the scope's whole set, on each answer.
+        valid[EP.numAvailable] shouldBe ids(valid).size
+        needsInfo[EP.numAvailable] shouldBe ids(needsInfo).size
+        // No filter still lists both.
+        ids(page(null)) shouldContainAll listOf(done, needs)
+        // A value outside the closed choice is refused rather than silently matching nothing.
+        user.expectError(400, GEP.formDocs, args = mapOf(SVY.surveyStatus to "bogus"))
     }
 
     "a survey edit save folds new data into the form, and the returned item reflects it" {

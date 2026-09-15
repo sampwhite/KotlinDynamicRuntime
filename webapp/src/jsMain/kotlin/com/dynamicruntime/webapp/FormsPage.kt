@@ -112,6 +112,9 @@ val FormsPage = FC<Props> {
     // Whether the caller administers across clients (issue #668), from the same UI-config. Gates the Client
     // column and the filter-by-client control; false until known and when it cannot be learned.
     var canSeeAllClients by useState(false)
+    // Whether the caller's client declares a survey (issue #695), from the same UI-config: gates the survey-status
+    // filter. A fact about the client, not the rows, so the control stays while a filter matches nothing.
+    var hasSurvey by useState(false)
     // The clients to offer in the filter-by-client control (issue #668), fetched only for a cross-client caller.
     var clientChoices by useState<List<ClientChoice>>(emptyList())
     // The row to flash on arrival (issue #592): the form just saved on the edit page, read from the hash once
@@ -334,6 +337,7 @@ val FormsPage = FC<Props> {
             // clients fetch and the chosen-client restore must branch on the value in hand (issue #668).
             val seeAllClients = homeConfig?.canSeeAllClients == true
             canSeeAllClients = seeAllClients
+            hasSurvey = homeConfig?.hasSurvey == true
             // The clients to offer in the filter, for a cross-client caller (issue #668).
             if (seeAllClients) {
                 clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
@@ -726,11 +730,14 @@ val FormsPage = FC<Props> {
                 // the filters but leaves whose forms are shown to the scope bar -- as *applied*, so a user typed
                 // into the scope box and never applied is not applied by Clear either (#562 review).
                 val groups = searchGroups(ep.inputSchema)
-                if (groups.isNotEmpty()) {
+                // The panel is also worth drawing with no trait fields at all when the survey-status filter is
+                // on offer (issue #695): that one is every form's, not a trait's.
+                if (groups.isNotEmpty() || hasSurvey) {
                     FormsSearch {
                         this.groups = groups
                         values = searchDraft
                         applied = appliedSearch
+                        showSurveyStatus = hasSurvey
                         panelOpen = filtersOpen
                         onTogglePanel = { filtersOpen = !filtersOpen }
                         onChange = { name, value -> searchDraft = searchDraft + (name to value) }

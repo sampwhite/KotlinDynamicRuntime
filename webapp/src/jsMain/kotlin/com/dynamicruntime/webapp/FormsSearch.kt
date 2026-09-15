@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.gedra.SearchRole
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.decodeSearchParam
+import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import react.FC
@@ -19,10 +20,21 @@ import react.useState
 import web.cssom.ClassName
 
 /** The fields on the reserved side of the listing query -- paging, the user and client scope, the free-text
- *  term, the include-users and with-states flags, and the sort column and direction (#666, #668, #694) -- not
- *  trait search fields, and never shown as one; the user and client scopes have their own controls. */
-private val reservedQueryFields =
-    setOf(EP.offset, EP.limit, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir, GDF.withStates)
+ *  term, the include-users and with-states flags, the sort column and direction, and the survey-status filter
+ *  (#666, #668, #694, #695) -- not trait search fields, and never shown as one; the user and client scopes and
+ *  the survey status have their own controls. */
+private val reservedQueryFields = setOf(
+    EP.offset, EP.limit, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir, GDF.withStates,
+    SVY.surveyStatus,
+)
+
+/**
+ * The chip for an applied survey-status filter (issue #695), `Status: Valid`, or null when none is applied --
+ * beside the trait chips [activeFilterChips] makes, so a narrowed list never looks like the whole. Pure, and
+ * covered under `jsNodeTest`.
+ */
+fun surveyStatusChip(applied: Map<String, Any?>): String? =
+    SurveyStatus.fromWire(applied[SVY.surveyStatus]?.toString())?.let { "Status: ${it.label}" }
 
 /** How long a type-ahead waits after a keystroke before it fetches, so a fast typist makes one call not many. */
 private const val suggestDebounceMs = 200
@@ -55,6 +67,14 @@ private fun userPickOptions(picks: List<UserPick>): Array<dynamic> = picks.map {
     val o: dynamic = js("({})")
     o.label = pick.label
     o.value = pick.value
+    o
+}.toTypedArray()
+
+/** antd `{label, value}` options for the survey-status filter (issue #695): the three statuses, labelled as the chip labels them. */
+private fun surveyStatusOptions(): Array<dynamic> = SurveyStatus.entries.map { s ->
+    val o: dynamic = js("({})")
+    o.label = s.label
+    o.value = s.wire
     o
 }.toTypedArray()
 
@@ -281,6 +301,13 @@ external interface FormsSearchProps : Props {
     var onClear: () -> Unit
 
     /**
+     * Whether to offer the survey-status filter (issue #695): true when the caller's client declares a survey
+     * (the shell's `hasSurvey`), which is a fact about the client rather than about the rows on screen -- a
+     * control that vanished the moment a filter matched nothing could never be cleared. Unset means no.
+     */
+    var showSurveyStatus: Boolean?
+
+    /**
      * Fetches distinct value suggestions for a text trait (issue #581): given the trait id and a typed prefix,
      * calls back with the values. Null when the caller's surface carries no values endpoint (an older node),
      * and then the text boxes stay plain inputs. A failure calls back empty, leaving the box usable as text.
@@ -292,7 +319,7 @@ val FormsSearch = FC<FormsSearchProps> { props ->
     val groups = props.groups
     // The free-text term searches the text fields, so the box is offered only where there is one to search.
     val hasText = groups.any { it.kind == UsageKind.string }
-    val chips = activeFilterChips(groups, props.applied)
+    val chips = activeFilterChips(groups, props.applied) + listOfNotNull(surveyStatusChip(props.applied))
     val termApplied = props.applied[EI.q]?.toString()?.isNotBlank() == true
     div {
         className = ClassName("row forms-toolbar")
@@ -322,6 +349,20 @@ val FormsSearch = FC<FormsSearchProps> { props ->
     }
     filterChips(chips, props.panelOpen)
     filterWell(props.panelOpen, formsFiltersWellId) {
+        // The survey-status filter (issue #695): a closed choice over the three statuses the column shows, first
+        // in the well since it is the one filter every form has rather than a trait's. Cleared means any.
+        if (props.showSurveyStatus == true) {
+            filterGroup("Status") {
+                Select {
+                    value = props.values[SVY.surveyStatus]?.ifBlank { null }
+                    options = surveyStatusOptions()
+                    allowClear = true
+                    placeholder = "Any"
+                    style = js("({ minWidth: 160 })")
+                    onChange = { v -> props.onChange(SVY.surveyStatus, (v as? String) ?: "") }
+                }
+            }
+        }
         groups.forEach { group ->
             filterGroup(group.label) {
                 if (group.isRange) {

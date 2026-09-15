@@ -12,8 +12,11 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.SVYS
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.workflow.surveyStatusOf
 import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfEventType
@@ -226,6 +229,16 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             emptyIsAbsent = true
             allowCoerce = true
         }
+        // Filter by the form's global survey status (issue #695): a closed choice over the three statuses the
+        // column shows. Not a trait search field -- it reads the form's state, not a display value -- so it is
+        // applied over the states cache before paging, and `numAvailable` counts what matched. A form with no
+        // computed state matches none of them. Not admin-gated: a caller filters the forms they can already see.
+        property(SVY.surveyStatus, "Only forms whose survey status is this: ${SVYS.valid} / ${SVYS.needsInfo} / ${SVYS.invalid}. Absent means any.") {
+            emptyIsAbsent = true
+            option(SVYS.valid, "Valid")
+            option(SVYS.needsInfo, "Needs Info")
+            option(SVYS.invalid, "Invalid")
+        }
         // The sort (issue #666): a column to order by -- a display trait id, or a fixed column -- and a
         // direction. Absent means the default (most recently written first). Not admin-gated: any caller may
         // order the rows they can already see (`${GSORT.owner}` and `${GSORT.client}` are admin/allClients-only,
@@ -277,8 +290,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val usages = SchemaService.get(c).traitUsagesFor(c.client)
         val filter = searchFilter(c, request, usages)
         val sort = gedraSortFor(c, request, usages, scope)
+        // The survey-status filter (issue #695): a predicate over a row's state entries, through the same rule
+        // the status column reads them by, applied by `listGedras` over the states cache before paging.
+        val statusWanted = (request[SVY.surveyStatus] as? String)?.trim()?.ifEmpty { null }
+        val stateFilter: ((List<Map<String, Any?>>) -> Boolean)? = statusWanted?.let { wanted -> { states -> surveyStatusOf(states) == wanted } }
         val svc = GedraDataService.get(c)
-        val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort)
+        val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort, stateFilter)
         // Attach each form's state (issue #600) only when asked. One batch read over the page's ids -- cache-
         // first off the resident states cache, the misses (a form with no state, or a cache-absent node) sharing
         // one session -- read with the same `scope` that admitted the rows, so the state a caller sees is
