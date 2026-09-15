@@ -318,7 +318,10 @@ object LeaveGuard {
         return false
     }
 
-    /** The browser's blocking confirm, for a guard's `check`. */
+    /**
+     * The browser's blocking confirm, for a guard's `check` -- and for a control that discards the same edits in
+     * place (the survey editor's Done, issue #716), so the two ask through one dialog.
+     */
     fun confirmLeave(message: String): Boolean = js("window.confirm(message)") as Boolean
 }
 
