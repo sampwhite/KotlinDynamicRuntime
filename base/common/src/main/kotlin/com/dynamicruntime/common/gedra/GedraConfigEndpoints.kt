@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
@@ -27,7 +28,7 @@ import com.dynamicruntime.common.util.toOptStr
  *    handles the split. This is the surface an editor uses.
  *  - **Trait-level** ([CFEP.traits]) -- the interior, the stored config-trait entries with their per-slot
  *    accounting (each carries its own `createdAt`/`updatedAt`), so *when and by whom a single slot changed* is
- *    inspectable. This is a read view; individual slot **mutation** is deferred (see the note on [CFEP.traits]).
+ *    inspectable. This is a read view; the matching per-slot **edit** is [CFEP.bundlePatch] (issue #732).
  *
  * ### Authorization: client-scoped admin
  *
@@ -52,6 +53,7 @@ object CFEP {
     const val bundles = "/${SECT.clientAdmin}/config/bundles"
     const val bundle = "/${SECT.clientAdmin}/config/bundle"
     const val bundleWrite = "/${SECT.clientAdmin}/config/bundle/write"
+    const val bundlePatch = "/${SECT.clientAdmin}/config/bundle/patch"
     const val bundlePublish = "/${SECT.clientAdmin}/config/bundle/publish"
     const val traits = "/${SECT.clientAdmin}/config/traits"
     const val reload = "/${SECT.clientAdmin}/config/reload"
@@ -74,6 +76,8 @@ object CFEP {
     const val publishedAt = "publishedAt"
     const val slots = "slots"
     const val impliedDelete = "impliedDelete"
+    const val edits = "edits"
+    const val slot = "slot"
     const val entries = "entries"
     const val createdAt = "createdAt"
     const val updatedAt = "updatedAt"
@@ -175,6 +179,16 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
     ) { c, request -> cfgWriteBody(c, request) }
 
     generalEndpoint(
+        CFEP.bundlePatch,
+        "Edits a configuration's interior slot entries individually (issue #732): per-slot add/replace/merge/" +
+            "delete, addressed by slot + primary key, applied over the latest revision. The rest of the config " +
+            "is left as it was.",
+        HttpMethod.POST,
+        outputRef = CFEP.bundleType,
+        inputFields = { configPatchInput() },
+    ) { c, request -> cfgPatchBody(c, request) }
+
+    generalEndpoint(
         CFEP.bundlePublish,
         "Publishes a configuration's latest editable revision.",
         HttpMethod.POST,
@@ -192,10 +206,10 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
         },
-        // The trait-level VIEW. Individual slot mutation (Patch semantics over these entries) is deferred: a raw
-        // per-slot write would bypass the `GedraConfig` builder that the bundle write validates through, and a
-        // config-trait validation union to check a raw slot against does not exist yet. Until it does, editing
-        // goes through the bundle write, which is safe by construction; this view makes the accounting legible.
+        // The trait-level VIEW; the matching per-slot **edit** is `bundle/patch` (issue #732), which applies the
+        // edits over the current slots and writes the whole set through the validated bundle write rather than
+        // touching a raw slot -- so it needs no config-trait validation union of its own. This view makes the
+        // per-slot accounting legible.
     ) { c, request -> cfgTraitsBody(c, request) }
 
     type(CFEP.reloadResultType) {
@@ -279,6 +293,27 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     return bundleOf(c, GedraConfigService.get(c).writeConfig(c, config, impliedDelete))
 }
 
+private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    val name = requireName(request)
+    val svc = GedraConfigService.get(c)
+    val row = svc.readLatest(c, configId(c, name))
+        ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
+    val edits = request[CFEP.edits].toJsonListOfMaps()
+    if (edits.isEmpty()) {
+        throw KdrException.mkInput("A config patch must carry at least one edit.")
+    }
+    // Apply the edits over the current slots (issue #732), then write the whole edited set through the same
+    // validated bundle write: `reassembleGedraConfig` rebuilds and validates the config as source would, and
+    // `writeConfig`'s per-entry diff re-stamps only the entries the patch actually changed while the rest keep
+    // their accounting. So a per-slot patch needs no separate validation path -- the write path is the one that
+    // already exists. Read the **raw** slots (not the emission-redacted ones), so an untouched `testFeatures`
+    // round-trips on a test instance and, off one, `writeConfig` refuses the write rather than silently dropping
+    // it -- the explicit-write rule of issue #685.
+    val edited = applyConfigSlotEdits(row.entriesBySlot(), edits, svc.configSlotPrimaryKeys())
+    val config = reassembleGedraConfig(c, name, row.resolvedNamespace(), c.client, edited)
+    return bundleOf(c, svc.writeConfig(c, config, impliedDelete = true))
+}
+
 private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     val name = requireName(request)
     // Publish refuses a class with no revision; surface that as a 404 rather than a 400, since to this caller a
@@ -347,6 +382,67 @@ private fun slotsOf(raw: Any?, knownSlots: Set<String>): Map<String, List<Map<St
     }
 }
 
+/** The shared input of the per-slot config patch (issue #732): the config name, and the edits to apply. Each
+ *  edit is an open object `{slot, action, data}` -- its `data` is a slot-specific shape validated on reassemble,
+ *  not here. */
+private fun InputFieldsBuilder.configPatchInput() {
+    field(CFEP.name, "The configuration's name.", required = true)
+    field(
+        CFEP.edits,
+        "The per-slot edits to apply, in order. Each is `{${CFEP.slot}, ${GED.action}, ${GE.data}}`: the slot " +
+            "(a config-trait id), the action (${GedraEditAction.entries.joinToString(", ") { it.name }}), and the " +
+            "entry data (carrying the slot's primary-key fields, which say which entry is meant).",
+        required = true,
+    ) {
+        type = SCT.array
+        items { type = SCT.kObject }
+    }
+}
+
+/**
+ * Applies per-slot [edits] over the [current] slots of a config (issue #732), returning the new slot set --
+ * the pure core of the config patch, so it is unit-testable without a database. Each edit names a [CFEP.slot]
+ * (a config-trait id), a [GED.action], and its [GE.data]; the entry it addresses within the slot is the one
+ * whose primary-key fields ([pkBySlot]) all match the edit's data, or -- for a single-instance slot with no
+ * primary key, like `clientDef` -- the one entry there is. An unknown slot or action is a 400, not a silent
+ * no-op. The three actions mirror [GedraEditAction]: delete-or-no-op, add-or-merge, add-or-replace.
+ *
+ * It does not validate the entry data: that is `reassembleGedraConfig`'s job over the whole result, which is
+ * how the patch reuses the bundle write's validation rather than duplicating it.
+ */
+fun applyConfigSlotEdits(
+    current: Map<String, List<Map<String, Any?>>>,
+    edits: List<Map<String, Any?>>,
+    pkBySlot: Map<String, List<String>>,
+): Map<String, List<Map<String, Any?>>> {
+    val out = LinkedHashMap<String, MutableList<Map<String, Any?>>>()
+    current.forEach { (slot, entries) -> out[slot] = entries.toMutableList() }
+    for (edit in edits) {
+        val slot = edit[CFEP.slot].toOptStr()
+            ?: throw KdrException.mkInput("Each config edit must name its '${CFEP.slot}'.")
+        val pk = pkBySlot[slot]
+            ?: throw KdrException.mkInput("Unknown config slot '$slot'. The slots are ${pkBySlot.keys.joinToString(", ")}.")
+        val actionName = edit[GED.action].toOptStr()
+            ?: throw KdrException.mkInput("Config edit for '$slot' must name its '${GED.action}'.")
+        val action = GedraEditAction.entries.firstOrNull { it.name == actionName }
+            ?: throw KdrException.mkInput(
+                "Unknown edit action '$actionName'. The actions are ${GedraEditAction.entries.joinToString(", ") { it.name }}.",
+            )
+        val data = edit[GE.data].toJsonMapOrEmpty()
+        val list = out.getOrPut(slot) { mutableListOf() }
+        // The addressed entry: pk-fields all equal (an empty pk -- a single-instance slot -- matches the one
+        // entry there is, since `all` over no fields is true).
+        val idx = list.indexOfFirst { existing -> pk.all { existing[it] == data[it] } }
+        when (action) {
+            GedraEditAction.deleteOrNoOp -> if (idx >= 0) list.removeAt(idx)
+            GedraEditAction.addOrReplace -> if (idx >= 0) list[idx] = data else list.add(data)
+            GedraEditAction.addOrMerge -> if (idx >= 0) list[idx] = list[idx] + data else list.add(data)
+        }
+    }
+    // Drop a slot the edits emptied, so the write does not carry an empty slot array.
+    return out.filterValues { it.isNotEmpty() }.mapValues { it.value.toList() }
+}
+
 /** A listing summary of one config revision. */
 private fun summaryOf(row: GedraConfigRow): Map<String, Any?> = dropNulls(
     linkedMapOf(
@@ -406,6 +502,7 @@ object ACEP {
     const val bundles = "/${SECT.admin}/client/config/bundles"
     const val bundle = "/${SECT.admin}/client/config/bundle"
     const val bundleWrite = "/${SECT.admin}/client/config/bundle/write"
+    const val bundlePatch = "/${SECT.admin}/client/config/bundle/patch"
     const val bundlePublish = "/${SECT.admin}/client/config/bundle/publish"
     const val traits = "/${SECT.admin}/client/config/traits"
     const val reload = "/${SECT.admin}/client/config/reload"
@@ -461,6 +558,18 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         // The one endpoint that may name a not-yet-existing client: writing a `clientDef` slot for a fresh id is
         // how a brand-new client is created (made present by the next reload), so it skips the existence guard.
     ) { c, request -> cfgWriteBody(adminConfigCxt(c, request, requireExisting = false), request) }
+
+    generalEndpoint(
+        ACEP.bundlePatch,
+        "Edits a named client's configuration slot entries individually -- per-slot add/replace/merge/delete " +
+            "over the latest revision (issue #732).",
+        HttpMethod.POST,
+        outputRef = "${CFEP.namespace}.${CFEP.bundleType}",
+        inputFields = {
+            field(CFEP.client, "The client that owns the configuration.", required = true)
+            configPatchInput()
+        },
+    ) { c, request -> cfgPatchBody(adminConfigCxt(c, request), request) }
 
     generalEndpoint(
         ACEP.bundlePublish,

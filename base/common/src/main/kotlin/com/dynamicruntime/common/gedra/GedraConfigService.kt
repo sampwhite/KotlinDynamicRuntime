@@ -89,6 +89,9 @@ class GedraConfigService : ServiceInitializer {
     /** The config slots a bundle may carry -- the config-trait ids (issue #627), for refusing an unknown one. */
     fun knownSlots(): Set<String> = slotPrimaryKeys.keys
 
+    /** Each config slot's primary-key fields (issue #732): how a per-slot patch addresses one entry in a slot. */
+    fun configSlotPrimaryKeys(): Map<String, List<String>> = slotPrimaryKeys
+
     private fun configTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GCT.gedraConfig]
         ?: throw KdrException("${GCT.gedraConfig} table is not registered in the schema store.")
 
