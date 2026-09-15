@@ -328,6 +328,12 @@ class WfDef(
     val entry: WfEntry,
     tasks: List<WfTask>,
     functionUsages: List<WfFunctionUsage> = emptyList(),
+    /**
+     * What the workflow is called (issue #719) -- a page's title over its form, written like a task's label: a
+     * template evaluated in two passes, so it can pull from a fragment file. Empty when the definition gives
+     * none, and a page then falls back to its own generic title ("Edit form", "New form").
+     */
+    val label: String = "",
 ) {
     /** The tasks, in the order they are presented. */
     val tasks: List<WfTask> = tasks.toList()
@@ -491,6 +497,7 @@ object WfDefSchema {
             description = "A workflow definition: how it is entered, and its tasks."
             property(WFD.workflowId, "The workflow's base name; its client comes from the bundle declaring it.", required = true)
             property(WFD.entry, "How the workflow is entered.", required = true) { options(WfEntry.entries) }
+            property(WFD.label, "What the workflow is called -- a page's title, a template evaluated in two passes like a task's label. Optional; absent, a page uses its own generic title.")
             property(WFD.tasks, "The tasks, in presentation order.", required = true) {
                 type = SCT.array
                 allowCoerce = true
@@ -565,6 +572,7 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
     return WfDef(
         workflowId = m[WFD.workflowId].toOptStr() ?: "",
         entry = enumNamed(WfEntry.entries, m[WFD.entry]),
+        label = m[WFD.label].toOptStr() ?: "",
         tasks = m[WFD.tasks].toJsonListOfMaps().map { t ->
             WfTask(
                 id = t[WFD.id].toOptStr() ?: "",
@@ -607,6 +615,13 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     private val tasks = mutableListOf<Map<String, Any?>>()
     private val functions = mutableListOf<Map<String, Any?>>()
 
+    /**
+     * What the workflow is called (issue #719): a page's title over its form. A template like a task's label,
+     * so `%{@t("file.namespace.key")}` pulls it from a fragment file and the boot checks the pull resolves.
+     * Leave unset for a page's own generic title.
+     */
+    var label: String? = null
+
     /** Declares a task. */
     fun task(id: String, label: String, build: WfTaskBuilder.() -> Unit) {
         tasks.add(WfTaskBuilder(id, label).apply(build).build())
@@ -625,6 +640,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     fun build(): Map<String, Any?> = buildMap {
         put(WFD.workflowId, workflowId)
         put(WFD.entry, entry.name)
+        label?.let { put(WFD.label, it) }
         put(WFD.tasks, tasks.toList())
         if (functions.isNotEmpty()) put(WFD.functions, functions.toList())
     }

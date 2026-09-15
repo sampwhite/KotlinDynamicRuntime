@@ -160,9 +160,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     // what the user has typed. "Done" returns to read-only showing `stored`.
                     if (isEdit) {
                         // The refreshed snapshot comes from the returned VIEW's per-task entries -- the same
-                        // presented shape the seed used, prefill defaults included (issue #679) -- not the raw
-                        // stored item, or a prefilled task the user never touched would read as unsaved from here
-                        // on. The item is the fallback only for a save that carried no view.
+                        // presented shape the seed used (filled prefill defaults seeded, offer ones held aside;
+                        // issues #679/#710) -- not the raw stored item, or a prefilled task the user never touched
+                        // would read as unsaved from here on. The item is the fallback only for a save that
+                        // carried no view.
                         val storedNow = outcome.view?.let { v -> seedValuesOf(v) }
                             ?: seedValuesFromEntries(outcome.item[GDF.entries].toJsonListOfMaps())
                         stored = storedNow
@@ -204,12 +205,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     fun statusFor(task: WfTaskView, unsaved: Boolean): WfTaskStatus? =
         if (unsaved) localTaskStatus(task, valuesByTrait) else statuses[task.id]
 
-    // One task's body -- the "TaskPanel" (issue #700): its label, each trait's form, and its Save while editing.
-    // The rail layout shows one of these at a time; the single-panel layout shows each task's in turn.
-    fun ChildrenBuilder.taskPanel(task: WfTaskView) {
+    // One task's body -- the "TaskPanel" (issue #700): its label (when something else does not already name the
+    // task, issue #719), each trait's form, and its Save while editing. The rail layout shows one of these at a
+    // time; the single-panel layout shows each task's in turn.
+    fun ChildrenBuilder.taskPanel(task: WfTaskView, showLabel: Boolean = true) {
         div {
             className = ClassName("wf-task")
-            if (wf.showTaskList && task.label.isNotBlank()) {
+            if (showLabel && wf.showTaskList && task.label.isNotBlank()) {
                 Markdown { source = task.label; inlineUi = true }
             }
             task.traits.forEach { trait ->
@@ -304,11 +306,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 
     div {
         className = ClassName("card wide")
-        h1 { +if (isEdit) "Edit form" else "New form" }
+        // The page's title (issue #719): the workflow's own label when its definition gives one, else the
+        // generic title. Inline markdown, the phrase renderer a task label's copy already goes through.
+        val title = wf.label.ifBlank { if (isEdit) "Edit form" else "New form" }
 
         val created = savedItem
         // Creation confirmation: only for a create (a survey edit stays on the form after saving).
         if (created != null && !isEdit) {
+            h1 { MarkdownInline { source = title } }
             val id = created[GDF.gedraId] as? String ?: ""
             p {
                 className = ClassName("form-ok")
@@ -344,49 +349,55 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 }
             }
         } else {
-            // A way back to the listing from the form (issue #671 for the create fill-out; extended to the survey
-            // in #694): the create success screen has its own, but the fill-out form, and the survey's read-only
-            // and edit views -- including an arrival straight into edit mode from the status chip -- otherwise
-            // had none. The shared forms back link, so it returns to the same filtered, sorted listing.
-            formsBackToListing()
-            // The header row: the survey edit offers an Edit / Done toggle over the read-only "View All Data".
-            if (isEdit) {
-                div {
-                    className = ClassName("row")
-                    if (editing) {
-                        Button {
-                            // Done reverts to the stored values -- a discard, when there are unsaved edits. The
-                            // leave guard lives in the router and only ever sees a navigation, so a button that
-                            // drops the same edits in place has to ask for itself (issue #716), with the guard's
-                            // own dialog. A clean Done stays silent: there is nothing to lose.
-                            onClick = {
-                                if (!anyUnsaved || LeaveGuard.confirmLeave(discardEditsPrompt)) {
-                                    valuesByTrait = stored; failuresByTrait = emptyMap(); unmetTraits = emptySet()
-                                    committedByTrait = emptyMap(); wholeChecked = emptySet(); editing = false
+            // One header line (issue #719): the back link, the title beside it, and the actions right-aligned --
+            // where the title, the link and the actions each took a band of their own, so a large form starts
+            // higher. The back link (issue #671 for the create fill-out, #694 for the survey's views, including
+            // an arrival straight into edit mode from the status chip) is the shared forms link, so it returns
+            // to the same filtered, sorted listing. The survey edit's actions are an Edit / Done toggle over
+            // the read-only "View Info", with the raw editor beside Edit and the saved note beside either.
+            div {
+                className = ClassName("wf-header")
+                formsBackLink()
+                h1 { MarkdownInline { source = title } }
+                if (isEdit) {
+                    div {
+                        className = ClassName("wf-actions")
+                        if (editing) {
+                            Button {
+                                // Done reverts to the stored values -- a discard, when there are unsaved edits.
+                                // The leave guard lives in the router and only ever sees a navigation, so a
+                                // button that drops the same edits in place has to ask for itself (issue #716),
+                                // with the guard's own dialog. A clean Done stays silent: there is nothing to
+                                // lose.
+                                onClick = {
+                                    if (!anyUnsaved || LeaveGuard.confirmLeave(discardEditsPrompt)) {
+                                        valuesByTrait = stored; failuresByTrait = emptyMap(); unmetTraits = emptySet()
+                                        committedByTrait = emptyMap(); wholeChecked = emptySet(); editing = false
+                                    }
+                                }
+                                +"Done"
+                            }
+                        } else {
+                            Button {
+                                type = "primary"
+                                onClick = { editing = true }
+                                +"Edit"
+                            }
+                            // The raw editor, for the traits the survey does not show (issue #694): offered only
+                            // when the caller's surface carries the patch endpoint (the page decides; null hides it).
+                            props.onRawEdit?.let { rawEdit ->
+                                Button {
+                                    type = "link"
+                                    onClick = { rawEdit() }
+                                    +"Raw edit"
                                 }
                             }
-                            +"Done"
                         }
-                    } else {
-                        Button {
-                            type = "primary"
-                            onClick = { editing = true }
-                            +"Edit"
-                        }
-                        // The raw editor, for the traits the survey does not show (issue #694): offered only when
-                        // the caller's surface carries the patch endpoint (the page decides; null hides it).
-                        props.onRawEdit?.let { rawEdit ->
-                            Button {
-                                type = "link"
-                                onClick = { rawEdit() }
-                                +"Raw edit"
+                        savedItem?.let {
+                            p {
+                                className = ClassName("form-ok")
+                                +"✓ Saved."
                             }
-                        }
-                    }
-                    savedItem?.let {
-                        p {
-                            className = ClassName("form-ok")
-                            +"✓ Saved."
                         }
                     }
                 }
@@ -405,7 +416,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     }
                     div {
                         className = ClassName("wf-panel")
-                        taskPanel(wf.tasks.firstOrNull { it.id == active } ?: wf.tasks.first())
+                        // The rail entry the user just clicked is the task's label; the panel does not repeat it
+                        // (issue #719) and opens on the trait heading.
+                        taskPanel(wf.tasks.firstOrNull { it.id == active } ?: wf.tasks.first(), showLabel = false)
                     }
                 }
             } else {

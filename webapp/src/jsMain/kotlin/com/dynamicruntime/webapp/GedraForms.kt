@@ -160,11 +160,18 @@ fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String
  * Both the create and edit pages render this, so their way back cannot drift.
  */
 fun ChildrenBuilder.formsBackToListing() {
-    val forward = formsSearchHashParams(formsSearchFromHash(hashParams()))
     div {
         className = ClassName("row")
-        backToListing(HMENU.pageForms, forward)
+        formsBackLink()
     }
+}
+
+/**
+ * The bare back link of [formsBackToListing], for a header that lays it out itself (the workflow form's one
+ * header line, issue #719): the same target and the same forwarded search, without the `.row` around it.
+ */
+fun ChildrenBuilder.formsBackLink() {
+    backToListing(HMENU.pageForms, formsSearchHashParams(formsSearchFromHash(hashParams())))
 }
 
 /** The declared query keys that are not applied-search values: paging, the owner-block flag, the sort

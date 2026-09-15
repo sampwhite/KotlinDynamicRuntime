@@ -184,6 +184,26 @@ class WorkflowRegistryTest : StringSpec({
             .message shouldContain "does not parse"
     }
 
+    "the workflow's own label rides the same check (issue #719)" {
+        fun titled(label: String?): GedraConfigBuilderBlock = {
+            workflow("createForm", WfEntry.creation) {
+                this.label = label
+                task("only", "Create") {
+                    trait("name")
+                    save("go", "Create")
+                }
+            }
+        }
+        fun withTitle(label: String?) = listOf(globalTraits(devCxt), client(devCxt, "acme", listOf("name"), titled(label)))
+        // Absent, or a resolving pull: fine, and the definition carries what was written.
+        build(devCxt, withTitle(null)).second.shouldBeEmpty()
+        build(devCxt, withTitle("""%{@t("wfCopy.identify.label")}""")).second.shouldBeEmpty()
+        build(devCxt, withTitle("Plain title")).first.forClient("acme").creation.shouldNotBeNull().def.label shouldBe "Plain title"
+        // A pull that cannot resolve is refused, named as the workflow's label rather than a task's.
+        shouldThrow<KdrException> { build(devCxt, withTitle("""%{@t("wfCopy.identify.gone")}""")) }
+            .message shouldContain "has a label that"
+    }
+
     "in production a bad workflow is dropped from its scope and the rest is kept" {
         val configs = listOf(
             globalTraits(prodCxt, creation("createForm", "name")),

@@ -3,14 +3,17 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GSRC
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchLayout
+import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseDeliveredLayouts
 import com.dynamicruntime.common.schema.parseSchemaTypes
@@ -92,6 +95,11 @@ class WorkflowView(
     val showTaskList: Boolean,
     val tasks: List<WfTaskView>,
     /**
+     * What the workflow is called (issue #719), resolved like a task's label -- the page's title over the form.
+     * Empty when the definition gives none, and the page then uses its own generic title.
+     */
+    val label: String = "",
+    /**
      * The caller's frontend-delivered cfacts (issue #569), `name -> present`, which each rendered trait's
      * [SchemaForm] evaluates a property's `g-visibleWhen` against — so an admin-only field is hidden from an
      * ordinary caller. The same shape the endpoint catalog delivers.
@@ -168,6 +176,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         entry = results[WFD.entry].toOptStr() ?: "",
         showTaskList = results[WVF.showTaskList] == true,
         tasks = tasks,
+        label = results[WFD.label].toOptStr().orEmpty(),
         cfacts = cfacts,
         layouts = layouts,
         focusTask = results[WVF.focusTask].toOptStr(),
@@ -306,19 +315,80 @@ fun shownFailures(all: List<SchFailure>, committed: Set<String>, wholeTraitCheck
  * The values to seed a task's fields from, keyed by trait id (issue #659): the inverse of [workflowSaveEntries].
  * A task's [WfTaskView.entries] are `{traitId, data}` maps; this pulls each `data` out under its `traitId`, so a
  * survey edit renders each field pre-filled with what is stored. A creation task has no entries, so this is empty.
+ *
+ * This is the **raw** read that keeps every entry -- used for a stored item straight off a save, which carries
+ * only entered (`source=user`) data. To seed a *resolved view*, whose entries may include supplied defaults,
+ * use [seedValuesOf], which splits them by mode.
  */
 fun seedValuesFromEntries(entries: List<Map<String, Any?>>): Map<String, Map<String, Any?>> =
     entries.mapNotNull { entry ->
         entry[GE.traitId].toOptStr()?.let { it to entry[GE.data].toJsonMapOrEmpty() }
     }.toMap()
 
+/** Whether a stored entry is a **supplied default** (`source=prefill`, issue #679/#710), not entered data. */
+private fun isPrefillEntry(entry: Map<String, Any?>): Boolean = entry[GE.source].toOptStr() == GSRC.prefill
+
+/**
+ * How a supplied default for [field] of [trait] is presented (issue #709/#710), from the trait's `g-layout`
+ * [SchLayoutField.defaultMode]; [SLDM.filled] when the layout says nothing -- the surface's fallback lives here,
+ * so a layout carries the mode only to override it.
+ */
+fun defaultModeOf(trait: WfTraitView, field: String): String =
+    trait.layout?.fieldFor(field)?.defaultMode ?: SLDM.filled
+
+/**
+ * How a resolved view's **supplied defaults** are presented (issue #710). A default is any entry with
+ * `source=prefill`; each of its fields is handled by that field's [defaultModeOf]:
+ *  - **`filled`** seeds the working value ([working]) -- shown in the control, marked as a default;
+ *  - **`offer`** does *not* seed; its value is held in [offered] for a "use it" link, so the control stays empty.
+ *
+ * [modes] records the mode of every defaulted field, so the form can mark it. Entered (`source=user`) entries go
+ * whole into [working], as before -- a real value is never a default.
+ */
+class PrefillPresentation(
+    val working: Map<String, Map<String, Any?>>,
+    val offered: Map<String, Map<String, Any?>>,
+    val modes: Map<String, Map<String, String>>,
+)
+
+/** Splits [view]'s entries into the [PrefillPresentation] the form seeds and marks from (issue #710). */
+fun prefillPresentationOf(view: WorkflowView): PrefillPresentation {
+    val working = LinkedHashMap<String, Map<String, Any?>>()
+    val offered = LinkedHashMap<String, Map<String, Any?>>()
+    val modes = LinkedHashMap<String, Map<String, String>>()
+    for (task in view.tasks) {
+        val traitById = task.traits.associateBy { it.traitId }
+        for (entry in task.entries) {
+            val traitId = entry[GE.traitId].toOptStr() ?: continue
+            val data = entry[GE.data].toJsonMapOrEmpty()
+            if (!isPrefillEntry(entry)) {
+                working[traitId] = data
+                continue
+            }
+            val trait = traitById[traitId]
+            val filled = LinkedHashMap<String, Any?>()
+            val offer = LinkedHashMap<String, Any?>()
+            val fieldModes = LinkedHashMap<String, String>()
+            for ((field, value) in data) {
+                val mode = trait?.let { defaultModeOf(it, field) } ?: SLDM.filled
+                fieldModes[field] = mode
+                if (mode == SLDM.offer) offer[field] = value else filled[field] = value
+            }
+            if (filled.isNotEmpty()) working[traitId] = filled
+            if (offer.isNotEmpty()) offered[traitId] = offer
+            modes[traitId] = fieldModes
+        }
+    }
+    return PrefillPresentation(working, offered, modes)
+}
+
 /**
  * Every task's seed values in one map, keyed by trait id (trait ids are unique across a workflow's tasks) -- what
  * the form starts from, and what it re-snapshots from the refreshed view a survey edit save returns (issue
- * #700), so the two are the same *presented* shape (prefill defaults included) and never disagree about "unsaved".
+ * #700). Supplied defaults are split by mode ([prefillPresentationOf]): a `filled` default seeds, an `offer` one
+ * does not (it is offered, not entered), so the seed and the presented form never disagree about "unsaved".
  */
-fun seedValuesOf(view: WorkflowView): Map<String, Map<String, Any?>> =
-    view.tasks.flatMap { seedValuesFromEntries(it.entries).entries }.associate { it.key to it.value }
+fun seedValuesOf(view: WorkflowView): Map<String, Map<String, Any?>> = prefillPresentationOf(view).working
 
 /**
  * The `entries` a save posts, from the values collected per trait (issue #536): each is a `{traitId, data}`

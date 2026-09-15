@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GSRC
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
@@ -10,10 +11,12 @@ import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -54,6 +57,81 @@ class WorkflowModelTest {
             ),
         ),
     )
+
+    // A survey view carrying a `userInfo` trait (name, email) whose entry [source] is set: a layout marks `name`
+    // filled and `email` offer, so the two modes can be told apart (issue #710).
+    private fun prefillView(source: String): Map<String, Any?> = mapOf(
+        WVF.found to true,
+        WFD.workflowId to "reviewForm",
+        WFD.entry to "survey",
+        WVF.showTaskList to false,
+        WVF.layouts to mapOf(
+            "ns.UserInfoData" to mapOf(
+                SL.schemaFields to listOf(
+                    mapOf(SL.field to "name", SL.defaultMode to SLDM.filled),
+                    mapOf(SL.field to "email", SL.defaultMode to SLDM.offer),
+                ),
+            ),
+        ),
+        SCH.dDefs to mapOf(
+            "ns.UserInfoData" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    "name" to mapOf(SCH.type to SCT.string),
+                    "email" to mapOf(SCH.type to SCT.string),
+                ),
+            ),
+        ),
+        WFD.tasks to listOf(
+            mapOf(
+                WFD.id to "profile",
+                WFD.label to "Profile",
+                WFD.traits to listOf(
+                    mapOf(WFD.traitId to "userInfo", WFD.required to false, WVF.schemaRef to "#/${SCH.dDefs}/ns.UserInfoData"),
+                ),
+                WFD.saves to listOf(mapOf(WFD.id to "save", WFD.label to "Save", WFD.kind to "edit")),
+                WVF.entries to listOf(
+                    mapOf(GE.traitId to "userInfo", GE.data to mapOf("name" to "Jane", "email" to "j@x.com"), GE.source to source),
+                ),
+            ),
+        ),
+    )
+
+    @Test
+    fun prefillFilledSeedsButOfferDoesNot() {
+        val p = prefillPresentationOf(parseWorkflowView(prefillView(GSRC.prefill))!!)
+        // A filled default seeds the working value; an offer one does not (it is held aside for the link).
+        assertEquals(mapOf("name" to "Jane"), p.working["userInfo"])
+        assertFalse(p.working.getValue("userInfo").containsKey("email"))
+        assertEquals(mapOf("email" to "j@x.com"), p.offered["userInfo"])
+        // Both defaulted fields carry their mode, for the markers.
+        assertEquals(SLDM.filled, p.modes.getValue("userInfo")["name"])
+        assertEquals(SLDM.offer, p.modes.getValue("userInfo")["email"])
+    }
+
+    @Test
+    fun seedValuesOfIsTheWorkingSplit() {
+        val wf = parseWorkflowView(prefillView(GSRC.prefill))!!
+        assertEquals(prefillPresentationOf(wf).working, seedValuesOf(wf))
+    }
+
+    @Test
+    fun enteredEntriesAreNotDefaults() {
+        // A real (source=user) entry goes whole into working, with no offered values and no modes.
+        val p = prefillPresentationOf(parseWorkflowView(prefillView(GSRC.user))!!)
+        assertEquals(mapOf("name" to "Jane", "email" to "j@x.com"), p.working["userInfo"])
+        assertTrue(p.offered.isEmpty())
+        assertTrue(p.modes.isEmpty())
+    }
+
+    @Test
+    fun defaultModeDefaultsToFilledWithoutALayout() {
+        // With no layout, a prefilled field defaults to filled, so both fields seed and none is offered.
+        val p = prefillPresentationOf(parseWorkflowView(prefillView(GSRC.prefill) - WVF.layouts)!!)
+        assertEquals(mapOf("name" to "Jane", "email" to "j@x.com"), p.working["userInfo"])
+        assertTrue(p.offered.isEmpty())
+        assertEquals(SLDM.filled, p.modes.getValue("userInfo")["email"])
+    }
 
     @Test
     fun foundFalseParsesToNull() {
@@ -328,6 +406,14 @@ class WorkflowModelTest {
         assertEquals("name", bad.problems.single().path)
         assertEquals("name", bad.problems.single().traitId)
         assertEquals(RailMark.invalid, railMark(bad))
+    }
+
+    /** The workflow's own label (issue #719) parses through; absent, it is empty and the page titles itself. */
+    @Test
+    fun carriesTheWorkflowLabel() {
+        assertEquals("", parseWorkflowView(view())!!.label)
+        val titled = view().toMutableMap().apply { put(WFD.label, "Expense report review") }
+        assertEquals("Expense report review", parseWorkflowView(titled)!!.label)
     }
 
     /** Which failures the panel shows: the committed fields' (and what lies beneath them) until the trait is whole-checked. */

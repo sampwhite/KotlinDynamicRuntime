@@ -6,6 +6,8 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLC
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GED
+import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
@@ -101,6 +103,60 @@ class GedraConfigEndpointTest : StringSpec({
         v2[CFEP.published] shouldBe false
         u.getItem(CFEP.bundle, mapOf(CFEP.name to name))[CFEP.slots].toJsonMapOrEmpty()[CCT.cfactDef]
             .toJsonListOfMaps().single()[CCT.description] shouldBe "Ready v2"
+    }
+
+    "a patch edits one slot entry and leaves the rest (issue #732)" {
+        val u = admin()
+        val name = "patchtarget"
+        writeBundle(u, name, "Ready v1") // cfactDef 'ready' (desc "Ready v1", group "grp") + schemaDef namespace.Shared
+
+        // Merge a new description into the 'ready' cfact; touch nothing else.
+        val patched = u.postData(
+            CFEP.bundlePatch,
+            mapOf(
+                CFEP.name to name,
+                CFEP.edits to listOf(
+                    mapOf(
+                        CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrMerge.name,
+                        GE.data to mapOf(CCT.name to "ready", CCT.description to "Ready patched"),
+                    ),
+                ),
+            ),
+        )
+        // Still the same editable revision, edited in place.
+        patched[CFEP.version] shouldBe 1
+        val slots = patched[CFEP.slots].toJsonMapOrEmpty()
+        val cfact = slots[CCT.cfactDef].toJsonListOfMaps().single()
+        cfact[CCT.description] shouldBe "Ready patched"
+        cfact[CCT.group] shouldBe "grp" // merge kept the fields it did not name
+        // The untouched slot is carried through unchanged.
+        slots[CCT.schemaDef].toJsonListOfMaps().single()[CCT.typeName] shouldBe "$namespace.Shared"
+
+        // A delete removes an entry; a delete of an absent one is a no-op (both in one patch).
+        val afterDelete = u.postData(
+            CFEP.bundlePatch,
+            mapOf(
+                CFEP.name to name,
+                CFEP.edits to listOf(
+                    mapOf(CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.deleteOrNoOp.name, GE.data to mapOf(CCT.name to "ready")),
+                    mapOf(CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.deleteOrNoOp.name, GE.data to mapOf(CCT.name to "gone")),
+                ),
+            ),
+        )
+        afterDelete[CFEP.slots].toJsonMapOrEmpty().keys shouldContainExactlyInAnyOrder listOf(CCT.schemaDef)
+    }
+
+    "a patch with an unknown slot is refused" {
+        val u = admin()
+        writeBundle(u, "patchbadslot", "Ready v1")
+        u.expectError(
+            EXC.badInput,
+            CFEP.bundlePatch,
+            mapOf(
+                CFEP.name to "patchbadslot",
+                CFEP.edits to listOf(mapOf(CFEP.slot to "cfactDefs", GED.action to GedraEditAction.addOrReplace.name, GE.data to emptyMap<String, Any?>())),
+            ),
+        )
     }
 
     "authoring into the reserved globalconfig namespace is refused" {
