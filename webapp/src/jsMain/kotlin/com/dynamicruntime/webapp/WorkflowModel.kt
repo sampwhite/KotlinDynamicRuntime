@@ -217,7 +217,8 @@ fun railExplanation(status: WfTaskStatus?, unsaved: Boolean, nameOf: (String) ->
 /**
  * Whether a task has edits not yet saved (issue #700): any of its traits' working [values] differ from the last
  * [stored] ones. Client-side only -- the backend has no notion of an unsaved draft -- and orthogonal to the
- * status mark, so the rail overlays it as a badge rather than drawing it as a fourth state.
+ * status mark, so the rail overlays it as a badge rather than drawing it as a fourth state. The same answer
+ * gates the task's Save (issue #717): a task with nothing unsaved has nothing to save.
  */
 fun taskUnsaved(
     task: WfTaskView,
