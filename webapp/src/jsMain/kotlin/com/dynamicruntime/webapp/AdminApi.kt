@@ -5,6 +5,8 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.UADEP
@@ -184,6 +186,16 @@ object AdminApi {
      * only an `allClients` caller can ask it -- which is exactly the caller who is offered the choice. A
      * scoped administrator never calls this, because their client is not a decision.
      */
+    /**
+     * Creates a form document **on behalf of** [userRef] (a numeric id or email), owned by that user in their
+     * own client (issue #672 Slice 3). [payload] is the create input the form produced (its `entries`, and any
+     * `allowAdditionalTraits`); the user rides beside it. Returns the new form's gedra id, or null when the
+     * response carried none. The backend resolves the user, derives their client, and refuses self-creation.
+     */
+    suspend fun createFormForUser(userRef: String, payload: Map<String, Any?>): String? =
+        Http.sendApi("POST", GEP.adminFormDocForUser, mapOf(EI.user to userRef.trim()) + payload)[EP.item]
+            .toJsonMapOrEmpty()[GDF.gedraId] as? String
+
     suspend fun listClients(): List<ClientChoice> =
         Http.getApi(ADEP.clients)[EP.items].toJsonListOfMaps().map {
             ClientChoice(it[CLD.clientId] as? String ?: "", it[CLD.name] as? String ?: "")

@@ -94,6 +94,14 @@ object GEP {
 
     /** The type naming a gedra's state as returned by [adminGedraState]: its id and its state entries. */
     const val gedraStateDoc = "GedraStateDoc"
+
+    /**
+     * Create a form document **on behalf of another user** (issue #672 Slice 3). On `/admin/…`, gated `admin` +
+     * `allClients` like [adminGedraState]: the caller names a user (id or email), the form is owned by that user
+     * in *their* client, and the caller is the actor stamped into the audit. The shared/`allClients` create
+     * surface (`/gedra/formDoc/create`) is untouched; this is the separate on-behalf path.
+     */
+    const val adminFormDocForUser = "/admin/formDocForUser"
 }
 
 /**

@@ -570,6 +570,24 @@ val FormsPage = FC<Props> {
                         }
                     }
                 }
+                // A cross-client admin can create for another user even with no forms of their own (issue #672
+                // Slice 3): the on-behalf create is user-first, so it belongs in the empty state too, beside the
+                // list branch's copy.
+                if (canSeeAllClients) {
+                    div {
+                        className = ClassName("row")
+                        Button {
+                            onClick = {
+                                navigateHash(
+                                    listOf(HP.page to pageCreateForUser, HP.from to HMENU.pageForms) +
+                                        formsSearchHashParams(appliedSearch) +
+                                        sortHashParams(sortColumn, sortDescending),
+                                )
+                            }
+                            +"Create a form for a user…"
+                        }
+                    }
+                }
             }
             else -> {
                 val union = entriesUnionOf(cat.payloadType(ep))
@@ -598,6 +616,25 @@ val FormsPage = FC<Props> {
                                 )
                             }
                             +"New form"
+                        }
+                    }
+                }
+                // Create a form for another user (issue #672 Slice 3), for a cross-client admin. User-first, so it
+                // stands apart from "New form" (which makes one in the caller's own client) and is offered whether
+                // or not a client is chosen -- the target user's client is what the on-behalf create uses. Carries
+                // the listing's search and sort so the page's back link returns to the same list.
+                if (canSeeAllClients) {
+                    div {
+                        className = ClassName("row")
+                        Button {
+                            onClick = {
+                                navigateHash(
+                                    listOf(HP.page to pageCreateForUser, HP.from to HMENU.pageForms) +
+                                        formsSearchHashParams(appliedSearch) +
+                                        sortHashParams(sortColumn, sortDescending),
+                                )
+                            }
+                            +"Create a form for a user…"
                         }
                     }
                 }
