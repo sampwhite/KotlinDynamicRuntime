@@ -602,6 +602,20 @@ input {
 .wf-trait > .markdown { margin: 28px 0 12px; }
 .wf-task > .row { margin-top: 14px; }
 
+/* The workflow form's one header line (issue #719): the back link, the title beside it in slightly smaller
+   type, and the actions (Edit / Done, Raw edit, the saved note) right-aligned -- three bands become one row, so
+   a large form starts higher. The back link drops its own bottom margin (it is a line item here, not a band),
+   and the row that follows takes the card's ordinary rhythm. Wraps on a narrow card: the actions fall under
+   the title rather than off the edge. */
+.wf-header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.wf-header .back-link { margin: 0; }
+.wf-header h1 { margin: 0; font-size: 1.25rem; }
+.wf-header .wf-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* The rail's panel opens on its trait heading (issue #719): the task label is the rail entry the user just
+   clicked, so the panel does not repeat it, and the first heading needs no section gap under the header line. */
+.wf-panel .wf-task > :first-child { margin-top: 0; }
+.wf-panel .wf-trait:first-of-type > h2, .wf-panel .wf-trait:first-of-type > .markdown { margin-top: 0; }
+
 /* The survey's task rail (issue #700): a multi-task survey shows ONE task at a time, chosen from a left rail
    whose entries carry the task's status mark and, orthogonally, an unsaved badge. Single-task surveys and the
    creation form keep the single panel. The items are real buttons (keyboard reachable, `aria-current` on the

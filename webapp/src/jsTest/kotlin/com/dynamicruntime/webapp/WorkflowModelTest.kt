@@ -330,6 +330,14 @@ class WorkflowModelTest {
         assertEquals(RailMark.invalid, railMark(bad))
     }
 
+    /** The workflow's own label (issue #719) parses through; absent, it is empty and the page titles itself. */
+    @Test
+    fun carriesTheWorkflowLabel() {
+        assertEquals("", parseWorkflowView(view())!!.label)
+        val titled = view().toMutableMap().apply { put(WFD.label, "Expense report review") }
+        assertEquals("Expense report review", parseWorkflowView(titled)!!.label)
+    }
+
     /** Which failures the panel shows: the committed fields' (and what lies beneath them) until the trait is whole-checked. */
     @Test
     fun showsCommittedFieldsFailuresUntilTheWholeTraitIsChecked() {

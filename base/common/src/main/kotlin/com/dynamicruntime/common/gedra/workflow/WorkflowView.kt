@@ -148,6 +148,9 @@ fun resolveWorkflowView(
         WFD.workflowId to declared.def.workflowId,
         WVF.ref to declared.ref.text,
         WFD.entry to declared.def.entry.name,
+        // The workflow's own label (issue #719), resolved like a task's; empty when the definition gives none,
+        // and the page then titles itself.
+        WFD.label to label(declared.def.label),
         WVF.showTaskList to declared.def.showTaskList,
         WFD.tasks to taskViews,
         SCH.dDefs to defs,

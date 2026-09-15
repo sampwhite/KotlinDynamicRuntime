@@ -123,7 +123,9 @@ later schema rejects" test.
     written inline; the `{ … }` is the `kdr-schema-builder` DSL. An overload takes `dataType` (a `$ref`) instead.
   - **`workflow(workflowId, entry: WfEntry) { <WfDefBuilder> }`** — a workflow definition (or `workflowFromMap`
     for the JSON form). See the compile-time `createForm` workflow in `sample/.../SampleClients.kt` for the
-    shape, and `gedra-workflow.md` for the model.
+    shape, and `gedra-workflow.md` for the model. An optional `label = "…"` in the block titles the page over
+    the form (issue #719); like a task's label it is a template, so `%{@t("file.ns.key")}` pulls it from a
+    fragment file and the boot checks the pull resolves.
   - **`stateTrait(...)`, `cfact(name, group, description, toFrontend)`** — workflow state traits and the cfacts
     the client may name in expressions.
   - A `schemaDef` slot exists for plain schema types too; most schema rides in via a trait's data shape.
