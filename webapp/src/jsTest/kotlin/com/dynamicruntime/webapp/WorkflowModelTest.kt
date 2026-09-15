@@ -10,6 +10,8 @@ import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SchFailCode
+import com.dynamicruntime.common.schema.SchFailure
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -289,5 +291,52 @@ class WorkflowModelTest {
         val both = parseWorkflowView(surveyView(status(false, false, listOf("name"), listOf("name" to "Too long.")), null, null))!!.tasks[0].status
         assertEquals("Unsaved changes\nNeeds information: Name\nToo long.", railExplanation(both, unsaved = true))
         assertEquals("Not started", railExplanation(null, unsaved = false))
+    }
+
+    /**
+     * The comparison shape (issue #718): a value typed back as its original is not an edit, nor is a field
+     * cleared that was never set -- a text box holds strings and `""`, the wire holds numbers and absent keys.
+     */
+    @Test
+    fun comparesValuesAsAWidgetAndTheWireWouldAgreeOn() {
+        val wire = mapOf<String, Any?>("year" to 2025, "flag" to true, "sub" to mapOf("a" to null, "b" to 1), "tags" to listOf("x", 2))
+        val typed = mapOf<String, Any?>("year" to "2025", "flag" to "true", "note" to "", "gone" to null, "sub" to mapOf("b" to "1"), "tags" to listOf("x", "2"))
+        assertEquals(comparableValues(wire), comparableValues(typed))
+        assertEquals(mapOf("year" to "2025", "flag" to "true", "sub" to mapOf("b" to "1"), "tags" to listOf("x", "2")), comparableValues(wire))
+        val wf = parseWorkflowView(surveyView(status(true, true), status(true, true), null))!!
+        val stored = mapOf("name" to mapOf<String, Any?>("name" to "kept"))
+        assertTrue(!taskUnsaved(wf.tasks[0], mapOf("name" to mapOf<String, Any?>("name" to "kept", "extra" to "")), stored))
+        assertTrue(taskUnsaved(wf.tasks[0], mapOf("name" to mapOf<String, Any?>("name" to "kept ")), stored))
+    }
+
+    /** The client-side status (issue #718) follows the server's rule: presence by required trait, content by the kernel. */
+    @Test
+    fun projectsATaskStatusFromWorkingValues() {
+        val task = parseWorkflowView(surveyView(null, null, null))!!.tasks[0]
+        val empty = localTaskStatus(task, emptyMap())
+        assertTrue(!empty.complete && empty.valid)
+        assertEquals(listOf("name"), empty.missingTraits)
+        // A blank string is absent, not present-and-wrong.
+        assertTrue(!localTaskStatus(task, mapOf("name" to mapOf<String, Any?>("name" to " "))).complete)
+        val ok = localTaskStatus(task, mapOf("name" to mapOf<String, Any?>("name" to "Ada")))
+        assertTrue(ok.complete && ok.valid && ok.problems.isEmpty())
+        assertEquals(RailMark.complete, railMark(ok))
+        // A number against a string type is a content failure: complete, invalid, one worded problem on the field.
+        val bad = localTaskStatus(task, mapOf("name" to mapOf<String, Any?>("name" to 5)))
+        assertTrue(bad.complete && !bad.valid)
+        assertEquals(listOf("name"), bad.invalidTraits)
+        assertEquals("name", bad.problems.single().path)
+        assertEquals("name", bad.problems.single().traitId)
+        assertEquals(RailMark.invalid, railMark(bad))
+    }
+
+    /** Which failures the panel shows: the committed fields' (and what lies beneath them) until the trait is whole-checked. */
+    @Test
+    fun showsCommittedFieldsFailuresUntilTheWholeTraitIsChecked() {
+        fun f(path: String) = SchFailure(path, SchFailCode.missingRequired, "missing")
+        val all = listOf(f("a"), f("b"), f("a[0]"), f("ab"), f("a.x"))
+        assertEquals(listOf("a", "a[0]", "a.x"), shownFailures(all, setOf("a"), wholeTraitChecked = false).map { it.path })
+        assertEquals(emptyList(), shownFailures(all, emptySet(), wholeTraitChecked = false))
+        assertEquals(all, shownFailures(all, emptySet(), wholeTraitChecked = true))
     }
 }

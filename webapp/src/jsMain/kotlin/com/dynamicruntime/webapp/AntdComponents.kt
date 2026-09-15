@@ -67,6 +67,8 @@ external interface InputProps : PropsWithChildren {
     var onChange: ((event: dynamic) -> Unit)?
     /** Fires when Enter is pressed inside the input. */
     var onPressEnter: ((event: dynamic) -> Unit)?
+    /** Fires when the input loses focus -- where a typed value settles (issue #718). */
+    var onBlur: ((event: dynamic) -> Unit)?
     /**
      * The HTML `autocomplete` token (`"one-time-code"`, `"new-password"`, `"current-password"`, `"username"`,
      * `"off"`, …). antd forwards unknown props to the underlying `<input>`, so this reaches the browser. It is
@@ -164,6 +166,8 @@ external interface AutoCompleteProps : PropsWithChildren {
      * type-ahead act on a choice -- apply a scope, say -- where [onChange] cannot tell a pick from a keystroke.
      */
     var onSelect: ((value: dynamic) -> Unit)?
+    /** Fires when the box loses focus -- a pick closes the popup and blurs too, so this covers both (issue #718). */
+    var onBlur: ((event: dynamic) -> Unit)?
     /**
      * A keydown on the inner input, before the popup handles it (antd's `onInputKeyDown`). `AutoComplete` does
      * **not** forward `onPressEnter` the way `Input` does, so this is how a type-ahead restores Enter -- read

@@ -110,6 +110,12 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // saving one task can move another's mark (completing one can flip the earliest-actionable pointer).
     var statuses by useState(wf.tasks.associate { it.id to it.status })
     var failuresByTrait by useState<Map<String, List<SchFailure>>>(emptyMap())
+    // Commit-time validation (issue #718): per trait, the fields the user has committed (blurred, or picked), and
+    // the traits checked as a whole -- by a Save, or by leaving the task. `failuresByTrait` always holds a trait's
+    // full check; these two decide how much of it the panel shows, so a first blur does not flag every untouched
+    // required field beneath it.
+    var committedByTrait by useState<Map<String, Set<String>>>(emptyMap())
+    var wholeChecked by useState<Set<String>>(emptySet())
     var unmetTraits by useState<Set<String>>(emptySet())
     var savingTask by useState<String?>(null)
     var runError by useState<DisplayError?>(null)
@@ -130,11 +136,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     }
 
     fun onSave(task: WfTaskView) {
-        // Client-side schema check per trait first; a failure keeps the save from leaving.
+        // Client-side schema check per trait first; a failure keeps the save from leaving. A Save checks the
+        // task's traits as a whole, so every failure shows from here on (issue #718), and a clean check clears
+        // what an earlier one left.
         val checks = task.traits.associate { it.traitId to checkInput(it.type, valuesOf(it.traitId)) }
-        val fails = checks.filterValues { it.failures.isNotEmpty() }.mapValues { it.value.failures }
-        failuresByTrait = failuresByTrait + fails
-        if (fails.isNotEmpty()) return
+        failuresByTrait = failuresByTrait + checks.mapValues { it.value.failures }
+        wholeChecked = wholeChecked + checks.keys
+        if (checks.values.any { it.failures.isNotEmpty() }) return
 
         val entries = workflowSaveEntries(checks.mapValues { it.value.payload ?: emptyMap() })
         val body = workflowSaveBody(wf.workflowId, task.id, saveFor(task).id, entries, gedraId)
@@ -175,6 +183,27 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         }
     }
 
+    // A field committed (issue #718): remember it, and re-check its whole trait from the working values -- the
+    // panel shows the committed fields' failures now and the rest once the trait is checked as a whole.
+    fun onFieldCommit(trait: WfTraitView, path: String) {
+        committedByTrait = committedByTrait + (trait.traitId to (committedByTrait[trait.traitId].orEmpty() + path))
+        failuresByTrait = failuresByTrait + (trait.traitId to checkInput(trait.type, valuesOf(trait.traitId)).failures)
+    }
+
+    // Leaving a task in the rail checks it as a whole (issue #718): the user is done with it for now, so what
+    // it still needs shows when they come back, and the mark reflects the check straight away.
+    fun checkWholeTask(task: WfTaskView) {
+        failuresByTrait = failuresByTrait + task.traits.associate { it.traitId to checkInput(it.type, valuesOf(it.traitId)).failures }
+        wholeChecked = wholeChecked + task.traits.map { it.traitId }
+    }
+
+    // The status a rail entry draws (issue #718): while the task holds unsaved edits, the client's projection
+    // from the working values -- what the server will say once they are saved, by the same rule -- so clearing
+    // a required field drops the check at once; otherwise the server's verdict from the last view or save,
+    // which stays the authority for anything the kernel check cannot see.
+    fun statusFor(task: WfTaskView, unsaved: Boolean): WfTaskStatus? =
+        if (unsaved) localTaskStatus(task, valuesByTrait) else statuses[task.id]
+
     // One task's body -- the "TaskPanel" (issue #700): its label, each trait's form, and its Save while editing.
     // The rail layout shows one of these at a time; the single-panel layout shows each task's in turn.
     fun ChildrenBuilder.taskPanel(task: WfTaskView) {
@@ -200,9 +229,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         friendly = true
                         this.cfacts = wf.cfacts
                         this.layouts = wf.layouts
-                        this.failures = failuresByTrait[trait.traitId]
+                        this.failures = shownFailures(
+                            failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
+                            trait.traitId in wholeChecked,
+                        )
                         onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
                         onFieldEdit = { if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId }
+                        onFieldCommit = { path -> onFieldCommit(trait, path) }
                     }
                 }
             }
@@ -233,9 +266,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // task, and the title / aria-label carry what the mark means -- a hover tooltip alone is not enough for
     // touch or a screen reader.
     fun ChildrenBuilder.railItem(task: WfTaskView, active: Boolean) {
-        val status = statuses[task.id]
-        val mark = railMark(status)
         val unsaved = taskUnsaved(task, valuesByTrait, stored)
+        val status = statusFor(task, unsaved)
+        val mark = railMark(status)
         // Name a missing trait the way the panel heads it (its schema title), so tooltip and heading agree.
         val explanation = railExplanation(status, unsaved) { id ->
             task.traits.firstOrNull { it.traitId == id }?.let(::traitHeading) ?: humanizeFieldName(id)
@@ -245,7 +278,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             title = explanation
             asDynamic()["aria-current"] = if (active) "true" else "false"
             asDynamic()["aria-label"] = "${task.label}: $explanation"
-            onClick = { props.onSelectTask?.invoke(task.id) }
+            onClick = {
+                if (!active) {
+                    // The task being left gets its whole check before the switch (issue #718).
+                    if (editing) wf.tasks.firstOrNull { it.id == props.activeTask }?.let { checkWholeTask(it) }
+                    props.onSelectTask?.invoke(task.id)
+                }
+            }
             span {
                 className = ClassName("wf-mark wf-mark-${mark.name}")
                 +(if (mark == RailMark.incomplete) "○" else "✓")
@@ -293,6 +332,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 Button {
                     onClick = {
                         valuesByTrait = emptyMap(); failuresByTrait = emptyMap()
+                        committedByTrait = emptyMap(); wholeChecked = emptySet()
                         unmetTraits = emptySet(); runError = null; savedItem = null
                     }
                     +"Create another"
@@ -321,7 +361,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             // own dialog. A clean Done stays silent: there is nothing to lose.
                             onClick = {
                                 if (!anyUnsaved || LeaveGuard.confirmLeave(discardEditsPrompt)) {
-                                    valuesByTrait = stored; failuresByTrait = emptyMap(); unmetTraits = emptySet(); editing = false
+                                    valuesByTrait = stored; failuresByTrait = emptyMap(); unmetTraits = emptySet()
+                                    committedByTrait = emptyMap(); wholeChecked = emptySet(); editing = false
                                 }
                             }
                             +"Done"
