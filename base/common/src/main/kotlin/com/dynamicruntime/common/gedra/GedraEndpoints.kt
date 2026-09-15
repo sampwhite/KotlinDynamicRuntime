@@ -928,4 +928,66 @@ fun gedraStateAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "adminGedr
         ownerCxt.org = row.org
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to GedraDataService.get(c).writeState(ownerCxt, row.gedraId, entries))
     }
+
+    // Create a form document on behalf of another user (issue #672 Slice 3). On `/admin/…`, so the section gate
+    // is the deployment-wide one (`admin` + `allClients`) -- an ordinary or client-scoped admin has no business
+    // creating another user's documents. The document is owned by the named user in *their* client, and the
+    // caller is the actor: the same owner/actor split (issue #325) `createGedra` already makes, bound here the way
+    // the admin-state write above binds it. `needsClientConfig` because the entries validate against the target
+    // user's client's schema, which must be current on this node (issue #618); the sync is node-global, so the
+    // target client's config is brought current even though it is not the caller's own.
+    val onBehalfKind = GedraDataType.formDoc
+    // The gedra-namespace form-document type, qualified because this module's namespace is `adminGedra` (the
+    // state doc above qualifies its cross-namespace ref the same way).
+    val onBehalfDocType = "${GEP.gedraNamespace}.${GU.gedraName(onBehalfKind)}"
+    itemEndpoint(
+        GEP.adminFormDocForUser,
+        "Creates a form document owned by another user, in that user's client (issue #672). For an `allClients` " +
+            "admin; the shared `${GEP.formDocCreate}` is unchanged.",
+        HttpMethod.POST,
+        outputRef = onBehalfDocType,
+        inputFields = {
+            field(EI.user, "The user to create the form for -- their numeric id or email. Their client is taken " +
+                "from them, and the form is validated against and owned in that client.", required = true)
+            // Loose entries, as the admin-state write declares its states (open objects passed through): the
+            // real per-trait check is `createGedra`'s, run against the target user's client below, since this
+            // one endpoint serves every client and its published union could not be one client's.
+            field(GDF.entries, "The entries the form carries, each an instance of a trait the user's client " +
+                "supports.", required = true) {
+                type = SCT.array
+                items { type = SCT.kObject }
+            }
+            field(GDF.allowAdditionalTraits, GedraDataRow.additionalTraitsHint) { type = SCT.boolean }
+        },
+        needsClientConfig = true,
+    ) { c, request ->
+        val ref = request[EI.user].toOptStr()?.trim()?.ifEmpty { null }
+            ?: throw KdrException.mkInput("A '${EI.user}' (numeric id or email) is required.")
+        // Unrestricted, since the `admin` section already confines the caller to `allClients`: the user may be in
+        // any client, and their client is what the form is created in. Absent is a 404, as a retrieve of a
+        // missing resource is.
+        val target = UserService.get(c).resolveUserRef(c, ref, ReadScope.unrestricted)
+            ?: throw KdrException("No user matching '$ref'.", code = EXC.notFound)
+        // A disabled account or a deleted tombstone is not a valid owner: `resolveUserRef` returns such rows
+        // (ids stay resolvable), but the account cannot log in to see or finish the form, and every
+        // administrative user edit already refuses one. Refuse here too rather than mint an unreachable form.
+        if (target.isDeleted || !target.enabled) {
+            throw KdrException.mkInput("The user '$ref' is ${if (target.isDeleted) "deleted" else "disabled"}; a form cannot be created for them.")
+        }
+        // An allClients admin creates for other users, not for themselves (issue #672) -- the everyday create
+        // surface is for one's own forms.
+        if (target.userId == c.userProfile.userId) {
+            throw KdrException.mkInput("Use the ordinary form-creation surface to create your own forms; this one is for other users.")
+        }
+        val entries = request[GDF.entries].toJsonListOfMaps()
+        // Bound to the target as owner (client, user, org), the caller left as the actor -- so the id is minted in
+        // the user's client, ownership is theirs, and `createdBy` is the admin. The same binding the admin-state
+        // write makes above.
+        val ownerCxt = c.mkSubContext("createOnBehalf", target.client)
+        ownerCxt.userId = target.userId
+        ownerCxt.org = target.org
+        GedraDataService.get(ownerCxt)
+            .createGedra(ownerCxt, onBehalfKind, entries, request.getOptBool(GDF.allowAdditionalTraits) == true)
+            .toJsonMap()
+    }
 }
