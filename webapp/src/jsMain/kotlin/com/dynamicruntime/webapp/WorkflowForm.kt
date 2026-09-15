@@ -206,13 +206,20 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     }
                 }
             }
-            // The save is per task (each task's own entries), shown only while editing.
+            // The save is per task (each task's own entries), shown only while editing. Disabled while there is
+            // nothing to save (issue #717) -- the working values match the stored snapshot, the same comparison
+            // that drives the rail's unsaved badge, so a prefilled task the user never touched offers no Save
+            // and a saved task's Save disables itself once the snapshot refreshes -- and while ANY task's save
+            // is in flight: `loading` blocks only the button being saved, and the single-panel layout shows
+            // every task's. Disabled means "nothing to do", never "you did it wrong": a task with known
+            // validation failures keeps its Save, so clicking it shows the errors rather than a dead button.
             if (editing) {
                 div {
                     className = ClassName("row")
                     Button {
                         type = "primary"
                         loading = savingTask == task.id
+                        disabled = !taskUnsaved(task, valuesByTrait, stored) || savingTask != null
                         onClick = { onSave(task) }
                         +saveFor(task).label
                     }
