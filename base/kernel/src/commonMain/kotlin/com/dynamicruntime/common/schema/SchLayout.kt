@@ -95,6 +95,14 @@ class SchLayoutField(
      * copy override does. Keys are boot-checked against the code enum, so a mistyped key fails the boot.
      */
     val errors: Map<String, String> = emptyMap(),
+    /**
+     * How a **supplied default** for this field is presented (issue #709) -- one of [SLDM] (`filled`, shown in
+     * the control and marked; or `offer`, an empty control beside a "use it" affordance). A supplied default is
+     * any value the backend hands the form that a person did not enter -- today a `prefillData` default
+     * (`source=prefill`), later other sources -- so this is presentation about the *field*, not tied to one
+     * source. Null leaves the surface's own default (`filled`); the mode a field never defaults is simply unset.
+     */
+    val defaultMode: String? = null,
 ) : JsonMappable {
     /** The entry as written in a `schemaFields` list; see [SchLayout.toJsonMap]. */
     override fun toJsonMap(): Map<String, Any?> {
@@ -104,6 +112,7 @@ class SchLayoutField(
         description?.let { out[SL.description] = it }
         hint?.let { out[SL.hint] = it }
         if (errors.isNotEmpty()) out[SL.errors] = errors
+        defaultMode?.let { out[SL.defaultMode] = it }
         return out
     }
 }
@@ -132,6 +141,7 @@ class SchLayoutBuilder(private val fragmentFileId: String?, private val label: S
         label: String? = null,
         description: String? = null,
         hint: String? = null,
+        defaultMode: String? = null,
         errors: (SchErrors.() -> Unit)? = null,
     ) {
         val errMap = errors?.let { block ->
@@ -139,7 +149,7 @@ class SchLayoutBuilder(private val fragmentFileId: String?, private val label: S
             SchErrors(data).block()
             data.mapValues { it.value.toOptStr().orEmpty() }
         } ?: emptyMap()
-        fields.add(SchLayoutField(name, label, description, hint, errMap))
+        fields.add(SchLayoutField(name, label, description, hint, errMap, defaultMode))
     }
 
     /** The finished block, as the JSON `g-layout` value. */
@@ -207,6 +217,9 @@ object SL {
      *  (plus `default`), the form's wording for a failure against the field, shadowing the built-in message. */
     const val errors = "errors"
 
+    /** On a [schemaFields] entry: how a supplied default for the field is presented (issue #709); one of [SLDM]. */
+    const val defaultMode = "defaultMode"
+
     /** On the block: the fragment file its `${'$'}{…}` substitutions resolve against. */
     const val fragmentFileId = "fragmentFileId"
 
@@ -222,7 +235,27 @@ object SL {
     val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label, strings)
 
     /** Every key a [schemaFields] entry may carry. */
-    val fieldKeys: Set<String> = setOf(field, label, description, hint, errors)
+    val fieldKeys: Set<String> = setOf(field, label, description, hint, errors, defaultMode)
+}
+
+/**
+ * The values a field's [SL.defaultMode] may take (issue #709) -- how the form presents a **supplied default**
+ * (a value the backend hands the form that a person did not enter). A closed set, so a typo fails the boot; the
+ * surface's own fallback when a field says nothing is [filled], so a layout carries the mode only to override it.
+ *
+ * The mode is deliberately about the *field*, not the *source* -- `prefill` is the first supplied source, and
+ * others (a Salesforce/Excel pull) follow -- so nothing here mentions `prefill`.
+ */
+@Suppress("ConstPropertyName")
+object SLDM {
+    /** The default is shown in the control immediately, marked as a default. Low-friction; the fallback mode. */
+    const val filled = "filled"
+
+    /** The control stays empty and a "use it" affordance offers the value; clicking commits it as entered. */
+    const val offer = "offer"
+
+    /** The closed set of modes; a value outside it fails the boot. */
+    val values: Set<String> = setOf(filled, offer)
 }
 
 /**
@@ -246,7 +279,14 @@ fun parseSchLayout(where: String, raw: Map<String, Any?>): SchLayout {
         // SchFailCode enum, and the same reserved-object-form tolerance, so the two ways to key a message off a
         // failure code cannot drift on what a valid key is.
         val errors = parseErrorMessages(m[SL.errors], "$where field '$field'")
-        SchLayoutField(field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors)
+        val defaultMode = m[SL.defaultMode].toOptStr()?.also {
+            if (it !in SLDM.values) {
+                throw KdrException(
+                    "$where: field '$field' has '${SL.defaultMode}' '$it', not one of ${SLDM.values.sorted()}.",
+                )
+            }
+        }
+        SchLayoutField(field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors, defaultMode)
     }
     val strings = parseLayoutStrings(where, raw[SL.strings])
     return SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields, strings)
