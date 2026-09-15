@@ -386,8 +386,8 @@ is not even *visible* to a signed-out caller, so `/schema/endpoints` omits it an
 comes back empty. Verifying such a change in a browser therefore starts with a session, and the fast way in is
 a test fixture rather than the real email-code flow:
 
-- **`POST /kda/fixture/becomeUser`** with `{email, level, client, capabilities}` creates-or-finds the user and
-  logs you straight in — **no verification code**. It is a `forTestingOnly` endpoint, so it exists only on a
+- **`POST /kda/fixture/becomeUser`** with `{email, level, client, capabilities, name}` creates-or-finds the user
+  and logs you straight in — **no verification code**. It is a `forTestingOnly` endpoint, so it exists only on a
   test instance (`KDR_TEST_INSTANCE`, which the in-memory local server is). Call it from the browser page's own
   `fetch()` so the session cookie lands in the browser, then reload the app to fetch as the new identity (a
   same-hash navigate does not reload — call `location.reload()`).
@@ -399,6 +399,10 @@ a test fixture rather than the real email-code flow:
   SQL — a cheap way to exercise the path a unit test cannot easily reach. Seed whatever the surface reads with
   further `fetch` POSTs in the same session, using the constants' real *values* (a trait id may be
   `acmeSiteAudit`, not `siteAudit`).
+- **Pass `name` to give the created user a real-world name** (a person's full name, distinct from the username /
+  `publicName`, which falls back to the email). Set it when verifying a feature that reads the owner's *name* —
+  a `prefillFromOwner` on the `name` attribute, say — since a nameless fixture user has nothing there to show.
+  Ignored when the user already exists, like `level`/`client` (issue #736).
 
 This is one `fetch`, not a heavyweight login — reach for it rather than declaring a login-gated change
 unverifiable. Other test fixtures exist for more specialized needs (for example reading a real login code back

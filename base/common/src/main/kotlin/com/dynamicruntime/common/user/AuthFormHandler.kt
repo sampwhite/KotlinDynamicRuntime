@@ -429,7 +429,7 @@ class AuthFormHandler(
      */
     fun becomeUserByEmail(
         cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
-        client: String? = null,
+        client: String? = null, name: String? = null,
     ): Map<String, Any?> {
         val existing = userService.queryByLoginId(cxt, email)
         if (existing != null) {
@@ -444,6 +444,11 @@ class AuthFormHandler(
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(email)
         authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
+        // The person's real-world name (issue #736), set the same way the admin-create path does -- display copy,
+        // independent of the username, so a fixture can exercise a name-driven feature (a prefill) that
+        // `publicName` (which falls back to the email) cannot show. Ignored when the user already exists, like
+        // the other create-time fields above.
+        AuthUserRow.normalizeName(name)?.let { authUserData[AD.name] = it }
         val userId = userService.insertUser(cxt, data)
         val row = userService.queryByUserId(cxt, userId)
             ?: throw KdrException("Could not load the just-created user '$email'.", code = EXC.internalError)

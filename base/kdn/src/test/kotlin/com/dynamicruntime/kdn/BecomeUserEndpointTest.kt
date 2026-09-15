@@ -13,10 +13,12 @@ import com.dynamicruntime.common.test.testSchema
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toOptLong
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.comparables.shouldBeGreaterThan
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
@@ -35,6 +37,17 @@ class BecomeUserEndpointTest : StringSpec({
         alice.userId shouldBeGreaterThan 0L
         // A follow-up call through the same client is made as that user -- proving the session cookie stuck.
         alice.getData(AEP.selfInfo)[UPF.userId].toOptLong() shouldBe alice.userId
+    }
+
+    "a supplied name is set on a freshly created user, and ignored for an existing one (issue #736)" {
+        val cxt = Startup.mkTestBootCxt("becomeNamed", "becomeNamedTest")
+        val user = TestUser.create(cxt, "become-dana@example.com", name = "Dana Lee")
+        // The real-world name persisted -- distinct from publicName/username, which is what a prefill from the
+        // owner's name needs to have something to show.
+        UserService.get(cxt).queryByUserId(cxt, user.userId).shouldNotBeNull().name shouldBe "Dana Lee"
+        // Like level and capabilities, the name applies only at creation: becoming an existing user keeps theirs.
+        val again = TestUser.create(cxt, "become-dana@example.com", name = "Someone Else")
+        UserService.get(cxt).queryByUserId(cxt, again.userId).shouldNotBeNull().name shouldBe "Dana Lee"
     }
 
     "becoming an existing user returns the same user, and the requested level is ignored" {

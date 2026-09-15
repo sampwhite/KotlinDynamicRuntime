@@ -20,6 +20,10 @@ object TEP {
     const val capabilities = "capabilities"
     const val failIfUserAlreadyExists = "failIfUserAlreadyExists"
 
+    /** The created user's real-world name (issue #736) -- a person's full name, distinct from the username /
+     *  `publicName`. Ignored when the user already exists. Absent leaves the account unnamed, as before. */
+    const val name = "name"
+
     /**
      * The client to create the user in (issue #352). Absent means whatever the email address says, which for
      * an ordinary address is `public` -- so every call written before this existed means what it did.
