@@ -101,6 +101,27 @@ class ConfigSlotEditsTest : StringSpec({
         }.message!! shouldContain "primary-key"
     }
 
+    "strippedOfTestFeatures removes testFeatures from the clientDef slot and reports them (issue #733)" {
+        val slots = mapOf(
+            CCT.clientDef to listOf(mapOf(CLD.clientId to "acme", CLD.name to "Acme", CLD.testFeatures to listOf("demoA", "demoB"))),
+            CCT.usageDef to listOf(usage("a", "A")),
+        )
+        val (cleaned, features) = strippedOfTestFeatures(slots)
+        features shouldBe listOf("demoA", "demoB")
+        // Gone from clientDef, the rest of that entry and the other slot untouched.
+        val clientDef = cleaned.getValue(CCT.clientDef).single()
+        clientDef.containsKey(CLD.testFeatures) shouldBe false
+        clientDef[CLD.name] shouldBe "Acme"
+        cleaned.getValue(CCT.usageDef) shouldBe listOf(usage("a", "A"))
+    }
+
+    "strippedOfTestFeatures is a no-op when there are none" {
+        val slots = mapOf(CCT.clientDef to listOf(mapOf(CLD.clientId to "acme", CLD.name to "Acme")))
+        val (cleaned, features) = strippedOfTestFeatures(slots)
+        features shouldBe emptyList()
+        cleaned shouldBe slots
+    }
+
     "an unknown action is refused" {
         shouldThrow<KdrException> {
             applyConfigSlotEdits(

@@ -18,8 +18,14 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 
@@ -133,6 +139,43 @@ class AdminGedraConfigEndpointTest : StringSpec({
             mapOf(CFEP.client to "nosuchclient685", CFEP.publishedOnlyField to true),
         )
         admin.expectError(EXC.notFound, ACEP.reload, mapOf(CFEP.client to "nosuchclient685"))
+    }
+
+    "a bulk import writes each bundle independently, isolating failures and reloading (issue #733)" {
+        val admin = fullAdmin()
+        val newClient = "acep733import"
+        val ns = "${newClient}config"
+        val newDef = ClientDef(
+            clientId = newClient, name = "Imported", usageType = ClientUsageType.dev,
+            audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+            testFeatures = setOf("demoX"),
+        ).toInfo()
+        ClientService.get(cxt).known(newClient) shouldBe null
+
+        val result = admin.postData(
+            ACEP.import,
+            mapOf(
+                ACEP.bundlesField to listOf(
+                    // Good: a brand-new client (its clientDef carries testFeatures, kept on this test instance).
+                    mapOf(
+                        CFEP.client to newClient, CFEP.name to "main", CFEP.namespaceField to ns,
+                        CFEP.slots to mapOf(CCT.clientDef to listOf(newDef)),
+                    ),
+                    // Bad: no name -- reported, not fatal.
+                    mapOf(
+                        CFEP.client to CL.hub, CFEP.namespaceField to "acep733x",
+                        CFEP.slots to mapOf(CCT.cfactDef to listOf(mapOf(CCT.name to "r", CCT.group to "g", CCT.description to "d"))),
+                    ),
+                ),
+            ),
+        )
+        // The good bundle written and its client reloaded to present; the bad one isolated in failures.
+        result[ACEP.written].toJsonListOfMaps().mapNotNull { it[CFEP.client].toOptStr() } shouldContain newClient
+        result[ACEP.failures].toJsonListOfMaps().shouldNotBeEmpty()
+        result[ACEP.reloaded].toJsonListOfStrings() shouldContain newClient
+        // On a test instance, testFeatures round-trip -- nothing is stripped.
+        result[ACEP.stripped].toJsonListOfMaps().shouldBeEmpty()
+        ClientService.get(cxt).known(newClient).shouldNotBeNull()
     }
 
     "a scoped administrator without allClients is refused the admin config surface" {
