@@ -295,23 +295,19 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
 
 private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     val name = requireName(request)
-    val svc = GedraConfigService.get(c)
-    val row = svc.readLatest(c, configId(c, name))
-        ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
     val edits = request[CFEP.edits].toJsonListOfMaps()
     if (edits.isEmpty()) {
         throw KdrException.mkInput("A config patch must carry at least one edit.")
     }
-    // Apply the edits over the current slots (issue #732), then write the whole edited set through the same
-    // validated bundle write: `reassembleGedraConfig` rebuilds and validates the config as source would, and
-    // `writeConfig`'s per-entry diff re-stamps only the entries the patch actually changed while the rest keep
-    // their accounting. So a per-slot patch needs no separate validation path -- the write path is the one that
-    // already exists. Read the **raw** slots (not the emission-redacted ones), so an untouched `testFeatures`
-    // round-trips on a test instance and, off one, `writeConfig` refuses the write rather than silently dropping
-    // it -- the explicit-write rule of issue #685.
-    val edited = applyConfigSlotEdits(row.entriesBySlot(), edits, svc.configSlotPrimaryKeys())
-    val config = reassembleGedraConfig(c, name, row.resolvedNamespace(), c.client, edited)
-    return bundleOf(c, svc.writeConfig(c, config, impliedDelete = true))
+    val svc = GedraConfigService.get(c)
+    val pk = svc.configSlotPrimaryKeys()
+    // The edits run through `patchConfig`, which applies them to the latest revision read **under the write
+    // lock** and reassembles+writes it there -- so a per-slot patch reuses the validated bundle write (no
+    // separate validation path) and cannot be computed off a stale read and clobber a concurrent write (issue
+    // #732). `patchConfig` reads the raw slots, so an untouched `testFeatures` round-trips on a test instance
+    // and, off one, the write is refused rather than silently dropping it (the #685 explicit-write rule). The
+    // 404 for a missing config is `patchConfig`'s.
+    return bundleOf(c, svc.patchConfig(c, configId(c, name)) { current -> applyConfigSlotEdits(current, edits, pk) })
 }
 
 private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -429,6 +425,16 @@ fun applyConfigSlotEdits(
                 "Unknown edit action '$actionName'. The actions are ${GedraEditAction.entries.joinToString(", ") { it.name }}.",
             )
         val data = edit[GE.data].toJsonMapOrEmpty()
+        // A keyed slot's edit must carry every primary-key field, so it names one entry: without this a missing
+        // or misspelled key would silently no-op a delete or append a keyless entry instead of replacing the
+        // intended one (issue #732 review). A single-instance slot (empty pk) needs none.
+        val missingKey = pk.filter { data[it] == null }
+        if (missingKey.isNotEmpty()) {
+            throw KdrException.mkInput(
+                "Config edit for slot '$slot' is missing primary-key field(s) ${missingKey.joinToString(", ")}, " +
+                    "which say which entry the edit is for.",
+            )
+        }
         val list = out.getOrPut(slot) { mutableListOf() }
         // The addressed entry: pk-fields all equal (an empty pk -- a single-instance slot -- matches the one
         // entry there is, since `all` over no fields is true).

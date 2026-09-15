@@ -89,6 +89,18 @@ class ConfigSlotEditsTest : StringSpec({
         }.message!! shouldContain "Unknown config slot"
     }
 
+    "an edit missing its slot's primary key is refused" {
+        // A keyed slot's edit must say which entry it means; without the key a delete would silently no-op and an
+        // add/replace would append a keyless entry (issue #732 review).
+        shouldThrow<KdrException> {
+            applyConfigSlotEdits(
+                mapOf(CCT.usageDef to listOf(usage("a", "A"))),
+                listOf(edit(CCT.usageDef, GedraEditAction.deleteOrNoOp, emptyMap())),
+                pk,
+            )
+        }.message!! shouldContain "primary-key"
+    }
+
     "an unknown action is refused" {
         shouldThrow<KdrException> {
             applyConfigSlotEdits(
