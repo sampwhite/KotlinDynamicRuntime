@@ -60,6 +60,9 @@ val CreateForUserPage = FC<Props> {
     var matches by useState<List<AdminUser>>(emptyList())
     var picked by useState<AdminUser?>(null)
     val searchTimer = useRef<Int>(null)
+    // The user id whose schema fetch is current, so a slower earlier fetch's result is dropped rather than
+    // overwriting a newer pick's (issue #715 review).
+    val latestPick = useRef<Long>(null)
 
     // Step two: the form, in the picked user's client's rules.
     var catalog by useState<Catalog?>(null)
@@ -92,9 +95,10 @@ val CreateForUserPage = FC<Props> {
     }
 
     // Load the chosen user's client's create schema when a user is picked (issue #714 mechanism: resolve the
-    // endpoint on that client's surface). Re-runs if the picked user changes.
+    // endpoint on that client's surface). Re-runs when the picked user changes -- including to null (the box was
+    // cleared or edited), which resets the form so a stale one is never left under a changed pick.
     useEffect(picked?.userId) {
-        val user = picked ?: return@useEffect
+        val user = picked
         catalog = null
         endpoint = null
         values = emptyMap()
@@ -102,17 +106,28 @@ val CreateForUserPage = FC<Props> {
         revalidate = false
         runError = null
         loadError = null
+        if (user == null) {
+            loadingSchema = false
+            return@useEffect
+        }
+        latestPick.current = user.userId
         loadingSchema = true
         createForUserScope.launch {
             try {
                 val fetched = fetchFormEndpoint(HttpMethod.POST.name, GEP.formDocCreate, user.client)
-                catalog = fetched
-                endpoint = findFormCreateEndpoint(fetched.endpoints)
-                loadError = null
+                // Drop a result a newer pick has superseded, so a slow fetch cannot leave one client's form under
+                // another user's name (issue #715 review). The current pick owns `loadingSchema`.
+                if (latestPick.current == user.userId) {
+                    catalog = fetched
+                    endpoint = findFormCreateEndpoint(fetched.endpoints)
+                    loadError = null
+                    loadingSchema = false
+                }
             } catch (e: Throwable) {
-                loadError = userFacingError(e)
-            } finally {
-                loadingSchema = false
+                if (latestPick.current == user.userId) {
+                    loadError = userFacingError(e)
+                    loadingSchema = false
+                }
             }
         }
     }
@@ -142,7 +157,14 @@ val CreateForUserPage = FC<Props> {
                 // Enter must not commit a merely-matching suggestion; a user is chosen by clicking or arrowing.
                 defaultActiveFirstOption = false
                 style = js("({ width: 360 })")
-                onChange = { v -> query = (v as? String) ?: "" }
+                onChange = { v ->
+                    val text = (v as? String) ?: ""
+                    query = text
+                    // Editing or clearing the box abandons the current pick (issue #715 review): a pick sets the
+                    // text to the user's label, so any other text means no user is chosen -- the form must not be
+                    // submittable for a user the box no longer shows. Clearing `picked` resets the form (above).
+                    picked?.let { if (text != userPickLabel(it.name, it.username, it.primaryId)) picked = null }
+                }
                 onSelect = { v ->
                     val email = (v as? String) ?: ""
                     val chosen = matches.firstOrNull { it.primaryId == email }

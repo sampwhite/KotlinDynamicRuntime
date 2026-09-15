@@ -968,6 +968,12 @@ fun gedraStateAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "adminGedr
         // missing resource is.
         val target = UserService.get(c).resolveUserRef(c, ref, ReadScope.unrestricted)
             ?: throw KdrException("No user matching '$ref'.", code = EXC.notFound)
+        // A disabled account or a deleted tombstone is not a valid owner: `resolveUserRef` returns such rows
+        // (ids stay resolvable), but the account cannot log in to see or finish the form, and every
+        // administrative user edit already refuses one. Refuse here too rather than mint an unreachable form.
+        if (target.isDeleted || !target.enabled) {
+            throw KdrException.mkInput("The user '$ref' is ${if (target.isDeleted) "deleted" else "disabled"}; a form cannot be created for them.")
+        }
         // An allClients admin creates for other users, not for themselves (issue #672) -- the everyday create
         // surface is for one's own forms.
         if (target.userId == c.userProfile.userId) {

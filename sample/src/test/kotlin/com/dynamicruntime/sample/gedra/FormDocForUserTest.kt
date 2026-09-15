@@ -6,6 +6,8 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
@@ -62,17 +64,23 @@ class FormDocForUserTest : StringSpec({
     }
 
     "entries are validated against the target user's client, not the caller's" {
-        // A trait acme does not support is refused -- the create runs bound to acme, so acme's schema is what
-        // checks it, even though the caller is an allClients admin whose own client is the default.
-        val admin = TestUser.createFullAdmin(cxt, "fdfu-badtrait@example.com")
-        TestUser.create(cxt, "fdfu-badtrait-target@acme.test", userClient = SC.acme)
+        // Same caller, same entry, two targets -- the discriminating test. An admin **in acme** sends acme's own
+        // `acmeSiteAudit` trait: accepted for an acme user, refused for a globex user (globex does not carry that
+        // trait). If the create validated against the *caller's* client (acme, which supports it) both would pass,
+        // so the refusal proves the governing client is the **target's**.
+        val admin = TestUser.create(
+            cxt, "fdfu-acme-admin@acme.test", level = ROLE.admin, capabilities = listOf(ROLE.allClients), userClient = SC.acme,
+        )
+        TestUser.create(cxt, "fdfu-acme-user@acme.test", userClient = SC.acme)
+        TestUser.create(cxt, "fdfu-globex-user@globex.test", userClient = SC.globex)
+
+        admin.postItem(
+            GEP.adminFormDocForUser, mapOf(EI.user to "fdfu-acme-user@acme.test", GDF.entries to siteAuditEntries()),
+        )[GDF.client].toOptStr() shouldBe SC.acme
         admin.expectError(
             EXC.badInput,
             GEP.adminFormDocForUser,
-            data = mapOf(
-                EI.user to "fdfu-badtrait-target@acme.test",
-                GDF.entries to listOf(mapOf(GE.traitId to "noSuchTraitAnywhere", GE.data to emptyMap<String, Any?>())),
-            ),
+            data = mapOf(EI.user to "fdfu-globex-user@globex.test", GDF.entries to siteAuditEntries()),
         )
     }
 
@@ -91,6 +99,19 @@ class FormDocForUserTest : StringSpec({
             EXC.notFound,
             GEP.adminFormDocForUser,
             data = mapOf(EI.user to "nobody@nowhere.test", GDF.entries to siteAuditEntries()),
+        )
+    }
+
+    "a disabled user is not a valid target" {
+        // `resolveUserRef` finds a disabled account (ids stay resolvable), but it cannot log in to see or finish
+        // the form, so the create refuses it -- as every administrative user edit does.
+        val admin = TestUser.createFullAdmin(cxt, "fdfu-disable-admin@example.com")
+        val target = TestUser.create(cxt, "fdfu-disabled@acme.test", userClient = SC.acme)
+        admin.postItem(ADEP.userSetEnabled, mapOf(ADF.userId to target.userId, ADF.enabled to false))
+        admin.expectError(
+            EXC.badInput,
+            GEP.adminFormDocForUser,
+            data = mapOf(EI.user to "fdfu-disabled@acme.test", GDF.entries to siteAuditEntries()),
         )
     }
 
