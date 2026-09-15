@@ -158,6 +158,68 @@ class GedraFormsTest {
         assertTrue("/forms/acme/formDoc/create".endsWith(renamed))
     }
 
+    /**
+     * The form's client read from its gedra id (issue #714): the third dot-separated segment. An absent, blank,
+     * or unparseable id yields null, so an edit page falls back to the caller's own client-scoped copy.
+     */
+    @Test
+    fun readsTheFormClientFromItsId() {
+        assertEquals("acme", formClientOf("gd.fd.acme.u20260914202810102fudi8Q"))
+        assertEquals("globex", formClientOf("gd.fd.globex.u20260914202810121FYV76A"))
+        // Absent or malformed: null, so the caller's own client-scoped copy is used instead.
+        assertNull(formClientOf(null))
+        assertNull(formClientOf(""))
+        assertNull(formClientOf("not-a-gedra-id"))
+    }
+
+    /**
+     * Choosing a client (issue #714): the `client` selector is set or dropped, the `user` scope is dropped either
+     * way (a user belongs to one client), and every other filter is kept for `loadForClient` to whitelist.
+     */
+    @Test
+    fun choosingAClientSetsTheSelectorAndDropsTheUserScope() {
+        val applied = mapOf(EI.user to "42", EI.q to "roof", "acmeSiteAuditContains" to "Grace")
+        assertEquals(
+            mapOf(EI.q to "roof", "acmeSiteAuditContains" to "Grace", EI.client to "acme"),
+            formsSearchForClient(applied, "acme"),
+        )
+        // Clearing drops the selector and the user scope alike; blank reads as clearing.
+        assertEquals(mapOf(EI.q to "roof"), formsSearchForClient(mapOf(EI.client to "acme", EI.user to "42", EI.q to "roof"), null))
+        assertEquals(mapOf(EI.q to "roof"), formsSearchForClient(mapOf(EI.client to "acme", EI.q to "roof"), ""))
+    }
+
+    /**
+     * A shared chosen-client link (issue #714 review): the `client` selector is applied only for a caller who
+     * may see across clients; an ordinary caller gets the rest of the search and no filter they cannot clear.
+     */
+    @Test
+    fun theHashClientAppliesOnlyToACrossClientCaller() {
+        val hp = mapOf(HP.page to "forms", EI.client to "acme", EI.q to "roof")
+        assertEquals(mapOf(EI.client to "acme", EI.q to "roof"), formsInitialSearch(hp, seeAllClients = true))
+        assertEquals(mapOf(EI.q to "roof"), formsInitialSearch(hp, seeAllClients = false))
+    }
+
+    /**
+     * Which client a resolved endpoint path is the copy for (issue #714): the form's client when the backend
+     * answered with its copy, null when the shared endpoint answered (a client that varies nothing) -- so the
+     * sibling workflow paths stay bare too -- and null with no form client to compare against.
+     */
+    @Test
+    fun readsTheClientBackOutOfAResolvedPath() {
+        assertEquals("acme", clientOfResolvedPath("/gedra/acme/workflow/view", GEP.workflowView, "acme"))
+        assertNull(clientOfResolvedPath(GEP.workflowView, GEP.workflowView, "public"))
+        assertNull(clientOfResolvedPath("/gedra/acme/workflow/view", GEP.workflowView, null))
+        assertNull(clientOfResolvedPath(null, GEP.workflowView, "acme"))
+    }
+
+    /** The note under a chosen client names the client and says where a new form would go. */
+    @Test
+    fun theChosenClientNoteNamesTheClient() {
+        val note = chosenClientNote("Acme")
+        assertTrue(note.startsWith("Showing Acme's forms"))
+        assertTrue(note.contains(formsAllClientsLabel))
+    }
+
     /** A one-branch-per-trait union: a `name` branch and an `expenseReport` branch, the latter with a title. */
     private fun unionDefs(): Map<String, Any?> = mapOf(
         "t.NameEntry" to mapOf(

@@ -2,7 +2,6 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GEP
-import com.dynamicruntime.common.home.HMENU
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -44,6 +43,9 @@ val SurveyEditPage = FC<Props> {
     var loadError by useState<DisplayError?>(null)
     // Whether the caller's surface carries the patch endpoint, so the raw-editor link can work (issue #694).
     var rawEditAvailable by useState(false)
+    // The client whose copy of the workflow endpoints the view came from (issue #714), handed to the form so its
+    // save posts to the same copy; null when the shared endpoint answered.
+    var workflowClient by useState<String?>(null)
     // Whether the form holds edits not yet saved (issue #700), as WorkflowForm reports it.
     var dirty by useState(false)
 
@@ -87,23 +89,37 @@ val SurveyEditPage = FC<Props> {
         view = null
         noSurvey = false
         loadError = null
+        workflowClient = null
         loading = true
         val id = gedraId
         surveyEditScope.launch {
             try {
-                // The survey view and the patch-endpoint check are independent, so they run together (one round
+                // The form's own client (from its id, issue #714): the survey view, its save and the raw-edit
+                // link's patch endpoint are all resolved on *that* client's surface, so an `allClients` admin
+                // opening another client's form gets that client's survey -- resolved on their own it reads "no
+                // survey", since the survey is the form's client's. Null for an unparseable id, which resolves on
+                // the caller's own surface (an ordinary caller, whose client is the form's).
+                val formClient = formClientOf(id)
+                // The patch-endpoint check and the view lookup are independent, so they run together (one round
                 // trip). The check only gates a link, so its own failure just hides the link rather than failing
                 // the page.
                 val patchFetch = async {
                     try {
-                        val cat = SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, GEP.patch, resolveClient = true)
-                        findFormPatchEndpoint(cat.endpoints) != null
+                        findFormPatchEndpoint(fetchFormEndpoint(HttpMethod.POST.name, GEP.patch, formClient).endpoints) != null
                     } catch (e: Throwable) {
                         false
                     }
                 }
-                val v = if (id.isBlank()) null else WorkflowApi.fetchSurveyView(id)
+                // Which copy of the workflow endpoints to call, decided by the backend's resolution rather than
+                // by forming the client path here: a client that varies nothing has only the shared endpoint
+                // (bound to the caller's own client -- the same client, for an ordinary caller), and asking for
+                // its copy by exact path would find nothing (the #714 review's regression).
+                val viewPath = if (id.isBlank()) null else
+                    fetchFormEndpoint(HttpMethod.GET.name, GEP.workflowView, formClient).endpoints.firstOrNull()?.path
+                val surfaceClient = clientOfResolvedPath(viewPath, GEP.workflowView, formClient)
+                val v = if (id.isBlank()) null else WorkflowApi.fetchSurveyView(id, surfaceClient)
                 rawEditAvailable = patchFetch.await()
+                workflowClient = surfaceClient
                 if (v == null) noSurvey = true else view = v
             } catch (e: Throwable) {
                 loadError = userFacingError(e)
@@ -126,14 +142,9 @@ val SurveyEditPage = FC<Props> {
                 className = ClassName("subtitle")
                 +"There is no survey for this form."
             }
-            div {
-                className = ClassName("row")
-                Button {
-                    type = "link"
-                    onClick = { navigateHash(listOf(HP.page to HMENU.pageForms)) }
-                    +"← Back to my forms"
-                }
-            }
+            // The shared way back (issue #714 review): carries the listing's chosen client, filter and sort home,
+            // as the survey's own header and the raw editor do -- a bare `page=forms` dropped them all.
+            formsBackToListing()
         }
         view != null -> {
             // The raw editor (issue #694): forward the whole current hash -- the listing's `from`, filter and
@@ -150,6 +161,8 @@ val SurveyEditPage = FC<Props> {
                 key = gedraId.unsafeCast<Key>()
                 this.view = view!!
                 this.gedraId = gedraId
+                // The client whose copy of the save to post to -- where the view came from (issue #714).
+                this.client = workflowClient
                 // `edit=1` opens straight in edit mode (the forms-list chip); otherwise the read-only "View Info".
                 initialEditing = hashParams()[HP.edit] == "1"
                 onRawEdit = rawEdit

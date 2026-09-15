@@ -174,6 +174,33 @@ section gate.
 Paths, field names and the ladder all come from `base/kernel`, so a backend rename breaks compilation here
 rather than at runtime.
 
+## The forms listing across clients (issues #668, #714)
+
+An `allClients` admin's forms listing starts as the **cross-client view**: every client's rows, a Client column,
+and the admin's *own* client's columns and filters. Choosing a client in the `Client:` selector changes the
+**whole surface**, not just the rows: `loadForClient` re-fetches the catalog with `client=X`, so the list,
+get, patch, delete and values endpoints become X's `/gedra/X/…` copies, the columns and filter fields come from
+X's `formDocs`, and `client=X` still rides as the row filter (a client path alone does not narrow an
+unrestricted scope). The rules that follow from that:
+
+- **A form's client comes from its gedra id, never from the selector.** The raw editor and the survey page read
+  it with `formClientOf(id)` and ask the backend for the endpoint on *that* client's surface
+  (`fetchFormEndpoint` → `/schema/endpoint?resolveClient=true&client=X`). The backend resolves the copy **and
+  falls back** to the shared endpoint for a client that varies nothing — a page must never form a
+  `/gedra/<client>/…` path itself, because only the catalog knows whether the copy exists (an exact lookup
+  found nothing for `public`, and the edit page said the account had "no way to edit forms").
+- **The workflow view and its save follow the resolved path.** `clientOfResolvedPath` says whether the view
+  came from X's copy; the save posts to the same copy, so a survey is edited under X's rules.
+- **Create stays the caller's own.** `NewFormPage` makes the form in the admin's own client, so "New form" is
+  not offered under a chosen client and the note under the selector says so. Creating on another client's
+  behalf is #672 Slice 3.
+- **Choosing a client drops the `user` scope** (`formsSearchForClient`): a user belongs to one client. A shared
+  `client=X` link opened by a caller without `allClients` drops the selector from the search too
+  (`formsInitialSearch`), since no control would let them clear it.
+- **Publish the surface with its rows.** `loadForClient` stages the catalog, endpoints, search and first page
+  in locals and publishes them together, so a failed switch leaves the previous surface whole rather than X's
+  controls over the old rows.
+
 ## Choice widgets, and the free-entry one (issues #261, #418)
 
 `SchemaForm` draws a choice field from the schema, and which control it draws is decided by two keywords:

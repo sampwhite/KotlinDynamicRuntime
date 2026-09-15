@@ -33,6 +33,14 @@ external interface WorkflowFormProps : Props {
     var gedraId: String?
 
     /**
+     * The client whose copy of the workflow save to post to (issue #714): the form's own, when it is another
+     * client's than the caller's and that client has a copy; null posts to the shared path, bound to the
+     * caller's own client. The page derives it from the view it fetched (`clientOfResolvedPath`), so the save
+     * goes where the view came from.
+     */
+    var client: String?
+
+    /**
      * Whether a survey edit opens already in edit mode (issue #694): the forms-list status chip's direct-to-edit
      * link sets it; the "View Info" action leaves it unset for the read-only view. Ignored for a creation form,
      * which is always editable.
@@ -134,7 +142,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         runError = null
         wfFormScope.launch {
             try {
-                val outcome = WorkflowApi.save(body)
+                val outcome = WorkflowApi.save(body, props.client)
                 if (outcome.saved) {
                     savedItem = outcome.item
                     // A survey edit stays on the form and in edit mode -- a multi-task survey is saved one task

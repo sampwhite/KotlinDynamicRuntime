@@ -1,14 +1,18 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
- * The workflow endpoints the create and survey-edit pages use (issue #536, #659), on the caller's own client.
- * Both are gedra-section endpoints whose handlers read `cxt.client`, so the **shared** path answers for the
- * caller's own client and the page needs no client id.
+ * The workflow endpoints the create and survey-edit pages use (issue #536, #659). All are gedra-section endpoints
+ * whose handlers read `cxt.client`, so the **shared** path answers for the caller's own client -- which is what
+ * a creation workflow always is. A survey is resolved against a stored form, and that form may be another
+ * client's (an `allClients` admin, issue #714): then the view and its save take that client's copy of the path,
+ * `clientPath`, so the survey is that client's and the save is checked under its rules. The page passes the
+ * client only when the copy exists (see `clientOfResolvedPath`); null keeps the shared path.
  */
 object WorkflowApi {
     /**
@@ -19,16 +23,25 @@ object WorkflowApi {
         parseWorkflowView(Http.getApi(GEP.workflowView)[EP.results].toJsonMapOrEmpty())
 
     /**
-     * The client's **survey** resolved against the form [gedraId] (issue #659), each task seeded from the form's
-     * current entries; **null** when the client has no survey (`found=false`). The `gedraId` query arg is what
-     * makes the endpoint resolve the survey rather than the creation workflow.
+     * The **survey** resolved against the form [gedraId] (issue #659), each task seeded from the form's current
+     * entries; **null** when the client has no survey (`found=false`). The `gedraId` query arg is what makes the
+     * endpoint resolve the survey rather than the creation workflow. [client] is the form's client when its copy
+     * of the path exists (issue #714), else null for the caller's own.
      */
-    suspend fun fetchSurveyView(gedraId: String): WorkflowView? =
+    suspend fun fetchSurveyView(gedraId: String, client: String? = null): WorkflowView? =
         parseWorkflowView(
-            Http.getApi(GEP.workflowView + queryString(mapOf(GDF.gedraId to gedraId)))[EP.results].toJsonMapOrEmpty(),
+            Http.getApi(pathFor(GEP.workflowView, client) + queryString(mapOf(GDF.gedraId to gedraId)))[EP.results]
+                .toJsonMapOrEmpty(),
         )
 
-    /** Posts a task's collected entries; the outcome is either a refusal naming what is missing, or the form. */
-    suspend fun save(body: Map<String, Any?>): WorkflowSaveOutcome =
-        parseSaveOutcome(Http.sendApi("POST", GEP.workflowSave, body)[EP.results].toJsonMapOrEmpty())
+    /**
+     * Posts a task's collected entries; the outcome is either a refusal naming what is missing, or the form.
+     * [client] as for [fetchSurveyView]: the form's client's copy of the save, so it runs under that client's rules.
+     */
+    suspend fun save(body: Map<String, Any?>, client: String? = null): WorkflowSaveOutcome =
+        parseSaveOutcome(Http.sendApi("POST", pathFor(GEP.workflowSave, client), body)[EP.results].toJsonMapOrEmpty())
+
+    /** The client's copy of a bare workflow path when a [client] is given, else the shared path. */
+    private fun pathFor(barePath: String, client: String?): String =
+        if (client == null) barePath else clientPath(barePath, client)
 }

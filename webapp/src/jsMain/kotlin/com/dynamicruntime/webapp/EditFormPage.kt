@@ -91,19 +91,22 @@ val EditFormPage = FC<Props> {
         val id = gedraId
         editScope.launch {
             try {
-                // Just the two endpoints this page uses, each resolved to the caller's own client-scoped copy of
-                // its bare path (issue #552): the **patch** endpoint, whose schema this page renders (already
-                // narrowed to what this client supports, so a section cannot offer a trait the client removed),
-                // and the **get** endpoint, which it only *invokes* to load the form's current entries. Fetched
-                // in isolation -- each carries only its own `$defs` closure plus the page's per-client cfacts and
-                // layouts -- rather than the whole catalog once scanned to find these by suffix. Run together, so
-                // two small fetches cost one round trip.
-                val patchFetch = async {
-                    SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, GEP.patch, resolveClient = true)
-                }
-                val getFetch = async {
-                    SchemaCatalogApi.fetchEndpoint(HttpMethod.GET.name, GEP.formDoc, resolveClient = true)
-                }
+                // Just the two endpoints this page uses (issue #552): the **patch** endpoint, whose schema this
+                // page renders (already narrowed to what the client supports, so a section cannot offer a trait
+                // the client removed), and the **get** endpoint, which it only *invokes* to load the form's
+                // current entries. Fetched in isolation -- each carries only its own `$defs` closure plus the
+                // page's per-client cfacts and layouts -- rather than the whole catalog once scanned to find
+                // these by suffix. Run together, so two small fetches cost one round trip.
+                //
+                // Resolved on the **form's own** client's surface (from its id, issue #714), not the caller's
+                // own: an `allClients` admin editing another client's form must edit it in that client's rules --
+                // its copy of the endpoint, in its `$defs`. For an ordinary caller the form's client is their
+                // own, so this is the endpoint `resolveClient` alone resolved to; and a client that varies
+                // nothing falls back to the shared endpoint on the backend, which is why the page asks by bare
+                // path and never forms a client path itself (the #714 review's regression).
+                val formClient = formClientOf(id)
+                val patchFetch = async { fetchFormEndpoint(HttpMethod.POST.name, GEP.patch, formClient) }
+                val getFetch = async { fetchFormEndpoint(HttpMethod.GET.name, GEP.formDoc, formClient) }
                 val cat = patchFetch.await()
                 catalog = cat
                 val patchEp = findFormPatchEndpoint(cat.endpoints)

@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.DUF
@@ -13,6 +14,7 @@ import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.home.HMENU
 import react.ChildrenBuilder
@@ -46,6 +48,70 @@ import com.dynamicruntime.common.util.toOptStr
  * and covered under `jsNodeTest` against a renamed section.
  */
 fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substringAfter('/')
+
+/**
+ * The client a stored form belongs to, read from its gedra id (issue #714): an `allClients` admin editing
+ * another client's form must render it in *that* client's rules, not their own. Null when the id is absent or
+ * unparseable, in which case a page falls back to the caller's own client-scoped copy -- the ordinary case,
+ * where the two are the same. Parsed with the kernel's own [GedraId], so the frontend reads the client from an
+ * id exactly as the backend does. Pure, and covered under `jsNodeTest`.
+ */
+fun formClientOf(gedraId: String?): String? =
+    gedraId?.ifBlank { null }?.let { runCatching { GedraId.parse(it).client }.getOrNull() }
+
+/**
+ * The one way a form page fetches one of its endpoints (issue #714): the **bare** [barePath] resolved on the
+ * surface of [formClient] -- the form's own client, from [formClientOf] -- or, when that is null, the caller's
+ * own. The backend does the resolving *and* the fallback: a client that varies nothing has no `/gedra/<client>/…`
+ * copy, and asking for one by exact path found nothing (the #714 review's regression), whereas resolving on
+ * that client's surface answers with the shared endpoint, in that client's `$defs`. Shared by the raw editor
+ * and the survey page so the rule lives once.
+ */
+suspend fun fetchFormEndpoint(method: String, barePath: String, formClient: String?): Catalog =
+    SchemaCatalogApi.fetchEndpoint(method, barePath, resolveClient = true, client = formClient)
+
+/**
+ * Which client a **resolved** endpoint path is the copy for (issue #714): [formClient] when [resolvedPath] is
+ * its client copy of [barePath], else null -- the shared endpoint answered, so the caller's own client is bound
+ * and a sibling path (the workflow view, its save) must stay bare too. Pure, and covered under `jsNodeTest`.
+ */
+fun clientOfResolvedPath(resolvedPath: String?, barePath: String, formClient: String?): String? =
+    formClient?.takeIf { resolvedPath == clientPath(barePath, it) }
+
+/**
+ * The applied forms search after a cross-client caller chooses [chosen] (issue #714), or clears it (null): the
+ * `client` selector set or dropped, and the `user` scope dropped either way -- a user belongs to one client, so
+ * one picked under the old client (or the cross-client view) would not resolve under the new one and would
+ * 400 the listing. Every other filter is kept; `loadForClient` then whitelists it to what the target client's
+ * listing declares. Pure, and covered under `jsNodeTest`.
+ */
+fun formsSearchForClient(applied: Map<String, String>, chosen: String?): Map<String, String> =
+    (if (chosen.isNullOrBlank()) applied - EI.client else applied + (EI.client to chosen)) - EI.user
+
+/**
+ * The search a mounting forms page applies from its hash (issues #592, #714): [formsSearchFromHash], minus the
+ * `client` selector for a caller who may **not** see across clients -- a shared chosen-client link opened by an
+ * ordinary user would otherwise carry a filter they have no control to clear (and, on an empty account, read
+ * "no forms match" instead of the empty state). Pure, and covered under `jsNodeTest`.
+ */
+fun formsInitialSearch(hp: Map<String, String>, seeAllClients: Boolean): Map<String, String> =
+    formsSearchFromHash(hp).let { if (seeAllClients) it else it - EI.client }
+
+/** The client selector's empty choice on the forms listing (issue #668): every client's rows, the caller's own columns. */
+const val formsAllClientsLabel = "All clients"
+
+/**
+ * The note under the forms listing's client selector once a client is chosen (issue #714 review), naming the
+ * chosen client by its plain [name] (the selector already shows the id): the selector alone reads as a row
+ * filter, but the columns and the filters are now that client's -- and a new form would still be made in the
+ * caller's own client, which is why "New form" is not offered here. Pure, and covered under `jsNodeTest`.
+ */
+fun chosenClientNote(name: String): String =
+    "Showing $name's forms, with $name's columns and filters. New forms still go to your own client — " +
+        "choose $formsAllClientsLabel to create one."
+
+/** One fetched page of the forms listing: its rows and the total available, published together (#714 review). */
+class FormsListPage(val rows: List<Map<String, Any?>>, val numAvailable: Int)
 
 /**
  * The forms hash's navigation keys -- the page, the open form, the listing a child was opened from, the
