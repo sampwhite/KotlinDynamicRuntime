@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt
@@ -89,6 +90,9 @@ class GedraConfigService : ServiceInitializer {
     /** The config slots a bundle may carry -- the config-trait ids (issue #627), for refusing an unknown one. */
     fun knownSlots(): Set<String> = slotPrimaryKeys.keys
 
+    /** Each config slot's primary-key fields (issue #732): how a per-slot patch addresses one entry in a slot. */
+    fun configSlotPrimaryKeys(): Map<String, List<String>> = slotPrimaryKeys
+
     private fun configTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GCT.gedraConfig]
         ?: throw KdrException("${GCT.gedraConfig} table is not registered in the schema store.")
 
@@ -101,10 +105,58 @@ class GedraConfigService : ServiceInitializer {
      * right owner whatever the caller was bound to -- the same move the patch path's `oneClient` makes.
      */
     fun writeConfig(cxt: KdrCxt, config: GedraConfig, impliedDelete: Boolean = true): GedraConfigRow {
-        // A stored config is a client's own. Authoring into the reserved `globalconfig` namespace, or under the
-        // `global` client, is refused here -- the write path is the first place a client can author config from
-        // data (#292), so this is where that refusal has to bite; today namespace ownership is checked only in
-        // the source collector, which sees component-declared configs, not authored ones.
+        checkWritableConfig(cxt, config)
+        val configId = config.gedraId.revisionClass()
+        val wcxt = boundToClient(cxt, configId.client)
+        val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
+        val table = configTable(wcxt)
+        var result: GedraConfigRow? = null
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranWrite, null, mapOf(GC.configId to configId.fullId)) {
+            val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
+            result = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete)
+        }
+        return result!!
+    }
+
+    /**
+     * Edits a config's interior slots individually (issue #732), atomically: the [applyEdits] transform runs on
+     * the latest revision read **under the write lock**, so a patch cannot be computed from a stale/cached read
+     * and then overwrite a concurrent write (the read-modify-write race the endpoint layer could not close). The
+     * edited slot set is reassembled -- which validates it as source would -- and written as the whole revision
+     * (authoritative), so `buildFinalEntries` re-stamps only the entries the edits changed and the rest keep
+     * their accounting. Follows the same version/publish rule as [writeConfig]: it edits the latest editable
+     * revision in place, or starts a new one when the latest is published. Throws 404 when the class has none.
+     */
+    fun patchConfig(
+        cxt: KdrCxt,
+        configClassId: GedraId,
+        applyEdits: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
+    ): GedraConfigRow {
+        val configId = configClassId.revisionClass()
+        val wcxt = boundToClient(cxt, configId.client)
+        val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
+        val table = configTable(wcxt)
+        var result: GedraConfigRow? = null
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranWrite, null, mapOf(GC.configId to configId.fullId)) {
+            val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
+                ?: throw KdrException("No configuration '${configId.baseId}' for client '${configId.client}'.", code = EXC.notFound)
+            val edited = applyEdits(latest.entriesBySlot())
+            // Reassemble -> validate, exactly as the bundle write does; then write the whole edited set.
+            val config = reassembleGedraConfig(wcxt, configId.baseId, latest.resolvedNamespace(), configId.client, edited)
+            checkWritableConfig(wcxt, config)
+            result = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true)
+        }
+        return result!!
+    }
+
+    /**
+     * The write-time guards a stored config must pass (#292, #696): its types are not in the reserved
+     * `globalconfig` namespace and not owned by the `global` client, it authors only into a namespace it owns,
+     * and it carries no `testFeatures` on a non-test node (an explicit write that set them is refused rather than
+     * silently stripped -- a bulk clone/restore, #685, strips and logs instead). Run before a write and, for a
+     * patch, on the reassembled result.
+     */
+    private fun checkWritableConfig(cxt: KdrCxt, config: GedraConfig) {
         if (config.namespace == GCFG.globalNamespace) {
             throw KdrException.mkInput(
                 "Config '${config.gedraId}' declares its types in the reserved '${GCFG.globalNamespace}' " +
@@ -117,13 +169,6 @@ class GedraConfigService : ServiceInitializer {
                     "A stored config belongs to a real client.",
             )
         }
-        // The general rule the `globalconfig` refusal above is one case of (#292): a namespace has one owner, and
-        // a client may only author into its own or an unclaimed one. This is the write-time half of the check
-        // `GedraConfigCollector.firstProblem` runs at load; it catches authoring into any namespace a kept config
-        // already holds -- `globalconfig`, or another client's component namespace. A namespace no config has
-        // claimed reads null and is allowed (it becomes this client's on the first write); two data-authored
-        // configs racing for one unclaimed namespace is the load-time collision #614 resolves, which nothing here
-        // can see before either is stored.
         val nsOwner = SchemaService.get(cxt).gedraNamespaceOwner(config.namespace)
         if (nsOwner != null && nsOwner != config.gedraId.client) {
             throw KdrException.mkInput(
@@ -131,10 +176,6 @@ class GedraConfigService : ServiceInitializer {
                     "to '$nsOwner'. A client may only author into a namespace it owns.",
             )
         }
-        // testFeatures is honored only on a test instance (issue #696). An explicit write that carries it on a
-        // non-test node is refused rather than silently stripped -- a caller that set the field deliberately
-        // should hear that it does not belong here, not be left thinking it took. (A future bulk clone/restore
-        // strips and logs instead, so a whole restore is not failed by one field; that path is #685's.)
         val testFeatures = config.client?.testFeatures.orEmpty()
         if (!cxt.instanceConfig.isTestInstance && testFeatures.isNotEmpty()) {
             throw KdrException.mkInput(
@@ -142,32 +183,33 @@ class GedraConfigService : ServiceInitializer {
                     "on a test instance. This node is not one, so the write is refused.",
             )
         }
-        // Refuses a config carrying config traits (they are hardwired, never stored); produces one raw entry
-        // map per slot, keyed by the slot's trait id.
+    }
+
+    /**
+     * Writes [config] as the current revision of [configId] under an open write transaction, per the version/
+     * publish rule (#611): version 1 when the class has no revision, an in-place update while the latest is still
+     * editable, or a new version once it is published. The shared tail of [writeConfig] and [patchConfig].
+     */
+    private fun writeRevisionUnderLock(
+        wcxt: KdrCxt,
+        sqlCxt: SqlCxt,
+        table: KdrTable,
+        configId: GedraId,
+        config: GedraConfig,
+        latest: GedraConfigRow?,
+        impliedDelete: Boolean,
+    ): GedraConfigRow {
+        // Refuses a config carrying config traits (they are hardwired, never stored); one raw entry map per slot.
         val newBySlot = gedraConfigToEntries(config)
-        val configId = config.gedraId.revisionClass()
-        val wcxt = boundToClient(cxt, configId.client)
-        val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
-        val table = configTable(wcxt)
-        var result: GedraConfigRow? = null
-        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranWrite, null, mapOf(GC.configId to configId.fullId)) {
-            val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
-            val priorByKey = latest?.let { keyStoredEntries(it.entries) } ?: emptyMap()
-            // Each write path stamps its slot entries with the very instant its row is stamped with, so the two
-            // cannot disagree (see the write helpers); nothing is stamped out here on a pre-lock clock read.
-            result = when {
-                // No revision yet: this is version 1.
-                latest == null ->
-                    insertRevision(wcxt, sqlCxt, table, configId, 1, config.namespace, newBySlot, priorByKey, impliedDelete, null)
-                // Latest is still editable: rewrite it in place at the same version.
-                !latest.isPublished ->
-                    updateRevision(wcxt, sqlCxt, table, latest, config.namespace, newBySlot, priorByKey, impliedDelete)
-                // Latest is published: start the next revision.
-                else ->
-                    insertRevision(wcxt, sqlCxt, table, configId, latest.version + 1, config.namespace, newBySlot, priorByKey, impliedDelete, latest)
-            }
+        val priorByKey = latest?.let { keyStoredEntries(it.entries) } ?: emptyMap()
+        return when {
+            latest == null ->
+                insertRevision(wcxt, sqlCxt, table, configId, 1, config.namespace, newBySlot, priorByKey, impliedDelete, null)
+            !latest.isPublished ->
+                updateRevision(wcxt, sqlCxt, table, latest, config.namespace, newBySlot, priorByKey, impliedDelete)
+            else ->
+                insertRevision(wcxt, sqlCxt, table, configId, latest.version + 1, config.namespace, newBySlot, priorByKey, impliedDelete, latest)
         }
-        return result!!
     }
 
     /**

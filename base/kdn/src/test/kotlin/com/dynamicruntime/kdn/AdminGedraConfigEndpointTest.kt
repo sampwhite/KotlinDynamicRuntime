@@ -11,6 +11,9 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GED
+import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -61,6 +64,38 @@ class AdminGedraConfigEndpointTest : StringSpec({
 
         // Publish the named client's revision, cross-client.
         admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to target, CFEP.name to name))[CFEP.published] shouldBe true
+    }
+
+    "an allClients admin patches a named client's config cross-client (issue #732)" {
+        val admin = fullAdmin()
+        val target = CL.hub
+        val ns = "acepns685patch"
+        val name = "adminpatch"
+        // Seed a bundle with one schemaDef entry.
+        admin.postData(
+            ACEP.bundleWrite,
+            mapOf(
+                CFEP.client to target, CFEP.name to name, CFEP.namespaceField to ns,
+                CFEP.slots to mapOf(
+                    CCT.schemaDef to listOf(mapOf(CCT.typeName to "$ns.Shared", CCT.schema to mapOf(SCH.type to SCT.kObject))),
+                ),
+            ),
+        )
+        // Patch: add a cfactDef entry without touching the schemaDef.
+        val patched = admin.postData(
+            ACEP.bundlePatch,
+            mapOf(
+                CFEP.client to target, CFEP.name to name,
+                CFEP.edits to listOf(
+                    mapOf(
+                        CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrReplace.name,
+                        GE.data to mapOf(CCT.name to "ready", CCT.group to "grp", CCT.description to "Ready"),
+                    ),
+                ),
+            ),
+        )
+        patched[CFEP.client] shouldBe target
+        patched[CFEP.slots].toJsonMapOrEmpty().keys shouldBe setOf(CCT.schemaDef, CCT.cfactDef)
     }
 
     "an allClients admin creates a brand-new client over the API" {
