@@ -48,6 +48,8 @@ class WorkflowBootTest : StringSpec({
         task.displayOrder shouldBe listOf(ST.questionnaire, ST.expenseReport)
         task.label shouldContain "@t("
         task.saves.single().label shouldContain "@t("
+        // The workflow's own label (issue #719) rides the same file and the same boot check.
+        acme.def.label shouldContain "@t("
     }
 
     "globex sees the name-only creation workflow with literal labels" {
@@ -55,6 +57,8 @@ class WorkflowBootTest : StringSpec({
         globex.def.tasks.single().requiredTraitIds shouldBe listOf(GT.name)
         globex.def.tasks.single().label shouldBe "Name the form"
         globex.def.showTaskList shouldBe false
+        // No workflow label declared: the page titles itself.
+        globex.def.label shouldBe ""
     }
 
     "acme also sees a survey workflow -- two edit-save tasks, beside its creation workflow" {
@@ -66,6 +70,7 @@ class WorkflowBootTest : StringSpec({
         survey.def.tasks.flatMap { it.saves }.map { it.kind }.toSet() shouldBe setOf(WfSaveKind.edit)
         // Its labels ride the same backend fragment file, so the pull resolved at boot like creation's.
         survey.def.tasks.first().label shouldContain "@t("
+        survey.def.label shouldContain "@t("
         // Two single-instance kinds coexist in one scope: the creation workflow is still resolvable.
         service.forClient(SC.acme).creation.shouldNotBeNull().ref.workflowId shouldBe SW.createForm
         // globex declares no survey, and none is global, so it inherits none.

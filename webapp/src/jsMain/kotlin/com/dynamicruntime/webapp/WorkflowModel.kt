@@ -92,6 +92,11 @@ class WorkflowView(
     val showTaskList: Boolean,
     val tasks: List<WfTaskView>,
     /**
+     * What the workflow is called (issue #719), resolved like a task's label -- the page's title over the form.
+     * Empty when the definition gives none, and the page then uses its own generic title.
+     */
+    val label: String = "",
+    /**
      * The caller's frontend-delivered cfacts (issue #569), `name -> present`, which each rendered trait's
      * [SchemaForm] evaluates a property's `g-visibleWhen` against — so an admin-only field is hidden from an
      * ordinary caller. The same shape the endpoint catalog delivers.
@@ -168,6 +173,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         entry = results[WFD.entry].toOptStr() ?: "",
         showTaskList = results[WVF.showTaskList] == true,
         tasks = tasks,
+        label = results[WFD.label].toOptStr().orEmpty(),
         cfacts = cfacts,
         layouts = layouts,
         focusTask = results[WVF.focusTask].toOptStr(),

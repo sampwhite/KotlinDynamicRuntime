@@ -146,6 +146,14 @@ fun buildWorkflowRegistries(
             )
             return false
         }
+        // The workflow's own label (issue #719) rides the same check as a task's: a pull that cannot resolve
+        // would title the page with a broken template.
+        if (w.def.label.isNotBlank()) {
+            labelProblem(scope, w.def.label, fragments)?.let {
+                reportConfigProblem(cxt, mode, problem(scope, w, "has a label that $it"), issues)
+                return false
+            }
+        }
         for (task in w.def.tasks) {
             task.traits.firstOrNull { it.traitId !in usable }?.let {
                 reportConfigProblem(

@@ -280,6 +280,8 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         // labels pulled from a backend fragment file -- which is what drives the label boot check. Acme does
         // not include `name`, so its forms stay untitled, as they always have; globex has the name-only one.
         workflow(SW.createForm, WfEntry.creation) {
+            // The page's title (issue #719), from the same fragment file as the task labels.
+            label = "%{@t(\"${SF.acmeWf}.${SW.createForm}.label\")}"
             task(SW.identify, "%{@t(\"${SF.acmeWf}.${SW.identify}.label\")}") {
                 trait(ST.expenseReport)
                 trait(ST.questionnaire, required = false)
@@ -296,6 +298,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         // saves are `edit` (they update the existing form, they do not create a second one). Labels come from
         // the same `acmeWf` backend fragment file, so the survey's own labels ride the label boot check too.
         workflow(SW.reviewForm, WfEntry.survey) {
+            label = "%{@t(\"${SF.acmeWf}.${SW.reviewForm}.label\")}"
             task(SW.details, "%{@t(\"${SF.acmeWf}.${SW.details}.label\")}") {
                 trait(ST.expenseReport)
                 save(SW.saveDetails, "%{@t(\"${SF.acmeWf}.${SW.details}.save\")}", WfSaveKind.edit)
