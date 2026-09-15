@@ -202,38 +202,6 @@ class GedraConfigService : ServiceInitializer {
         return result!!
     }
 
-    /**
-     * The other direction of the publish toggle (issue #685): clears the latest revision's `publishedAt` so it
-     * is editable again, a no-op when it is already unpublished. Mirrors [publish]; like it, nothing a node runs
-     * changes until a reload -- an unpublish stages the revision back to editable, and a `publishedOnly` client
-     * whose only published revision this was simply consumes no configuration for that class after its next
-     * reload, which is the toggle working as asked rather than a fault.
-     */
-    fun unpublish(cxt: KdrCxt, configClassId: GedraId): GedraConfigRow {
-        val configId = configClassId.revisionClass()
-        val wcxt = boundToClient(cxt, configId.client)
-        val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
-        val table = configTable(wcxt)
-        var result: GedraConfigRow? = null
-        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranPublish, null, mapOf(GC.configId to configId.fullId)) {
-            val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
-                ?: throw KdrException.mkInput("There is no config '$configId' to unpublish.")
-            if (!latest.isPublished) {
-                result = latest
-                return@executeTopicTran
-            }
-            val stmt = SqlTopicUtil.mkPartialUpdateStmt(
-                sqlCxt, table, "uGedraConfigUnpublish",
-                "c:${GC.publishedAt} = :${GC.publishedAt}", "c:${GC.gedraId} = :${GC.gedraId}",
-            )
-            val bind = mutableMapOf<String, Any?>(GC.gedraId to latest.gedraId.fullId, GC.publishedAt to null)
-            SqlTopicUtil.prepForStdUpdate(wcxt, table, bind, latest.updatedAt)
-            sqlCxt.sqlDb.executeStatement(wcxt, stmt, bind)
-            result = readRowUnderLock(wcxt, sqlCxt, table, latest.gedraId)
-        }
-        return result!!
-    }
-
     /** Binds [cxt] to [client] so ownership/audit stamp from the config's own client, or returns it unchanged. */
     private fun boundToClient(cxt: KdrCxt, client: String): KdrCxt =
         if (cxt.client == client) cxt else cxt.mkSubContext("configWrite", client)

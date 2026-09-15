@@ -34,7 +34,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
     // A full-scope admin: ROLE.admin + allClients, the only caller the `/admin` config surface admits.
     fun fullAdmin(): TestUser = TestUser.createFullAdmin(cxt, "admincfg@example.com")
 
-    "an allClients admin writes, reads and publish-toggles a NAMED client's config cross-client" {
+    "an allClients admin writes, reads and publishes a NAMED client's config cross-client" {
         val admin = fullAdmin()
         val target = CL.hub // not the admin's own default client -- this is the cross-client point
         val ns = "acepns685"
@@ -59,9 +59,8 @@ class AdminGedraConfigEndpointTest : StringSpec({
         bundle[CFEP.client] shouldBe target
         bundle[CFEP.slots].toJsonMapOrEmpty().keys shouldBe setOf(CCT.schemaDef)
 
-        // Publish, then unpublish -- the toggle #685 adds, cross-client.
+        // Publish the named client's revision, cross-client.
         admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to target, CFEP.name to name))[CFEP.published] shouldBe true
-        admin.postData(ACEP.bundleUnpublish, mapOf(CFEP.client to target, CFEP.name to name))[CFEP.published] shouldBe false
     }
 
     "an allClients admin creates a brand-new client over the API" {
@@ -87,6 +86,18 @@ class AdminGedraConfigEndpointTest : StringSpec({
         // Editing does not make it present; a reload does (issue #685). The reload endpoint reloads this node.
         admin.postData(ACEP.reload, mapOf(CFEP.client to newClient))
         ClientService.get(cxt).known(newClient).shouldNotBeNull()
+    }
+
+    "naming a client that neither exists nor has stored config is a 404 (issue #685 review)" {
+        val admin = fullAdmin()
+        // A typo for a real client: not present, no stored config. The tier and reload endpoints must refuse it
+        // rather than write an orphan tier row or report a no-op reload as success.
+        admin.expectError(
+            EXC.notFound,
+            ACEP.publishedOnly,
+            mapOf(CFEP.client to "nosuchclient685", CFEP.publishedOnlyField to true),
+        )
+        admin.expectError(EXC.notFound, ACEP.reload, mapOf(CFEP.client to "nosuchclient685"))
     }
 
     "a scoped administrator without allClients is refused the admin config surface" {

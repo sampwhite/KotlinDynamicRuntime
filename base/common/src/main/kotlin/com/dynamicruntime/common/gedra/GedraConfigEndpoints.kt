@@ -53,7 +53,6 @@ object CFEP {
     const val bundle = "/${SECT.clientAdmin}/config/bundle"
     const val bundleWrite = "/${SECT.clientAdmin}/config/bundle/write"
     const val bundlePublish = "/${SECT.clientAdmin}/config/bundle/publish"
-    const val bundleUnpublish = "/${SECT.clientAdmin}/config/bundle/unpublish"
     const val traits = "/${SECT.clientAdmin}/config/traits"
     const val reload = "/${SECT.clientAdmin}/config/reload"
     const val publishedOnly = "/${SECT.clientAdmin}/config/publishedOnly"
@@ -185,16 +184,6 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         },
     ) { c, request -> cfgPublishBody(c, request) }
 
-    generalEndpoint(
-        CFEP.bundleUnpublish,
-        "Unpublishes a configuration's latest revision, making it editable again (issue #685).",
-        HttpMethod.POST,
-        outputRef = CFEP.summaryType,
-        inputFields = {
-            field(CFEP.name, "The configuration's name.", required = true)
-        },
-    ) { c, request -> cfgUnpublishBody(c, request) }
-
     listEndpoint(
         CFEP.traits,
         "The interior of one configuration: its stored config-trait entries, each with its own accounting.",
@@ -298,14 +287,6 @@ private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, A
         throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
     }
     return summaryOf(GedraConfigService.get(c).publish(c, configId(c, name)))
-}
-
-private fun cfgUnpublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
-    val name = requireName(request)
-    if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
-        throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
-    }
-    return summaryOf(GedraConfigService.get(c).unpublish(c, configId(c, name)))
 }
 
 private fun cfgTraitsBody(c: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
@@ -426,7 +407,6 @@ object ACEP {
     const val bundle = "/${SECT.admin}/client/config/bundle"
     const val bundleWrite = "/${SECT.admin}/client/config/bundle/write"
     const val bundlePublish = "/${SECT.admin}/client/config/bundle/publish"
-    const val bundleUnpublish = "/${SECT.admin}/client/config/bundle/unpublish"
     const val traits = "/${SECT.admin}/client/config/traits"
     const val reload = "/${SECT.admin}/client/config/reload"
     const val publishedOnly = "/${SECT.admin}/client/config/publishedOnly"
@@ -478,7 +458,9 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         HttpMethod.POST,
         outputRef = "${CFEP.namespace}.${CFEP.bundleType}",
         inputRef = ACEP.writeType,
-    ) { c, request -> cfgWriteBody(adminConfigCxt(c, request), request) }
+        // The one endpoint that may name a not-yet-existing client: writing a `clientDef` slot for a fresh id is
+        // how a brand-new client is created (made present by the next reload), so it skips the existence guard.
+    ) { c, request -> cfgWriteBody(adminConfigCxt(c, request, requireExisting = false), request) }
 
     generalEndpoint(
         ACEP.bundlePublish,
@@ -490,17 +472,6 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             field(CFEP.name, "The configuration's name.", required = true)
         },
     ) { c, request -> cfgPublishBody(adminConfigCxt(c, request), request) }
-
-    generalEndpoint(
-        ACEP.bundleUnpublish,
-        "Unpublishes a named client's configuration's latest revision, making it editable again (issue #685).",
-        HttpMethod.POST,
-        outputRef = "${CFEP.namespace}.${CFEP.summaryType}",
-        inputFields = {
-            field(CFEP.client, "The client that owns the configuration.", required = true)
-            field(CFEP.name, "The configuration's name.", required = true)
-        },
-    ) { c, request -> cfgUnpublishBody(adminConfigCxt(c, request), request) }
 
     listEndpoint(
         ACEP.traits,
@@ -542,6 +513,24 @@ private fun requireClient(request: Map<String, Any?>): String = request[CFEP.cli
  * which key off `cxt.client` -- act on that client while ownership/audit stamp from it and the caller stays the
  * actor. The `admin` section gate has already confined the caller to `allClients`, so naming any client is theirs
  * to do; an absent client is a 400.
+ *
+ * [requireExisting] (the default) refuses a client that is neither present nor has any stored configuration --
+ * so a typo'd id on the tier or reload endpoints reads as a 404 rather than writing an orphan tier row or
+ * reporting a no-op reload as success (issue #685 review). The bundle write passes it `false`, since writing a
+ * `clientDef` slot for a fresh id is exactly how a new client is created; a client written but not yet reloaded
+ * is admitted by the stored-config half, so the create-then-reload flow still works.
  */
-private fun adminConfigCxt(c: KdrCxt, request: Map<String, Any?>): KdrCxt =
-    c.mkSubContext("adminConfig", requireClient(request))
+private fun adminConfigCxt(c: KdrCxt, request: Map<String, Any?>, requireExisting: Boolean = true): KdrCxt {
+    val client = requireClient(request)
+    val ac = c.mkSubContext("adminConfig", client)
+    if (requireExisting &&
+        ClientService.get(ac).known(client) == null &&
+        GedraConfigService.get(ac).listConfigs(ac).isEmpty()
+    ) {
+        throw KdrException(
+            "No client '$client': it is not present and has no stored configuration. Write its configuration first.",
+            code = EXC.notFound,
+        )
+    }
+    return ac
+}
