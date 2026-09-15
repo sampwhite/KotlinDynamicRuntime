@@ -20,8 +20,12 @@ import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 
-/** One client a new user may be put in, as the create form's selector offers them (issue #352). */
-class ClientChoice(val clientId: String, val name: String)
+/**
+ * One client a selector offers (issue #352): the create form's, and the forms list's choose-a-client (#668).
+ * [hasSurvey] (issue #695) rides only from the summary listing, which the forms list reads so its survey-status
+ * filter can key on the *chosen* client rather than the caller's own; the plain listing leaves it false.
+ */
+class ClientChoice(val clientId: String, val name: String, val hasSurvey: Boolean = false)
 
 /**
  * How a client reads in the create form's selector.
@@ -189,6 +193,16 @@ object AdminApi {
     suspend fun listClients(): List<ClientChoice> =
         Http.getApi(ADEP.clients)[EP.items].toJsonListOfMaps().map {
             ClientChoice(it[CLD.clientId] as? String ?: "", it[CLD.name] as? String ?: "")
+        }
+
+    /**
+     * The clients with their summary facts (issue #672's cross-client listing), as choices carrying `hasSurvey`
+     * (issue #695) -- what the forms list's choose-a-client reads, so the survey-status filter follows the client
+     * whose rows are on screen. Full-scope like [listClients]; the same clients, one more fact each.
+     */
+    suspend fun listClientSummaries(): List<ClientChoice> =
+        Http.getApi(ADEP.clientSummaries)[EP.items].toJsonListOfMaps().map {
+            ClientChoice(it[CLD.clientId] as? String ?: "", it[CLD.name] as? String ?: "", it[CLD.hasSurvey] == true)
         }
 
     /**

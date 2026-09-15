@@ -25,6 +25,7 @@ import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
@@ -229,6 +230,16 @@ class SurveyEditTest : StringSpec({
         ids(page(null)) shouldContainAll listOf(done, needs)
         // A value outside the closed choice is refused rather than silently matching nothing.
         user.expectError(400, GEP.formDocs, args = mapOf(SVY.surveyStatus to "bogus"))
+
+        // The same through the CACHE path: an ordinary user's scope carries no client, so the listing above took
+        // the SQL fallback; a client-scoped admin's scope keys the client+kind index, and the state filter runs
+        // there too -- on the raw cached rows, before extraction.
+        val clientAdmin = TestUser.create(cxt, "admin695@$client.test", level = ROLE.admin, userClient = client)
+        fun adminIds(status: String): List<Any?> = clientAdmin.getItems(GEP.formDocs, mapOf(SVY.surveyStatus to status)).map { it[GDF.gedraId] }
+        adminIds(SVYS.valid) shouldContain done
+        adminIds(SVYS.valid) shouldNotContain needs
+        adminIds(SVYS.needsInfo) shouldContain needs
+        adminIds(SVYS.needsInfo) shouldNotContain done
     }
 
     "a survey edit save folds new data into the form, and the returned item reflects it" {

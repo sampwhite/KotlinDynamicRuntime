@@ -291,8 +291,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val filter = searchFilter(c, request, usages)
         val sort = gedraSortFor(c, request, usages, scope)
         // The survey-status filter (issue #695): a predicate over a row's state entries, through the same rule
-        // the status column reads them by, applied by `listGedras` over the states cache before paging.
-        val statusWanted = (request[SVY.surveyStatus] as? String)?.trim()?.ifEmpty { null }
+        // the status column reads them by, applied by `listGedras` over the states cache before paging. The
+        // schema has already settled the value: a blank is absent (`emptyIsAbsent`), anything but the three
+        // options was refused, so what arrives is one of them or nothing.
+        val statusWanted = request[SVY.surveyStatus] as? String
         val stateFilter: ((List<Map<String, Any?>>) -> Boolean)? = statusWanted?.let { wanted -> { states -> surveyStatusOf(states) == wanted } }
         val svc = GedraDataService.get(c)
         val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort, stateFilter)

@@ -338,9 +338,10 @@ val FormsPage = FC<Props> {
             val seeAllClients = homeConfig?.canSeeAllClients == true
             canSeeAllClients = seeAllClients
             hasSurvey = homeConfig?.hasSurvey == true
-            // The clients to offer in the filter, for a cross-client caller (issue #668).
+            // The clients to offer in the filter, for a cross-client caller (issue #668) -- with each one's
+            // `hasSurvey` (issue #695), so the survey-status filter can follow the chosen client.
             if (seeAllClients) {
-                clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
+                clientChoices = runCatching { AdminApi.listClientSummaries() }.getOrDefault(emptyList())
             }
             // The surface to load: a client the hash carries (a bookmarked or shared chosen-client listing,
             // issue #714) when the caller may see across clients, else the caller's own. The search and sort ride
@@ -730,14 +731,18 @@ val FormsPage = FC<Props> {
                 // the filters but leaves whose forms are shown to the scope bar -- as *applied*, so a user typed
                 // into the scope box and never applied is not applied by Clear either (#562 review).
                 val groups = searchGroups(ep.inputSchema)
+                // Whether the survey-status filter is on offer (issue #695): a fact about the client whose rows are
+                // on screen -- the chosen client's (#714), read off its summary, else the caller's own from the
+                // shell. A client not (yet) in the choices reads as offering none.
+                val surveyFilterOffered = chosenClient?.let { id -> clientChoices.firstOrNull { it.clientId == id }?.hasSurvey == true } ?: hasSurvey
                 // The panel is also worth drawing with no trait fields at all when the survey-status filter is
-                // on offer (issue #695): that one is every form's, not a trait's.
-                if (groups.isNotEmpty() || hasSurvey) {
+                // on offer: that one is every form's, not a trait's.
+                if (groups.isNotEmpty() || surveyFilterOffered) {
                     FormsSearch {
                         this.groups = groups
                         values = searchDraft
                         applied = appliedSearch
-                        showSurveyStatus = hasSurvey
+                        showSurveyStatus = surveyFilterOffered
                         panelOpen = filtersOpen
                         onTogglePanel = { filtersOpen = !filtersOpen }
                         onChange = { name, value -> searchDraft = searchDraft + (name to value) }

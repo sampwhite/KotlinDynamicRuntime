@@ -68,9 +68,6 @@ object SVYS {
 
     /** Present data fails its schema, whether or not something is also missing. */
     const val invalid = "invalid"
-
-    /** The three, in the order a control offers them. */
-    val all: List<String> = listOf(valid, needsInfo, invalid)
 }
 
 /**
