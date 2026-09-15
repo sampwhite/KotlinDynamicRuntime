@@ -4,6 +4,7 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.startup.SchemaService
@@ -12,6 +13,7 @@ import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -66,8 +68,12 @@ class WorkflowBootTest : StringSpec({
         survey.def.entry shouldBe WfEntry.survey
         survey.ref.workflowId shouldBe SW.reviewForm
         survey.def.showTaskList shouldBe true
-        survey.def.tasks.map { it.id } shouldBe listOf(SW.details, SW.extra)
+        survey.def.tasks.map { it.id } shouldBe listOf(SW.details, SW.profile)
         survey.def.tasks.flatMap { it.saves }.map { it.kind }.toSet() shouldBe setOf(WfSaveKind.edit)
+        // The profile task carries the two supplied-default functions (issue #711): name and email prefilled
+        // from the owner. Both resolve at boot, so the survey's prefill wiring is checked here, not only live.
+        val profile = survey.def.tasks.single { it.id == SW.profile }
+        profile.resolvedFunctions.filter { it.event == WfEventType.prefillData } shouldHaveSize 2
         // Its labels ride the same backend fragment file, so the pull resolved at boot like creation's.
         survey.def.tasks.first().label shouldContain "@t("
         survey.def.label shouldContain "@t("

@@ -134,6 +134,35 @@ class WorkflowModelTest {
     }
 
     @Test
+    fun suggestedFilledFieldsAreTheFilledDefaultsOnly() {
+        // Only the filled default (name) starts suggested; the offer default (email) is not shown, so not it.
+        val p = prefillPresentationOf(parseWorkflowView(prefillView(GSRC.prefill))!!)
+        assertEquals(setOf("name"), suggestedFilledFields(p, "userInfo"))
+    }
+
+    @Test
+    fun pendingDefaultCountFallsAsDefaultsAreAcceptedOrCleared() {
+        val wf = parseWorkflowView(prefillView(GSRC.prefill))!!
+        val p = prefillPresentationOf(wf)
+        val task = wf.tasks.single()
+        // Fresh: name is a still-suggested filled default (1) and email is an unapplied offer (1).
+        assertEquals(2, pendingDefaultCount(task, p, mapOf("userInfo" to setOf("name")), emptyMap()))
+        // Touch name (no longer suggested) and apply email (now a value): nothing pending.
+        assertEquals(
+            0,
+            pendingDefaultCount(task, p, mapOf("userInfo" to emptySet()), mapOf("userInfo" to mapOf("email" to "j@x.com"))),
+        )
+        // A view with no prefill at all has nothing pending regardless of state.
+        val plain = parseWorkflowView(prefillView(GSRC.user))!!
+        assertEquals(0, pendingDefaultCount(plain.tasks.single(), prefillPresentationOf(plain), emptyMap(), emptyMap()))
+        // A resolved (saved) trait counts nothing, even with an offer left blank -- it is now stored data.
+        assertEquals(
+            0,
+            pendingDefaultCount(task, p, mapOf("userInfo" to setOf("name")), emptyMap(), resolvedTraits = setOf("userInfo")),
+        )
+    }
+
+    @Test
     fun foundFalseParsesToNull() {
         assertNull(parseWorkflowView(view(found = false)))
         assertNull(parseWorkflowView(emptyMap()))

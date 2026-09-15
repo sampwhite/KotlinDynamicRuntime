@@ -718,7 +718,7 @@ private fun prefillOwnerAttributes(cxt: KdrCxt, declared: WfDeclared, ownerUserI
     val owner = UserService.get(cxt)
         .queryUsersByIds(cxt, listOf(ownerUserId), ReadScopeRules.forCaller(cxt))[ownerUserId]
         ?: return emptyMap()
-    return mapOf(PFO.publicName to owner.publicName(), PFO.name to owner.name)
+    return mapOf(PFO.publicName to owner.publicName(), PFO.name to owner.name, PFO.email to owner.primaryId)
 }
 
 /**

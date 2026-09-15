@@ -17,14 +17,14 @@
 # +save Create expense form
 
 /- The survey workflow's tasks (issue #656): the owner revisits the same data after creation. Two tasks, one
-   namespace each. -/
+   namespace each -- the review of the two form traits, and the supplied-defaults profile (issue #711). -/
 
 # @details
 
-# +label Review your expense report
+# +label Review your expense report and questionnaire
 # +save Save changes
 
-# @extra
+# @profile
 
-# +label Revisit the issues questionnaire
+# +label Confirm your contact details
 # +save Save changes

@@ -580,6 +580,15 @@ input {
 .field-required { color: var(--danger); }
 .field-value { color: var(--text); }
 .field-type { color: var(--text-faint); font-style: italic; font-size: .85rem; }
+/* A supplied default not yet accepted (issue #710): a quiet chip on the field container marking that the value
+   came from the caller's account, not from them. Muted rather than shouting -- it is a nudge to confirm, not an
+   error -- and on the container so it reads the same beside a text box, a checkbox or a date. */
+.field-suggested {
+  flex: 0 0 auto; align-self: center;
+  font-size: .7rem; font-weight: 600; letter-spacing: .02em;
+  padding: 1px 6px; border-radius: 8px;
+  color: var(--text-dim); background: var(--surface-raised); border: 1px solid var(--border);
+}
 .json-value { flex: 1 1 100%; margin: 4px 0 0; white-space: pre; }
 .nested { margin: 4px 0 8px 16px; padding-left: 12px; border-left: 2px solid var(--border); }
 
@@ -759,6 +768,9 @@ a.op-status:hover { text-decoration: underline; }
    danger red -- a dim tone that reads as a prompt rather than a verdict, in the same slot as the other two so
    the three states swap in place. */
 .form-stale { color: var(--text-muted); font-style: italic; margin-top: 12px; }
+/* The supplied-defaults prompt above a task's Save (issue #710): a quiet caption, not a verdict -- it asks the
+   reader to confirm values filled from their account, so it reads as a nudge rather than success or error. */
+.form-prefill-summary { color: var(--text-dim); margin-top: 12px; }
 
 /* A field that failed validation (issue #197): the message sits under the field, and the row it belongs to is
    marked so the label and the control can pick the state up. The message carries the meaning on its own --

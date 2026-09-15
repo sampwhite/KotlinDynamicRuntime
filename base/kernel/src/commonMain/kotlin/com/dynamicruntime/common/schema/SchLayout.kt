@@ -431,8 +431,13 @@ object LAYSTR {
      *  the errors are already marked inline on the fields, so this only points the consumer at them. */
     const val formErrorHint = "formErrorHint"
 
+    /** The line a form shows when the only thing left is to accept supplied defaults (issue #710) -- how many
+     *  fields were filled from the caller's account, and that saving keeps them. Templated over `${'$'}{count}` on the
+     *  frontend, which also homes the default copy; a layout carries only a client's override of the wording. */
+    const val prefillSummary = "prefillSummary"
+
     /** Every key a `strings` block may carry; the boot check refuses anything outside it. */
-    val keys: Set<String> = setOf(formErrorSummary, formErrorHint)
+    val keys: Set<String> = setOf(formErrorSummary, formErrorHint, prefillSummary)
 }
 
 /**

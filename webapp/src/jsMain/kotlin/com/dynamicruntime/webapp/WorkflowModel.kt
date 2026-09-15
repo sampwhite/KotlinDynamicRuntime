@@ -390,6 +390,44 @@ fun prefillPresentationOf(view: WorkflowView): PrefillPresentation {
  */
 fun seedValuesOf(view: WorkflowView): Map<String, Map<String, Any?>> = prefillPresentationOf(view).working
 
+/** Whether a value reads as empty for a supplied default (absent, or text a user has cleared) -- an unapplied
+ *  `offer`, the same reading [SchemaForm] uses to decide whether to draw the "Use it" link (issue #710). */
+private fun isBlankPrefillValue(value: Any?): Boolean = value == null || (value is String && value.isBlank())
+
+/**
+ * How many of [task]'s supplied defaults are still **pending** (issue #710): a `filled` field the user has not
+ * yet touched (still in [suggestedByTrait]), or an `offer` field not yet applied (its value in [valuesByTrait]
+ * still empty). This is the count the "N fields filled from your account" line reports, and it falls to zero as
+ * the user accepts, edits, or saves them -- so the line disappears once nothing is left to confirm. Pure, so a
+ * `jsNodeTest` can pin it; the React form owns the state it reads.
+ */
+fun pendingDefaultCount(
+    task: WfTaskView,
+    presentation: PrefillPresentation,
+    suggestedByTrait: Map<String, Set<String>>,
+    valuesByTrait: Map<String, Map<String, Any?>>,
+    resolvedTraits: Set<String> = emptySet(),
+): Int {
+    var pending = 0
+    for (trait in task.traits) {
+        if (trait.traitId in resolvedTraits) continue
+        val modes = presentation.modes[trait.traitId] ?: continue
+        val suggested = suggestedByTrait[trait.traitId] ?: emptySet()
+        val values = valuesByTrait[trait.traitId] ?: emptyMap()
+        for ((field, mode) in modes) {
+            val isPending = if (mode == SLDM.offer) isBlankPrefillValue(values[field]) else field in suggested
+            if (isPending) pending++
+        }
+    }
+    return pending
+}
+
+/** The fields of [traitId] a form starts marking as suggested (issue #710): its `filled` defaults, shown as
+ *  suggestions until the user touches them. An `offer` field is not seeded, so it is not "suggested" -- it is
+ *  offered -- and is absent here. Empty when the trait carries no default. */
+fun suggestedFilledFields(presentation: PrefillPresentation, traitId: String): Set<String> =
+    presentation.modes[traitId]?.filterValues { it == SLDM.filled }?.keys ?: emptySet()
+
 /**
  * The `entries` a save posts, from the values collected per trait (issue #536): each is a `{traitId, data}`
  * entry, the shape the save endpoint stores. A trait with no values collected is still sent as an empty entry,

@@ -33,8 +33,11 @@ object PFO {
     const val publicName = "publicName"
     const val name = "name"
 
+    /** The owner's primary identifier -- their email (`AuthUserRow.primaryId`), issue #710/#711. */
+    const val email = "email"
+
     /** The attributes a `prefillFromOwner` may name, and a handler supplies. */
-    val ownerAttributes: List<String> = listOf(publicName, name)
+    val ownerAttributes: List<String> = listOf(publicName, name, email)
 
     /** The schema namespace and type name for this function's initialization data. */
     const val namespace = "wffnpfo"
