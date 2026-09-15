@@ -9,7 +9,9 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -310,6 +312,100 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     return bundleOf(c, svc.patchConfig(c, configId(c, name)) { current -> applyConfigSlotEdits(current, edits, pk) })
 }
 
+/**
+ * Bulk-imports config bundles (issue #733), each applied independently so one bad bundle does not abort the
+ * rest. On a non-test node a bundle's `testFeatures` are stripped and logged rather than refused -- the other
+ * half of the single-client write's refuse. Affected clients are then reloaded (unless asked not to) so the
+ * import is live and a brand-new client becomes present. Returns what was written, stripped, reloaded, and could
+ * not be applied.
+ */
+private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    val bundles = request[ACEP.bundlesField].toJsonListOfMaps()
+    if (bundles.isEmpty()) {
+        throw KdrException.mkInput("A config import must carry at least one bundle.")
+    }
+    val doReload = request[ACEP.reloadField] as? Boolean ?: true
+    val svc = GedraConfigService.get(c)
+    val isTest = c.instanceConfig.isTestInstance
+    val written = mutableListOf<Map<String, Any?>>()
+    val stripped = mutableListOf<Map<String, Any?>>()
+    val failures = mutableListOf<Map<String, Any?>>()
+    val affected = LinkedHashSet<String>()
+    for (bundle in bundles) {
+        val client = bundle[CFEP.client].toOptStr()?.trim()?.ifEmpty { null }
+        val name = bundle[CFEP.name].toOptStr()
+        try {
+            if (client == null) throw KdrException.mkInput("A bundle must name its '${CFEP.client}'.")
+            if (name == null) throw KdrException.mkInput("A bundle must name its '${CFEP.name}'.")
+            val namespace = bundle[CFEP.namespaceField].toOptStr()
+                ?: throw KdrException.mkInput("A bundle must name its '${CFEP.namespaceField}'.")
+            var slots = slotsOf(bundle[CFEP.slots], svc.knownSlots())
+            // Strip + log testFeatures off a test instance rather than refuse (issue #733): a whole restore is
+            // not failed by one field. On a test instance they round-trip.
+            if (!isTest) {
+                val (clean, features) = strippedOfTestFeatures(slots)
+                if (features.isNotEmpty()) {
+                    slots = clean
+                    stripped.add(linkedMapOf(CFEP.client to client, ACEP.features to features))
+                    LogStartup.info(c) {
+                        "Config import stripped testFeatures $features from client '$client' -- honored only on a test instance."
+                    }
+                }
+            }
+            val bcxt = c.mkSubContext("configImport", client)
+            val config = reassembleGedraConfig(bcxt, name, namespace, client, slots)
+            val impliedDelete = bundle[CFEP.impliedDelete] as? Boolean ?: true
+            val row = svc.writeConfig(bcxt, config, impliedDelete)
+            written.add(linkedMapOf(CFEP.client to client, CFEP.name to name, CFEP.version to row.version))
+            affected.add(client)
+        } catch (e: Throwable) {
+            // One bad bundle is reported, not fatal (issue #733) -- the restore continues.
+            failures.add(dropNulls(linkedMapOf(CFEP.client to client, CFEP.name to name, ACEP.message to (e.message ?: "unknown error"))))
+        }
+    }
+    val reloaded = mutableListOf<String>()
+    if (doReload) {
+        for (client in affected) {
+            try {
+                val result = GedraConfigReload.reloadClient(c, client)
+                ClientSyncService.get(c).announceAndMark(c, client, result.marker)
+                reloaded.add(client)
+            } catch (e: Throwable) {
+                failures.add(linkedMapOf(CFEP.client to client, ACEP.message to "reload failed: ${e.message ?: "unknown error"}"))
+            }
+        }
+    }
+    return linkedMapOf(
+        ACEP.written to written,
+        ACEP.stripped to stripped,
+        ACEP.failures to failures,
+        ACEP.reloaded to reloaded,
+    )
+}
+
+/**
+ * A bundle's slots with `${CLD.testFeatures}` removed from its `clientDef` entry (issue #733), paired with the
+ * features dropped -- the write-side analog of [GedraConfigRow.entriesForEmission], over raw input slots. Returns
+ * the slots unchanged (and an empty list) when there is nothing to strip.
+ */
+fun strippedOfTestFeatures(
+    slots: Map<String, List<Map<String, Any?>>>,
+): Pair<Map<String, List<Map<String, Any?>>>, List<String>> {
+    val clientDefs = slots[CCT.clientDef] ?: return slots to emptyList()
+    val features = mutableListOf<String>()
+    val cleaned = clientDefs.map { data ->
+        val tf = data[CLD.testFeatures]
+        if (tf != null) {
+            features.addAll(tf.toJsonListOfStrings())
+            data - CLD.testFeatures
+        } else {
+            data
+        }
+    }
+    if (features.isEmpty()) return slots to emptyList()
+    return (slots + (CCT.clientDef to cleaned)) to features
+}
+
 private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     val name = requireName(request)
     // Publish refuses a class with no revision; surface that as a 404 rather than a 400, since to this caller a
@@ -513,9 +609,21 @@ object ACEP {
     const val traits = "/${SECT.admin}/client/config/traits"
     const val reload = "/${SECT.admin}/client/config/reload"
     const val publishedOnly = "/${SECT.admin}/client/config/publishedOnly"
+    const val import = "/${SECT.admin}/client/config/import"
 
     /** The write input adds the named [CFEP.client] to what the client-scoped write takes. */
     const val writeType = "AdminConfigBundleWrite"
+    const val importResultType = "ConfigImportResult"
+
+    // --- import field names (each matches its value) ---
+    const val bundlesField = "bundles"
+    const val reloadField = "reload"
+    const val written = "written"
+    const val stripped = "stripped"
+    const val failures = "failures"
+    const val reloaded = "reloaded"
+    const val features = "features"
+    const val message = "message"
 }
 
 @Suppress("DuplicatedCode")
@@ -617,6 +725,62 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             field(CFEP.publishedOnlyField, "Whether to consume published configuration only.", required = true) { type = SCT.boolean }
         },
     ) { c, request -> cfgPublishedOnlyBody(adminConfigCxt(c, request), request) }
+
+    type(ACEP.importResultType) {
+        type = SCT.kObject
+        description = "What a bulk config import wrote, stripped, reloaded, and could not apply (issue #733)."
+        property(ACEP.written, "The configurations written, each by client, name and resulting version.", required = true) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(CFEP.client, "The owning client.", required = true)
+                property(CFEP.name, "The configuration's name.", required = true)
+                property(CFEP.version, "The resulting revision version.", required = true) { type = SCT.integer }
+            }
+        }
+        property(ACEP.stripped, "The clients whose testFeatures were stripped on this non-test node, with what was dropped.", required = true) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(CFEP.client, "The client whose definition carried testFeatures.", required = true)
+                property(ACEP.features, "The testFeatures that were stripped.", required = true) { type = SCT.array; items { type = SCT.string } }
+            }
+        }
+        property(ACEP.failures, "The bundles that could not be applied, each with why -- the rest still landed.", required = true) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(CFEP.client, "The client the failed bundle named.")
+                property(CFEP.name, "The configuration name the failed bundle named.")
+                property(ACEP.message, "Why it failed.", required = true)
+            }
+        }
+        property(ACEP.reloaded, "The clients reloaded so their imported configuration is live.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+    }
+
+    // Bulk import / clone / restore (issue #733, #685 Slice C): write a whole set of client configurations at
+    // once. Each bundle is applied independently -- a bad one is reported in `failures` and the rest still land,
+    // so a restore is not aborted by one config -- and `testFeatures` is stripped and logged on a non-test node
+    // rather than refused (the split the single-client write's refuse is the other half of). Affected clients are
+    // reloaded so the import goes live, which is how a brand-new client becomes present.
+    generalEndpoint(
+        ACEP.import,
+        "Bulk-imports a set of client configurations (issue #733): each bundle applied independently, testFeatures " +
+            "stripped+logged off a test instance, affected clients reloaded.",
+        HttpMethod.POST,
+        outputRef = "${ACEP.namespace}.${ACEP.importResultType}",
+        inputFields = {
+            field(ACEP.bundlesField, "The configuration bundles to import, each `{${CFEP.client}, ${CFEP.name}, " +
+                "${CFEP.namespaceField}, ${CFEP.slots}, ${CFEP.impliedDelete}?}`.", required = true) {
+                type = SCT.array
+                items { type = SCT.kObject }
+            }
+            field(ACEP.reloadField, "Whether to reload the affected clients after writing (default true).") { type = SCT.boolean }
+        },
+    ) { c, request -> cfgImportBody(c, request) }
 }
 
 /** The named client an `/admin` config request targets. */
