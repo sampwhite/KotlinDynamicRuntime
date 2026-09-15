@@ -159,11 +159,12 @@ val FormsPage = FC<Props> {
     var rowDeleteError by useState<DisplayError?>(null)
 
     /**
-     * Invokes [ep] for one page and publishes the rows and total -- the shared body of [loadPage] and
+     * Invokes [ep] for one page and returns its rows and total -- the shared body of [loadPage] and
      * [loadForClient], so the standard query args (paging, the filled search, sort, the owner-attach flag, and
      * the survey states) and the items/`numAvailable` parse live in one place and the initial load cannot drift
-     * from a paged one. [includeUsers] is passed rather than read from state so a mount-time call is not at the
-     * mercy of a not-yet-landed setter (the #668 trap); its caller decides where a failure is shown.
+     * from a paged one. Returned rather than published, so a caller that rebinds the surface can publish the
+     * rows *with* it (#714 review). [includeUsers] is passed rather than read from state so a mount-time call is
+     * not at the mercy of a not-yet-landed setter (the #668 trap); its caller decides where a failure is shown.
      */
     suspend fun fetchListPage(
         ep: EndpointInfo,
@@ -172,15 +173,31 @@ val FormsPage = FC<Props> {
         sortCol: String?,
         sortDesc: Boolean,
         includeUsers: Boolean,
-    ) {
+    ): FormsListPage {
         val resp = SchemaCatalogApi.invoke(
             ep,
             mapOf(EP.limit to formsPageSize, EP.offset to off) + search +
                 sortArgs(sortCol, sortDesc) + includeUsersArg(includeUsers) +
                 mapOf(GDF.withStates to true),
         )
-        rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
-        numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
+        val fetched = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
+        return FormsListPage(fetched, (resp[EP.numAvailable] as? Number)?.toInt() ?: fetched.size)
+    }
+
+    /**
+     * What every list action drops before it fetches -- paging, a new search, a delete reload, a client switch
+     * (issues #417, #592, #669; shared since the #714 review so the switch cannot skip it). A row's armed delete
+     * confirm belongs to the page it was armed on, so a primed "Yes" never lingers on a row navigated past; the
+     * just-saved flash plays once on arrival and never re-runs when the rows are rebuilt; and the off-screen
+     * "you saved it but it's filtered out" note has done its job once the user acts -- most often by clearing
+     * the filter, which reveals the row itself.
+     */
+    fun beginListAction() {
+        rowConfirmDeleteId = null
+        rowDeleteError = null
+        highlightRowId = null
+        savedOffscreenNote = null
+        listLoading = true
     }
 
     /**
@@ -195,20 +212,12 @@ val FormsPage = FC<Props> {
         sortCol: String? = sortColumn,
         sortDesc: Boolean = sortDescending,
     ) {
-        // A row's armed delete confirm belongs to the page it was armed on; paging away (or reloading after a
-        // delete) drops it, so a primed "Yes" never lingers on a row the user has navigated past (issue #417).
-        rowConfirmDeleteId = null
-        rowDeleteError = null
-        // Any list action (paging, a new search, a delete reload) ends the just-saved flash, so it plays once
-        // on arrival and never re-runs when the rows are rebuilt (issue #592 review). The off-screen note goes
-        // with it (issue #669): a new fetch is the user acting, so the "you saved it but it's filtered out" clue
-        // has done its job -- most often the action is clearing the filter, which reveals the row itself.
-        highlightRowId = null
-        savedOffscreenNote = null
-        listLoading = true
+        beginListAction()
         formsScope.launch {
             try {
-                fetchListPage(ep, off, search, sortCol, sortDesc, canManageUsers)
+                val page = fetchListPage(ep, off, search, sortCol, sortDesc, canManageUsers)
+                rows = page.rows
+                numAvailable = page.numAvailable
                 searchError = null
             } catch (e: Throwable) {
                 searchError = userFacingError(e)
@@ -241,6 +250,11 @@ val FormsPage = FC<Props> {
      * [initialLoad] says where a failure is shown: the page-level `error` (the whole card, right for the very
      * first load, when there are no controls to keep) versus `searchError` beside the controls (right for a
      * client switch, so a failed reload does not remove the client selector and strand the caller).
+     *
+     * Fetched first, published after (#714 review): the catalog, the endpoints it binds, the whitelisted search
+     * and the first page are staged in locals until the page has arrived, so a failed switch leaves the previous
+     * surface whole -- its selector value, its columns, its rows -- under the error, rather than the new client's
+     * controls over the old client's rows (where a row action would then hit the wrong client's endpoint).
      */
     fun loadForClient(
         client: String?,
@@ -250,27 +264,31 @@ val FormsPage = FC<Props> {
         includeUsers: Boolean,
         initialLoad: Boolean,
     ) {
-        listLoading = true
+        beginListAction()
         formsScope.launch {
             try {
                 val cat = SchemaCatalogApi.fetchCatalog(client = client)
+                val ep = findFormsListEndpoint(cat.endpoints)
+                val applied = if (ep == null) emptyMap() else search.filterKeys { it in formsSearchKeys(ep.inputSchema) }
+                val page = if (ep == null) null else fetchListPage(ep, 0, applied, sortCol, sortDesc, includeUsers)
+                // Everything has arrived: publish the surface and its page together.
                 catalog = cat
                 getEndpoint = findFormGetEndpoint(cat.endpoints)
                 deleteEndpoint = findFormDeleteEndpoint(cat.endpoints)
                 createEndpoint = findFormCreateEndpoint(cat.endpoints)
                 patchEndpoint = findFormPatchEndpoint(cat.endpoints)
                 valuesEndpoint = findFormValuesEndpoint(cat.endpoints)
-                val ep = findFormsListEndpoint(cat.endpoints)
                 listEndpoint = ep
                 if (ep != null) {
-                    val declaredKeys = formsSearchKeys(ep.inputSchema)
-                    val applied = search.filterKeys { it in declaredKeys }
                     searchDraft = applied
                     appliedSearch = applied
                     sortColumn = sortCol
                     sortDescending = sortDesc
                     offset = 0
-                    fetchListPage(ep, 0, applied, sortCol, sortDesc, includeUsers)
+                }
+                if (page != null) {
+                    rows = page.rows
+                    numAvailable = page.numAvailable
                 }
                 error = null
                 searchError = null
@@ -324,9 +342,11 @@ val FormsPage = FC<Props> {
             // issue #714) when the caller may see across clients, else the caller's own. The search and sort ride
             // in the hash too (issues #592, #666); `loadForClient` whitelists the search to what that client's
             // listing declares and loads the first page. The freshly-read hash and local, not the state set
-            // above (not landed yet).
+            // above (not landed yet). For a caller who may not see across clients the `client` selector is
+            // dropped from the search too (`formsInitialSearch`), not just from the surface choice: kept, it
+            // would ride as a filter they have no control to clear (#714 review).
             val hashClient = hashParams()[EI.client]?.ifBlank { null }?.takeIf { seeAllClients }
-            val initialSearch = formsSearchFromHash(hashParams())
+            val initialSearch = formsInitialSearch(hashParams(), seeAllClients)
             val initialSortCol = hashParams()[GSORT.sort]?.ifBlank { null }
             val initialSortDesc = hashParams()[GSORT.sortDir]?.equals(GSORT.desc, ignoreCase = true) == true
             loadForClient(hashClient, initialSearch, initialSortCol, initialSortDesc, includeUsers = canManage, initialLoad = true)
@@ -553,9 +573,16 @@ val FormsPage = FC<Props> {
             }
             else -> {
                 val union = entriesUnionOf(cat.payloadType(ep))
+                // The client a cross-client caller has chosen to work in (issue #714), or null in the
+                // cross-client view and for every ordinary caller.
+                val chosenClient = appliedSearch[EI.client]?.ifBlank { null }
                 // The list is the hub: "New form" leads it, so add sits beside the per-row edit/delete rather
-                // than only in the top nav (issue #417). Present only when the surface can create.
-                createEndpoint?.let {
+                // than only in the top nav (issue #417). Present only when the surface can create -- and not
+                // under a chosen client (#714 review): the create page makes the form in the caller's *own*
+                // client, so under another client's listing the new row would land elsewhere and read as
+                // "filtered out". Creating on another client's behalf is its own issue (#672 Slice 3); until
+                // then the note under the selector says where a new form goes.
+                if (chosenClient == null) createEndpoint?.let {
                     div {
                         className = ClassName("row")
                         Button {
@@ -635,19 +662,24 @@ val FormsPage = FC<Props> {
                             value = appliedSearch[EI.client]?.ifBlank { null }
                             options = clientOptions(clientChoices)
                             allowClear = true
-                            placeholder = "All clients"
+                            placeholder = formsAllClientsLabel
                             style = js("({ minWidth: 220 })")
                             onChange = { v ->
                                 val chosen = (v as? String)?.ifBlank { null }
-                                // Changing the client drops the `user` scope too: a user belongs to one client, so a
-                                // user picked in the old client (or the cross-client view) would not resolve in the
-                                // new one and would 400 the listing. The scope bar resets to everyone.
-                                val kept = (if (chosen == null) appliedSearch - EI.client else appliedSearch + (EI.client to chosen)) - EI.user
-                                // Re-fetch the chosen client's surface (issue #714); `loadForClient` re-whitelists
-                                // the search to the new client's declared fields and reloads from the top. A failed
-                                // reload shows beside the controls, not as a whole-card error (initialLoad = false).
-                                loadForClient(chosen, kept, sortColumn, sortDescending, canManageUsers, initialLoad = false)
+                                // The client set or dropped, and the `user` scope dropped with it (`formsSearchForClient`
+                                // says why). Re-fetch the chosen client's surface (issue #714); `loadForClient`
+                                // re-whitelists the search to the new client's declared fields and reloads from the
+                                // top. A failed reload shows beside the controls, not as a whole-card error.
+                                loadForClient(chosen, formsSearchForClient(appliedSearch, chosen), sortColumn, sortDescending, canManageUsers, initialLoad = false)
                             }
+                        }
+                    }
+                    // What the choice changed (#714 review): the selector alone reads as a row filter, but the
+                    // columns and filters below are now the chosen client's -- and a new form would not be.
+                    chosenClient?.let { chosen ->
+                        p {
+                            className = ClassName("type-hint")
+                            +chosenClientNote(clientChoices.firstOrNull { it.clientId == chosen }?.name?.ifBlank { null } ?: chosen)
                         }
                     }
                 }
@@ -719,10 +751,9 @@ val FormsPage = FC<Props> {
                     onView = { id -> viewingId = id }
                     canDelete = deleteEndpoint != null
                     showOwner = canManageUsers
-                    // The Client column is for the cross-client view; once a single client is chosen every row is
-                    // that client, so the column would say one thing (issue #714) -- drop it then, as the User
-                    // column drops when a single user is picked.
-                    showClient = canSeeAllClients && appliedSearch[EI.client].isNullOrBlank()
+                    // The Client column is for the cross-client view: it tells rows apart by client, and once a
+                    // single client is chosen there is nothing to tell apart (issue #714) -- so it is dropped then.
+                    showClient = canSeeAllClients && chosenClient == null
                     highlightId = highlightRowId
                     this.sortColumn = sortColumn
                     this.sortDescending = sortDescending

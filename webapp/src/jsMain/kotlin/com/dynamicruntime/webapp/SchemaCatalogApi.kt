@@ -59,14 +59,21 @@ object SchemaCatalogApi {
 
     /**
      * GET a single endpoint in the same shape as the full catalog. With [resolveClient] set, [path] is a
-     * **bare** path the backend resolves to the caller's own client-scoped copy (issue #552) -- how a page
+     * **bare** path the backend resolves to the surface's client-scoped copy (issue #552) -- how a page
      * that holds only the bare path (e.g. `GEP.formDocCreate`) fetches its one endpoint's closure without
      * first fetching the whole catalog to discover the concrete path. Without it, [path] must be exact.
+     *
+     * An optional [client] looks the endpoint up on **that** client's surface (issue #714), as [fetchCatalog]'s
+     * does: the copy resolved to and the `$defs` it is rendered against are that client's, for an `allClients`
+     * caller working in another client's rules. Null is the caller's own. The backend owns the fallback -- a
+     * client that varies nothing answers with the shared endpoint -- which is why a page never forms a
+     * `/gedra/<client>/…` path itself.
      */
-    suspend fun fetchEndpoint(method: String, path: String, resolveClient: Boolean = false): Catalog {
+    suspend fun fetchEndpoint(method: String, path: String, resolveClient: Boolean = false, client: String? = null): Catalog {
         val resolve = if (resolveClient) "&${EI.resolveClient}=true" else ""
+        val forClient = client?.let { "&${EI.client}=${encodeUriComponent(it)}" } ?: ""
         val results = getJson(
-            "$schemaBase/endpoint?${EI.method}=$method&${EI.path}=${encodeUriComponent(path)}$resolve",
+            "$schemaBase/endpoint?${EI.method}=$method&${EI.path}=${encodeUriComponent(path)}$resolve$forClient",
         )[EP.results].toJsonMapOrEmpty()
         return toCatalog(results)
     }

@@ -1,7 +1,6 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
@@ -99,19 +98,15 @@ val EditFormPage = FC<Props> {
                 // page's per-client cfacts and layouts -- rather than the whole catalog once scanned to find
                 // these by suffix. Run together, so two small fetches cost one round trip.
                 //
-                // Resolved to the **form's own** client (from its id, issue #714), not the caller's own: an
-                // `allClients` admin editing another client's form must edit it in that client's rules. For an
-                // ordinary caller the form's client is their own, so this is the same endpoint `resolveClient`
-                // resolved to -- which is the fallback when the id carries no parseable client.
+                // Resolved on the **form's own** client's surface (from its id, issue #714), not the caller's
+                // own: an `allClients` admin editing another client's form must edit it in that client's rules --
+                // its copy of the endpoint, in its `$defs`. For an ordinary caller the form's client is their
+                // own, so this is the endpoint `resolveClient` alone resolved to; and a client that varies
+                // nothing falls back to the shared endpoint on the backend, which is why the page asks by bare
+                // path and never forms a client path itself (the #714 review's regression).
                 val formClient = formClientOf(id)
-                val patchFetch = async {
-                    if (formClient != null) SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, clientPath(GEP.patch, formClient))
-                    else SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, GEP.patch, resolveClient = true)
-                }
-                val getFetch = async {
-                    if (formClient != null) SchemaCatalogApi.fetchEndpoint(HttpMethod.GET.name, clientPath(GEP.formDoc, formClient))
-                    else SchemaCatalogApi.fetchEndpoint(HttpMethod.GET.name, GEP.formDoc, resolveClient = true)
-                }
+                val patchFetch = async { fetchFormEndpoint(HttpMethod.POST.name, GEP.patch, formClient) }
+                val getFetch = async { fetchFormEndpoint(HttpMethod.GET.name, GEP.formDoc, formClient) }
                 val cat = patchFetch.await()
                 catalog = cat
                 val patchEp = findFormPatchEndpoint(cat.endpoints)

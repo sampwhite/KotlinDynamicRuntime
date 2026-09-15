@@ -852,21 +852,32 @@ class SchemaService : ServiceInitializer {
                 property(
                     EI.path,
                     "The endpoint path, as registered (e.g. `/schema/complex`). Exact by default; with " +
-                        "`${EI.resolveClient}` it is a **bare** path resolved to your own client's copy.",
+                        "`${EI.resolveClient}` it is a **bare** path resolved to the surface's client's copy.",
                     required = true,
                 )
                 property(
                     EI.resolveClient,
-                    "Read `path` as a **bare** path and resolve it to your own client's copy before looking it " +
-                        "up (issue #552) -- so a caller holding only the bare path (e.g. `/gedra/formDoc/create`) " +
+                    "Read `path` as a **bare** path and resolve it to the surface's client's copy before looking " +
+                        "it up (issue #552) -- so a caller holding only the bare path (e.g. `/gedra/formDoc/create`) " +
                         "can fetch its one client-scoped endpoint's closure without first fetching the whole " +
                         "catalog to discover the concrete path. Where there is no client-scoped copy to resolve " +
-                        "to -- a bare surface, or an endpoint your client does not vary -- the bare path is used " +
+                        "to -- a bare surface, or an endpoint the client does not vary -- the bare path is used " +
                         "as-is, so the shared endpoint answers rather than nothing.",
                 ) {
                     type = SCT.boolean
                     allowCoerce = true
                 }
+                // The same client choice the listing offers (issue #714): the surface -- and so the copy
+                // `resolveClient` resolves to, and the `$defs` the endpoint is rendered against -- is that
+                // client's. An `allClients` admin editing another client's form asks for *its* patch endpoint
+                // in *its* types this way, with the same fallback to the shared endpoint a non-varying client
+                // gets, rather than forming the client path itself and finding nothing.
+                property(
+                    EI.client,
+                    "Look the endpoint up on this client's surface instead of your own -- its copy of the path " +
+                        "(with `${EI.resolveClient}`) and its schema. Requires the '" + ROLE.allClients +
+                        "' capability unless it names your own client.",
+                ) { clientAttribute() }
             }
             generalEndpoint(
                 "/schema/endpoint",
