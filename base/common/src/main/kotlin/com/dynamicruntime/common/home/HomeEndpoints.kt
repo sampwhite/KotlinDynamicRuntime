@@ -167,10 +167,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
  * expression does not match is absent from the response, exactly as before.
  *
  * **Most items are application-only**, and that is a correctness fix rather than tidying (issue #446). The
- * account, forms and profile surfaces are contributed `appOnly` (#432), so an edge that offered them was
+ * account, forms, and profile surfaces are contributed `appOnly` (#432), so an edge that offered them was
  * offering pages whose endpoints are not there: an anonymous edge caller was shown "Log in" and "Register" --
  * the account-creation surface #432 existed to remove -- and an env-authed one, who holds `admin`, was shown
- * Users, My forms, Profile and Log out. Six items, all of which 404 on the node serving them.
+ * Users, My forms, Profile, and Log out. Six items, all of which 404 on the node serving them.
  *
  * They say `,app` rather than an edge overlay setting them to `#never`, which is the whole reason the boot
  * role is a cfact: an edge does not *remove* the application's items, it fails to match them, so one list
