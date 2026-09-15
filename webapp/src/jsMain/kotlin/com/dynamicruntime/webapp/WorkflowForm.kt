@@ -22,6 +22,9 @@ import web.cssom.ClassName
 
 private val wfFormScope = MainScope()
 
+/** What Done asks before discarding unsaved edits (issue #716); worded for the button, not for a navigation. */
+private const val discardEditsPrompt = "You have unsaved changes. Discard them and stop editing?"
+
 external interface WorkflowFormProps : Props {
     /** The resolved workflow view to render -- a creation workflow, or a survey resolved against a form. */
     var view: WorkflowView
@@ -297,7 +300,15 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     className = ClassName("row")
                     if (editing) {
                         Button {
-                            onClick = { valuesByTrait = stored; failuresByTrait = emptyMap(); unmetTraits = emptySet(); editing = false }
+                            // Done reverts to the stored values -- a discard, when there are unsaved edits. The
+                            // leave guard lives in the router and only ever sees a navigation, so a button that
+                            // drops the same edits in place has to ask for itself (issue #716), with the guard's
+                            // own dialog. A clean Done stays silent: there is nothing to lose.
+                            onClick = {
+                                if (!anyUnsaved || LeaveGuard.confirmLeave(discardEditsPrompt)) {
+                                    valuesByTrait = stored; failuresByTrait = emptyMap(); unmetTraits = emptySet(); editing = false
+                                }
+                            }
                             +"Done"
                         }
                     } else {
