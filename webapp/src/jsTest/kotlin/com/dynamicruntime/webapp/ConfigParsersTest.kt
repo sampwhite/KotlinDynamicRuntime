@@ -99,6 +99,7 @@ class ConfigParsersTest {
                     HFEAT.leftBar to false,
                     HFEAT.inlineLinks to true,
                     HFEAT.canManageUsers to true,
+                    HFEAT.hasSurvey to true,
                 ),
                 state = mapOf(
                     HFLD.links to listOf(
@@ -116,6 +117,9 @@ class ConfigParsersTest {
         assertEquals(false, cfg.layout.leftBar)
         assertEquals(true, cfg.layout.inlineLinks)
         assertTrue(cfg.canManageUsers)
+        // The client declares a survey (issue #695); absent reads as false like the other flags.
+        assertTrue(cfg.hasSurvey)
+        assertFalse(homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap())).hasSurvey)
 
         assertEquals(1, cfg.links.size)
         assertEquals("guide", cfg.links[0].docId)

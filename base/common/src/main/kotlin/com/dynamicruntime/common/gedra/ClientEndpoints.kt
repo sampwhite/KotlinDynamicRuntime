@@ -136,6 +136,9 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
             type = SCT.array
             items { type = SCT.string }
         }
+        property(CLD.hasSurvey, "Whether the client declares a survey workflow (issue #695): a forms surface working in this client then offers its survey-status filter.", required = true) {
+            type = SCT.boolean
+        }
     }
 
     itemEndpoint(
@@ -207,6 +210,7 @@ private fun clientSummaryOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
         CLD.workflowIds to workflowIdsFor(cxt, def.clientId),
         CLD.traitIds to schema.supportedGedraTraitsFor(def.clientId, def).map { it.traitId },
         CLD.usageLabels to schema.traitUsagesFor(def.clientId).map { it.label },
+        CLD.hasSurvey to (WorkflowService.get(cxt).forClient(def.clientId).survey != null),
     )
 }
 

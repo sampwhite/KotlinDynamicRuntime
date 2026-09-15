@@ -9,6 +9,7 @@ import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.uiblock.UiCall
@@ -97,6 +98,9 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
             property(HFEAT.canSeeAllClients, "Whether the caller administers across clients (holds allClients).", required = true) {
                 type = SCT.boolean
             }
+            property(HFEAT.hasSurvey, "Whether the caller's client declares a survey workflow (issue #695) -- the forms list then offers its survey-status filter.", required = true) {
+                type = SCT.boolean
+            }
         }
         property(UIC.state, "Dynamic state for constructing the home page.", required = true) {
             type = SCT.kObject
@@ -137,6 +141,9 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
                 HFEAT.inlineLinks to c.layoutFlag(HCFG.homeInlineLinks, default = false),
                 HFEAT.canManageUsers to AdminRules.canManageUsers(c),
                 HFEAT.canSeeAllClients to AdminRules.canSeeAllClients(c),
+                // The caller's own client's registry (issue #695): a cross-client admin working in another
+                // client's surface reads that client's rows, but the filter keys on where the caller belongs.
+                HFEAT.hasSurvey to (WorkflowService.get(c).forClient(c.client).survey != null),
             ),
             UIC.state to buildMap {
                 put(HFLD.links, homeLinksFor(c))
@@ -160,10 +167,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
  * expression does not match is absent from the response, exactly as before.
  *
  * **Most items are application-only**, and that is a correctness fix rather than tidying (issue #446). The
- * account, forms and profile surfaces are contributed `appOnly` (#432), so an edge that offered them was
+ * account, forms, and profile surfaces are contributed `appOnly` (#432), so an edge that offered them was
  * offering pages whose endpoints are not there: an anonymous edge caller was shown "Log in" and "Register" --
  * the account-creation surface #432 existed to remove -- and an env-authed one, who holds `admin`, was shown
- * Users, My forms, Profile and Log out. Six items, all of which 404 on the node serving them.
+ * Users, My forms, Profile, and Log out. Six items, all of which 404 on the node serving them.
  *
  * They say `,app` rather than an edge overlay setting them to `#never`, which is the whole reason the boot
  * role is a cfact: an edge does not *remove* the application's items, it fails to match them, so one list

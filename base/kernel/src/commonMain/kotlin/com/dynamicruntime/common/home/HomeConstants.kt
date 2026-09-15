@@ -44,6 +44,14 @@ object HFEAT {
      * of the caller, distinct from [canManageUsers], which a client-scoped administrator also has.
      */
     const val canSeeAllClients = "canSeeAllClients"
+
+    /**
+     * Whether the caller's client declares a **survey** workflow (issue #695) -- the signal the forms list keys
+     * its survey-status filter on. A fact about the client's configuration rather than about the rows on
+     * screen: the status column appears when some row carries survey state, but a control that vanished the
+     * moment a filter matched nothing could never be cleared.
+     */
+    const val hasSurvey = "hasSurvey"
 }
 
 /** Home UI-config response field (JSON key) names, under the shared `state` envelope entry. */

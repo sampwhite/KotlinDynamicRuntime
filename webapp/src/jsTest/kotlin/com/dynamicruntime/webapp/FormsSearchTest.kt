@@ -3,6 +3,8 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.UsageKind
+import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.SVYS
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
@@ -53,6 +55,17 @@ class FormsSearchTest {
     fun theFreeTextTermIsReservedToo() {
         val schema = mapOf(SCH.properties to linkedMapOf(EI.q to mapOf<String, Any?>(), "name" to mapOf(SCH.title to "Name")))
         assertEquals(listOf("name"), searchGroups(schema).map { it.traitId })
+    }
+
+    /** The survey-status filter (issue #695) is reserved -- its own control, never a trait box -- and chips by label. */
+    @Test
+    fun theSurveyStatusFilterIsReservedAndChipsByLabel() {
+        val schema = mapOf(SCH.properties to linkedMapOf(SVY.surveyStatus to mapOf<String, Any?>(), "name" to mapOf(SCH.title to "Name")))
+        assertEquals(listOf("name"), searchGroups(schema).map { it.traitId })
+        assertEquals("Status: Needs Info", surveyStatusChip(mapOf(SVY.surveyStatus to SVYS.needsInfo)))
+        assertNull(surveyStatusChip(mapOf(SVY.surveyStatus to "")))
+        assertNull(surveyStatusChip(mapOf(SVY.surveyStatus to "bogus")))
+        assertNull(surveyStatusChip(emptyMap()))
     }
 
     // A client's full listing query as the catalog serves it (issue #562): text traits with and without a

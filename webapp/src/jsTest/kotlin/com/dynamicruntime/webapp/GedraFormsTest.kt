@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.SVYS
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
@@ -543,6 +544,12 @@ class GedraFormsTest {
         assertEquals(SurveyStatus.needsInfo, surveyStatusFrom(surveyStates(complete = false, valid = true)))
         // Complete and valid: valid.
         assertEquals(SurveyStatus.valid, surveyStatusFrom(surveyStates(complete = true, valid = true)))
+        // The wire vocabulary is the kernel's (issue #695): the filter sends what the column reads.
+        assertEquals(SurveyStatus.invalid, SurveyStatus.fromWire(SVYS.invalid))
+        assertEquals(SurveyStatus.needsInfo, SurveyStatus.fromWire(SVYS.needsInfo))
+        assertEquals(SurveyStatus.valid, SurveyStatus.fromWire(SVYS.valid))
+        assertNull(SurveyStatus.fromWire("bogus"))
+        assertNull(SurveyStatus.fromWire(null))
         // The chip contract each status renders under.
         assertEquals("Needs Info" to "warning", SurveyStatus.needsInfo.label to SurveyStatus.needsInfo.pstat)
         assertEquals("Invalid" to "error", SurveyStatus.invalid.label to SurveyStatus.invalid.pstat)

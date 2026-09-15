@@ -70,6 +70,10 @@ class ClientDefinitionEndpointTest : StringSpec({
         val rows = admin.getItems(ADEP.clientSummaries)
         val acme = rows.first { it[CLD.clientId].toOptStr() == SC.acme }
         acme[CLD.usageLabels].toJsonListOfStrings() shouldContain "Auditor"
+        // The survey fact (issue #695): acme declares a survey, globex does not -- what a forms surface working
+        // in the chosen client keys its survey-status filter on.
+        acme[CLD.hasSurvey] shouldBe true
+        rows.first { it[CLD.clientId] == SC.globex }[CLD.hasSurvey] shouldBe false
         acme[CLD.traitIds].toJsonListOfStrings() shouldContain SC.siteAudit
         acme[CLD.traitIds].toJsonListOfStrings() shouldNotContain ST.managerApproval
         acme[CLD.workflowIds].toJsonListOfStrings().shouldNotBeEmpty()

@@ -141,6 +141,13 @@ object CLD {
     const val workflowIds = "workflowIds"
     const val traitIds = "traitIds"
     const val usageLabels = "usageLabels"
+
+    /**
+     * On a summary row (issue #695): whether the client declares a survey workflow -- what a cross-client
+     * surface working in that client keys its survey-status filter on, as the shell's `hasSurvey` does for the
+     * caller's own client.
+     */
+    const val hasSurvey = "hasSurvey"
 }
 
 /**
