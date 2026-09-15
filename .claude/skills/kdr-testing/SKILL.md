@@ -189,6 +189,13 @@ kdr-backend` is the same boot from any directory if `bin/` is on your `PATH`.
   never edit the developer's `KdrConfig` (their run's config can't break yours, and vice versa). Full recipe,
   addressed to you, in the **"For Claude"** section of `<repo>/examples/custom-config.md` — the repo-root
   `examples/` directory, not one beside this skill.
+- **In zsh, never name a shell variable `GID` / `UID` / `EUID` / `EGID` / `PPID`.** These are built-in
+  *read-only integer* parameters, so assigning a non-numeric string to one (a gedra id captured from
+  `id=$(curl … | …)`, say) makes zsh evaluate the value **arithmetically** and fail the whole line with
+  `(eval):N: bad floating point constant` — thrown at the assignment, **before** `curl` runs, so it reads as a
+  curl/encoding bug when it is nothing of the sort. Prefer a lowercase name (`gid`, `gedra_id`): lowercase
+  never collides with zsh's uppercase specials, and this bites only in zsh (in bash `GID` is an ordinary
+  name).
 
 **A crash in the frontend reports minified nonsense by default.** The deployed bundle is webpack's production
 build, so a Kotlin exception arrives with no `message` and a mangled `name` — a caught render failure reports
