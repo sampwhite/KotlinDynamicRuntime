@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
@@ -91,18 +92,25 @@ val EditFormPage = FC<Props> {
         val id = gedraId
         editScope.launch {
             try {
-                // Just the two endpoints this page uses, each resolved to the caller's own client-scoped copy of
-                // its bare path (issue #552): the **patch** endpoint, whose schema this page renders (already
-                // narrowed to what this client supports, so a section cannot offer a trait the client removed),
-                // and the **get** endpoint, which it only *invokes* to load the form's current entries. Fetched
-                // in isolation -- each carries only its own `$defs` closure plus the page's per-client cfacts and
-                // layouts -- rather than the whole catalog once scanned to find these by suffix. Run together, so
-                // two small fetches cost one round trip.
+                // Just the two endpoints this page uses (issue #552): the **patch** endpoint, whose schema this
+                // page renders (already narrowed to what the client supports, so a section cannot offer a trait
+                // the client removed), and the **get** endpoint, which it only *invokes* to load the form's
+                // current entries. Fetched in isolation -- each carries only its own `$defs` closure plus the
+                // page's per-client cfacts and layouts -- rather than the whole catalog once scanned to find
+                // these by suffix. Run together, so two small fetches cost one round trip.
+                //
+                // Resolved to the **form's own** client (from its id, issue #714), not the caller's own: an
+                // `allClients` admin editing another client's form must edit it in that client's rules. For an
+                // ordinary caller the form's client is their own, so this is the same endpoint `resolveClient`
+                // resolved to -- which is the fallback when the id carries no parseable client.
+                val formClient = formClientOf(id)
                 val patchFetch = async {
-                    SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, GEP.patch, resolveClient = true)
+                    if (formClient != null) SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, clientPath(GEP.patch, formClient))
+                    else SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, GEP.patch, resolveClient = true)
                 }
                 val getFetch = async {
-                    SchemaCatalogApi.fetchEndpoint(HttpMethod.GET.name, GEP.formDoc, resolveClient = true)
+                    if (formClient != null) SchemaCatalogApi.fetchEndpoint(HttpMethod.GET.name, clientPath(GEP.formDoc, formClient))
+                    else SchemaCatalogApi.fetchEndpoint(HttpMethod.GET.name, GEP.formDoc, resolveClient = true)
                 }
                 val cat = patchFetch.await()
                 catalog = cat

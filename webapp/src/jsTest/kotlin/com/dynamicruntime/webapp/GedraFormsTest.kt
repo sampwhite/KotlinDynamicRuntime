@@ -158,6 +158,20 @@ class GedraFormsTest {
         assertTrue("/forms/acme/formDoc/create".endsWith(renamed))
     }
 
+    /**
+     * The form's client read from its gedra id (issue #714): the third dot-separated segment. An absent, blank,
+     * or unparseable id yields null, so an edit page falls back to the caller's own client-scoped copy.
+     */
+    @Test
+    fun readsTheFormClientFromItsId() {
+        assertEquals("acme", formClientOf("gd.fd.acme.u20260914202810102fudi8Q"))
+        assertEquals("globex", formClientOf("gd.fd.globex.u20260914202810121FYV76A"))
+        // Absent or malformed: null, so the caller's own client-scoped copy is used instead.
+        assertNull(formClientOf(null))
+        assertNull(formClientOf(""))
+        assertNull(formClientOf("not-a-gedra-id"))
+    }
+
     /** A one-branch-per-trait union: a `name` branch and an `expenseReport` branch, the latter with a title. */
     private fun unionDefs(): Map<String, Any?> = mapOf(
         "t.NameEntry" to mapOf(

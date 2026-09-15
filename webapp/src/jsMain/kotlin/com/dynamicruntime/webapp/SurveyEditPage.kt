@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.home.HMENU
 import kotlinx.coroutines.MainScope
@@ -94,9 +95,15 @@ val SurveyEditPage = FC<Props> {
                 // The survey view and the patch-endpoint check are independent, so they run together (one round
                 // trip). The check only gates a link, so its own failure just hides the link rather than failing
                 // the page.
+                // The form's own client (from its id, issue #714): gate the raw-edit link on that client's patch
+                // endpoint, so an allClients admin editing another client's survey sees the link decided by the
+                // form's client, not their own. Falls back to the caller's own copy when the id has no parseable
+                // client (an ordinary caller, whose client is the same).
+                val formClient = formClientOf(id)
                 val patchFetch = async {
                     try {
-                        val cat = SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, GEP.patch, resolveClient = true)
+                        val cat = if (formClient != null) SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, clientPath(GEP.patch, formClient))
+                        else SchemaCatalogApi.fetchEndpoint(HttpMethod.POST.name, GEP.patch, resolveClient = true)
                         findFormPatchEndpoint(cat.endpoints) != null
                     } catch (e: Throwable) {
                         false

@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.home.HMENU
 import react.ChildrenBuilder
@@ -46,6 +47,16 @@ import com.dynamicruntime.common.util.toOptStr
  * and covered under `jsNodeTest` against a renamed section.
  */
 fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substringAfter('/')
+
+/**
+ * The client a stored form belongs to, read from its gedra id (issue #714): an `allClients` admin editing
+ * another client's form must render it in *that* client's rules, not their own. Null when the id is absent or
+ * unparseable, in which case a page falls back to the caller's own client-scoped copy -- the ordinary case,
+ * where the two are the same. Parsed with the kernel's own [GedraId], so the frontend reads the client from an
+ * id exactly as the backend does. Pure, and covered under `jsNodeTest`.
+ */
+fun formClientOf(gedraId: String?): String? =
+    gedraId?.ifBlank { null }?.let { runCatching { GedraId.parse(it).client }.getOrNull() }
 
 /**
  * The forms hash's navigation keys -- the page, the open form, the listing a child was opened from, the

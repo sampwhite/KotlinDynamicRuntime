@@ -208,6 +208,63 @@ val FormsPage = FC<Props> {
         loadPage(ep, 0, applied)
     }
 
+    /**
+     * Loads the whole surface for [client] and its first page (issue #714): the catalog for that client (null =
+     * the caller's own cross-client surface), which rebinds every form endpoint and -- because a client-scoped
+     * `/gedra/<client>/…` path runs bound to that client -- makes the listing's columns, its search fields and
+     * its edit form that client's rather than the admin's own. The chosen client also rides as the `client=` row
+     * filter, since a client path alone does not narrow an `allClients` caller's unrestricted scope (issue #668).
+     *
+     * [search] is the filter to apply, re-whitelisted to what the target client's listing declares -- a trait
+     * filter from another client is dropped rather than 400ing the page, while the client and user scope
+     * selectors (declared on every variant) are kept. [includeUsers] is passed rather than read from state so a
+     * mount-time call is not at the mercy of a not-yet-landed setter (the #668 trap).
+     */
+    fun loadForClient(
+        client: String?,
+        search: Map<String, String>,
+        sortCol: String?,
+        sortDesc: Boolean,
+        includeUsers: Boolean,
+    ) {
+        listLoading = true
+        formsScope.launch {
+            try {
+                val cat = SchemaCatalogApi.fetchCatalog(client = client)
+                catalog = cat
+                getEndpoint = findFormGetEndpoint(cat.endpoints)
+                deleteEndpoint = findFormDeleteEndpoint(cat.endpoints)
+                createEndpoint = findFormCreateEndpoint(cat.endpoints)
+                patchEndpoint = findFormPatchEndpoint(cat.endpoints)
+                valuesEndpoint = findFormValuesEndpoint(cat.endpoints)
+                val ep = findFormsListEndpoint(cat.endpoints)
+                listEndpoint = ep
+                if (ep != null) {
+                    val declaredKeys = formsSearchKeys(ep.inputSchema)
+                    val applied = search.filterKeys { it in declaredKeys }
+                    searchDraft = applied
+                    appliedSearch = applied
+                    sortColumn = sortCol
+                    sortDescending = sortDesc
+                    offset = 0
+                    val resp = SchemaCatalogApi.invoke(
+                        ep,
+                        mapOf(EP.limit to formsPageSize, EP.offset to 0) + applied +
+                            sortArgs(sortCol, sortDesc) + includeUsersArg(includeUsers) +
+                            mapOf(GDF.withStates to true),
+                    )
+                    rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
+                    numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
+                }
+                error = null
+            } catch (e: Throwable) {
+                error = userFacingError(e)
+            } finally {
+                listLoading = false
+            }
+        }
+    }
+
     useEffectOnce {
         // Only a hash that still names THIS page drives the open form. A hash change that leaves for another page
         // (the survey editor, the raw editor) also carries `g=`; reading it here set `viewingId`, and the hash-sync
@@ -232,63 +289,30 @@ val FormsPage = FC<Props> {
 
     useEffectOnce {
         formsScope.launch {
-            try {
-                // Whether the caller administers other users (issue #562) and across clients (issue #668): a
-                // failure to learn them leaves the administrative controls off, which is the safe reading -- the
-                // list itself still loads. One config fetch answers both.
-                val homeConfig = runCatching { HomeApi.fetchConfig() }.getOrNull()
-                val canManage = homeConfig?.canManageUsers == true
-                canManageUsers = canManage
-                // The freshly-read local, not the state set just above: that setter has not landed yet, so the
-                // clients fetch must branch on the value in hand, not the state variable (issue #668).
-                val seeAllClients = homeConfig?.canSeeAllClients == true
-                canSeeAllClients = seeAllClients
-                // The clients to offer in the filter, for a cross-client caller (issue #668).
-                if (seeAllClients) {
-                    clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
-                }
-                // The caller's own client-scoped surface, so the list is exactly what this caller may see.
-                val cat = SchemaCatalogApi.fetchCatalog()
-                catalog = cat
-                getEndpoint = findFormGetEndpoint(cat.endpoints)
-                deleteEndpoint = findFormDeleteEndpoint(cat.endpoints)
-                createEndpoint = findFormCreateEndpoint(cat.endpoints)
-                patchEndpoint = findFormPatchEndpoint(cat.endpoints)
-                valuesEndpoint = findFormValuesEndpoint(cat.endpoints)
-                val ep = findFormsListEndpoint(cat.endpoints)
-                listEndpoint = ep
-                if (ep != null) {
-                    // Seed the search from the hash (issue #592), so a bookmarked filter -- or the one carried
-                    // back from an edit -- loads applied rather than the list coming back empty. Whitelisted to
-                    // the keys this client's listing actually declares (#592 review): a stale trait filter from
-                    // before the usage rules changed, or a stray paging param, is dropped rather than sent to an
-                    // endpoint that would refuse the undeclared property with a 400 and strand the page. The
-                    // freshly-read locals, not the state set just above: those setters have not landed yet.
-                    val declaredKeys = formsSearchKeys(ep.inputSchema)
-                    val initialSearch = formsSearchFromHash(hashParams()).filterKeys { it in declaredKeys }
-                    searchDraft = initialSearch
-                    appliedSearch = initialSearch
-                    // The sort rides in the hash too (issue #666): restore it so a bookmarked or shared sorted
-                    // listing loads sorted. The freshly-read hash, not the state set below (not landed yet).
-                    val initialSortCol = hashParams()[GSORT.sort]?.ifBlank { null }
-                    val initialSortDesc = hashParams()[GSORT.sortDir]?.equals(GSORT.desc, ignoreCase = true) == true
-                    sortColumn = initialSortCol
-                    sortDescending = initialSortDesc
-                    val resp = SchemaCatalogApi.invoke(
-                        ep,
-                        mapOf(EP.limit to formsPageSize, EP.offset to 0) + initialSearch +
-                            sortArgs(initialSortCol, initialSortDesc) + includeUsersArg(canManage) +
-                            mapOf(GDF.withStates to true),
-                    )
-                    rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
-                    numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
-                }
-                error = null
-            } catch (e: Throwable) {
-                error = userFacingError(e)
-            } finally {
-                listLoading = false
+            // Whether the caller administers other users (issue #562) and across clients (issue #668): a failure
+            // to learn them leaves the administrative controls off, which is the safe reading -- the list itself
+            // still loads. One config fetch answers both.
+            val homeConfig = runCatching { HomeApi.fetchConfig() }.getOrNull()
+            val canManage = homeConfig?.canManageUsers == true
+            canManageUsers = canManage
+            // The freshly-read local, not the state set just above: that setter has not landed yet, so the
+            // clients fetch and the chosen-client restore must branch on the value in hand (issue #668).
+            val seeAllClients = homeConfig?.canSeeAllClients == true
+            canSeeAllClients = seeAllClients
+            // The clients to offer in the filter, for a cross-client caller (issue #668).
+            if (seeAllClients) {
+                clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
             }
+            // The surface to load: a client the hash carries (a bookmarked or shared chosen-client listing,
+            // issue #714) when the caller may see across clients, else the caller's own. The search and sort ride
+            // in the hash too (issues #592, #666); `loadForClient` whitelists the search to what that client's
+            // listing declares and loads the first page. The freshly-read hash and local, not the state set
+            // above (not landed yet).
+            val hashClient = hashParams()[EI.client]?.ifBlank { null }?.takeIf { seeAllClients }
+            val initialSearch = formsSearchFromHash(hashParams())
+            val initialSortCol = hashParams()[GSORT.sort]?.ifBlank { null }
+            val initialSortDesc = hashParams()[GSORT.sortDir]?.equals(GSORT.desc, ignoreCase = true) == true
+            loadForClient(hashClient, initialSearch, initialSortCol, initialSortDesc, includeUsers = canManage)
         }
     }
 
@@ -577,10 +601,12 @@ val FormsPage = FC<Props> {
                         }
                     }
                 }
-                // Filter by client (issue #668): a cross-client caller narrows the listing to one client. The
-                // client rides in the applied search like the user scope, so it is carried in the hash and across
-                // pages; clearing it goes back to every client. The Client column shows which client each row is
-                // in; this chooses one.
+                // Choose a client (issues #668, #714): a cross-client caller picks one client to work in. Picking
+                // one re-fetches *that* client's surface (`loadForClient`), so the listing's columns, its search
+                // fields and its edit form become that client's rather than the admin's own -- and the chosen
+                // client also rides as the `client=` row filter, carried in the hash and across pages. Clearing
+                // goes back to the cross-client view (every client's rows, the admin's own columns, the Client
+                // column that says which client each row is in).
                 if (canSeeAllClients) {
                     div {
                         className = ClassName("row")
@@ -595,10 +621,11 @@ val FormsPage = FC<Props> {
                             placeholder = "All clients"
                             style = js("({ minWidth: 220 })")
                             onChange = { v ->
-                                val chosen = v as? String
-                                val kept = if (chosen.isNullOrBlank()) appliedSearch - EI.client else appliedSearch + (EI.client to chosen)
-                                searchDraft = kept
-                                applySearch(ep, kept)
+                                val chosen = (v as? String)?.ifBlank { null }
+                                val kept = if (chosen == null) appliedSearch - EI.client else appliedSearch + (EI.client to chosen)
+                                // Re-fetch the chosen client's surface (issue #714); `loadForClient` re-whitelists
+                                // the search to the new client's declared fields and reloads from the top.
+                                loadForClient(chosen, kept, sortColumn, sortDescending, canManageUsers)
                             }
                         }
                     }
@@ -671,7 +698,10 @@ val FormsPage = FC<Props> {
                     onView = { id -> viewingId = id }
                     canDelete = deleteEndpoint != null
                     showOwner = canManageUsers
-                    showClient = canSeeAllClients
+                    // The Client column is for the cross-client view; once a single client is chosen every row is
+                    // that client, so the column would say one thing (issue #714) -- drop it then, as the User
+                    // column drops when a single user is picked.
+                    showClient = canSeeAllClients && appliedSearch[EI.client].isNullOrBlank()
                     highlightId = highlightRowId
                     this.sortColumn = sortColumn
                     this.sortDescending = sortDescending
