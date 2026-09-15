@@ -53,6 +53,7 @@ object CFEP {
     const val bundle = "/${SECT.clientAdmin}/config/bundle"
     const val bundleWrite = "/${SECT.clientAdmin}/config/bundle/write"
     const val bundlePublish = "/${SECT.clientAdmin}/config/bundle/publish"
+    const val bundleUnpublish = "/${SECT.clientAdmin}/config/bundle/unpublish"
     const val traits = "/${SECT.clientAdmin}/config/traits"
     const val reload = "/${SECT.clientAdmin}/config/reload"
     const val publishedOnly = "/${SECT.clientAdmin}/config/publishedOnly"
@@ -154,9 +155,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         "Lists the configurations this client carries, each as a summary of its latest revision.",
         outputRef = CFEP.summaryType,
         noLimit = true,
-    ) { c, _ ->
-        GedraConfigService.get(c).listConfigs(c).map { summaryOf(it) }
-    }
+    ) { c, _ -> cfgBundlesBody(c) }
 
     itemEndpoint(
         CFEP.bundle,
@@ -166,12 +165,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
         },
-    ) { c, request ->
-        val name = requireName(request)
-        val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
-            ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
-        bundleOf(c, row)
-    }
+    ) { c, request -> cfgBundleBody(c, request) }
 
     generalEndpoint(
         CFEP.bundleWrite,
@@ -179,20 +173,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         HttpMethod.POST,
         outputRef = CFEP.bundleType,
         inputRef = CFEP.bundleWriteType,
-    ) { c, request ->
-        val name = requireName(request)
-        val namespace = request[CFEP.namespaceField].toOptStr()
-            ?: throw KdrException.mkInput("A configuration bundle must name its '${CFEP.namespaceField}'.")
-        val slots = slotsOf(request[CFEP.slots], GedraConfigService.get(c).knownSlots())
-        // Reassemble the bundle into a GedraConfig (which re-runs the builder, so its contents are validated as
-        // source would be), then write it. The client is the caller's own, never the body's -- the config id is
-        // built from `c.client`, so a bundle cannot be filed under another client.
-        val config = reassembleGedraConfig(c, name, namespace, c.client, slots)
-        // Authoritative by default: a bundle is the whole configuration, so a slot the bundle omits is dropped,
-        // as the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
-        val impliedDelete = request[CFEP.impliedDelete] as? Boolean ?: true
-        bundleOf(c, GedraConfigService.get(c).writeConfig(c, config, impliedDelete))
-    }
+    ) { c, request -> cfgWriteBody(c, request) }
 
     generalEndpoint(
         CFEP.bundlePublish,
@@ -202,15 +183,17 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
         },
-    ) { c, request ->
-        val name = requireName(request)
-        // Publish refuses a class with no revision; surface that as a 404 rather than a 400, since to this
-        // caller a config they cannot find is one that is not there.
-        if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
-            throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
-        }
-        summaryOf(GedraConfigService.get(c).publish(c, configId(c, name)))
-    }
+    ) { c, request -> cfgPublishBody(c, request) }
+
+    generalEndpoint(
+        CFEP.bundleUnpublish,
+        "Unpublishes a configuration's latest revision, making it editable again (issue #685).",
+        HttpMethod.POST,
+        outputRef = CFEP.summaryType,
+        inputFields = {
+            field(CFEP.name, "The configuration's name.", required = true)
+        },
+    ) { c, request -> cfgUnpublishBody(c, request) }
 
     listEndpoint(
         CFEP.traits,
@@ -224,14 +207,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         // per-slot write would bypass the `GedraConfig` builder that the bundle write validates through, and a
         // config-trait validation union to check a raw slot against does not exist yet. Until it does, editing
         // goes through the bundle write, which is safe by construction; this view makes the accounting legible.
-    ) { c, request ->
-        val name = requireName(request)
-        val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
-            ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
-        // Redacted at the row (issue #696), the same source the bundle read uses -- so testFeatures a cloned
-        // config carries is not echoed off a test instance here either.
-        row.entriesForEmission(c.instanceConfig.isTestInstance)
-    }
+    ) { c, request -> cfgTraitsBody(c, request) }
 
     type(CFEP.reloadResultType) {
         type = SCT.kObject
@@ -253,17 +229,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         "Reloads this client's stored configuration on this node, without a restart.",
         HttpMethod.POST,
         outputRef = CFEP.reloadResultType,
-    ) { c, _ ->
-        val result = GedraConfigReload.reloadClient(c, c.client)
-        // Announce to peers that this node reloaded newer configuration (issue #618), so a node behind catches up.
-        ClientSyncService.get(c).announceAndMark(c, c.client, result.marker)
-        linkedMapOf(
-            CFEP.client to result.client,
-            CFEP.loaded to result.loaded,
-            CFEP.evictedTypes to result.evictedTypes,
-            CFEP.issues to result.issues.map { it.message },
-        )
-    }
+    ) { c, _ -> cfgReloadBody(c) }
 
     type(CFEP.tierType) {
         type = SCT.kObject
@@ -286,12 +252,88 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         inputFields = {
             field(CFEP.publishedOnlyField, "Whether to consume published configuration only.", required = true) { type = SCT.boolean }
         },
-    ) { c, request ->
-        val value = request[CFEP.publishedOnlyField] as? Boolean
-            ?: throw KdrException.mkInput("'${CFEP.publishedOnlyField}' is required.")
-        val effective = GedraConfigService.get(c).setPublishedOnly(c, c.client, value)
-        linkedMapOf(CFEP.client to c.client, CFEP.publishedOnlyField to effective)
+    ) { c, request -> cfgPublishedOnlyBody(c, request) }
+}
+
+// --- Shared handler bodies (issue #685) -------------------------------------------------------------------
+//
+// Each keys everything off `cxt.client`, so the two surfaces differ only in which client that is: the
+// `clientAdmin` endpoints above run them on the caller's own context, and the `/admin` endpoints below run them
+// on a sub-context bound to a *named* client ([adminConfigCxt]). The service already binds to the config's own
+// client for its write/publish, but building the config id and reload/tier calls off `cxt.client` is what makes
+// one body serve both -- so the cross-client surface is the same logic under a different bound client, not a
+// second implementation that could drift.
+
+private fun cfgBundlesBody(c: KdrCxt): List<Map<String, Any?>> =
+    GedraConfigService.get(c).listConfigs(c).map { summaryOf(it) }
+
+private fun cfgBundleBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    val name = requireName(request)
+    val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
+        ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
+    return bundleOf(c, row)
+}
+
+private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    val name = requireName(request)
+    val namespace = request[CFEP.namespaceField].toOptStr()
+        ?: throw KdrException.mkInput("A configuration bundle must name its '${CFEP.namespaceField}'.")
+    val slots = slotsOf(request[CFEP.slots], GedraConfigService.get(c).knownSlots())
+    // Reassemble the bundle into a GedraConfig (which re-runs the builder, so its contents are validated as
+    // source would be), then write it. The config id is built from `c.client`, so on the `/admin` surface the
+    // bound client is what the bundle is filed under -- an unwritten client id here is how a brand-new client is
+    // created over the API (its `clientDef` slot, made present by the next reload).
+    val config = reassembleGedraConfig(c, name, namespace, c.client, slots)
+    // Authoritative by default: a bundle is the whole configuration, so a slot the bundle omits is dropped, as
+    // the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
+    val impliedDelete = request[CFEP.impliedDelete] as? Boolean ?: true
+    return bundleOf(c, GedraConfigService.get(c).writeConfig(c, config, impliedDelete))
+}
+
+private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    val name = requireName(request)
+    // Publish refuses a class with no revision; surface that as a 404 rather than a 400, since to this caller a
+    // config they cannot find is one that is not there.
+    if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
+        throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
     }
+    return summaryOf(GedraConfigService.get(c).publish(c, configId(c, name)))
+}
+
+private fun cfgUnpublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    val name = requireName(request)
+    if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
+        throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
+    }
+    return summaryOf(GedraConfigService.get(c).unpublish(c, configId(c, name)))
+}
+
+private fun cfgTraitsBody(c: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
+    val name = requireName(request)
+    val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
+        ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
+    // Redacted at the row (issue #696), the same source the bundle read uses -- so testFeatures a cloned config
+    // carries is not echoed off a test instance here either.
+    return row.entriesForEmission(c.instanceConfig.isTestInstance)
+}
+
+private fun cfgReloadBody(c: KdrCxt): Map<String, Any?> {
+    val result = GedraConfigReload.reloadClient(c, c.client)
+    // Announce to peers that this node reloaded newer configuration (issue #618), so a node behind catches up.
+    ClientSyncService.get(c).announceAndMark(c, c.client, result.marker)
+    return linkedMapOf(
+        CFEP.client to result.client,
+        CFEP.loaded to result.loaded,
+        CFEP.evictedTypes to result.evictedTypes,
+        CFEP.issues to result.issues.map { it.message },
+    )
+}
+
+private fun cfgPublishedOnlyBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    val value = request[CFEP.publishedOnlyField] as? Boolean
+        ?: throw KdrException.mkInput("'${CFEP.publishedOnlyField}' is required.")
+    val effective = GedraConfigService.get(c).setPublishedOnly(c, c.client, value)
+    return linkedMapOf(CFEP.client to c.client, CFEP.publishedOnlyField to effective)
 }
 
 /** The revision-class id of the named config in the caller's own client -- never another client's. */
@@ -359,3 +401,147 @@ private fun bundleOf(cxt: KdrCxt, row: GedraConfigRow): Map<String, Any?> = drop
 /** Drops null-valued keys so an absent optional field (a null publish time, say) never reaches its validation. */
 private fun dropNulls(map: Map<String, Any?>): Map<String, Any?> =
     map.filterValues { it != null }
+
+/**
+ * The **cross-client** admin surface over stored client configuration (issue #685): the same read/write/publish/
+ * reload/tier operations as [CFEP], but full-scope. The paths lead with [SECT.admin], so the section gate takes
+ * `admin` **and** the `allClients` capability -- a deployment-wide administrator managing *any* client, named in
+ * the request, rather than confined to their own as the [CFEP] surface is. This is what lets a client's whole
+ * configuration be created and driven over the API (including a brand-new client, whose `clientDef` slot written
+ * here becomes present on the next reload), which the client-scoped surface cannot do -- you cannot be the
+ * client-admin of a client that does not exist yet.
+ *
+ * Every handler runs the shared body ([cfgWriteBody] and friends) on a sub-context bound to the **named** client
+ * ([adminConfigCxt]), so the logic, the `testFeatures` write-refuse, and the #696 emission redactions are exactly
+ * the client-scoped surface's -- one implementation under a different bound client. The whole-bundle write is the
+ * "post the entire definition, replace what is there" create/update variant; the per-slot PATCH and the bulk
+ * import/clone-restore paths the issue also names are later slices.
+ */
+@Suppress("ConstPropertyName")
+object ACEP {
+    /** The schema namespace the admin config-endpoint types live in (distinct from the `admin` section path). */
+    const val namespace = "adminClientConfig"
+
+    const val bundles = "/${SECT.admin}/client/config/bundles"
+    const val bundle = "/${SECT.admin}/client/config/bundle"
+    const val bundleWrite = "/${SECT.admin}/client/config/bundle/write"
+    const val bundlePublish = "/${SECT.admin}/client/config/bundle/publish"
+    const val bundleUnpublish = "/${SECT.admin}/client/config/bundle/unpublish"
+    const val traits = "/${SECT.admin}/client/config/traits"
+    const val reload = "/${SECT.admin}/client/config/reload"
+    const val publishedOnly = "/${SECT.admin}/client/config/publishedOnly"
+
+    /** The write input adds the named [CFEP.client] to what the client-scoped write takes. */
+    const val writeType = "AdminConfigBundleWrite"
+}
+
+@Suppress("DuplicatedCode")
+fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.namespace) {
+    // What a caller sends to write a named client's bundle: the client, plus the bundle-write fields the
+    // client-scoped surface takes (its `client` is implicit there, the caller's own).
+    type(ACEP.writeType) {
+        type = SCT.kObject
+        description = "A configuration to write for a named client, as a whole bundle."
+        property(CFEP.client, "The client to write the configuration for.", required = true)
+        property(CFEP.name, "The configuration's name (its id within the client).", required = true)
+        property(CFEP.namespaceField, "The namespace the configuration's generated types live in.", required = true)
+        property(CFEP.slots, "The configuration's contents, one array of entries per config slot.", required = true) {
+            type = SCT.kObject
+        }
+        property(CFEP.impliedDelete, "Whether a slot the bundle omits is dropped (true, the default) or carried forward (false).") {
+            type = SCT.boolean
+        }
+    }
+
+    listEndpoint(
+        ACEP.bundles,
+        "Lists a named client's configurations, each as a summary of its latest revision (issue #685).",
+        outputRef = "${CFEP.namespace}.${CFEP.summaryType}",
+        noLimit = true,
+        inputFields = { field(CFEP.client, "The client whose configurations to list.", required = true) },
+    ) { c, request -> cfgBundlesBody(adminConfigCxt(c, request)) }
+
+    itemEndpoint(
+        ACEP.bundle,
+        "Fetches one of a named client's configurations as a whole bundle (issue #685).",
+        HttpMethod.GET,
+        outputRef = "${CFEP.namespace}.${CFEP.bundleType}",
+        inputFields = {
+            field(CFEP.client, "The client that owns the configuration.", required = true)
+            field(CFEP.name, "The configuration's name.", required = true)
+        },
+    ) { c, request -> cfgBundleBody(adminConfigCxt(c, request), request) }
+
+    generalEndpoint(
+        ACEP.bundleWrite,
+        "Writes a named client's configuration from a whole bundle -- create or replace (issue #685).",
+        HttpMethod.POST,
+        outputRef = "${CFEP.namespace}.${CFEP.bundleType}",
+        inputRef = ACEP.writeType,
+    ) { c, request -> cfgWriteBody(adminConfigCxt(c, request), request) }
+
+    generalEndpoint(
+        ACEP.bundlePublish,
+        "Publishes a named client's configuration's latest editable revision (issue #685).",
+        HttpMethod.POST,
+        outputRef = "${CFEP.namespace}.${CFEP.summaryType}",
+        inputFields = {
+            field(CFEP.client, "The client that owns the configuration.", required = true)
+            field(CFEP.name, "The configuration's name.", required = true)
+        },
+    ) { c, request -> cfgPublishBody(adminConfigCxt(c, request), request) }
+
+    generalEndpoint(
+        ACEP.bundleUnpublish,
+        "Unpublishes a named client's configuration's latest revision, making it editable again (issue #685).",
+        HttpMethod.POST,
+        outputRef = "${CFEP.namespace}.${CFEP.summaryType}",
+        inputFields = {
+            field(CFEP.client, "The client that owns the configuration.", required = true)
+            field(CFEP.name, "The configuration's name.", required = true)
+        },
+    ) { c, request -> cfgUnpublishBody(adminConfigCxt(c, request), request) }
+
+    listEndpoint(
+        ACEP.traits,
+        "The interior of one of a named client's configurations: its stored config-trait entries (issue #685).",
+        outputRef = "${CFEP.namespace}.${CFEP.traitEntryType}",
+        noLimit = true,
+        inputFields = {
+            field(CFEP.client, "The client that owns the configuration.", required = true)
+            field(CFEP.name, "The configuration's name.", required = true)
+        },
+    ) { c, request -> cfgTraitsBody(adminConfigCxt(c, request), request) }
+
+    generalEndpoint(
+        ACEP.reload,
+        "Reloads a named client's stored configuration on this node, and announces the sync marker (issue #685).",
+        HttpMethod.POST,
+        outputRef = "${CFEP.namespace}.${CFEP.reloadResultType}",
+        inputFields = { field(CFEP.client, "The client to reload.", required = true) },
+    ) { c, request -> cfgReloadBody(adminConfigCxt(c, request)) }
+
+    generalEndpoint(
+        ACEP.publishedOnly,
+        "Sets whether a named client consumes only its published configuration in this environment (issue #685).",
+        HttpMethod.POST,
+        outputRef = "${CFEP.namespace}.${CFEP.tierType}",
+        inputFields = {
+            field(CFEP.client, "The client to set the tier for.", required = true)
+            field(CFEP.publishedOnlyField, "Whether to consume published configuration only.", required = true) { type = SCT.boolean }
+        },
+    ) { c, request -> cfgPublishedOnlyBody(adminConfigCxt(c, request), request) }
+}
+
+/** The named client an `/admin` config request targets. */
+private fun requireClient(request: Map<String, Any?>): String = request[CFEP.client].toOptStr()?.trim()?.ifEmpty { null }
+    ?: throw KdrException.mkInput("A '${CFEP.client}' is required.")
+
+/**
+ * A sub-context bound to the [CFEP.client] a cross-client `/admin` config request names, so the shared bodies --
+ * which key off `cxt.client` -- act on that client while ownership/audit stamp from it and the caller stays the
+ * actor. The `admin` section gate has already confined the caller to `allClients`, so naming any client is theirs
+ * to do; an absent client is a 400.
+ */
+private fun adminConfigCxt(c: KdrCxt, request: Map<String, Any?>): KdrCxt =
+    c.mkSubContext("adminConfig", requireClient(request))

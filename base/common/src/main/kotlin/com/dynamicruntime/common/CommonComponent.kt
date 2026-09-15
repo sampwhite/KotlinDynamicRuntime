@@ -33,6 +33,7 @@ import com.dynamicruntime.common.gedra.GedraService
 import com.dynamicruntime.common.gedra.clientCatalogSchema
 import com.dynamicruntime.common.gedra.coreClients
 import com.dynamicruntime.common.gedra.coreTraits
+import com.dynamicruntime.common.gedra.adminGedraConfigSchema
 import com.dynamicruntime.common.gedra.gedraConfigSchema
 import com.dynamicruntime.common.gedra.gedraConfigTables
 import com.dynamicruntime.common.gedra.gedraDataTables
@@ -176,6 +177,9 @@ class CommonComponent : ComponentDefinition {
         // Client-config multi-node sync tracking (issue #618), in its own topic.
         collector.addTables(clientSyncTables(cxt), appOnly)
         collector.addModule(gedraConfigSchema(cxt), appOnly)
+        // The cross-client admin config surface (issue #685): the same operations full-scope, for managing any
+        // client's stored configuration (and creating a new one) over the API.
+        collector.addModule(adminGedraConfigSchema(cxt), appOnly)
     }
 
     /** The app-bar menu, registered as a UiBlock (issue #458) so its items can be varied without an `if`. */
