@@ -340,16 +340,15 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
             val namespace = bundle[CFEP.namespaceField].toOptStr()
                 ?: throw KdrException.mkInput("A bundle must name its '${CFEP.namespaceField}'.")
             var slots = slotsOf(bundle[CFEP.slots], svc.knownSlots())
-            // Strip + log testFeatures off a test instance rather than refuse (issue #733): a whole restore is
-            // not failed by one field. On a test instance they round-trip.
+            // Strip testFeatures off a test instance rather than refuse (issue #733): a whole restore is not
+            // failed by one field. On a test instance they round-trip. Recorded (and logged) only once the write
+            // succeeds, so a bundle that then fails is not also reported as stripped.
+            var strippedFeatures: List<String> = emptyList()
             if (!isTest) {
                 val (clean, features) = strippedOfTestFeatures(slots)
                 if (features.isNotEmpty()) {
                     slots = clean
-                    stripped.add(linkedMapOf(CFEP.client to client, ACEP.features to features))
-                    LogStartup.info(c) {
-                        "Config import stripped testFeatures $features from client '$client' -- honored only on a test instance."
-                    }
+                    strippedFeatures = features
                 }
             }
             val bcxt = c.mkSubContext("configImport", client)
@@ -357,6 +356,12 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
             val impliedDelete = bundle[CFEP.impliedDelete] as? Boolean ?: true
             val row = svc.writeConfig(bcxt, config, impliedDelete)
             written.add(linkedMapOf(CFEP.client to client, CFEP.name to name, CFEP.version to row.version))
+            if (strippedFeatures.isNotEmpty()) {
+                stripped.add(linkedMapOf(CFEP.client to client, ACEP.features to strippedFeatures))
+                LogStartup.info(c) {
+                    "Config import stripped testFeatures $strippedFeatures from client '$client' -- honored only on a test instance."
+                }
+            }
             affected.add(client)
         } catch (e: Throwable) {
             // One bad bundle is reported, not fatal (issue #733) -- the restore continues.
@@ -370,6 +375,13 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
                 val result = GedraConfigReload.reloadClient(c, client)
                 ClientSyncService.get(c).announceAndMark(c, client, result.marker)
                 reloaded.add(client)
+                // A reload can *drop* a config it just wrote -- a namespace or trait-id clash the write-time check
+                // (which sees only loaded owners) could not catch, e.g. two imported clients claiming one new
+                // namespace. That is reported by the reload, not thrown, so surface it as a failure rather than
+                // letting the client read as cleanly reloaded (issue #733 review).
+                for (issue in result.issues) {
+                    failures.add(linkedMapOf(CFEP.client to client, ACEP.message to "not loaded: ${issue.message}"))
+                }
             } catch (e: Throwable) {
                 failures.add(linkedMapOf(CFEP.client to client, ACEP.message to "reload failed: ${e.message ?: "unknown error"}"))
             }
