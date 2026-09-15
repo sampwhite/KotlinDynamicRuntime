@@ -160,9 +160,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     // what the user has typed. "Done" returns to read-only showing `stored`.
                     if (isEdit) {
                         // The refreshed snapshot comes from the returned VIEW's per-task entries -- the same
-                        // presented shape the seed used, prefill defaults included (issue #679) -- not the raw
-                        // stored item, or a prefilled task the user never touched would read as unsaved from here
-                        // on. The item is the fallback only for a save that carried no view.
+                        // presented shape the seed used (filled prefill defaults seeded, offer ones held aside;
+                        // issues #679/#710) -- not the raw stored item, or a prefilled task the user never touched
+                        // would read as unsaved from here on. The item is the fallback only for a save that
+                        // carried no view.
                         val storedNow = outcome.view?.let { v -> seedValuesOf(v) }
                             ?: seedValuesFromEntries(outcome.item[GDF.entries].toJsonListOfMaps())
                         stored = storedNow
