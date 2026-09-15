@@ -13,6 +13,7 @@ import com.dynamicruntime.common.schema.errorContextData
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchVariants
+import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.boundsContextData
 import com.dynamicruntime.common.schema.byPath
 import com.dynamicruntime.common.schema.childKeyOf
@@ -98,6 +99,29 @@ class FormOpts(
      * [SchemaFormProps.promoteKeys]. Off by default, so only the form that opts in reshapes.
      */
     val promoteKeys: Boolean = false,
+    /**
+     * How this form's **root** fields present a supplied default (issue #710), keyed by field name -- a `filled`
+     * field to mark as a suggestion, or an `offer` field to fill only on a click. Consulted at the top level
+     * only (like [omit]): the presenting decision is the trait's, and a same-named field one level down is a
+     * different field. Empty means no field carries a default, which is every form until one is prefilled.
+     */
+    val prefill: Map<String, FieldPrefill> = emptyMap(),
+)
+
+/**
+ * How one **root** field presents its supplied default (issue #710), resolved by [WorkflowForm] from the view's
+ * [PrefillPresentation] and the field's `defaultMode`. The two modes render differently:
+ *  - **[SLDM.filled]** ([suggested] true) -- the value is already in the control; mark it a suggestion. Once the
+ *    user touches the field it becomes theirs and [suggested] goes false; [onReset] (non-null only then) brings
+ *    the suggestion back.
+ *  - **[SLDM.offer]** -- the control is empty and [offeredValue] sits behind a "Use it" link; the link applies
+ *    the value through the field's ordinary edit path, so an applied offer is indistinguishable from a typed one.
+ */
+class FieldPrefill(
+    val mode: String,
+    val offeredValue: Any? = null,
+    val suggested: Boolean = false,
+    val onReset: (() -> Unit)? = null,
 )
 
 /**
@@ -312,6 +336,11 @@ external interface SchemaFormProps : Props {
      * Optional, off by default -- only the edit form sets it, so every other form is unaffected.
      */
     var promoteKeys: Boolean?
+    /**
+     * How each root field presents a supplied default (issue #710), keyed by field name; see [FormOpts.prefill].
+     * Optional and off by default -- only the workflow form, rendering a view that carries prefills, sets it.
+     */
+    var prefill: Map<String, FieldPrefill>?
 }
 
 /**
@@ -430,6 +459,7 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         gateAllows = buildCfactGate(props.cfacts),
         layouts = props.layouts ?: emptyMap(),
         promoteKeys = props.promoteKeys == true,
+        prefill = props.prefill ?: emptyMap(),
     )
     div {
         // `friendly` on the root lets the stylesheet give a data-entry / read form's field groups room to breathe
@@ -627,6 +657,9 @@ private fun ChildrenBuilder.renderProperties(
             copy = copy,
             // A keyed object property whose keys were promoted above hides them within itself (issue #642).
             hideFields = promoted[name]?.toSet() ?: emptySet(),
+            // A supplied default is presented at the top level only (issue #710) -- the presenting decision is
+            // the trait's, and a same-named field one level down is a different field, like `omit` above.
+            prefill = if (path.isEmpty()) opts.prefill[name] else null,
         )
     }
 }
@@ -855,6 +888,8 @@ private fun ChildrenBuilder.renderField(
     copy: LayoutCopy? = null,
     // Fields to hide inside this field when it is a nested object (issue #642): its promoted primary-key fields.
     hideFields: Set<String> = emptySet(),
+    // How this field presents a supplied default (issue #710); null for every field but a prefilled root scalar.
+    prefill: FieldPrefill? = null,
 ) {
     val vt = prop.valueType
     val elementType = objectElementType(vt)
@@ -888,7 +923,7 @@ private fun ChildrenBuilder.renderField(
     }
 
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages, opts, copy, value = value) {
+    fieldFrame(name, prop, required, path, messages, opts, copy, value = value, prefill = prefill) {
         widget(
             vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) },
             // A hint declared at *this* use site wins over one on the (shared) target type -- the same
@@ -899,6 +934,10 @@ private fun ChildrenBuilder.renderField(
             errors.noteEdit(path)
             emit(newValue)
         }
+        // The supplied-default affordances (issue #710): an `offer` field's "Use it" link, or a touched
+        // `filled` field's "reset to suggested". Applying an offer runs through the field's own edit path, so
+        // it notes the edit like a keystroke; a reset restores the value and the suggestion mark on its own.
+        prefillControls(prefill, value, editable) { v -> errors.noteEdit(path); emit(v) }
     }
 }
 
@@ -921,6 +960,8 @@ private fun ChildrenBuilder.fieldFrame(
     copy: LayoutCopy? = null,
     // The field's current value, so a layout error override can echo the offending value (issue #588).
     value: Any? = null,
+    // How this field presents a supplied default (issue #710); a `filled` suggestion marks its label.
+    prefill: FieldPrefill? = null,
     rowContent: ChildrenBuilder.() -> Unit = {},
 ) {
     div {
@@ -931,6 +972,14 @@ private fun ChildrenBuilder.fieldFrame(
         className = ClassName(rowClass(messages))
         // The layout's `label` (issue #586) shadows the schema title/humanized key; absent, `fieldLabel` decides.
         labelSpan(copy?.label ?: fieldLabel(name, prop, opts), required)
+        // A `filled` default not yet accepted wears a "Suggested" chip on the container, not inside the control,
+        // so the mark reads the same across text / select / checkbox / date (issue #710).
+        if (prefill?.mode == SLDM.filled && prefill.suggested) {
+            span {
+                className = ClassName("field-suggested")
+                +"Suggested"
+            }
+        }
         rowContent()
     }
     // Likewise the layout's `description` shadows the schema's; absent, the schema's shows as before.
@@ -1259,6 +1308,41 @@ private fun ChildrenBuilder.removeControl(what: String, onRemove: () -> Unit) {
         onClick = onRemove
         asDynamic()["aria-label"] = "Remove $what"
         +"✕"
+    }
+}
+
+/**
+ * A supplied default's per-field affordance (issue #710), beside its control: for an unfilled `offer` field, a
+ * **"Use *value*"** link that [apply]es the offered value as if typed; for a touched `filled` field, a **reset**
+ * link that restores the suggestion. Draws nothing when there is no default here, the form is read-only, or an
+ * offer has already been applied (its value is now present, so the field is an ordinary one). The `aria-label`
+ * names the value, since "Use" alone does not carry it for a screen reader.
+ */
+private fun ChildrenBuilder.prefillControls(
+    prefill: FieldPrefill?,
+    value: Any?,
+    editable: Boolean,
+    apply: (Any?) -> Unit,
+) {
+    if (prefill == null || !editable) return
+    when (prefill.mode) {
+        SLDM.offer -> if (isBlankValue(value)) {
+            Button {
+                type = "link"
+                size = "small"
+                onClick = { apply(prefill.offeredValue) }
+                asDynamic()["aria-label"] = "Use ${displayValue(prefill.offeredValue)}"
+                +"Use ${displayValue(prefill.offeredValue)}"
+            }
+        }
+        SLDM.filled -> prefill.onReset?.let { reset ->
+            Button {
+                type = "link"
+                size = "small"
+                onClick = { reset() }
+                +"Reset to suggested"
+            }
+        }
     }
 }
 

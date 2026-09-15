@@ -3,7 +3,10 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.schema.LAYSTR
+import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -97,12 +100,25 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 
     // Seed every task's fields from its current entries (empty for a creation view). Trait ids are unique across
     // a workflow's tasks, so one map serves them all.
-    val seeded: Map<String, Map<String, Any?>> = seedValuesOf(wf)
+    val presentation = prefillPresentationOf(wf)
+    val seeded: Map<String, Map<String, Any?>> = presentation.working
 
     // A creation form is always editable; a survey edit starts read-only (the "View Info" view) unless the URL
     // asked for edit mode (issue #694, the forms-list chip's direct-to-edit link).
     var editing by useState(if (isEdit) props.initialEditing == true else true)
     var valuesByTrait by useState(seeded)
+    // Which supplied `filled` defaults are still suggestions (issue #710), by trait: seeded from the view's
+    // filled defaults, a field leaving the set the first time it is touched (below) and a "reset" putting it
+    // back. `offer` defaults are not seeded here -- they are not shown until applied, so they are never
+    // "suggested". Empty for a form that carries no prefill, which is every form but the demo today.
+    var suggestedByTrait by useState(wf.tasks.flatMap { it.traits }.associate { t ->
+        t.traitId to suggestedFilledFields(presentation, t.traitId)
+    }.filterValues { it.isNotEmpty() })
+    // Traits whose defaults are settled: once a task saves, its fields are stored as the user's own, so they
+    // drop every default affordance (chip, "Use it", "reset") and read as ordinary fields (issue #710). The
+    // `presentation` here is from the first view and does not re-derive per save, so this records what it can no
+    // longer tell. A fresh load returns those entries as `source=user`, carrying nothing to present anyway.
+    var resolvedTraits by useState(emptySet<String>())
     // The last-stored values, refreshed on each successful save. "Done" reverts the fields to this -- not the
     // first-render `seeded` snapshot -- so after a save it shows what was saved, not the pre-save values.
     var stored by useState(seeded)
@@ -127,6 +143,48 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     useEffect(anyUnsaved) { props.onDirtyChange?.invoke(anyUnsaved) }
 
     fun valuesOf(traitId: String): Map<String, Any?> = valuesByTrait[traitId] ?: emptyMap()
+
+    // The per-field supplied-default descriptors for a trait's form (issue #710): each defaulted field's mode, an
+    // `offer`'s value for its "Use it" link, whether a `filled` default is still a suggestion, and -- once the
+    // user has touched it -- a reset that restores the value and the mark. Applying an offer needs no callback:
+    // it runs through the field's ordinary edit path in SchemaForm, so only the reset is wired here.
+    fun prefillFor(traitId: String): Map<String, FieldPrefill> {
+        if (traitId in resolvedTraits) return emptyMap()
+        val modes = presentation.modes[traitId] ?: return emptyMap()
+        val suggested = suggestedByTrait[traitId] ?: emptySet()
+        val filledValues = presentation.working[traitId] ?: emptyMap()
+        val offered = presentation.offered[traitId] ?: emptyMap()
+        return modes.mapValues { (field, mode) ->
+            if (mode == SLDM.offer) {
+                FieldPrefill(mode = SLDM.offer, offeredValue = offered[field])
+            } else {
+                val isSuggested = field in suggested
+                FieldPrefill(
+                    mode = SLDM.filled,
+                    suggested = isSuggested,
+                    // Only a touched field offers a reset -- an untouched one already shows its suggestion.
+                    onReset = if (isSuggested) null else ({
+                        valuesByTrait = valuesByTrait +
+                            (traitId to (valuesOf(traitId) + (field to filledValues[field])))
+                        suggestedByTrait = suggestedByTrait +
+                            (traitId to ((suggestedByTrait[traitId] ?: emptySet()) + field))
+                    }),
+                )
+            }
+        }
+    }
+
+    // The line shown when a task still holds supplied defaults (issue #710): the wording is overridable per
+    // client through a task trait's layout `strings` (LAYSTR.prefillSummary), else the frontend's own copy;
+    // both template over `${'$'}{count}`. Fail-safe: a broken override renders as written rather than blanking.
+    fun prefillSummaryText(task: WfTaskView, count: Int): String {
+        val override = task.traits.firstNotNullOfOrNull { it.layout?.strings?.get(LAYSTR.prefillSummary) }
+        if (override != null) {
+            return try { override.evalTemplate(mapOf("count" to count)) } catch (_: Throwable) { override }
+        }
+        val lead = if (count == 1) "1 field was" else "$count fields were"
+        return "$lead filled in from your account — review and save to keep them."
+    }
 
     // The save a task offers for the current mode: the edit save when editing an existing form, else the create
     // save. Each task carries exactly one today; picking by kind keeps this honest if that ever grows.
@@ -169,6 +227,11 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         stored = storedNow
                         val savedTraitIds = task.traits.map { it.traitId }.toSet()
                         valuesByTrait = valuesByTrait + storedNow.filterKeys { it in savedTraitIds }
+                        // The saved task's fields are now the user's own stored data, not pending defaults, so
+                        // drop their default affordances and summary (issue #710): out of the suggested set, and
+                        // into the resolved set so `prefillFor` and the count stop treating them as defaults.
+                        suggestedByTrait = suggestedByTrait.filterKeys { it !in savedTraitIds }
+                        resolvedTraits = resolvedTraits + savedTraitIds
                         // The save is the refresh (issue #700): every task's status follows from the returned view.
                         outcome.view?.let { v -> statuses = v.tasks.associate { it.id to it.status } }
                     }
@@ -235,8 +298,18 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
                             trait.traitId in wholeChecked,
                         )
+                        this.prefill = prefillFor(trait.traitId)
                         onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
-                        onFieldEdit = { if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId }
+                        onFieldEdit = { field ->
+                            if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId
+                            // First touch of a suggested default makes it the user's (issue #710); a reset can
+                            // bring it back. A nested field's path never matches a root default's name, so only
+                            // the top-level default it belongs to is un-suggested.
+                            val suggested = suggestedByTrait[trait.traitId]
+                            if (suggested != null && field in suggested) {
+                                suggestedByTrait = suggestedByTrait + (trait.traitId to (suggested - field))
+                            }
+                        }
                         onFieldCommit = { path -> onFieldCommit(trait, path) }
                     }
                 }
@@ -249,6 +322,16 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // every task's. Disabled means "nothing to do", never "you did it wrong": a task with known
             // validation failures keeps its Save, so clicking it shows the errors rather than a dead button.
             if (editing) {
+                // When defaults are the only thing left to do, say so above the Save (issue #710): the count is
+                // the task's still-pending defaults, and it disappears as they are accepted, edited, or saved.
+                val pendingDefaults =
+                    pendingDefaultCount(task, presentation, suggestedByTrait, valuesByTrait, resolvedTraits)
+                if (pendingDefaults > 0) {
+                    p {
+                        className = ClassName("form-prefill-summary")
+                        +prefillSummaryText(task, pendingDefaults)
+                    }
+                }
                 div {
                     className = ClassName("row")
                     Button {

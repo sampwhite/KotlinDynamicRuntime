@@ -16,10 +16,15 @@ import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.prefillFromOwner
 import com.dynamicruntime.common.gedra.traitDataTypeName
+import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SLDM
+import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.uiblock.UIB
 
 /**
@@ -63,12 +68,16 @@ object SW {
      * Acme's survey workflow (issue #656): the owner revisits the same form data outside creation. Two tasks,
      * to exercise the survey's multi-task allowance (creation is capped at one) and the task list. Its labels
      * come from the same `acmeWf` backend fragment file the creation workflow uses.
+     *
+     * `details` is the review task -- both of the creation workflow's traits in one panel, mirroring
+     * `createForm` (issue #710); `profile` is the supplied-defaults demo (issue #711), a `userInfo` trait
+     * prefilled from the form owner.
      */
     const val reviewForm = "reviewForm"
     const val details = "details"
-    const val extra = "extra"
+    const val profile = "profile"
     const val saveDetails = "saveDetails"
-    const val saveExtra = "saveExtra"
+    const val saveProfile = "saveProfile"
 }
 
 /** The sample UiBlock and the keys inside it (issue #457). */
@@ -108,6 +117,13 @@ object SC {
     const val siteAuditEntry = "SiteAuditEntry"
     const val auditor = "auditor"
     const val findings = "findings"
+
+    // The supplied-defaults demo trait (issue #711): the owner's name and email, both prefilled from the form
+    // owner, presented by their `defaultMode` -- name filled, email offered.
+    const val userInfo = "userInfo"
+    const val userInfoEntry = "UserInfoData"
+    const val userName = "name"
+    const val userEmail = "email"
 
     /**
      * A cfact acme declares and nothing yet produces (issue #455) -- the ordinary shape of a client
@@ -299,13 +315,34 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         // the same `acmeWf` backend fragment file, so the survey's own labels ride the label boot check too.
         workflow(SW.reviewForm, WfEntry.survey) {
             label = "%{@t(\"${SF.acmeWf}.${SW.reviewForm}.label\")}"
+            // The review task -- both of the creation workflow's traits in one panel (issue #710), so the survey
+            // edits the same data the creation form collected rather than splitting it across two tasks. Same
+            // trait pair and layout order as `createForm.identify`, with an `edit` save.
             task(SW.details, "%{@t(\"${SF.acmeWf}.${SW.details}.label\")}") {
                 trait(ST.expenseReport)
+                trait(ST.questionnaire, required = false)
+                layout(listOf(ST.questionnaire, ST.expenseReport))
                 save(SW.saveDetails, "%{@t(\"${SF.acmeWf}.${SW.details}.save\")}", WfSaveKind.edit)
             }
-            task(SW.extra, "%{@t(\"${SF.acmeWf}.${SW.extra}.label\")}") {
-                trait(ST.questionnaire, required = false)
-                save(SW.saveExtra, "%{@t(\"${SF.acmeWf}.${SW.extra}.save\")}", WfSaveKind.edit)
+            // The supplied-defaults demo (issue #711): a `userInfo` trait whose `name` and `email` are both
+            // prefilled from the form owner. The two prefill functions supply the values; how each is presented
+            // is the trait's `defaultMode` (name `filled`, email `offer`), so one task exercises both modes.
+            task(SW.profile, "%{@t(\"${SF.acmeWf}.${SW.profile}.label\")}") {
+                trait(SC.userInfo)
+                function(prefillFromOwner {
+                    // The owner's **name** -- a person's full name. Not `publicName`, which is the login
+                    // username and falls back to the email when the user has not chosen one, so it would show
+                    // the email in a "Name" field. An owner with no name on file simply prefills nothing here.
+                    userAttribute = PFO.name
+                    targetTrait = SC.userInfo
+                    targetValuePath = SC.userName
+                })
+                function(prefillFromOwner {
+                    userAttribute = PFO.email
+                    targetTrait = SC.userInfo
+                    targetValuePath = SC.userEmail
+                })
+                save(SW.saveProfile, "%{@t(\"${SF.acmeWf}.${SW.profile}.save\")}", WfSaveKind.edit)
             }
         }
 
@@ -321,6 +358,26 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         ) {
             property(SC.auditor, "Who carried out the audit.", required = true)
             property(SC.findings, "What they found.")
+        }
+
+        // The supplied-defaults demo trait (issue #711): the form owner's name and email, both prefilled by the
+        // survey's `profile` task. Its `g-layout` sets each field's `defaultMode` -- `name` filled (low value:
+        // shown, marked, confirm) and `email` offered (high value: a deliberate click to accept) -- which is
+        // what the frontend reads to present the two differently. It also overrides the prefill-summary wording
+        // (issue #710) to prove a client can reword that line; `${'$'}{count}` is resolved on the frontend.
+        trait(
+            SC.userInfoEntry,
+            SC.userInfo,
+            setOf(GedraDataType.formDoc),
+            "The form owner's contact details, offered as defaults.",
+        ) {
+            property(SC.userName, "The owner's name.")
+            property(SC.userEmail, "The owner's email address.")
+            layout {
+                field(SC.userName, label = "Name", defaultMode = SLDM.filled)
+                field(SC.userEmail, label = "Email", defaultMode = SLDM.offer)
+                string(LAYSTR.prefillSummary, $$"We filled ${count} detail(s) in from your account — save to keep them.")
+            }
         }
 
         // --- trait-usage rules (issues #537, #538) ------------------------------------------------------
