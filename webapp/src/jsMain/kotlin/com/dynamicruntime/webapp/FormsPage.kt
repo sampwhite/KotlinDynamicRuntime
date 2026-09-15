@@ -159,6 +159,31 @@ val FormsPage = FC<Props> {
     var rowDeleteError by useState<DisplayError?>(null)
 
     /**
+     * Invokes [ep] for one page and publishes the rows and total -- the shared body of [loadPage] and
+     * [loadForClient], so the standard query args (paging, the filled search, sort, the owner-attach flag, and
+     * the survey states) and the items/`numAvailable` parse live in one place and the initial load cannot drift
+     * from a paged one. [includeUsers] is passed rather than read from state so a mount-time call is not at the
+     * mercy of a not-yet-landed setter (the #668 trap); its caller decides where a failure is shown.
+     */
+    suspend fun fetchListPage(
+        ep: EndpointInfo,
+        off: Int,
+        search: Map<String, Any?>,
+        sortCol: String?,
+        sortDesc: Boolean,
+        includeUsers: Boolean,
+    ) {
+        val resp = SchemaCatalogApi.invoke(
+            ep,
+            mapOf(EP.limit to formsPageSize, EP.offset to off) + search +
+                sortArgs(sortCol, sortDesc) + includeUsersArg(includeUsers) +
+                mapOf(GDF.withStates to true),
+        )
+        rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
+        numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
+    }
+
+    /**
      * Loads the page at [off] from [ep], replacing the rows and the total. [search] carries the client's filled
      * search parameters (issue #538), sent beside `limit`/`offset`; it is passed explicitly rather than read
      * from state so a reload never races a just-applied filter. Flips [listLoading] off when done.
@@ -183,14 +208,7 @@ val FormsPage = FC<Props> {
         listLoading = true
         formsScope.launch {
             try {
-                val resp = SchemaCatalogApi.invoke(
-                    ep,
-                    mapOf(EP.limit to formsPageSize, EP.offset to off) + search +
-                        sortArgs(sortCol, sortDesc) + includeUsersArg(canManageUsers) +
-                        mapOf(GDF.withStates to true),
-                )
-                rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
-                numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
+                fetchListPage(ep, off, search, sortCol, sortDesc, canManageUsers)
                 searchError = null
             } catch (e: Throwable) {
                 searchError = userFacingError(e)
@@ -219,6 +237,10 @@ val FormsPage = FC<Props> {
      * filter from another client is dropped rather than 400ing the page, while the client and user scope
      * selectors (declared on every variant) are kept. [includeUsers] is passed rather than read from state so a
      * mount-time call is not at the mercy of a not-yet-landed setter (the #668 trap).
+     *
+     * [initialLoad] says where a failure is shown: the page-level `error` (the whole card, right for the very
+     * first load, when there are no controls to keep) versus `searchError` beside the controls (right for a
+     * client switch, so a failed reload does not remove the client selector and strand the caller).
      */
     fun loadForClient(
         client: String?,
@@ -226,6 +248,7 @@ val FormsPage = FC<Props> {
         sortCol: String?,
         sortDesc: Boolean,
         includeUsers: Boolean,
+        initialLoad: Boolean,
     ) {
         listLoading = true
         formsScope.launch {
@@ -247,18 +270,12 @@ val FormsPage = FC<Props> {
                     sortColumn = sortCol
                     sortDescending = sortDesc
                     offset = 0
-                    val resp = SchemaCatalogApi.invoke(
-                        ep,
-                        mapOf(EP.limit to formsPageSize, EP.offset to 0) + applied +
-                            sortArgs(sortCol, sortDesc) + includeUsersArg(includeUsers) +
-                            mapOf(GDF.withStates to true),
-                    )
-                    rows = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
-                    numAvailable = (resp[EP.numAvailable] as? Number)?.toInt() ?: rows.size
+                    fetchListPage(ep, 0, applied, sortCol, sortDesc, includeUsers)
                 }
                 error = null
+                searchError = null
             } catch (e: Throwable) {
-                error = userFacingError(e)
+                if (initialLoad) error = userFacingError(e) else searchError = userFacingError(e)
             } finally {
                 listLoading = false
             }
@@ -312,7 +329,7 @@ val FormsPage = FC<Props> {
             val initialSearch = formsSearchFromHash(hashParams())
             val initialSortCol = hashParams()[GSORT.sort]?.ifBlank { null }
             val initialSortDesc = hashParams()[GSORT.sortDir]?.equals(GSORT.desc, ignoreCase = true) == true
-            loadForClient(hashClient, initialSearch, initialSortCol, initialSortDesc, includeUsers = canManage)
+            loadForClient(hashClient, initialSearch, initialSortCol, initialSortDesc, includeUsers = canManage, initialLoad = true)
         }
     }
 
@@ -622,10 +639,14 @@ val FormsPage = FC<Props> {
                             style = js("({ minWidth: 220 })")
                             onChange = { v ->
                                 val chosen = (v as? String)?.ifBlank { null }
-                                val kept = if (chosen == null) appliedSearch - EI.client else appliedSearch + (EI.client to chosen)
+                                // Changing the client drops the `user` scope too: a user belongs to one client, so a
+                                // user picked in the old client (or the cross-client view) would not resolve in the
+                                // new one and would 400 the listing. The scope bar resets to everyone.
+                                val kept = (if (chosen == null) appliedSearch - EI.client else appliedSearch + (EI.client to chosen)) - EI.user
                                 // Re-fetch the chosen client's surface (issue #714); `loadForClient` re-whitelists
-                                // the search to the new client's declared fields and reloads from the top.
-                                loadForClient(chosen, kept, sortColumn, sortDescending, canManageUsers)
+                                // the search to the new client's declared fields and reloads from the top. A failed
+                                // reload shows beside the controls, not as a whole-card error (initialLoad = false).
+                                loadForClient(chosen, kept, sortColumn, sortDescending, canManageUsers, initialLoad = false)
                             }
                         }
                     }
