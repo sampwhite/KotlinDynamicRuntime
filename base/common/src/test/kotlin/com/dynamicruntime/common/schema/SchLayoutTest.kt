@@ -41,6 +41,46 @@ class SchLayoutTest : StringSpec({
         layout.fields[1].description shouldBe null
     }
 
+    "parseSchLayout reads a field's defaultMode and round-trips it (issue #709)" {
+        val block = mapOf(
+            SL.schemaFields to listOf(
+                mapOf(SL.field to "name", SL.defaultMode to SLDM.filled),
+                mapOf(SL.field to "email", SL.defaultMode to SLDM.offer),
+                mapOf(SL.field to "note"),
+            ),
+        )
+        val layout = parseSchLayout("Type 'X'", block)
+        layout.fields[0].defaultMode shouldBe SLDM.filled
+        layout.fields[1].defaultMode shouldBe SLDM.offer
+        // A field that says nothing carries no mode -- the surface's own default (filled) applies at render.
+        layout.fields[2].defaultMode shouldBe null
+        // Re-serializes to the delivery form, so the frontend parses back what the store held.
+        layout.fields[0].toJsonMap()[SL.defaultMode] shouldBe SLDM.filled
+        layout.fields[2].toJsonMap().containsKey(SL.defaultMode) shouldBe false
+    }
+
+    "a defaultMode outside the closed set fails the boot (issue #709)" {
+        val block = mapOf(SL.schemaFields to listOf(mapOf(SL.field to "name", SL.defaultMode to "locked")))
+        shouldThrow<KdrException> { parseSchLayout("Type 'X'", block) }.message shouldContain SL.defaultMode
+    }
+
+    "the SchLayoutBuilder writes a field's defaultMode (issue #709)" {
+        val block = SchLayoutBuilder(fragmentFileId = null).apply {
+            field("name", label = "Name", defaultMode = SLDM.filled)
+        }.build()
+        parseSchLayout("Type 'X'", block).fields.single().defaultMode shouldBe SLDM.filled
+    }
+
+    "defaultMode survives the delivery round-trip (issue #709)" {
+        // store model -> the wire form both friendly surfaces deliver -> the frontend's read of it.
+        val layout = parseSchLayout(
+            "Type 'X'",
+            mapOf(SL.schemaFields to listOf(mapOf(SL.field to "email", SL.defaultMode to SLDM.offer))),
+        )
+        val delivered = deliveredLayouts(mapOf("ns.T" to layout), listOf("ns.T"))
+        parseDeliveredLayouts(delivered).getValue("ns.T").fields.single().defaultMode shouldBe SLDM.offer
+    }
+
     "parseSchLayout reads a form-level strings block and round-trips it (issue #641)" {
         val block = mapOf(
             SL.schemaFields to listOf(mapOf(SL.field to "topic", SL.label to "Topic")),

@@ -240,10 +240,15 @@ is equivalent):
 }
 ```
 
-- The block's vocabulary is the `SL` object (`schemaFields`, `field`, `label`, `description`, `hint`,
-  `fragmentFileId`, `strings`). The parser is **strict**: an unknown key on the block or on an entry, a present
-  block with no entries, or a non-object value all fail the boot — a layout must never parse clean and render
-  nothing.
+- The block's vocabulary is the `SL` object (`schemaFields`, `field`, `label`, `description`, `hint`, `errors`,
+  `defaultMode`, `fragmentFileId`, `strings`). The parser is **strict**: an unknown key on the block or on an
+  entry, a present block with no entries, or a non-object value all fail the boot — a layout must never parse
+  clean and render nothing.
+- **Default handling** (`defaultMode`, issue #709): a per-field `field(..., defaultMode = SLDM.filled)` says how
+  a **supplied default** (a value the backend hands the form that a person did not enter — a `prefillData`
+  default, later other sources) is presented: `SLDM.filled` (shown in the control, marked) or `SLDM.offer` (an
+  empty control beside a "use it" affordance). A closed set (a bad value fails the boot); absent leaves the
+  surface's own default (`filled`). It is about the *field*, not the source, so it never names `prefill`.
 - **Form-level strings** (`strings`, issue #641): a `{ LAYSTR-name → copy }` block of overridable wording a form
   shows for the type as a whole rather than for one field — declared with `string(LAYSTR.key, "...")`. The keys
   are the closed `LAYSTR` vocabulary (an unknown one fails the boot, like every other layout key); the default
