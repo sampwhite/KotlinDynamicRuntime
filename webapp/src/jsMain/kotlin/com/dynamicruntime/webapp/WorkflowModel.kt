@@ -8,6 +8,8 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SchFailCode
+import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseDeliveredLayouts
@@ -219,6 +221,10 @@ fun railExplanation(status: WfTaskStatus?, unsaved: Boolean, nameOf: (String) ->
  * [stored] ones. Client-side only -- the backend has no notion of an unsaved draft -- and orthogonal to the
  * status mark, so the rail overlays it as a badge rather than drawing it as a fourth state. The same answer
  * gates the task's Save (issue #717): a task with nothing unsaved has nothing to save.
+ *
+ * Compared through [comparableValues] (issue #718): a text box holds what was typed as a string against a
+ * stored number, and a cleared box holds `""` against an absent key, so a raw comparison read a value typed
+ * back as its original, or a field emptied that was never set, as an edit.
  */
 fun taskUnsaved(
     task: WfTaskView,
@@ -227,8 +233,74 @@ fun taskUnsaved(
 ): Boolean = task.traits.any { trait ->
     val working: Map<String, Any?> = values[trait.traitId] ?: emptyMap()
     val kept: Map<String, Any?> = stored[trait.traitId] ?: emptyMap()
-    working != kept
+    comparableValues(working) != comparableValues(kept)
 }
+
+/**
+ * A form's values in a shape two copies can be compared in (issue #718), whichever side came from a widget and
+ * which from the wire: a null or blank string is dropped (what `emptyIsAbsent` makes of it on the way out), a
+ * scalar becomes its text (`"2025"` typed and `2025` stored are one value), and maps and lists are walked. A
+ * comparison aid only -- nothing sent is built from this.
+ */
+fun comparableValues(values: Map<String, Any?>): Map<String, Any?> = buildMap {
+    for ((k, v) in values) {
+        val c = comparableValue(v) ?: continue
+        put(k, c)
+    }
+}
+
+private fun comparableValue(value: Any?): Any? = when (value) {
+    null -> null
+    is String -> value.takeIf { it.isNotBlank() }
+    is Map<*, *> -> comparableValues(value.toJsonMapOrEmpty())
+    is List<*> -> value.map { comparableValue(it) }
+    else -> value.toString()
+}
+
+/**
+ * A task's status computed from its **working** values (issue #718), for the rail while the task holds unsaved
+ * edits -- the client's projection of the verdict the server will give once they are saved, by the server's
+ * own rule (`SurveyStateDeriver` and its `surveyContentFailures`) so a save does not flip the mark: presence is
+ * a required trait having any data; content is the kernel's failures on the data that is there, worded as a
+ * reported problem is (the author's `userMessage` first).
+ *
+ * One reading differs, on purpose. The server sets a `missingRequired` failure aside, because a stored entry
+ * passed its save and is present whatever it lacks. Here the data is *unsaved*: a required field emptied is
+ * exactly the "needs information" the mark exists to show, so it makes the trait **missing** rather than
+ * invalid -- and since the save refuses it, the server never sees that state and the two cannot disagree over
+ * a saved form.
+ */
+fun localTaskStatus(task: WfTaskView, values: Map<String, Map<String, Any?>>): WfTaskStatus {
+    val missing = mutableListOf<String>()
+    val problems = mutableListOf<WfProblem>()
+    for (trait in task.traits) {
+        val working = values[trait.traitId] ?: emptyMap()
+        if (comparableValues(working).isEmpty()) {
+            if (trait.required) missing.add(trait.traitId)
+            continue
+        }
+        val failures = checkInput(trait.type, working).failures
+        if (failures.any { it.code == SchFailCode.missingRequired }) missing.add(trait.traitId)
+        failures.filter { it.code != SchFailCode.missingRequired }
+            .forEach { problems.add(WfProblem(trait.traitId, it.path, it.userMessage ?: it.message)) }
+    }
+    return WfTaskStatus(
+        complete = missing.isEmpty(),
+        valid = problems.isEmpty(),
+        missingTraits = missing,
+        invalidTraits = problems.map { it.traitId }.distinct(),
+        problems = problems,
+    )
+}
+
+/**
+ * The failures a task's panel shows for one trait (issue #718): before the trait has been checked as a whole (a
+ * Save, or the task being left), only those on fields the user has **committed** -- a first blur must not flag
+ * every untouched required field below it; after, all of them. A failure on a field beneath a committed one
+ * (an element of a list the user touched) counts as committed.
+ */
+fun shownFailures(all: List<SchFailure>, committed: Set<String>, wholeTraitChecked: Boolean): List<SchFailure> =
+    if (wholeTraitChecked) all else all.filter { f -> committed.any { c -> f.path == c || f.path.startsWith("$c.") || f.path.startsWith("$c[") } }
 
 /**
  * The values to seed a task's fields from, keyed by trait id (issue #659): the inverse of [workflowSaveEntries].

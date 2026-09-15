@@ -297,6 +297,14 @@ external interface SchemaFormProps : Props {
      */
     var onFieldEdit: ((String) -> Unit)?
     /**
+     * Called with the path of a field the user has just **finished with** (issue #718): a text box on blur, a
+     * choice, date, checkbox or file on the selection itself, which is where those commit. The counterpart of
+     * [onFieldEdit] -- that one says a value is changing, this one says it has settled -- so a form can check
+     * input at commit points rather than per keystroke (which would flag "required" on a field the moment it is
+     * tabbed into) or only on Save. Optional: a form that validates on Save alone leaves it unset.
+     */
+    var onFieldCommit: ((String) -> Unit)?
+    /**
      * Promote a keyed object property's primary-key fields out of the nested object and up to its own level
      * (issue #642) -- for the edit form, so a trait's key shows beside the trait choice rather than buried in
      * `data`, and a delete is key-only with an empty data section. Purely presentational: the value stays in
@@ -312,9 +320,14 @@ external interface SchemaFormProps : Props {
  *
  * It exists, so the two travel together through the traversal rather than as two more parameters on every
  * render function, and so the grouping is done once for the pass instead of rescanning the failure list per
- * field.
+ * field. [noteCommit] rides along for the same reason (issue #718): a field's commit is reported from the
+ * widget that owns the control, which is as deep as the traversal goes.
  */
-class FieldErrors(private val all: List<SchFailure>, val noteEdit: (String) -> Unit) {
+class FieldErrors(
+    private val all: List<SchFailure>,
+    val noteEdit: (String) -> Unit,
+    val noteCommit: (String) -> Unit = {},
+) {
     private val byPath = all.byPath()
 
     /** The failures reported at exactly [path]; empty when the field is fine (or when nothing was validated). */
@@ -408,7 +421,7 @@ internal fun buildCfactGate(cfacts: Map<String, Boolean>?): (String) -> Boolean 
 }
 
 val SchemaForm = FC<SchemaFormProps> { props ->
-    val errors = FieldErrors(props.failures ?: emptyList(), props.onFieldEdit ?: {})
+    val errors = FieldErrors(props.failures ?: emptyList(), props.onFieldEdit ?: {}, props.onFieldCommit ?: {})
     // An external-interface Boolean arrives as `undefined` when a caller omits it, so read it as `== true`
     // rather than trusting the declared type; the catalog omits both and gets the plain wire view.
     val opts = FormOpts(
@@ -881,6 +894,7 @@ private fun ChildrenBuilder.renderField(
             // A hint declared at *this* use site wins over one on the (shared) target type -- the same
             // per-site precedence `title` takes (issue #540).
             presentation = prop.presentation ?: vt.presentation, opts = opts,
+            commit = { errors.noteCommit(path) },
         ) { newValue ->
             errors.noteEdit(path)
             emit(newValue)
@@ -1195,7 +1209,7 @@ private fun ChildrenBuilder.renderScalarList(
             // inside a list (removing an element is the remove control's job), which is what a boolean
             // element asks about (issue #261).
             if (elementType != null) {
-                widget(elementType, element, required = true, editable = true, opts = opts) { replace(it) }
+                widget(elementType, element, required = true, editable = true, opts = opts, commit = { errors.noteCommit(elementPath) }) { replace(it) }
             } else {
                 Input {
                     this.value = displayValue(element)
@@ -1255,10 +1269,16 @@ private fun ChildrenBuilder.removeControl(what: String, onRemove: () -> Unit) {
  *
  * [required] is the parent object's statement about this field, not part of [vt] — only the boolean branch
  * consults it, to decide whether absence is a state the control has to be able to express.
+ *
+ * [commit] says the user has finished with the field (issue #718). Which moment that is depends on the control:
+ * a text box settles on **blur** (the value changes per keystroke, and none of those is an answer), while a
+ * choice, a checkbox, a date or a file settle on the **selection** -- picking is finishing -- so those call it
+ * right after they emit. A caller that does not care leaves it as the no-op.
  */
 private fun ChildrenBuilder.widget(
     vt: SchType, value: Any?, required: Boolean, editable: Boolean, describedBy: String? = null,
     presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
+    commit: () -> Unit = {},
     emit: (Any?) -> Unit,
 ) {
     if (!editable) {
@@ -1279,7 +1299,7 @@ private fun ChildrenBuilder.widget(
             this.value = value.toJsonListOfStrings().toTypedArray()
             placeholder = "(choose)"
             style = js("({ minWidth: 200 })")
-            onChange = { v -> emit(jsToList(v)) }
+            onChange = { v -> emit(jsToList(v)); commit() }
             markInvalid(asDynamic(), describedBy)
         }
         // Single choice, open: the list suggests, and anything else is accepted too.
@@ -1290,6 +1310,7 @@ private fun ChildrenBuilder.widget(
             this.value = value?.toString()
             this.describedBy = describedBy
             this.onEmit = { v -> emit(v) }
+            this.onCommit = commit
         }
         // Single choice.
         singleOptions != null -> Select {
@@ -1298,7 +1319,7 @@ private fun ChildrenBuilder.widget(
             placeholder = "(choose)"
             allowClear = true
             style = js("({ minWidth: 200 })")
-            onChange = { v -> emit(v as? String) }
+            onChange = { v -> emit(v as? String); commit() }
             markInvalid(asDynamic(), describedBy)
         }
         // Boolean, where absent says nothing the field cannot already say: a checkbox, the compact control
@@ -1307,7 +1328,7 @@ private fun ChildrenBuilder.widget(
             val draw = checkboxDraw(vt, value)
             checked = draw == CheckDraw.on
             indeterminate = draw == CheckDraw.unanswered
-            onChange = { e -> emit(e.target.checked as Boolean) }
+            onChange = { e -> emit(e.target.checked as Boolean); commit() }
             markInvalid(asDynamic(), describedBy)
         }
         // Boolean with a reachable third state: the choice widget above, over `true` / `false`, whose
@@ -1322,7 +1343,7 @@ private fun ChildrenBuilder.widget(
             // A real Boolean, never the option's string: `allowCoerce` defaults **off** for a boolean, so
             // "true" against a boolean type is a plain wrongType failure. Cleared emits null, which
             // `emptyIsAbsent` reads as absent -- the coerced payload drops the key rather than sending null.
-            onChange = { v -> emit((v as? String)?.toOptBool()) }
+            onChange = { v -> emit((v as? String)?.toOptBool()); commit() }
             markInvalid(asDynamic(), describedBy)
         }
         // Date field. Bound like every other widget, which it previously was not: with no `value`, antd's
@@ -1342,6 +1363,7 @@ private fun ChildrenBuilder.widget(
                     // A day emits the day text; a moment emits ISO-8601 in UTC, which is exactly the shape the
                     // kernel parses and writes back. Cleared emits null, which reads as absent (issue #187).
                     emit(if (date == null) null else if (dayOnly) dateString else date.toISOString())
+                    commit()
                 }
                 markInvalid(asDynamic(), describedBy)
             }
@@ -1359,6 +1381,7 @@ private fun ChildrenBuilder.widget(
             onChange = { e ->
                 val files = e.target.asDynamic().files
                 emit(if (files != null && (files.length as Int) > 0) files[0] else null)
+                commit()
             }
             markInvalid(asDynamic(), describedBy)
         }
@@ -1370,6 +1393,7 @@ private fun ChildrenBuilder.widget(
             this.value = value
             this.describedBy = describedBy
             this.onEmit = emit
+            this.onCommit = commit
         }
         // string / integer / number / unknown: a text box. The kernel validator coerces the entered string to
         // the declared type on validation. Lists do not arrive here in edit mode -- a list of choices is the
@@ -1378,6 +1402,7 @@ private fun ChildrenBuilder.widget(
             this.value = displayValue(value)
             placeholder = typeHint(vt)
             onChange = { e -> emit(e.target.value as String) }
+            onBlur = { commit() }
             markInvalid(asDynamic(), describedBy)
         }
     }
@@ -1450,6 +1475,8 @@ external interface OpenChoiceFieldProps : Props {
     var value: String?
     var describedBy: String?
     var onEmit: (String?) -> Unit
+    /** The field settled (issue #718): a suggestion picked, or the box left after typing. See `widget`. */
+    var onCommit: (() -> Unit)?
 }
 
 /**
@@ -1491,6 +1518,9 @@ val OpenChoiceField = FC<OpenChoiceFieldProps> { props ->
             // payload drops the key -- the same contract the closed dropdown's `allowClear` has.
             props.onEmit((v as? String)?.ifEmpty { null })
         }
+        // A typed value is the field's value while it is typed, so the box settles on blur like a text box;
+        // a pick closes the popup and blurs too, so one hook covers both ways of answering.
+        onBlur = { props.onCommit?.invoke() }
         markInvalid(asDynamic(), props.describedBy)
     }
 }
@@ -1500,6 +1530,8 @@ external interface JsonObjectFieldProps : Props {
     var value: Any?
     var describedBy: String?
     var onEmit: (Any?) -> Unit
+    /** The field settled (issue #718): the blur that parses the text is also where the value is final. */
+    var onCommit: (() -> Unit)?
 }
 
 /**
@@ -1533,6 +1565,7 @@ val JsonObjectField = FC<JsonObjectFieldProps> { props ->
             val parsed = parseJsonField(jsonFieldText(props.value))
             parseError = parsed.error
             props.onEmit(parsed.value)
+            props.onCommit?.invoke()
         }
         markInvalid(asDynamic(), props.describedBy)
     }
