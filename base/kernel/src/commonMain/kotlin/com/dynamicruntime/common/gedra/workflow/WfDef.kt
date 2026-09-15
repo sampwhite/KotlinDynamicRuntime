@@ -119,6 +119,30 @@ object WVF {
      * shape as the endpoint catalog's `layouts` (`EI.layouts`), so a page reads either surface identically.
      */
     const val layouts = "layouts"
+
+    /**
+     * On a task: its **status** for the task rail (issue #700) -- `complete` / `valid` / `missingTraits` /
+     * `invalidTraits` under the survey's own words (`SVY`), plus [problems]. Computed by the resolver from the
+     * task's entries and the client's entry union with the same presence and content rules the survey's
+     * stored state uses, so the rail and the forms list's status column cannot disagree.
+     */
+    const val status = "status"
+
+    /**
+     * Under [status]: the content failures of the task's present entries, for the rail's invalid-task tooltip.
+     * Each is the kernel's one failure wire shape (`SchFailure.toWireMap()`: path, code, message, and the schema
+     * author's `userMessage` when the field declares one) plus the `traitId` it belongs to -- so whatever reads a
+     * reported failure reads these too, and a tooltip can later point at the field. Empty when the task's data
+     * passes its schema.
+     */
+    const val problems = "problems"
+
+    /**
+     * On the view's top level: the id of the **earliest task still needing action** (issue #700) -- the first,
+     * in task order, whose [status] is incomplete or invalid; absent when every task is complete and valid. The
+     * task rail opens on it when the URL names no task, so a status-chip link lands on the work.
+     */
+    const val focusTask = "focusTask"
 }
 
 /**
@@ -138,6 +162,13 @@ object WSF {
 
     /** When [saved]: the created gedra, as `formDoc/create` returns it. */
     const val item = "item"
+
+    /**
+     * When [saved] by a survey `edit`: the **refreshed workflow view** (issue #700), re-resolved against the
+     * updated form -- every task's entries and [WVF.status], and [WVF.focusTask] -- so the save is the refresh
+     * and the task rail needs no second call. Absent on a create save.
+     */
+    const val view = "view"
 }
 
 /**

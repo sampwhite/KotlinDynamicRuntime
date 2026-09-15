@@ -64,8 +64,16 @@ val App = FC<Props> {
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
         onWebAppStale { updateAvailable = true }
-        onHashChange {
-            page = currentPage()
+        onHashChangeFrom { oldUrl ->
+            val next = currentPage()
+            // A page holding unsaved work may veto being left (issue #700) -- asked HERE, before the switch, so a
+            // "stay" changes nothing: the page never unmounts and its edits are intact. The address bar is put
+            // back to exactly where it was (replaceState, so no second hashchange), whatever the move was.
+            if (LeaveGuard.vetoesMove(hashParams())) {
+                restoreUrl(oldUrl)
+                return@onHashChangeFrom
+            }
+            page = next
             // Cross-page navigation is a refresh trigger: bump so every mounted config consumer re-reads.
             setRefresh { it + 1 }
             // A navigation is a safe point to pick up a newer app version if one has been detected (issue #136).

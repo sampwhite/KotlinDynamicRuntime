@@ -3,13 +3,16 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.collectDefClosure
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
+import com.dynamicruntime.common.schema.toWireMap
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.filterByCFacts
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -86,6 +89,23 @@ fun resolveWorkflowView(
         )
     }
 
+    // The task's status for the task rail (issue #700): presence from the same engine `taskFacts` uses, content
+    // from the survey's one validity rule (`surveyContentFailures`), so the rail agrees with the stored survey
+    // state and the forms list's status column. Each problem is the kernel's own failure wire map plus its
+    // trait, so the page reads it by the same rule it reads any reported failure (the author's wording first).
+    fun taskStatus(task: WfTask, entries: List<Map<String, Any?>>): Map<String, Any?> {
+        val missing = WfEngine.missingTraits(task.requiredTraitIds, entries)
+        val failures = surveyContentFailures(cxt, client, task.traits.map { it.traitId }.toSet(), entries)
+        val problems = failures.flatMap { (traitId, fs) -> fs.map { f -> f.toWireMap() + (GE.traitId to traitId) } }
+        return linkedMapOf(
+            SVY.complete to missing.isEmpty(),
+            SVY.valid to failures.isEmpty(),
+            SVY.missingTraits to missing,
+            SVY.invalidTraits to failures.keys.toList(),
+            WVF.problems to problems,
+        )
+    }
+
     fun taskView(task: WfTask): Map<String, Any?> {
         val entries = entriesByTask[task.id] ?: emptyList()
         // Draw the traits in the page's order, each already a ref+flag; the layout named the order, and any
@@ -99,6 +119,7 @@ fun resolveWorkflowView(
             WFD.traits to orderedTraits,
             WFD.saves to task.saves.map { linkedMapOf(WFD.id to it.id, WFD.label to label(it.label), WFD.kind to it.kind.name) },
             WVF.facts to taskFacts.toList(),
+            WVF.status to taskStatus(task, entries),
         )
         task.layout?.let { raw[WFD.layout] = linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name) }
         // The entries the page seeds each field from: the task's stored ones (a survey edit; a creation view has
@@ -116,7 +137,13 @@ fun resolveWorkflowView(
     val taskViews = declared.def.tasks.map { taskView(it) }
     // The self-contained schema: exactly the types the trait refs reach, and their dependencies.
     val defs = collectDefClosure(seedRefs, clientStore.servedDefs)
-    return linkedMapOf(
+    // The earliest task still needing action (issue #700): the first, in task order, whose status is incomplete
+    // or invalid. The rail opens on it when the URL names no task; absent when every task is done.
+    val focusTask = taskViews.firstOrNull { tv ->
+        val s = tv[WVF.status].toJsonMapOrEmpty()
+        s[SVY.complete] == false || s[SVY.valid] == false
+    }?.get(WFD.id)
+    val view = linkedMapOf<String, Any?>(
         WVF.found to true,
         WFD.workflowId to declared.def.workflowId,
         WVF.ref to declared.ref.text,
@@ -135,6 +162,8 @@ fun resolveWorkflowView(
         // edit mode) is a different thing and already rides on each task above.
         WVF.layouts to resolveDeliveredLayouts(cxt, clientStore.layoutsFor(defs)),
     )
+    focusTask?.let { view[WVF.focusTask] = it }
+    return view
 }
 
 /** The "no workflow" answer -- what the view returns when a client has no such (or no creation) workflow. */

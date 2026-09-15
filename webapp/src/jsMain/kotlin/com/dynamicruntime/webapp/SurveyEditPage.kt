@@ -36,18 +36,49 @@ private val surveyEditScope = MainScope()
  */
 val SurveyEditPage = FC<Props> {
     var gedraId by useState(hashParams()[HP.gedra].orEmpty())
+    // The task the URL names (issue #700), or null to open on the earliest task needing action.
+    var requestedTask by useState(hashParams()[HP.task])
     var view by useState<WorkflowView?>(null)
     var noSurvey by useState(false)
     var loading by useState(true)
     var loadError by useState<DisplayError?>(null)
     // Whether the caller's surface carries the patch endpoint, so the raw-editor link can work (issue #694).
     var rawEditAvailable by useState(false)
+    // Whether the form holds edits not yet saved (issue #700), as WorkflowForm reports it.
+    var dirty by useState(false)
+
+    // The leave guard (issue #700): armed while there are unsaved edits, so leaving the page -- in-app (the
+    // router asks before switching) or by reload / closed tab (the browser's own prompt) -- warns first.
+    // Switching tasks never warns: the working copy survives a switch, and only a leave drops it. Disarmed the
+    // moment the edits are saved or reverted, so a clean page never nags.
+    useEffect(dirty) {
+        if (dirty) {
+            // "Still here" is this page AND this form: a task switch stays; another form's survey -- the same
+            // page, but a keyed remount that would drop the edits -- is a leave.
+            val form = gedraId
+            LeaveGuard.arm({ h -> h[HP.page] == pageSurveyEdit && h[HP.gedra] == form }) {
+                LeaveGuard.confirmLeave("You have unsaved changes on this form. Leave the page and lose them?")
+            }
+        } else {
+            LeaveGuard.disarm()
+        }
+    }
 
     // Keep the open id in step with the hash: App is the router, and a hash-only surveyEdit->surveyEdit move
     // does not remount this page, so without this the first form would stay loaded under the new URL (mirrors
     // EditFormPage, issue #417).
     useEffectOnce {
-        onHashChange { gedraId = hashParams()[HP.gedra].orEmpty() }
+        onHashChange {
+            val h = hashParams()
+            // Only a hash that still names THIS page drives its state (the lesson FormsPage learned in #694, and
+            // what the leave guard depends on): a vetoed leave shows this listener the other page's hash for a
+            // moment before the router puts the address back, and reading `g=` off it here would blank the form.
+            if (h[HP.page] != pageSurveyEdit) return@onHashChange
+            gedraId = h[HP.gedra].orEmpty()
+            // Back/forward between tasks (issue #700): the rail's own pushes fire no hashchange, so this only
+            // runs for history moves and hand-typed URLs, and the state simply follows the hash.
+            requestedTask = h[HP.task]
+        }
     }
 
     // Resolve the survey against the named form, re-running whenever the id changes; drop the previous load's
@@ -122,6 +153,15 @@ val SurveyEditPage = FC<Props> {
                 // `edit=1` opens straight in edit mode (the forms-list chip); otherwise the read-only "View Info".
                 initialEditing = hashParams()[HP.edit] == "1"
                 onRawEdit = rawEdit
+                // The rail's task (issue #700): the URL's when it names one of the view's, else the view's earliest
+                // task needing action, else the first. Choosing a task is a move between destinations, so it
+                // pushes a history entry -- Back returns to the previous task -- without firing hashchange.
+                activeTask = initialTaskFor(view!!, requestedTask)
+                onSelectTask = { id ->
+                    requestedTask = id
+                    pushHash(hashParams().filterKeys { it != HP.task }.toList() + (HP.task to id))
+                }
+                onDirtyChange = { dirty = it }
             }
         }
     }

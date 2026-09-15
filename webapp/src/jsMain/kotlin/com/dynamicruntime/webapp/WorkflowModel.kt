@@ -1,7 +1,9 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
@@ -43,6 +45,26 @@ class WfTraitView(
 class WfSaveView(val id: String, val label: String, val kind: String)
 
 /**
+ * One content failure a task's data has (issue #700): which trait, the field [path] within its data, and the
+ * wording to show -- the schema author's `userMessage` when the field declares one, else the validator's
+ * `message`, the same rule a reported failure is read by anywhere else.
+ */
+class WfProblem(val traitId: String, val path: String, val message: String)
+
+/**
+ * A task's status for the task rail (issue #700), as the view computed it: presence ([complete], [missingTraits])
+ * and content ([valid], [invalidTraits], [problems]) kept apart, so "needs information" and "has a problem" draw
+ * as different marks. Null on a task the view carried none for.
+ */
+class WfTaskStatus(
+    val complete: Boolean,
+    val valid: Boolean,
+    val missingTraits: List<String>,
+    val invalidTraits: List<String>,
+    val problems: List<WfProblem>,
+)
+
+/**
  * One task of the workflow: its traits in the order the page draws them, its saves, and — when the view was
  * resolved against an existing form (a survey edit, issue #659) — that task's **current entries**, the source a
  * page seeds its fields from. A creation view carries none, so [entries] defaults empty.
@@ -53,6 +75,8 @@ class WfTaskView(
     val traits: List<WfTraitView>,
     val saves: List<WfSaveView>,
     val entries: List<Map<String, Any?>> = emptyList(),
+    /** The task's status for the rail (issue #700), as the view computed it; null when it carried none. */
+    val status: WfTaskStatus? = null,
 )
 
 /**
@@ -77,7 +101,33 @@ class WorkflowView(
      * this is the whole closure, for a renderer that reaches a nested type by name.
      */
     val layouts: Map<String, SchLayout> = emptyMap(),
+    /**
+     * The earliest task still needing action (issue #700) -- the first, in order, whose status is incomplete or
+     * invalid -- or null when every task is done. What the rail opens on when the URL names no task.
+     */
+    val focusTask: String? = null,
 )
+
+/** A task's [WVF.status] map as a [WfTaskStatus], or null when the task carried none. */
+private fun parseTaskStatus(raw: Any?): WfTaskStatus? {
+    val s = raw.toJsonMapOrEmpty()
+    if (s.isEmpty()) return null
+    return WfTaskStatus(
+        complete = s[SVY.complete] == true,
+        valid = s[SVY.valid] == true,
+        missingTraits = s[SVY.missingTraits].toJsonListOfStrings(),
+        invalidTraits = s[SVY.invalidTraits].toJsonListOfStrings(),
+        // Each problem is the kernel's own failure wire map (`SchFailure.toWireMap`) plus the trait it belongs to,
+        // read by the same constants every other reported failure is.
+        problems = s[WVF.problems].toJsonListOfMaps().map {
+            WfProblem(
+                traitId = it[GE.traitId].toOptStr() ?: "",
+                path = it[EP.failurePath].toOptStr() ?: "",
+                message = it[EP.failureUserMessage].toOptStr() ?: it[EP.failureMessage].toOptStr() ?: "",
+            )
+        },
+    )
+}
 
 /**
  * Parses a `/gedra/workflow/view` `results` map into a [WorkflowView], or **null** when the caller has no such
@@ -107,6 +157,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
             },
             // Present only for a survey view resolved against a form (issue #659) -- the seed for each field.
             entries = t[WVF.entries].toJsonListOfMaps(),
+            status = parseTaskStatus(t[WVF.status]),
         )
     }
     val cfacts = results[WVF.cfacts].toJsonMapOrEmpty().mapValues { it.value == true }
@@ -117,7 +168,65 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         tasks = tasks,
         cfacts = cfacts,
         layouts = layouts,
+        focusTask = results[WVF.focusTask].toOptStr(),
     )
+}
+
+/**
+ * The task the survey page opens on (issue #700): the one the URL names when it is a task of the view, else the
+ * view's earliest task needing action, else the first task. Null only for a view with no tasks.
+ */
+fun initialTaskFor(view: WorkflowView, requested: String?): String? {
+    val ids = view.tasks.map { it.id }
+    return requested?.takeIf { it in ids } ?: view.focusTask?.takeIf { it in ids } ?: ids.firstOrNull()
+}
+
+/**
+ * The mark a rail entry draws for a task (issue #700). Absence and invalidity are different marks: a task missing
+ * a required trait is [incomplete] whatever else is wrong with it -- the orange check means "complete, but with a
+ * problem", so it must not be drawn on a task that is not complete; its problems still reach the tooltip.
+ */
+@Suppress("EnumEntryName")
+enum class RailMark { incomplete, invalid, complete }
+
+fun railMark(status: WfTaskStatus?): RailMark = when {
+    status == null || !status.complete -> RailMark.incomplete
+    !status.valid -> RailMark.invalid
+    else -> RailMark.complete
+}
+
+/**
+ * What a rail mark means, in words, for the entry's tooltip and screen-reader label (issue #700): unsaved edits,
+ * the required traits still missing (named by [nameOf] -- the rail passes the same heading the panel uses, so
+ * the two agree; the default humanizes the id), each friendly problem, or -- when nothing else applies --
+ * "Complete". One line each, in that order.
+ */
+fun railExplanation(status: WfTaskStatus?, unsaved: Boolean, nameOf: (String) -> String = ::humanizeFieldName): String {
+    val lines = buildList {
+        if (unsaved) add("Unsaved changes")
+        if (status == null || !status.complete) {
+            val missing = status?.missingTraits.orEmpty()
+            add(if (missing.isEmpty()) "Not started" else "Needs information: " + missing.joinToString(", ") { nameOf(it) })
+        }
+        status?.problems?.forEach { add(it.message) }
+        if (isEmpty()) add("Complete")
+    }
+    return lines.joinToString("\n")
+}
+
+/**
+ * Whether a task has edits not yet saved (issue #700): any of its traits' working [values] differ from the last
+ * [stored] ones. Client-side only -- the backend has no notion of an unsaved draft -- and orthogonal to the
+ * status mark, so the rail overlays it as a badge rather than drawing it as a fourth state.
+ */
+fun taskUnsaved(
+    task: WfTaskView,
+    values: Map<String, Map<String, Any?>>,
+    stored: Map<String, Map<String, Any?>>,
+): Boolean = task.traits.any { trait ->
+    val working: Map<String, Any?> = values[trait.traitId] ?: emptyMap()
+    val kept: Map<String, Any?> = stored[trait.traitId] ?: emptyMap()
+    working != kept
 }
 
 /**
@@ -129,6 +238,14 @@ fun seedValuesFromEntries(entries: List<Map<String, Any?>>): Map<String, Map<Str
     entries.mapNotNull { entry ->
         entry[GE.traitId].toOptStr()?.let { it to entry[GE.data].toJsonMapOrEmpty() }
     }.toMap()
+
+/**
+ * Every task's seed values in one map, keyed by trait id (trait ids are unique across a workflow's tasks) -- what
+ * the form starts from, and what it re-snapshots from the refreshed view a survey edit save returns (issue
+ * #700), so the two are the same *presented* shape (prefill defaults included) and never disagree about "unsaved".
+ */
+fun seedValuesOf(view: WorkflowView): Map<String, Map<String, Any?>> =
+    view.tasks.flatMap { seedValuesFromEntries(it.entries).entries }.associate { it.key to it.value }
 
 /**
  * The `entries` a save posts, from the values collected per trait (issue #536): each is a `{traitId, data}`
@@ -157,12 +274,22 @@ fun workflowSaveBody(
     gedraId?.let { put(GDF.gedraId, it) }
 }
 
-/** The outcome of a save: whether it happened, the required trait ids left unmet, and the created form. */
-class WorkflowSaveOutcome(val saved: Boolean, val unmetTraits: List<String>, val item: Map<String, Any?>)
+/**
+ * The outcome of a save: whether it happened, the required trait ids left unmet, the created or updated form,
+ * and -- on a survey edit (issue #700) -- the **refreshed view**, so the rail's statuses follow the save with no
+ * second call. Null [view] on a create save, or a refusal.
+ */
+class WorkflowSaveOutcome(
+    val saved: Boolean,
+    val unmetTraits: List<String>,
+    val item: Map<String, Any?>,
+    val view: WorkflowView? = null,
+)
 
 /** Reads a `/gedra/workflow/save` `results` map into a [WorkflowSaveOutcome]. */
 fun parseSaveOutcome(results: Map<String, Any?>): WorkflowSaveOutcome = WorkflowSaveOutcome(
     saved = results[WSF.saved] == true,
     unmetTraits = results[WSF.unmetTraits].toJsonListOfStrings(),
     item = results[WSF.item].toJsonMapOrEmpty(),
+    view = results[WSF.view]?.let { parseWorkflowView(it.toJsonMapOrEmpty()) },
 )

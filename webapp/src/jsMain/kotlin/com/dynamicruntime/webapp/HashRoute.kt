@@ -65,6 +65,9 @@ object HP {
      */
     const val edit = "edit"
 
+    /** Survey edit page: the task the rail shows (issue #700); absent opens the earliest task needing action. */
+    const val task = "task"
+
     /**
      * Forms page: the gedra id of a form to **highlight** briefly in the list (issue #592) -- how a save
      * hands the just-edited form back to the listing. Transient: read once on arrival and dropped from the
@@ -209,7 +212,114 @@ private fun hashUrl(params: List<Pair<String, String>>): String {
  * `deferred-work.md`.
  */
 fun onHashChange(handler: () -> Unit) {
-    js("window.addEventListener('hashchange', handler)")
+    ensureHashDispatcher()
+    pageHashHandlers.add(handler)
+}
+
+/**
+ * The router's hash-change hook (issue #700): like [onHashChange], but handed the URL the hash changed **from**
+ * (`HashChangeEvent.oldURL`), so a vetoed move can be put back exactly -- whatever the move was (a click, Back,
+ * a typed URL) -- rather than guessed from recorded state. Runs **before every page's handler**, by construction
+ * (see [ensureHashDispatcher]), which is what a leave veto depends on.
+ */
+fun onHashChangeFrom(handler: (oldUrl: String) -> Unit) {
+    ensureHashDispatcher()
+    routerHashHandlers.add(handler)
+}
+
+private val routerHashHandlers = mutableListOf<(String) -> Unit>()
+private val pageHashHandlers = mutableListOf<() -> Unit>()
+private var hashDispatcherInstalled = false
+
+/**
+ * One `hashchange` listener for the whole app, installed on the first registration, which calls the router's
+ * handlers and then every page's **from one JavaScript stack**. Two things follow that separate listeners could
+ * not promise:
+ *
+ *  - **Order does not depend on who registered first.** React runs a child's effects before its parent's, so on
+ *    a fresh load a page's own listener would register *ahead of* the router's; with one listener the router
+ *    always goes first, whatever the mount order.
+ *  - **Nothing runs between them.** The browser performs a microtask checkpoint after each *separate* listener,
+ *    and React re-renders in it. Measured (#700): a page listener that adopted another form's id there had its
+ *    form remounted under the new key, reported clean, and the guard disarmed -- all before the router's own
+ *    listener ran to ask. Called back to back from one stack, the router vetoes and puts the hash back first,
+ *    and the page's handler only ever sees the restored hash.
+ *
+ * (Registering the router's listener in the capture phase was tried first and was not enough here.)
+ */
+private fun ensureHashDispatcher() {
+    if (hashDispatcherInstalled) return
+    hashDispatcherInstalled = true
+    val dispatcher: (dynamic) -> Unit = { e ->
+        val oldUrl = e.oldURL as String
+        for (h in routerHashHandlers.toList()) h(oldUrl)
+        for (h in pageHashHandlers.toList()) h()
+    }
+    js("window.addEventListener('hashchange', dispatcher)")
+}
+
+/** Puts the address bar back to [url] via `history.replaceState`: no history entry, and no `hashchange`. */
+fun restoreUrl(url: String) {
+    js("history.replaceState(null, '', url)")
+}
+
+/**
+ * A page's veto on being left while it holds unsaved work (issue #700). The survey editor **arms** it when a
+ * task has edits not yet saved and **disarms** it when they are saved or reverted; the router asks it on every
+ * hash change, **before** switching, so a "stay" changes nothing -- the page never unmounts and its working
+ * state is intact. That ordering is the whole point: reverting from the leaving page's own `hashchange`
+ * listener is too late, because the router has already switched by the time a second hashchange could arrive.
+ *
+ * What counts as "still here" is the armed page's to say, through the `stays` predicate it arms with: the
+ * survey editor answers true for a hash naming its page *and its form*, so a task switch or Back between
+ * tasks is never a leave, while a move to another form's survey -- the same page, whose keyed remount would
+ * drop the edits just as surely -- is one. One slot, not a list: only the page on screen can hold unsaved work.
+ *
+ * Arming also sets `onbeforeunload`, so a reload, a closed tab or a typed address get the browser's own
+ * "leave site?" prompt -- the one exit a hash listener cannot see. A permitted in-app leave clears both.
+ *
+ * **A known limit.** A hash listener cannot tell a Back from a click. Vetoing a leave that Back initiated puts
+ * the address back with `replaceState` on the entry Back had moved to, so that entry now reads as this page:
+ * the page before it is gone from history, and a later Back skips it. A click-initiated leave has no such side
+ * effect (the history pointer never moved). Telling the two apart needs a `popstate` listener beside
+ * `hashchange`; not done until it matters.
+ */
+object LeaveGuard {
+    private var stays: ((Map<String, String>) -> Boolean)? = null
+    private var check: (() -> Boolean)? = null
+
+    /**
+     * Arms the guard: [stays] says whether a hash (as [hashParams] reads it) still belongs to the armed work;
+     * [check] answers true to allow a leave, false to stay.
+     */
+    fun arm(stays: (Map<String, String>) -> Boolean, check: () -> Boolean) {
+        this.stays = stays
+        this.check = check
+        js("window.onbeforeunload = function (e) { e.preventDefault(); e.returnValue = ''; return ''; }")
+    }
+
+    /** Clears the guard and the browser prompt. Safe to call when not armed. */
+    fun disarm() {
+        stays = null
+        check = null
+        js("window.onbeforeunload = null")
+    }
+
+    /**
+     * The router's question on a hash change to [next]: **true to stay** (the armed page vetoed the leave). A hash
+     * the armed page still owns is never asked; a permitted leave disarms first, so the browser prompt does not
+     * outlive the page it belonged to.
+     */
+    fun vetoesMove(next: Map<String, String>): Boolean {
+        val here = stays ?: return false
+        if (here(next)) return false
+        if (check?.invoke() == false) return true
+        disarm()
+        return false
+    }
+
+    /** The browser's blocking confirm, for a guard's `check`. */
+    fun confirmLeave(message: String): Boolean = js("window.confirm(message)") as Boolean
 }
 
 /**
