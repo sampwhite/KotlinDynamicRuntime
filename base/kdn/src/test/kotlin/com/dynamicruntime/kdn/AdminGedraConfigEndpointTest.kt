@@ -178,6 +178,38 @@ class AdminGedraConfigEndpointTest : StringSpec({
         ClientService.get(cxt).known(newClient).shouldNotBeNull()
     }
 
+    "an allClients admin reverts a named client's published config, and is refused for a published-only one (issue #734)" {
+        val admin = fullAdmin()
+        val target = CL.hub
+        val ns = "acepns734revert"
+        val name = "adminrevert"
+        admin.postData(
+            ACEP.bundleWrite,
+            mapOf(
+                CFEP.client to target, CFEP.name to name, CFEP.namespaceField to ns,
+                CFEP.slots to mapOf(
+                    CCT.schemaDef to listOf(mapOf(CCT.typeName to "$ns.Shared", CCT.schema to mapOf(SCH.type to SCT.kObject))),
+                ),
+            ),
+        )
+        admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to target, CFEP.name to name))[CFEP.published] shouldBe true
+
+        // Cross-client revert mints a new editable revision copied from the published head.
+        val reverted = admin.postData(ACEP.bundleRevert, mapOf(CFEP.client to target, CFEP.name to name))
+        reverted[CFEP.client] shouldBe target
+        reverted[CFEP.version] shouldBe 2
+        reverted[CFEP.published] shouldBe false
+
+        // A published-only client refuses revert -- its published revision must stay live.
+        admin.postData(ACEP.publishedOnly, mapOf(CFEP.client to target, CFEP.publishedOnlyField to true))
+        try {
+            admin.expectError(EXC.badInput, ACEP.bundleRevert, mapOf(CFEP.client to target, CFEP.name to name))
+        } finally {
+            // Restore the tier so a shared-client spec is not left published-only for later tests.
+            admin.postData(ACEP.publishedOnly, mapOf(CFEP.client to target, CFEP.publishedOnlyField to false))
+        }
+    }
+
     "a scoped administrator without allClients is refused the admin config surface" {
         val scoped = TestUser.create(cxt, "admincfg-scoped@example.com", level = ROLE.admin)
         // The `/admin` section requires allClients, which a plain admin lacks.

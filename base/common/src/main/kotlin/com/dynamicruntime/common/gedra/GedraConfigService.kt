@@ -244,6 +244,53 @@ class GedraConfigService : ServiceInitializer {
         return result!!
     }
 
+    /**
+     * The safe inverse of [publish] (issue #734): reopens a class for editing by minting a **new** unpublished
+     * revision copied from its published head, rather than un-stamping that head. The published revision stays
+     * immutable, so anything that named its versioned id (a document's creation lineage, a node that already
+     * consumed it) still resolves to exactly the content it always did -- the reason a naive un-stamp was unsafe
+     * (#685). The version advances (v3 published -> v4 editable copy); the entries are carried forward whole, so
+     * the copy is byte-for-byte the published one until it is edited, and diff-before-stamp keeps each slot's
+     * accounting rather than looking freshly authored.
+     *
+     * Idempotent when the head is already editable (nothing to reopen) -- returned unchanged. Refused for a
+     * `publishedOnly`/`staticConfig` client, mirroring [setPublishedOnly]: such a client consumes its latest
+     * *published* revision, so reopening the head neither changes what it consumes nor is a safe thing to offer
+     * (un-stamping there is the prod lockout's whole point). Throws when the class has no revision. Like publish,
+     * nothing a node runs changes until a reload.
+     */
+    fun revertToEditable(cxt: KdrCxt, configClassId: GedraId): GedraConfigRow {
+        val configId = configClassId.revisionClass()
+        if (publishedOnly(cxt, configId.client)) {
+            throw KdrException.mkInput(
+                "Client '${configId.client}' consumes only its published configuration, so config " +
+                    "'${configId.baseId}' cannot be reopened for editing: its published revision must stay live.",
+            )
+        }
+        val wcxt = boundToClient(cxt, configId.client)
+        val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
+        val table = configTable(wcxt)
+        var result: GedraConfigRow? = null
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranWrite, null, mapOf(GC.configId to configId.fullId)) {
+            val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
+                ?: throw KdrException.mkInput("There is no config '$configId' to reopen for editing.")
+            if (!latest.isPublished) {
+                // Already editable: the head is what a write would land on, so there is nothing to reopen.
+                result = latest
+                return@executeTopicTran
+            }
+            // Mint version+1 as an unpublished copy of the published head. Its own entries are both the new slots
+            // and the diff source, so every slot is unchanged and keeps its stored envelope across the bump.
+            val slots = latest.entriesBySlot()
+            val priorByKey = keyStoredEntries(latest.entries)
+            result = insertRevision(
+                wcxt, sqlCxt, table, configId, latest.version + 1, latest.resolvedNamespace(),
+                slots, priorByKey, impliedDelete = true, prior = latest,
+            )
+        }
+        return result!!
+    }
+
     /** Binds [cxt] to [client] so ownership/audit stamp from the config's own client, or returns it unchanged. */
     private fun boundToClient(cxt: KdrCxt, client: String): KdrCxt =
         if (cxt.client == client) cxt else cxt.mkSubContext("configWrite", client)

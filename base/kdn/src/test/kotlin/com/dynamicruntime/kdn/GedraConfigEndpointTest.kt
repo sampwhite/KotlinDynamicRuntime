@@ -146,6 +146,34 @@ class GedraConfigEndpointTest : StringSpec({
         afterDelete[CFEP.slots].toJsonMapOrEmpty().keys shouldContainExactlyInAnyOrder listOf(CCT.schemaDef)
     }
 
+    "revert reopens a published config as a new editable revision (issue #734)" {
+        val u = admin()
+        val name = "reverttarget"
+        writeBundle(u, name, "Ready v1")
+        u.postData(CFEP.bundlePublish, mapOf(CFEP.name to name))[CFEP.published] shouldBe true
+
+        // Revert: a NEW editable revision copied from the published head. The published v1 stays immutable.
+        val reverted = u.postData(CFEP.bundleRevert, mapOf(CFEP.name to name))
+        reverted[CFEP.version] shouldBe 2
+        reverted[CFEP.published] shouldBe false
+
+        // The copy is byte-for-byte the published content until it is edited.
+        val bundle = u.getItem(CFEP.bundle, mapOf(CFEP.name to name))
+        bundle[CFEP.slots].toJsonMapOrEmpty()[CCT.cfactDef].toJsonListOfMaps().single()[CCT.description] shouldBe "Ready v1"
+
+        // The reopened head is editable: a write lands in place at version 2, not a new version.
+        writeBundle(u, name, "Ready v2")[CFEP.version] shouldBe 2
+
+        // Reverting an already-editable head is a no-op -- still version 2, still unpublished.
+        val again = u.postData(CFEP.bundleRevert, mapOf(CFEP.name to name))
+        again[CFEP.version] shouldBe 2
+        again[CFEP.published] shouldBe false
+    }
+
+    "reverting a configuration that does not exist is a 404 (issue #734)" {
+        admin().expectError(EXC.notFound, CFEP.bundleRevert, args = mapOf(CFEP.name to "nopeconfig"))
+    }
+
     "a patch with an unknown slot is refused" {
         val u = admin()
         writeBundle(u, "patchbadslot", "Ready v1")

@@ -57,6 +57,7 @@ object CFEP {
     const val bundleWrite = "/${SECT.clientAdmin}/config/bundle/write"
     const val bundlePatch = "/${SECT.clientAdmin}/config/bundle/patch"
     const val bundlePublish = "/${SECT.clientAdmin}/config/bundle/publish"
+    const val bundleRevert = "/${SECT.clientAdmin}/config/bundle/revert"
     const val traits = "/${SECT.clientAdmin}/config/traits"
     const val reload = "/${SECT.clientAdmin}/config/reload"
     const val publishedOnly = "/${SECT.clientAdmin}/config/publishedOnly"
@@ -199,6 +200,18 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
             field(CFEP.name, "The configuration's name.", required = true)
         },
     ) { c, request -> cfgPublishBody(c, request) }
+
+    generalEndpoint(
+        CFEP.bundleRevert,
+        "Reopens a published configuration for editing (issue #734): mints a new editable revision copied from " +
+            "the published head, which stays immutable. A no-op when the head is already editable; refused for a " +
+            "published-only client.",
+        HttpMethod.POST,
+        outputRef = CFEP.summaryType,
+        inputFields = {
+            field(CFEP.name, "The configuration's name.", required = true)
+        },
+    ) { c, request -> cfgRevertBody(c, request) }
 
     listEndpoint(
         CFEP.traits,
@@ -428,6 +441,15 @@ private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, A
     return summaryOf(GedraConfigService.get(c).publish(c, configId(c, name)))
 }
 
+private fun cfgRevertBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    val name = requireName(request)
+    // As with publish, a config the caller cannot find reads as a 404 rather than the service's 400.
+    if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
+        throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
+    }
+    return summaryOf(GedraConfigService.get(c).revertToEditable(c, configId(c, name)))
+}
+
 private fun cfgTraitsBody(c: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
     val name = requireName(request)
     val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
@@ -618,6 +640,7 @@ object ACEP {
     const val bundleWrite = "/${SECT.admin}/client/config/bundle/write"
     const val bundlePatch = "/${SECT.admin}/client/config/bundle/patch"
     const val bundlePublish = "/${SECT.admin}/client/config/bundle/publish"
+    const val bundleRevert = "/${SECT.admin}/client/config/bundle/revert"
     const val traits = "/${SECT.admin}/client/config/traits"
     const val reload = "/${SECT.admin}/client/config/reload"
     const val publishedOnly = "/${SECT.admin}/client/config/publishedOnly"
@@ -707,6 +730,19 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             field(CFEP.name, "The configuration's name.", required = true)
         },
     ) { c, request -> cfgPublishBody(adminConfigCxt(c, request), request) }
+
+    generalEndpoint(
+        ACEP.bundleRevert,
+        "Reopens a named client's published configuration for editing (issue #734): mints a new editable " +
+            "revision copied from the published head, which stays immutable. A no-op when already editable; " +
+            "refused for a published-only client.",
+        HttpMethod.POST,
+        outputRef = "${CFEP.namespace}.${CFEP.summaryType}",
+        inputFields = {
+            field(CFEP.client, "The client that owns the configuration.", required = true)
+            field(CFEP.name, "The configuration's name.", required = true)
+        },
+    ) { c, request -> cfgRevertBody(adminConfigCxt(c, request), request) }
 
     listEndpoint(
         ACEP.traits,
