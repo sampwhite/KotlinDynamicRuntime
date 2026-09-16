@@ -214,6 +214,48 @@ class GedraFormsTest {
         assertNull(clientOfResolvedPath(null, GEP.workflowView, "acme"))
     }
 
+    /**
+     * The editors' one way home (issue #726): the forms page, the listing's search and sort carried back out of
+     * the editor's hash, and the form just worked on flagged to flash -- with the editor's own navigation keys
+     * (the open form, the edit flag, the task) left behind so none rides back into the listing as a "search".
+     */
+    @Test
+    fun theListingReturnCarriesSearchAndSortAndFlagsTheForm() {
+        val editorHash = mapOf(
+            HP.page to "editForm", HP.gedra to "gd.fd.acme.u1", HP.from to "forms", HP.edit to "1", HP.task to "t2",
+            "acmeSiteAuditContains" to "dana", EI.q to "roof", GSORT.sort to "updated", GSORT.sortDir to "desc",
+        )
+        val back = formsListingReturn(editorHash, "gd.fd.acme.u1").toMap()
+        assertEquals("forms", back[HP.page])
+        assertEquals("gd.fd.acme.u1", back[HP.highlight])
+        // The search and the sort come home.
+        assertEquals("dana", back["acmeSiteAuditContains"])
+        assertEquals("roof", back[EI.q])
+        assertEquals("updated", back[GSORT.sort])
+        assertEquals("desc", back[GSORT.sortDir])
+        // The editor's own keys do not.
+        assertTrue(HP.gedra !in back && HP.from !in back && HP.edit !in back && HP.task !in back)
+    }
+
+    /**
+     * The survey's "View raw" (issue #726): the listing page with the form open in place, carrying the listing's
+     * search and sort out of the survey's hash and none of the survey's own keys (edit flag, task, `from`).
+     */
+    @Test
+    fun theRawViewHashOpensTheFormOnTheListingWithSearchAndSort() {
+        val surveyHash = mapOf(
+            HP.page to "surveyEdit", HP.gedra to "gd.fd.acme.u1", HP.from to "forms", HP.edit to "1", HP.task to "t2",
+            EI.q to "roof", GSORT.sort to "updated", GSORT.sortDir to "desc",
+        )
+        val view = formsRawViewHash(surveyHash, "gd.fd.acme.u1").toMap()
+        assertEquals("forms", view[HP.page])
+        assertEquals("gd.fd.acme.u1", view[HP.gedra])
+        assertEquals("roof", view[EI.q])
+        assertEquals("updated", view[GSORT.sort])
+        assertEquals("desc", view[GSORT.sortDir])
+        assertTrue(HP.from !in view && HP.edit !in view && HP.task !in view && HP.highlight !in view)
+    }
+
     /** The note under a chosen client names the client and says where a new form would go. */
     @Test
     fun theChosenClientNoteNamesTheClient() {

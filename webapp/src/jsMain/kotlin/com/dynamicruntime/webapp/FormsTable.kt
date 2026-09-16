@@ -14,11 +14,13 @@ import com.dynamicruntime.common.schema.PSTAT
  * The caller's form documents as an antd table: one row per form, most recently written first as the endpoint
  * returns them (issue #562), with a User column for a caller who sees other users' documents.
  * The list is the hub for the whole lifecycle (issue #417): a **row click** is the default open -- the survey's
- * **View Info** where the client has a survey, else the raw **View All** (issue #694) -- and a per-row
- * **Actions** column carries **View Info** (the survey's read-only on-boarding view, with its Edit toggle),
- * **View All** (the raw read-only view of every trait), and Delete, so none needs the form opened first. The
- * survey-status chip on an unfinished row is itself a link straight into the survey's edit mode. Delete arms
- * an inline confirm in the row rather than navigating, since it is the one irreversible action here.
+ * **View Info** where the client has a survey, else the raw read-only view (issue #694) -- and a per-row
+ * **Actions** column carries **View Info** (the survey's read-only on-boarding view, with its Edit toggle) and
+ * Delete, so neither needs the form opened first. There is no separate "View All" action (issue #726): the raw
+ * view is the row click where there is no survey, and the raw *editor* is reached from the survey view's Raw
+ * edit and the raw view's Edit form. The survey-status chip on an unfinished row is itself a link straight into
+ * the survey's edit mode. Delete arms an inline confirm in the row rather than navigating, since it is the one
+ * irreversible action here.
  *
  * Presentational: every value is a [FormSummary] the parent already computed and every action is a callback the
  * parent owns, so the table itself knows nothing about gedra shapes or endpoints. An action a caller's surface
@@ -29,7 +31,7 @@ external interface FormsTableProps : Props {
     /** Each form's id paired with its summary, in display order. */
     var forms: List<Pair<String, FormSummary>>
 
-    /** Opens the raw read-only view of a form ("View All"); also the row click where the client has no survey. */
+    /** Opens the raw read-only view of a form: the row click where the client has no survey (issue #726). */
     var onView: (String) -> Unit
 
     /** Whether the caller's surface carries the delete endpoint, so a Delete action can work. */
@@ -137,9 +139,17 @@ val FormsTable = FC<FormsTableProps> { props ->
             if (anySurveyStatus) add(statusColumn(props))
             add(sortableColumn("Updated", GSORT.updated, 175, props.sortColumn, props.sortDescending))
             add(sortableColumn("Created", GSORT.created, 175, props.sortColumn, props.sortDescending))
-            // Always present: "View All" needs no endpoint, so there is always at least one action.
+            // View Info (survey clients) and Delete (where its endpoint is on the surface); a no-survey client
+            // whose surface cannot delete has an empty cell, and its row click is the open (issue #726).
             add(actionsColumn(props, showSurvey = anySurveyStatus))
         }
+        // Pinned while the table scrolls sideways (issue #726 follow-up): the first column -- the client's first
+        // display column, or `Contains` when it declares none, either way the row's identity -- stays on the
+        // left, and Actions stays on the right, so a row can be told apart and acted on at any scroll position
+        // rather than the identity leaving the viewport just as Actions arrives. antd renders a `fixed` column
+        // as sticky, which needs only the `scroll.x` set below.
+        cols.first().fixed = "left"
+        cols.last().fixed = "right"
         columns = cols.toTypedArray()
         scroll = minTableWidth(cols)
         dataSource = props.forms.map { (id, summary) ->
@@ -169,9 +179,9 @@ val FormsTable = FC<FormsTableProps> { props ->
             val handlers: dynamic = js("({})")
             // The row click is the default open (issue #694): the survey's "View Info" where the client has a
             // survey -- the friendlier on-boarding view, with its Edit toggle and a "Raw edit" escape -- else the
-            // raw "View All". The same signal gates the Status column and the View Info action, so the three can
-            // never disagree about whether a survey exists (it is a proxy read off the loaded rows; a persistent
-            // store's pre-deriver rows fall back to View All until re-touched or batch-recomputed).
+            // raw read-only view. The same signal gates the Status column and the View Info action, so the three
+            // can never disagree about whether a survey exists (it is a proxy read off the loaded rows; a
+            // persistent store's pre-deriver rows fall back to the raw view until re-touched or batch-recomputed).
             handlers.onClick = {
                 val id = record.key as String
                 if (anySurveyStatus) props.onSurveyView(id) else props.onView(id)
@@ -188,8 +198,8 @@ val FormsTable = FC<FormsTableProps> { props ->
 
 /**
  * The per-row Actions column (issue #417): **View Info** (the survey's read-only view; offered when the client
- * has a survey, issue #694), **View All** (the raw read-only view of every trait -- the same one a row click
- * opens), and Delete when its endpoint is on the surface. Delete arms an inline confirm on the row it belongs to
+ * has a survey, issue #694) and Delete when its endpoint is on the surface. The former "View All" is gone
+ * (issue #726): it duplicated the row click. Delete arms an inline confirm on the row it belongs to
  * rather than acting on the first click. `onCell` stops a click anywhere in this cell from bubbling to the row's
  * own click handler, so using an action never also opens the view. The cell content is a component
  * ([FormRowActions]) rendered per row, since the render callback must return a React node.
@@ -209,7 +219,6 @@ private fun actionsColumn(props: FormsTableProps, showSurvey: Boolean): dynamic 
             this.id = id
             this.showSurvey = showSurvey
             this.onSurveyView = props.onSurveyView
-            this.onView = props.onView
             this.canDelete = props.canDelete
             this.confirming = props.confirmingDeleteId == id
             this.deleting = props.deletingId == id
@@ -318,7 +327,6 @@ private external interface FormRowActionsProps : Props {
     var id: String
     var showSurvey: Boolean
     var onSurveyView: (String) -> Unit
-    var onView: (String) -> Unit
     var canDelete: Boolean
     var confirming: Boolean
     var deleting: Boolean
@@ -338,15 +346,6 @@ private val FormRowActions = FC<FormRowActionsProps> { props ->
                 onClick = { props.onSurveyView(props.id) }
                 +"View Info"
             }
-        }
-        // The raw read-only view of every trait, made discoverable (the row click goes here only where the client
-        // has no survey). The raw editor is reached from it (and from the survey view's "Raw edit"), never
-        // straight from the row.
-        Button {
-            type = "link"
-            size = "small"
-            onClick = { props.onView(props.id) }
-            +"View All"
         }
         if (props.canDelete) {
             if (props.confirming) {

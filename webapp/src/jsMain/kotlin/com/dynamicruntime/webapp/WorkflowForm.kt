@@ -25,9 +25,6 @@ import web.cssom.ClassName
 
 private val wfFormScope = MainScope()
 
-/** What Done asks before discarding unsaved edits (issue #716); worded for the button, not for a navigation. */
-private const val discardEditsPrompt = "You have unsaved changes. Discard them and stop editing?"
-
 external interface WorkflowFormProps : Props {
     /** The resolved workflow view to render -- a creation workflow, or a survey resolved against a form. */
     var view: WorkflowView
@@ -57,6 +54,13 @@ external interface WorkflowFormProps : Props {
      * fail is not shown), or for a creation form.
      */
     var onRawEdit: (() -> Unit)?
+
+    /**
+     * Opens the raw **read-only** view of this form (issue #726), offered as "View raw" beside "Raw edit" on the
+     * survey's read-only view: every trait, looked at rather than edited. Null for a creation form, which has no
+     * stored form to view yet.
+     */
+    var onRawView: (() -> Unit)?
 
     /**
      * The task the rail shows (issue #700), for a multi-task survey; ignored (every task renders) for a
@@ -119,8 +123,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // `presentation` here is from the first view and does not re-derive per save, so this records what it can no
     // longer tell. A fresh load returns those entries as `source=user`, carrying nothing to present anyway.
     var resolvedTraits by useState(emptySet<String>())
-    // The last-stored values, refreshed on each successful save. "Done" reverts the fields to this -- not the
-    // first-render `seeded` snapshot -- so after a save it shows what was saved, not the pre-save values.
+    // The last-stored values, refreshed on each successful save -- what "unsaved" is measured against, so after a
+    // save the saved task reads as clean rather than as differing from the first-render `seeded` snapshot.
     var stored by useState(seeded)
     // Each task's status for the rail (issue #700), refreshed from the view a survey edit save returns -- so
     // saving one task can move another's mark (completing one can flip the earliest-actionable pointer).
@@ -432,55 +436,54 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 }
             }
         } else {
-            // One header line (issue #719): the back link, the title beside it, and the actions right-aligned --
-            // where the title, the link and the actions each took a band of their own, so a large form starts
-            // higher. The back link (issue #671 for the create fill-out, #694 for the survey's views, including
-            // an arrival straight into edit mode from the status chip) is the shared forms link, so it returns
-            // to the same filtered, sorted listing. The survey edit's actions are an Edit / Done toggle over
-            // the read-only "View Info", with the raw editor beside Edit and the saved note beside either.
-            div {
-                className = ClassName("wf-header")
-                formsBackLink()
-                h1 { MarkdownInline { source = title } }
+            // One header line, shared with the raw editor (issues #719, #726): the back link, the title beside
+            // it, and the actions right-aligned. The back link (issue #671 for the create fill-out, #694 for the
+            // survey's views, including an arrival straight into edit mode from the status chip) is the shared
+            // forms link, so it returns to the same filtered, sorted listing. The survey edit's actions are Edit
+            // over the read-only "View Info" (with the raw editor beside it) and Done while editing, with the
+            // saved note beside either.
+            formsEditorHeader(title = { MarkdownInline { source = title } }) {
                 if (isEdit) {
-                    div {
-                        className = ClassName("wf-actions")
-                        if (editing) {
+                    if (editing) {
+                        Button {
+                            // Done is the one way home from an edit (issue #726): back to the listing, with this
+                            // form flashed, carrying the listing's search and sort -- the same return the raw
+                            // editor's Done makes. It is a navigation, so the leave guard the page armed on
+                            // unsaved edits asks through the router (issue #716); nothing to ask here, and asking
+                            // here too would prompt twice. A clean Done just leaves.
+                            onClick = { gedraId?.let { navigateHash(formsListingReturn(hashParams(), it)) } }
+                            +"Done"
+                        }
+                    } else {
+                        Button {
+                            type = "primary"
+                            onClick = { editing = true }
+                            +"Edit"
+                        }
+                        // The raw read-only view (issue #726): every trait, including the ones the survey does
+                        // not show, without entering the editor -- the look-before-editing counterpart of the
+                        // raw editor beside it.
+                        props.onRawView?.let { rawView ->
                             Button {
-                                // Done reverts to the stored values -- a discard, when there are unsaved edits.
-                                // The leave guard lives in the router and only ever sees a navigation, so a
-                                // button that drops the same edits in place has to ask for itself (issue #716),
-                                // with the guard's own dialog. A clean Done stays silent: there is nothing to
-                                // lose.
-                                onClick = {
-                                    if (!anyUnsaved || LeaveGuard.confirmLeave(discardEditsPrompt)) {
-                                        valuesByTrait = stored; failuresByTrait = emptyMap(); unmetTraits = emptySet()
-                                        committedByTrait = emptyMap(); wholeChecked = emptySet(); editing = false
-                                    }
-                                }
-                                +"Done"
-                            }
-                        } else {
-                            Button {
-                                type = "primary"
-                                onClick = { editing = true }
-                                +"Edit"
-                            }
-                            // The raw editor, for the traits the survey does not show (issue #694): offered only
-                            // when the caller's surface carries the patch endpoint (the page decides; null hides it).
-                            props.onRawEdit?.let { rawEdit ->
-                                Button {
-                                    type = "link"
-                                    onClick = { rawEdit() }
-                                    +"Raw edit"
-                                }
+                                type = "link"
+                                onClick = { rawView() }
+                                +"View raw"
                             }
                         }
-                        savedItem?.let {
-                            p {
-                                className = ClassName("form-ok")
-                                +"✓ Saved."
+                        // The raw editor, for the traits the survey does not show (issue #694): offered only
+                        // when the caller's surface carries the patch endpoint (the page decides; null hides it).
+                        props.onRawEdit?.let { rawEdit ->
+                            Button {
+                                type = "link"
+                                onClick = { rawEdit() }
+                                +"Raw edit"
                             }
+                        }
+                    }
+                    savedItem?.let {
+                        p {
+                            className = ClassName("form-ok")
+                            +"✓ Saved."
                         }
                     }
                 }

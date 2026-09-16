@@ -155,6 +155,10 @@ val SurveyEditPage = FC<Props> {
                     navigateHash(listOf(HP.page to pageEditForm) + carried)
                 }
             }
+            // The raw read-only view (issue #726): the listing with this form open in place, carrying the
+            // listing's search and sort. Needs only the get the listing surface already has, so it is always
+            // offered where the raw editor may not be.
+            val rawView: () -> Unit = { navigateHash(formsRawViewHash(hashParams(), gedraId)) }
             WorkflowForm {
                 // Keyed on the form, so a hash move to another form remounts with fresh edit state and honours
                 // that URL's own edit flag, rather than carrying the previous form's mode across.
@@ -166,6 +170,7 @@ val SurveyEditPage = FC<Props> {
                 // `edit=1` opens straight in edit mode (the forms-list chip); otherwise the read-only "View Info".
                 initialEditing = hashParams()[HP.edit] == "1"
                 onRawEdit = rawEdit
+                onRawView = rawView
                 // The rail's task (issue #700): the URL's when it names one of the view's, else the view's earliest
                 // task needing action, else the first. Choosing a task is a move between destinations, so it
                 // pushes a history entry -- Back returns to the previous task -- without firing hashchange.
