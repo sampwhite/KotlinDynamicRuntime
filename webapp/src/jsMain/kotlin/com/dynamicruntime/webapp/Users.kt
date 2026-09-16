@@ -9,8 +9,8 @@ import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.user.userSortKeys
-import com.dynamicruntime.common.util.normalizeEmail
 import com.dynamicruntime.common.util.isEmailAddress
+import com.dynamicruntime.common.util.normalizeEmail
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC

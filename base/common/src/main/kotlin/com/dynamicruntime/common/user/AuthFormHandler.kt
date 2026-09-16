@@ -1,19 +1,19 @@
 package com.dynamicruntime.common.user
 
-import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
-import com.dynamicruntime.common.util.isEmailAddress
-import com.dynamicruntime.common.util.normalizeEmail
 import com.dynamicruntime.common.util.checkPassword
 import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.mkRndString
-import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.util.normalizeEmail
 
 /** Topic logger for the auth subsystem (placed beside the code that owns the `"auth"` topic). */
 object LogAuth : KdrLogger("auth")
@@ -443,7 +443,7 @@ class AuthFormHandler(
         val existing = userService.queryByLoginId(cxt, address)
         if (existing != null) {
             if (failIfUserAlreadyExists) {
-                throw KdrException("A user with address '$address' already exists.", code = EXC.badInput)
+                throw KdrException("A user with email '$address' already exists.", code = EXC.badInput)
             }
             return completeLogin(cxt, existing, byCode = false)
         }
@@ -452,10 +452,10 @@ class AuthFormHandler(
         @Suppress("UNCHECKED_CAST")
         val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
         authUserData[AD.validatedContacts] = listOf(address)
-        authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "address"))
+        authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
         // The person's real-world name (issue #736), set the same way the admin-create path does -- display copy,
         // independent of the username, so a fixture can exercise a name-driven feature (a prefill) that
-        // `publicName` (which falls back to the address) cannot show. Ignored when the user already exists, like
+        // `publicName` (which falls back to the email) cannot show. Ignored when the user already exists, like
         // the other create-time fields above.
         AuthUserRow.normalizeName(name)?.let { authUserData[AD.name] = it }
         val userId = userService.insertUser(cxt, data)
@@ -465,7 +465,7 @@ class AuthFormHandler(
     }
 
     /**
-     * The client the fixture creates a user in: [named] when it is given, and otherwise whatever [address] says.
+     * The client the fixture creates a user in: [named] when it is given, and otherwise whatever [email] says.
      *
      * An explicit client this node does not carry is **refused**, where a registration falls back to `public`.
      * The difference is who is on the other end. A test asking for a client that is not present has made a

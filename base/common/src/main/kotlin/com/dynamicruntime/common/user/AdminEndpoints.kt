@@ -1,6 +1,5 @@
 package com.dynamicruntime.common.user
 
-import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
@@ -11,13 +10,14 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.util.normalizeEmail
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.isEmailAddress
+import com.dynamicruntime.common.util.normalizeEmail
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong

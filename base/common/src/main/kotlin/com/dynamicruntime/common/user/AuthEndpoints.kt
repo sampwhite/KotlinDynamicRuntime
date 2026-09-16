@@ -11,12 +11,12 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.util.normalizeLoginId
-import com.dynamicruntime.common.util.normalizeEmail
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.util.getReqLong
 import com.dynamicruntime.common.util.getReqStr
+import com.dynamicruntime.common.util.normalizeEmail
+import com.dynamicruntime.common.util.normalizeLoginId
 
 /**
  * The user/auth endpoints (issues #67, #69, #70). Registered by the `common` component. Paths, field names,
