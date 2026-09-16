@@ -14,7 +14,6 @@ import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
-import react.dom.html.ReactHTML.span
 import react.useEffect
 import react.useRef
 import react.useState
@@ -25,22 +24,6 @@ import web.cssom.ClassName
 const val pageCreateForUser = "createForUser"
 
 private val createForUserScope = MainScope()
-
-/** Debounce before a user-search fetch, so a fast typist makes one call, not many. */
-private const val userSearchDebounceMs = 200
-private fun setCfuTimer(block: () -> Unit, delayMs: Int): Int = js("setTimeout(block, delayMs)") as Int
-private fun clearCfuTimer(id: Int) {
-    js("clearTimeout(id)")
-}
-
-/** The antd options for the user picker: each user's value is their email (the ref the backend resolves), its
- *  label the name-username-email pick label the scope bar uses, so the two pickers read alike. */
-private fun userMatchOptions(users: List<AdminUser>): Array<dynamic> = users.map { u ->
-    val o: dynamic = js("({})")
-    o.value = u.primaryId
-    o.label = userPickLabel(u.name, u.username, u.primaryId)
-    o
-}.toTypedArray()
 
 /**
  * Create a form document **for another user** (issue #672 Slice 3), for an `allClients` admin. Two steps on one
@@ -55,11 +38,9 @@ private fun userMatchOptions(users: List<AdminUser>): Array<dynamic> = users.map
  */
 @Suppress("DuplicatedCode")
 val CreateForUserPage = FC<Props> {
-    // Step one: choosing the user.
-    var query by useState("")
-    var matches by useState<List<AdminUser>>(emptyList())
+    // Step one: choosing the user. The type-ahead itself is the shared [FormUserPicker]; this page keeps only
+    // the chosen user, which drives the second step's schema load.
     var picked by useState<AdminUser?>(null)
-    val searchTimer = useRef<Int>(null)
     // The user id whose schema fetch is current, so a slower earlier fetch's result is dropped rather than
     // overwriting a newer pick's (issue #715 review).
     val latestPick = useRef<Long>(null)
@@ -75,24 +56,6 @@ val CreateForUserPage = FC<Props> {
     var loadError by useState<DisplayError?>(null)
     var running by useState(false)
     var runError by useState<DisplayError?>(null)
-
-    // Debounce a user search on the typed term; a short term is not worth a fetch.
-    useEffect(query) {
-        searchTimer.current?.let { clearCfuTimer(it) }
-        searchTimer.current = null
-        val term = query.trim()
-        if (term.length < 2) {
-            matches = emptyList()
-        } else {
-            searchTimer.current = setCfuTimer({
-                createForUserScope.launch {
-                    matches = runCatching {
-                        AdminApi.searchUsers(UserSearchQuery(anyText = term), limit = maxUserSuggestions).users
-                    }.getOrDefault(emptyList())
-                }
-            }, userSearchDebounceMs)
-        }
-    }
 
     // Load the chosen user's client's create schema when a user is picked (issue #714 mechanism: resolve the
     // endpoint on that client's surface). Re-runs when the picked user changes -- including to null (the box was
@@ -140,41 +103,10 @@ val CreateForUserPage = FC<Props> {
         // Back to the listing the page was opened from, carrying its filter and sort (the shared helper).
         formsBackToListing()
 
-        // Step one: the user picker. Kept visible after a pick so the admin can change who the form is for.
-        div {
-            className = ClassName("row forms-scope")
-            span {
-                className = ClassName("forms-scope-label")
-                +"For user"
-            }
-            AutoComplete {
-                placeholder = "a name, email, or id"
-                value = query
-                options = userMatchOptions(matches)
-                allowClear = true
-                // The backend already narrowed the fetched matches to the term; show them all.
-                filterOption = false
-                // Enter must not commit a merely-matching suggestion; a user is chosen by clicking or arrowing.
-                defaultActiveFirstOption = false
-                style = js("({ width: 360 })")
-                onChange = { v ->
-                    val text = (v as? String) ?: ""
-                    query = text
-                    // Editing or clearing the box abandons the current pick (issue #715 review): a pick sets the
-                    // text to the user's label, so any other text means no user is chosen -- the form must not be
-                    // submittable for a user the box no longer shows. Clearing `picked` resets the form (above).
-                    picked?.let { if (text != userPickLabel(it.name, it.username, it.primaryId)) picked = null }
-                }
-                onSelect = { v ->
-                    val email = (v as? String) ?: ""
-                    val chosen = matches.firstOrNull { it.primaryId == email }
-                    if (chosen != null) {
-                        picked = chosen
-                        query = userPickLabel(chosen.name, chosen.username, chosen.primaryId)
-                    }
-                }
-            }
-        }
+        // Step one: the user picker (the shared [FormUserPicker], issue #727). Kept visible after a pick so the
+        // admin can change who the form is for; a pick drives the schema load above, and clearing it (onPick
+        // null) resets the form.
+        FormUserPicker { onPick = { picked = it } }
 
         val user = picked
         val cat = catalog

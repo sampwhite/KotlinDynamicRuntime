@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -447,12 +448,16 @@ fun workflowSaveBody(
     saveId: String,
     entries: List<Map<String, Any?>>,
     gedraId: String? = null,
+    forUserRef: String? = null,
 ): Map<String, Any?> = buildMap {
     put(GDF.workflowId, workflowId)
     put(GDF.taskId, taskId)
     put(GDF.saveId, saveId)
     put(GDF.entries, entries)
     gedraId?.let { put(GDF.gedraId, it) }
+    // Create the form for another user (issue #727): a create save only, so a picked user rides the body just
+    // as the plain create sends `user`; an edit save passes null.
+    forUserRef?.trim()?.ifEmpty { null }?.let { put(EI.user, it) }
 }
 
 /**

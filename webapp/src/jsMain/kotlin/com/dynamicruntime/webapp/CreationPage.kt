@@ -20,10 +20,14 @@ val CreationPage = FC<Props> {
     var noWorkflow by useState(false)
     var loading by useState(true)
     var loadError by useState<DisplayError?>(null)
+    // Whether the caller may create for another user (issue #727), handed to the workflow form so its create can
+    // offer the picker. Defaults off; a failure to read the home config just leaves the picker out.
+    var canManageUsers by useState(false)
 
     useEffectOnce {
         creationScope.launch {
             try {
+                canManageUsers = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false)
                 val wf = WorkflowApi.fetchCreationView()
                 if (wf == null) noWorkflow = true else workflow = wf
             } catch (e: Throwable) {
@@ -46,6 +50,7 @@ val CreationPage = FC<Props> {
         workflow != null -> WorkflowForm {
             view = workflow!!
             gedraId = null
+            allowCreateForUser = canManageUsers
         }
     }
 }

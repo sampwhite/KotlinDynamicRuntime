@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
@@ -56,10 +57,19 @@ val NewFormPage = FC<Props> {
     // Named to avoid colliding with the `Button { loading = running }` prop below: an unqualified `loading`
     // inside that builder resolves to this local and fires its setter on every render — an infinite loop.
     var loadingSchema by useState(true)
+    // Whether the caller is an admin who may create for another user (issue #727), and who they picked. The form
+    // is still built in the caller's own client, so the picker only chooses whose form it is; absent is the
+    // ordinary self-create. Defaults off, so an ordinary caller (and any failure to read the home config) gets no
+    // picker.
+    var canManageUsers by useState(false)
+    var pickedUser by useState<AdminUser?>(null)
 
     useEffectOnce {
         formScope.launch {
             try {
+                // Whether to offer the create-for-user picker (issue #727). Read defensively: a failure only
+                // hides the picker, it never blocks the create.
+                canManageUsers = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false)
                 // Just this one endpoint's closure, resolved to the caller's own client-scoped copy of the bare
                 // create path (issue #552) -- the schema is already narrowed to what this client supports (a
                 // control cannot offer a trait the client removed), and the page fetches only what it renders
@@ -103,7 +113,14 @@ val NewFormPage = FC<Props> {
                 val inputType = cat.inputType(ep)
                 p {
                     className = ClassName("subtitle")
-                    +"Add a section for each trait this form should carry, fill it in, and create the form."
+                    +("Add a section for each trait this form should carry, fill it in, and create the form." +
+                        if (canManageUsers) " Leave the user blank to create it for yourself." else "")
+                }
+
+                // Create for another user (issue #727), admin-only: the picker chooses whose form it is; the
+                // form itself is still built in this client's rules. Blank creates it for the caller.
+                if (canManageUsers) {
+                    FormUserPicker { onPick = { pickedUser = it } }
                 }
 
                 SchemaForm {
@@ -119,9 +136,9 @@ val NewFormPage = FC<Props> {
                     // The per-type layouts (issue #586): a field's label/description come from the layout for
                     // its type, cascading over the schema's title/description. Joined by type name inside the form.
                     layouts = cat.layouts
-                    // `allowAdditionalTraits` is a power flag (write traits the client does not support), not
-                    // something an end-user form should offer; it defaults false when omitted.
-                    omit = listOf(GDF.allowAdditionalTraits)
+                    // `allowAdditionalTraits` is a power flag, and `user` (issue #727) is driven by the picker
+                    // above, not a raw field -- both are omitted from the drawn form; each defaults absent.
+                    omit = listOf(GDF.allowAdditionalTraits, EI.user)
                     this.failures = failures
                     onChange = { values = it }
                     // Clearing on edit rather than re-checking: a field being corrected must not keep showing the
@@ -154,7 +171,10 @@ val NewFormPage = FC<Props> {
                                 runError = null
                                 formScope.launch {
                                     try {
-                                        val response = SchemaCatalogApi.invoke(ep, payload)
+                                        // Create for the picked user when an admin chose one (issue #727); absent
+                                        // is the ordinary self-create.
+                                        val body = pickedUser?.let { payload + (EI.user to it.primaryId) } ?: payload
+                                        val response = SchemaCatalogApi.invoke(ep, body)
                                         // Back to the listing (issue #663), flashing the new row -- the same
                                         // confirmation the edit form's save gives (issue #592) -- rather than an
                                         // in-place screen. No running=false here: this navigation unmounts the page.

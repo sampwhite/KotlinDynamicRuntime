@@ -30,6 +30,7 @@ import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -105,8 +106,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         "Creates a form document carrying the supplied entries, and answers with it as stored.",
         HttpMethod.POST,
         outputRef = docType,
-        // The sent shape, not the stored one: they differ by `allowAdditionalTraits`, which is an instruction
-        // about this write and has no place in what a document *is* (issue #379).
+        // The sent shape, not the stored one: they differ by `allowAdditionalTraits` and the on-behalf `user`,
+        // which are instructions about this write and have no place in what a document *is* (issues #379, #727).
         inputRef = GU.inputName(formDoc),
         // The form surface a client's own application calls, so it is part of the published API (issue #489);
         // the per-client copies inherit this. Marks are on the five here at once, so the set reads as one
@@ -117,8 +118,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         needsClientConfig = true,
     ) { c, request ->
         val entries = request[GDF.entries].toJsonListOfMaps()
-        GedraDataService.get(c)
-            .createGedra(c, formDoc, entries, request.getOptBool(GDF.allowAdditionalTraits) == true)
+        // On-behalf create (issue #727): when `user` names someone else, an admin creates the form for them,
+        // owned in their scope, the caller left as the actor; absent or self, this is `c` unchanged.
+        val ownerCxt = createForUserCxt(c, request)
+        GedraDataService.get(ownerCxt)
+            .createGedra(ownerCxt, formDoc, entries, request.getOptBool(GDF.allowAdditionalTraits) == true)
             .toJsonMap()
     }
 
@@ -663,6 +667,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 type = SCT.array
                 items { ref("${GCFG.globalNamespace}.${GU.unionName(formDoc)}") }
             }
+            // The on-behalf create (issue #727): applies to a `create` save only -- an admin makes the new form
+            // for the named user; ignored on an edit save, which acts on the form named by gedraId.
+            field(EI.user, GedraDataRow.createForUserHint)
         },
         publicApi = true,
         needsClientConfig = true,
@@ -674,7 +681,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
         val saveId = request[GDF.saveId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.saveId} is required.")
         val gedraId = request[GDF.gedraId].toOptStr()
-        val result = saveWorkflow(c, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps(), gedraId)
+        // A `create` save (no gedraId) may be for another user (issue #727); an `edit` acts on the named form as
+        // the caller, so `user` does not apply there and the caller's own context is used.
+        val saveCxt = if (gedraId == null) createForUserCxt(c, request) else c
+        val result = saveWorkflow(saveCxt, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps(), gedraId)
         // A survey edit answers with the refreshed view too (issue #700): re-resolved against the updated form,
         // so the task rail's per-task statuses and its earliest-actionable task follow the save without a second
         // call -- the save is the refresh. A create save has no form to resolve a survey against, so it answers as
@@ -690,6 +700,48 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         } else {
             result
         }
+    }
+}
+
+/**
+ * The context a create runs under when it may be **for another user** (issue #727): the caller's own [c] when
+ * the request names no `user`, or names the caller themselves; otherwise a sub-context bound to the named user
+ * as owner (client / user / org), with [c]'s actor left in place so `createdBy` stays the caller -- the same
+ * owner/actor split (#325) `adminFormDocForUser` makes.
+ *
+ * Creating for someone else is an **admin** power, and confined to the caller's own scope: the user is resolved
+ * through [ReadScopeRules.forCaller], so a client administrator reaches only their own client (narrowed to their
+ * organization if they have one) and a cross-client or out-of-org id simply is not found. An ordinary user's
+ * scope resolves only themselves, so they cannot name another. A disabled or deleted target is refused, as it
+ * is on the `allClients` on-behalf endpoint -- such an account cannot log in to see or finish the form.
+ *
+ * Shared by the plain create and the workflow create so the two enforce it identically; the section gate
+ * (login) is unchanged, since this is a scope-and-privilege check within an endpoint an ordinary user may call
+ * for their own forms.
+ */
+private fun createForUserCxt(c: KdrCxt, request: Map<String, Any?>): KdrCxt {
+    val ref = request[EI.user].toOptStr()?.trim()?.ifEmpty { null } ?: return c
+    // Fresh roles before an escalation check, as the home config's admin flags are read (a grant or revoke
+    // bites immediately rather than at cookie expiry).
+    refreshActingRoles(c)
+    val scope = ReadScopeRules.forCaller(c)
+    val target = UserService.get(c).resolveUserRef(c, ref, scope)
+        ?: throw KdrException("No user matching '$ref'.", code = EXC.notFound)
+    // Naming yourself is the ordinary self-create -- no escalation, no rebind.
+    if (target.userId == c.userProfile.userId) return c
+    // Creating for another user is an administrator's power (client-scoped is enough; the scope above already
+    // confined *which* user). Checked after resolving so naming yourself never trips it.
+    if (!AdminRules.canManageUsers(c)) {
+        throw KdrException("Creating a form for another user requires an administrator.", code = EXC.notAuthorized)
+    }
+    if (target.isDeleted || !target.enabled) {
+        throw KdrException.mkInput(
+            "The user '$ref' is ${if (target.isDeleted) "deleted" else "disabled"}; a form cannot be created for them.",
+        )
+    }
+    return c.mkSubContext("createForUser", target.client).also {
+        it.userId = target.userId
+        it.org = target.org
     }
 }
 
