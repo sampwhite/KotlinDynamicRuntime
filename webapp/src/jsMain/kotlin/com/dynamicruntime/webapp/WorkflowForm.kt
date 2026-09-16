@@ -438,6 +438,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         valuesByTrait = emptyMap(); failuresByTrait = emptyMap()
                         committedByTrait = emptyMap(); wholeChecked = emptySet()
                         unmetTraits = emptySet(); runError = null; savedItem = null
+                        // Drop the previous pick too (issue #727 review): the picker remounts empty on the next
+                        // form, so leaving `pickedUser` set would silently create the next form for that user
+                        // behind a blank box.
+                        pickedUser = null
                     }
                     +"Create another"
                 }

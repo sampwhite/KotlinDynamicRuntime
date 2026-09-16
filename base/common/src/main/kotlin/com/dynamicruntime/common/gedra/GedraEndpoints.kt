@@ -734,6 +734,17 @@ private fun createForUserCxt(c: KdrCxt, request: Map<String, Any?>): KdrCxt {
     if (!AdminRules.canManageUsers(c)) {
         throw KdrException("Creating a form for another user requires an administrator.", code = EXC.notAuthorized)
     }
+    // Same client only (issue #727 review): these are the ordinary, client-scoped create surfaces -- the form is
+    // built in and owned by `c.client`, so a target in another client would create it cross-client, stamped with
+    // this client's workflow lineage and gated on its traits. A client admin's scope already excludes another
+    // client's user (resolved above -> 404); this also stops an `allClients` admin, whose scope is unrestricted,
+    // from reaching cross-client here. Cross-client creation has its own surface (`/admin/formDocForUser`).
+    if (target.client != c.client) {
+        throw KdrException.mkInput(
+            "The user '$ref' is in client '${target.client}', not '${c.client}'. Use the cross-client admin " +
+                "surface to create a form for a user in another client.",
+        )
+    }
     if (target.isDeleted || !target.enabled) {
         throw KdrException.mkInput(
             "The user '$ref' is ${if (target.isDeleted) "deleted" else "disabled"}; a form cannot be created for them.",

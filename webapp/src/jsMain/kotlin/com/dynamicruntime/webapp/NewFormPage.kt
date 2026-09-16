@@ -65,11 +65,12 @@ val NewFormPage = FC<Props> {
     var pickedUser by useState<AdminUser?>(null)
 
     useEffectOnce {
+        // Whether to offer the create-for-user picker (issue #727): its own coroutine, never awaited before the
+        // form loads (issue #727 review) -- it only decides whether a picker is drawn, so neither its latency nor
+        // a stall may hold the create on "Loading…". The picker appears when the answer lands; a failure hides it.
+        formScope.launch { canManageUsers = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false) }
         formScope.launch {
             try {
-                // Whether to offer the create-for-user picker (issue #727). Read defensively: a failure only
-                // hides the picker, it never blocks the create.
-                canManageUsers = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false)
                 // Just this one endpoint's closure, resolved to the caller's own client-scoped copy of the bare
                 // create path (issue #552) -- the schema is already narrowed to what this client supports (a
                 // control cannot offer a trait the client removed), and the page fetches only what it renders

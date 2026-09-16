@@ -80,6 +80,21 @@ class CreateFormForUserTest : StringSpec({
         )
     }
 
+    "an allClients admin cannot create cross-client through the ordinary create surface" {
+        // An allClients admin's scope is unrestricted, so it *can* resolve a user in another client -- but these
+        // ordinary create endpoints build the form in the caller's own client, so a cross-client target is
+        // refused here (that is what /admin/formDocForUser is for), rather than making a globex form stamped with
+        // acme's workflow lineage.
+        val admin = TestUser.create(
+            cxt, "cffu-all@acme.test", level = ROLE.admin, capabilities = listOf(ROLE.allClients), userClient = SC.acme,
+        )
+        TestUser.create(cxt, "cffu-all-globex@globex.test", userClient = SC.globex)
+        admin.expectError(
+            EXC.badInput, acmeCreate,
+            data = mapOf(EI.user to "cffu-all-globex@globex.test", GDF.entries to siteAuditEntries()),
+        )
+    }
+
     "an ordinary user cannot create a form for another user" {
         // An ordinary user's scope resolves only themselves, so naming anyone else is not-found -- they cannot
         // reach the escalation at all.

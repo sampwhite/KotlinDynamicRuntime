@@ -25,9 +25,11 @@ val CreationPage = FC<Props> {
     var canManageUsers by useState(false)
 
     useEffectOnce {
+        // The picker flag (issue #727) in its own coroutine, never awaited before the workflow loads (issue #727
+        // review): it only decides whether the create offers the picker, so it must not gate the page's load.
+        creationScope.launch { canManageUsers = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false) }
         creationScope.launch {
             try {
-                canManageUsers = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false)
                 val wf = WorkflowApi.fetchCreationView()
                 if (wf == null) noWorkflow = true else workflow = wf
             } catch (e: Throwable) {
