@@ -63,7 +63,9 @@ t.toStartOfDay(); t.addDays(1); t.addHours(-6); t.truncateToMs()
 ## Value conversion — `ConvertUtil.kt` / `StrUtil.kt`
 
 ```kotlin
-fun <T> Any.toT(): T                 // the ONE place unchecked casts live; use instead of `as`
+fun <T> Any?.toT(): T                // the ONE place unchecked casts live; use instead of `as`. REFUSES null
+                                     // (a conversion error) -- a value that may be absent goes through:
+fun <T> Any?.toOptT(): T?            // null stays null; otherwise the same coercion
 Any.toJsonMap(): Map<String,Any?>    // receiver is non-null
 Any?.toJsonMapOrEmpty(): Map<String,Any?>   // null/not-a-map -> emptyMap
 Any?.toJsonListOrEmpty(): List<Any?>        // null/not-a-list -> emptyList
@@ -76,7 +78,8 @@ String.splitComma(): List<String>   // trims; blank -> emptyList
 StringBuilder.appendLiteral(text) / String.encodeLiteral()  // JSON string escaping
 ```
 
-Never write `as` / `@Suppress("UNCHECKED_CAST")` — route through `toT()`/`toJsonMap()`. Reach for the
+Never write `as` / `@Suppress("UNCHECKED_CAST")` — route through `toT()`/`toOptT()`/`toJsonMap()`. Like `getReqStr`
+beside `getOptStr`, `toT` is the *required* half: a null there is a broken invariant, not a value. Reach for the
 `…OrEmpty` variants when reading a wire value that may be absent, rather than a cast plus an elvis.
 
 ## Also in the kernel's util package

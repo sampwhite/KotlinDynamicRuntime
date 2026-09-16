@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.util
 
+import kotlin.test.assertEquals
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -46,5 +47,23 @@ class StrUtilTest {
         )) {
             assertFalse(bad.isEmailAddress(), "should reject '$bad'")
         }
+    }
+
+    /** The one stored form (issue #743): trimmed, lowercased, and still a valid address afterwards. */
+    @Test
+    fun normalizesAnAddressToItsStoredForm() {
+        assertEquals("ada@example.com", "  Ada@Example.COM\t".normalizeEmail())
+        assertEquals("ada+acme@example.com", "Ada+Acme@Example.com".normalizeEmail())
+        assertTrue(" Ada@Example.com ".normalizeEmail().isEmailAddress())
+        // Idempotent.
+        assertEquals("ada@example.com", "ada@example.com".normalizeEmail().normalizeEmail())
+    }
+
+    /** A login id is an address (normalized) or a username (trimmed only -- its case is its own). */
+    @Test
+    fun normalizesALoginIdOnlyWhenItIsAnAddress() {
+        assertEquals("ada@example.com", " Ada@Example.com ".normalizeLoginId())
+        assertEquals("Ada_L", " Ada_L ".normalizeLoginId())
+        assertEquals("", "   ".normalizeLoginId())
     }
 }

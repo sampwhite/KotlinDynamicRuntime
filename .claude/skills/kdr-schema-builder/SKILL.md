@@ -324,7 +324,7 @@ parse-driven `badValue` carries the parser exception in `SchFailure.cause`.
 ## Casts
 
 Don't write `as`/`@Suppress("UNCHECKED_CAST")`. Use `com.dynamicruntime.common.util`:
-`toT()` (coerce to a type param), `toJsonMap()` (coerce to `Map<String,Any?>`), and the null-tolerant
+`toT()` (coerce to a type param; refuses null) / `toOptT()` (its nullable counterpart), `toJsonMap()` (coerce to `Map<String,Any?>`), and the null-tolerant
 `toJsonMapOrEmpty()` / `toJsonListOrEmpty()` for wire values that may be absent.
 
 ## Source files

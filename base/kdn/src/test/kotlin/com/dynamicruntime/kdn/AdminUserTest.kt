@@ -1,5 +1,8 @@
 package com.dynamicruntime.kdn
 
+import io.kotest.matchers.nulls.shouldNotBeNull
+import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.context.KdrCxt
@@ -237,6 +240,15 @@ class AdminUserTest : StringSpec({
         admin.postData(
             ADEP.userCreate, mapOf(ADF.primaryId to "valid@emailval.com"),
         )[ADF.primaryId] shouldBe "valid@emailval.com"
+    }
+
+    "an admin-created address is stored normalized, and a duplicate by case is refused (#743)" {
+        val cxt = Startup.mkTestBootCxt("admin", "adminEmailNormalizeTest")
+        val admin = TestUser.createFullAdmin(cxt, "norm743@example.com")
+        admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to " Dupe@Other.COM "))[ADF.primaryId] shouldBe "dupe@other.com"
+        admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "DUPE@other.com"))
+        // The forms list's user filter resolves the same spelling.
+        UserService.get(cxt).resolveUserRef(cxt, " DUPE@Other.com", ReadScope.unrestricted).shouldNotBeNull().primaryId shouldBe "dupe@other.com"
     }
 
     "a user is created enabled by default, or disabled when asked" {

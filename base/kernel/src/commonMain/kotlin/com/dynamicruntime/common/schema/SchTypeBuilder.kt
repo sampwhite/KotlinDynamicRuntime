@@ -4,6 +4,7 @@ import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.config.KdrConfigData
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.util.deepClone
+import com.dynamicruntime.common.util.toOptT
 import com.dynamicruntime.common.util.toT
 import kotlin.reflect.KProperty
 
@@ -13,7 +14,7 @@ import kotlin.reflect.KProperty
  * a builder expose optional keywords as plain `var`s (`b.title = "..."`).
  */
 class SchAttr<T>(private val data: MutableMap<String, Any?>, private val key: String) {
-    operator fun getValue(thisRef: Any?, property: KProperty<*>): T? = data[key]?.toT()
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T? = data[key].toOptT()
 
     operator fun setValue(thisRef: Any?, property: KProperty<*>, value: T?) {
         if (value == null) data.remove(key) else data[key] = value
@@ -299,7 +300,7 @@ open class SchTypeBuilder(
 
     @KdrPrivate
     fun optionsList(): MutableList<Any?> =
-        data.getOrPut(SCH.options) { ArrayList<Any?>() }!!.toT()
+        data.getOrPut(SCH.options) { ArrayList<Any?>() }.toT()
 
     /**
      * Declares what a failure against this field should say, in place of the validator's own wording
@@ -319,7 +320,7 @@ open class SchTypeBuilder(
      * is why the parser's check on the same keys only has to catch documents that were not built here.
      */
     fun errors(build: SchErrors.() -> Unit) {
-        SchErrors(data.getOrPut(SCH.errors) { LinkedHashMap<String, Any?>() }!!.toT()).apply(build)
+        SchErrors(data.getOrPut(SCH.errors) { LinkedHashMap<String, Any?>() }.toT()).apply(build)
     }
 
     /**
@@ -389,11 +390,11 @@ open class SchTypeBuilder(
     // than hidden.
     @KdrPrivate
     fun propertiesMap(): MutableMap<String, Any?> =
-        data.getOrPut(SCH.properties) { LinkedHashMap<String, Any?>() }!!.toT()
+        data.getOrPut(SCH.properties) { LinkedHashMap<String, Any?>() }.toT()
 
     /** Records one or more property names in this type's `required` array. */
     fun required(vararg names: String) {
-        val req: MutableList<String> = data.getOrPut(SCH.required) { ArrayList<String>() }!!.toT()
+        val req: MutableList<String> = data.getOrPut(SCH.required) { ArrayList<String>() }.toT()
         for (n in names) if (n !in req) req.add(n)
     }
 

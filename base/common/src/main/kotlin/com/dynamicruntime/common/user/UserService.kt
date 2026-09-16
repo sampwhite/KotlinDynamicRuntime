@@ -19,6 +19,7 @@ import com.dynamicruntime.common.sql.cache.SqlCacheRow
 import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.normalizeLoginId
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
 import kotlin.time.Instant
@@ -168,7 +169,8 @@ class UserService : ServiceInitializer {
      * site.
      */
     fun resolveUserRef(cxt: KdrCxt, ref: String, scope: ReadScope): AuthUserRow? {
-        val trimmed = ref.trim()
+        // An address is normalized like a login id (issue #743); a numeric id is only trimmed.
+        val trimmed = ref.normalizeLoginId()
         if (trimmed.isEmpty()) {
             return null
         }

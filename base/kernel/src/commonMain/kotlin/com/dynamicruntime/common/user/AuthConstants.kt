@@ -109,7 +109,8 @@ object AERR {
     // Parameter-free.
     const val codeIncorrect = "codeIncorrect"
     const val tokenExpired = "tokenExpired"
-    const val emailNoAt = "emailNoAt"
+    /** The address is not a well-formed email (issue #743; was `emailNoAt`, which checked only for an `@`). */
+    const val emailInvalid = "emailInvalid"
     const val loginFailed = "loginFailed"
     const val tooManyVerifyAttempts = "tooManyVerifyAttempts"
     const val tooManyVerifyRequests = "tooManyVerifyRequests"

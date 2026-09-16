@@ -1,17 +1,20 @@
 package com.dynamicruntime.common.user
 
-import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.util.checkPassword
 import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.mkRndString
-import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.util.normalizeEmail
+import com.dynamicruntime.common.util.toT
 
 /** Topic logger for the auth subsystem (placed beside the code that owns the `"auth"` topic). */
 object LogAuth : KdrLogger("auth")
@@ -100,9 +103,14 @@ class AuthFormHandler(
     /** Emails a verification code to a new email [contactAddress] (registration). */
     fun sendVerifyToContact(cxt: KdrCxt, contactAddress: String, formAuthToken: String) {
         requireValidToken(cxt, formAuthToken)
-        if (!contactAddress.contains("@")) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.emailNoAt))
-        requireSendAllowed(cxt, contactAddress)
-        sendVerifyEmail(cxt, contactAddress, node.computeVerifyCode(formAuthToken, contactAddress), addPassword = false)
+        // Normalized before anything reads it (issue #743): the code is computed from the address, and the row
+        // is keyed by it, so the send and the registration that follows must agree on one spelling. The shape
+        // check is the same validator the admin form runs: the emailed code proves the inbox is *reachable*,
+        // not that the address is well-formed, and mailing a code to `ada@localhost` helps nobody.
+        val address = contactAddress.normalizeEmail()
+        if (!address.isEmailAddress()) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.emailInvalid))
+        requireSendAllowed(cxt, address)
+        sendVerifyEmail(cxt, address, node.computeVerifyCode(formAuthToken, address), addPassword = false)
     }
 
     /**
@@ -161,36 +169,37 @@ class AuthFormHandler(
      * An active, real user already at that email cannot be recreated.
      */
     fun createInitialUser(cxt: KdrCxt, contactAddress: String, formAuthToken: String, verifyCode: String): Long {
+        val address = contactAddress.normalizeEmail()
         requireValidToken(cxt, formAuthToken)
-        verifyCodeOrThrow(cxt, contactAddress, formAuthToken, verifyCode)
-        val existing = userService.queryByPrimaryId(cxt, contactAddress)
+        verifyCodeOrThrow(cxt, address, formAuthToken, verifyCode)
+        val existing = userService.queryByPrimaryId(cxt, address)
         if (existing != null && existing.enabled && (!existing.needsRealUsername || existing.encodedPassword != null)) {
             // FUTURE (with the other security hardening -- single-use verify tokens, logout invalidating the
             // auth cookie): rather than an error, *pretend success* here and email the existing account that
             // someone tried to register with their address. For now, it is a sensitive error -- obfuscated to a
             // generic message in prod so it does not confirm the email is taken, and the attempt is logged.
-            LogAuth.info(cxt) { "Registration attempted for an already-registered email '$contactAddress'." }
+            LogAuth.info(cxt) { "Registration attempted for an already-registered email '$address'." }
             throw KdrException.mkMsg(
-                KdrMsg(AFRAG.auth, AERR.ns, AERR.emailNotAvailable), mapOf(AERR.emailParam to contactAddress),
+                KdrMsg(AFRAG.auth, AERR.ns, AERR.emailNotAvailable), mapOf(AERR.emailParam to address),
                 sensitive = true,
             )
         }
         // The roles a new user starts with: normally just ROLE.user, but an address matching the deployment's
         // configured admin domain is provisioned as an admin -- how the first admin comes to exist (AdminRules).
-        val initialRoles = AdminRules.initialRoles(cxt, contactAddress)
+        val initialRoles = AdminRules.initialRoles(cxt, address)
         // Which client they land in is the address's business too, on a controlled domain (issue #352): a
         // `+acme` tag puts them in `acme`, and anything else -- including a client this node does not carry --
         // is `public`, exactly as every registration was before.
         val data = AuthUserRow
-            .mkInitialUser(contactAddress, AddressRules.clientForNewUser(cxt, contactAddress), initialRoles, createdAt = cxt.now())
+            .mkInitialUser(address, AddressRules.clientForNewUser(cxt, address), initialRoles, createdAt = cxt.now())
             .toMutableMap()
-        @Suppress("UNCHECKED_CAST", "DuplicatedCode")
-        val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
-        authUserData[AD.validatedContacts] = listOf(contactAddress)
-        authUserData[AD.contacts] = listOf(mapOf("address" to contactAddress, "type" to "email"))
+        @Suppress("DuplicatedCode")
+        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
+        authUserData[AD.validatedContacts] = listOf(address)
+        authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
 
         return if (existing != null) {
-            existing.username = AuthUserRow.usernameTmpPrefix + contactAddress
+            existing.username = AuthUserRow.usernameTmpPrefix + address
             existing.roles = initialRoles
             existing.encodedPassword = null
             existing.authUserData = authUserData
@@ -322,7 +331,7 @@ class AuthFormHandler(
             LogAuth.info(cxt) { "Google sign-in refused: Google has not verified the email on subject '${token.subject}'." }
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.googleEmailUnverified))
         }
-        val email = token.email
+        val email = token.email?.normalizeEmail()
         if (email == null) {
             LogAuth.info(cxt) { "Google sign-in refused: the token for subject '${token.subject}' carries no email." }
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.googleEmailUnverified))
@@ -352,8 +361,7 @@ class AuthFormHandler(
         val data = AuthUserRow
             .mkInitialUser(email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email), createdAt = cxt.now())
             .toMutableMap()
-        @Suppress("UNCHECKED_CAST")
-        val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
+        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
         authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
         val userId = userService.insertUser(cxt, data)
         return userService.queryByUserId(cxt, userId)
@@ -431,19 +439,19 @@ class AuthFormHandler(
         cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
         client: String? = null, name: String? = null,
     ): Map<String, Any?> {
-        val existing = userService.queryByLoginId(cxt, email)
+        val address = email.normalizeEmail()
+        val existing = userService.queryByLoginId(cxt, address)
         if (existing != null) {
             if (failIfUserAlreadyExists) {
-                throw KdrException("A user with email '$email' already exists.", code = EXC.badInput)
+                throw KdrException("A user with email '$address' already exists.", code = EXC.badInput)
             }
             return completeLogin(cxt, existing, byCode = false)
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
-        val data = AuthUserRow.mkInitialUser(email, fixtureClient(cxt, email, client), roles, createdAt = cxt.now()).toMutableMap()
-        @Suppress("UNCHECKED_CAST")
-        val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
-        authUserData[AD.validatedContacts] = listOf(email)
-        authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
+        val data = AuthUserRow.mkInitialUser(address, fixtureClient(cxt, address, client), roles, createdAt = cxt.now()).toMutableMap()
+        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
+        authUserData[AD.validatedContacts] = listOf(address)
+        authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
         // The person's real-world name (issue #736), set the same way the admin-create path does -- display copy,
         // independent of the username, so a fixture can exercise a name-driven feature (a prefill) that
         // `publicName` (which falls back to the email) cannot show. Ignored when the user already exists, like
@@ -451,7 +459,7 @@ class AuthFormHandler(
         AuthUserRow.normalizeName(name)?.let { authUserData[AD.name] = it }
         val userId = userService.insertUser(cxt, data)
         val row = userService.queryByUserId(cxt, userId)
-            ?: throw KdrException("Could not load the just-created user '$email'.", code = EXC.internalError)
+            ?: throw KdrException("Could not load the just-created user '$address'.", code = EXC.internalError)
         return completeLogin(cxt, row, byCode = false)
     }
 

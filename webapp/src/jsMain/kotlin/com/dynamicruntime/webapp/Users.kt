@@ -10,6 +10,7 @@ import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.user.userSortKeys
 import com.dynamicruntime.common.util.isEmailAddress
+import com.dynamicruntime.common.util.normalizeEmail
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
@@ -356,7 +357,7 @@ val Users = FC<Props> {
         if (target == null) {
             // Caught here so a mistyped address is an immediate, local message rather than a round trip -- the
             // backend runs this same check (base/kernel), so it is the authority; this only spares the trip.
-            val email = draftEmail.trim()
+            val email = draftEmail.normalizeEmail()
             if (!email.isEmailAddress()) {
                 error = DisplayError.expected("\"$email\" is not a valid email address.")
                 return@run

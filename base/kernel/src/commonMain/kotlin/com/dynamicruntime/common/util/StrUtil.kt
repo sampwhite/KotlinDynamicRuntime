@@ -69,6 +69,24 @@ private fun isEmailDomainPart(domain: String): Boolean {
 private const val emailLocalExtra = ".!#$%&'*+/=?^_`{|}~-"
 
 /**
+ * An email address in the one form it is stored and looked up in (issue #743): surrounding whitespace dropped
+ * and the **whole** address lowercased. The RFC lets a local part be case-sensitive; no mail provider honors
+ * that, and a login system that did would make `Ada@Example.com` and `ada@example.com` two people. Applied at
+ * every entry point -- registration, login, Google sign-in, the admin create form, the fixture -- *before*
+ * [isEmailAddress] and before any lookup, so that lookups can stay exact-match against the stored value
+ * (`AuthUsers.primaryId` is a unique index on the normalized form). Idempotent, so normalizing twice is harmless.
+ * In the kernel because the admin console runs it in the browser before its own check.
+ */
+fun String.normalizeEmail(): String = trim().lowercase()
+
+/**
+ * A login id in the form it is looked up in (issue #743): an email address ([normalizeEmail]) when it carries
+ * an `@`, else a **username**, only trimmed -- a username has its own rules and is never an address (the two
+ * spaces are disjoint, which is what lets `queryByLoginId` try one then the other).
+ */
+fun String.normalizeLoginId(): String = if (contains('@')) normalizeEmail() else trim()
+
+/**
  * Converts a camelCase identifier to lower_snake_case (e.g. `myField` -> `my_field`) by inserting an
  * underscore before each interior uppercase letter and lowercasing throughout. Used to turn code-side field
  * names into database column/table names when the target database does not preserve the case of the identifier.

@@ -273,7 +273,7 @@ fun String.jsonMap(): MutableMap<String, Any?>? {
     val state = PState(this, ExpectedVal.map)
     val result = parseJson(state, 0)
     checkNoTrailingContent(state)
-    return result?.toT()
+    return result.toOptT()
 }
 
 /** Parses this string as a JSON array. Note the reader's tolerances, described at the top of this file. */
@@ -281,7 +281,7 @@ fun String.jsonArray(): MutableList<Any?>? {
     val state = PState(this, ExpectedVal.array)
     val result = parseJson(state, 0)
     checkNoTrailingContent(state)
-    return result?.toT()
+    return result.toOptT()
 }
 
 /**

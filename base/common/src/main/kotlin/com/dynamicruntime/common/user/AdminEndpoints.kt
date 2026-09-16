@@ -1,6 +1,5 @@
 package com.dynamicruntime.common.user
 
-import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
@@ -11,16 +10,19 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.isEmailAddress
+import com.dynamicruntime.common.util.normalizeEmail
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.toT
 
 /**
  * The administrator's user-management endpoints: list users, create one, and edit an existing one's roles or
@@ -182,7 +184,8 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             }
         },
     ) { c, request ->
-        val primaryId = requireField(request, ADF.primaryId)
+        // Normalized first (issue #743), so the shape check, the duplicate check and the stored row all see one spelling.
+        val primaryId = requireField(request, ADF.primaryId).normalizeEmail()
         // The address is the login identity and a real destination for verification mail -- so it is checked
         // for shape here rather than taken on faith. The self-service path proves the address by emailing a
         // code; this path skips that, which makes a syntactic check the only thing standing between a typo and
@@ -211,8 +214,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val data = AuthUserRow
             .mkInitialUser(primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now())
             .toMutableMap()
-        @Suppress("UNCHECKED_CAST")
-        val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
+        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
         // The administrator is asserting the address, which stands in for the verification the self-service
         // path gets from the emailed code -- so the contact is recorded as validated and the user can log in by
         // code immediately. They still have no password; setting one remains their own (code-verified) act.

@@ -8,6 +8,7 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.normalizeEmail
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
@@ -184,11 +185,12 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
                 AEP.newContactSendVerify,
                 mapOf(AFLD.contactAddress to email, AFLD.contactType to emailContactType, AFLD.formAuthToken to token),
             )
-            // Computed the way the server does -- via the instance's own NodeService key -- because a
-            // white-box test runs in-process and legitimately holds the node it is driving. An external
-            // caller, which is the threat, has only HTTP and cannot reach the key.
+            // Computed the way the server does -- via the instance's own NodeService key, and over the
+            // NORMALIZED address (issue #743), which is what the server hashes whatever spelling was sent --
+            // because a white-box test runs in-process and legitimately holds the node it is driving. An
+            // external caller, which is the threat, has only HTTP and cannot reach the key.
             val node = NodeService.get(cxt)
-            val code = node.computeVerifyCode(token, email)
+            val code = node.computeVerifyCode(token, email.normalizeEmail())
             val userId = client.sendJsonPutRequest(
                 AEP.createInitial,
                 mapOf(
