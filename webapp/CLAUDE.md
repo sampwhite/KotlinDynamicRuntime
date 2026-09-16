@@ -223,7 +223,9 @@ lands in the same place on each; classify it by the rule above before picking it
 
 **Link colour lives in `app.css`, for `<a>` links and link buttons alike, and it is measured.** `.back-link` and
 `.ant-btn.ant-btn-link` both read `--accent-bright` at rest and `--accent-brighter` (one step up the same indigo
-ramp) on hover, with an underline. It is a CSS rule and **not** an antd token on purpose: antd's dark algorithm
+ramp) on hover, with an underline — scoped to live, non-destructive link buttons: a `danger` link keeps antd's red
+and a disabled one keeps antd's dimmed colour with no hover, both of which a bare colour rule silently overrides.
+It is a CSS rule and **not** an antd token on purpose: antd's dark algorithm
 re-derives a `colorLink` *seed* to a dimmer shade (measured: `#818cf8` came out `#717ad6`, 3.8:1), so a token
 cannot pin the palette's value. The rule exists because antd's stock dark link (`#1668dc`) measures **2.8:1**
 against the slate card and its derived hover *darkens* to **1.5:1** — the algorithm is tuned for antd's own

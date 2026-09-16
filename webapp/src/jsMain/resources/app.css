@@ -248,10 +248,20 @@ body {
    (`&:not(:disabled):not(.ant-btn-disabled):hover`) whose effective specificity outranks any sane app
    selector, and a real-pointer measurement showed antd's derived dark hover (#15417e, 1.5:1) still painting
    over a plain override. Overriding a third-party state rule is what `!important` is for; without it the
-   hover "fades to dark" no matter what the palette says. */
-.ant-btn.ant-btn-link { color: var(--accent-bright); }
-.ant-btn.ant-btn-link:hover { color: var(--accent-brighter) !important; text-decoration: underline !important; }
-.ant-btn.ant-btn-link:active { color: var(--accent) !important; }
+   hover "fades to dark" no matter what the palette says.
+   Scoped to LIVE, NON-DESTRUCTIVE link buttons (the review's two regressions): a `danger` link button keeps
+   antd's red -- antd colours it by swapping a CSS variable behind a low-specificity declaration, which a plain
+   colour rule would silently override, turning the table's Delete indigo -- and a disabled one keeps antd's
+   dimmed colour and gets no hover, since antd's `:disabled` rule only ties this one and loses the tie. */
+.ant-btn.ant-btn-link:not(:disabled):not(.ant-btn-disabled):not(.ant-btn-dangerous):not(.ant-btn-color-dangerous) {
+    color: var(--accent-bright);
+}
+.ant-btn.ant-btn-link:not(:disabled):not(.ant-btn-disabled):not(.ant-btn-dangerous):not(.ant-btn-color-dangerous):hover {
+    color: var(--accent-brighter) !important; text-decoration: underline !important;
+}
+.ant-btn.ant-btn-link:not(:disabled):not(.ant-btn-disabled):not(.ant-btn-dangerous):not(.ant-btn-color-dangerous):active {
+    color: var(--accent) !important;
+}
 
 /* The elevated-privilege chip: an outline against the admin-tinted bar, where a fill would blend into it. */
 .admin-badge {

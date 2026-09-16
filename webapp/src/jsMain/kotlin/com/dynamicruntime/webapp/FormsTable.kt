@@ -99,6 +99,9 @@ val FormsTable = FC<FormsTableProps> { props ->
     // persistent store's rows written before the survey deriver existed carry none until re-touched or
     // batch-recomputed -- a documented, deferred gap.)
     val anySurveyStatus = props.forms.any { it.second.surveyStatus != null }
+    // Whether the Actions column has anything to carry (issue #726 review): View Info needs a survey, Delete needs
+    // its endpoint; with neither there is no column, not an empty one.
+    val showActions = anySurveyStatus || props.canDelete
     Table {
         size = "small"
         // Declared widths mean what they say (see `TableProps.tableLayout`): under the default auto layout the
@@ -139,17 +142,19 @@ val FormsTable = FC<FormsTableProps> { props ->
             if (anySurveyStatus) add(statusColumn(props))
             add(sortableColumn("Updated", GSORT.updated, 175, props.sortColumn, props.sortDescending))
             add(sortableColumn("Created", GSORT.created, 175, props.sortColumn, props.sortDescending))
-            // View Info (survey clients) and Delete (where its endpoint is on the surface); a no-survey client
-            // whose surface cannot delete has an empty cell, and its row click is the open (issue #726).
-            add(actionsColumn(props, showSurvey = anySurveyStatus))
+            // View Info (survey clients) and Delete (where its endpoint is on the surface). With "View All" gone
+            // (issue #726) the column can have nothing to show -- a no-survey client whose caller cannot delete
+            // -- and then it is not drawn at all: an empty column pinned right would be a blank sticky band
+            // whose shadow overlays every scrolled row. The row click is the open there.
+            if (showActions) add(actionsColumn(props, showSurvey = anySurveyStatus))
         }
         // Pinned while the table scrolls sideways (issue #726 follow-up): the first column -- the client's first
         // display column, or `Contains` when it declares none, either way the row's identity -- stays on the
-        // left, and Actions stays on the right, so a row can be told apart and acted on at any scroll position
-        // rather than the identity leaving the viewport just as Actions arrives. antd renders a `fixed` column
-        // as sticky, which needs only the `scroll.x` set below.
+        // left, and Actions, when drawn, stays on the right, so a row can be told apart and acted on at any
+        // scroll position rather than the identity leaving the viewport just as Actions arrives. antd renders a
+        // `fixed` column as sticky, which needs only the `scroll.x` set below.
         cols.first().fixed = "left"
-        cols.last().fixed = "right"
+        if (showActions) cols.last().fixed = "right"
         columns = cols.toTypedArray()
         scroll = minTableWidth(cols)
         dataSource = props.forms.map { (id, summary) ->

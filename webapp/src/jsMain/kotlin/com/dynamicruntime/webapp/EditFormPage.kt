@@ -18,6 +18,7 @@ import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.p
 import react.useEffect
 import react.useEffectOnce
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 
@@ -80,6 +81,14 @@ val EditFormPage = FC<Props> {
     // survey's read-only view. Decided the way the survey page decides it -- by resolving and probing the
     // workflow view on the form's own client -- since a control that could only dead-end is not shown.
     var hasSurvey by useState(false)
+    // The last seeded snapshot of the edits -- the load, or the re-read after a save -- so "unsaved" is the working
+    // values differing from it (issue #726 review), the same measure the survey editor arms its leave guard on.
+    var seeded by useState<Map<String, Any?>>(emptyMap())
+    // Whether the user has typed since the current save was sent (issue #726 review). A ref rather than state:
+    // it is read inside the save's coroutine after the round trip, where a state value would be the stale
+    // closure's. If they have, the re-read must not overwrite their newer keystrokes, nor "Saved." stand beside
+    // them.
+    val editedSinceSave = useRef(false)
 
     // Keep the open id in step with the hash, so a navigation to another edit URL re-runs the load below. App is
     // the router; a hash-only editForm->editForm move does not remount this page, so without this the first form
@@ -100,6 +109,8 @@ val EditFormPage = FC<Props> {
         runError = null
         notFound = false
         saved = false
+        seeded = emptyMap()
+        hasSurvey = false
         loadingSchema = true
         val id = gedraId
         editScope.launch {
@@ -125,14 +136,16 @@ val EditFormPage = FC<Props> {
                 val homeFetch = async { runCatching { HomeApi.fetchConfig().canSeeAllClients }.getOrDefault(false) }
                 // Does the form's client have a survey (issue #726)? The same resolution the survey page makes:
                 // the workflow view's copy on the form's client, or the shared endpoint for a client that varies
-                // nothing, then the view itself -- `null` is "no survey". Defensive: a failure only hides the
-                // "View info" link, it never blocks editing.
-                val surveyFetch = async {
-                    runCatching {
-                        if (id == null) return@runCatching false
-                        val viewPath = fetchFormEndpoint(HttpMethod.GET.name, GEP.workflowView, formClient).endpoints.firstOrNull()?.path
-                        WorkflowApi.fetchSurveyView(id, clientOfResolvedPath(viewPath, GEP.workflowView, formClient)) != null
-                    }.getOrDefault(false)
+                // nothing, then the view itself -- `null` is "no survey". Its own coroutine, never awaited here
+                // (issue #726 review): it only decides whether a link is drawn, so neither its failure nor a
+                // stall may hold the editor on "Loading…". The link simply appears when the answer lands.
+                if (id != null) {
+                    editScope.launch {
+                        hasSurvey = runCatching {
+                            val viewPath = fetchFormEndpoint(HttpMethod.GET.name, GEP.workflowView, formClient).endpoints.firstOrNull()?.path
+                            WorkflowApi.fetchSurveyView(id, clientOfResolvedPath(viewPath, GEP.workflowView, formClient)) != null
+                        }.getOrDefault(false)
+                    }
                 }
                 val cat = patchFetch.await()
                 catalog = cat
@@ -141,7 +154,6 @@ val EditFormPage = FC<Props> {
                 patchEndpoint = patchEp
                 getEndpoint = getEp
                 canSeeAllClients = homeFetch.await()
-                hasSurvey = surveyFetch.await()
                 if (id == null || patchEp == null || getEp == null) {
                     loadError = null
                 } else {
@@ -151,7 +163,9 @@ val EditFormPage = FC<Props> {
                     if (item.isEmpty()) {
                         notFound = true
                     } else {
-                        values = mapOf(GDF.gedraId to id, GPF.edits to seededEdits(item))
+                        val seed = mapOf(GDF.gedraId to id, GPF.edits to seededEdits(item))
+                        values = seed
+                        seeded = seed
                     }
                 }
                 loadError = null
@@ -167,6 +181,23 @@ val EditFormPage = FC<Props> {
     }
 
     useFocusOnFailure(focusRequest, failures)
+
+    // The leave guard (issue #726 review): Done and View info are navigations, so unsaved edits are asked about
+    // exactly as the survey editor's are -- one save model, one answer to a dirty Done -- and a reload or closed
+    // tab gets the browser's own prompt. Dirty is the working values differing from the last seeded snapshot;
+    // it clears the moment a save re-seeds, so a clean page never nags. "Still here" is this page AND this form:
+    // another form's editor is a keyed reload that would drop the edits, so it counts as a leave.
+    val dirty = values != seeded
+    useEffect(dirty, gedraId) {
+        if (dirty) {
+            val form = gedraId
+            LeaveGuard.arm({ h -> h[HP.page] == pageEditForm && h[HP.gedra] == form }) {
+                LeaveGuard.confirmLeave("You have unsaved changes on this form. Leave the page and lose them?")
+            }
+        } else {
+            LeaveGuard.disarm()
+        }
+    }
 
     div {
         className = ClassName("card wide")
@@ -251,7 +282,7 @@ val EditFormPage = FC<Props> {
                     // Let the trait be typed, not only chosen, when this is the cross-client admin surface (#667).
                     this.openTraitEntry = openTraitEntry
                     this.failures = failures
-                    onChange = { values = it; saved = false }
+                    onChange = { values = it; saved = false; editedSinceSave.current = true }
                     onFieldEdit = { path ->
                         failures?.let { current ->
                             failures = current.clearedAt(path).ifEmpty { null }
@@ -280,6 +311,7 @@ val EditFormPage = FC<Props> {
                             } else {
                                 running = true
                                 runError = null
+                                editedSinceSave.current = false
                                 editScope.launch {
                                     try {
                                         // A free-form trait the client's union does not know needs the escape
@@ -294,9 +326,18 @@ val EditFormPage = FC<Props> {
                                         // Done is the way back to the listing, where the form flashes.
                                         getEndpoint?.let { getEp ->
                                             val item = SchemaCatalogApi.invoke(getEp, mapOf(GDF.gedraId to id))[EP.item].toJsonMapOrEmpty()
-                                            if (item.isNotEmpty()) values = mapOf(GDF.gedraId to id, GPF.edits to seededEdits(item))
+                                            if (item.isNotEmpty()) {
+                                                val stored = mapOf(GDF.gedraId to id, GPF.edits to seededEdits(item))
+                                                // What is now stored is the new clean point either way; the fields
+                                                // follow it only if the user has not typed since the save went out
+                                                // -- their newer keystrokes are not overwritten (issue #726 review),
+                                                // and they read as unsaved against the re-seeded snapshot.
+                                                seeded = stored
+                                                if (editedSinceSave.current != true) values = stored
+                                            }
                                         }
-                                        saved = true
+                                        // "Saved." only beside a form that still shows what was saved.
+                                        if (editedSinceSave.current != true) saved = true
                                     } catch (e: Throwable) {
                                         runError = userFacingError(e)
                                     } finally {

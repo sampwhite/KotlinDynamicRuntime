@@ -243,8 +243,10 @@ class GedraFormsTest {
      */
     @Test
     fun theRawViewHashOpensTheFormOnTheListingWithSearchAndSort() {
+        // A DIFFERENT id in the source hash than the one passed (review): the argument must win, so a version
+        // that carried the hash's own `g` through would be caught rather than pass on coinciding values.
         val surveyHash = mapOf(
-            HP.page to "surveyEdit", HP.gedra to "gd.fd.acme.u1", HP.from to "forms", HP.edit to "1", HP.task to "t2",
+            HP.page to "surveyEdit", HP.gedra to "gd.fd.acme.OTHER", HP.from to "forms", HP.edit to "1", HP.task to "t2",
             EI.q to "roof", GSORT.sort to "updated", GSORT.sortDir to "desc",
         )
         val view = formsRawViewHash(surveyHash, "gd.fd.acme.u1").toMap()
@@ -263,8 +265,9 @@ class GedraFormsTest {
      */
     @Test
     fun theSurveyViewHashOpensViewInfoWithSearchAndSort() {
+        // A different id in the source hash than the one passed (review), so the argument is seen to win.
         val editorHash = mapOf(
-            HP.page to "editForm", HP.gedra to "gd.fd.acme.u1", HP.highlight to "x", HP.edit to "1",
+            HP.page to "editForm", HP.gedra to "gd.fd.acme.OTHER", HP.highlight to "x", HP.edit to "1",
             EI.q to "roof", GSORT.sort to "updated", GSORT.sortDir to "desc",
         )
         val view = formsSurveyViewHash(editorHash, "gd.fd.acme.u1").toMap()
