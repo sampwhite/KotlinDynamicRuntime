@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.util
 
+import com.dynamicruntime.common.exception.KdrException
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.string.shouldContain
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -201,5 +204,14 @@ class ConvertUtilTest : StringSpec({
         (null as Any?).toOptEnum<Color>() shouldBe null
         // Converts to "5" since #267, then finds no member of that name -- null for the second reason now.
         (5 as Any?).toOptEnum<Color>() shouldBe null
+    }
+
+    "toT refuses null as a conversion error, and toOptT lets it through" {
+        val map: Map<String, Any?> = mapOf("k" to mutableMapOf<String, Any?>("a" to 1))
+        val inner: MutableMap<String, Any?> = map["k"].toT()
+        inner["a"] shouldBe 1
+        shouldThrow<KdrException> { map["missing"].toT<Map<String, Any?>>() }.message shouldContain "null"
+        map["missing"].toOptT<Map<String, Any?>>() shouldBe null
+        map["k"].toOptT<Map<String, Any?>>()?.get("a") shouldBe 1
     }
 })

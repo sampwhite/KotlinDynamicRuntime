@@ -194,7 +194,7 @@ class AuthFormHandler(
             .mkInitialUser(address, AddressRules.clientForNewUser(cxt, address), initialRoles, createdAt = cxt.now())
             .toMutableMap()
         @Suppress("DuplicatedCode")
-        val authUserData: MutableMap<String, Any?> = checkNotNull(data[AU.authUserData]).toT()
+        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
         authUserData[AD.validatedContacts] = listOf(address)
         authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
 
@@ -361,7 +361,7 @@ class AuthFormHandler(
         val data = AuthUserRow
             .mkInitialUser(email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email), createdAt = cxt.now())
             .toMutableMap()
-        val authUserData: MutableMap<String, Any?> = checkNotNull(data[AU.authUserData]).toT()
+        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
         authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
         val userId = userService.insertUser(cxt, data)
         return userService.queryByUserId(cxt, userId)
@@ -449,7 +449,7 @@ class AuthFormHandler(
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
         val data = AuthUserRow.mkInitialUser(address, fixtureClient(cxt, address, client), roles, createdAt = cxt.now()).toMutableMap()
-        val authUserData: MutableMap<String, Any?> = checkNotNull(data[AU.authUserData]).toT()
+        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
         authUserData[AD.validatedContacts] = listOf(address)
         authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
         // The person's real-world name (issue #736), set the same way the admin-create path does -- display copy,

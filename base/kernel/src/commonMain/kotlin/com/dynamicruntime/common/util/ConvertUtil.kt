@@ -9,12 +9,19 @@ import kotlin.time.Instant
 // Extension methods for converting / coercing values.
 
 /**
- * Forcibly coerces this value to the parameterized type [T] via an unchecked
- * cast. The caller is responsible for the value actually being a [T] -- this just
- * centralizes the (suppressed) unchecked cast in one place.
+ * Forcibly coerces this value to the parameterized type [T] via an unchecked cast, **refusing null**: a null
+ * here is a broken invariant (a key the caller knows was put there, a parse that cannot have failed), and it
+ * fails as a conversion error at the site rather than as a null further on. The caller is responsible for the
+ * value actually being a [T] -- this centralizes the (suppressed) unchecked cast in one place. The
+ * "required" half of a pair, like `getReqStr` beside `getOptStr`: a value that may legitimately be absent
+ * goes through [toOptT].
  */
 @Suppress("UNCHECKED_CAST")
-fun <T> Any.toT(): T = this as T
+fun <T> Any?.toT(): T = (this ?: throw KdrException.mkConv("Expected a value to coerce but found null.")) as T
+
+/** The nullable counterpart of [toT]: null stays null, anything else is coerced to [T] the same way. */
+@Suppress("UNCHECKED_CAST")
+fun <T> Any?.toOptT(): T? = this as T?
 
 /** Forcibly coerces this value to a JSON-style `Map<String, Any?>` (see [toT]). */
 fun Any.toJsonMap(): Map<String, Any?> = toT()
