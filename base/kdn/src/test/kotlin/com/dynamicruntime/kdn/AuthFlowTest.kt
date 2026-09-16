@@ -1,5 +1,7 @@
 package com.dynamicruntime.kdn
 
+import io.kotest.matchers.nulls.shouldBeNull
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
@@ -381,6 +383,50 @@ class AuthFlowTest : StringSpec({
         // Reset proven the same way as the verify-code counter: a full further run of failures never trips.
         client.sendGetRequest("/logout")
         repeat(RL.pwPerUserMax) { pwLogin(client, "robert", "wrong-pw").rptStatusCode shouldBe EXC.authNeeded }
+    }
+
+    "an address is normalized on registration and on login, and a malformed one is refused (#743)" {
+        val client = mkClient("10.30.30.30")
+        val typed = "  Kara@Example.COM "
+        val stored = "kara@example.com"
+
+        // The code is computed from the NORMALIZED address on the server, so the client's copy must be too --
+        // that is the contract: one spelling from the first request on.
+        val token = tokenOf(client)
+        client.sendJsonPostRequest(
+            "/auth/newContact/sendVerify",
+            mapOf("contactAddress" to typed, "contactType" to "email", "formAuthToken" to token),
+        )
+        MailService.get(cxt).lastEmailTo(stored).shouldNotBeNull()
+        val code = codeFor(token, stored)
+        val userId = results(
+            client.sendJsonPutRequest(
+                "/auth/user/createInitial",
+                mapOf("contactAddress" to typed, "contactType" to "email", "formAuthToken" to token, "verifyCode" to code),
+            ),
+        )["userId"] as Long
+        UserService.get(cxt).queryByUserId(cxt, userId)!!.primaryId shouldBe stored
+        client.sendGetRequest("/logout")
+
+        // Logging in with yet another spelling finds the same user.
+        val token2 = tokenOf(client)
+        client.sendJsonPostRequest("/auth/user/sendVerify", mapOf("loginId" to "KARA@example.com", "formAuthToken" to token2))
+        results(
+            client.sendJsonPostRequest(
+                "/auth/login/byCode",
+                mapOf("loginId" to " kara@EXAMPLE.com", "formAuthToken" to token2, "verifyCode" to codeFor(token2, stored)),
+            ),
+        )["userId"] shouldBe userId
+
+        // The self-service path runs the same shape check the admin form does: no code is mailed to a non-address.
+        val token3 = tokenOf(client)
+        val refused = client.sendJsonPostRequest(
+            "/auth/newContact/sendVerify",
+            mapOf("contactAddress" to "kara@localhost", "contactType" to "email", "formAuthToken" to token3),
+        )
+        refused[EP.status] shouldBe EXC.badInput
+        refused[EP.errorMessage] shouldBe authMsg(AERR.emailInvalid)
+        MailService.get(cxt).lastEmailTo("kara@localhost").shouldBeNull()
     }
 
     "a returning user can log in by email as the login id, not just username" {

@@ -49,7 +49,7 @@
 # @error
 # +codeIncorrect The verification code is incorrect.
 # +tokenExpired The sign-in form has expired. Please request a new code and try again.
-# +emailNoAt An email address must contain an '@'.
+# +emailInvalid That does not look like an email address. Please check it and try again.
 # +loginFailed Password login failed, either because the password was incorrect or because you need to log in by verification code to activate password logins.
 # +tooManyVerifyAttempts Too many verification attempts. Please request a new code and try again.
 # +tooManyVerifyRequests Too many verification requests. Please wait a while before requesting another code.

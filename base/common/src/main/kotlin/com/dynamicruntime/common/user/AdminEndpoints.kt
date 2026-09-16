@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.util.normalizeEmail
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -182,7 +183,8 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             }
         },
     ) { c, request ->
-        val primaryId = requireField(request, ADF.primaryId)
+        // Normalized first (issue #743), so the shape check, the duplicate check and the stored row all see one spelling.
+        val primaryId = requireField(request, ADF.primaryId).normalizeEmail()
         // The address is the login identity and a real destination for verification mail -- so it is checked
         // for shape here rather than taken on faith. The self-service path proves the address by emailing a
         // code; this path skips that, which makes a syntactic check the only thing standing between a typo and

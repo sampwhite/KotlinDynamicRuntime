@@ -11,6 +11,8 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.util.normalizeLoginId
+import com.dynamicruntime.common.util.normalizeEmail
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.util.getReqLong
@@ -76,7 +78,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             field(AFLD.contactType, "The contact type (currently only 'email').", required = true)
             field(AFLD.formAuthToken, "The form auth token.", required = true)
         }) { c, req ->
-        authHandler(c).sendVerifyToContact(c, req.getReqStr(AFLD.contactAddress), req.getReqStr(AFLD.formAuthToken))
+        authHandler(c).sendVerifyToContact(c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getReqStr(AFLD.formAuthToken))
         emptyMap<String, Any?>()
     }
 
@@ -90,7 +92,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             }
         }) { c, req ->
         authHandler(c).sendVerifyToUser(
-            c, req.getReqStr(AFLD.loginId), req.getReqStr(AFLD.formAuthToken), req.getOptBool(AFLD.addPassword) == true,
+            c, req.getReqStr(AFLD.loginId).normalizeLoginId(), req.getReqStr(AFLD.formAuthToken), req.getOptBool(AFLD.addPassword) == true,
         )
         emptyMap<String, Any?>()
     }
@@ -104,7 +106,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             field(AFLD.verifyCode, "The verification code emailed to the contact.", required = true)
         }) { c, req ->
         val userId = authHandler(c).createInitialUser(
-            c, req.getReqStr(AFLD.contactAddress), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
+            c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
         )
         mapOf(AFLD.userId to userId)
     }
@@ -134,7 +136,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             field(AFLD.formAuthToken, "The form auth token.", required = true)
             field(AFLD.verifyCode, "The verification code.", required = true)
         }) { c, req ->
-        authHandler(c).loginByCode(c, req.getReqStr(AFLD.loginId), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode))
+        authHandler(c).loginByCode(c, req.getReqStr(AFLD.loginId).normalizeLoginId(), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode))
     }
 
     // Log in by password -- permitted only from a familiar (verified) device. On any failure the caller gets a
@@ -144,7 +146,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             field(AFLD.loginId, "The user's username or email address.", required = true)
             field(AFLD.password, "The user's password.", required = true)
         }) { c, req ->
-        authHandler(c).loginByPassword(c, req.getReqStr(AFLD.loginId), req.getReqStr(AFLD.password))
+        authHandler(c).loginByPassword(c, req.getReqStr(AFLD.loginId).normalizeLoginId(), req.getReqStr(AFLD.password))
     }
 
     // Log in with Google (issue #157). The browser's Google sign-in hands back an ID token, which is all this
@@ -166,7 +168,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             field(AFLD.verifyCode, "The verification code.", required = true)
         }) { c, req ->
         authHandler(c).changePassword(
-            c, req.getReqStr(AFLD.loginId), req.getReqStr(AFLD.password),
+            c, req.getReqStr(AFLD.loginId).normalizeLoginId(), req.getReqStr(AFLD.password),
             req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
         )
     }
