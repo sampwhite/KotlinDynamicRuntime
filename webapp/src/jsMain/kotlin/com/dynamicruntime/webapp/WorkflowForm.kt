@@ -78,6 +78,13 @@ external interface WorkflowFormProps : Props {
      * the leave guard on. Client-side: a working value differing from the last stored one.
      */
     var onDirtyChange: ((Boolean) -> Unit)?
+
+    /**
+     * Whether a **create** workflow may be run for another user (issue #727): true for an administrator, so the
+     * creation form offers the [FormUserPicker] and the create save carries the chosen user. Ignored for a
+     * survey edit (that acts on an existing form). Absent/false hides the picker -- the ordinary self-create.
+     */
+    var allowCreateForUser: Boolean?
 }
 
 /**
@@ -110,6 +117,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // A creation form is always editable; a survey edit starts read-only (the "View Info" view) unless the URL
     // asked for edit mode (issue #694, the forms-list chip's direct-to-edit link).
     var editing by useState(if (isEdit) props.initialEditing == true else true)
+    // The user a create is being made for (issue #727), when an admin picked one; null is the self-create.
+    // Meaningful only on a creation form; a survey edit never reads it.
+    var pickedUser by useState<AdminUser?>(null)
     var valuesByTrait by useState(seeded)
     // Which supplied `filled` defaults are still suggestions (issue #710), by trait: seeded from the view's
     // filled defaults, a field leaving the set the first time it is touched (below) and a "reset" putting it
@@ -207,7 +217,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         if (checks.values.any { it.failures.isNotEmpty() }) return
 
         val entries = workflowSaveEntries(checks.mapValues { it.value.payload ?: emptyMap() })
-        val body = workflowSaveBody(wf.workflowId, task.id, saveFor(task).id, entries, gedraId)
+        // A create save may be for another user (issue #727) when an admin picked one; an edit ignores it.
+        val forUserRef = if (isEdit) null else pickedUser?.primaryId
+        val body = workflowSaveBody(wf.workflowId, task.id, saveFor(task).id, entries, gedraId, forUserRef)
         savingTask = task.id
         runError = null
         wfFormScope.launch {
@@ -426,6 +438,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         valuesByTrait = emptyMap(); failuresByTrait = emptyMap()
                         committedByTrait = emptyMap(); wholeChecked = emptySet()
                         unmetTraits = emptySet(); runError = null; savedItem = null
+                        // Drop the previous pick too (issue #727 review): the picker remounts empty on the next
+                        // form, so leaving `pickedUser` set would silently create the next form for that user
+                        // behind a blank box.
+                        pickedUser = null
                     }
                     +"Create another"
                 }
@@ -485,6 +501,12 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         }
                     }
                 }
+            }
+
+            // Create for another user (issue #727), admin-only and creation-only: the picker chooses whose form
+            // it is; the workflow's fields are still this client's. Blank creates it for the caller.
+            if (!isEdit && props.allowCreateForUser == true) {
+                FormUserPicker { onPick = { pickedUser = it } }
             }
 
             // A multi-task survey shows ONE task at a time, picked from the rail (issue #700) -- so there is one

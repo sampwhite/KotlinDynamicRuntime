@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WfRef
 import com.dynamicruntime.common.schema.SCT
@@ -118,6 +119,16 @@ class GedraDataRow(
                 "shape. Reads are unaffected."
 
         /**
+         * What the on-behalf `user` field says (issue #727), written once so the create endpoint and the
+         * workflow save cannot describe it differently. Beside the type that owns the field, like
+         * [additionalTraitsHint].
+         */
+        const val createForUserHint =
+            "Create this form for another user, named by their numeric id or email (issue #727). Requires an " +
+                "administrator, and resolves within your own scope -- a client administrator creates for a user " +
+                "in their client. Absent, or naming yourself, is the ordinary self-create."
+
+        /**
          * Defines the schema types for gedras of one [kind] -- `FormDoc` for [GedraDataType.formDoc] -- on
          * [builder], beside the [toJsonMap] they describe so the three cannot drift: **the stored shape, and
          * beside it the shape a caller sends** (issue #379).
@@ -202,9 +213,13 @@ class GedraDataRow(
                         derived = true
                     }
                 }
-                // An instruction about the write, so it belongs to the sent shape and to nothing else.
+                // Instructions about the write, so they belong to the sent shape and to nothing else.
                 if (forInput) {
                     property(GDF.allowAdditionalTraits, additionalTraitsHint) { type = SCT.boolean }
+                    // Create the form for another user (issue #727): a numeric id or an email. Admin-only, and
+                    // confined to the caller's own scope, so a client admin creates for a user in their client;
+                    // absent (or naming yourself) is the ordinary self-create. Enforced in the handler, not here.
+                    property(EI.user, createForUserHint)
                 }
                 property(GDF.createdAt, "When the gedra was created.", required = true) {
                     dateTime()

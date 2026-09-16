@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -233,6 +234,13 @@ class WorkflowModelTest {
         // A survey edit save carries the form's gedraId (issue #659).
         val editBody = workflowSaveBody("reviewForm", "only", "save", entries, gedraId = "gd.fd.acme.u7")
         assertEquals("gd.fd.acme.u7", editBody[GDF.gedraId])
+
+        // A create-for-user save carries the chosen user (issue #727); a blank ref is dropped, so the ordinary
+        // self-create sends none.
+        val forUserBody = workflowSaveBody("createForm", "identify", "create", entries, forUserRef = "ada@x.test")
+        assertEquals("ada@x.test", forUserBody[EI.user])
+        assertTrue(!workflowSaveBody("createForm", "identify", "create", entries).containsKey(EI.user))
+        assertTrue(!workflowSaveBody("createForm", "identify", "create", entries, forUserRef = "  ").containsKey(EI.user))
     }
 
     @Test
