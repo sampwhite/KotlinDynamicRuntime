@@ -21,6 +21,7 @@ import com.dynamicruntime.common.gedra.workflow.surveyStatusOf
 import com.dynamicruntime.common.home.HMENU
 import react.ChildrenBuilder
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.h1
 import web.cssom.ClassName
 import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCH
@@ -165,6 +166,36 @@ fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String
     search.entries.mapNotNull { (k, v) -> v.trim().ifEmpty { null }?.let { k to it } }
 
 /**
+ * The one way an editor returns to the listing when the user is **done** (issue #726): the forms page, the
+ * listing's search and sort carried back out of the editor's own hash [hp] (as the back link carries them), and
+ * the form just worked on flagged as [highlightId] so the list flashes it -- "here is the form you were in".
+ * Shared by the survey and raw editors' Done, so the two ways home cannot drift; the bare back link is the same
+ * target without the flash. Pure, and covered under `jsNodeTest`.
+ */
+fun formsListingReturn(hp: Map<String, String>, highlightId: String): List<Pair<String, String>> =
+    listOf(HP.page to HMENU.pageForms) + formsSearchHashParams(formsSearchFromHash(hp)) + (HP.highlight to highlightId)
+
+/**
+ * The raw **read-only** view of one form (issue #726): the listing page with the form open in place -- the same
+ * view a row click opens where the client has no survey -- reached from the survey's "View raw" beside "Raw
+ * edit", so every trait can be looked at without entering the editor. Carries the listing's search and sort out
+ * of the survey's own hash [hp], as its other ways home do, and none of the survey's own keys. Pure, and covered
+ * under `jsNodeTest`.
+ */
+fun formsRawViewHash(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
+    listOf(HP.page to HMENU.pageForms, HP.gedra to gedraId) + formsSearchHashParams(formsSearchFromHash(hp))
+
+/**
+ * The survey's read-only "View Info" of one form (issue #726): reached from the raw editor's "View info" beside
+ * Done, for a form whose client has a survey. Carries the listing's search and sort out of the editor's hash
+ * [hp], and `from=forms` so the survey page's own back link still leads home; none of the editor's keys. Pure,
+ * and covered under `jsNodeTest`.
+ */
+fun formsSurveyViewHash(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
+    listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to gedraId) +
+        formsSearchHashParams(formsSearchFromHash(hp))
+
+/**
  * The `← My forms` link atop a forms child page (issues #554, #671): the shared row + [backToListing], carrying
  * the listing's search and sort back so a cancel/back returns to the same filtered, sorted list the child was
  * opened from -- the sort rides through [formsSearchFromHash] as non-nav hash params (issues #592, #666, #669).
@@ -183,6 +214,25 @@ fun ChildrenBuilder.formsBackToListing() {
  */
 fun ChildrenBuilder.formsBackLink() {
     backToListing(HMENU.pageForms, formsSearchHashParams(formsSearchFromHash(hashParams())))
+}
+
+/**
+ * The one header line both form editors share (issue #726, after the survey's #719 line): the back link, the
+ * [title] beside it, and the [actions] right-aligned -- Edit / Done, Raw edit, the saved note, whichever apply.
+ * One composable rather than two lookalike blocks, so the survey editor and the raw editor cannot drift apart
+ * in where "back" lives or how the actions sit. [title] is a builder so a survey can render its Markdown label
+ * where the raw editor renders plain text.
+ */
+fun ChildrenBuilder.formsEditorHeader(title: ChildrenBuilder.() -> Unit, actions: ChildrenBuilder.() -> Unit) {
+    div {
+        className = ClassName("wf-header")
+        formsBackLink()
+        h1 { title() }
+        div {
+            className = ClassName("wf-actions")
+            actions()
+        }
+    }
 }
 
 /** The declared query keys that are not applied-search values: paging, the owner-block flag, the sort

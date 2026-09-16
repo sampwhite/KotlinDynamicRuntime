@@ -460,7 +460,79 @@ val FormsPage = FC<Props> {
             // A form is open (by click, link, or reload): show it, fetching by id if the page did not hold it.
             viewingId != null -> {
                 val payloadType = cat.payloadType(ep)
-                backToList { viewingId = null }
+                // The shared editor header (issue #726): the back link, the title, and the actions on one line
+                // at the top -- so Edit and Delete are reachable on a long form without scrolling past it, and
+                // the raw view reads like the survey view and the raw editor. The back link is the same
+                // hash-navigating "← My forms" the editors use: it drops `g`, and the hash listener closes the
+                // view in place, rows kept. Drawn for every sub-state so a loading or missing form still has a
+                // way back; the actions appear once the form is up.
+                val formUp = !viewLoading && viewError == null && viewRow != null
+                formsEditorHeader(title = { +"View form" }) {
+                    if (formUp) {
+                        // Edit, offered only when the caller's surface carries the patch endpoint (issue #417).
+                        patchEndpoint?.let {
+                            Button {
+                                type = "primary"
+                                onClick = {
+                                    viewingId?.let { id ->
+                                        navigateHash(
+                                            listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
+                                                formsSearchHashParams(appliedSearch) +
+                                                sortHashParams(sortColumn, sortDescending),
+                                        )
+                                    }
+                                }
+                                +"Edit"
+                            }
+                        }
+                        // Delete, offered only when the caller's surface carries the endpoint. A two-step
+                        // confirm, inline on the same line; on success the view closes and the list reloads
+                        // from the top, where the now one-fewer forms are.
+                        deleteEndpoint?.let { de ->
+                            if (!confirmingDelete) {
+                                Button {
+                                    danger = true
+                                    onClick = { confirmingDelete = true; deleteError = null }
+                                    +"Delete form"
+                                }
+                            } else {
+                                span {
+                                    className = ClassName("subtitle")
+                                    +"Delete this form?"
+                                }
+                                Button {
+                                    danger = true
+                                    loading = deleting
+                                    onClick = {
+                                        val id = viewingId
+                                        if (id != null) {
+                                            deleting = true
+                                            deleteError = null
+                                            formsScope.launch {
+                                                try {
+                                                    SchemaCatalogApi.invoke(de, mapOf(GDF.gedraId to id))
+                                                    confirmingDelete = false
+                                                    viewingId = null
+                                                    offset = 0
+                                                    loadPage(ep, 0, appliedSearch)
+                                                } catch (e: Throwable) {
+                                                    deleteError = userFacingError(e)
+                                                } finally {
+                                                    deleting = false
+                                                }
+                                            }
+                                        }
+                                    }
+                                    +"Delete"
+                                }
+                                Button {
+                                    onClick = { confirmingDelete = false }
+                                    +"Cancel"
+                                }
+                            }
+                        }
+                    }
+                }
                 when {
                     viewLoading -> p {
                         className = ClassName("subtitle")
@@ -472,76 +544,8 @@ val FormsPage = FC<Props> {
                         +(if (viewMissing) "That form is not in your list." else "Loading…")
                     }
                     else -> {
+                        deleteError?.let { errorText("Couldn't delete the form.", it) }
                         renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType, cat.layouts)
-                        // Edit, offered only when the caller's surface carries the patch endpoint (issue #417).
-                        // Its own route off the view for now; a later slice folds it into a list-centric hub.
-                        patchEndpoint?.let {
-                            div {
-                                className = ClassName("row")
-                                Button {
-                                    onClick = {
-                                        viewingId?.let { id ->
-                                            navigateHash(
-                                                listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
-                                                    formsSearchHashParams(appliedSearch) +
-                                                    sortHashParams(sortColumn, sortDescending),
-                                            )
-                                        }
-                                    }
-                                    +"Edit form"
-                                }
-                            }
-                        }
-                        // Delete, offered only when the caller's surface carries the endpoint. A two-step
-                        // confirm; on success the view closes and the list reloads from the top, where the now
-                        // one-fewer forms are.
-                        deleteEndpoint?.let { de ->
-                            div {
-                                className = ClassName("row")
-                                if (!confirmingDelete) {
-                                    Button {
-                                        danger = true
-                                        onClick = { confirmingDelete = true; deleteError = null }
-                                        +"Delete form"
-                                    }
-                                } else {
-                                    span {
-                                        className = ClassName("subtitle")
-                                        +"Delete this form?"
-                                    }
-                                    Button {
-                                        danger = true
-                                        loading = deleting
-                                        onClick = {
-                                            val id = viewingId
-                                            if (id != null) {
-                                                deleting = true
-                                                deleteError = null
-                                                formsScope.launch {
-                                                    try {
-                                                        SchemaCatalogApi.invoke(de, mapOf(GDF.gedraId to id))
-                                                        confirmingDelete = false
-                                                        viewingId = null
-                                                        offset = 0
-                                                        loadPage(ep, 0, appliedSearch)
-                                                    } catch (e: Throwable) {
-                                                        deleteError = userFacingError(e)
-                                                    } finally {
-                                                        deleting = false
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        +"Delete"
-                                    }
-                                    Button {
-                                        onClick = { confirmingDelete = false }
-                                        +"Cancel"
-                                    }
-                                }
-                            }
-                            deleteError?.let { errorText("Couldn't delete the form.", it) }
-                        }
                     }
                 }
             }
@@ -945,18 +949,6 @@ private fun ChildrenBuilder.pagingBar(offset: Int, pageCount: Int, numAvailable:
                 onClick = { goTo(offset + formsPageSize) }
                 +"Older →"
             }
-        }
-    }
-}
-
-/** A "back to my forms" link row, used by both the view and the not-found state. */
-private fun ChildrenBuilder.backToList(onBack: () -> Unit) {
-    div {
-        className = ClassName("row")
-        Button {
-            type = "link"
-            onClick = { onBack() }
-            +"← Back to my forms"
         }
     }
 }
