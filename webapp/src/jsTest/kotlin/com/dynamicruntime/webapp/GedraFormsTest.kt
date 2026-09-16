@@ -21,6 +21,7 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -397,7 +398,8 @@ class GedraFormsTest {
         assertEquals(false, edits[1].containsKey(GE.entryId))
     }
 
-    /** [formDocPatchBody] wraps one edited target back into the `targets`-grouped-by-kind body the endpoint reads. */
+    /** [formDocPatchBody] wraps one edited target back into the `targets`-grouped-by-kind body the endpoint reads,
+     *  and carries `allowAdditionalTraits` only when asked (issue #667). */
     @Test
     fun wrapsATargetIntoThePatchBody() {
         val target = mapOf(GDF.gedraId to "gd.fd.acme.u1", GPF.edits to listOf<Map<String, Any?>>())
@@ -405,6 +407,48 @@ class GedraFormsTest {
         @Suppress("UNCHECKED_CAST")
         val group = (body[GPF.targets] as Map<String, Any?>)[GedraDataType.formDoc.name] as List<Map<String, Any?>>
         assertEquals(listOf(target), group)
+        // An ordinary edit sends no escape hatch; only a free-form trait does (issue #667).
+        assertFalse(body.containsKey(GDF.allowAdditionalTraits))
+        assertEquals(true, formDocPatchBody(target, allowAdditionalTraits = true)[GDF.allowAdditionalTraits])
+    }
+
+    /**
+     * Free-form trait entry (issue #667) is offered only on the cross-client admin surface: an `allClients` admin
+     * editing on the shared/global copy (no resolved client), whose union lists only the global traits. A
+     * per-client copy already offers that client's full set, and an ordinary caller never gets it.
+     */
+    @Test
+    fun freeformTraitEntryOnlyOnTheCrossClientAdminSurface() {
+        assertTrue(freeformTraitEntry(canSeeAllClients = true, resolvedClient = null))
+        assertFalse(freeformTraitEntry(canSeeAllClients = true, resolvedClient = "acme"))
+        assertFalse(freeformTraitEntry(canSeeAllClients = false, resolvedClient = null))
+        assertFalse(freeformTraitEntry(canSeeAllClients = false, resolvedClient = "acme"))
+    }
+
+    /**
+     * A patch target that names a trait the edit union does not list needs `allowAdditionalTraits` (issue #667);
+     * one whose every edit names a known trait, or an absent target type, needs nothing -- so an ordinary edit
+     * never sends the flag.
+     */
+    @Test
+    fun detectsAFreeFormTraitOutsideTheEditUnion() {
+        val defs = unionDefs() + mapOf(
+            "t.PatchTarget" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    GDF.gedraId to mapOf(SCH.type to SCT.string),
+                    GPF.edits to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to "t.Union")),
+                ),
+            ),
+        )
+        val targetType = parseSchemaTypes(defs).getValue("t.PatchTarget")
+        val unknown = mapOf(GPF.edits to listOf(mapOf(GE.traitId to "acmeSiteAudit", GED.action to GedraEditAction.addOrReplace.name)))
+        assertTrue(patchNamesUnknownTrait(targetType, unknown))
+        val known = mapOf(GPF.edits to listOf(mapOf(GE.traitId to "name", GED.action to GedraEditAction.addOrReplace.name)))
+        assertFalse(patchNamesUnknownTrait(targetType, known))
+        // No target type, or no edits: false -- an ordinary form never sends the flag.
+        assertFalse(patchNamesUnknownTrait(null, unknown))
+        assertFalse(patchNamesUnknownTrait(targetType, emptyMap()))
     }
 
     /** [formDocPatchTargetType] reaches the one-target `PatchTarget` shape inside the patch input type. */
