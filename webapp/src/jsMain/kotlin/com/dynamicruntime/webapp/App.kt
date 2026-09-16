@@ -104,6 +104,9 @@ val App = FC<Props> {
     // antd derives its whole palette from tokens, so the dark algorithm is set once here for the whole tree.
     val darkTheme: dynamic = js("({})")
     darkTheme.algorithm = antdTheme.darkAlgorithm
+    // Link colour is deliberately NOT a token here: the dark algorithm re-derives a `colorLink` seed to a dimmer
+    // shade (measured: #818cf8 came out #717ad6), so it cannot pin the palette's value. `.ant-btn-link` takes its
+    // colour from the app's CSS variables in app.css instead -- one source for `<a>` links and link buttons alike.
 
     RefreshContext.Provider {
         value = RefreshBus(refresh) { setRefresh { it + 1 } }

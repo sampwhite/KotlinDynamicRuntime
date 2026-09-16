@@ -186,6 +186,16 @@ fun formsRawViewHash(hp: Map<String, String>, gedraId: String): List<Pair<String
     listOf(HP.page to HMENU.pageForms, HP.gedra to gedraId) + formsSearchHashParams(formsSearchFromHash(hp))
 
 /**
+ * The survey's read-only "View Info" of one form (issue #726): reached from the raw editor's "View info" beside
+ * Done, for a form whose client has a survey. Carries the listing's search and sort out of the editor's hash
+ * [hp], and `from=forms` so the survey page's own back link still leads home; none of the editor's keys. Pure,
+ * and covered under `jsNodeTest`.
+ */
+fun formsSurveyViewHash(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
+    listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to gedraId) +
+        formsSearchHashParams(formsSearchFromHash(hp))
+
+/**
  * The `← My forms` link atop a forms child page (issues #554, #671): the shared row + [backToListing], carrying
  * the listing's search and sort back so a cancel/back returns to the same filtered, sorted list the child was
  * opened from -- the sort rides through [formsSearchFromHash] as non-nav hash params (issues #592, #666, #669).

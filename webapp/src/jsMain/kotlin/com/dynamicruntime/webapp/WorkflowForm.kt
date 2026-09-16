@@ -429,11 +429,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     }
                     +"Create another"
                 }
-                Button {
-                    type = "link"
-                    onClick = { navigateHash(listOf(HP.page to HMENU.pageForms)) }
-                    +"← Back to my forms"
-                }
+                // The shared back link (issue #726): a real anchor, as on every other form surface, carrying the
+                // listing's search and sort home -- the hand-rolled link-button here dropped them.
+                formsBackLink()
             }
         } else {
             // One header line, shared with the raw editor (issues #719, #726): the back link, the title beside
@@ -451,7 +449,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             // editor's Done makes. It is a navigation, so the leave guard the page armed on
                             // unsaved edits asks through the router (issue #716); nothing to ask here, and asking
                             // here too would prompt twice. A clean Done just leaves.
-                            onClick = { gedraId?.let { navigateHash(formsListingReturn(hashParams(), it)) } }
+                            onClick = { navigateHash(formsListingReturn(hashParams(), gedraId)) }
                             +"Done"
                         }
                     } else {

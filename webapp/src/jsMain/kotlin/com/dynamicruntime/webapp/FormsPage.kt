@@ -482,7 +482,7 @@ val FormsPage = FC<Props> {
                                         )
                                     }
                                 }
-                                +"Edit form"
+                                +"Edit"
                             }
                         }
                         // Delete, offered only when the caller's surface carries the endpoint. A two-step

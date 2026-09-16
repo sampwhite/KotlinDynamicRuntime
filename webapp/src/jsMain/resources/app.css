@@ -61,6 +61,11 @@
     /* The indigo pair: the accent, and the brighter one it moves to on hover (also links). */
     --accent: #6366f1;
     --accent-bright: #818cf8;
+    /* One step brighter on the same indigo ramp: the hover shade for links (7.3:1 against the card). antd's
+       dark algorithm derives a DARKER hover for links (tuned for its near-black backgrounds), which on this
+       slate card drops to 1.5:1 and all but vanishes; hover must move away from the background, not toward it.
+       Read directly by `.back-link:hover` and `.ant-btn-link:hover` below. */
+    --accent-brighter: #a5b4fc;
 
     --danger: #f87171;
     --success: #4ade80;
@@ -232,6 +237,21 @@ body {
     font-size: 0.9rem;
 }
 .back-link:hover { text-decoration: underline; }
+/* antd's link-styled buttons (`type = "link"`: View raw, Raw edit, View Info, the pager) take the palette's
+   link colour straight from these variables -- the same source the app's <a> links use -- rather than antd's
+   colorLink token, whose dark algorithm re-derives a seed to a dimmer shade (measured: #818cf8 came out
+   #717ad6, 3.8:1 against the card). Measured, not guessed: antd's stock dark link is 2.8:1 here and its derived
+   hover DARKENS to 1.5:1, tuned for antd's near-black backgrounds, not this slate shell. They hover the way the
+   app's own links do -- brighter, and underlined, so the affordance does not rest on colour alone.
+   The rest colour needs only two classes to outrank antd's plain variant rule. The hover and active colours
+   carry `!important` on purpose: antd 6 sets its state colours through NESTED rules
+   (`&:not(:disabled):not(.ant-btn-disabled):hover`) whose effective specificity outranks any sane app
+   selector, and a real-pointer measurement showed antd's derived dark hover (#15417e, 1.5:1) still painting
+   over a plain override. Overriding a third-party state rule is what `!important` is for; without it the
+   hover "fades to dark" no matter what the palette says. */
+.ant-btn.ant-btn-link { color: var(--accent-bright); }
+.ant-btn.ant-btn-link:hover { color: var(--accent-brighter) !important; text-decoration: underline !important; }
+.ant-btn.ant-btn-link:active { color: var(--accent) !important; }
 
 /* The elevated-privilege chip: an outline against the admin-tinted bar, where a fill would blend into it. */
 .admin-badge {

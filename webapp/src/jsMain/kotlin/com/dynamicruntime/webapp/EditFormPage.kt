@@ -76,6 +76,10 @@ val EditFormPage = FC<Props> {
     // offered only to an `allClients` admin on the shared/global surface. Defaults off, so an ordinary caller
     // (and any failure to read the home config) leaves the trait picker a closed choice.
     var canSeeAllClients by useState(false)
+    // Whether the form's client has a survey (issue #726), so a "View info" link beside Done can lead back to the
+    // survey's read-only view. Decided the way the survey page decides it -- by resolving and probing the
+    // workflow view on the form's own client -- since a control that could only dead-end is not shown.
+    var hasSurvey by useState(false)
 
     // Keep the open id in step with the hash, so a navigation to another edit URL re-runs the load below. App is
     // the router; a hash-only editForm->editForm move does not remount this page, so without this the first form
@@ -119,6 +123,17 @@ val EditFormPage = FC<Props> {
                 // The home config carries `canSeeAllClients` (issue #667). Read defensively: a failure here must
                 // not block editing, only leave free-form trait entry off.
                 val homeFetch = async { runCatching { HomeApi.fetchConfig().canSeeAllClients }.getOrDefault(false) }
+                // Does the form's client have a survey (issue #726)? The same resolution the survey page makes:
+                // the workflow view's copy on the form's client, or the shared endpoint for a client that varies
+                // nothing, then the view itself -- `null` is "no survey". Defensive: a failure only hides the
+                // "View info" link, it never blocks editing.
+                val surveyFetch = async {
+                    runCatching {
+                        if (id == null) return@runCatching false
+                        val viewPath = fetchFormEndpoint(HttpMethod.GET.name, GEP.workflowView, formClient).endpoints.firstOrNull()?.path
+                        WorkflowApi.fetchSurveyView(id, clientOfResolvedPath(viewPath, GEP.workflowView, formClient)) != null
+                    }.getOrDefault(false)
+                }
                 val cat = patchFetch.await()
                 catalog = cat
                 val patchEp = findFormPatchEndpoint(cat.endpoints)
@@ -126,6 +141,7 @@ val EditFormPage = FC<Props> {
                 patchEndpoint = patchEp
                 getEndpoint = getEp
                 canSeeAllClients = homeFetch.await()
+                hasSurvey = surveyFetch.await()
                 if (id == null || patchEp == null || getEp == null) {
                     loadError = null
                 } else {
@@ -167,8 +183,17 @@ val EditFormPage = FC<Props> {
         formsEditorHeader(title = { +"Edit form" }) {
             if (formUp) {
                 Button {
-                    onClick = { navigateHash(formsListingReturn(hashParams(), id!!)) }
+                    onClick = { navigateHash(formsListingReturn(hashParams(), id)) }
                     +"Done"
+                }
+                // Back to the survey's read-only view (issue #726): an alternate view of the same form, so a
+                // link beside the Done button; offered only where the survey exists.
+                if (hasSurvey) {
+                    Button {
+                        type = "link"
+                        onClick = { navigateHash(formsSurveyViewHash(hashParams(), id)) }
+                        +"View info"
+                    }
                 }
                 if (saved) {
                     p {

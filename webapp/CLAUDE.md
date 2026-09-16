@@ -201,6 +201,44 @@ unrestricted scope). The rules that follow from that:
   in locals and publishes them together, so a failed switch leaves the previous surface whole rather than X's
   controls over the old rows.
 
+## Buttons and links on the form surfaces (issue #726)
+
+The form view and edit pages draw two kinds of control, and which one a control gets is decided **by what it
+does**, not by where it sits:
+
+- A **button** is one of the page's *verbs* — something that changes the state of the page or the form. Start
+  editing (`Edit`, `type = "primary"`), save (`Save changes`, primary), finish or cancel (`Done`, `Cancel`,
+  default), delete (`Delete form` and its confirm, `danger`). "Start editing" is a verb whether it flips the
+  survey view into edit mode or hops to the raw editor, so the two read-only views draw the same primary
+  `Edit`.
+- A **link-styled control** (`type = "link"`, or the shared `<a class="back-link">`) goes somewhere else
+  without changing anything: an alternate view of the same form (`View raw`, `Raw edit`, the listing's
+  `View Info`), the way back (`formsBackLink()` / `formsBackToListing()` — never a hand-rolled link-button),
+  and the pager.
+
+One deliberate exception: the forms **table's** per-row actions are all link-styled, `Delete` included, because
+a row is dense and a full button per row would not fit. Everywhere else, a destructive action is a `danger`
+button. The three surfaces share `formsEditorHeader` (back link, title, right-aligned actions), so a new action
+lands in the same place on each; classify it by the rule above before picking its type.
+
+**Link colour lives in `app.css`, for `<a>` links and link buttons alike, and it is measured.** `.back-link` and
+`.ant-btn.ant-btn-link` both read `--accent-bright` at rest and `--accent-brighter` (one step up the same indigo
+ramp) on hover, with an underline. It is a CSS rule and **not** an antd token on purpose: antd's dark algorithm
+re-derives a `colorLink` *seed* to a dimmer shade (measured: `#818cf8` came out `#717ad6`, 3.8:1), so a token
+cannot pin the palette's value. The rule exists because antd's stock dark link (`#1668dc`) measures **2.8:1**
+against the slate card and its derived hover *darkens* to **1.5:1** — the algorithm is tuned for antd's own
+near-black backgrounds, where a darker hover still reads; on this shell it vanishes. On the scheme's indigo the
+rest state is 4.9:1 and hover 7.3:1, moving *away* from the background.
+
+Two things about verifying it were learned the hard way. **The hover and active colours need `!important`.**
+antd 6 applies its state colours through *nested* rules (`&:not(:disabled):not(.ant-btn-disabled):hover`) whose
+effective specificity beats any reasonable app selector, and a stylesheet walk will not even find them unless it
+recurses into nested rules — so a plain override *looks* right in the CSS and still loses on screen. And **a
+hover colour can only be verified with a real pointer**: `:hover` cannot be synthesised from script, so reading
+the rule's declared colour proves nothing. Put the pointer on the control (the browser pane's `hover` action, by
+ref), wait out antd's `0.2s` transition, then read `getComputedStyle(el).color`. If a link ever looks dim,
+measure that way against its surface before touching the palette, and keep hover brighter than rest.
+
 ## Choice widgets, and the free-entry one (issues #261, #418)
 
 `SchemaForm` draws a choice field from the schema, and which control it draws is decided by two keywords:

@@ -256,6 +256,27 @@ class GedraFormsTest {
         assertTrue(HP.from !in view && HP.edit !in view && HP.task !in view && HP.highlight !in view)
     }
 
+    /**
+     * The raw editor's "View info" (issue #726): the survey's read-only view of the form, carrying the listing's
+     * search and sort and `from=forms` (so the survey's back link still leads home), and none of the editor's
+     * own keys.
+     */
+    @Test
+    fun theSurveyViewHashOpensViewInfoWithSearchAndSort() {
+        val editorHash = mapOf(
+            HP.page to "editForm", HP.gedra to "gd.fd.acme.u1", HP.highlight to "x", HP.edit to "1",
+            EI.q to "roof", GSORT.sort to "updated", GSORT.sortDir to "desc",
+        )
+        val view = formsSurveyViewHash(editorHash, "gd.fd.acme.u1").toMap()
+        assertEquals(pageSurveyEdit, view[HP.page])
+        assertEquals("forms", view[HP.from])
+        assertEquals("gd.fd.acme.u1", view[HP.gedra])
+        assertEquals("roof", view[EI.q])
+        assertEquals("updated", view[GSORT.sort])
+        assertEquals("desc", view[GSORT.sortDir])
+        assertTrue(HP.highlight !in view && HP.edit !in view)
+    }
+
     /** The note under a chosen client names the client and says where a new form would go. */
     @Test
     fun theChosenClientNoteNamesTheClient() {
