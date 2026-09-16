@@ -756,7 +756,11 @@ private fun ChildrenBuilder.renderVariant(
         labelSpan(if (opts.friendly) humanizeFieldName(name) else name, required = true)
         if (editable && openEntry) {
             OpenChoiceField {
-                options = schChoices
+                // Labels are the raw trait ids, not the friendly branch titles the closed Select shows: antd's
+                // combobox puts the option's VALUE in the box after a pick (webapp/CLAUDE.md), so a friendly
+                // label would read one way in the list and the bare id in the box. On this free-form control the
+                // id is what a person types for an unknown client's trait anyway, so list and box agree (#667).
+                options = variants.values.map { SchOption(it, it) }
                 value = chosen
                 this.describedBy = describedBy
                 onEmit = switchTo
