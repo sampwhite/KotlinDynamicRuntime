@@ -121,8 +121,9 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
          * them, built on [cxt]'s instance. [capabilities] adds non-rung roles (see [createFullAdmin]), and
          * [level] places a *freshly created* user on the privilege ladder --
          * `ROLE.user` (the default), `ROLE.operator` or `ROLE.admin`, each including the levels below it --
-         * and is ignored when the user already exists, since you become whoever is already there. Requires the
-         * deployment to allow test endpoints (unit tests do).
+         * and is ignored when the user already exists, since you become whoever is already there. [name] sets the
+         * account's real-world name (a person's full name, distinct from the username), also only on creation.
+         * Requires the deployment to allow test endpoints (unit tests do).
          */
         fun create(
             cxt: KdrCxt,
@@ -130,6 +131,7 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
             level: String = ROLE.user,
             capabilities: List<String> = emptyList(),
             userClient: String? = null,
+            name: String? = null,
         ): TestUser {
             val client = TestHttpClient(cxt.instanceConfig)
             val body = buildMap {
@@ -139,6 +141,7 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
                 // Sent only when asked for, so the endpoint's own default -- read the client off the address --
                 // is what an ordinary call gets, rather than this having to know what that default is.
                 if (userClient != null) put(TEP.client, userClient)
+                if (name != null) put(TEP.name, name)
             }
             val userInfo = client.sendJsonPostRequest(TEP.becomeUser, body)[EP.results].toJsonMapOrEmpty()
             return TestUser(client, cxt, userInfo)

@@ -69,6 +69,11 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
                     "the email address names, which for an ordinary address is the public client. A client " +
                     "this node does not carry is refused rather than quietly replaced.",
             )
+            field(
+                TEP.name,
+                "The created user's real-world name -- a person's full name, distinct from the username. " +
+                    "Ignored when the user already exists; absent leaves the account unnamed.",
+            )
         },
     ) { c, request ->
         val service = UserService.get(c)
@@ -80,6 +85,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             capabilities = request[TEP.capabilities].toJsonListOfStrings(),
             failIfUserAlreadyExists = request[TEP.failIfUserAlreadyExists] == true,
             client = request.getOptStr(TEP.client),
+            name = request.getOptStr(TEP.name),
         )
     }
 
