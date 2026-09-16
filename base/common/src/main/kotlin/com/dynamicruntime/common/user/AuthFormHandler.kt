@@ -14,6 +14,7 @@ import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.mkRndString
 import com.dynamicruntime.common.util.normalizeEmail
+import com.dynamicruntime.common.util.toT
 
 /** Topic logger for the auth subsystem (placed beside the code that owns the `"auth"` topic). */
 object LogAuth : KdrLogger("auth")
@@ -192,8 +193,8 @@ class AuthFormHandler(
         val data = AuthUserRow
             .mkInitialUser(address, AddressRules.clientForNewUser(cxt, address), initialRoles, createdAt = cxt.now())
             .toMutableMap()
-        @Suppress("UNCHECKED_CAST", "DuplicatedCode")
-        val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
+        @Suppress("DuplicatedCode")
+        val authUserData: MutableMap<String, Any?> = checkNotNull(data[AU.authUserData]).toT()
         authUserData[AD.validatedContacts] = listOf(address)
         authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
 
@@ -360,8 +361,7 @@ class AuthFormHandler(
         val data = AuthUserRow
             .mkInitialUser(email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email), createdAt = cxt.now())
             .toMutableMap()
-        @Suppress("UNCHECKED_CAST")
-        val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
+        val authUserData: MutableMap<String, Any?> = checkNotNull(data[AU.authUserData]).toT()
         authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
         val userId = userService.insertUser(cxt, data)
         return userService.queryByUserId(cxt, userId)
@@ -449,8 +449,7 @@ class AuthFormHandler(
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
         val data = AuthUserRow.mkInitialUser(address, fixtureClient(cxt, address, client), roles, createdAt = cxt.now()).toMutableMap()
-        @Suppress("UNCHECKED_CAST")
-        val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
+        val authUserData: MutableMap<String, Any?> = checkNotNull(data[AU.authUserData]).toT()
         authUserData[AD.validatedContacts] = listOf(address)
         authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
         // The person's real-world name (issue #736), set the same way the admin-create path does -- display copy,

@@ -22,6 +22,7 @@ import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.toT
 
 /**
  * The administrator's user-management endpoints: list users, create one, and edit an existing one's roles or
@@ -213,8 +214,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val data = AuthUserRow
             .mkInitialUser(primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now())
             .toMutableMap()
-        @Suppress("UNCHECKED_CAST")
-        val authUserData = data[AU.authUserData] as MutableMap<String, Any?>
+        val authUserData: MutableMap<String, Any?> = checkNotNull(data[AU.authUserData]).toT()
         // The administrator is asserting the address, which stands in for the verification the self-service
         // path gets from the emailed code -- so the contact is recorded as validated and the user can log in by
         // code immediately. They still have no password; setting one remains their own (code-verified) act.
