@@ -68,6 +68,10 @@ val EditFormPage = FC<Props> {
     var notFound by useState(false)
     // Named to avoid the `Button { loading = running }` collision that loops the render (issues #408, #417).
     var loadingSchema by useState(true)
+    // Whether this caller can see across clients (issue #667): a precondition for free-form trait entry, which is
+    // offered only to an `allClients` admin on the shared/global surface. Defaults off, so an ordinary caller
+    // (and any failure to read the home config) leaves the trait picker a closed choice.
+    var canSeeAllClients by useState(false)
 
     // Keep the open id in step with the hash, so a navigation to another edit URL re-runs the load below. App is
     // the router; a hash-only editForm->editForm move does not remount this page, so without this the first form
@@ -107,11 +111,15 @@ val EditFormPage = FC<Props> {
                 val formClient = formClientOf(id)
                 val patchFetch = async { fetchFormEndpoint(HttpMethod.POST.name, GEP.patch, formClient) }
                 val getFetch = async { fetchFormEndpoint(HttpMethod.GET.name, GEP.formDoc, formClient) }
+                // The home config carries `canSeeAllClients` (issue #667). Read defensively: a failure here must
+                // not block editing, only leave free-form trait entry off.
+                val homeFetch = async { runCatching { HomeApi.fetchConfig().canSeeAllClients }.getOrDefault(false) }
                 val cat = patchFetch.await()
                 catalog = cat
                 val patchEp = findFormPatchEndpoint(cat.endpoints)
                 val getEp = findFormGetEndpoint(getFetch.await().endpoints)
                 patchEndpoint = patchEp
+                canSeeAllClients = homeFetch.await()
                 if (id == null || patchEp == null || getEp == null) {
                     loadError = null
                 } else {
@@ -146,6 +154,11 @@ val EditFormPage = FC<Props> {
         val patchEp = patchEndpoint
         val id = gedraId
         val targetType = if (cat != null && patchEp != null) formDocPatchTargetType(cat.inputType(patchEp)) else null
+        // Free-form trait entry (issue #667): offered only to an `allClients` admin editing on the shared/global
+        // surface (the endpoint resolved to no client copy), whose union lists only the global traits. On a
+        // per-client copy the picker stays a closed choice of that client's full trait set.
+        val openTraitEntry = patchEp != null &&
+            freeformTraitEntry(canSeeAllClients, clientOfResolvedPath(patchEp.path, GEP.patch, formClientOf(id)))
         when {
             loadingSchema -> p {
                 className = ClassName("subtitle")
@@ -190,6 +203,8 @@ val EditFormPage = FC<Props> {
                     layouts = cat.layouts
                     // The gedra id is the form being edited, not something to retype; it is seeded and hidden.
                     omit = listOf(GDF.gedraId)
+                    // Let the trait be typed, not only chosen, when this is the cross-client admin surface (#667).
+                    this.openTraitEntry = openTraitEntry
                     this.failures = failures
                     onChange = { values = it }
                     onFieldEdit = { path ->
@@ -222,7 +237,11 @@ val EditFormPage = FC<Props> {
                                 runError = null
                                 editScope.launch {
                                     try {
-                                        SchemaCatalogApi.invoke(patchEp, formDocPatchBody(payload))
+                                        // A free-form trait the client's union does not know needs the escape
+                                        // hatch, or the backend refuses it (issue #667); sent only when one was
+                                        // entered on the cross-client admin surface.
+                                        val allowAdditional = openTraitEntry && patchNamesUnknownTrait(targetType, payload)
+                                        SchemaCatalogApi.invoke(patchEp, formDocPatchBody(payload, allowAdditional))
                                         // Back to the listing (issue #592): filtered as it was, and with the
                                         // just-saved form flagged so the list flashes it -- "here is the form
                                         // you saved", the confirmation, not a screen to click away from. Every

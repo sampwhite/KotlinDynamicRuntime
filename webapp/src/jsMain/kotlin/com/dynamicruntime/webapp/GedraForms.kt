@@ -81,6 +81,17 @@ fun clientOfResolvedPath(resolvedPath: String?, barePath: String, formClient: St
     formClient?.takeIf { resolvedPath == clientPath(barePath, it) }
 
 /**
+ * Whether the form's trait picker should allow **free-form** entry of a trait this node's global union does not
+ * list (issue #667): only on the **cross-client admin** surface -- the caller can see across clients
+ * ([canSeeAllClients]) **and** the endpoint resolved to the shared/global copy ([resolvedClient] null), whose
+ * union carries only the global traits. A per-client copy ([resolvedClient] non-null) already offers that
+ * client's full trait set, so it stays a closed choice -- the issue's "not available to the client-specific
+ * endpoints" -- and an ordinary caller (never `allClients`) never gets it. Pure, and covered under `jsNodeTest`.
+ */
+fun freeformTraitEntry(canSeeAllClients: Boolean, resolvedClient: String?): Boolean =
+    canSeeAllClients && resolvedClient == null
+
+/**
  * The applied forms search after a cross-client caller chooses [chosen] (issue #714), or clears it (null): the
  * `client` selector set or dropped, and the `user` scope dropped either way -- a user belongs to one client, so
  * one picked under the old client (or the cross-client view) would not resolve under the new one and would
@@ -303,8 +314,28 @@ fun seededEdits(form: Map<String, Any?>): List<Map<String, Any?>> =
  * body (issue #417) -- the inverse of [formDocPatchTargetType]. The edit page edits a single form, so this is
  * always one target under the form-document kind. Pure, and covered under `jsNodeTest`.
  */
-fun formDocPatchBody(target: Map<String, Any?>): Map<String, Any?> =
-    mapOf(GPF.targets to mapOf(GedraDataType.formDoc.name to listOf(target)))
+fun formDocPatchBody(target: Map<String, Any?>, allowAdditionalTraits: Boolean = false): Map<String, Any?> =
+    buildMap {
+        put(GPF.targets, mapOf(GedraDataType.formDoc.name to listOf(target)))
+        // The escape hatch for a free-form trait the client's union does not know (issue #667): sent only when
+        // one was entered, so an ordinary edit stays bound to the client's declared traits.
+        if (allowAdditionalTraits) put(GDF.allowAdditionalTraits, true)
+    }
+
+/**
+ * Whether an edited patch target ([values], the one-target `{gedraId, edits}` shape) names a trait the edit
+ * union does not list (issue #667) -- a free-form trait entered on the cross-client admin surface. When it does,
+ * the patch must carry `allowAdditionalTraits` or the backend refuses the unknown trait. [targetType] is the
+ * one-target patch shape ([formDocPatchTargetType]); an edit whose trait the union already knows needs nothing.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun patchNamesUnknownTrait(targetType: SchType?, values: Map<String, Any?>): Boolean {
+    val editsUnion = targetType?.properties?.get(GPF.edits)?.valueType?.itemType?.variants ?: return false
+    return values[GPF.edits].toJsonListOfMaps().any { edit ->
+        val traitId = edit[GE.traitId].toOptStr()
+        traitId != null && !editsUnion.isKnown(traitId)
+    }
+}
 
 /**
  * Completeness failures the edit form should show inline before submit (issue #662), one patch target's worth.

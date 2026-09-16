@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.cfact.CFactParser
+import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCH
@@ -106,6 +107,15 @@ class FormOpts(
      * different field. Empty means no field carries a default, which is every form until one is prefilled.
      */
     val prefill: Map<String, FieldPrefill> = emptyMap(),
+    /**
+     * Draw a trait union's discriminator ([GE.traitId]) as an open combobox rather than a closed dropdown
+     * (issue #667), so a cross-client admin can enter a trait this node's global union does not list -- one
+     * belonging to a client whose config it never loaded. Only the `traitId` discriminator opens; every other
+     * union stays a closed choice. Typing an unknown trait lands on the union's open default branch, whose
+     * `data` is a free-form object -- so the trait *and* its data can be entered by hand. Off by default: only
+     * the edit form, on the shared/global surface, sets it.
+     */
+    val openTraitEntry: Boolean = false,
 )
 
 /**
@@ -341,6 +351,11 @@ external interface SchemaFormProps : Props {
      * Optional and off by default -- only the workflow form, rendering a view that carries prefills, sets it.
      */
     var prefill: Map<String, FieldPrefill>?
+    /**
+     * Let a trait union's `traitId` be typed freely, not only chosen (issue #667); see [FormOpts.openTraitEntry].
+     * Optional, off by default -- only the edit form, on the cross-client admin (shared/global) surface, sets it.
+     */
+    var openTraitEntry: Boolean?
 }
 
 /**
@@ -460,6 +475,7 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         layouts = props.layouts ?: emptyMap(),
         promoteKeys = props.promoteKeys == true,
         prefill = props.prefill ?: emptyMap(),
+        openTraitEntry = props.openTraitEntry == true,
     )
     div {
         // `friendly` on the root lets the stylesheet give a data-entry / read form's field groups room to breathe
@@ -710,38 +726,53 @@ private fun ChildrenBuilder.renderVariant(
     val emitAll = onChange
     // In friendly mode each choice reads by its branch's title (or a humanized value); the value sent stays the
     // wire discriminator, so only the label changes. The catalog shows the value itself, documenting the wire.
-    val choices = optionsToJs(
-        variants.values.map { value ->
-            val label = if (opts.friendly) variants.byValue[value]?.title ?: humanizeFieldName(value) else value
-            SchOption(value, label)
-        },
-    )
+    val schChoices = variants.values.map { value ->
+        val label = if (opts.friendly) variants.byValue[value]?.title ?: humanizeFieldName(value) else value
+        SchOption(value, label)
+    }
+    val choices = optionsToJs(schChoices)
     val describedBy = messages.ifEmpty { null }?.let { fieldErrorsId(discriminatorPath) }
+    // Carry what the new branch would still accept, and drop the rest (see the note above and
+    // [valuesAfterBranchSwitch]); `branch` is the branch selected *before* the switch. Re-picking the same value
+    // changes nothing, so the values pass through untouched rather than through the switch logic, which would
+    // treat a branch-specific field as one to drop. An unknown typed value (the open-entry case) selects the
+    // union's default branch, so its free-form `data` shows -- see [SchVariants.select].
+    val switchTo: (String?) -> Unit = { picked ->
+        errors.noteEdit(discriminatorPath)
+        if (picked == chosen) {
+            emitAll(values)
+        } else {
+            emitAll(valuesAfterBranchSwitch(values, name, branch, variants.select(picked), picked, seedObjects = opts.friendly))
+        }
+    }
+    // Free-form trait entry (issue #667): a trait union's `traitId` is typed, not only chosen, so a cross-client
+    // admin can name a trait this node's global union does not list. Only the `traitId` discriminator opens.
+    val openEntry = opts.openTraitEntry && name == GE.traitId
 
     div {
         id = ElementId(fieldRowId(discriminatorPath))
         tabIndex = -1
         className = ClassName(rowClass(messages))
         labelSpan(if (opts.friendly) humanizeFieldName(name) else name, required = true)
-        if (editable) {
+        if (editable && openEntry) {
+            OpenChoiceField {
+                // Labels are the raw trait ids, not the friendly branch titles the closed Select shows: antd's
+                // combobox puts the option's VALUE in the box after a pick (webapp/CLAUDE.md), so a friendly
+                // label would read one way in the list and the bare id in the box. On this free-form control the
+                // id is what a person types for an unknown client's trait anyway, so list and box agree (#667).
+                options = variants.values.map { SchOption(it, it) }
+                value = chosen
+                this.describedBy = describedBy
+                onEmit = switchTo
+                onCommit = { errors.noteCommit(discriminatorPath) }
+            }
+        } else if (editable) {
             Select {
                 this.options = choices
                 this.value = chosen
                 placeholder = "(choose)"
                 style = js("({ minWidth: 200 })")
-                this.onChange = { v ->
-                    errors.noteEdit(discriminatorPath)
-                    val picked = v as? String
-                    // Re-picking the same branch changes nothing; keep the values untouched rather than run them
-                    // through the switch logic, which would treat a branch-specific field as one to drop.
-                    if (picked == chosen) {
-                        emitAll(values)
-                    } else {
-                        // Carry what the new branch would still accept, and drop the rest (see the note above and
-                        // [valuesAfterBranchSwitch]); `branch` here is the branch selected *before* the switch.
-                        emitAll(valuesAfterBranchSwitch(values, name, branch, variants.select(picked), picked, seedObjects = opts.friendly))
-                    }
-                }
+                this.onChange = { v -> switchTo(v as? String) }
                 markInvalid(asDynamic(), describedBy)
             }
         } else {
