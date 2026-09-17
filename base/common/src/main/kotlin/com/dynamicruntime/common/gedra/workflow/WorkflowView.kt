@@ -4,7 +4,9 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraTrait
+import com.dynamicruntime.common.gedra.deriveEntryData
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.collectDefClosure
 import com.dynamicruntime.common.schema.refName
@@ -123,10 +125,16 @@ fun resolveWorkflowView(
         )
         task.layout?.let { raw[WFD.layout] = linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name) }
         // The entries the page seeds each field from: the task's stored ones (a survey edit; a creation view has
-        // none), decorated with any prefillData defaults (issue #679). The prefill runs *after* `taskFacts`
-        // above, and over `entries` -- not the presented result -- so a default is presented as entered but never
-        // counts toward completeness. A real value always wins over a default.
-        val presented = runPrefillData(cxt, task, ownerAttributes, entries)
+        // none), each trait's g-derived data values computed on read (issue #712) and then decorated with any
+        // prefillData defaults (issue #679). Both enrich only the *presented* set, never the `entries` above that
+        // `taskFacts` and `taskStatus` judge completeness and validity from -- a derived value is for display, so
+        // it must not count toward requiredness (a person never entered it), exactly as a prefill default does
+        // not. A real value always wins over a default. The workflow gedra kind is formDoc, as the save path
+        // (`WorkflowSave`) itself hardcodes -- the only kind a workflow collects today. The gedra's client is
+        // `cxt.client`: the survey read (`surveyFormRow`) confines the form to it, and a creation view has none
+        // yet, so it is the caller's own client either way.
+        val derived = deriveEntryData(cxt, GedraDataType.formDoc, entries, cxt.client)
+        val presented = runPrefillData(cxt, task, ownerAttributes, derived)
         if (presented.isNotEmpty()) raw[WVF.entries] = presented
         // The content pipeline, per task: the request facts (hoisted) plus this task's own, then drop anything
         // gated on a cfact they do not satisfy. A no-op on today's model (no conditions), real on tomorrow's.

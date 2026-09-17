@@ -108,9 +108,10 @@ object GedraFixtureEndpoints {
             return entry
         }
         val data = entry[GE.data].toJsonMapOrEmpty()
-        val perItem = (data[ST.perItemAmount] as? Number)?.toDouble() ?: return entry
-        val count = (data[ST.itemCount] as? Number)?.toDouble() ?: return entry
-        return entry + (GE.data to data + (ST.totalAmount to perItem * count))
+        // The same computation the on-read [ExpenseTotalDeriver] runs (issue #712), so the fixture and the real
+        // producer cannot drift. Empty when a supplied number is missing, and the entry then passes through.
+        val derived = expenseTotalFields(data)
+        return if (derived.isEmpty()) entry else entry + (GE.data to data + derived)
     }
 
     /**

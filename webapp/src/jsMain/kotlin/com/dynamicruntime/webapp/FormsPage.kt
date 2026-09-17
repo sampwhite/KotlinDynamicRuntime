@@ -910,6 +910,12 @@ private fun ChildrenBuilder.renderForm(
             values = row
             editable = false
             friendly = true
+            // Show a trait's derived data values (issue #712) -- an expense report's total, computed on read --
+            // read-only, while the document and entry system stamps (the id, `entryId`/`source`/audit) stay
+            // hidden. This form renders the whole FormDoc, so trait content is only what sits under a
+            // `data` payload; `traitDataField` draws that line so the envelope is not surfaced.
+            showDerivedValues = true
+            traitDataField = GE.data
             // The per-type layouts (issue #586): the read-only view shows the same layout copy the edit form
             // does, cascading over the schema's title/description.
             this.layouts = layouts

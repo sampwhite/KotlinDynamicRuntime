@@ -8,6 +8,7 @@ import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
+import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
@@ -105,6 +106,18 @@ class SchemaCollector(
     /** Registers a state derivation (issue #599); order is preserved but does not matter, as each owns its own traits. */
     fun addStateDeriver(deriver: GedraStateDeriver) {
         stateDerivers.add(deriver)
+    }
+
+    /**
+     * The data derivations components registered (issue #712) -- functions that compute a gedra entry's derived
+     * data value **on read**, so a `g-derived` data field (an expense report's total, say) is presented without
+     * being stored. Kotlin, so component-contributed, like a [GedraStateDeriver]; the twin that runs on write.
+     */
+    val dataDerivers: MutableList<GedraDataDeriver> = mutableListOf()
+
+    /** Registers a data derivation (issue #712); order is preserved but does not matter, as each owns its own trait. */
+    fun addDataDeriver(deriver: GedraDataDeriver) {
+        dataDerivers.add(deriver)
     }
 
     /** The post-write hooks (issue #675), fired after every gedra data write inside its transaction. */
