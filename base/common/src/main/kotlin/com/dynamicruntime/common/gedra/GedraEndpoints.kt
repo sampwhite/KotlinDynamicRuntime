@@ -83,8 +83,14 @@ import com.dynamicruntime.common.util.toOptStr
  * inlines the same thing over a page; this is the single-read counterpart, so a form opened directly presents
  * the same columns a listing does.
  */
-private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> =
-    row.toJsonMap() + (GDF.displayValues to computeDisplayValues(cxt, row, SchemaService.get(cxt).traitUsagesFor(cxt.client)))
+private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> {
+    // Compute each entry's g-derived data values on read (issue #712) before both the wire map and the display
+    // columns, so a derived field -- an expense report's total -- rides in the document a form reads and in any
+    // display column computed over it. The row is a throwaway extraction (a fresh object per read, never the
+    // cached map), so replacing its entries enriches this response without touching what is stored.
+    row.entries = deriveEntryData(cxt, row.kind, row.entries)
+    return row.toJsonMap() + (GDF.displayValues to computeDisplayValues(cxt, row, SchemaService.get(cxt).traitUsagesFor(cxt.client)))
+}
 
 /**
  * How many of the caller's most-recent documents a field-value suggestion list scans (issue #581). A suggestion
@@ -319,6 +325,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val owners = if (includeUsers && AdminRules.canManageUsers(c)) ownersOf(c, page.rows, callerScope) else emptyMap()
         ListPage(
             page.rows.map { row ->
+                // Compute each entry's g-derived data values on read (issue #712) before the wire map and the
+                // display columns, exactly as the single read does -- the raw read-only form view is built from a
+                // listing row, so a derived value (an expense report's total) must ride here too, not only on the
+                // single GET. The row is a throwaway extraction, so replacing its entries touches nothing stored.
+                row.entries = deriveEntryData(c, row.kind, row.entries)
                 row.toJsonMap() + (GDF.displayValues to computeDisplayValues(c, row, usages)) + ownerFields(owners[row.userId]) +
                     if (withStates) mapOf(GDF.states to statesByGedra[row.gedraId.fullId].orEmpty()) else emptyMap()
             },

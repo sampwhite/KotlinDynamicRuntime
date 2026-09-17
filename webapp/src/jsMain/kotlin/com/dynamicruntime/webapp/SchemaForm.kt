@@ -116,7 +116,52 @@ class FormOpts(
      * the edit form, on the shared/global surface, sets it.
      */
     val openTraitEntry: Boolean = false,
-)
+    /**
+     * Show a **derived** field read-only when it holds a value (issue #712), instead of hiding it as [friendly]
+     * mode otherwise does. A derived *data* value (an expense report's total) is computed on read by the backend
+     * and is real content the person should see -- but never a control they fill, so it is only ever shown on a
+     * **read-only** form and never drawn as an input. A derived field with no value stays hidden rather than
+     * drawing a blank, and this changes nothing on an editable form (there is no control to offer).
+     *
+     * It reveals only derived **content**, never derived **envelope** -- a gedra's system stamps (its id, an
+     * entry's `entryId`/`source`/audit) are `derived` too, and a raw document view must not surface them. Which
+     * is which is decided structurally, by [derivedRootIsTraitData] and [traitDataField]: with neither set, this
+     * reveals nothing, so a form that opts in must also say where its trait content lives.
+     */
+    val showDerivedValues: Boolean = false,
+    /**
+     * The whole form root is a trait's **data** payload (issue #712) -- the survey View Info, which renders one
+     * trait's data type directly -- so every derived-with-value field at any depth is content, not envelope, and
+     * [showDerivedValues] reveals it. The trait data carries no system envelope, so there is nothing to keep
+     * hidden. Off by default.
+     */
+    val derivedRootIsTraitData: Boolean = false,
+    /**
+     * The property name whose object is a trait's **data** payload (issue #712) -- for a form rendering a whole
+     * document (the raw read-only view over a `FormDoc`), where the trait content sits under `entries[].data`
+     * and the surrounding document and entry fields are system envelope. A derived-with-value field at or below
+     * a path segment of this name is revealed by [showDerivedValues]; one outside it (the document id, an
+     * entry's audit stamps) stays hidden. Null when the root already is trait data ([derivedRootIsTraitData])
+     * or nothing opts in.
+     */
+    val traitDataField: String? = null,
+) {
+    /**
+     * Whether a derived field at [path] holding [value] should be shown read-only rather than hidden (issue
+     * #712). True only for a *content* derived value on a read-only form that opted in: [showDerivedValues] set,
+     * not [editable], a non-blank value, and [path] inside trait data -- either because the whole form root is
+     * trait data ([derivedRootIsTraitData]) or because a path segment names the [traitDataField] payload. A
+     * derived envelope field (a gedra id, an entry's audit stamps) lies outside that boundary and stays hidden.
+     */
+    fun revealsDerivedAt(path: String, editable: Boolean, value: Any?): Boolean {
+        if (!showDerivedValues || editable || isBlankValue(value)) {
+            return false
+        }
+        val insideTraitData = derivedRootIsTraitData ||
+            (traitDataField != null && path.split('.').any { it == traitDataField })
+        return insideTraitData
+    }
+}
 
 /**
  * How one **root** field presents its supplied default (issue #710), resolved by [WorkflowForm] from the view's
@@ -356,6 +401,17 @@ external interface SchemaFormProps : Props {
      * Optional, off by default -- only the edit form, on the cross-client admin (shared/global) surface, sets it.
      */
     var openTraitEntry: Boolean?
+    /**
+     * Show a derived *content* field read-only when it holds a value (issue #712); see
+     * [FormOpts.showDerivedValues]. Optional, off by default -- only the read-only form surfaces set it, paired
+     * with a boundary ([derivedRootIsTraitData] or [traitDataField]) that says where trait content lives, and it
+     * acts only when the form is not editable.
+     */
+    var showDerivedValues: Boolean?
+    /** The whole form root is a trait's data payload (issue #712); see [FormOpts.derivedRootIsTraitData]. */
+    var derivedRootIsTraitData: Boolean?
+    /** The property name marking a trait's data payload within a document (issue #712); see [FormOpts.traitDataField]. */
+    var traitDataField: String?
 }
 
 /**
@@ -476,6 +532,9 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         promoteKeys = props.promoteKeys == true,
         prefill = props.prefill ?: emptyMap(),
         openTraitEntry = props.openTraitEntry == true,
+        showDerivedValues = props.showDerivedValues == true,
+        derivedRootIsTraitData = props.derivedRootIsTraitData == true,
+        traitDataField = props.traitDataField,
     )
     div {
         // `friendly` on the root lets the stylesheet give a data-entry / read form's field groups room to breathe
@@ -628,8 +687,16 @@ private fun ChildrenBuilder.renderProperties(
         // In friendly mode a derived value is not shown at all -- it is produced by something other than the
         // person at the form (an id, the source, the audit stamps), so it has no place on a data-entry screen.
         // The catalog does the opposite and shows it read-only, because that surface documents the wire.
+        //
+        // The exception (issue #712): a read-only friendly form that opts in shows a derived *content* value that
+        // holds one -- an expense report's total, computed on read -- read-only, while a derived *envelope* field
+        // (an id, an entry's audit stamps) stays hidden. `revealsDerivedAt` draws that content/envelope line
+        // structurally, from the field's path. The render path below already draws a shown field read-only and
+        // never marks it required, so letting it fall through is all that is needed.
         if (opts.friendly && prop.valueType.derived) {
-            return@forEach
+            if (!opts.revealsDerivedAt(childPath(path, name), editable, values[name])) {
+                return@forEach
+            }
         }
         // A field gated by g-visibleWhen (issue #564) is hidden when the caller's cfacts fail its expression --
         // but only in an *editable* form, where the caller would be entering a value. A read-only render (the

@@ -625,11 +625,8 @@ class GedraDataService : ServiceInitializer {
      * `ClientService` strips `testFeatures` from a non-test node's present definition, so `present(...)` already
      * carries none there and the membership test is simply false -- no explicit `isTestInstance` check needed.
      */
-    private fun featureEnabled(cxt: KdrCxt, featureName: String?): Boolean {
-        if (featureName == null) return true
-        val client = ClientService.get(cxt).present(cxt.client) ?: return false
-        return featureName in client.testFeatures
-    }
+    private fun featureEnabled(cxt: KdrCxt, featureName: String?): Boolean =
+        gedraFeatureEnabled(cxt, featureName)
 
     /**
      * The cfact names a form's stored state asserts (issue #599) -- read from its [GT.cfacts] state entries'
