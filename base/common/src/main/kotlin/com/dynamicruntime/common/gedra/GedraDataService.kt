@@ -625,8 +625,11 @@ class GedraDataService : ServiceInitializer {
      * `ClientService` strips `testFeatures` from a non-test node's present definition, so `present(...)` already
      * carries none there and the membership test is simply false -- no explicit `isTestInstance` check needed.
      */
+    // The state recompute binds [cxt] to the gedra's owner before this runs, so `cxt.client` is the gedra's
+    // client -- exactly what the shared gate keys off (issue #712 review); the data read path passes the row's
+    // client instead, for the same reason.
     private fun featureEnabled(cxt: KdrCxt, featureName: String?): Boolean =
-        gedraFeatureEnabled(cxt, featureName)
+        gedraFeatureEnabled(cxt, cxt.client, featureName)
 
     /**
      * The cfact names a form's stored state asserts (issue #599) -- read from its [GT.cfacts] state entries'

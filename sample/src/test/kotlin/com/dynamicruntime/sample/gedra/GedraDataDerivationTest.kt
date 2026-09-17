@@ -57,7 +57,7 @@ class GedraDataDerivationTest : StringSpec({
         entryData(stored.entries, ST.expenseReport)[ST.totalAmount].shouldBeNull()
 
         // Computed on read, the total follows from the two amounts: 12.5 * 4 = 50.
-        val derived = deriveEntryData(acme, GedraDataType.formDoc, stored.entries)
+        val derived = deriveEntryData(acme, GedraDataType.formDoc, stored.entries, SC.acme)
         entryData(derived, ST.expenseReport)[ST.totalAmount] shouldBe 50.0
     }
 
@@ -66,14 +66,14 @@ class GedraDataDerivationTest : StringSpec({
         // Only the per-item amount, no count: the deriver has nothing to compute, so the entry passes through
         // with no total rather than a wrong or partial one.
         val entries = listOf(mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 2024, ST.perItemAmount to 9.0)))
-        val derived = deriveEntryData(acme, GedraDataType.formDoc, entries)
+        val derived = deriveEntryData(acme, GedraDataType.formDoc, entries, SC.acme)
         entryData(derived, ST.expenseReport)[ST.totalAmount].shouldBeNull()
     }
 
     "a trait with no deriver passes through unchanged" {
         val acme = asUser(SC.acme, 91203L)
         val entries = listOf(mapOf(GE.traitId to "name", GE.data to mapOf("name" to "No total here")))
-        deriveEntryData(acme, GedraDataType.formDoc, entries) shouldBe entries
+        deriveEntryData(acme, GedraDataType.formDoc, entries, SC.acme) shouldBe entries
     }
 
     // --- the read surfaces the two read-only form views are built from, over real HTTP ---

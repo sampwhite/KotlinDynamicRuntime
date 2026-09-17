@@ -130,8 +130,10 @@ fun resolveWorkflowView(
         // `taskFacts` and `taskStatus` judge completeness and validity from -- a derived value is for display, so
         // it must not count toward requiredness (a person never entered it), exactly as a prefill default does
         // not. A real value always wins over a default. The workflow gedra kind is formDoc, as the save path
-        // (`WorkflowSave`) itself hardcodes -- the only kind a workflow collects today.
-        val derived = deriveEntryData(cxt, GedraDataType.formDoc, entries)
+        // (`WorkflowSave`) itself hardcodes -- the only kind a workflow collects today. The gedra's client is
+        // `cxt.client`: the survey read (`surveyFormRow`) confines the form to it, and a creation view has none
+        // yet, so it is the caller's own client either way.
+        val derived = deriveEntryData(cxt, GedraDataType.formDoc, entries, cxt.client)
         val presented = runPrefillData(cxt, task, ownerAttributes, derived)
         if (presented.isNotEmpty()) raw[WVF.entries] = presented
         // The content pipeline, per task: the request facts (hoisted) plus this task's own, then drop anything

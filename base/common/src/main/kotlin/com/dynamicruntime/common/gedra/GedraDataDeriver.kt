@@ -63,14 +63,26 @@ interface GedraDataDeriver {
  * read-side twin of [computeDisplayValues]: it takes the same stored entries and enriches them for display,
  * failing no read and mutating nothing stored.
  *
- * Only the derivers that apply to [kind] and whose opt-in feature is enabled for the caller's client are run
- * (the same gate [GedraStateDeriver] uses); with none applicable, [entries] is returned unchanged, so an
- * ordinary form pays nothing. Each entry gets the fields of every deriver bound to its trait, merged over its
- * `data`; an entry whose trait has no deriver, or which names no trait, passes through untouched.
+ * Only the derivers that apply to [kind] and whose opt-in feature is enabled for **[gedraClient]** -- the
+ * gedra's own owning client, not necessarily [cxt]'s -- are run (the same gate [GedraStateDeriver] uses, keyed
+ * off the gedra as its write path is). Passing the gedra's client matters for an `allClients` caller reading
+ * across clients: a deriver a client opted into must run for that client's forms and stay off another's,
+ * whoever is looking. With none applicable, [entries] is returned unchanged, so an ordinary form pays nothing.
+ * Each entry gets the fields of every deriver bound to its trait, merged over its `data`; an entry whose trait
+ * has no deriver, or which names no trait, passes through untouched.
+ *
+ * A deriver that throws does not fail the read (issue #712 review): its fields are left underived and the fault
+ * logged, the same presentation-must-not-fail-the-read stance [computeDisplayValues] takes -- one form's bad
+ * data must never 500 a whole listing, a single read, or a survey view.
  */
-fun deriveEntryData(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>): List<Map<String, Any?>> {
+fun deriveEntryData(
+    cxt: KdrCxt,
+    kind: GedraDataType,
+    entries: List<Map<String, Any?>>,
+    gedraClient: String,
+): List<Map<String, Any?>> {
     val byTrait = SchemaService.get(cxt).dataDerivers()
-        .filter { kind in it.appliesTo && gedraFeatureEnabled(cxt, it.featureName) }
+        .filter { kind in it.appliesTo && gedraFeatureEnabled(cxt, gedraClient, it.featureName) }
         .groupBy { it.traitId }
     if (byTrait.isEmpty()) {
         return entries
@@ -80,7 +92,14 @@ fun deriveEntryData(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, 
         val data = entry[GE.data].toJsonMapOrEmpty()
         var overlaid = data
         for (deriver in derivers) {
-            val derived = deriver.derive(cxt, overlaid)
+            val derived = try {
+                deriver.derive(cxt, overlaid)
+            } catch (e: Throwable) {
+                LogGedra.warn(cxt) {
+                    "Data deriver for trait '${deriver.traitId}' threw; leaving its fields underived: ${e.message}"
+                }
+                emptyMap()
+            }
             if (derived.isNotEmpty()) {
                 overlaid = overlaid + derived
             }
@@ -90,15 +109,17 @@ fun deriveEntryData(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, 
 }
 
 /**
- * Whether a gedra deriver's opt-in [featureName] is on for the caller's client (issue #599): a null feature
- * always runs; a named one runs only when the client lists it in [ClientDef.testFeatures]. Shared by the state
- * and data derivers so the gate is one rule -- the test-instance half lives at the boundary
- * (`ClientService.present` strips `testFeatures` from a non-test node), so this is simply a membership test.
+ * Whether a gedra deriver's opt-in [featureName] is on for [client] (issue #599): a null feature always runs; a
+ * named one runs only when [client] lists it in [ClientDef.testFeatures]. Shared by the state and data derivers
+ * so the gate is one rule -- the test-instance half lives at the boundary (`ClientService.present` strips
+ * `testFeatures` from a non-test node), so this is simply a membership test. [client] is the **gedra's** client:
+ * the write path passes its owner-bound `cxt.client`, the read path the row's own client, so the gate keys off
+ * the form rather than off whoever triggered the derivation.
  */
-fun gedraFeatureEnabled(cxt: KdrCxt, featureName: String?): Boolean {
+fun gedraFeatureEnabled(cxt: KdrCxt, client: String, featureName: String?): Boolean {
     if (featureName == null) {
         return true
     }
-    val client = ClientService.get(cxt).present(cxt.client) ?: return false
-    return featureName in client.testFeatures
+    val present = ClientService.get(cxt).present(client) ?: return false
+    return featureName in present.testFeatures
 }
