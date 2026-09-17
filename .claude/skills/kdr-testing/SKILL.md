@@ -452,10 +452,14 @@ from. `TestUser.create(cxt, email, level)` calls the `forTestingOnly` `/fixture/
 fresh client — creating the user if needed and capturing the session cookie — so every call it makes is *as
 that user*. `level` is a rung of the privilege ladder (`ROLE.user`, the default, `ROLE.operator` or
 `ROLE.admin`, each including the ones below it) and applies only to a user being **created**: becoming an
-existing user gets you whoever is already there, roles and all. Two more create-only options: `userClient`
-places the user in a specific client, and `name` sets their real-world name (a person's full name, distinct
-from the username / `publicName`) — reach for `name` when the feature under test reads the owner's name, e.g. a
-`prefillFromOwner` on the `name` attribute (issue #736).
+existing user gets you whoever is already there, roles and all. `name` (create-only) sets their real-world name
+(a person's full name, distinct from the username / `publicName`) — reach for it when the feature under test
+reads the owner's name, e.g. a `prefillFromOwner` on the `name` attribute (issue #736). Since the identity split
+(issue #747) an address is an **identity** that may have several users, one per client, persona and `personId`:
+`userClient`, `persona` and `personId` together name *which* of the address's users to become -- found when it
+exists, created when it does not, and **recovered** (same user, unregistered again) when it was deleted
+recoverably -- and naming none logs in as the identity's default user. `personId` is the UAT batch
+discriminator (`A`, `B`, `1`, `2`).
 
 ```kotlin
 val alice = TestUser.create(cxt, "alice@example.com", level = ROLE.admin)

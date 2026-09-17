@@ -54,7 +54,7 @@ val params = SqlCacheParams(
     extract = { _, data -> data },
     indexes = listOf(
         SqlCacheIndex(AU.username, unique = true) { it[AU.username].toOptStr() },
-        SqlCacheIndex(AU.primaryId, unique = true) { it[AU.primaryId].toOptStr() },
+        SqlCacheIndex(AU.identityId, unique = false) { it[AU.identityId].toOptStr() },
         // A non-unique index groups every row sharing a key -- here the client, so the admin search can pull
         // one client's rows (issue #411). `keyOf` returning null leaves a row out of just this index.
         SqlCacheIndex(PF.client, unique = false) { it[PF.client].toOptStr() },

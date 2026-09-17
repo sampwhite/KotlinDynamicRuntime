@@ -15,7 +15,7 @@ class UserSearchTest : StringSpec({
         id: Long, email: String, username: String, client: String = "acme", updatedAt: Instant? = null,
         name: String? = null,
     ): AuthUserRow {
-        val row = AuthUserRow(id, client, email)
+        val row = AuthUserRow(id, client, "ident-$id", email)
         row.username = username
         row.updatedAt = updatedAt
         row.name = name
@@ -77,7 +77,7 @@ class UserSearchTest : StringSpec({
     }
 
     "the client filter is exact, not a substring" {
-        searchUserRows(all, UserSearchCriteria(textTerms = mapOf(USF.client to "globex"))).let { ids(it) } shouldBe listOf(3L)
+        ids(searchUserRows(all, UserSearchCriteria(textTerms = mapOf(USF.client to "globex")))) shouldBe listOf(3L)
         // "glob" is a substring of "globex" but the client match is exact, so it finds nothing.
         searchUserRows(all, UserSearchCriteria(textTerms = mapOf(USF.client to "glob"))).rows.size shouldBe 0
     }
@@ -189,7 +189,7 @@ class UserSearchTest : StringSpec({
     // --- the shared spec agrees with the backend registry (issue #411, SDUI) ---------------------------
     //
     // The console renders from `userSearchFieldSpecs` (base/kernel) while the actual filtering/sorting runs off
-    // `userSearchFields` (here). They are two halves of one description -- what a field is vs how to read it off
+    // `userSearchFields` (here). They are two halves of one description -- what a field is vs. how to read it off
     // a row -- so this pins that they cannot drift: a spec field with no accessor, or a filter kind that
     // disagrees with the accessor, would render a control the backend cannot honor.
 
