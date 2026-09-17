@@ -1,8 +1,9 @@
 package com.dynamicruntime.common.test
 
-import com.dynamicruntime.common.content.UIC
-import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.content.FRAG
+import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -10,11 +11,13 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.EnvAuthRules
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -22,8 +25,6 @@ import com.dynamicruntime.common.util.toOptEnum
 import com.dynamicruntime.common.util.toOptLong
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
-import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.http.request.RoleLadder
 
 /**
  * Test-only endpoints (issue #125): conveniences that make automated and manual testing easier. Every endpoint
@@ -74,6 +75,13 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
                 "The created user's real-world name -- a person's full name, distinct from the username. " +
                     "Ignored when the user already exists; absent leaves the account unnamed.",
             )
+            field(TEP.persona, "The user's persona (issue #747): `${PERSONA.user}` (the default) or `${PERSONA.admin}`.")
+            field(
+                TEP.personId,
+                "Distinguishes several users of one address with the same persona in one client (issue #747); " +
+                    "absent is the ordinary user. With `client` or `persona`, names WHICH of the address's users to " +
+                    "become, creating it when there is none.",
+            )
         },
     ) { c, request ->
         val service = UserService.get(c)
@@ -86,6 +94,8 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             failIfUserAlreadyExists = request[TEP.failIfUserAlreadyExists] == true,
             client = request.getOptStr(TEP.client),
             name = request.getOptStr(TEP.name),
+            persona = request.getOptStr(TEP.persona) ?: PERSONA.user,
+            personId = request.getOptStr(TEP.personId) ?: "",
         )
     }
 

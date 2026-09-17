@@ -190,24 +190,29 @@ class AuthFormHandler(
         // Which client they land in is the address's business too, on a controlled domain (issue #352): a
         // `+acme` tag puts them in `acme`, and anything else -- including a client this node does not carry --
         // is `public`, exactly as every registration was before.
-        val data = AuthUserRow
-            .mkInitialUser(address, AddressRules.clientForNewUser(cxt, address), initialRoles, createdAt = cxt.now())
-            .toMutableMap()
-        @Suppress("DuplicatedCode")
-        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
-        authUserData[AD.validatedContacts] = listOf(address)
-        authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
-
+        val now = cxt.now()
+        // The verified contact rides on the user in phase A of the identity split (it moves to the identity in
+        // phase B); the identity itself records the proof (`verifiedAt`) from here on.
+        val contacts: (MutableMap<String, Any?>) -> Unit = {
+            it[AD.validatedContacts] = listOf(address)
+            it[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
+        }
         return if (existing != null) {
+            // A lingering row (started-but-unfinished, or a permanently deleted tombstone) is re-provisioned in
+            // place; its identity is marked verified now, as a fresh one would be.
+            userService.getOrCreateIdentity(cxt, address, verifiedAt = now)
             existing.username = AuthUserRow.usernameTmpPrefix + address
             existing.roles = initialRoles
             existing.encodedPassword = null
-            existing.authUserData = authUserData
+            existing.authUserData = mutableMapOf<String, Any?>().also(contacts)
             existing.enabled = true
             userService.updateUser(cxt, existing)
             existing.userId
         } else {
-            userService.insertUser(cxt, data)
+            userService.provisionUser(
+                cxt, address, AddressRules.clientForNewUser(cxt, address), initialRoles,
+                createdAt = now, verifiedAt = now, customize = contacts,
+            )
         }
     }
 
@@ -358,12 +363,9 @@ class AuthFormHandler(
      * `LinkedUsers` row instead, where it cannot be mistaken for our own verification.
      */
     private fun mkGoogleUser(cxt: KdrCxt, email: String): AuthUserRow {
-        val data = AuthUserRow
-            .mkInitialUser(email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email), createdAt = cxt.now())
-            .toMutableMap()
-        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
-        authUserData[AD.contacts] = listOf(mapOf("address" to email, "type" to "email"))
-        val userId = userService.insertUser(cxt, data)
+        val userId = userService.provisionUser(
+            cxt, email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email), createdAt = cxt.now(),
+        ) { it[AD.contacts] = listOf(mapOf("address" to email, "type" to "email")) }
         return userService.queryByUserId(cxt, userId)
             ?: throw KdrException("Could not load the just-created user '$email'.", code = EXC.internalError)
     }
@@ -437,10 +439,24 @@ class AuthFormHandler(
      */
     fun becomeUserByEmail(
         cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
-        client: String? = null, name: String? = null,
+        client: String? = null, name: String? = null, persona: String = PERSONA.user, personId: String = "",
     ): Map<String, Any?> {
         val address = email.normalizeEmail()
-        val existing = userService.queryByLoginId(cxt, address)
+        // A username as the login id resolves directly; an address resolves to its identity's users, and the
+        // one to become is the match on (client, persona, personId) when the caller named any of them, else
+        // the identity's default user (issue #747) -- so a test can put several users under one address.
+        val named = client != null || persona != PERSONA.user || personId.isNotEmpty()
+        val existing = if (address.contains('@')) {
+            val identity = userService.queryIdentityByAddress(cxt, address)
+            val users = identity?.let { userService.usersOfIdentity(cxt, it.identityId) }.orEmpty()
+            if (named) {
+                users.firstOrNull { (client == null || it.client == client) && it.persona == persona && it.personId == personId }
+            } else {
+                identity?.let { userService.defaultUserOf(cxt, it) }
+            }
+        } else {
+            userService.queryByLoginId(cxt, address)
+        }
         if (existing != null) {
             if (failIfUserAlreadyExists) {
                 throw KdrException("A user with email '$address' already exists.", code = EXC.badInput)
@@ -448,16 +464,18 @@ class AuthFormHandler(
             return completeLogin(cxt, existing, byCode = false)
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
-        val data = AuthUserRow.mkInitialUser(address, fixtureClient(cxt, address, client), roles, createdAt = cxt.now()).toMutableMap()
-        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
-        authUserData[AD.validatedContacts] = listOf(address)
-        authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
-        // The person's real-world name (issue #736), set the same way the admin-create path does -- display copy,
-        // independent of the username, so a fixture can exercise a name-driven feature (a prefill) that
-        // `publicName` (which falls back to the email) cannot show. Ignored when the user already exists, like
-        // the other create-time fields above.
-        AuthUserRow.normalizeName(name)?.let { authUserData[AD.name] = it }
-        val userId = userService.insertUser(cxt, data)
+        val userId = userService.provisionUser(
+            cxt, address, fixtureClient(cxt, address, client), roles,
+            createdAt = cxt.now(), persona = persona, personId = personId, verifiedAt = cxt.now(),
+        ) { authUserData ->
+            authUserData[AD.validatedContacts] = listOf(address)
+            authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
+            // The person's real-world name (issue #736), set the same way the admin-create path does -- display
+            // copy, independent of the username, so a fixture can exercise a name-driven feature (a prefill) that
+            // `publicName` (which falls back to the email) cannot show. Ignored when the user already exists, like
+            // the other create-time fields above.
+            AuthUserRow.normalizeName(name)?.let { authUserData[AD.name] = it }
+        }
         val row = userService.queryByUserId(cxt, userId)
             ?: throw KdrException("Could not load the just-created user '$address'.", code = EXC.internalError)
         return completeLogin(cxt, row, byCode = false)

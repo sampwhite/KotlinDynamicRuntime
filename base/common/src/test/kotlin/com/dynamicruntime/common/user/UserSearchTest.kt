@@ -15,7 +15,7 @@ class UserSearchTest : StringSpec({
         id: Long, email: String, username: String, client: String = "acme", updatedAt: Instant? = null,
         name: String? = null,
     ): AuthUserRow {
-        val row = AuthUserRow(id, client, email)
+        val row = AuthUserRow(id, client, "ident-$id", email)
         row.username = username
         row.updatedAt = updatedAt
         row.name = name

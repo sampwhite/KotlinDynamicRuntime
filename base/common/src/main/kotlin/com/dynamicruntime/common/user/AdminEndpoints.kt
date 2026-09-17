@@ -211,26 +211,22 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // administrator creating a user outside their own scope would immediately lose sight of them.
         val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null } ?: c.userProfile.org
         requireAssignableOrg(c, org)
-        val data = AuthUserRow
-            .mkInitialUser(primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now())
-            .toMutableMap()
-        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
-        // The administrator is asserting the address, which stands in for the verification the self-service
-        // path gets from the emailed code -- so the contact is recorded as validated and the user can log in by
-        // code immediately. They still have no password; setting one remains their own (code-verified) act.
-        authUserData[AD.validatedContacts] = listOf(primaryId)
-        authUserData[AD.contacts] = listOf(mapOf(AC2.address to primaryId, AC2.type to AC2.email))
-        if (username != null) {
-            data[AU.username] = username
+        val userId = service.provisionUser(
+            c, primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now(), username = username,
+        ) { authUserData ->
+            // The administrator is asserting the address, which stands in for the verification the self-service
+            // path gets from the emailed code -- so the contact is recorded as validated and the user can log in
+            // by code immediately. They still have no password; setting one remains their own (code-verified)
+            // act. The identity itself stays unverified (issue #747): only a code read from the inbox proves it.
+            authUserData[AD.validatedContacts] = listOf(primaryId)
+            authUserData[AD.contacts] = listOf(mapOf(AC2.address to primaryId, AC2.type to AC2.email))
+            // Mirrors the registration path: the name is display copy, neither required nor checked for
+            // uniqueness, and set independently of the flag -- a person has a full name just as a business does.
+            if (request.getOptBool(ADF.isEntity) == true) {
+                authUserData[AD.isEntity] = true
+            }
+            AuthUserRow.normalizeName(request[ADF.name].toOptStr())?.let { authUserData[AD.name] = it }
         }
-        // Mirrors the registration path: the name is display copy, neither required nor checked for
-        // uniqueness, and set independently of the flag -- a person has a full name just as a business does.
-        if (request.getOptBool(ADF.isEntity) == true) {
-            authUserData[AD.isEntity] = true
-        }
-        AuthUserRow.normalizeName(request[ADF.name].toOptStr())?.let { authUserData[AD.name] = it }
-
-        val userId = service.insertUser(c, data)
         // Honor an explicit request to create the account disabled. insertUser always stamps `enabled = true`
         // (prepForStdExecute does, to revive a disabled placeholder -- issue #48), so "create disabled" cannot
         // ride the insert; it is a follow-up disable through the same durable path the Enabled toggle uses.

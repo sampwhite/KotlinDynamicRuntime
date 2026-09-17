@@ -426,7 +426,7 @@ is not even *visible* to a signed-out caller, so `/schema/endpoints` omits it an
 comes back empty. Verifying such a change in a browser therefore starts with a session, and the fast way in is
 a test fixture rather than the real email-code flow:
 
-- **`POST /kda/fixture/becomeUser`** with `{email, level, client, capabilities, name}` creates-or-finds the user
+- **`POST /kda/fixture/becomeUser`** with `{email, level, client, capabilities, name, persona, personId}` creates-or-finds the user
   and logs you straight in — **no verification code**. It is a `forTestingOnly` endpoint, so it exists only on a
   test instance (`KDR_TEST_INSTANCE`, which the in-memory local server is). Call it from the browser page's own
   `fetch()` so the session cookie lands in the browser, then reload the app to fetch as the new identity (a
@@ -443,6 +443,10 @@ a test fixture rather than the real email-code flow:
   `publicName`, which falls back to the email). Set it when verifying a feature that reads the owner's *name* —
   a `prefillFromOwner` on the `name` attribute, say — since a nameless fixture user has nothing there to show.
   Ignored when the user already exists, like `level`/`client` (issue #736).
+- **Pass `persona` / `personId` to become one of several users under one address** (issue #747): an identity
+  (the address) may have a user per client, persona and personId. Naming any of `client`, `persona` or
+  `personId` picks *that* user of the address, creating it when there is none; naming none logs in as the
+  identity's default user (its first). `personId` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
 
 This is one `fetch`, not a heavyweight login — reach for it rather than declaring a login-gated change
 unverifiable. Other test fixtures exist for more specialized needs (for example reading a real login code back

@@ -23,8 +23,9 @@ import com.dynamicruntime.common.util.toOptStr
  *    [AuthUserRow.encodedPassword], silently breaking password login on a cache hit. The raw map keeps full
  *    fidelity, exactly as a fresh SQL read would.
  *
- * Three lookups are cached, matching the three the table has unique indexes for: by `userId` (the primary
- * key) and by `username` / `primaryId` (declared here as unique cache indexes, keyed off the raw columns).
+ * Three lookups are cached: by `userId` (the primary key), by `username` (a unique cache index keyed off the
+ * raw column), and by `identityId` (non-unique -- the users of one identity, issue #747). A lookup by
+ * address goes through [AuthIdentityCache] first, since the address now lives on the identity.
  *
  * **A miss always falls back to SQL**, which is what keeps the semantics identical rather than merely
  * similar. In particular a *disabled* user is deliberately not in the cache -- the initial load takes enabled
@@ -41,7 +42,9 @@ object AuthUserCache {
             // Both are unique in the database too, so a duplicate here means the database let one through --
             // which the cache logs as an error rather than quietly answering with one of the two.
             SqlCacheIndex(AU.username, unique = true) { it[AU.username].toOptStr() },
-            SqlCacheIndex(AU.primaryId, unique = true) { it[AU.primaryId].toOptStr() },
+            // Non-unique: every user of one identity (issue #747) -- what an address resolves to before the
+            // default-user rule picks one, and later the switcher's list.
+            SqlCacheIndex(AU.identityId, unique = false) { it[AU.identityId].toOptStr() },
             // Non-unique: the client an account belongs to, so the brute-force user search (issue #411) can
             // pull just one client's rows for a client-scoped administrator rather than extracting the whole
             // table. Serving a listing from an index that *is* the scope is the caching skill's sanctioned way

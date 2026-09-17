@@ -771,6 +771,7 @@ class RequestService : ServiceInitializer {
             UserProfile(
                 authId = decoded.userId.toString(), userId = decoded.userId,
                 client = decoded.client, roles = decoded.roles.toSet(),
+                identityId = decoded.identityId, persona = decoded.persona,
             ),
         )
     }
@@ -796,7 +797,7 @@ class RequestService : ServiceInitializer {
         if (!req.setAuthCookie) return
         val profile = cxt.userProfile
         val expireMs = cxt.now().toEpochMilliseconds() + AUTHC.sessionMillis
-        val cookie = UserAuthCookie(profile.userId, profile.client, profile.roles.toList(), expireMs)
+        val cookie = UserAuthCookie(profile.userId, profile.client, profile.roles.toList(), expireMs, profile.identityId, profile.persona)
         handler.addResponseCookie(AUTHC.authCookie, cookie.encode(node), Instant.fromEpochMilliseconds(expireMs))
 
         // Device recording + a long-lived device cookie when the browser has none yet. An existing device

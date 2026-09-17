@@ -19,6 +19,10 @@ object UPF {
     const val isEntity = "isEntity"
     const val name = "name"
     const val hasPassword = "hasPassword"
+    /** The identity (person) behind the user (issue #747); absent for a profile no identity backs. */
+    const val identityId = "identityId"
+    /** The user's persona (issue #747); absent for a profile no user row backs. */
+    const val persona = "persona"
 }
 
 /**
@@ -101,6 +105,14 @@ data class UserProfile(
      * the profile was restored from the session cookie without a database read.
      */
     val hasPassword: Boolean? = null,
+    /**
+     * The identity (person) this user belongs to (issue #747), or null for the manufactured profiles and for
+     * a session restored from a cookie issued before the split. What authorizes switching between a person's
+     * users (phase C): a target user must carry the same identity.
+     */
+    val identityId: String? = null,
+    /** The user's persona (issue #747), or null for a profile no user row backs. */
+    val persona: String? = null,
 ) {
     /**
      * Whether this profile represents an authenticated user -- as opposed to the anonymous profile
@@ -147,6 +159,8 @@ data class UserProfile(
         if (isEntity) put(UPF.isEntity, true)
         if (name != null) put(UPF.name, name)
         if (hasPassword != null) put(UPF.hasPassword, hasPassword)
+        if (identityId != null) put(UPF.identityId, identityId)
+        if (persona != null) put(UPF.persona, persona)
     }
 
     @Suppress("ConstPropertyName")
@@ -211,6 +225,8 @@ data class UserProfile(
             isEntity = info[UPF.isEntity] == true,
             name = info.getOptStr(UPF.name),
             hasPassword = info[UPF.hasPassword] as? Boolean,
+            identityId = info.getOptStr(UPF.identityId),
+            persona = info.getOptStr(UPF.persona),
         )
 
         /**
@@ -233,6 +249,8 @@ data class UserProfile(
                 property(UPF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
                 property(UPF.name, "The account's real-world name: a person's full name, or a business's name.")
                 property(UPF.hasPassword, "Whether the user has opted into a password.") { type = SCT.boolean }
+                property(UPF.identityId, "The identity (person) behind this user (issue #747), when one backs it.")
+                property(UPF.persona, "The user's persona (issue #747), when a user row backs it.")
             }
         }
     }

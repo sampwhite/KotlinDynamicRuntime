@@ -24,6 +24,12 @@ object TEP {
      *  `publicName`. Ignored when the user already exists. Absent leaves the account unnamed, as before. */
     const val name = "name"
 
+    /** The created user's persona (issue #747); defaults to `user`. */
+    const val persona = "persona"
+
+    /** The created user's personId (issue #747); defaults to "" (the ordinary user). */
+    const val personId = "personId"
+
     /**
      * The client to create the user in (issue #352). Absent means whatever the email address says, which for
      * an ordinary address is `public` -- so every call written before this existed means what it did.

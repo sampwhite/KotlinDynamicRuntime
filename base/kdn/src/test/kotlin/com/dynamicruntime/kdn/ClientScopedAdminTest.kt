@@ -48,7 +48,7 @@ class ClientScopedAdminTest : StringSpec({
 
     /** Inserts a user directly into [client], which no endpoint can currently do. */
     fun seedUserInClient(cxt: KdrCxt, email: String, client: String): Long =
-        users(cxt).insertUser(cxt, AuthUserRow.mkInitialUser(email, client, listOf(ROLE.user)))
+        users(cxt).provisionUser(cxt, email, client, listOf(ROLE.user))
 
     // --- the scope as policy ---------------------------------------------------
 

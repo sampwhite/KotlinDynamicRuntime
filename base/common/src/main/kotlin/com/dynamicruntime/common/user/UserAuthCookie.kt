@@ -55,12 +55,25 @@ class UserAuthCookie(
     val client: String,
     val roles: List<String>,
     val expireEpochMs: Long,
+    /**
+     * The identity behind the user (issue #747), the fact that will authorize a switch between the person's
+     * users (phase C); null in a cookie issued before the split, which the next login replaces.
+     */
+    val identityId: String? = null,
+    /** The user's persona (issue #747), for the profile the fast path restores without a database read. */
+    val persona: String? = null,
 ) {
     /** Encrypts this cookie to its wire string using the instance key (shared by every node). */
     fun encode(node: NodeService): String =
         node.encryptString(
-            mapOf(K_USER to userId, K_CLIENT to client, K_ROLES to roles, K_EXPIRE to expireEpochMs)
-                .toJsonStr(compact = true),
+            buildMap {
+                put(K_USER, userId)
+                put(K_CLIENT, client)
+                put(K_ROLES, roles)
+                put(K_EXPIRE, expireEpochMs)
+                if (identityId != null) put(K_IDENTITY, identityId)
+                if (persona != null) put(K_PERSONA, persona)
+            }.toJsonStr(compact = true),
         )
 
     companion object {
@@ -68,6 +81,8 @@ class UserAuthCookie(
         private const val K_CLIENT = "c"
         private const val K_ROLES = "r"
         private const val K_EXPIRE = "e"
+        private const val K_IDENTITY = "i"
+        private const val K_PERSONA = "p"
 
         /** Decrypts and parses a wire cookie string, or null if it is absent, malformed, or undecryptable. */
         fun decode(node: NodeService, cookie: String): UserAuthCookie? = try {
@@ -76,7 +91,7 @@ class UserAuthCookie(
             val client = m[K_CLIENT].toOptStr() ?: return null
             val roles = m[K_ROLES].toJsonListOfStrings()
             val expire = m[K_EXPIRE].toOptLong() ?: return null
-            UserAuthCookie(userId, client, roles, expire)
+            UserAuthCookie(userId, client, roles, expire, m[K_IDENTITY].toOptStr(), m[K_PERSONA].toOptStr())
         } catch (_: Exception) {
             null
         }

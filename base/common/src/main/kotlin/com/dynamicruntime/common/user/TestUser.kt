@@ -133,6 +133,9 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
             capabilities: List<String> = emptyList(),
             userClient: String? = null,
             name: String? = null,
+            /** The user's persona and personId (issue #747); with a client, which of the address's users to become. */
+            persona: String? = null,
+            personId: String? = null,
         ): TestUser {
             val client = TestHttpClient(cxt.instanceConfig)
             val body = buildMap {
@@ -143,6 +146,8 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
                 // is what an ordinary call gets, rather than this having to know what that default is.
                 if (userClient != null) put(TEP.client, userClient)
                 if (name != null) put(TEP.name, name)
+                if (persona != null) put(TEP.persona, persona)
+                if (personId != null) put(TEP.personId, personId)
             }
             val userInfo = client.sendJsonPostRequest(TEP.becomeUser, body)[EP.results].toJsonMapOrEmpty()
             return TestUser(client, cxt, userInfo)

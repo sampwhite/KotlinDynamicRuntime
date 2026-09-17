@@ -19,9 +19,11 @@ import com.dynamicruntime.common.sql.cache.SqlCacheRow
 import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.mkUniqueId
 import com.dynamicruntime.common.util.normalizeLoginId
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toT
 import kotlin.time.Instant
 
 /**
@@ -41,6 +43,9 @@ class UserService : ServiceInitializer {
      */
     var userCache: SqlTableCache<Map<String, Any?>>? = null
 
+    /** The in-memory `AuthIdentities` cache (issue #747), or null without the cache service; see [AuthIdentityCache]. */
+    var identityCache: SqlTableCache<Map<String, Any?>>? = null
+
     override fun checkInit(cxt: KdrCxt) {
         if (::authFormHandler.isInitialized) return
         val node = NodeService.get(cxt)
@@ -50,8 +55,154 @@ class UserService : ServiceInitializer {
         authFormHandler = AuthFormHandler(this, node, mail, googleVerifier)
         // Registered during this pass so the table-cache service's own checkReady -- which runs after every
         // service's checkInit -- finds it and performs the initial load at startup rather than in a request.
+        identityCache = AuthIdentityCache.register(cxt)
         userCache = AuthUserCache.register(cxt)
     }
+
+    // --- AuthIdentities (issue #747) ------------------------------------------
+
+    private fun authIdentitiesTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[UT.authIdentities]
+        ?: throw KdrException("AuthIdentities table is not registered in the schema store.")
+
+    /** The identity with [identityId], cache-first, or null. */
+    fun queryIdentityById(cxt: KdrCxt, identityId: String): AuthIdentityRow? =
+        cachedIdentity(cxt) { it.snapshot.get(it.idOf(identityId)) } ?: queryOneIdentity(cxt, AI.identityId, identityId)
+
+    /** The identity at the (normalized) [address], cache-first, or null. */
+    fun queryIdentityByAddress(cxt: KdrCxt, address: String): AuthIdentityRow? =
+        cachedIdentity(cxt) { it.snapshot.byIndex(AI.primaryId, address) } ?: queryOneIdentity(cxt, AI.primaryId, address)
+
+    /** The address an identity has, for extracting a user row -- the lookup [AuthUserRow.extract] takes. */
+    private fun addressOf(cxt: KdrCxt): (String) -> String? = { id -> queryIdentityById(cxt, id)?.primaryId }
+
+    private inline fun cachedIdentity(
+        cxt: KdrCxt,
+        lookup: (SqlTableCache<Map<String, Any?>>) -> SqlCacheRow<Map<String, Any?>>?,
+    ): AuthIdentityRow? {
+        val cache = identityCache ?: return null
+        cache.checkRefresh(cxt)
+        val row = lookup(cache) ?: return null
+        return AuthIdentityRow.extract(row.value)
+    }
+
+    private fun queryOneIdentity(cxt: KdrCxt, field: String, value: Any?): AuthIdentityRow? {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = authIdentitiesTable(cxt)
+        val stmt = SqlTopicUtil.mkNamedTableSelectStmt(sqlCxt, "qAuthIdentitiesBy_$field", table, listOf(field))
+        var row: Map<String, Any?>? = null
+        sqlCxt.sqlDb.withSession(cxt) {
+            row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(field to value))
+        }
+        return row?.let { AuthIdentityRow.extract(it) }
+    }
+
+    /**
+     * The identity at [address], created if there is none. [verifiedAt] set says the address has just been
+     * proven (a code read from the inbox); it is stamped on a new identity and onto an existing unverified one.
+     */
+    fun getOrCreateIdentity(cxt: KdrCxt, address: String, verifiedAt: Instant? = null): AuthIdentityRow {
+        queryIdentityByAddress(cxt, address)?.let { existing ->
+            if (verifiedAt != null && existing.verifiedAt == null) {
+                existing.verifiedAt = verifiedAt
+                updateIdentity(cxt, existing)
+            }
+            return existing
+        }
+        val id = cxt.mkUniqueId()
+        insertIdentity(cxt, AuthIdentityRow.mkInitialIdentity(id, address, verifiedAt))
+        return queryIdentityById(cxt, id)
+            ?: throw KdrException("Could not load the just-created identity for '$address'.", code = EXC.internalError)
+    }
+
+    fun insertIdentity(cxt: KdrCxt, data: Map<String, Any?>) {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = authIdentitiesTable(cxt)
+        val stmt = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
+        val row = data.toMutableMap()
+        SqlTopicUtil.prepForStdExecute(cxt, table, row)
+        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, row) }
+    }
+
+    /** Writes [row] back to its `AuthIdentities` record (by `identityId`), re-stamping protocol columns. */
+    fun updateIdentity(cxt: KdrCxt, row: AuthIdentityRow) {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = authIdentitiesTable(cxt)
+        val data = row.toMap().toMutableMap()
+        SqlTopicUtil.prepForStdExecute(cxt, table, data)
+        val stmt = SqlTopicUtil.mkTableUpdateStmt(sqlCxt, table)
+        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, data) }
+        row.data = row.data.toMutableMap().also { it[PF.updatedAt] = data[PF.updatedAt] }
+        row.updatedAt = data[PF.updatedAt].toOptInstant()
+    }
+
+    /**
+     * Every user of the identity [identityId], lowest `userId` first -- from the user cache's identity index
+     * when it holds any (enabled rows only, as the cache does), else SQL, which also returns disabled ones.
+     */
+    fun usersOfIdentity(cxt: KdrCxt, identityId: String): List<AuthUserRow> {
+        val cache = userCache
+        if (cache != null) {
+            cache.checkRefresh(cxt)
+            val rows = cache.snapshot.allByIndex(AU.identityId, identityId)
+            if (rows.isNotEmpty()) return rows.map { AuthUserRow.extract(it.value, addressOf(cxt)) }.sortedBy { it.userId }
+        }
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = authUsersTable(cxt)
+        val stmt = SqlTopicUtil.mkNamedTableSelectStmt(sqlCxt, "qAuthUsersByIdentity", table, listOf(AU.identityId))
+        var rows: List<Map<String, Any?>> = emptyList()
+        sqlCxt.sqlDb.withSession(cxt) { rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(AU.identityId to identityId)) }
+        return rows.map { AuthUserRow.extract(it, addressOf(cxt)) }.sortedBy { it.userId }
+    }
+
+    /**
+     * The user an [identity] logs in as (issue #747): its chosen default, else the one it most recently acted
+     * as, else its earliest -- whichever of those exists. Phase A has one user per identity, so this is that
+     * user; the rule is here so the login flows already ask the right question.
+     */
+    fun defaultUserOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow? {
+        val users = usersOfIdentity(cxt, identity.identityId)
+        if (users.isEmpty()) return null
+        return listOfNotNull(identity.defaultUserId, identity.lastUsedUserId)
+            .firstNotNullOfOrNull { wanted -> users.firstOrNull { it.userId == wanted } }
+            ?: users.first()
+    }
+
+    /**
+     * Creates the identity at [primaryId] when there is none and a user of it in [client] (issue #747): the one
+     * provisioning path every flow -- registration, admin create, Google, the fixture -- goes through.
+     * [customize] edits the new user's `authUserData` before the insert (contacts, a name). Returns the userId.
+     */
+    fun provisionUser(
+        cxt: KdrCxt,
+        primaryId: String,
+        client: String,
+        roles: List<String>,
+        org: String? = null,
+        createdAt: Instant? = null,
+        persona: String = PERSONA.user,
+        personId: String = "",
+        verifiedAt: Instant? = null,
+        /** A chosen username; absent leaves the `@<address>` placeholder for the person to replace. */
+        username: String? = null,
+        customize: (MutableMap<String, Any?>) -> Unit = {},
+    ): Long {
+        val identity = getOrCreateIdentity(cxt, primaryId, verifiedAt)
+        val data = AuthUserRow.mkInitialUser(identity.identityId, primaryId, client, roles, org, persona, personId, createdAt).toMutableMap()
+        // The placeholder username is `@<address>` for an identity's first user, as it always was; `username`
+        // is globally unique, so a further user of the same address (issue #747) gets the key appended --
+        // `@<address>|<client>|<persona>|<personId>` -- until the person chooses a real one.
+        if (username != null) {
+            data[AU.username] = username
+        } else if (usersOfIdentity(cxt, identity.identityId).isNotEmpty()) {
+            data[AU.username] = AuthUserRow.usernameTmpPrefix + "$primaryId|$client|$persona|$personId"
+        }
+        val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
+        customize(authUserData)
+        return insertUser(cxt, data)
+    }
+
+    // --- AuthUsers queries --------------------------------------------------
+
 
     // --- AuthUsers queries --------------------------------------------------
 
@@ -61,8 +212,12 @@ class UserService : ServiceInitializer {
     private fun authUserDevicesTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[UT.authUserDevices]
         ?: throw KdrException("AuthUserDevices table is not registered in the schema store.")
 
+    /**
+     * The user an address logs in as (issue #747): the identity at [primaryId], then its default user
+     * ([defaultUserOf]). Null when no identity has the address, or the identity has no user.
+     */
     fun queryByPrimaryId(cxt: KdrCxt, primaryId: String): AuthUserRow? =
-        cachedUser(cxt) { it.snapshot.byIndex(AU.primaryId, primaryId) } ?: queryOne(cxt, AU.primaryId, primaryId)
+        queryIdentityByAddress(cxt, primaryId)?.let { defaultUserOf(cxt, it) }
 
     fun queryByUsername(cxt: KdrCxt, username: String): AuthUserRow? =
         cachedUser(cxt) { it.snapshot.byIndex(AU.username, username) } ?: queryOne(cxt, AU.username, username)
@@ -90,7 +245,7 @@ class UserService : ServiceInitializer {
         val cache = userCache ?: return null
         cache.checkRefresh(cxt)
         val row = lookup(cache) ?: return null
-        return AuthUserRow.extract(row.value)
+        return AuthUserRow.extract(row.value, addressOf(cxt))
     }
 
     /**
@@ -149,7 +304,7 @@ class UserService : ServiceInitializer {
             val stmt = SqlTopicUtil.mkNamedTableSelectStmt(sqlCxt, "qAuthUsersBy_${AU.userId}", table, listOf(AU.userId))
             sqlCxt.sqlDb.withSession(cxt) {
                 for (id in missed) {
-                    sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(AU.userId to id))?.let { found[id] = AuthUserRow.extract(it) }
+                    sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(AU.userId to id))?.let { found[id] = AuthUserRow.extract(it, addressOf(cxt)) }
                 }
             }
         }
@@ -188,7 +343,7 @@ class UserService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(field to value))
         }
-        return row?.let { AuthUserRow.extract(it) }
+        return row?.let { AuthUserRow.extract(it, addressOf(cxt)) }
     }
 
     /**
@@ -267,7 +422,7 @@ class UserService : ServiceInitializer {
         // then always true) -- the SQL rows already *are* the scoped set: the total is their count, and only the
         // page is extracted rather than the whole (possibly enormous) table. With a filter, every matching row
         // must be extracted to count it -- the price of a true total.
-        val extracted = rows.asSequence().map { AuthUserRow.extract(it) }
+        val extracted = rows.asSequence().map { AuthUserRow.extract(it, addressOf(cxt)) }
         if (term == null && scope.org == null) {
             return UserPage(extracted.take(limit).toList(), rows.size)
         }
@@ -321,7 +476,7 @@ class UserService : ServiceInitializer {
             cache.checkRefresh(cxt)
             val snapshot = cache.snapshot
             val rows = if (scopeClient != null) snapshot.allByIndex(PF.client, scopeClient) else snapshot.byId.values
-            return rows.map { AuthUserRow.extract(it.value) }
+            return rows.map { AuthUserRow.extract(it.value, addressOf(cxt)) }
         }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUsersTable(cxt)
@@ -338,7 +493,7 @@ class UserService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
         }
-        return rows.map { AuthUserRow.extract(it) }
+        return rows.map { AuthUserRow.extract(it, addressOf(cxt)) }
     }
 
     /** Inserts a new `AuthUsers` row (protocol columns stamped), returning the generated `userId`. */
@@ -442,6 +597,16 @@ class UserService : ServiceInitializer {
         if (permanent) {
             deleteRowsForUser(cxt, UT.linkedUsers, row.userId)
             deleteRowsForUser(cxt, UT.authUserDevices, row.userId)
+            // The address lives on the identity since the split (issue #747). It is obfuscated -- freeing it for
+            // re-registration, as a permanent delete always has -- only when this was the identity's last live
+            // user: a person's other users elsewhere are not this administrator's to erase.
+            queryIdentityById(cxt, row.identityId)?.let { identity ->
+                val others = usersOfIdentity(cxt, identity.identityId).filter { it.userId != row.userId && !it.isDeleted }
+                if (others.isEmpty()) {
+                    identity.primaryId = AuthUserRow.deletedPrimaryId(row.userId)
+                    updateIdentity(cxt, identity)
+                }
+            }
         }
         return result
     }

@@ -18,7 +18,23 @@ import kotlin.time.Instant
  * stored [authUserData] map into [encodedPassword] and scrubbed from [data], so it never rides downstream.
  * The class shape is deliberately independent of the storage shape (fields are read/written explicitly).
  */
-class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
+class AuthUserRow(
+    val userId: Long,
+    val client: String,
+    /** The identity (person) this user is (issue #747); the address below is read through it. */
+    val identityId: String,
+    /**
+     * The identity's address. **Derived, not stored on this row** since the split (issue #747): [extract]
+     * resolves it through the identity, so every reader that ever showed or searched the email keeps working.
+     */
+    val primaryId: String,
+) {
+    /** The user's persona (issue #747), frozen at creation; see `PERSONA`. */
+    var persona: String = PERSONA.user
+
+    /** Distinguishes same-persona users of one identity in one client (issue #747); `""` for the ordinary one. */
+    var personId: String = ""
+
     /** The user's primary organization within [client], or null when they have none (issue #225). */
     var org: String? = null
 
@@ -114,7 +130,7 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
     fun toUserProfile(): UserProfile = UserProfile(
         authId = userId.toString(), userId = userId, client = client, org = org, roles = roles.toSet(),
         publicName = publicName(), hasPassword = encodedPassword != null,
-        isEntity = isEntity, name = name,
+        isEntity = isEntity, name = name, identityId = identityId, persona = persona,
     )
 
     /**
@@ -172,6 +188,9 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
         putDate(newAuthData, AD.lastLoggedInAt, lastLoggedInAt)
         putDate(newAuthData, AD.lastEditedAt, lastEditedAt)
         val retData = data.toMutableMap()
+        retData[AU.identityId] = identityId
+        retData[AU.persona] = persona
+        retData[AU.personId] = personId
         retData[AU.username] = username
         retData[AU.authUserData] = newAuthData
         // Every typed field this class exposes has to travel back out, or a caller that sets one sees it
@@ -223,7 +242,9 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
          * write agree -- no drift between the constructor val and the write map.
          */
         fun deletedTombstone(original: AuthUserRow, deletedAt: Instant, deletedBy: Long): AuthUserRow {
-            val row = AuthUserRow(original.userId, original.client, deletedPrimaryId(original.userId))
+            val row = AuthUserRow(original.userId, original.client, original.identityId, deletedPrimaryId(original.userId))
+            row.persona = original.persona
+            row.personId = original.personId
             row.username = deletedUsername(original.userId)
             row.enabled = false
             // Roles are dropped too, not merely made inert by the disable: a tombstone must not read as an
@@ -243,9 +264,9 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
                 it[AD.deletedAt] = deletedAt
                 it[AD.deletedBy] = deletedBy
             }
-            // Keep the raw row for its version stamp, but with the obfuscated id -- the write reads primaryId
-            // from here (see [toMap]).
-            row.data = original.data.toMutableMap().also { it[AU.primaryId] = deletedPrimaryId(original.userId) }
+            // Keep the raw row for its version stamp. The address lives on the identity since the split; its
+            // obfuscation is `UserService.deleteUser`'s (it retires the identity when this was its last user).
+            row.data = original.data
             return row
         }
 
@@ -293,13 +314,22 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
             }
         }
 
-        /** Builds a typed row from a stored `AuthUsers` map. */
-        fun extract(data: Map<String, Any?>): AuthUserRow {
+        /**
+         * Builds a typed row from a stored `AuthUsers` map. [addressOf] resolves the row's identity to its
+         * address (issue #747) -- `UserService` hands in a lookup through the identity cache; a test hands in
+         * a stub -- since the address is no longer a column here. An identity that cannot be resolved is a
+         * broken invariant (a user row always points at an existing identity) and fails as such.
+         */
+        fun extract(data: Map<String, Any?>, addressOf: (String) -> String?): AuthUserRow {
             val userId = data[AU.userId].toOptLong() ?: throw KdrException("AuthUsers row is missing its userId.")
             val client = data[PF.client].toOptStr() ?: ""
-            val primaryId = data[AU.primaryId].toOptStr()
-                ?: throw KdrException("AuthUsers row is missing its primaryId.")
-            val row = AuthUserRow(userId, client, primaryId)
+            val identityId = data[AU.identityId].toOptStr()
+                ?: throw KdrException("AuthUsers row $userId is missing its identityId.")
+            val primaryId = addressOf(identityId)
+                ?: throw KdrException("AuthUsers row $userId points at identity '$identityId', which is not present.")
+            val row = AuthUserRow(userId, client, identityId, primaryId)
+            row.persona = data[AU.persona].toOptStr() ?: PERSONA.user
+            row.personId = data[AU.personId].toOptStr() ?: ""
             row.enabled = data[PF.enabled] == true
             row.username = data[AU.username].toOptStr() ?: (usernameTmpPrefix + primaryId)
             val userData = (data[AU.authUserData]?.toJsonMap() ?: emptyMap()).toMutableMap()
@@ -328,12 +358,20 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
             return row
         }
 
-        /** The initially provisioned row for a freshly verified [primaryId] contact (placeholder username). */
+        /**
+         * The initially provisioned row for a user of the identity [identityId] at address [primaryId] (the
+         * address only seeds the placeholder username; it is not stored here since issue #747), in [client]
+         * with [persona] and [personId]. Callers go through `UserService.provisionUser`, which creates or finds
+         * the identity first.
+         */
         fun mkInitialUser(
+            identityId: String,
             primaryId: String,
             client: String,
             roles: List<String>,
             org: String? = null,
+            persona: String = PERSONA.user,
+            personId: String = "",
             /**
              * When the account came into being (issue #462), stamped as both [AD.registeredAt] and
              * [AD.activatedAt]. Passed in rather than read here because this builds a map and has no context
@@ -342,7 +380,9 @@ class AuthUserRow(val userId: Long, val client: String, val primaryId: String) {
              */
             createdAt: Instant? = null,
         ): Map<String, Any?> = mapOf(
-            AU.primaryId to primaryId,
+            AU.identityId to identityId,
+            AU.persona to persona,
+            AU.personId to personId,
             AU.username to (usernameTmpPrefix + primaryId),
             PF.client to client,
             AU.authUserData to mutableMapOf<String, Any?>(AD.roles to roles).also {
