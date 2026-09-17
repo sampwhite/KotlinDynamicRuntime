@@ -29,9 +29,22 @@ import kotlin.system.exitProcess
 /** Minimum Gradle heap the Kotlin/JS webapp build needs, from `examples/gradle.properties.example`. */
 private const val minGradleXmxGb = 4
 
+/** The flag that turns the installer into a how-to: print how to reset parts of the deployment, install nothing. */
+const val resetHowToFlag = "--reset-how-to"
+
 fun main(args: Array<String>) {
     val workDir = File(System.getProperty("user.dir") ?: ".").absoluteFile
-    val repoDir = File(args.firstOrNull() ?: File(workDir, "KotlinDynamicRuntime").path).absoluteFile
+    val flags = args.filter { it.startsWith("--") }
+    val positional = args.filterNot { it.startsWith("--") }
+    val repoDir = File(positional.firstOrNull() ?: File(workDir, "KotlinDynamicRuntime").path).absoluteFile
+    flags.firstOrNull { it != resetHowToFlag }?.let {
+        System.err.println("install: unknown option '$it' (the one option is $resetHowToFlag)")
+        exitProcess(1)
+    }
+    if (resetHowToFlag in flags) {
+        println(resetHowTo(workDir))
+        return
+    }
     val examples = File(repoDir, "examples")
     if (!examples.isDirectory) {
         System.err.println("install: examples directory not found at $examples")
@@ -48,6 +61,55 @@ fun main(args: Array<String>) {
     ensurePostgres(workDir)
     println("kdr-install: done.")
 }
+
+// --- the reset how-to ---------------------------------------------------------------------------------------
+
+/**
+ * The report `kdr-install --reset-how-to` prints: how to undo parts of the install **by hand**, for a
+ * developer who wants to start over. The installer never runs any of it -- these are destructive, and the
+ * point of printing them is that the person reads what they are about to do. One section today, the
+ * PostgreSQL database; more (the H2 file store, the secrets file) can join as the install grows.
+ *
+ * The database, user, host and port are resolved the way a running node resolves them: the environment
+ * first, then the workspace's default-environment-variables file, then the built-in defaults -- so the
+ * command names *this* deployment's database, not the one the installer would create from scratch.
+ */
+fun resetHowTo(workDir: File): String {
+    val defaultsFile = File(workDir, KdrInstanceConfig.defaultEnvVarsFileName)
+    fun resolve(def: com.dynamicruntime.common.context.EnvVarDef): String? =
+        System.getenv(def.name)?.trim()?.ifEmpty { null } ?: readProperty(defaultsFile, def.name)?.trim()?.ifEmpty { null }
+    val hostSpec = resolve(DbEnv.dbHost) ?: SqlDbBuilder.defaultLocalDbHost
+    val host = hostSpec.substringBefore(':')
+    val port = hostSpec.substringAfter(':', "").toIntOrNull() ?: SqlDbBuilder.defaultPostgresPort
+    val dbName = resolve(DbEnv.dbName) ?: SqlDbBuilder.defaultDbName
+    val dbUser = resolve(DbEnv.dbUser) ?: SqlDbBuilder.defaultDbUser
+    // A versioned Homebrew formula is keg-only, so name its psql by absolute path when it is what is installed.
+    val psql = brewPrefix(postgresBrewFormula)?.let { "$it/bin/psql" } ?: "psql"
+    return "How to reset parts of this deployment by hand (nothing below is run for you):\n\n" +
+        postgresResetHowTo(dbName, dbUser, host, port, psql, File(workDir, SecretsUtil.secretsPath).path)
+}
+
+/**
+ * The PostgreSQL section of [resetHowTo]: one `psql` command that drops and recreates the `public` schema,
+ * which removes every table, index and sequence while leaving the database, its owner and its settings alone
+ * -- the next boot recreates the tables from the schema store. Non-private for tests.
+ */
+fun postgresResetHowTo(dbName: String, dbUser: String, host: String, port: Int, psql: String, secretsPath: String): String =
+    """
+    |## PostgreSQL: empty the '$dbName' database (keep the database itself)
+    |
+    |  $psql -h $host -p $port -U $dbUser -d $dbName -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+    |
+    |- If it asks for a password, it is the '$dbUser' role's: the '${SqlDbBuilder.defaultPasswordSecretKey}' entry in $secretsPath.
+    |  (A Homebrew-installed server trusts local connections by default, so it usually does not ask.)
+    |- Everything in the schema goes -- every table, index and sequence -- and the next boot recreates the
+    |  tables from the schema store. The database, the '$dbUser' role and the server are untouched.
+    |- On PostgreSQL 15+ the database's owner ('$dbUser', as the installer created it) may drop 'public'. On an
+    |  older server the schema belongs to the superuser, so run the same command as 'postgres' (on macOS
+    |  `$psql -d $dbName ...`, on Linux `sudo -u postgres psql -d $dbName ...`) and then
+    |  `ALTER SCHEMA public OWNER TO $dbUser;` so the app's role can create tables in it.
+    |- To start over *completely* instead: `dropdb $dbName` then re-run kdr-install, which recreates it.
+    """.trimMargin()
 
 // --- gradle.properties ------------------------------------------------------------------------------------
 

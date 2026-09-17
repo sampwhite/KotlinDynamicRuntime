@@ -33,7 +33,9 @@ cd /path/to/workspace              # the workspace directory, which holds Kotlin
 
 `kdr-install` is safe to re-run at any time — it only changes what needs changing. Re-run it to sync new
 configuration (for example, projects a newer `settings.gradle.kts.example` introduces) or to pick up new
-installation options as they are added.
+installation options as they are added. `kdr-install --reset-how-to` installs nothing and prints how to undo
+parts of the install by hand — today, the one `psql` command that empties this deployment's PostgreSQL database
+so the next boot starts from scratch.
 
 ## Layout
 

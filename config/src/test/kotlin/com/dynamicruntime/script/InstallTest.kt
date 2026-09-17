@@ -67,4 +67,13 @@ class InstallTest : StringSpec({
             dir.deleteRecursively()
         }
     }
+
+    "the reset how-to names this deployment's database, user, host and port in one psql command" {
+        val text = postgresResetHowTo("acmeDb", "kdr", "localhost", 5433, "/opt/pg/bin/psql", "/ws/private/secrets.properties")
+        text shouldContain "/opt/pg/bin/psql -h localhost -p 5433 -U kdr -d acmeDb -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'"
+        // The person is told where the password is, that the database itself survives, and the owner caveat.
+        text shouldContain "/ws/private/secrets.properties"
+        text shouldContain "the next boot recreates the"
+        text shouldContain "ALTER SCHEMA public OWNER TO kdr;"
+    }
 })
