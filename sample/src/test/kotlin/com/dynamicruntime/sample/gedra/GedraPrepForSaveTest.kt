@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GIF
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
@@ -17,6 +18,7 @@ import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.prepForSaveData
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.serverTimeZone
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
@@ -58,7 +60,7 @@ class GedraPrepForSaveTest : StringSpec({
     "a create with a future reporting year is refused before the write" {
         val user = TestUser.create(cxt, "prep-create@acme.test", userClient = SC.acme)
         // A future year is within the schema's 2000..2100, so only the save-time function refuses it -- a 400.
-        user.expectError(EXC.badInput, acmeCreate, data = mapOf(GDF.entries to listOf(expense(currentYear + 1))))
+        user.expectError(EXC.badInput, acmeCreate, data = mapOf(GDF.entries to listOf(expense(currentYear + 5))))
     }
 
     "a create with the current reporting year saves" {
@@ -72,7 +74,7 @@ class GedraPrepForSaveTest : StringSpec({
         val gid = user.postItem(acmeCreate, mapOf(GDF.entries to listOf(expense(currentYear))))[GDF.gedraId].toOptStr()!!
         val edit = mapOf(
             GED.action to GedraEditAction.addOrReplace.name, GE.traitId to ST.expenseReport,
-            GE.data to mapOf(ST.year to currentYear + 1, ST.perItemAmount to 10.0, ST.itemCount to 2),
+            GE.data to mapOf(ST.year to currentYear + 5, ST.perItemAmount to 10.0, ST.itemCount to 2),
         )
         user.expectError(EXC.badInput, acmePatch, data = patchBody(gid, edit), method = HttpMethod.POST)
         // Nothing changed: the stored year is still the original, so the refusal happened before the write.
@@ -93,6 +95,34 @@ class GedraPrepForSaveTest : StringSpec({
         val data = stored.entries.first()[GE.data].toJsonMapOrEmpty()
         data[ST.year] shouldBe currentYear
         (data[ST.perItemAmount] as Number).toDouble() shouldBe 25.0
+    }
+
+    val acmeImport = clientPath(GEP.formDocImport, SC.acme)
+
+    "an import cannot store what a create would refuse" {
+        val user = TestUser.create(cxt, "prep-import@acme.test", userClient = SC.acme)
+        // The default is to reject the whole import on an invalid entry, so a future year fails just as a create
+        // does -- the validation is a guarantee about stored data on every write path, not only the create/patch.
+        user.expectError(
+            EXC.badInput, acmeImport,
+            data = mapOf(GIF.data to mapOf(GDF.entries to listOf(expense(currentYear + 5)))),
+        )
+    }
+
+    "a forgiving import discards the entry the function refuses" {
+        val user = TestUser.create(cxt, "prep-import-forgive@acme.test", userClient = SC.acme)
+        val result = user.postData(
+            acmeImport,
+            mapOf(
+                GIF.data to mapOf(GDF.entries to listOf(expense(currentYear + 5))),
+                GIF.forgiveInvalidEntries to true,
+            ),
+        )
+        // The refused entry is thrown away and counted as an invalid entry, exactly as a schema failure would be;
+        // its document has no survivors, so nothing is created.
+        result[GIF.imported].toJsonListOfMaps().isEmpty() shouldBe true
+        val discarded = result[GIF.discarded].toJsonListOfMaps()
+        discarded.any { it[GIF.category].toOptStr() == GIF.invalidEntry && it[GE.traitId].toOptStr() == ST.expenseReport } shouldBe true
     }
 
     "the function itself validates and passes through" {

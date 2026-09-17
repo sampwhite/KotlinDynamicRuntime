@@ -60,6 +60,13 @@ interface GedraPrepForSaveFn {
      * Given the trait entry's supplied [data], returns the data to store -- unchanged for a pure validation,
      * transformed for a calculation. Throw `KdrException.mkInput` to reject the whole write with a 400 the
      * caller sees. Called before the write transaction, so a throw leaves nothing minted and no lock taken.
+     *
+     * **It must not alter the trait's primary-key fields.** The key *addresses* the entry -- it is what an
+     * `addOrMerge`/`addOrReplace`/`deleteOrNoOp` edit names, and what keys entries apart within a gedra -- and it
+     * is checked for uniqueness against the *supplied* data, before this runs. A function that changed a key
+     * would move the entry out from under that check and under an edit's own addressing, so keying belongs to
+     * the caller's data and this event transforms only the rest. (For a single-instance trait there is no key,
+     * and the point is moot.)
      */
     fun prepForSave(cxt: KdrCxt, data: Map<String, Any?>): Map<String, Any?>
 }

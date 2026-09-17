@@ -732,6 +732,20 @@ class GedraDataService : ServiceInitializer {
                 // Strip to the trait and its data, then stamp a fresh envelope -- so an incoming source,
                 // timestamp, actor, or workflow field is dropped rather than carried across the import.
                 val slim = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to entry[GE.data].toJsonMapOrEmpty())
+                // Trait save-time functions (issue #728) run on an import too, so it cannot store what a create
+                // or a patch would refuse. A rejection is treated exactly like the schema failure below --
+                // forgiven and counted when `forgiveInvalidEntries` is set, fatal to the whole import otherwise
+                // (the default), so validation is a guarantee about stored data on every write path.
+                try {
+                    slim[GE.data] = prepForSaveData(cxt, kind, traitId, slim[GE.data].toJsonMapOrEmpty(), cxt.client)
+                } catch (e: KdrException) {
+                    if (!opts.forgiveInvalidEntries) {
+                        throw e
+                    }
+                    discard(GIF.invalidEntry, traitId)
+                    excluded.add(traitId)
+                    continue
+                }
                 val entryId = if (opts.preserveEntryIds) {
                     (entry[GE.entryId] as? String)?.ifBlank { null } ?: cxt.mkUniqueId()
                 } else {

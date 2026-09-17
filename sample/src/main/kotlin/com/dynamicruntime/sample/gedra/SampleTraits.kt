@@ -14,10 +14,11 @@ import com.dynamicruntime.common.gedra.StateTraitClass
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.layout
-import com.dynamicruntime.common.util.serverTimeZone
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import kotlinx.datetime.UtcOffset
+import kotlinx.datetime.asTimeZone
 import kotlinx.datetime.toLocalDateTime
 
 /** The sample traits' names, kept beside the config that declares them. */
@@ -384,10 +385,14 @@ object ExpenseReportPrepForSaveFn : GedraPrepForSaveFn {
 
     override fun prepForSave(cxt: KdrCxt, data: Map<String, Any?>): Map<String, Any?> {
         val year = data[ST.year].toOptLong() ?: return data
-        val currentYear = cxt.instanceNow().toLocalDateTime(serverTimeZone).year
-        if (year > currentYear) {
+        // The latest year that is "now" anywhere on Earth: the new year first arrives at UTC+14 (Kiribati), so a
+        // reporting year is only in the future when it is future for everyone. Reading the server's own zone
+        // would wrongly refuse a filer east of it for the first hours of January -- the kind of thing a static
+        // schema bound cannot get wrong because it never asks the clock, and this rule must.
+        val latestCurrentYear = cxt.instanceNow().toLocalDateTime(UtcOffset(hours = 14).asTimeZone()).year
+        if (year > latestCurrentYear) {
             throw KdrException.mkInput(
-                "A reporting year cannot be in the future; $year is later than the current year $currentYear.",
+                "A reporting year cannot be in the future; $year is later than the current year $latestCurrentYear.",
             )
         }
         return data
