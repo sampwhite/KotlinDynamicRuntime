@@ -785,7 +785,9 @@ class RequestService : ServiceInitializer {
      * After dispatch, writes the session cookie for a fresh login and clears it on logout. On login, it also
      * records the device, issuing a long-lived device cookie if the browser has none. A verification-code
      * login (flagged via [KdrRequest.trustDevice]) additionally marks that device *familiar*, which is what
-     * later permits a password login from it (issue #69).
+     * later permits a password login from it (issue #69). The device is recorded against the **identity**
+     * (issue #748) -- the person, whichever of their users they logged in as -- so a login that bound a
+     * profile without one (there is none today) records no device.
      */
     fun checkAddAuthCookies(cxt: KdrCxt, handler: RequestHandler) {
         val req = cxt.request ?: return
@@ -807,8 +809,9 @@ class RequestService : ServiceInitializer {
             deviceGuid = cxt.mkUniqueId()
             handler.addResponseCookie(AUTHC.deviceCookie, deviceGuid, Instant.fromEpochMilliseconds(expireMs + AUTHC.sessionMillis))
         }
+        val identityId = profile.identityId ?: return
         UserService.get(cxt).recordDevice(
-            cxt, profile.userId, deviceGuid, handler.forwardedFor, handler.userAgent, markTrusted = req.trustDevice,
+            cxt, identityId, deviceGuid, handler.forwardedFor, handler.userAgent, markTrusted = req.trustDevice,
         )
     }
 

@@ -458,8 +458,8 @@ reads the owner's name, e.g. a `prefillFromOwner` on the `name` attribute (issue
 (issue #747) an address is an **identity** that may have several users, one per client, persona and `personId`:
 `userClient`, `persona` and `personId` together name *which* of the address's users to become -- found when it
 exists, created when it does not, and **recovered** (same user, unregistered again) when it was deleted
-recoverably -- and naming none logs in as the identity's default user. `personId` is the UAT batch
-discriminator (`A`, `B`, `1`, `2`).
+recoverably -- and naming none logs in as the identity's default user (the one most recently acted as, else
+its first). `personId` is the UAT batch discriminator (`A`, `B`, `1`, `2`).
 
 ```kotlin
 val alice = TestUser.create(cxt, "alice@example.com", level = ROLE.admin)

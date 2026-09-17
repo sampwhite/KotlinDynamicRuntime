@@ -449,7 +449,8 @@ a test fixture rather than the real email-code flow:
   (the address) may have a user per client, persona and personId. Naming any of `client`, `persona` or
   `personId` picks *that* user of the address, creating it when there is none and **recovering** it when it
   was deleted recoverably (same user, all its content back, unregistered again); naming none logs in as the
-  identity's default user (its first). `personId` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
+  identity's default user: the one most recently acted as (every login stamps it, issue #748), else its first.
+  `personId` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
 
 This is one `fetch`, not a heavyweight login — reach for it rather than declaring a login-gated change
 unverifiable. Other test fixtures exist for more specialized needs (for example reading a real login code back

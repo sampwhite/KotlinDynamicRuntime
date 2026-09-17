@@ -213,12 +213,9 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val userId = service.provisionUser(
             c, primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now(), username = username,
         ) { authUserData ->
-            // The administrator is asserting the address, which stands in for the verification the self-service
-            // path gets from the emailed code -- so the contact is recorded as validated and the user can log in
-            // by code immediately. They still have no password; setting one remains their own (code-verified)
-            // act. The identity itself stays unverified (issue #747): only a code read from the inbox proves it.
-            authUserData[AD.validatedContacts] = listOf(primaryId)
-            authUserData[AD.contacts] = listOf(mapOf(AC2.address to primaryId, AC2.type to AC2.email))
+            // The address and its contact are the identity's (issue #748), which `provisionUser` creates
+            // unverified: only a code read from the inbox proves it, and the person's first code login does
+            // that. They have no password either; setting one remains their own (code-verified) act.
             // Mirrors the registration path: the name is display copy, neither required nor checked for
             // uniqueness, and set independently of the flag -- a person has a full name just as a business does.
             if (request.getOptBool(ADF.isEntity) == true) {
@@ -458,14 +455,6 @@ private fun requireAssignableOrg(cxt: KdrCxt, org: String?) {
             "You can only assign the '$actingOrg' organization; you are confined to it.",
         )
     }
-}
-
-/** Contact-descriptor keys inside `authUserData.contacts` (mirrors what the self-service path writes). */
-@Suppress("ConstPropertyName")
-object AC2 {
-    const val address = "address"
-    const val type = "type"
-    const val email = "email"
 }
 
 private fun userService(cxt: KdrCxt): UserService = UserService.get(cxt)

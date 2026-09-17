@@ -9,12 +9,15 @@ import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.GOOG
 import com.dynamicruntime.common.user.JwtKeySource
+import com.dynamicruntime.common.user.LSRC
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.base64Encode
 import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptLong
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import java.security.KeyPair
@@ -91,6 +94,17 @@ class GoogleLoginTest : StringSpec({
         // The session cookie stuck: a follow-up call on the same client is made as that user.
         client.sendJsonGetRequest(AEP.selfInfo).getValue("results")!!.toJsonMap()[UPF.userId].toOptLong() shouldBe
             info[UPF.userId].toOptLong()
+    }
+
+    // The link is to the identity, not a user (issue #748): signing in proves who you are, and which user you
+    // then act as is the identity's default-user rule -- and Google's verified address counts as proof of it.
+    "a Google sign-in links the identity and proves its address" {
+        val cxt = bootGoogle("googIdentity", "googIdentityTest")
+        val info = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-ida", "ida@example.com"))
+        val linked = UserService.get(cxt).queryLinkedIdentity(cxt, LSRC.google, "sub-ida").shouldNotBeNull()
+        linked.primaryId shouldBe "ida@example.com"
+        linked.verifiedAt.shouldNotBeNull()
+        info[UPF.identityId] shouldBe linked.identityId
     }
 
     "signing in again with the same Google identity returns the same user" {

@@ -27,7 +27,7 @@ class AuthUserRowNameTest : StringSpec({
     )
 
     // Extracts through a stub identity lookup: the address is read off the identity since the split (issue #747).
-    fun extractRow(m: Map<String, Any?>): AuthUserRow = AuthUserRow.extract(m) { "biz@example.com" }
+    fun extractRow(m: Map<String, Any?>): AuthUserRow = AuthUserRow.extract(m) { mapOf(AI.primaryId to "biz@example.com") }
 
     "an unnamed personal account carries neither field, in the row or on write" {
         val row = extractRow(storedRow(emptyMap()))

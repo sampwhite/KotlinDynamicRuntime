@@ -11,8 +11,11 @@ import com.dynamicruntime.common.util.toOptStr
 /**
  * The in-memory cache of `AuthIdentities` (issue #747), beside [AuthUserCache] and for the same reason: a
  * login resolves an address to an identity, and **every extraction of a user row reads its identity's
- * address** (`AuthUserRow.primaryId` is derived, not stored), so the lookup must be a map hit. Holds the raw
- * row map like the user cache does, extracted per read. One unique index, on the normalized address.
+ * address and password status** (`AuthUserRow.primaryId` and `hasPassword` are derived, not stored), so the
+ * lookup must be a map hit. Holds the raw row map like the user cache does, extracted per read -- and here
+ * that is what keeps the password: extraction scrubs it out of the row it hands out (`AuthIdentityRow`), so
+ * a cache of extracted rows would lose it and silently break password login on a cache hit. One unique
+ * index, on the normalized address.
  */
 object AuthIdentityCache {
     fun params(): SqlCacheParams<Map<String, Any?>> = SqlCacheParams(
