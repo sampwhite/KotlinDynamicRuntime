@@ -169,6 +169,9 @@ val NewFormPage = FC<Props> {
                             } else {
                                 running = true
                                 runError = null
+                                // The hash this create was launched under (#758 review): the return carries *this*
+                                // listing context home, and only while the user is still here.
+                                val launched = hashParams()
                                 formScope.launch {
                                     try {
                                         // Create for the picked user when an admin chose one (issue #727); absent
@@ -183,7 +186,7 @@ val NewFormPage = FC<Props> {
                                         // filter excludes is announced rather than silently absent. No
                                         // running=false here: this navigation unmounts the page.
                                         val newId = response[EP.item].toJsonMapOrEmpty()[GDF.gedraId] as? String
-                                        navigateHash(formsListingReturn(hashParams(), newId, created = true))
+                                        formsCreateReturn(launched, hashParams(), newId)?.let { navigateHash(it) }
                                     } catch (e: Throwable) {
                                         // Only the failure path stays on the page, so re-enable the button here
                                         // rather than in a finally that would run after a create has navigated away.

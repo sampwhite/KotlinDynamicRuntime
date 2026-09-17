@@ -93,7 +93,8 @@ external interface WorkflowFormProps : Props {
  * endpoint:
  *
  *  - **Creation** (`gedraId == null`): one task, always editable, its `create` save makes the form; on success
- *    the page confirms with the new id.
+ *    the page returns to the listing it was launched from with the new row flashed (issue #758), through the
+ *    one shared return every create surface uses (`formsCreateReturn`).
  *  - **Survey edit** (`gedraId != null`): the form's one-to-three tasks, each seeded from its current entries,
  *    shown **read-only with an Edit toggle** ("View Info"); editing reveals each task's `edit` save, which
  *    updates the form. Saving does not gate on completeness -- an incomplete survey is recorded as state, not
@@ -148,7 +149,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     var unmetTraits by useState<Set<String>>(emptySet())
     var savingTask by useState<String?>(null)
     var runError by useState<DisplayError?>(null)
-    var savedItem by useState<Map<String, Any?>?>(null)
+    // Whether a survey edit has saved since the page opened -- the "✓ Saved." beside the header's actions.
+    var justSaved by useState(false)
 
     // Whether any task holds unsaved edits (issue #700): reported to the page when it changes, so the page can
     // arm the leave guard while there is something to lose and disarm it once saved or reverted.
@@ -221,51 +223,58 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         val body = workflowSaveBody(wf.workflowId, task.id, saveFor(task).id, entries, gedraId, forUserRef)
         savingTask = task.id
         runError = null
+        // The hash this save was launched under (#758 review): a create returns to the listing only while the
+        // user is still on this page, and carries *this* listing context home -- not whatever page a slow
+        // response finds them on.
+        val launched = hashParams()
         wfFormScope.launch {
+            // Set when the create's return is under way: the page is about to unmount, so Save stays busy rather
+            // than coming back live for the tick before `hashchange` lands -- a second click there would make a
+            // second form. The sibling create pages skip the same reset for the same reason.
+            var leaving = false
             try {
                 val outcome = WorkflowApi.save(body, props.client)
-                if (outcome.saved) {
+                if (!outcome.saved) {
+                    // The create gate: the required traits still empty.
+                    unmetTraits = outcome.unmetTraits.toSet()
+                } else if (!isEdit) {
                     // A create goes straight back to the listing it was launched from, the new row flashed (issue
                     // #758) -- the same return the trait-picker create makes (#663, #669), which this surface
                     // never got: it stopped on an in-place "Form created" page instead. A form whose survey still
                     // needs information says so on its row's status chip, which links into the survey editor.
-                    if (!isEdit) {
-                        navigateHash(formsListingReturn(hashParams(), outcome.item[GDF.gedraId] as? String, created = true))
-                        return@launch
+                    formsCreateReturn(launched, hashParams(), outcome.item[GDF.gedraId] as? String)?.let {
+                        leaving = true
+                        navigateHash(it)
                     }
-                    savedItem = outcome.item
+                } else {
+                    justSaved = true
                     // A survey edit stays on the form and in edit mode -- a multi-task survey is saved one task
                     // at a time, so exiting or re-seeding the whole form here would discard the other tasks'
                     // in-progress edits. Refresh the stored snapshot from the whole updated form, then push only
                     // *this* task's (possibly server-canonicalized) values into the fields; other tasks keep
                     // what the user has typed. "Done" returns to read-only showing `stored`.
-                    if (isEdit) {
-                        // The refreshed snapshot comes from the returned VIEW's per-task entries -- the same
-                        // presented shape the seed used (filled prefill defaults seeded, offer ones held aside;
-                        // issues #679/#710) -- not the raw stored item, or a prefilled task the user never touched
-                        // would read as unsaved from here on. The item is the fallback only for a save that
-                        // carried no view.
-                        val storedNow = outcome.view?.let { v -> seedValuesOf(v) }
-                            ?: seedValuesFromEntries(outcome.item[GDF.entries].toJsonListOfMaps())
-                        stored = storedNow
-                        val savedTraitIds = task.traits.map { it.traitId }.toSet()
-                        valuesByTrait = valuesByTrait + storedNow.filterKeys { it in savedTraitIds }
-                        // The saved task's fields are now the user's own stored data, not pending defaults, so
-                        // drop their default affordances and summary (issue #710): out of the suggested set, and
-                        // into the resolved set so `prefillFor` and the count stop treating them as defaults.
-                        suggestedByTrait = suggestedByTrait.filterKeys { it !in savedTraitIds }
-                        resolvedTraits = resolvedTraits + savedTraitIds
-                        // The save is the refresh (issue #700): every task's status follows from the returned view.
-                        outcome.view?.let { v -> statuses = v.tasks.associate { it.id to it.status } }
-                    }
-                } else {
-                    // The create gate: the required traits still empty.
-                    unmetTraits = outcome.unmetTraits.toSet()
+                    // The refreshed snapshot comes from the returned VIEW's per-task entries -- the same
+                    // presented shape the seed used (filled prefill defaults seeded, offer ones held aside;
+                    // issues #679/#710) -- not the raw stored item, or a prefilled task the user never touched
+                    // would read as unsaved from here on. The item is the fallback only for a save that
+                    // carried no view.
+                    val storedNow = outcome.view?.let { v -> seedValuesOf(v) }
+                        ?: seedValuesFromEntries(outcome.item[GDF.entries].toJsonListOfMaps())
+                    stored = storedNow
+                    val savedTraitIds = task.traits.map { it.traitId }.toSet()
+                    valuesByTrait = valuesByTrait + storedNow.filterKeys { it in savedTraitIds }
+                    // The saved task's fields are now the user's own stored data, not pending defaults, so
+                    // drop their default affordances and summary (issue #710): out of the suggested set, and
+                    // into the resolved set so `prefillFor` and the count stop treating them as defaults.
+                    suggestedByTrait = suggestedByTrait.filterKeys { it !in savedTraitIds }
+                    resolvedTraits = resolvedTraits + savedTraitIds
+                    // The save is the refresh (issue #700): every task's status follows from the returned view.
+                    outcome.view?.let { v -> statuses = v.tasks.associate { it.id to it.status } }
                 }
             } catch (e: Throwable) {
                 runError = userFacingError(e)
             } finally {
-                savingTask = null
+                if (!leaving) savingTask = null
             }
         }
     }
@@ -466,7 +475,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         }
                     }
                 }
-                savedItem?.let {
+                if (justSaved) {
                     p {
                         className = ClassName("form-ok")
                         +"✓ Saved."

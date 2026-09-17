@@ -166,13 +166,18 @@ val CreateForUserPage = FC<Props> {
                             } else {
                                 running = true
                                 runError = null
+                                val launched = hashParams()
                                 createForUserScope.launch {
                                     try {
                                         val newId = AdminApi.createFormForUser(user.primaryId, payload)
                                         // Return to the listing scoped to the user's client (issue #714), flashing
-                                        // the new row (issue #663) through the one shared return (issue #758). No
-                                        // running=false: this navigation unmounts the page.
-                                        navigateHash(formsListingReturn(mapOf(EI.client to user.client), newId, created = true))
+                                        // the new row (issue #663) through the one shared return (issue #758): the
+                                        // launching listing's search and sort come home too, with the client chosen
+                                        // as the selector would choose it -- which drops a `user` scope, since that
+                                        // user belonged to the old client. No running=false: this navigation
+                                        // unmounts the page.
+                                        val context = formsSearchForClient(formsSearchFromHash(launched), user.client)
+                                        formsCreateReturn(launched, hashParams(), newId, context)?.let { navigateHash(it) }
                                     } catch (e: Throwable) {
                                         runError = userFacingError(e)
                                         running = false
