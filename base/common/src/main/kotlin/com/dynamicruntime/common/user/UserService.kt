@@ -23,6 +23,7 @@ import com.dynamicruntime.common.util.mkUniqueId
 import com.dynamicruntime.common.util.normalizeLoginId
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toT
 import kotlin.time.Instant
 
@@ -72,8 +73,18 @@ class UserService : ServiceInitializer {
     fun queryIdentityByAddress(cxt: KdrCxt, address: String): AuthIdentityRow? =
         cachedIdentity(cxt) { it.snapshot.byIndex(AI.primaryId, address) } ?: queryOneIdentity(cxt, AI.primaryId, address)
 
-    /** The address an identity has, for extracting a user row -- the lookup [AuthUserRow.extract] takes. */
-    private fun addressOf(cxt: KdrCxt): (String) -> String? = { id -> queryIdentityById(cxt, id)?.primaryId }
+    /**
+     * The address an identity has, for extracting a user row -- the lookup [AuthUserRow.extract] takes. Reads
+     * the one column straight off the cached raw map (one refresh check per resolver, not per row), so a
+     * listing that extracts a page of users pays a map hit each; a miss falls back to SQL.
+     */
+    private fun addressOf(cxt: KdrCxt): (String) -> String? {
+        val cache = identityCache?.also { it.checkRefresh(cxt) }
+        return { id ->
+            cache?.snapshot?.get(cache.idOf(id))?.value?.get(AI.primaryId).toOptStr()
+                ?: queryOneIdentity(cxt, AI.identityId, id)?.primaryId
+        }
+    }
 
     private inline fun cachedIdentity(
         cxt: KdrCxt,
@@ -136,16 +147,12 @@ class UserService : ServiceInitializer {
     }
 
     /**
-     * Every user of the identity [identityId], lowest `userId` first -- from the user cache's identity index
-     * when it holds any (enabled rows only, as the cache does), else SQL, which also returns disabled ones.
+     * Every user of the identity [identityId], lowest `userId` first, **disabled ones included** -- read from
+     * SQL rather than the cache, which holds enabled rows only: the callers need the complete set (a disabled
+     * user is recovered by provisioning its key again, and counts as live when deciding whether a permanent
+     * delete retires the address), and none of them is on a hot path.
      */
     fun usersOfIdentity(cxt: KdrCxt, identityId: String): List<AuthUserRow> {
-        val cache = userCache
-        if (cache != null) {
-            cache.checkRefresh(cxt)
-            val rows = cache.snapshot.allByIndex(AU.identityId, identityId)
-            if (rows.isNotEmpty()) return rows.map { AuthUserRow.extract(it.value, addressOf(cxt)) }.sortedBy { it.userId }
-        }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUsersTable(cxt)
         val stmt = SqlTopicUtil.mkNamedTableSelectStmt(sqlCxt, "qAuthUsersByIdentity", table, listOf(AU.identityId))
@@ -171,6 +178,14 @@ class UserService : ServiceInitializer {
      * Creates the identity at [primaryId] when there is none and a user of it in [client] (issue #747): the one
      * provisioning path every flow -- registration, admin create, Google, the fixture -- goes through.
      * [customize] edits the new user's `authUserData` before the insert (contacts, a name). Returns the userId.
+     *
+     * **Provisioning a key that already exists is not a create.** A user with the same (identity, client,
+     * persona, personId) that was deleted *recoverably* (disabled) is **recovered**: the same `userId`, so all
+     * of its content comes back, put into the unregistered state -- placeholder username, no password, roles
+     * reset to the ones provisioned, activated now -- from which it registers again by the normal mechanism
+     * (a code, later an invitation). Its org, name and entity flag are kept, as the recoverable delete
+     * promised. An **enabled** user under the key is refused as a duplicate (the unique index is the backstop
+     * behind this check). A permanently deleted one never matches: its tombstone gave up the key.
      */
     fun provisionUser(
         cxt: KdrCxt,
@@ -187,22 +202,31 @@ class UserService : ServiceInitializer {
         customize: (MutableMap<String, Any?>) -> Unit = {},
     ): Long {
         val identity = getOrCreateIdentity(cxt, primaryId, verifiedAt)
-        val data = AuthUserRow.mkInitialUser(identity.identityId, primaryId, client, roles, org, persona, personId, createdAt).toMutableMap()
+        val siblings = usersOfIdentity(cxt, identity.identityId)
         // The placeholder username is `@<address>` for an identity's first user, as it always was; `username`
         // is globally unique, so a further user of the same address (issue #747) gets the key appended --
         // `@<address>|<client>|<persona>|<personId>` -- until the person chooses a real one.
-        if (username != null) {
-            data[AU.username] = username
-        } else if (usersOfIdentity(cxt, identity.identityId).isNotEmpty()) {
-            data[AU.username] = AuthUserRow.usernameTmpPrefix + "$primaryId|$client|$persona|$personId"
+        val placeholder = AuthUserRow.usernameTmpPrefix + if (siblings.isEmpty()) primaryId else "$primaryId|$client|$persona|$personId"
+        siblings.firstOrNull { it.client == client && it.persona == persona && it.personId == personId }?.let { existing ->
+            if (existing.enabled || existing.isDeleted) {
+                throw KdrException.mkInput("A user for '$primaryId' already exists in client '$client' (persona '$persona'${if (personId.isEmpty()) "" else ", personId '$personId'"}).")
+            }
+            existing.username = username ?: placeholder
+            existing.roles = roles
+            existing.encodedPassword = null
+            if (org != null) existing.org = org
+            existing.activatedAt = createdAt
+            customize(existing.authUserData)
+            existing.enabled = true
+            updateUser(cxt, existing, isEdit = false) // a re-enable, like the admin toggle: not an edit
+            return existing.userId
         }
+        val data = AuthUserRow.mkInitialUser(identity.identityId, primaryId, client, roles, org, persona, personId, createdAt).toMutableMap()
+        data[AU.username] = username ?: placeholder
         val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
         customize(authUserData)
         return insertUser(cxt, data)
     }
-
-    // --- AuthUsers queries --------------------------------------------------
-
 
     // --- AuthUsers queries --------------------------------------------------
 
@@ -599,7 +623,8 @@ class UserService : ServiceInitializer {
             deleteRowsForUser(cxt, UT.authUserDevices, row.userId)
             // The address lives on the identity since the split (issue #747). It is obfuscated -- freeing it for
             // re-registration, as a permanent delete always has -- only when this was the identity's last live
-            // user: a person's other users elsewhere are not this administrator's to erase.
+            // user (a recoverably deleted sibling counts as live: it can be re-enabled): a person's other users
+            // elsewhere are not this administrator's to erase.
             queryIdentityById(cxt, row.identityId)?.let { identity ->
                 val others = usersOfIdentity(cxt, identity.identityId).filter { it.userId != row.userId && !it.isDeleted }
                 if (others.isEmpty()) {

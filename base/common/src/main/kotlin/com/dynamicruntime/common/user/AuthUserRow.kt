@@ -219,6 +219,9 @@ class AuthUserRow(
         /** The obfuscated username a permanently deleted [userId] is given: `deleted-<userId>` (unique). */
         fun deletedUsername(userId: Long): String = "deleted-$userId"
 
+        /** The personId a tombstone takes, `deleted-<userId>`, so its (identity, client, persona, personId) key is freed. */
+        fun deletedPersonId(userId: Long): String = "deleted-$userId"
+
         /**
          * A **permanently deleted tombstone** of [original]: non-recoverable by construction, but a *retirement*
          * rather than a privacy erasure. It obfuscates the **login and contact** identity while keeping the
@@ -244,7 +247,9 @@ class AuthUserRow(
         fun deletedTombstone(original: AuthUserRow, deletedAt: Instant, deletedBy: Long): AuthUserRow {
             val row = AuthUserRow(original.userId, original.client, original.identityId, deletedPrimaryId(original.userId))
             row.persona = original.persona
-            row.personId = original.personId
+            // The tombstone gives up the key (issue #747), as it gives up the username: with the original
+            // personId kept, the person could never again hold an ordinary user in this client.
+            row.personId = deletedPersonId(original.userId)
             row.username = deletedUsername(original.userId)
             row.enabled = false
             // Roles are dropped too, not merely made inert by the disable: a tombstone must not read as an

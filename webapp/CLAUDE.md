@@ -434,6 +434,8 @@ a test fixture rather than the real email-code flow:
 - **Pass `client` to become a *specific* client's user** (`client: "acme"`). This is what a **per-client**
   surface needs — a client's schema variant, its usage columns and search fields — and without it you land in
   the default client and verify the wrong variant. An unknown client is refused rather than silently downgraded.
+  Since the identity split (issue #747) `client` is part of *which* user you become: an address that already
+  has a user in another client gets a **second** user in the one you name, not the existing one.
 - **`level` is the privilege rung** (`user` / `admin` / …); `admin` is client-wide, so a gedra listing it runs
   goes through the in-memory **cache** read path, where an ordinary user (scoped to their own rows) goes through
   SQL — a cheap way to exercise the path a unit test cannot easily reach. Seed whatever the surface reads with
@@ -442,10 +444,11 @@ a test fixture rather than the real email-code flow:
 - **Pass `name` to give the created user a real-world name** (a person's full name, distinct from the username /
   `publicName`, which falls back to the email). Set it when verifying a feature that reads the owner's *name* —
   a `prefillFromOwner` on the `name` attribute, say — since a nameless fixture user has nothing there to show.
-  Ignored when the user already exists, like `level`/`client` (issue #736).
+  Ignored when the user already exists, like `level` (issue #736).
 - **Pass `persona` / `personId` to become one of several users under one address** (issue #747): an identity
   (the address) may have a user per client, persona and personId. Naming any of `client`, `persona` or
-  `personId` picks *that* user of the address, creating it when there is none; naming none logs in as the
+  `personId` picks *that* user of the address, creating it when there is none and **recovering** it when it
+  was deleted recoverably (same user, all its content back, unregistered again); naming none logs in as the
   identity's default user (its first). `personId` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
 
 This is one `fetch`, not a heavyweight login — reach for it rather than declaring a login-gated change

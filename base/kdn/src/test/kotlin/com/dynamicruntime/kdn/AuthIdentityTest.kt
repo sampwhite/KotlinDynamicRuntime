@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
@@ -13,6 +14,7 @@ import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -67,8 +69,9 @@ class AuthIdentityTest : StringSpec({
         val address = "ident-key@example.com"
         TestUser.create(cxt, address)
         val identity = users.queryIdentityByAddress(cxt, address).shouldNotBeNull()
-        // The same (identity, client, persona, personId) again: refused by the unique index, not by a check.
-        shouldThrow<Exception> { users.provisionUser(cxt, address, CL.public, listOf(ROLE.user)) }
+        // The same (identity, client, persona, personId) again, while that user is enabled: refused as a
+        // duplicate -- a plain input error, with the unique index as the backstop behind it.
+        shouldThrow<KdrException> { users.provisionUser(cxt, address, CL.public, listOf(ROLE.user)) }.code shouldBe EXC.badInput
         // A different personId is a different user of the same identity -- the UAT batch case.
         val second = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user), personId = "2")
         users.usersOfIdentity(cxt, identity.identityId) shouldHaveSize 2
@@ -103,11 +106,48 @@ class AuthIdentityTest : StringSpec({
         users.queryByUserId(cxt, again.userId).shouldNotBeNull().identityId shouldNotBe identity.identityId
     }
 
+    "provisioning the key of a recoverably deleted user recovers it, unregistered, with its content" {
+        val admin = TestUser.createFullAdmin(cxt, "ident-recover-admin@example.com")
+        val address = "ident-recover@example.com"
+        val original = TestUser.create(cxt, address, level = ROLE.admin, name = "Ada Lovelace")
+        val before = users.queryByUserId(cxt, original.userId).shouldNotBeNull()
+        before.roles shouldContain ROLE.admin
+        // A recoverable delete: disabled, everything kept.
+        admin.deleteData(ADEP.userDelete, mapOf(ADF.userId to original.userId))
+        users.queryByUserId(cxt, original.userId).shouldNotBeNull().enabled shouldBe false
+        // Provisioning the same key again is not a create: the same user comes back, enabled and unregistered
+        // (placeholder username, no password, the provisioned roles), its name kept.
+        val recovered = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user), createdAt = cxt.now())
+        recovered shouldBe original.userId
+        val row = users.queryByUserId(cxt, recovered).shouldNotBeNull()
+        row.enabled shouldBe true
+        row.needsRealUsername shouldBe true
+        row.encodedPassword.shouldBeNull()
+        row.roles shouldBe listOf(ROLE.user)
+        row.name shouldBe "Ada Lovelace"
+        users.usersOfIdentity(cxt, row.identityId) shouldHaveSize 1
+        // The fixture reaches the same rule: becoming the address finds the recovered user.
+        TestUser.create(cxt, address).userId shouldBe original.userId
+    }
+
+    "a permanent delete frees the key, so the person can hold that user again" {
+        val admin = TestUser.createFullAdmin(cxt, "ident-free-admin@example.com")
+        val address = "ident-free@example.com"
+        val a = TestUser.create(cxt, address)
+        val b = TestUser.create(cxt, address, personId = "B") // keeps the identity alive past a's deletion
+        admin.deleteData(ADEP.userDelete, mapOf(ADF.userId to a.userId, ADF.permanent to true))
+        val identityId = users.queryByUserId(cxt, b.userId).shouldNotBeNull().identityId
+        users.queryIdentityByAddress(cxt, address).shouldNotBeNull().identityId shouldBe identityId // not retired: b is live
+        users.queryByUserId(cxt, a.userId).shouldNotBeNull().personId shouldBe AuthUserRow.deletedPersonId(a.userId)
+        // The ordinary key is free again: a new user, not the tombstone.
+        val again = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user))
+        again shouldNotBe a.userId
+        users.usersOfIdentity(cxt, identityId).map { it.userId }.toSet() shouldBe setOf(a.userId, b.userId, again)
+    }
+
     "a user whose identity is missing fails loudly rather than reading as nobody" {
         // A user row must always point at an identity; extracting one that does not is a broken invariant.
         shouldThrow<Exception> { AuthUserRow.extract(mapOf("userId" to 1L, "identityId" to "nope", "client" to "acme")) { null } }
             .message.shouldNotBeNull() shouldNotBe ""
-        // EXC is referenced so a future refusal code has a home; the invariant itself is what is under test.
-        EXC.badInput shouldNotBe null
     }
 })

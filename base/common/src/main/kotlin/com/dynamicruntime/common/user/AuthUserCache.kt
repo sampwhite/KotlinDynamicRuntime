@@ -39,8 +39,8 @@ object AuthUserCache {
         tableName = UT.authUsers,
         extract = { _, data -> data },
         indexes = listOf(
-            // Both are unique in the database too, so a duplicate here means the database let one through --
-            // which the cache logs as an error rather than quietly answering with one of the two.
+            // Unique in the database too, so a duplicate here means the database let one through -- which the
+            // cache logs as an error rather than quietly answering with one of the two.
             SqlCacheIndex(AU.username, unique = true) { it[AU.username].toOptStr() },
             // Non-unique: every user of one identity (issue #747) -- what an address resolves to before the
             // default-user rule picks one, and later the switcher's list.

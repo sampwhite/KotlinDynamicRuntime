@@ -66,9 +66,10 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             }
             field(
                 TEP.client,
-                "Client to create the user in (ignored when the user already exists). Defaults to whatever " +
-                    "the email address names, which for an ordinary address is the public client. A client " +
-                    "this node does not carry is refused rather than quietly replaced.",
+                "Client of the user to become: with `persona` / `personId` it names WHICH of the address's users " +
+                    "(issue #747), found when it exists and created when it does not. Absent, the address's " +
+                    "default user; for a new address, whatever the address names, which for an ordinary address " +
+                    "is the public client. A client this node does not carry is refused rather than quietly replaced.",
             )
             field(
                 TEP.name,
