@@ -29,7 +29,7 @@ object LogAuth : KdrLogger("auth")
  * precondition, not a post-success step-up. A password login rides existing device trust but never grants it,
  * so every trust decision traces back to proving control of the contact via a code.
  *
- * Every flow resolves a login id to the **identity** first (issue #748) -- the password, the device trust and
+ * Every flow resolves a login id to the **identity** first (issue #748) -- the password, the device trust, and
  * the verification are the person's -- and then to the user the person acts as: the one a username names, or
  * the identity's default user for an address (`UserService.defaultUserOf`).
  *

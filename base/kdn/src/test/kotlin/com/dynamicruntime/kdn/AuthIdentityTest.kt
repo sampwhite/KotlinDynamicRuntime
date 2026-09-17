@@ -32,7 +32,7 @@ import io.kotest.matchers.shouldNotBe
  * The identity split. Phase A (issue #747): an `AuthIdentities` row above every user, keyed by a random id and
  * reachable by the address; the user keyed `(identityId, client, persona, personId)` by the database; the
  * session carrying the identity -- behavior-preserving, so those cases are about the rows and the key. Phase
- * B (issue #748): the password, the verification and the familiar device are the identity's, so they serve
+ * B (issue #748): the password, the verification, and the familiar device are the identity's, so they serve
  * every user the person holds; those cases are driven through the real login endpoints, since what they claim
  * is what a person sees.
  */
