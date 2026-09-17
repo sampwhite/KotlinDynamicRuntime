@@ -100,7 +100,8 @@ fun postgresResetHowTo(dbName: String, dbUser: String, host: String, port: Int, 
     |
     |  $psql -h $host -p $port -U $dbUser -d $dbName -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
     |
-    |- It prompts for the '$dbUser' password: the '${SqlDbBuilder.defaultPasswordSecretKey}' entry in $secretsPath.
+    |- If it asks for a password, it is the '$dbUser' role's: the '${SqlDbBuilder.defaultPasswordSecretKey}' entry in $secretsPath.
+    |  (A Homebrew-installed server trusts local connections by default, so it usually does not ask.)
     |- Everything in the schema goes -- every table, index and sequence -- and the next boot recreates the
     |  tables from the schema store. The database, the '$dbUser' role and the server are untouched.
     |- On PostgreSQL 15+ the database's owner ('$dbUser', as the installer created it) may drop 'public'. On an
