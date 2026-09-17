@@ -136,3 +136,15 @@ object AERR {
     /** Param key the `${...}` placeholder in [emailNotAvailable] references. */
     const val emailParam = "email"
 }
+
+/**
+ * The personas a user may be created with (issue #747): what relationship the user has to the application,
+ * frozen at creation and part of the user's unique key with its identity, client and `personId`. Two to
+ * start; phase D makes this a registry with default roles, and a client may later add its own. A persona is
+ * deliberately **not** a role -- `admin` here says how to read the user, and the roles say what they may do.
+ */
+@Suppress("ConstPropertyName")
+object PERSONA {
+    const val user = "user"
+    const val admin = "admin"
+}

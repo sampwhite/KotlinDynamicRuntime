@@ -19,15 +19,18 @@ class AuthUserRowNameTest : StringSpec({
 
     fun storedRow(authData: Map<String, Any?>): Map<String, Any?> = mapOf(
         AU.userId to 5L,
-        AU.primaryId to "biz@example.com",
+        AU.identityId to "ident-biz",
         PF.client to "acme",
         AU.username to "acme_co",
         PF.enabled to true,
-        AU.authUserData to buildMap<String, Any?> { put(AD.roles, listOf(ROLE.user)); putAll(authData) },
+        AU.authUserData to buildMap { put(AD.roles, listOf(ROLE.user)); putAll(authData) },
     )
 
+    // Extracts through a stub identity lookup: the address is read off the identity since the split (issue #747).
+    fun extractRow(m: Map<String, Any?>): AuthUserRow = AuthUserRow.extract(m) { "biz@example.com" }
+
     "an unnamed personal account carries neither field, in the row or on write" {
-        val row = AuthUserRow.extract(storedRow(emptyMap()))
+        val row = extractRow(storedRow(emptyMap()))
         row.isEntity shouldBe false
         row.name shouldBe null
 
@@ -38,7 +41,7 @@ class AuthUserRowNameTest : StringSpec({
     }
 
     "an entity account round-trips its flag and name through extract and toMap" {
-        val row = AuthUserRow.extract(storedRow(mapOf(AD.isEntity to true, AD.name to "Acme Co")))
+        val row = extractRow(storedRow(mapOf(AD.isEntity to true, AD.name to "Acme Co")))
         row.isEntity shouldBe true
         row.name shouldBe "Acme Co"
 
@@ -48,13 +51,13 @@ class AuthUserRowNameTest : StringSpec({
         out[AD.name] shouldBe "Acme Co"
 
         // And a re-extract of what was written recovers the same values.
-        val reExtracted = AuthUserRow.extract(row.toMap())
+        val reExtracted = extractRow(row.toMap())
         reExtracted.isEntity shouldBe true
         reExtracted.name shouldBe "Acme Co"
     }
 
     "a personal account carries a full name with no entity flag" {
-        val row = AuthUserRow.extract(storedRow(mapOf(AD.name to "Ada Lovelace")))
+        val row = extractRow(storedRow(mapOf(AD.name to "Ada Lovelace")))
         row.isEntity shouldBe false
         row.name shouldBe "Ada Lovelace"
 
@@ -68,7 +71,7 @@ class AuthUserRowNameTest : StringSpec({
      * becoming a person -- and dropping it there would be silent data loss on an ordinary edit.
      */
     "clearing entity status keeps the name" {
-        val row = AuthUserRow.extract(storedRow(mapOf(AD.isEntity to true, AD.name to "Acme Co")))
+        val row = extractRow(storedRow(mapOf(AD.isEntity to true, AD.name to "Acme Co")))
         row.isEntity = false
 
         val out = row.toMap()[AU.authUserData]!!.toJsonMap()
@@ -82,7 +85,7 @@ class AuthUserRowNameTest : StringSpec({
      * chances to disagree about whether a name of spaces is a name.
      */
     "a name is trimmed on assignment, and a blank one is no name" {
-        val row = AuthUserRow.extract(storedRow(emptyMap()))
+        val row = extractRow(storedRow(emptyMap()))
         row.name = "  Ada Lovelace  "
         row.name shouldBe "Ada Lovelace"
 
@@ -104,7 +107,7 @@ class AuthUserRowNameTest : StringSpec({
     }
 
     "clearing the name removes just the name" {
-        val row = AuthUserRow.extract(storedRow(mapOf(AD.isEntity to true, AD.name to "Acme Co")))
+        val row = extractRow(storedRow(mapOf(AD.isEntity to true, AD.name to "Acme Co")))
         row.name = null
 
         val out = row.toMap()[AU.authUserData]!!.toJsonMap()

@@ -22,8 +22,12 @@ class UserProfileTest {
             roles = setOf("admin", "editor"),
             publicName = "Ada",
             hasPassword = true,
+            identityId = "ident-42",
+            persona = "admin",
         )
         val restored = UserProfile.fromUserInfo(original.toUserInfo())
+        assertEquals(original.identityId, restored.identityId)
+        assertEquals(original.persona, restored.persona)
 
         assertEquals(original.authId, restored.authId)
         assertEquals(original.userId, restored.userId)

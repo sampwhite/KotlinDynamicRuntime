@@ -13,7 +13,6 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.AdminScope
 import com.dynamicruntime.common.user.ReadScopeRules
-import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
@@ -48,7 +47,7 @@ class ClientScopedAdminTest : StringSpec({
 
     /** Inserts a user directly into [client], which no endpoint can currently do. */
     fun seedUserInClient(cxt: KdrCxt, email: String, client: String): Long =
-        users(cxt).insertUser(cxt, AuthUserRow.mkInitialUser(email, client, listOf(ROLE.user)))
+        users(cxt).provisionUser(cxt, email, client, listOf(ROLE.user))
 
     // --- the scope as policy ---------------------------------------------------
 
@@ -413,7 +412,6 @@ class ClientScopedAdminTest : StringSpec({
      */
     "an administrator with a primary org sees their org and the org-less, but not another org" {
         val cxt = Startup.mkTestBootCxt("orgScope", "orgScopeTest")
-        val service = users(cxt)
         val full = TestUser.createFullAdmin(cxt, "org-full@example.com")
 
         val inEng = TestUser.create(cxt, "org-eng@example.com", level = ROLE.admin)

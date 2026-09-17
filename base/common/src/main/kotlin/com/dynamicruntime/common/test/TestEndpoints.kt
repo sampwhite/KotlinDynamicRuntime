@@ -1,8 +1,9 @@
 package com.dynamicruntime.common.test
 
-import com.dynamicruntime.common.content.UIC
-import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.content.FRAG
+import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -10,11 +11,13 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.EnvAuthRules
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -22,8 +25,6 @@ import com.dynamicruntime.common.util.toOptEnum
 import com.dynamicruntime.common.util.toOptLong
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
-import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.http.request.RoleLadder
 
 /**
  * Test-only endpoints (issue #125): conveniences that make automated and manual testing easier. Every endpoint
@@ -65,14 +66,22 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             }
             field(
                 TEP.client,
-                "Client to create the user in (ignored when the user already exists). Defaults to whatever " +
-                    "the email address names, which for an ordinary address is the public client. A client " +
-                    "this node does not carry is refused rather than quietly replaced.",
+                "Client of the user to become: with `persona` / `personId` it names WHICH of the address's users " +
+                    "(issue #747), found when it exists and created when it does not. Absent, the address's " +
+                    "default user; for a new address, whatever the address names, which for an ordinary address " +
+                    "is the public client. A client this node does not carry is refused rather than quietly replaced.",
             )
             field(
                 TEP.name,
                 "The created user's real-world name -- a person's full name, distinct from the username. " +
                     "Ignored when the user already exists; absent leaves the account unnamed.",
+            )
+            field(TEP.persona, "The user's persona (issue #747): `${PERSONA.user}` (the default) or `${PERSONA.admin}`.")
+            field(
+                TEP.personId,
+                "Distinguishes several users of one address with the same persona in one client (issue #747); " +
+                    "absent is the ordinary user. With `client` or `persona`, names WHICH of the address's users to " +
+                    "become, creating it when there is none.",
             )
         },
     ) { c, request ->
@@ -86,6 +95,8 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             failIfUserAlreadyExists = request[TEP.failIfUserAlreadyExists] == true,
             client = request.getOptStr(TEP.client),
             name = request.getOptStr(TEP.name),
+            persona = request.getOptStr(TEP.persona) ?: PERSONA.user,
+            personId = request.getOptStr(TEP.personId) ?: "",
         )
     }
 
@@ -256,7 +267,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         property(
             TEP.demoText,
             "A template string, its backend %{@t(...)} pull already resolved, still carrying a frontend " +
-                "${'$'}{@t(...)} pull and a plain substitution.",
+                    $$"${@t(...)} pull and a plain substitution.",
             required = true,
         )
     }

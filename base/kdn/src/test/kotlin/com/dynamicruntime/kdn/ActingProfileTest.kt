@@ -5,7 +5,6 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.refreshActingRoles
 import io.kotest.core.spec.style.StringSpec
@@ -38,10 +37,7 @@ class ActingProfileTest : StringSpec({
 
         // A user with the optional identity fields actually populated -- a profile of all defaults could not
         // tell a dropped field from an absent one.
-        val userId = service.insertUser(
-            cxt,
-            AuthUserRow.mkInitialUser("acting-chief@example.com", CL.public, listOf(ROLE.user), org = "engineering"),
-        )
+        val userId = service.provisionUser(cxt, "acting-chief@example.com", CL.public, listOf(ROLE.user), org = "engineering")
         val row = service.queryAdministrableUser(cxt, userId, ReadScope.unrestricted)
             ?: error("Seeded user should be readable.")
         row.isEntity = true
@@ -80,9 +76,7 @@ class ActingProfileTest : StringSpec({
     "refreshing picks up a role change, and a disabled account loses its roles" {
         val cxt = Startup.mkTestBootCxt("actingRoles", "actingRolesTest")
         val service = users(cxt)
-        val userId = service.insertUser(
-            cxt, AuthUserRow.mkInitialUser("acting-promoted@example.com", CL.public, listOf(ROLE.user, ROLE.admin)),
-        )
+        val userId = service.provisionUser(cxt, "acting-promoted@example.com", CL.public, listOf(ROLE.user, ROLE.admin))
 
         // A cookie issued before the grant carries only the old role.
         cxt.bindToUserProfile(

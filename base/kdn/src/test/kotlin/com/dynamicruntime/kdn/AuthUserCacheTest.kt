@@ -5,22 +5,22 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.sql.PF
-import com.dynamicruntime.common.sql.cache.SqlTableCacheService
+import com.dynamicruntime.common.operator.OPS
 import com.dynamicruntime.common.operator.TCI
 import com.dynamicruntime.common.operator.TCS
-import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.truncateToMs
+import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.user.AU
-import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UT
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.truncateToMs
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
-import com.dynamicruntime.common.operator.OPS
-import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import kotlin.time.Duration.Companion.days
@@ -47,16 +47,14 @@ class AuthUserCacheTest : StringSpec({
         val service = users(cxt)
         val cache = service.userCache.shouldNotBeNull()
 
-        val userId = service.insertUser(
-            cxt, AuthUserRow.mkInitialUser("ucache-basic@example.com", CL.public, listOf(ROLE.user)),
-        )
+        val userId = service.provisionUser(cxt, "ucache-basic@example.com", CL.public, listOf(ROLE.user))
 
         // The read that proves the cache picked the write up: it refreshes, so the snapshot is current after
         // it, and the row is there under both the primary key and the primaryId index.
         val first = service.queryByUserId(cxt, userId).shouldNotBeNull()
         first.primaryId shouldBe "ucache-basic@example.com"
         cache.snapshot.get(cache.idOf(userId)).shouldNotBeNull()
-        cache.snapshot.byIndex(AU.primaryId, "ucache-basic@example.com").shouldNotBeNull()
+        service.queryByPrimaryId(cxt, "ucache-basic@example.com").shouldNotBeNull()
         service.queryByPrimaryId(cxt, "ucache-basic@example.com").shouldNotBeNull().userId shouldBe userId
 
         // Callers mutate an AuthUserRow and hand it to updateUser, so the cache must never give out the
@@ -70,9 +68,7 @@ class AuthUserCacheTest : StringSpec({
     "an update is visible to the very next read, with no request boundary in between" {
         val cxt = Startup.mkTestBootCxt("userCacheRyw", "userCacheRywTest")
         val service = users(cxt)
-        val userId = service.insertUser(
-            cxt, AuthUserRow.mkInitialUser("ucache-ryw@example.com", CL.public, listOf(ROLE.user)),
-        )
+        val userId = service.provisionUser(cxt, "ucache-ryw@example.com", CL.public, listOf(ROLE.user))
         service.queryByUserId(cxt, userId).shouldNotBeNull() // warm the cache with the pre-update row
 
         val row = service.queryAdministrableUser(cxt, userId, ReadScope.unrestricted).shouldNotBeNull()
@@ -88,9 +84,7 @@ class AuthUserCacheTest : StringSpec({
         val cxt = Startup.mkTestBootCxt("userCacheOff", "userCacheOffTest")
         val service = users(cxt)
         val cache = service.userCache.shouldNotBeNull()
-        val userId = service.insertUser(
-            cxt, AuthUserRow.mkInitialUser("ucache-disabled@example.com", CL.public, listOf(ROLE.user)),
-        )
+        val userId = service.provisionUser(cxt, "ucache-disabled@example.com", CL.public, listOf(ROLE.user))
         service.queryByUserId(cxt, userId).shouldNotBeNull()
 
         val row = service.queryAdministrableUser(cxt, userId, ReadScope.unrestricted).shouldNotBeNull()
@@ -103,7 +97,7 @@ class AuthUserCacheTest : StringSpec({
         found.enabled shouldBe false
         // ...and it answered from SQL, because a disabled row is not in the cache.
         cache.snapshot.get(cache.idOf(userId)).shouldBeNull()
-        cache.snapshot.byIndex(AU.primaryId, "ucache-disabled@example.com").shouldBeNull()
+        cache.snapshot.allByIndex(AU.identityId, service.queryIdentityByAddress(cxt, "ucache-disabled@example.com")!!.identityId).shouldBeEmpty()
     }
 
     /**
@@ -159,7 +153,7 @@ class AuthUserCacheTest : StringSpec({
         authUsers[TCI.topic] shouldBe "auth"
         // The indexes AuthUserCache declares: the two unique lookups the cache exists for, plus the non-unique
         // `client` index the brute-force user search scopes a client-scoped listing through (issue #411).
-        authUsers[TCI.indexes] shouldBe listOf(AU.username, AU.primaryId, PF.client)
+        authUsers[TCI.indexes] shouldBe listOf(AU.username, AU.identityId, PF.client)
         authUsers[TCI.queryFromDate].shouldNotBeNull() // a completed load is what sets it
 
         report.getValue(TCS.sharedState).toJsonMapOrEmpty()[UT.authUsers].shouldNotBeNull()
