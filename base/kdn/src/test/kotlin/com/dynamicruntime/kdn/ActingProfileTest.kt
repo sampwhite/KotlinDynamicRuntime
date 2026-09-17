@@ -5,7 +5,6 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.refreshActingRoles
 import io.kotest.core.spec.style.StringSpec

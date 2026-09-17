@@ -13,7 +13,6 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.AdminScope
 import com.dynamicruntime.common.user.ReadScopeRules
-import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
@@ -413,7 +412,6 @@ class ClientScopedAdminTest : StringSpec({
      */
     "an administrator with a primary org sees their org and the org-less, but not another org" {
         val cxt = Startup.mkTestBootCxt("orgScope", "orgScopeTest")
-        val service = users(cxt)
         val full = TestUser.createFullAdmin(cxt, "org-full@example.com")
 
         val inEng = TestUser.create(cxt, "org-eng@example.com", level = ROLE.admin)

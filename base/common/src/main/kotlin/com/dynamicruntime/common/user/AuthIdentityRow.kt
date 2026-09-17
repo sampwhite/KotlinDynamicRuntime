@@ -18,9 +18,10 @@ import kotlin.time.Instant
  * Mutable, like [AuthUserRow], and written back whole by `UserService.updateIdentity`; [data] is the stored
  * row for the write, [identityData] the blob the later phases fill.
  */
-class AuthIdentityRow(val identityId: String, primaryId: String) {
-    /** The identity's normalized address; rewritten only when the identity is retired (`deletedPrimaryId`). */
-    var primaryId: String = primaryId
+class AuthIdentityRow(val identityId: String,
+                      /** The identity's normalized address; rewritten only when the identity is retired (`deletedPrimaryId`). */
+                      var primaryId: String
+) {
     /**
      * When the address was **proven** -- a verification code read from the inbox, or a Google-verified sign-in
      * -- or null while nobody has. An identity an administrator created for an address nobody has registered

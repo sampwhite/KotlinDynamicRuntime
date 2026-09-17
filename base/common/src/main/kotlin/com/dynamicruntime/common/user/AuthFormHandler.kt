@@ -14,7 +14,6 @@ import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.mkRndString
 import com.dynamicruntime.common.util.normalizeEmail
-import com.dynamicruntime.common.util.toT
 
 /** Topic logger for the auth subsystem (placed beside the code that owns the `"auth"` topic). */
 object LogAuth : KdrLogger("auth")

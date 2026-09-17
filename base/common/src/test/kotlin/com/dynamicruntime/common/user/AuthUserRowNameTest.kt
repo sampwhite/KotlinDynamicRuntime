@@ -23,7 +23,7 @@ class AuthUserRowNameTest : StringSpec({
         PF.client to "acme",
         AU.username to "acme_co",
         PF.enabled to true,
-        AU.authUserData to buildMap<String, Any?> { put(AD.roles, listOf(ROLE.user)); putAll(authData) },
+        AU.authUserData to buildMap { put(AD.roles, listOf(ROLE.user)); putAll(authData) },
     )
 
     // Extracts through a stub identity lookup: the address is read off the identity since the split (issue #747).

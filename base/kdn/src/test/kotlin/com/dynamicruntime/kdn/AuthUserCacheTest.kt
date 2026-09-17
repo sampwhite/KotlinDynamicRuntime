@@ -11,7 +11,6 @@ import com.dynamicruntime.common.operator.TCS
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.user.AU
-import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UT
 import com.dynamicruntime.common.user.UserService

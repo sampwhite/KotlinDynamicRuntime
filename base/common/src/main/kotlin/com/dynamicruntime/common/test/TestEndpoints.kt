@@ -267,7 +267,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         property(
             TEP.demoText,
             "A template string, its backend %{@t(...)} pull already resolved, still carrying a frontend " +
-                "${'$'}{@t(...)} pull and a plain substitution.",
+                    $$"${@t(...)} pull and a plain substitution.",
             required = true,
         )
     }

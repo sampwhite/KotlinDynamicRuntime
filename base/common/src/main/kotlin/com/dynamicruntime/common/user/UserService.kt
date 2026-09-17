@@ -183,7 +183,7 @@ class UserService : ServiceInitializer {
      * persona, personId) that was deleted *recoverably* (disabled) is **recovered**: the same `userId`, so all
      * of its content comes back, put into the unregistered state -- placeholder username, no password, roles
      * reset to the ones provisioned, activated now -- from which it registers again by the normal mechanism
-     * (a code, later an invitation). Its org, name and entity flag are kept, as the recoverable delete
+     * (a code, later an invitation). Its org, name, and entity flag are kept, as the recoverable delete
      * promised. An **enabled** user under the key is refused as a duplicate (the unique index is the backstop
      * behind this check). A permanently deleted one never matches: its tombstone gave up the key.
      */

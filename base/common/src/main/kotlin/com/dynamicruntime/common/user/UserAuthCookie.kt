@@ -36,7 +36,7 @@ object AUTHC {
  * (encrypted) cookie for the fast path -- no database hit on every request.
  *
  * The primary organization is deliberately **not** here (issue #225), and now that content carries an
- * organization column the omission is a decision rather than a deferral. It buys a property worth keeping:
+ * organization column, the omission is a decision rather than a deferral. It buys a property worth keeping:
  * **a stamped organization is never stale.** `refreshActingRoles` runs only where a section declares a
  * required role, so a profile carries an org only when it was just read from the row; everywhere else it is
  * null, and a write stamps nothing. Putting it in the cookie would trade that for the opposite -- a thirty-day

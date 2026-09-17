@@ -704,7 +704,7 @@ class RequestService : ServiceInitializer {
                 val full = (inner as? List<*>) ?: emptyList<Any?>()
                 val limit = (requestData[EP.limit] as? Number)?.toInt()
                 val trimmed = limit != null && page == null && full.size > limit
-                val limited: List<*> = if (page != null) page.items else if (trimmed) full.subList(0, limit!!) else full
+                val limited: List<*> = page?.items ?: if (trimmed) full.subList(0, limit) else full
                 env[EP.numItems] = limited.size
                 env[EP.requestUri] = handler.logRequestUri
                 env[EP.duration] = cxt.durationMs()
