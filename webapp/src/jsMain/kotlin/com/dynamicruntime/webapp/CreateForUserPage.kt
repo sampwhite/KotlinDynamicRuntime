@@ -4,7 +4,6 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
-import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
 import kotlinx.coroutines.MainScope
@@ -171,9 +170,9 @@ val CreateForUserPage = FC<Props> {
                                     try {
                                         val newId = AdminApi.createFormForUser(user.primaryId, payload)
                                         // Return to the listing scoped to the user's client (issue #714), flashing
-                                        // the new row (issue #663). No running=false: this navigation unmounts the page.
-                                        val flag = newId?.let { listOf(HP.highlight to it) } ?: emptyList()
-                                        navigateHash(listOf(HP.page to HMENU.pageForms, EI.client to user.client) + flag)
+                                        // the new row (issue #663) through the one shared return (issue #758). No
+                                        // running=false: this navigation unmounts the page.
+                                        navigateHash(formsListingReturn(mapOf(EI.client to user.client), newId, created = true))
                                     } catch (e: Throwable) {
                                         runError = userFacingError(e)
                                         running = false

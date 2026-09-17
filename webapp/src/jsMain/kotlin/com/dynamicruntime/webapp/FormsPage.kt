@@ -369,7 +369,9 @@ val FormsPage = FC<Props> {
             highlightRowId = saved
             // When the saved row is not on this freshly-loaded page and a filter is active, the flash lands on
             // nothing, so leave a note instead (issue #669); the rule is a pure function so it is unit-tested.
-            savedOffscreenNote = savedNotShownNote(saved, appliedSearch, rows.map { it[GDF.gedraId] as? String })
+            // A create says so (issue #758): its flag rides beside the highlight, and is as transient.
+            val created = hashParams()[HP.created] == "1"
+            savedOffscreenNote = savedNotShownNote(saved, appliedSearch, rows.map { it[GDF.gedraId] as? String }, created)
             restored = true
         }
     }

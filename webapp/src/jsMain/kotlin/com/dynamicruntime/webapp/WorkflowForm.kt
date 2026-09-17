@@ -2,7 +2,6 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
-import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailure
@@ -226,6 +225,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             try {
                 val outcome = WorkflowApi.save(body, props.client)
                 if (outcome.saved) {
+                    // A create goes straight back to the listing it was launched from, the new row flashed (issue
+                    // #758) -- the same return the trait-picker create makes (#663, #669), which this surface
+                    // never got: it stopped on an in-place "Form created" page instead. A form whose survey still
+                    // needs information says so on its row's status chip, which links into the survey editor.
+                    if (!isEdit) {
+                        navigateHash(formsListingReturn(hashParams(), outcome.item[GDF.gedraId] as? String, created = true))
+                        return@launch
+                    }
                     savedItem = outcome.item
                     // A survey edit stays on the form and in edit mode -- a multi-task survey is saved one task
                     // at a time, so exiting or re-seeding the whole form here would discard the other tasks'
@@ -415,136 +422,94 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         // generic title. Inline markdown, the phrase renderer a task label's copy already goes through.
         val title = wf.label.ifBlank { if (isEdit) "Edit form" else "New form" }
 
-        val created = savedItem
-        // Creation confirmation: only for a create (a survey edit stays on the form after saving).
-        if (created != null && !isEdit) {
-            h1 { MarkdownInline { source = title } }
-            val id = created[GDF.gedraId] as? String ?: ""
-            p {
-                className = ClassName("form-ok")
-                +"✓ Form created."
-            }
-            p {
-                className = ClassName("type-hint")
-                +"Reference id"
-            }
-            p {
-                className = ClassName("code")
-                +id
-            }
-            div {
-                className = ClassName("row")
-                Button {
-                    type = "primary"
-                    onClick = { navigateHash(listOf(HP.page to HMENU.pageForms, HP.gedra to id)) }
-                    +"View form"
-                }
-                Button {
-                    onClick = {
-                        valuesByTrait = emptyMap(); failuresByTrait = emptyMap()
-                        committedByTrait = emptyMap(); wholeChecked = emptySet()
-                        unmetTraits = emptySet(); runError = null; savedItem = null
-                        // Drop the previous pick too (issue #727 review): the picker remounts empty on the next
-                        // form, so leaving `pickedUser` set would silently create the next form for that user
-                        // behind a blank box.
-                        pickedUser = null
+        // One header line, shared with the raw editor (issues #719, #726): the back link, the title beside
+        // it, and the actions right-aligned. The back link (issue #671 for the create fill-out, #694 for the
+        // survey's views, including an arrival straight into edit mode from the status chip) is the shared
+        // forms link, so it returns to the same filtered, sorted listing. The survey edit's actions are Edit
+        // over the read-only "View Info" (with the raw editor beside it) and Done while editing, with the
+        // saved note beside either.
+        formsEditorHeader(title = { MarkdownInline { source = title } }) {
+            if (isEdit) {
+                if (editing) {
+                    Button {
+                        // Done is the one way home from an edit (issue #726): back to the listing, with this
+                        // form flashed, carrying the listing's search and sort -- the same return the raw
+                        // editor's Done makes. It is a navigation, so the leave guard the page armed on
+                        // unsaved edits asks through the router (issue #716); nothing to ask here, and asking
+                        // here too would prompt twice. A clean Done just leaves.
+                        onClick = { navigateHash(formsListingReturn(hashParams(), gedraId)) }
+                        +"Done"
                     }
-                    +"Create another"
+                } else {
+                    Button {
+                        type = "primary"
+                        onClick = { editing = true }
+                        +"Edit"
+                    }
+                    // The raw read-only view (issue #726): every trait, including the ones the survey does
+                    // not show, without entering the editor -- the look-before-editing counterpart of the
+                    // raw editor beside it.
+                    props.onRawView?.let { rawView ->
+                        Button {
+                            type = "link"
+                            onClick = { rawView() }
+                            +"View raw"
+                        }
+                    }
+                    // The raw editor, for the traits the survey does not show (issue #694): offered only
+                    // when the caller's surface carries the patch endpoint (the page decides; null hides it).
+                    props.onRawEdit?.let { rawEdit ->
+                        Button {
+                            type = "link"
+                            onClick = { rawEdit() }
+                            +"Raw edit"
+                        }
+                    }
                 }
-                // The shared back link (issue #726): a real anchor, as on every other form surface, carrying the
-                // listing's search and sort home -- the hand-rolled link-button here dropped them.
-                formsBackLink()
+                savedItem?.let {
+                    p {
+                        className = ClassName("form-ok")
+                        +"✓ Saved."
+                    }
+                }
+            }
+        }
+
+        // Create for another user (issue #727), admin-only and creation-only: the picker chooses whose form
+        // it is; the workflow's fields are still this client's. Blank creates it for the caller.
+        if (!isEdit && props.allowCreateForUser == true) {
+            FormUserPicker { onPick = { pickedUser = it } }
+        }
+
+        // A multi-task survey shows ONE task at a time, picked from the rail (issue #700) -- so there is one
+        // Save in view, and the other tasks' working values stay in state across the switch. A single-task
+        // survey and the creation form keep the single panel with their one task.
+        val active = props.activeTask
+        if (isEdit && wf.tasks.size > 1 && props.onSelectTask != null) {
+            div {
+                className = ClassName("wf-layout")
+                div {
+                    className = ClassName("wf-rail")
+                    wf.tasks.forEach { railItem(it, active = it.id == active) }
+                }
+                div {
+                    className = ClassName("wf-panel")
+                    // The rail entry the user just clicked is the task's label; the panel does not repeat it
+                    // (issue #719) and opens on the trait heading.
+                    taskPanel(wf.tasks.firstOrNull { it.id == active } ?: wf.tasks.first(), showLabel = false)
+                }
             }
         } else {
-            // One header line, shared with the raw editor (issues #719, #726): the back link, the title beside
-            // it, and the actions right-aligned. The back link (issue #671 for the create fill-out, #694 for the
-            // survey's views, including an arrival straight into edit mode from the status chip) is the shared
-            // forms link, so it returns to the same filtered, sorted listing. The survey edit's actions are Edit
-            // over the read-only "View Info" (with the raw editor beside it) and Done while editing, with the
-            // saved note beside either.
-            formsEditorHeader(title = { MarkdownInline { source = title } }) {
-                if (isEdit) {
-                    if (editing) {
-                        Button {
-                            // Done is the one way home from an edit (issue #726): back to the listing, with this
-                            // form flashed, carrying the listing's search and sort -- the same return the raw
-                            // editor's Done makes. It is a navigation, so the leave guard the page armed on
-                            // unsaved edits asks through the router (issue #716); nothing to ask here, and asking
-                            // here too would prompt twice. A clean Done just leaves.
-                            onClick = { navigateHash(formsListingReturn(hashParams(), gedraId)) }
-                            +"Done"
-                        }
-                    } else {
-                        Button {
-                            type = "primary"
-                            onClick = { editing = true }
-                            +"Edit"
-                        }
-                        // The raw read-only view (issue #726): every trait, including the ones the survey does
-                        // not show, without entering the editor -- the look-before-editing counterpart of the
-                        // raw editor beside it.
-                        props.onRawView?.let { rawView ->
-                            Button {
-                                type = "link"
-                                onClick = { rawView() }
-                                +"View raw"
-                            }
-                        }
-                        // The raw editor, for the traits the survey does not show (issue #694): offered only
-                        // when the caller's surface carries the patch endpoint (the page decides; null hides it).
-                        props.onRawEdit?.let { rawEdit ->
-                            Button {
-                                type = "link"
-                                onClick = { rawEdit() }
-                                +"Raw edit"
-                            }
-                        }
-                    }
-                    savedItem?.let {
-                        p {
-                            className = ClassName("form-ok")
-                            +"✓ Saved."
-                        }
-                    }
-                }
-            }
-
-            // Create for another user (issue #727), admin-only and creation-only: the picker chooses whose form
-            // it is; the workflow's fields are still this client's. Blank creates it for the caller.
-            if (!isEdit && props.allowCreateForUser == true) {
-                FormUserPicker { onPick = { pickedUser = it } }
-            }
-
-            // A multi-task survey shows ONE task at a time, picked from the rail (issue #700) -- so there is one
-            // Save in view, and the other tasks' working values stay in state across the switch. A single-task
-            // survey and the creation form keep the single panel with their one task.
-            val active = props.activeTask
-            if (isEdit && wf.tasks.size > 1 && props.onSelectTask != null) {
-                div {
-                    className = ClassName("wf-layout")
-                    div {
-                        className = ClassName("wf-rail")
-                        wf.tasks.forEach { railItem(it, active = it.id == active) }
-                    }
-                    div {
-                        className = ClassName("wf-panel")
-                        // The rail entry the user just clicked is the task's label; the panel does not repeat it
-                        // (issue #719) and opens on the trait heading.
-                        taskPanel(wf.tasks.firstOrNull { it.id == active } ?: wf.tasks.first(), showLabel = false)
-                    }
-                }
-            } else {
-                wf.tasks.forEach { taskPanel(it) }
-            }
-
-            if (unmetTraits.isNotEmpty()) {
-                p {
-                    className = ClassName("form-stale")
-                    +"Some required sections are empty — they are marked above."
-                }
-            }
-            runError?.let { errorText(if (isEdit) "Couldn't save the form." else "Couldn't create the form.", it) }
+            wf.tasks.forEach { taskPanel(it) }
         }
+
+        if (unmetTraits.isNotEmpty()) {
+            p {
+                className = ClassName("form-stale")
+                +"Some required sections are empty — they are marked above."
+            }
+        }
+        runError?.let { errorText(if (isEdit) "Couldn't save the form." else "Couldn't create the form.", it) }
     }
 }
 

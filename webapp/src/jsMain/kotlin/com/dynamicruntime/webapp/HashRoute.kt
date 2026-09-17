@@ -75,6 +75,13 @@ object HP {
      */
     const val highlight = "hl"
 
+    /**
+     * Forms page: present (`created=1`) beside [highlight] when the highlighted form was just **created** rather
+     * than edited (issue #758), so the listing's note for a row that is not on screen can say the form was
+     * created -- the confirmation a create must never lose. Transient, exactly as [highlight] is.
+     */
+    const val created = "created"
+
     /** Home page: the id of the open Markdown document, or absent for the welcome copy. */
     const val doc = "doc"
 

@@ -191,6 +191,12 @@ unrestricted scope). The rules that follow from that:
   found nothing for `public`, and the edit page said the account had "no way to edit forms").
 - **The workflow view and its save follow the resolved path.** `clientOfResolvedPath` says whether the view
   came from X's copy; the save posts to the same copy, so a survey is edited under X's rules.
+- **Every save returns through `formsListingReturn`.** The editors' Done (#726) and all three create surfaces
+  -- the trait picker, the creation workflow, create-for-user -- go home the same way: the launching listing's
+  search, sort and chosen client carried back, the row flagged to flash, and a create marked `created=1` so a
+  row the listing cannot show is announced ("The form was created, but…") rather than silently absent. A new
+  save surface calls the helper; it does not build its own hash. #758 was the workflow create keeping an
+  in-place "Form created" page after the picker had moved to this return (#663).
 - **Create stays the caller's own.** `NewFormPage` makes the form in the admin's own client, so "New form" is
   not offered under a chosen client and the note under the selector says so. Creating on another client's
   behalf is #672 Slice 3.

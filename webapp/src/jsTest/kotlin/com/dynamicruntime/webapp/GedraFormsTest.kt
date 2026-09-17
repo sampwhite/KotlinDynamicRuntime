@@ -622,8 +622,51 @@ class GedraFormsTest {
         assertNull(savedNotShownNote("g.fd.acme.new", filter, listOf("g.fd.acme.new", "g.fd.acme.b")))
         // A filter, but nothing was saved (an ordinary filtered view): no note.
         assertNull(savedNotShownNote(null, filter, listOf("g.fd.acme.a")))
-        // Saved and absent, but no filter is active: left unremarked (a new row is on page one by default sort).
+        // Saved and absent, but no filter is active: left unremarked (the row was on the list the user came from).
         assertNull(savedNotShownNote("g.fd.acme.new", emptyMap(), listOf("g.fd.acme.a")))
+    }
+
+    /**
+     * A **create** is never silent (issue #758): when the new row is not on the returned page the note says the
+     * form was created -- naming the filter when one is the reason, and saying so even with none (a sort or a
+     * full first page can hide it), since the flash was going to be the only sign the create happened. On the
+     * page, the flash is the confirmation and there is no note.
+     */
+    @Test
+    fun aCreatedFormThatIsNotShownIsStillAnnounced() {
+        val filter = mapOf("acmeSiteAuditContains" to "dana")
+        val others = listOf("g.fd.acme.a", "g.fd.acme.b")
+        val filtered = savedNotShownNote("g.fd.acme.new", filter, others, created = true)
+        assertTrue(filtered != null && filtered.startsWith("The form was created") && filtered.contains("filter"))
+        val unfiltered = savedNotShownNote("g.fd.acme.new", emptyMap(), others, created = true)
+        assertTrue(unfiltered != null && unfiltered.startsWith("The form was created") && !unfiltered.contains("filter"))
+        // An edit's wording is unchanged, so the two cannot be mistaken for each other.
+        assertTrue(savedNotShownNote("g.fd.acme.new", filter, others)!!.startsWith("The form you just saved"))
+        // On the page: the flash says it.
+        assertNull(savedNotShownNote("g.fd.acme.new", filter, listOf("g.fd.acme.new"), created = true))
+        assertNull(savedNotShownNote(null, filter, others, created = true))
+    }
+
+    /**
+     * Every create surface returns through the editors' one way home (issue #758), flagged as a create: the
+     * launching listing's search and sort carried back, the new row to flash, and the transient `created` mark.
+     * An edit's return carries no such mark, and a create whose response had no id returns with no flag at all.
+     */
+    @Test
+    fun aCreateReturnsToItsListingFlaggedAsCreated() {
+        val createHash = mapOf(HP.page to "newForm", HP.from to "forms", EI.client to "acme", GSORT.sort to "name")
+        val back = formsListingReturn(createHash, "gd.fd.acme.new", created = true).toMap()
+        assertEquals("forms", back[HP.page])
+        assertEquals("gd.fd.acme.new", back[HP.highlight])
+        assertEquals("1", back[HP.created])
+        assertEquals("acme", back[EI.client])
+        assertEquals("name", back[GSORT.sort])
+        assertTrue(HP.from !in back)
+        assertTrue(HP.created !in formsListingReturn(createHash, "gd.fd.acme.u1").toMap())
+        val noId = formsListingReturn(createHash, null, created = true).toMap()
+        assertTrue(HP.highlight !in noId && HP.created !in noId)
+        // The mark is a navigation key, so it never rides back in as a "search" term.
+        assertTrue(HP.created !in formsSearchFromHash(mapOf(HP.created to "1", EI.q to "roof")))
     }
 
     // --- survey status column (issue #694) --------------------------------------------------------------
