@@ -457,12 +457,19 @@ class GedraDataService : ServiceInitializer {
         // could store two entries nothing could address, which is how the patch, and the form, address them.
         checkEntryKeys(entries, pkFieldsOf(cxt, kind))
         checkTraitsSupported(cxt, kind, entries.mapNotNull { it[GE.traitId].toOptStr() }, allowAdditionalTraits)
+        // Trait save-time functions (issue #728): calculate or validate each entry's data before anything is
+        // minted or locked. A validation throws a 400 from here; a calculation's output is what gets stamped and
+        // stored below. `cxt` is bound to the gedra's owner (the create binds it), so its client is the gedra's.
+        val prepared = entries.map { entry ->
+            val traitId = entry[GE.traitId].toOptStr() ?: return@map entry
+            entry + (GE.data to prepForSaveData(cxt, kind, traitId, entry[GE.data].toJsonMapOrEmpty(), cxt.client))
+        }
         // Interned as it is minted, so every later reader of this gedra shares one instance. The cache does
         // not yet hold every extant id, so this buys identity and cheap keys and not existence -- see
         // GedraService.gedraIds.
         gedraService.intern(cxt.mkGedraId(kind, cxt.client, GedraIdContext.ui))
         val now = cxt.instanceNow()
-        val stored = entries.map {
+        val stored = prepared.map {
             it.asStoredEntry(
                 // Long, and deliberately: a per-gedra counter would be shorter and would bring a high-water
                 // mark to maintain so that a deleted entry's number is never handed out again. This carries
@@ -912,8 +919,11 @@ class GedraDataService : ServiceInitializer {
     ): List<GedraPatchResult> {
         val ordered = kindApplyOrder.mapNotNull { kind -> targetsByKind[kind]?.let { kind to it } }
         val patchCxt = cxt.mkSubContext("patch", oneClient(cxt, ordered))
-        for ((kind, targets) in ordered) {
-            for (target in targets) {
+        // Admit, check and prepare every target before writing anything (the whole security story, issue #337):
+        // the `.map` is realized in full before the apply below, so a refusal -- a scope miss, an unsupported
+        // trait, or a save-time validation (issue #728) -- rejects the whole patch with nothing written.
+        val prepared = ordered.map { (kind, targets) ->
+            kind to targets.map { target ->
                 admit(patchCxt, kind, target, scope)
                 // Only what this call writes: a delete removes a trait rather than storing one, so it is
                 // always allowed -- which is what lets an unsupported entry be cleaned up without the flag.
@@ -923,9 +933,29 @@ class GedraDataService : ServiceInitializer {
                     target.edits.filterNot { it.action == GedraEditAction.deleteOrNoOp }.map { it.traitId },
                     allowAdditionalTraits,
                 )
+                prepTargetForSave(patchCxt, kind, target)
             }
         }
-        return ordered.flatMap { (kind, targets) -> targets.map { applyToOne(patchCxt, kind, it, scope) } }
+        return prepared.flatMap { (kind, targets) -> targets.map { applyToOne(patchCxt, kind, it, scope) } }
+    }
+
+    /**
+     * Runs the trait save-time functions (issue #728) over each of [target]'s non-delete edits, returning the
+     * target with their data prepared -- validated (a throw rejects the patch) or transformed (a calculation).
+     * Runs in the admit phase, before any lock, so a merge edit sees only its own fragment, not the merged
+     * result (see [GedraPrepForSaveFn]); a delete carries no data and is left untouched. [cxt] is the patch's
+     * one-client sub-context, so its client is the gedra's.
+     */
+    private fun prepTargetForSave(cxt: KdrCxt, kind: GedraDataType, target: GedraPatchTarget): GedraPatchTarget {
+        val edits = target.edits.map { edit ->
+            val data = edit.data
+            if (edit.action == GedraEditAction.deleteOrNoOp || data == null) {
+                edit
+            } else {
+                GedraEdit(edit.action, edit.traitId, edit.entryId, prepForSaveData(cxt, kind, edit.traitId, data, cxt.client))
+            }
+        }
+        return GedraPatchTarget(target.gedraId, edits)
     }
 
     /**

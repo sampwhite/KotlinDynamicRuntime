@@ -23,6 +23,7 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientTraitUsage
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.gedra.GedraDataDeriver
+import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.GedraTrait
@@ -637,6 +638,13 @@ class SchemaService : ServiceInitializer {
      * compute a gedra entry's `g-derived` data value on read. Empty on a node whose components registered none.
      */
     fun dataDerivers(): List<GedraDataDeriver> = collector?.dataDerivers ?: emptyList()
+
+    /**
+     * The registered trait save-time functions (issue #728) -- what a create or update runs through
+     * `prepForSaveData` before its transaction to calculate or validate a trait's data. Empty on a node whose
+     * components registered none.
+     */
+    fun prepForSaveFns(): List<GedraPrepForSaveFn> = collector?.prepForSaveFns ?: emptyList()
 
     /** The registered post-write hooks (issue #675), in registration order. */
     fun writeHooks(): List<GedraWriteHook> = collector?.writeHooks ?: emptyList()

@@ -19,6 +19,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.sample.file.SampleFileService
 import com.dynamicruntime.sample.gedra.GedraFixtureEndpoints
+import com.dynamicruntime.sample.gedra.ExpenseReportPrepForSaveFn
 import com.dynamicruntime.sample.gedra.ExpenseTotalDeriver
 import com.dynamicruntime.sample.gedra.TraitPresenceByYearDeriver
 import com.dynamicruntime.sample.gedra.sampleClients
@@ -75,6 +76,9 @@ class SampleComponent : ComponentDefinition {
         // `g-derived` value a caller never supplies, filled from the two amounts beside it whenever the form is
         // read. It is the production producer the trait's own note said "code bound to the trait" would be.
         collector.addDataDeriver(ExpenseTotalDeriver)
+        // A trait save-time validation (issue #728): an expense report's reporting year may not be in the future,
+        // refused before the write transaction -- the demonstrating half of the trait-function mechanism.
+        collector.addPrepForSaveFn(ExpenseReportPrepForSaveFn)
     }
 
     /**

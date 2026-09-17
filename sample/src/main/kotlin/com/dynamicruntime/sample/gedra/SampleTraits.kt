@@ -3,18 +3,22 @@ package com.dynamicruntime.sample.gedra
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.StateTraitClass
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.layout
+import com.dynamicruntime.common.util.serverTimeZone
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import kotlinx.datetime.toLocalDateTime
 
 /** The sample traits' names, kept beside the config that declares them. */
 @Suppress("ConstPropertyName")
@@ -359,6 +363,35 @@ object ExpenseTotalDeriver : GedraDataDeriver {
     override val traitId: String = ST.expenseReport
 
     override fun derive(cxt: KdrCxt, data: Map<String, Any?>): Map<String, Any?> = expenseTotalFields(data)
+}
+
+/**
+ * A trait save-time **validation** (issue #728): an expense report's reporting year may not be in the future,
+ * refused before the write. The demonstrating half of the trait-function mechanism -- a check that JSON Schema
+ * cannot express, because it turns on the runtime clock (`cxt.instanceNow()`) rather than a static bound, unlike
+ * the trait's own `minimum`/`maximum` of 2000..2100.
+ *
+ * Deliberately a **single-field** rule, so it is safe on a merge fragment: it fires only when `year` is in the
+ * data the caller sent, so a merge editing some other field never trips it on a year it did not touch (see
+ * [GedraPrepForSaveFn] on why a save-time function must be fragment-safe). It returns the data unchanged -- a
+ * pure validation -- and throws `KdrException.mkInput` to reject, which surfaces to the caller as a 400.
+ *
+ * Ungated, like [ExpenseTotalDeriver]: a real rule for every client that carries the trait.
+ */
+object ExpenseReportPrepForSaveFn : GedraPrepForSaveFn {
+    override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
+    override val traitId: String = ST.expenseReport
+
+    override fun prepForSave(cxt: KdrCxt, data: Map<String, Any?>): Map<String, Any?> {
+        val year = data[ST.year].toOptLong() ?: return data
+        val currentYear = cxt.instanceNow().toLocalDateTime(serverTimeZone).year
+        if (year > currentYear) {
+            throw KdrException.mkInput(
+                "A reporting year cannot be in the future; $year is later than the current year $currentYear.",
+            )
+        }
+        return data
+    }
 }
 
 object TraitPresenceByYearDeriver : GedraStateDeriver {
