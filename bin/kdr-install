@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# @desc: Idempotently set up or update this deployment to run the kdr commands.
+# @desc: Idempotently set up or update this deployment to run the kdr commands (--reset-how-to: how to undo parts).
 #
 # Idempotent installer: gets a deployment ready to run Kotlin from the command line, then keeps it healthy.
+# `kdr-install --reset-how-to` installs nothing: it prints how to reset parts of the deployment by hand
+# (today: how to empty this deployment's PostgreSQL database so the next boot starts from scratch).
 # This is the pure-shell bootstrap -- a sniff and a minimal config, the least needed for Kotlin to run -- which
 # then hands off to the clever, growing Kotlin installer (com.dynamicruntime.script.Install) via kdr-run.
 # Runnable from any directory; assumes these scripts stay in bin/.
@@ -71,4 +73,4 @@ fi
 
 # --- 3. Hand off to the Kotlin installer (kdr-run builds the pathing jar on first run) -----------------------
 echo "kdr-install: running the Kotlin installer ..."
-exec "$script_dir/kdr-run" com.dynamicruntime.script.InstallKt "$repo_dir"
+exec "$script_dir/kdr-run" com.dynamicruntime.script.InstallKt "$repo_dir" "$@"
