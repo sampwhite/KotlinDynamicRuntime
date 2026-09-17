@@ -55,7 +55,7 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "profile") {
         mapOf(
             UIC.fragments to fragmentRefs(c, AFRAG.profile),
             UIC.features to mapOf(
-                AFEAT.hasPassword to (row.encodedPassword != null), AFEAT.canSetPassword to true,
+                AFEAT.hasPassword to row.hasPassword, AFEAT.canSetPassword to true,
                 // Carried here too (the auth config has it as well): the page enters a code, so it wants the
                 // same dev autofill, and a group's config should carry what that group needs.
                 AFEAT.simulatedEmail to MailService.get(c).useSimulatedEmail,

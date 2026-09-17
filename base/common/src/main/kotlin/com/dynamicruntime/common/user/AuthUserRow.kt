@@ -14,9 +14,10 @@ import kotlin.time.Instant
 
 /**
  * A user's authentication row, extracted from the `AuthUsers` table into typed fields. Ported from dn's
- * `AuthUserRow`, kd2-simplified to a single [client] (no group/shard). The password is promoted out of the
- * stored [authUserData] map into [encodedPassword] and scrubbed from [data], so it never rides downstream.
- * The class shape is deliberately independent of the storage shape (fields are read/written explicitly).
+ * `AuthUserRow`, kd2-simplified to a single [client] (no group/shard). The credentials are not here: the
+ * password and contacts are the identity's (`AuthIdentityRow`, issue #748), and this row says only what the
+ * user may do and who they are within a client. The class shape is deliberately independent of the storage
+ * shape (fields are read/written explicitly).
  */
 class AuthUserRow(
     val userId: Long,
@@ -28,6 +29,12 @@ class AuthUserRow(
      * resolves it through the identity, so every reader that ever showed or searched the email keeps working.
      */
     val primaryId: String,
+    /**
+     * Whether the identity has a password (issue #748). Derived through the identity like [primaryId], so the
+     * profile and the admin console keep reporting it off the row they already hold; the password itself is
+     * never here.
+     */
+    val hasPassword: Boolean = false,
 ) {
     /** The user's persona (issue #747), frozen at creation; see `PERSONA`. */
     var persona: String = PERSONA.user
@@ -97,13 +104,10 @@ class AuthUserRow(
     lateinit var username: String
     var roles: List<String> = listOf(ROLE.user)
 
-    /** The encoded password, or null when the user logs in by verification code only (optional passwords). */
-    var encodedPassword: String? = null
-
-    /** The remaining auth-data map (roles/password promoted out). */
+    /** The remaining auth-data map (the typed fields promoted out). */
     var authUserData: MutableMap<String, Any?> = mutableMapOf()
 
-    /** The raw stored row (with the password scrubbed), for callers that mutate and write it back. */
+    /** The raw stored row, for callers that mutate and write it back. */
     var data: Map<String, Any?> = emptyMap()
 
     /** A placeholder username (`@<primaryId>`) means the user has not chosen a real username yet. */
@@ -129,15 +133,15 @@ class AuthUserRow(
      */
     fun toUserProfile(): UserProfile = UserProfile(
         authId = userId.toString(), userId = userId, client = client, org = org, roles = roles.toSet(),
-        publicName = publicName(), hasPassword = encodedPassword != null,
+        publicName = publicName(), hasPassword = hasPassword,
         isEntity = isEntity, name = name, identityId = identityId, persona = persona,
     )
 
     /**
      * The admin console's view of this user ([ADTY.adminUser], defined by [defineAdminType]): identity, roles,
      * and account state. Deliberately *not* [toUserProfile] -- that is the acting identity of the caller, while
-     * this describes some other user being administered, and the two must be free to diverge. The password
-     * itself is never exposed, only whether one is set.
+     * this describes some other user being administered, and the two must be free to diverge. Only whether
+     * the identity has a password is reported, never the password.
      */
     fun toAdminInfo(): Map<String, Any?> = mapOf(
         ADF.userId to userId,
@@ -149,7 +153,7 @@ class AuthUserRow(
         ADF.name to name,
         ADF.roles to roles,
         ADF.enabled to enabled,
-        ADF.hasPassword to (encodedPassword != null),
+        ADF.hasPassword to hasPassword,
         ADF.deleted to isDeleted,
         ADF.deletedAt to deletedAt,
         ADF.updatedAt to updatedAt,
@@ -166,11 +170,10 @@ class AuthUserRow(
         if (value != null) data[key] = value else data.remove(key)
     }
 
-    /** Repackages the typed fields into a storage map (roles and password folded back into `authUserData`). */
+    /** Repackages the typed fields into a storage map (roles folded back into `authUserData`). */
     fun toMap(): Map<String, Any?> {
         val newAuthData = authUserData.toMutableMap()
         newAuthData[AD.roles] = roles
-        if (encodedPassword != null) newAuthData[AD.encodedPassword] = encodedPassword else newAuthData.remove(AD.encodedPassword)
         // Removed rather than written as null when absent: most users have no organization, and an explicit
         // null would be stored in every row's JSON for the sake of the few that do.
         if (org != null) newAuthData[AD.org] = org else newAuthData.remove(AD.org)
@@ -227,12 +230,12 @@ class AuthUserRow(
          * rather than a privacy erasure. It obfuscates the **login and contact** identity while keeping the
          * **descriptive** fields a human debugger needs to recognize the account later.
          *
-         * Obfuscated or cleared: the email and username become the `deleted-<userId>` forms above (which also
-         * frees the originals for re-registration and marks the row as a former user); the password and the
-         * stored contacts -- where the email and phone also live -- are dropped; and the roles are cleared, so
-         * the row never reads as an administrator. `enabled` is false, which by itself already denies login and
-         * empties the user's live roles (`AuthUserUtil.refreshActingRoles`); the obfuscation is what makes it
-         * *permanent*.
+         * Obfuscated or cleared: the username becomes the `deleted-<userId>` form above (which frees the
+         * original for re-registration and marks the row as a former user), the key is given up, and the
+         * roles are cleared, so the row never reads as an administrator. `enabled` is false, which by itself
+         * already denies login and empties the user's live roles (`AuthUserUtil.refreshActingRoles`); the
+         * obfuscation is what makes it *permanent*. The address, password and contacts are the identity's
+         * (issue #748); `UserService.deleteUser` retires the identity when this was its last live user.
          *
          * **Kept** (issue: revisit clearing): the display [name], [org] and [isEntity]. These identify the
          * *account* to somebody investigating "did this user own anything?", where the join key is the
@@ -241,8 +244,8 @@ class AuthUserRow(
          * erasure would clear these too.
          *
          * It carries [original]'s stored `data` (so `updateUser`'s optimistic-concurrency guard still fires on
-         * the version it was read at) with the obfuscated `primaryId` written in, so the returned row and the
-         * write agree -- no drift between the constructor val and the write map.
+         * the version it was read at). Its derived address is the retired form the identity takes when this
+         * was its last user, so the row returned to the deleting administrator reads as the tombstone it is.
          */
         fun deletedTombstone(original: AuthUserRow, deletedAt: Instant, deletedBy: Long): AuthUserRow {
             val row = AuthUserRow(original.userId, original.client, original.identityId, deletedPrimaryId(original.userId))
@@ -259,18 +262,13 @@ class AuthUserRow(
             row.isEntity = original.isEntity
             // Kept for debugging/recognition: this is a retirement, not a privacy erasure (see the doc).
             row.name = original.name
-            row.encodedPassword = null
             row.deletedAt = deletedAt
-            // Drop the contacts (the email/phone live here too, so obfuscating only `primaryId` would leave
-            // the address behind), and stamp the deletion marker + its audit. Keep whatever else was held.
+            // Stamp the deletion marker + its audit. Keep whatever else was held.
             row.authUserData = original.authUserData.toMutableMap().also {
-                it.remove(AD.contacts)
-                it.remove(AD.validatedContacts)
                 it[AD.deletedAt] = deletedAt
                 it[AD.deletedBy] = deletedBy
             }
-            // Keep the raw row for its version stamp. The address lives on the identity since the split; its
-            // obfuscation is `UserService.deleteUser`'s (it retires the identity when this was its last user).
+            // Keep the raw row for its version stamp.
             row.data = original.data
             return row
         }
@@ -320,19 +318,24 @@ class AuthUserRow(
         }
 
         /**
-         * Builds a typed row from a stored `AuthUsers` map. [addressOf] resolves the row's identity to its
-         * address (issue #747) -- `UserService` hands in a lookup through the identity cache; a test hands in
-         * a stub -- since the address is no longer a column here. An identity that cannot be resolved is a
-         * broken invariant (a user row always points at an existing identity) and fails as such.
+         * Builds a typed row from a stored `AuthUsers` map. [identityOf] resolves the row's identity to its
+         * **stored** `AuthIdentities` map (issue #747) -- `UserService` hands in a lookup through the identity
+         * cache; a test hands in a stub -- from which the two derived facts, the address and whether there is a
+         * password, are read without extracting the identity (`AuthIdentityRow.addressIn` / `hasPasswordIn`):
+         * a listing extracts a page of users and should pay a map hit each, not an extraction. An identity
+         * that cannot be resolved is a broken invariant (a user row always points at an existing identity) and
+         * fails as such.
          */
-        fun extract(data: Map<String, Any?>, addressOf: (String) -> String?): AuthUserRow {
+        fun extract(data: Map<String, Any?>, identityOf: (String) -> Map<String, Any?>?): AuthUserRow {
             val userId = data[AU.userId].toOptLong() ?: throw KdrException("AuthUsers row is missing its userId.")
             val client = data[PF.client].toOptStr() ?: ""
             val identityId = data[AU.identityId].toOptStr()
                 ?: throw KdrException("AuthUsers row $userId is missing its identityId.")
-            val primaryId = addressOf(identityId)
+            val identity = identityOf(identityId)
                 ?: throw KdrException("AuthUsers row $userId points at identity '$identityId', which is not present.")
-            val row = AuthUserRow(userId, client, identityId, primaryId)
+            val primaryId = AuthIdentityRow.addressIn(identity)
+                ?: throw KdrException("AuthUsers row $userId points at identity '$identityId', which has no address.")
+            val row = AuthUserRow(userId, client, identityId, primaryId, AuthIdentityRow.hasPasswordIn(identity))
             row.persona = data[AU.persona].toOptStr() ?: PERSONA.user
             row.personId = data[AU.personId].toOptStr() ?: ""
             row.enabled = data[PF.enabled] == true
@@ -349,14 +352,10 @@ class AuthUserRow(
             row.lastEditedAt = userData[AD.lastEditedAt].toOptInstant()
             // A real column, read from the row rather than the auth-data blob (unlike org/name/deletedAt).
             row.updatedAt = data[PF.updatedAt].toOptInstant()
-            row.encodedPassword = userData[AD.encodedPassword].toOptStr()
-            userData.remove(AD.encodedPassword) // never let the password leak downstream via `data`
             row.authUserData = userData
-            // The retained `data` is a copy whose nested auth map is the scrubbed one above. Without this the
-            // scrub only ever touched the copy while `data` kept the caller's original -- with the password
-            // still nested inside it -- making the "scrubbed from data" promise of the class doc false. The
-            // copy also means the row never aliases the caller's map, so a cached raw row cannot be reached
-            // through a row handed out to request code.
+            // The retained `data` is a copy whose nested auth map is the mutable one above, so the row never
+            // aliases the caller's map and a cached raw row cannot be reached through a row handed out to
+            // request code.
             val retained = data.toMutableMap()
             retained[AU.authUserData] = userData
             row.data = retained

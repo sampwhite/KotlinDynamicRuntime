@@ -22,15 +22,14 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkUniqueId
 import com.dynamicruntime.common.util.normalizeLoginId
 import com.dynamicruntime.common.util.toOptInstant
-import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toT
 import kotlin.time.Instant
 
 /**
- * The user/auth service (issue #67): owns the [AuthFormHandler] and the SQL access to the `AuthUsers` and
- * `AuthUserDevices` tables. Ported from dn's `UserService` + `AuthQueryHolder`, using kd2's topic/table SQL
- * layer. Registered by the `common` component; found via [get].
+ * The user/auth service (issue #67): owns the [AuthFormHandler] and the SQL access to the `AuthIdentities`,
+ * `AuthUsers`, `LinkedUsers` and `AuthUserDevices` tables. Ported from dn's `UserService` + `AuthQueryHolder`,
+ * using kd2's topic/table SQL layer. Registered by the `common` component; found via [get].
  */
 class UserService : ServiceInitializer {
     override val serviceName: String = UserService.serviceName
@@ -74,17 +73,23 @@ class UserService : ServiceInitializer {
         cachedIdentity(cxt) { it.snapshot.byIndex(AI.primaryId, address) } ?: queryOneIdentity(cxt, AI.primaryId, address)
 
     /**
-     * The address an identity has, for extracting a user row -- the lookup [AuthUserRow.extract] takes. Reads
-     * the one column straight off the cached raw map (one refresh check per resolver, not per row), so a
-     * listing that extracts a page of users pays a map hit each; a miss falls back to SQL.
+     * An identity's stored map, for extracting a user row -- the lookup [AuthUserRow.extract] takes to derive
+     * the address and the password status. Hands out the cached raw map as it is (one refresh check per
+     * resolver, not per row), so a listing that extracts a page of users pays a map hit each; a miss falls
+     * back to SQL.
      */
-    private fun addressOf(cxt: KdrCxt): (String) -> String? {
+    private fun identityOf(cxt: KdrCxt): (String) -> Map<String, Any?>? {
         val cache = identityCache?.also { it.checkRefresh(cxt) }
-        return { id ->
-            cache?.snapshot?.get(cache.idOf(id))?.value?.get(AI.primaryId).toOptStr()
-                ?: queryOneIdentity(cxt, AI.identityId, id)?.primaryId
-        }
+        return { id -> cache?.snapshot?.get(cache.idOf(id))?.value ?: queryOneIdentityRaw(cxt, AI.identityId, id) }
     }
+
+    /**
+     * The identity behind [user]. A user row always points at an existing identity -- extraction already
+     * failed if it did not -- so a miss here is the same broken invariant, not an absence a caller handles.
+     */
+    fun identityOfUser(cxt: KdrCxt, user: AuthUserRow): AuthIdentityRow =
+        queryIdentityById(cxt, user.identityId)
+            ?: throw KdrException("User ${user.userId} points at identity '${user.identityId}', which is not present.")
 
     private inline fun cachedIdentity(
         cxt: KdrCxt,
@@ -96,7 +101,10 @@ class UserService : ServiceInitializer {
         return AuthIdentityRow.extract(row.value)
     }
 
-    private fun queryOneIdentity(cxt: KdrCxt, field: String, value: Any?): AuthIdentityRow? {
+    private fun queryOneIdentity(cxt: KdrCxt, field: String, value: Any?): AuthIdentityRow? =
+        queryOneIdentityRaw(cxt, field, value)?.let { AuthIdentityRow.extract(it) }
+
+    private fun queryOneIdentityRaw(cxt: KdrCxt, field: String, value: Any?): Map<String, Any?>? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authIdentitiesTable(cxt)
         val stmt = SqlTopicUtil.mkNamedTableSelectStmt(sqlCxt, "qAuthIdentitiesBy_$field", table, listOf(field))
@@ -104,17 +112,17 @@ class UserService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(field to value))
         }
-        return row?.let { AuthIdentityRow.extract(it) }
+        return row
     }
 
     /**
      * The identity at [address], created if there is none. [verifiedAt] set says the address has just been
-     * proven (a code read from the inbox); it is stamped on a new identity and onto an existing unverified one.
+     * proven (a code read from the inbox, or a Google-verified sign-in); it is stamped on a new identity and
+     * onto an existing one that had not been proven ([AuthIdentityRow.markVerified]).
      */
     fun getOrCreateIdentity(cxt: KdrCxt, address: String, verifiedAt: Instant? = null): AuthIdentityRow {
         queryIdentityByAddress(cxt, address)?.let { existing ->
-            if (verifiedAt != null && existing.verifiedAt == null) {
-                existing.verifiedAt = verifiedAt
+            if (verifiedAt != null && existing.markVerified(verifiedAt)) {
                 updateIdentity(cxt, existing)
             }
             return existing
@@ -158,16 +166,24 @@ class UserService : ServiceInitializer {
         val stmt = SqlTopicUtil.mkNamedTableSelectStmt(sqlCxt, "qAuthUsersByIdentity", table, listOf(AU.identityId))
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) { rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(AU.identityId to identityId)) }
-        return rows.map { AuthUserRow.extract(it, addressOf(cxt)) }.sortedBy { it.userId }
+        return rows.map { AuthUserRow.extract(it, identityOf(cxt)) }.sortedBy { it.userId }
     }
 
     /**
      * The user an [identity] logs in as (issue #747): its chosen default, else the one it most recently acted
-     * as, else its earliest -- whichever of those exists. Phase A has one user per identity, so this is that
-     * user; the rule is here so the login flows already ask the right question.
+     * as, else its earliest -- whichever of those exists. **Among the enabled users first** (issue #748): a
+     * disabled default falls through to the next enabled one, so disabling one of a person's users does not
+     * lock the person out of the others. Only when none is enabled does the same rule pick a disabled one, so
+     * a login reports that account as inactive rather than as unknown, and an administrative lookup by
+     * address still lands on a user.
      */
     fun defaultUserOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow? {
         val users = usersOfIdentity(cxt, identity.identityId)
+        val enabled = users.filter { it.enabled }
+        return pickDefault(identity, enabled.ifEmpty { users })
+    }
+
+    private fun pickDefault(identity: AuthIdentityRow, users: List<AuthUserRow>): AuthUserRow? {
         if (users.isEmpty()) return null
         return listOfNotNull(identity.defaultUserId, identity.lastUsedUserId)
             .firstNotNullOfOrNull { wanted -> users.firstOrNull { it.userId == wanted } }
@@ -175,17 +191,19 @@ class UserService : ServiceInitializer {
     }
 
     /**
-     * Creates the identity at [primaryId] when there is none and a user of it in [client] (issue #747): the one
-     * provisioning path every flow -- registration, admin create, Google, the fixture -- goes through.
-     * [customize] edits the new user's `authUserData` before the insert (contacts, a name). Returns the userId.
+     * Creates the identity at [primaryId] when there is none -- with the address as its contact, and proven
+     * when [verifiedAt] says so -- and a user of it in [client] (issue #747): the one provisioning path every
+     * flow -- registration, admin create, Google, the fixture -- goes through. [customize] edits the new
+     * user's `authUserData` before the insert (a name, the entity flag). Returns the userId.
      *
      * **Provisioning a key that already exists is not a create.** A user with the same (identity, client,
      * persona, personId) that was deleted *recoverably* (disabled) is **recovered**: the same `userId`, so all
-     * of its content comes back, put into the unregistered state -- placeholder username, no password, roles
-     * reset to the ones provisioned, activated now -- from which it registers again by the normal mechanism
-     * (a code, later an invitation). Its org, name, and entity flag are kept, as the recoverable delete
-     * promised. An **enabled** user under the key is refused as a duplicate (the unique index is the backstop
-     * behind this check). A permanently deleted one never matches: its tombstone gave up the key.
+     * of its content comes back, put into the unregistered state -- placeholder username, roles reset to the
+     * ones provisioned, activated now -- from which it registers again by the normal mechanism (a code, later
+     * an invitation). Its org, name, and entity flag are kept, as the recoverable delete promised; so is the
+     * identity's password, which is the person's and not this user's (issue #748). An **enabled** user under
+     * the key is refused as a duplicate (the unique index is the backstop behind this check). A permanently
+     * deleted one never matches: its tombstone gave up the key.
      */
     fun provisionUser(
         cxt: KdrCxt,
@@ -213,7 +231,6 @@ class UserService : ServiceInitializer {
             }
             existing.username = username ?: placeholder
             existing.roles = roles
-            existing.encodedPassword = null
             if (org != null) existing.org = org
             existing.activatedAt = createdAt
             customize(existing.authUserData)
@@ -269,7 +286,7 @@ class UserService : ServiceInitializer {
         val cache = userCache ?: return null
         cache.checkRefresh(cxt)
         val row = lookup(cache) ?: return null
-        return AuthUserRow.extract(row.value, addressOf(cxt))
+        return AuthUserRow.extract(row.value, identityOf(cxt))
     }
 
     /**
@@ -328,7 +345,7 @@ class UserService : ServiceInitializer {
             val stmt = SqlTopicUtil.mkNamedTableSelectStmt(sqlCxt, "qAuthUsersBy_${AU.userId}", table, listOf(AU.userId))
             sqlCxt.sqlDb.withSession(cxt) {
                 for (id in missed) {
-                    sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(AU.userId to id))?.let { found[id] = AuthUserRow.extract(it, addressOf(cxt)) }
+                    sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(AU.userId to id))?.let { found[id] = AuthUserRow.extract(it, identityOf(cxt)) }
                 }
             }
         }
@@ -367,7 +384,7 @@ class UserService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(field to value))
         }
-        return row?.let { AuthUserRow.extract(it, addressOf(cxt)) }
+        return row?.let { AuthUserRow.extract(it, identityOf(cxt)) }
     }
 
     /**
@@ -446,7 +463,7 @@ class UserService : ServiceInitializer {
         // then always true) -- the SQL rows already *are* the scoped set: the total is their count, and only the
         // page is extracted rather than the whole (possibly enormous) table. With a filter, every matching row
         // must be extracted to count it -- the price of a true total.
-        val extracted = rows.asSequence().map { AuthUserRow.extract(it, addressOf(cxt)) }
+        val extracted = rows.asSequence().map { AuthUserRow.extract(it, identityOf(cxt)) }
         if (term == null && scope.org == null) {
             return UserPage(extracted.take(limit).toList(), rows.size)
         }
@@ -500,7 +517,7 @@ class UserService : ServiceInitializer {
             cache.checkRefresh(cxt)
             val snapshot = cache.snapshot
             val rows = if (scopeClient != null) snapshot.allByIndex(PF.client, scopeClient) else snapshot.byId.values
-            return rows.map { AuthUserRow.extract(it.value, addressOf(cxt)) }
+            return rows.map { AuthUserRow.extract(it.value, identityOf(cxt)) }
         }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUsersTable(cxt)
@@ -517,7 +534,7 @@ class UserService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
         }
-        return rows.map { AuthUserRow.extract(it, addressOf(cxt)) }
+        return rows.map { AuthUserRow.extract(it, identityOf(cxt)) }
     }
 
     /** Inserts a new `AuthUsers` row (protocol columns stamped), returning the generated `userId`. */
@@ -601,15 +618,16 @@ class UserService : ServiceInitializer {
      *    its live roles are empty (`AuthUserUtil.refreshActingRoles`), but every identifier and contact is kept,
      *    so re-enabling it restores the user intact. This is what the `setEnabled(false)` toggle already does;
      *    delete is the same operation under a name that says what it is for.
-     *  - **Permanent** ([permanent] true): the account is disabled **and de-identified** -- its email and
-     *    username obfuscated, its password and contacts cleared ([AuthUserRow.deletedTombstone]) -- and its
-     *    external logins and remembered devices are purged. The original email is unrecoverable and freed for
-     *    re-registration; the row survives only as a `deleted-<userId>` tombstone.
+     *  - **Permanent** ([permanent] true): the account is disabled **and de-identified** -- its username
+     *    obfuscated and its key given up ([AuthUserRow.deletedTombstone]) -- and, when it was its identity's
+     *    last live user, the identity is **retired** with it ([AuthIdentityRow.retire]): the address obfuscated
+     *    and freed for re-registration, the password and contacts cleared, the external logins and remembered
+     *    devices purged. The row survives only as a `deleted-<userId>` tombstone.
      *
      * Returns the resulting row, so a caller reports the outcome (the obfuscated identifiers included) without
      * a re-read. The de-identifying write goes through [updateUser], so it keeps the optimistic-concurrency
-     * guard and announces itself to the user cache; the auxiliary-table purges run only after it succeeds, so
-     * a version conflict leaves nothing half-removed.
+     * guard and announces itself to the user cache; the identity's retirement and the auxiliary-table purges
+     * run only after it succeeds, so a version conflict leaves nothing half-removed.
      */
     fun deleteUser(cxt: KdrCxt, row: AuthUserRow, permanent: Boolean): AuthUserRow {
         val result = if (permanent) {
@@ -619,35 +637,35 @@ class UserService : ServiceInitializer {
         }
         updateUser(cxt, result)
         if (permanent) {
-            deleteRowsForUser(cxt, UT.linkedUsers, row.userId)
-            deleteRowsForUser(cxt, UT.authUserDevices, row.userId)
-            // The address lives on the identity since the split (issue #747). It is obfuscated -- freeing it for
-            // re-registration, as a permanent delete always has -- only when this was the identity's last live
-            // user (a recoverably deleted sibling counts as live: it can be re-enabled): a person's other users
-            // elsewhere are not this administrator's to erase.
+            // The address, credentials, external logins and devices are the identity's (issues #747, #748). They
+            // are retired -- freeing the address for re-registration, as a permanent delete always has -- only
+            // when this was the identity's last live user (a recoverably deleted sibling counts as live: it can
+            // be re-enabled): a person's other users elsewhere are not this administrator's to erase.
             queryIdentityById(cxt, row.identityId)?.let { identity ->
                 val others = usersOfIdentity(cxt, identity.identityId).filter { it.userId != row.userId && !it.isDeleted }
                 if (others.isEmpty()) {
-                    identity.primaryId = AuthUserRow.deletedPrimaryId(row.userId)
+                    identity.retire(row.userId)
                     updateIdentity(cxt, identity)
+                    deleteRowsForIdentity(cxt, UT.linkedUsers, identity.identityId)
+                    deleteRowsForIdentity(cxt, UT.authUserDevices, identity.identityId)
                 }
             }
         }
         return result
     }
 
-    /** Hard-deletes every row of [tableName] owned by [userId] -- the auxiliary identity tables a permanent
-     *  user delete purges. A real delete, not a soft one: these rows are login paths and device memory, not
-     *  the audit record, which is the surviving (disabled, obfuscated) `AuthUsers` row. */
-    private fun deleteRowsForUser(cxt: KdrCxt, tableName: String, userId: Long) {
+    /** Hard-deletes every row of [tableName] belonging to [identityId] -- the auxiliary tables a retired
+     *  identity purges. A real delete, not a soft one: these rows are login paths and device memory, not
+     *  the audit record, which is the surviving (disabled, obfuscated) `AuthUsers` tombstone. */
+    private fun deleteRowsForIdentity(cxt: KdrCxt, tableName: String, identityId: String) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = cxt.getSchema().tables[tableName]
             ?: throw KdrException("$tableName table is not registered in the schema store.")
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "dPurge$tableName", table.columns,
-            "delete from t:$tableName where c:${AU.userId} = :${AU.userId}",
+            "delete from t:$tableName where c:${AI.identityId} = :${AI.identityId}",
         )
-        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(AU.userId to userId)) }
+        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(AI.identityId to identityId)) }
     }
 
     /**
@@ -676,11 +694,12 @@ class UserService : ServiceInitializer {
         ?: throw KdrException("LinkedUsers table is not registered in the schema store.")
 
     /**
-     * The user an external identity signs in as, or null when that identity has never been linked. Keyed by
-     * the source's own id ([LU.linkId]) rather than by email, so a provider changing or reassigning the email
-     * on an account can never re-point an existing link.
+     * The local identity an external one signs in as, or null when it has never been linked. Keyed by the
+     * source's own id ([LU.linkId]) rather than by email, so a provider changing or reassigning the email on
+     * an account can never re-point an existing link. Which user the person then acts as is [defaultUserOf]'s
+     * answer, as for any other login (issue #748).
      */
-    fun queryLinkedUser(cxt: KdrCxt, linkSource: String, linkId: String): AuthUserRow? {
+    fun queryLinkedIdentity(cxt: KdrCxt, linkSource: String, linkId: String): AuthIdentityRow? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = linkedUsersTable(cxt)
         val stmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
@@ -688,17 +707,17 @@ class UserService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(LU.linkSource to linkSource, LU.linkId to linkId))
         }
-        val userId = row?.get(AU.userId).toOptLong() ?: return null
-        return queryByUserId(cxt, userId)
+        val identityId = row?.get(AI.identityId).toOptStr() ?: return null
+        return queryIdentityById(cxt, identityId)
     }
 
     /**
-     * Links an external identity to [userId]. [linkData] holds the claims the source supplied at link time
-     * (its email, display name) -- captured for support and for showing the user what is linked, never read
-     * back as an authority on identity.
+     * Links an external identity to the local [identityId]. [linkData] holds the claims the source supplied
+     * at link time (its email, display name) -- captured for support and for showing the person what is
+     * linked, never read back as an authority on identity.
      */
-    fun insertLinkedUser(
-        cxt: KdrCxt, linkSource: String, linkId: String, userId: Long, linkData: Map<String, Any?>,
+    fun insertLinkedIdentity(
+        cxt: KdrCxt, linkSource: String, linkId: String, identityId: String, linkData: Map<String, Any?>,
     ) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = linkedUsersTable(cxt)
@@ -707,7 +726,7 @@ class UserService : ServiceInitializer {
             LU.linkSource to linkSource,
             LU.linkId to linkId,
             LU.linkData to linkData,
-            AU.userId to userId,
+            AI.identityId to identityId,
         )
         SqlTopicUtil.prepForStdExecute(cxt, table, row)
         sqlCxt.sqlDb.withSession(cxt) {
@@ -718,18 +737,19 @@ class UserService : ServiceInitializer {
     // --- AuthUserDevices: familiar-device trust -----------------------------
 
     /**
-     * Records the device a user logged in from, and -- when [markTrusted] -- marks it *familiar* (verified)
-     * with a fresh [AUTHC.deviceTrustMillis] expiration. Only a verification-code login sets [markTrusted]
-     * (see KdrRequest.trustDevice); a password login records presence but never grants trust. Upserts the
-     * row keyed by ([userId], [deviceGuid]): an existing untrusted row is left untouched when there is no
-     * trust to grant. The multi-IP/user-agent merge is still deferred; deviceData holds the latest only.
+     * Records the device an identity logged in from, and -- when [markTrusted] -- marks it *familiar*
+     * (verified) with a fresh [AUTHC.deviceTrustMillis] expiration. Only a verification-code login sets
+     * [markTrusted] (see KdrRequest.trustDevice); a password login records presence but never grants trust.
+     * Upserts the row keyed by ([identityId], [deviceGuid]) -- the person's, whichever of their users they
+     * logged in as (issue #748): an existing untrusted row is left untouched when there is no trust to grant.
+     * The multi-IP/user-agent merge is still deferred; deviceData holds the latest only.
      */
     fun recordDevice(
-        cxt: KdrCxt, userId: Long, deviceGuid: String, ipAddress: String?, userAgent: String?, markTrusted: Boolean,
+        cxt: KdrCxt, identityId: String, deviceGuid: String, ipAddress: String?, userAgent: String?, markTrusted: Boolean,
     ) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUserDevicesTable(cxt)
-        val key = mapOf(AU.userId to userId, AUD.deviceGuid to deviceGuid)
+        val key = mapOf(AI.identityId to identityId, AUD.deviceGuid to deviceGuid)
         sqlCxt.sqlDb.withSession(cxt) {
             val existing = sqlCxt.sqlDb.queryOneStatement(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), key)
             if (existing != null && !markTrusted) return@withSession // presence already recorded; nothing to add
@@ -739,7 +759,7 @@ class UserService : ServiceInitializer {
                 null
             }
             val row = mutableMapOf(
-                AU.userId to userId,
+                AI.identityId to identityId,
                 AUD.deviceGuid to deviceGuid,
                 AUD.deviceData to mapOf("ipAddress" to ipAddress, "userAgent" to userAgent),
                 AUD.deviceVerified to markTrusted,
@@ -753,17 +773,17 @@ class UserService : ServiceInitializer {
     }
 
     /**
-     * Whether [deviceGuid] is a *familiar* device for [userId]: a recorded row that is verified and whose
+     * Whether [deviceGuid] is a *familiar* device for [identityId]: a recorded row that is verified and whose
      * trust has not expired. This is the hard precondition for password login (issue #69) -- an unfamiliar
      * device cannot use a password at all and must fall back to a verification code.
      */
-    fun isDeviceTrusted(cxt: KdrCxt, userId: Long, deviceGuid: String): Boolean {
+    fun isDeviceTrusted(cxt: KdrCxt, identityId: String, deviceGuid: String): Boolean {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUserDevicesTable(cxt)
         val stmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
         var row: Map<String, Any?>? = null
         sqlCxt.sqlDb.withSession(cxt) {
-            row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(AU.userId to userId, AUD.deviceGuid to deviceGuid))
+            row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(AI.identityId to identityId, AUD.deviceGuid to deviceGuid))
         }
         val r = row ?: return false
         if (r[AUD.deviceVerified] != true) return false

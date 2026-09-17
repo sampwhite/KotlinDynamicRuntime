@@ -21,36 +21,39 @@ fun checkValidUsername(username: String) {
 }
 
 /**
- * Sets [username] (when given) and, **only when [password] is provided**, the encoded password on [row] --
- * passwords are optional in kd2, so a user may log in by verification code alone and opt into a password
- * later. The row must be enabled, carry the user role, and have a recorded contact.
+ * Sets [username] (when given) on [user] and, **only when [password] is provided**, the encoded password on
+ * its [identity] -- passwords are optional in kd2, so a person may log in by verification code alone and opt
+ * into a password later. The user must be enabled and carry the user role, and the identity must have a
+ * recorded contact. The caller writes back whichever of the two it changed.
  */
-fun updateUsernameAndPassword(row: AuthUserRow, username: String?, password: String?) {
+fun updateUsernameAndPassword(user: AuthUserRow, identity: AuthIdentityRow, username: String?, password: String?) {
     if (username != null) checkValidUsername(username)
-    requireUsableForLogin(row)
-    if (username != null) row.username = username
-    if (password != null) setPassword(row, password)
+    requireUsableForLogin(user, identity)
+    if (username != null) user.username = username
+    if (password != null) setPassword(identity, user, password)
 }
 
 /**
- * Hashes and stores [password] on [row] (opting the user into password login). Enforces the shared
- * [passwordRuleError] rules -- the same ones the frontend explains before submitting, so what it tells the
- * user and what this rejects cannot disagree.
+ * Hashes and stores [password] on [identity] (opting the person into password login), on behalf of [user],
+ * the one they are logging in as -- which must be usable for login. Enforces the shared [passwordRuleError]
+ * rules -- the same ones the frontend explains before submitting, so what it tells the user and what this
+ * rejects cannot disagree. The password is the identity's (issue #748): set through any of the person's
+ * users, it logs the person in as whichever of them the login id names.
  */
-fun setPassword(row: AuthUserRow, password: String) {
-    requireUsableForLogin(row)
+fun setPassword(identity: AuthIdentityRow, user: AuthUserRow, password: String) {
+    requireUsableForLogin(user, identity)
     passwordRuleError(password)?.let { throw KdrException.mkInput(it) }
-    row.encodedPassword = password.hashPassword()
+    identity.encodedPassword = password.hashPassword()
 }
 
-/** Clears [row]'s password, opting the user back out of password login (code login still works). */
-fun clearPassword(row: AuthUserRow) {
-    row.encodedPassword = null
+/** Clears [identity]'s password, opting the person back out of password login (code login still works). */
+fun clearPassword(identity: AuthIdentityRow) {
+    identity.encodedPassword = null
 }
 
-/** Guards that [row] is a real, enabled user with a contact -- the precondition for assigning login data. */
-private fun requireUsableForLogin(row: AuthUserRow) {
-    if (!row.enabled || !row.roles.contains(ROLE.user) || !row.authUserData.containsKey(AD.contacts)) {
+/** Guards that [user] is a real, enabled user of an [identity] with a contact -- the precondition for assigning login data. */
+private fun requireUsableForLogin(user: AuthUserRow, identity: AuthIdentityRow) {
+    if (!user.enabled || !user.roles.contains(ROLE.user) || !identity.hasContact || user.identityId != identity.identityId) {
         throw KdrException("User is not in a state where a login can be assigned to it.")
     }
 }
@@ -77,7 +80,9 @@ private fun requireUsableForLogin(row: AuthUserRow) {
  *
  * Ordinary user traffic still never touches the database for auth. A disabled account loses every role here,
  * which is what makes `admin/user/setEnabled` bite within the same bounds rather than at cookie expiry; a row
- * that has vanished is treated the same way.
+ * that has vanished is treated the same way, as is one that **no longer belongs to the cookie's identity**
+ * (issue #748) -- the session was issued to a person, and a user detached from that person is not theirs to
+ * act as, however the detachment came about.
  */
 fun refreshActingRoles(cxt: KdrCxt) {
     val profile = cxt.userProfile
@@ -89,7 +94,13 @@ fun refreshActingRoles(cxt: KdrCxt) {
         return
     }
     val row = UserService.get(cxt).queryByUserId(cxt, profile.userId) ?: return
-    val liveRoles = if (row.enabled) row.roles.toSet() else emptySet()
+    // A cookie issued before the split carries no identity and skips the membership check; the next login
+    // replaces it with one that does.
+    val detached = profile.identityId != null && row.identityId != profile.identityId
+    if (detached) {
+        LogAuth.info(cxt) { "User ${profile.userId} no longer belongs to the session's identity; treating it as disabled." }
+    }
+    val liveRoles = if (row.enabled && !detached) row.roles.toSet() else emptySet()
     if (liveRoles != profile.roles) {
         LogAuth.debug(cxt) { "Roles for user ${profile.userId} changed since login: $liveRoles." }
     }

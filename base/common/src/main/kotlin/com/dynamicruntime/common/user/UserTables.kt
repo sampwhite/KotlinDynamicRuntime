@@ -21,7 +21,8 @@ object UT {
 
 /**
  * `LinkedUsers` column names (issue #157). An external identity provider's own key for a person, mapped to
- * the local [AU.userId] it signs in as.
+ * the local [AI.identityId] it signs in as (the identity, not a user, since issue #748: signing in is proving
+ * who you are, and which user you then act as is the identity's default-user rule).
  */
 @Suppress("ConstPropertyName")
 object LU {
@@ -63,8 +64,33 @@ object AI {
     /** The user this identity most recently acted as. */
     const val lastUsedUserId = "lastUsedUserId"
 
-    /** The identity's own data blob (phase B: password, contacts). */
+    /** The identity's own data blob: the credentials and contacts, keyed by [IDD]. */
     const val identityData = "identityData"
+}
+
+/**
+ * Keys within the [AI.identityData] map (issue #748): what proves *who* a person is, as opposed to the [AD]
+ * keys on a user, which say what they may do and who they are within a client. Moved here from `authUserData`
+ * when credentials became the identity's -- one password for the person, however many users they hold.
+ */
+@Suppress("ConstPropertyName")
+object IDD {
+    /** The encoded password, or absent when the person has not opted into a password (login is by code). */
+    const val encodedPassword = "encodedPassword"
+
+    /** List of contact descriptors (each a map keyed by [AC2]: an address and its type). */
+    const val contacts = "contacts"
+
+    /** List of contact addresses that have been verified -- the address, once `verifiedAt` is set. */
+    const val validatedContacts = "validatedContacts"
+}
+
+/** Keys of one contact descriptor in [IDD.contacts]. Each name matches its value. */
+@Suppress("ConstPropertyName")
+object AC2 {
+    const val address = "address"
+    const val type = "type"
+    const val email = "email"
 }
 
 /** `AuthUsers` column names. */
@@ -95,9 +121,9 @@ object AU {
     const val username = "username"
 
     /**
-     * Auth data map: roles, identity (org, name, isEntity), the optional encoded password, contacts, and
-     * lifecycle markers (e.g., deletion). The authoritative key list is [AD] -- this summary names the shape,
-     * not every key.
+     * Auth data map: roles, identity (org, name, isEntity), the tracked dates, and lifecycle markers (e.g.,
+     * deletion). The authoritative key list is [AD] -- this summary names the shape, not every key. The
+     * password and contacts left for the identity's [AI.identityData] in issue #748.
      */
     const val authUserData = "authUserData"
 }
@@ -150,15 +176,6 @@ object AD {
      */
     const val name = "name"
 
-    /** The encoded password, or absent when the user has not opted into a password (login is by code). */
-    const val encodedPassword = "encodedPassword"
-
-    /** List of contact descriptors (each a map with an address/type). */
-    const val contacts = "contacts"
-
-    /** List of contact addresses that have been verified. */
-    const val validatedContacts = "validatedContacts"
-
     /** When the account was permanently deleted (its identity obfuscated); absent for a live account. Its
      *  presence is what marks a row as a tombstone. */
     const val deletedAt = "deletedAt"
@@ -167,7 +184,11 @@ object AD {
     const val deletedBy = "deletedBy"
 }
 
-/** `AuthUserDevices` column names (dn's `AuthLoginSources`, renamed to Device terminology). */
+/**
+ * `AuthUserDevices` column names (dn's `AuthLoginSources`, renamed to Device terminology). A device is
+ * familiar to an *identity* (issue #748): keyed with [AI.identityId], since a code read from the inbox proves
+ * the person, and the trust it grants should serve whichever of their users they log in as.
+ */
 @Suppress("ConstPropertyName")
 object AUD {
     /** Unique id attached to the requesting agent; for browsers it is a cookie set on the device. */
@@ -192,10 +213,11 @@ object AUD {
  * identity, and `(identityId, client, persona, personId)` is unique -- the key the design settled on, held by
  * the database rather than by code -- while `username` keeps its own unique index. (dn's transaction-lock
  * columns are omitted: the verify-code flows use plain sessions, not topic transactions.) `AuthUserDevices`
- * records the devices a user logs in from (dn's
- * `AuthLoginSources`, renamed). `LinkedUsers` (issue #157) maps an external identity provider's own key for a
- * person onto a local `userId`. DN's `AuthContacts` is omitted (unused there -- contacts live in
- * `authUserData`), as are `AuthTokens` (batch/test only) and `UserProfiles` (stubbed: a different approach is
+ * records the devices an identity logs in from (dn's `AuthLoginSources`, renamed). `LinkedUsers` (issue #157)
+ * maps an external identity provider's own key for a person onto a local `identityId`. Both key on the identity
+ * rather than a user (issue #748): they are about proving who someone is, which is the identity's business, so
+ * neither carries a client column any more. DN's `AuthContacts` is omitted (unused there -- contacts live in
+ * `identityData`), as are `AuthTokens` (batch/test only) and `UserProfiles` (stubbed: a different approach is
  * coming).
  */
 fun authTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "user", topic = authTopic) {
@@ -205,7 +227,7 @@ fun authTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "user
         column(AI.verifiedAt, "When the address was proven; absent while nobody has.") { dateTime() }
         column(AI.defaultUserId, "The user this identity logs in as by choice.") { type = SCT.integer }
         column(AI.lastUsedUserId, "The user this identity most recently acted as.") { type = SCT.integer }
-        column(AI.identityData, "The identity's own data (later: password, contacts).") { type = SCT.kObject }
+        column(AI.identityData, "The identity's own data: the optional encoded password, and contacts.") { type = SCT.kObject }
         primaryKey(AI.identityId)
         // No forClient(): an identity spans clients by design (issue #747).
         index(AI.primaryId, unique = true)
@@ -217,7 +239,7 @@ fun authTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "user
         column(AU.persona, "The user's persona, frozen at creation.", required = true)
         column(AU.personId, "Distinguishes same-persona users of one identity in one client; empty for the ordinary one.", required = true)
         column(AU.username, "The user's unique preferred name.", required = true)
-        column(AU.authUserData, "Auth data: roles, identity (org, name), optional encoded password, contacts, and deletion markers.") { type = SCT.kObject }
+        column(AU.authUserData, "Auth data: roles, identity (org, name), tracked dates, and deletion markers.") { type = SCT.kObject }
         primaryKey(AU.userId)
         forClient()
         // The design's key (issue #747), enforced here rather than by a query-then-insert: one user per
@@ -230,25 +252,26 @@ fun authTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "user
         // a full scan of the one table guaranteed to grow.
         index(PF.updatedAt)
     }
-    table(UT.linkedUsers, "External identities (Google, …) linked to a local user.") {
+    table(UT.linkedUsers, "External identities (Google, …) linked to a local identity.") {
         column(LU.linkSource, "The external identity source (e.g. 'google').", required = true)
         column(LU.linkId, "The source's own primary key for the identity (for Google, the 'sub' claim).", required = true)
         column(LU.linkData, "Claims captured from the source when the link was made.") { type = SCT.kObject }
-        forUsers() // adds the linked-to userId + client columns
+        column(AI.identityId, "The local identity the external one signs in as.", required = true)
         // The source plus that source's key is the identity, so it is the primary key -- one external identity
-        // can only ever point at one local user, enforced by the database rather than by a query-then-insert.
+        // can only ever point at one local identity, enforced by the database rather than by a query-then-insert.
         primaryKey(LU.linkSource, LU.linkId)
-        // The reverse direction: every external identity linked to one user (a profile page listing them, and
-        // unlinking). Not unique -- a user may link several sources, and several identities within one source.
-        index(AU.userId)
+        // The reverse direction: every external identity linked to one of ours (a profile page listing them,
+        // unlinking, and the purge when the identity is retired). Not unique -- a person may link several
+        // sources, and several identities within one source.
+        index(AI.identityId)
     }
-    table(UT.authUserDevices, "Devices from which a user's logins originate.") {
+    table(UT.authUserDevices, "Devices from which an identity's logins originate.") {
+        column(AI.identityId, "The identity the device is familiar to.", required = true)
         column(AUD.deviceGuid, "Unique id attached to the requesting agent (a browser cookie).", required = true)
         column(AUD.deviceData, "Captured information about the device (IPs, user agents).") { type = SCT.kObject }
         column(AUD.deviceVerified, "Whether the device is verified as trusted.") { type = SCT.boolean }
         column(AUD.verifyExpiration, "When the device's verification expires.") { dateTime() }
-        forUsers() // adds the owning userId + client columns
-        primaryKey(AU.userId, AUD.deviceGuid)
+        primaryKey(AI.identityId, AUD.deviceGuid)
         index(AUD.deviceGuid)
     }
 }

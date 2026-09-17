@@ -29,6 +29,10 @@ object LogAuth : KdrLogger("auth")
  * precondition, not a post-success step-up. A password login rides existing device trust but never grants it,
  * so every trust decision traces back to proving control of the contact via a code.
  *
+ * Every flow resolves a login id to the **identity** first (issue #748) -- the password, the device trust and
+ * the verification are the person's -- and then to the user the person acts as: the one a username names, or
+ * the identity's default user for an address (`UserService.defaultUserOf`).
+ *
  * Brute force and email flooding are throttled by an in-memory [AuthRateLimiter] *before* codes/passwords are
  * validated; the throttle is independent of the future single-use verify-code table.
  *
@@ -172,7 +176,7 @@ class AuthFormHandler(
         requireValidToken(cxt, formAuthToken)
         verifyCodeOrThrow(cxt, address, formAuthToken, verifyCode)
         val existing = userService.queryByPrimaryId(cxt, address)
-        if (existing != null && existing.enabled && (!existing.needsRealUsername || existing.encodedPassword != null)) {
+        if (existing != null && existing.enabled && (!existing.needsRealUsername || existing.hasPassword)) {
             // FUTURE (with the other security hardening -- single-use verify tokens, logout invalidating the
             // auth cookie): rather than an error, *pretend success* here and email the existing account that
             // someone tried to register with their address. For now, it is a sensitive error -- obfuscated to a
@@ -190,27 +194,21 @@ class AuthFormHandler(
         // `+acme` tag puts them in `acme`, and anything else -- including a client this node does not carry --
         // is `public`, exactly as every registration was before.
         val now = cxt.now()
-        // The verified contact rides on the user in phase A of the identity split (it moves to the identity in
-        // phase B); the identity itself records the proof (`verifiedAt`) from here on.
-        val contacts: (MutableMap<String, Any?>) -> Unit = {
-            it[AD.validatedContacts] = listOf(address)
-            it[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
-        }
+        // The proof, and the contact it proves, are recorded on the identity (issues #747, #748).
         return if (existing != null) {
-            // A lingering row (started-but-unfinished, or a permanently deleted tombstone) is re-provisioned in
-            // place; its identity is marked verified now, as a fresh one would be.
+            // A lingering row (started-but-unfinished, or recoverably deleted) is re-provisioned in place; its
+            // identity is marked verified now, as a fresh one would be.
             userService.getOrCreateIdentity(cxt, address, verifiedAt = now)
             existing.username = AuthUserRow.usernameTmpPrefix + address
             existing.roles = initialRoles
-            existing.encodedPassword = null
-            existing.authUserData = mutableMapOf<String, Any?>().also(contacts)
+            existing.authUserData = mutableMapOf()
             existing.enabled = true
             userService.updateUser(cxt, existing)
             existing.userId
         } else {
             userService.provisionUser(
                 cxt, address, AddressRules.clientForNewUser(cxt, address), initialRoles,
-                createdAt = now, verifiedAt = now, customize = contacts,
+                createdAt = now, verifiedAt = now,
             )
         }
     }
@@ -235,7 +233,8 @@ class AuthFormHandler(
                 throw KdrException("Username '$username' has already been taken.", code = EXC.badInput)
             }
         }
-        updateUsernameAndPassword(row, username, password)
+        val identity = userService.identityOfUser(cxt, row)
+        updateUsernameAndPassword(row, identity, username, password)
         // Each is only touched when the caller says so, so a registration that omits them leaves the defaults.
         // They are independent: `name` is a person's full name just as readily as a business's, so it is not
         // conditioned on the flag. Neither is required nor checked for uniqueness -- the name is display copy,
@@ -243,6 +242,8 @@ class AuthFormHandler(
         if (isEntity != null) row.isEntity = isEntity
         if (name != null) row.name = name // the row normalizes: trimmed, blank means none
         userService.updateUser(cxt, row)
+        // The password is the identity's (issue #748), so it is the identity that is written when one was set.
+        if (password != null) userService.updateIdentity(cxt, identity)
         return completeLogin(cxt, row, byCode = true)
     }
 
@@ -259,13 +260,19 @@ class AuthFormHandler(
      * Logs a user in by [password] ([loginId] is a username or email) -- permitted **only from a familiar
      * device** (issue #69). Every failure (unknown user, unverified device, no password, or a wrong password)
      * returns the *same* opaque message; the real reason is only logged, so the caller cannot tell whether the
-     * password was wrong or the device was unfamiliar. Attempts are throttled per login id and per source IP
-     * before any password work.
+     * password was wrong or the device was unfamiliar. Attempts are throttled per **identity** and per source
+     * IP before any password work: the password and the device trust are the person's (issue #748), so the
+     * guesses against them are counted for the person too, whichever of their users the login id names -- and
+     * against the login id itself when it names nobody, so an unknown account is throttled all the same.
      */
     fun loginByPassword(cxt: KdrCxt, loginId: String, password: String): Map<String, Any?> {
         val nowMs = cxt.now().toEpochMilliseconds()
         val ip = cxt.forwardedFor ?: unknownIp
-        if (!rateLimiter.allow("pw:$loginId", RL.pwPerUserMax, RL.pwWindowMs, nowMs) ||
+        // Resolved before the throttle only to key it; a cache hit, and nothing below runs until it passes.
+        val row = userService.queryByLoginId(cxt, loginId)
+        val identity = row?.let { userService.identityOfUser(cxt, it) }
+        val attemptKey = "pw:" + (identity?.identityId ?: loginId)
+        if (!rateLimiter.allow(attemptKey, RL.pwPerUserMax, RL.pwWindowMs, nowMs) ||
             !rateLimiter.allow("pwip:$ip", RL.pwPerIpMax, RL.pwWindowMs, nowMs)
         ) {
             throw KdrException.mkMsg(
@@ -274,13 +281,12 @@ class AuthFormHandler(
             )
         }
 
-        val row = userService.queryByLoginId(cxt, loginId)
         val deviceGuid = cxt.request?.webRequest?.getRequestCookies()?.get(AUTHC.deviceCookie)
-        val stored = row?.encodedPassword
+        val stored = identity?.encodedPassword
         val failReason: String? = when {
-            row == null -> "unknown account"
+            row == null || identity == null -> "unknown account"
             deviceGuid == null -> "no device cookie"
-            !userService.isDeviceTrusted(cxt, row.userId, deviceGuid) -> "unverified device"
+            !userService.isDeviceTrusted(cxt, identity.identityId, deviceGuid) -> "unverified device"
             stored == null -> "no password set"
             !password.checkPassword(stored) -> "incorrect password"
             else -> null
@@ -289,25 +295,27 @@ class AuthFormHandler(
             LogAuth.info(cxt) { "Password login failed for '$loginId': $failReason." }
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.loginFailed), code = EXC.authNeeded)
         }
-        rateLimiter.reset("pw:$loginId")
+        rateLimiter.reset(attemptKey)
         return completeLogin(cxt, row!!, byCode = false)
     }
 
     // --- Google sign-in (issue #157) ----------------------------------------
 
     /**
-     * Logs a user in from a Google ID token, linking the Google identity to a local user on first use.
+     * Logs a user in from a Google ID token, linking the Google identity to a local identity on first use.
      *
-     * The identity is Google's `sub`, held in `LinkedUsers`. Once that link exists, it is the *only* thing
-     * consulted, so a later change to the account's Google email -- or that email being reassigned to someone
-     * else, which a Workspace domain can do -- cannot re-point the link or hand the account to a stranger.
+     * The Google identity is its `sub`, held in `LinkedUsers` against our `identityId` (issue #748). Once that
+     * link exists, it is the *only* thing consulted, so a later change to the account's Google email -- or
+     * that email being reassigned to someone else, which a Workspace domain can do -- cannot re-point the link
+     * or hand the account to a stranger. The person then acts as the identity's default user, like any login.
      *
      * On a **first** link there is nothing but the email to match on, and that is the one moment this path can
-     * reach an existing local account. Hence [GoogleIdToken.emailVerified] is a hard precondition here rather
+     * reach an existing local identity. Hence [GoogleIdToken.emailVerified] is a hard precondition here rather
      * than a detail: an unverified Google address is one the signer never proved they control, so honoring it
      * would let anyone who sets their Google email to a victim's address inherit that account. Unverified is
      * refused outright -- it does not fall through to creating a new user, which would silently squat the
-     * address instead.
+     * address instead. A verified one counts as proof of the address: the identity is marked verified by it,
+     * as a code read from the inbox would.
      *
      * The device is deliberately **not** marked familiar ([completeLogin] with `byCode = false`). Device trust
      * is what later permits a password login, and the invariant in this class's own contract is that every
@@ -326,8 +334,10 @@ class AuthFormHandler(
         val token = verifier.verify(cxt, credential)
 
         // An identity we have seen before: the link is the answer, and the email is not consulted at all.
-        userService.queryLinkedUser(cxt, LSRC.google, token.subject)?.let { linked ->
-            return completeLogin(cxt, linked, byCode = false)
+        userService.queryLinkedIdentity(cxt, LSRC.google, token.subject)?.let { linked ->
+            val user = userService.defaultUserOf(cxt, linked)
+                ?: throw KdrException("The identity linked to Google subject '${token.subject}' has no user.", code = EXC.internalError)
+            return completeLogin(cxt, user, byCode = false)
         }
 
         // First sight of this Google account -- the only path that may touch an existing local user.
@@ -341,30 +351,32 @@ class AuthFormHandler(
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.googleEmailUnverified))
         }
 
-        val row = userService.queryByPrimaryId(cxt, email) ?: mkGoogleUser(cxt, email)
-        userService.insertLinkedUser(
-            cxt, LSRC.google, token.subject, row.userId,
+        // The existing identity at the address, marked verified by Google's word for it, or a new one.
+        val row = userService.queryByPrimaryId(cxt, email)?.also {
+            userService.getOrCreateIdentity(cxt, email, verifiedAt = cxt.now())
+        } ?: mkGoogleUser(cxt, email)
+        userService.insertLinkedIdentity(
+            cxt, LSRC.google, token.subject, row.identityId,
             // Captured for support and for showing the user what is linked -- never read back as an authority
             // on identity, which is the `sub` in the key.
             mapOf(GOOG.email to email, GOOG.name to token.displayName),
         )
-        LogAuth.info(cxt) { "Linked Google subject '${token.subject}' to user ${row.userId} ('${row.primaryId}')." }
+        LogAuth.info(cxt) { "Linked Google subject '${token.subject}' to identity '${row.identityId}' ('${row.primaryId}')." }
         return completeLogin(cxt, row, byCode = false)
     }
 
     /**
-     * Provisions a local user for a Google identity whose (Google-verified) [email] matches no existing
-     * account. The initial-roles rule applies exactly as it does to a registration, so a deployment's
-     * auto-admin domain reaches a Google-provisioned operator too.
-     *
-     * The address is **not** added to `validatedContacts`: that list means "we sent a code here and they proved
-     * they read it", and Google's copy of the address can diverge from ours. The Google fact lives in the
-     * `LinkedUsers` row instead, where it cannot be mistaken for our own verification.
+     * Provisions a local identity and user for a Google identity whose (Google-verified) [email] matches no
+     * existing account. The initial-roles rule applies exactly as it does to a registration, so a
+     * deployment's auto-admin domain reaches a Google-provisioned operator too. The identity is verified from
+     * the start: Google has vouched for the address, and the link that records so is written right after.
      */
     private fun mkGoogleUser(cxt: KdrCxt, email: String): AuthUserRow {
+        val now = cxt.now()
         val userId = userService.provisionUser(
-            cxt, email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email), createdAt = cxt.now(),
-        ) { it[AD.contacts] = listOf(mapOf("address" to email, "type" to "email")) }
+            cxt, email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email),
+            createdAt = now, verifiedAt = now,
+        )
         return userService.queryByUserId(cxt, userId)
             ?: throw KdrException("Could not load the just-created user '$email'.", code = EXC.internalError)
     }
@@ -383,8 +395,9 @@ class AuthFormHandler(
         val row = userService.queryByLoginId(cxt, loginId)
             ?: refuseUnknownLogin(cxt, loginId, formAuthToken, verifyCode)
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
-        setPassword(row, password)
-        userService.updateUser(cxt, row)
+        val identity = userService.identityOfUser(cxt, row)
+        setPassword(identity, row, password)
+        userService.updateIdentity(cxt, identity)
         return completeLogin(cxt, row, byCode = true)
     }
 
@@ -413,15 +426,18 @@ class AuthFormHandler(
     }
 
     /**
-     * Removes the currently-logged-in user's password (opt back out of password login; code login still
+     * Removes the currently-logged-in person's password (opt back out of password login; code login still
      * works). Reached from the profile page, so it relies on the authenticated session rather than a code.
+     * The password is the identity's (issue #748), so it goes for every user the person holds.
      */
     fun removePassword(cxt: KdrCxt): Map<String, Any?> {
         val row = userService.queryByUserId(cxt, cxt.userProfile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
-        clearPassword(row)
-        userService.updateUser(cxt, row)
-        return row.toUserProfile().toUserInfo()
+        val identity = userService.identityOfUser(cxt, row)
+        clearPassword(identity)
+        userService.updateIdentity(cxt, identity)
+        // The row's password status was derived when it was read, before the write; say what is true now.
+        return row.toUserProfile().copy(hasPassword = false).toUserInfo()
     }
 
     /**
@@ -467,8 +483,6 @@ class AuthFormHandler(
             cxt, address, fixtureClient(cxt, address, client), roles,
             createdAt = cxt.now(), persona = persona, personId = personId, verifiedAt = cxt.now(),
         ) { authUserData ->
-            authUserData[AD.validatedContacts] = listOf(address)
-            authUserData[AD.contacts] = listOf(mapOf("address" to address, "type" to "email"))
             // The person's real-world name (issue #736), set the same way the admin-create path does -- display
             // copy, independent of the username, so a fixture can exercise a name-driven feature (a prefill) that
             // `publicName` (which falls back to the email) cannot show. Ignored when the user already exists, like
@@ -508,10 +522,20 @@ class AuthFormHandler(
 
     /**
      * Binds the acting profile and flags the request for the cookie hook; returns the user-info payload. A
-     * [byCode] login additionally flags the device to be marked familiar (see KdrRequest.trustDevice).
+     * [byCode] login additionally flags the device to be marked familiar (see KdrRequest.trustDevice), and
+     * -- having just read a code from the inbox -- proves the identity's address if nothing had yet.
      */
     private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean): Map<String, Any?> {
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
+        // The identity records the proof and which user the person last acted as (the fallback default,
+        // issue #747); written only when either moved, so the ordinary repeat login costs no identity write.
+        val identity = userService.identityOfUser(cxt, row)
+        val proven = byCode && identity.markVerified(cxt.now())
+        val moved = identity.lastUsedUserId != row.userId
+        if (proven || moved) {
+            identity.lastUsedUserId = row.userId
+            userService.updateIdentity(cxt, identity)
+        }
         // The auto-admin rule is not re-applied here (issue #352). It used to be, so that configuring the
         // admin domain afterward reached an operator who had already registered -- but a grant that
         // re-asserts itself on every login is a permanent property of an address rather than a statement
@@ -525,7 +549,9 @@ class AuthFormHandler(
         row.lastLoggedInAt = cxt.now()
         UserService.get(cxt).updateUser(cxt, row, isEdit = false)
 
-        val profile = row.toUserProfile()
+        // The password status comes from the identity in hand rather than the row: a row read before the
+        // password was set (`changePassword`, `setLoginData`) would otherwise report the person as without one.
+        val profile = row.toUserProfile().copy(hasPassword = identity.hasPassword)
         cxt.bindToUserProfile(profile)
         cxt.request?.let {
             it.setAuthCookie = true

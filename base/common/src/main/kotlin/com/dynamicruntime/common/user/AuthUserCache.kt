@@ -14,14 +14,10 @@ import com.dynamicruntime.common.util.toOptStr
  * anything else (`refreshActingRoles`), and the login flows resolve one or two more.
  *
  * **The cache holds the raw stored row map, not an extracted [AuthUserRow]** -- each consumer extracts its
- * own row per read (`UserService.cachedUser`). Two reasons, both learned the hard way:
- *
- *  - [AuthUserRow] is mutable and callers routinely edit one and write it back, so a cached instance would
- *    have to be defensively copied on every lookup anyway; with the raw map, extraction *is* the copy.
- *  - Extraction scrubs the password out of the row's retained `data`, which is right for anything handed to
- *    request code but wrong for the cache's own copy: a row re-extracted from a scrubbed map would lose
- *    [AuthUserRow.encodedPassword], silently breaking password login on a cache hit. The raw map keeps full
- *    fidelity, exactly as a fresh SQL read would.
+ * own row per read (`UserService.cachedUser`). [AuthUserRow] is mutable and callers routinely edit one and
+ * write it back, so a cached instance would have to be defensively copied on every lookup anyway; with the
+ * raw map, extraction *is* the copy. (The second reason, full fidelity for a password that extraction scrubs,
+ * moved with the password to [AuthIdentityCache].)
  *
  * Three lookups are cached: by `userId` (the primary key), by `username` (a unique cache index keyed off the
  * raw column), and by `identityId` (non-unique -- the users of one identity, issue #747). A lookup by

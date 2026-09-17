@@ -279,6 +279,8 @@ be arbitrary, and it is why `hub` need not carry any of that meaning itself.
 **The window, and why it is now shut cheaply.** No persisted row carries `local` today: all five client-scoped
 tables — `AuthUsers`, `LinkedUsers`, `AuthUserDevices`, `GedraDataTran`, `GedraData` — receive `public`, since
 auth writes it explicitly and gedras take it from a request profile, and `InstanceConfig` is not client-scoped.
+(`LinkedUsers` and `AuthUserDevices` have since lost their client column altogether: they key on the identity,
+which spans clients -- issue #748.)
 The first row carrying it would appear when something writes a client-scoped table **from a context whose client
 was defaulted** — internal batch activity, or users created in this client once it is defined. Settling the name
 before that happens means `CL.hub` arrives with the first slice and no row ever carries the old value, so there

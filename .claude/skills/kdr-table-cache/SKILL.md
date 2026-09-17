@@ -71,8 +71,9 @@ val params = SqlCacheParams(
 
 **Cache the raw row map when consumers need a mutable object.** `AuthUserCache` does: `AuthUserRow` is
 mutable and callers edit one and write it back, so a shared instance would be everyone's edit. Extracting per
-read *is* the defensive copy. It also keeps full fidelity — `AuthUserRow.extract` scrubs the password out of
-the row it hands out, so a cache of extracted rows would lose `encodedPassword` and break password login.
+read *is* the defensive copy. It also keeps full fidelity — `AuthIdentityRow.extract` scrubs the password out
+of the row it hands out, so a cache of extracted identity rows would lose `encodedPassword` and break password
+login (`AuthIdentityCache`).
 
 ## Registering it
 
