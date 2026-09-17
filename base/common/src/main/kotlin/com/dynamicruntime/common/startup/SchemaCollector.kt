@@ -9,6 +9,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraDataDeriver
+import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
@@ -118,6 +119,18 @@ class SchemaCollector(
     /** Registers a data derivation (issue #712); order is preserved but does not matter, as each owns its own trait. */
     fun addDataDeriver(deriver: GedraDataDeriver) {
         dataDerivers.add(deriver)
+    }
+
+    /**
+     * The trait save-time functions components registered (issue #728) -- run at the entry to a create or update
+     * before the write transaction, to calculate or validate a trait's data. Kotlin, so component-contributed,
+     * like a [GedraDataDeriver]; the first of a growing set of trait event functions.
+     */
+    val prepForSaveFns: MutableList<GedraPrepForSaveFn> = mutableListOf()
+
+    /** Registers a trait save-time function (issue #728); order is preserved but does not matter, as each owns its trait. */
+    fun addPrepForSaveFn(fn: GedraPrepForSaveFn) {
+        prepForSaveFns.add(fn)
     }
 
     /** The post-write hooks (issue #675), fired after every gedra data write inside its transaction. */
