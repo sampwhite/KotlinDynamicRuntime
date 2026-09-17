@@ -4,6 +4,7 @@ import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraStateDeriver
@@ -330,6 +331,36 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
  * Gated by [ST.captureTraitPresenceByYear]: it runs only on a test instance for a client that lists that
  * feature (acme does), so it neither reaches production nor surprises a client that did not ask for it.
  */
+/**
+ * The expense report's derived total from its two supplied numbers, or empty when either is absent (issue
+ * #712) -- the smallest honest pre-processor, exactly as the trait's `totalAmount` note describes. Shared by
+ * the on-read [ExpenseTotalDeriver] and the fixture's `fillOut`, so the two producers of the same value cannot
+ * drift: one computation, called from both.
+ */
+fun expenseTotalFields(data: Map<String, Any?>): Map<String, Any?> {
+    val perItem = (data[ST.perItemAmount] as? Number)?.toDouble() ?: return emptyMap()
+    val count = (data[ST.itemCount] as? Number)?.toDouble() ?: return emptyMap()
+    return mapOf(ST.totalAmount to perItem * count)
+}
+
+/**
+ * The expense report's total, computed **on read** (issue #712): the production producer of the `totalAmount`
+ * the trait declares `g-derived`. A caller never supplies it and the form draws no control for it, so it is
+ * filled whenever the form is read -- in the single-document view, the survey view, and any display column over
+ * it -- from the per-item amount and item count beside it, and never stored.
+ *
+ * Ungated (no [featureName]): unlike the demo [TraitPresenceByYearDeriver], this is a *real* derivation -- a
+ * value that genuinely follows from a form's own data -- so it runs for every client that carries the
+ * `expenseReport` trait rather than only a test-instance opt-in. It is the data twin of a [GedraStateDeriver]:
+ * the same registration seam, run on read rather than on write.
+ */
+object ExpenseTotalDeriver : GedraDataDeriver {
+    override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
+    override val traitId: String = ST.expenseReport
+
+    override fun derive(cxt: KdrCxt, data: Map<String, Any?>): Map<String, Any?> = expenseTotalFields(data)
+}
+
 object TraitPresenceByYearDeriver : GedraStateDeriver {
     override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
     override val featureName: String = ST.captureTraitPresenceByYear

@@ -308,6 +308,12 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         this.values = valuesOf(trait.traitId)
                         editable = editing
                         friendly = true
+                        // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
+                        // an expense report's total, computed on read -- rather than hiding them; the flag is
+                        // inert while editing, where a derived field has no control to draw. This form's root is
+                        // one trait's data type, so every derived-with-value field is content, not envelope.
+                        showDerivedValues = true
+                        derivedRootIsTraitData = true
                         this.cfacts = wf.cfacts
                         this.layouts = wf.layouts
                         this.failures = shownFailures(

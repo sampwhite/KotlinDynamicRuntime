@@ -22,6 +22,7 @@ import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientTraitUsage
 import com.dynamicruntime.common.gedra.supportedTraits
+import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.GedraTrait
@@ -630,6 +631,12 @@ class SchemaService : ServiceInitializer {
      * a gedra's initial derived state. Empty on a node whose components registered none.
      */
     fun stateDerivers(): List<GedraStateDeriver> = collector?.stateDerivers ?: emptyList()
+
+    /**
+     * The registered data derivations (issue #712) -- what a read surface runs through `deriveEntryData` to
+     * compute a gedra entry's `g-derived` data value on read. Empty on a node whose components registered none.
+     */
+    fun dataDerivers(): List<GedraDataDeriver> = collector?.dataDerivers ?: emptyList()
 
     /** The registered post-write hooks (issue #675), in registration order. */
     fun writeHooks(): List<GedraWriteHook> = collector?.writeHooks ?: emptyList()
