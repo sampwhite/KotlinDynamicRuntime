@@ -2,7 +2,6 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GEP
-import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
 import kotlinx.coroutines.MainScope
@@ -166,18 +165,19 @@ val CreateForUserPage = FC<Props> {
                             } else {
                                 running = true
                                 runError = null
+                                val launched = hashParams()
                                 createForUserScope.launch {
                                     try {
                                         val newId = AdminApi.createFormForUser(user.primaryId, payload)
                                         // Back to the listing this page was launched from -- its search, sort and
-                                        // chosen client as they were -- flashing the new row (issue #663). Not to the
-                                        // user's client's listing (#762 review): that silently switched the admin's
-                                        // Client selector to a client they never chose, and the cross-client view
-                                        // shows the row anyway, with its Client column saying whose it is; a listing
-                                        // that cannot show it says the form was created. No running=false: this
-                                        // navigation unmounts the page.
-                                        val flag = newId?.let { listOf(HP.highlight to it) } ?: emptyList()
-                                        navigateHash(listOf(HP.page to HMENU.pageForms) + formsSearchHashParams(formsSearchFromHash(hashParams())) + flag)
+                                        // chosen client as they were -- flashing the new row (issue #663), through the
+                                        // one shared create return (issue #758: only while the user is still here).
+                                        // Not to the user's client's listing (#762 review): that silently switched the
+                                        // admin's Client selector to a client they never chose, and the cross-client
+                                        // view shows the row anyway, with its Client column saying whose it is; a
+                                        // listing that cannot show it says the form was created. No running=false:
+                                        // this navigation unmounts the page.
+                                        formsCreateReturn(launched, hashParams(), newId)?.let { navigateHash(it) }
                                     } catch (e: Throwable) {
                                         runError = userFacingError(e)
                                         running = false

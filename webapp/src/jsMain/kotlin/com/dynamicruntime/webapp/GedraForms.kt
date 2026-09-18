@@ -133,7 +133,7 @@ class FormsListPage(val rows: List<Map<String, Any?>>, val numAvailable: Int)
  * other key on a forms hash is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`),
  * because the forms search shares the endpoint's own arg names, the same arrangement the Users page uses.
  */
-private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight, HP.edit, HP.task)
+private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight, HP.created, HP.edit, HP.task)
 
 /**
  * The applied forms search read back out of a hash (issue #592): every param that is not a navigation key. So a
@@ -144,19 +144,67 @@ fun formsSearchFromHash(hp: Map<String, String>): Map<String, String> =
     hp.filterKeys { it !in formsNavKeys }.filterValues { it.isNotBlank() }
 
 /**
- * The note to show when the form a create or edit just saved is **not on the returned listing** (issue #669),
- * or null when it is on screen (so the row-flash is feedback enough) or nothing was saved. A saved row lands on
- * page one under the default newest-first sort, so an active filter (`appliedSearch` non-empty) is the realistic
- * reason it is absent; with no filter, absence is left unremarked. Neutral about create vs edit, since either
- * reaches the same gap. [savedId] is the row's id, [rowIds] the ids on the loaded page. Pure, covered under
- * `jsNodeTest`.
+ * The note to show when the form a create or edit just saved is **not on the returned listing** (issues #669,
+ * #758), or null when it is on screen (so the row-flash is feedback enough) or nothing was saved. [savedId] is
+ * the row's id, [rowIds] the ids on the loaded page, [created] whether the save made the form, and
+ * [customSort] whether the listing is in anything but its default newest-first order.
+ *
+ * The note says **why**, because the remedy differs. A row saved under the default order lands on page one, so
+ * with a filter active the filter is the reason; under a custom sort the sort may be instead, and the note
+ * says either could be rather than sending the user to clear a filter that is not at fault. With **no** filter
+ * the two kinds of save part: an edited row's absence is left unremarked (it was on the list the user came
+ * from), but a **created** one is still announced, because the flash was going to be the only sign the create
+ * happened -- and a create with no confirmation at all reads as a create that failed. For the same reason a
+ * create whose response carried no id is announced plainly. Pure, covered under `jsNodeTest`.
  */
-fun savedNotShownNote(savedId: String?, appliedSearch: Map<String, Any?>, rowIds: List<String?>): String? =
-    if (savedId != null && appliedSearch.isNotEmpty() && savedId !in rowIds) {
-        "The form you just saved isn't shown here — it doesn't match the current filter. Clear the filter to see it."
-    } else {
-        null
+fun savedNotShownNote(
+    savedId: String?,
+    appliedSearch: Map<String, Any?>,
+    rowIds: List<String?>,
+    created: Boolean = false,
+    customSort: Boolean = false,
+): String? {
+    if (savedId == null) return if (created) "The form was created." else null
+    if (savedId in rowIds) return null
+    val what = if (created) "The form was created, but" else "The form you just saved"
+    val filtered = appliedSearch.isNotEmpty()
+    return when {
+        filtered && customSort ->
+            "$what isn't shown here — it doesn't match the current filter, or the current sort puts it on another page."
+        filtered -> "$what isn't shown here — it doesn't match the current filter. Clear the filter to see it."
+        !created -> null
+        customSort ->
+            "$what isn't shown here — the current sort puts it on another page. Sort by Updated, newest first, to see it."
+        else -> "$what it isn't on this page of the list."
     }
+}
+
+/** The value a present-or-absent forms hash flag carries ([HP.created]): written and read in this file only. */
+private const val formsHashFlagOn = "1"
+
+/**
+ * Whether a forms hash [hp] asks for anything but the listing's default order (newest-updated first), which
+ * is what decides whether a just-saved row can be off page one for a reason other than a filter. Pure.
+ */
+fun formsCustomSort(hp: Map<String, String>): Boolean {
+    val column = hp[GSORT.sort]?.ifBlank { null } ?: return false
+    return !(column == GSORT.updated && hp[GSORT.sortDir].equals(GSORT.desc, ignoreCase = true))
+}
+
+/**
+ * The note a forms listing shows on **arrival** (#758 review): what the arriving hash [hp] says was saved --
+ * the highlighted id, whether it was a create, the sort it arrived under -- read against the page that loaded.
+ * The reading half of [formsListingReturn], kept beside it so the flag's spelling lives in one file and one
+ * test can run a return straight into an arrival. Pure, and covered under `jsNodeTest`.
+ */
+fun formsArrivalNote(hp: Map<String, String>, appliedSearch: Map<String, Any?>, rowIds: List<String?>): String? =
+    savedNotShownNote(
+        hp[HP.highlight]?.ifBlank { null },
+        appliedSearch,
+        rowIds,
+        created = hp[HP.created] == formsHashFlagOn,
+        customSort = formsCustomSort(hp),
+    )
 
 /**
  * The root fields of the client's create input that a create page does **not** draw (issues #727, #762):
@@ -183,14 +231,40 @@ fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String
     search.entries.mapNotNull { (k, v) -> v.trim().ifEmpty { null }?.let { k to it } }
 
 /**
- * The one way an editor returns to the listing when the user is **done** (issue #726): the forms page, the
- * listing's search and sort carried back out of the editor's own hash [hp] (as the back link carries them), and
- * the form just worked on flagged as [highlightId] so the list flashes it -- "here is the form you were in".
- * Shared by the survey and raw editors' Done, so the two ways home cannot drift; the bare back link is the same
- * target without the flash. Pure, and covered under `jsNodeTest`.
+ * The one way a form page returns to the listing after its work is saved (issues #726, #758): the forms page,
+ * the listing context in [hp] carried back -- its search, sort and chosen client, as the back link carries
+ * them -- and the form just worked on flagged as [highlightId] so the list flashes it. [created] marks a form
+ * that was just **made** ([HP.created]), so one the listing cannot show is still announced; it rides even when
+ * [highlightId] is null (a create whose response carried no id), which the arrival then announces plainly.
+ *
+ * [hp] is normally the page's own hash, whose navigation keys are left behind here; a caller that returns to a
+ * *different* listing than it was launched from (create-for-user, into the user's client) passes that context
+ * instead. Shared by the survey and raw editors' Done and by every create surface, so the ways home cannot
+ * drift: #758 was exactly that, a return the picker had (#663) and the workflow create did not. The bare back
+ * link is the same target without the flash. Pure, and covered under `jsNodeTest`.
  */
-fun formsListingReturn(hp: Map<String, String>, highlightId: String): List<Pair<String, String>> =
-    listOf(HP.page to HMENU.pageForms) + formsSearchHashParams(formsSearchFromHash(hp)) + (HP.highlight to highlightId)
+fun formsListingReturn(hp: Map<String, String>, highlightId: String?, created: Boolean = false): List<Pair<String, String>> =
+    buildList {
+        add(HP.page to HMENU.pageForms)
+        addAll(formsSearchHashParams(formsSearchFromHash(hp)))
+        highlightId?.let { add(HP.highlight to it) }
+        if (created) add(HP.created to formsHashFlagOn)
+    }
+
+/**
+ * Where a **create** goes once it has succeeded (issue #758), or null when the user has already left the page
+ * it was launched from -- a slow response must not pull someone out of wherever they went next, nor carry that
+ * page's hash keys into the listing as a "search" (#758 review). [launched] is the hash when the create was
+ * clicked, [now] the hash when it finished, [newId] the new form's id, and [context] the listing context to
+ * return with: the launching page's own by default. Pure, and covered under `jsNodeTest`.
+ */
+fun formsCreateReturn(
+    launched: Map<String, String>,
+    now: Map<String, String>,
+    newId: String?,
+    context: Map<String, String> = launched,
+): List<Pair<String, String>>? =
+    if (now[HP.page] != launched[HP.page]) null else formsListingReturn(context, newId, created = true)
 
 /**
  * The raw **read-only** view of one form (issue #726): the listing page with the form open in place -- the same
