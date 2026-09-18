@@ -75,7 +75,10 @@ Any?.fmt(): String              // human-friendly: doubles/floats trimmed, Insta
 Double.fmtD(); Float.fmtF()     // KMP-safe, thread-safe fixed-precision (NOT DecimalFormat)
 String.toOptBool(): Boolean?    // loose: first non-ws char y/t/1 -> true, n/f/0 -> false, else/blank -> null
 String.splitComma(): List<String>   // trims; blank -> emptyList
+String?.trimToNull(): String?       // trim; blank/empty -> null (the shared trim-and-blank normalizer)
 StringBuilder.appendLiteral(text) / String.encodeLiteral()  // JSON string escaping
+Map<String,Any?>.getReqStr(key) / getOptStr(key)                 // required (throws) / optional string at a key
+Map<String,Any?>.getReqNonBlankStr(key) / getOptNonBlankStr(key) // same, but trimmed and a blank value reads as absent
 ```
 
 Never write `as` / `@Suppress("UNCHECKED_CAST")` — route through `toT()`/`toOptT()`/`toJsonMap()`. Like `getReqStr`

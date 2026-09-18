@@ -10,6 +10,7 @@ import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.trimToNull
 import kotlin.time.Instant
 
 /**
@@ -287,7 +288,7 @@ class AuthUserRow(
          * and exposed for the one caller that has no row to assign to -- admin *create*, which assembles a raw
          * `authUserData` map before the row exists.
          */
-        fun normalizeName(value: String?): String? = value?.trim()?.ifEmpty { null }
+        fun normalizeName(value: String?): String? = value.trimToNull()
 
         /**
          * Defines the [ADTY.adminUser] schema type -- the shape of [toAdminInfo] -- on [builder]. Kept beside

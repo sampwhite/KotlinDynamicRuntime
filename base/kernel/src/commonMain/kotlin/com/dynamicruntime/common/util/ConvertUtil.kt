@@ -190,6 +190,20 @@ fun Map<String, Any?>.getReqStr(key: String): String =
 /** The value at [key] rendered as a String, or null if it is absent/null. */
 fun Map<String, Any?>.getOptStr(key: String): String? = this[key]?.toString()
 
+/**
+ * The value at [key] as a **trimmed** String, or null when it is absent, null, or **blank** -- a whitespace-only
+ * value counts as blank and reads as absent. Unlike [getOptStr], which passes a blank value straight through.
+ */
+fun Map<String, Any?>.getOptNonBlankStr(key: String): String? = getOptStr(key).trimToNull()
+
+/**
+ * The value at [key] as a trimmed, non-blank String, or a bad-input error if it is absent/null/blank -- the
+ * required companion to [getOptNonBlankStr]. Use it over [getReqStr] where a whitespace-only value is not a real
+ * value (an id, a name), which the plain required accessor would otherwise let through.
+ */
+fun Map<String, Any?>.getReqNonBlankStr(key: String): String =
+    getOptNonBlankStr(key) ?: throw KdrException.mkInput("A non-blank '$key' is required.")
+
 /** The value at [key] coerced to a Long, or a bad-input error if it is absent/null. */
 fun Map<String, Any?>.getReqLong(key: String): Long =
     this[key].toOptLong() ?: throw KdrException.mkInput("Missing required field '$key'.")

@@ -10,6 +10,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.logging.LogStartup
+import com.dynamicruntime.common.util.getReqNonBlankStr
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -831,10 +832,6 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
     ) { c, request -> cfgImportBody(c, request) }
 }
 
-/** The named client an `/admin` config request targets. */
-private fun requireClient(request: Map<String, Any?>): String = request[CFEP.client].toOptStr()?.trim()?.ifEmpty { null }
-    ?: throw KdrException.mkInput("A '${CFEP.client}' is required.")
-
 /**
  * A sub-context bound to the [CFEP.client] a cross-client `/admin` config request names, so the shared bodies --
  * which key off `cxt.client` -- act on that client while ownership/audit stamp from it and the caller stays the
@@ -848,7 +845,7 @@ private fun requireClient(request: Map<String, Any?>): String = request[CFEP.cli
  * is admitted by the stored-config half, so the create-then-reload flow still works.
  */
 private fun adminConfigCxt(c: KdrCxt, request: Map<String, Any?>, requireExisting: Boolean = true): KdrCxt {
-    val client = requireClient(request)
+    val client = request.getReqNonBlankStr(CFEP.client)
     val ac = c.mkSubContext("adminConfig", client)
     if (requireExisting &&
         ClientService.get(ac).known(client) == null &&
