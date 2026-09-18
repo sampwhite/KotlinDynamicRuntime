@@ -4,7 +4,6 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
-import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
 import kotlinx.coroutines.MainScope
@@ -167,13 +166,18 @@ val CreateForUserPage = FC<Props> {
                             } else {
                                 running = true
                                 runError = null
+                                val launched = hashParams()
                                 createForUserScope.launch {
                                     try {
                                         val newId = AdminApi.createFormForUser(user.primaryId, payload)
                                         // Return to the listing scoped to the user's client (issue #714), flashing
-                                        // the new row (issue #663). No running=false: this navigation unmounts the page.
-                                        val flag = newId?.let { listOf(HP.highlight to it) } ?: emptyList()
-                                        navigateHash(listOf(HP.page to HMENU.pageForms, EI.client to user.client) + flag)
+                                        // the new row (issue #663) through the one shared return (issue #758): the
+                                        // launching listing's search and sort come home too, with the client chosen
+                                        // as the selector would choose it -- which drops a `user` scope, since that
+                                        // user belonged to the old client. No running=false: this navigation
+                                        // unmounts the page.
+                                        val context = formsSearchForClient(formsSearchFromHash(launched), user.client)
+                                        formsCreateReturn(launched, hashParams(), newId, context)?.let { navigateHash(it) }
                                     } catch (e: Throwable) {
                                         runError = userFacingError(e)
                                         running = false

@@ -5,7 +5,6 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
-import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -170,6 +169,9 @@ val NewFormPage = FC<Props> {
                             } else {
                                 running = true
                                 runError = null
+                                // The hash this create was launched under (#758 review): the return carries *this*
+                                // listing context home, and only while the user is still here.
+                                val launched = hashParams()
                                 formScope.launch {
                                     try {
                                         // Create for the picked user when an admin chose one (issue #727); absent
@@ -178,16 +180,13 @@ val NewFormPage = FC<Props> {
                                         val response = SchemaCatalogApi.invoke(ep, body)
                                         // Back to the listing (issue #663), flashing the new row -- the same
                                         // confirmation the edit form's save gives (issue #592) -- rather than an
-                                        // in-place screen. No running=false here: this navigation unmounts the page.
+                                        // in-place screen, and to the *same* listing the create was launched from
+                                        // (issue #669): the originating search and sort ride in the hash. The one
+                                        // shared return (issue #758), flagged as a create so a row the active
+                                        // filter excludes is announced rather than silently absent. No
+                                        // running=false here: this navigation unmounts the page.
                                         val newId = response[EP.item].toJsonMapOrEmpty()[GDF.gedraId] as? String
-                                        // Return to the *same* listing the create was launched from (issue #669):
-                                        // the originating search and sort ride in the hash (the "New form" button
-                                        // put them there), so this lands on the filtered, sorted list rather than the
-                                        // default one -- the same round-trip the edit form's save makes. A new row the
-                                        // active filter excludes simply is not flashed; the filter is the user's view.
-                                        val search = formsSearchHashParams(formsSearchFromHash(hashParams()))
-                                        val flag = newId?.let { listOf(HP.highlight to it) } ?: emptyList()
-                                        navigateHash(listOf(HP.page to HMENU.pageForms) + search + flag)
+                                        formsCreateReturn(launched, hashParams(), newId)?.let { navigateHash(it) }
                                     } catch (e: Throwable) {
                                         // Only the failure path stays on the page, so re-enable the button here
                                         // rather than in a finally that would run after a create has navigated away.

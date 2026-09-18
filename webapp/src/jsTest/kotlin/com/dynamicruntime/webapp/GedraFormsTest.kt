@@ -609,9 +609,10 @@ class GedraFormsTest {
     }
 
     /**
-     * The saved-but-off-screen note (issue #669): shown only when a row was saved, a filter is active, and the
-     * row is not on the loaded page -- so a create/edit that lands the row in view, or one with no filter, is
-     * silent (the flash is feedback enough), while a filtered-out save leaves a clue.
+     * The saved-but-off-screen note for an **edit** (issue #669): shown only when a row was saved, a filter is
+     * active, and the row is not on the loaded page -- so an edit that lands the row in view, or one with no
+     * filter, is silent (the flash is feedback enough), while a filtered-out save leaves a clue. A create is
+     * never silent; see the tests below (issue #758).
      */
     @Test
     fun savedNotShownNoteAppearsOnlyForAFilteredOutSave() {
@@ -622,8 +623,121 @@ class GedraFormsTest {
         assertNull(savedNotShownNote("g.fd.acme.new", filter, listOf("g.fd.acme.new", "g.fd.acme.b")))
         // A filter, but nothing was saved (an ordinary filtered view): no note.
         assertNull(savedNotShownNote(null, filter, listOf("g.fd.acme.a")))
-        // Saved and absent, but no filter is active: left unremarked (a new row is on page one by default sort).
+        // Saved and absent, but no filter is active: left unremarked (the row was on the list the user came from).
         assertNull(savedNotShownNote("g.fd.acme.new", emptyMap(), listOf("g.fd.acme.a")))
+    }
+
+    /**
+     * A **create** is never silent (issue #758): when the new row is not on the returned page the note says the
+     * form was created -- naming the filter when one is the reason, and saying so even with none (a sort or a
+     * full first page can hide it), since the flash was going to be the only sign the create happened. On the
+     * page, the flash is the confirmation and there is no note.
+     */
+    @Test
+    fun aCreatedFormThatIsNotShownIsStillAnnounced() {
+        val filter = mapOf("acmeSiteAuditContains" to "dana")
+        val others = listOf("g.fd.acme.a", "g.fd.acme.b")
+        val filtered = savedNotShownNote("g.fd.acme.new", filter, others, created = true)
+        assertTrue(filtered != null && filtered.startsWith("The form was created") && filtered.contains("filter"))
+        val unfiltered = savedNotShownNote("g.fd.acme.new", emptyMap(), others, created = true)
+        assertTrue(unfiltered != null && unfiltered.startsWith("The form was created") && !unfiltered.contains("filter"))
+        // An edit's wording is unchanged, so the two cannot be mistaken for each other.
+        assertTrue(savedNotShownNote("g.fd.acme.new", filter, others)!!.startsWith("The form you just saved"))
+        // On the page: the flash says it.
+        assertNull(savedNotShownNote("g.fd.acme.new", filter, listOf("g.fd.acme.new"), created = true))
+        // No id to look for (a response that carried none): still announced, plainly (#758 review).
+        assertEquals("The form was created.", savedNotShownNote(null, filter, others, created = true))
+    }
+
+    /**
+     * Every create surface returns through the editors' one way home (issue #758), flagged as a create: the
+     * launching listing's search and sort carried back, the new row to flash, and the transient `created` mark.
+     * An edit's return carries no such mark, and a create whose response had no id returns with no flag at all.
+     */
+    @Test
+    fun aCreateReturnsToItsListingFlaggedAsCreated() {
+        val createHash = mapOf(HP.page to "newForm", HP.from to "forms", EI.client to "acme", GSORT.sort to "name")
+        val back = formsListingReturn(createHash, "gd.fd.acme.new", created = true).toMap()
+        assertEquals("forms", back[HP.page])
+        assertEquals("gd.fd.acme.new", back[HP.highlight])
+        assertTrue(HP.created in back)
+        assertEquals("acme", back[EI.client])
+        assertEquals("name", back[GSORT.sort])
+        assertTrue(HP.from !in back)
+        assertTrue(HP.created !in formsListingReturn(createHash, "gd.fd.acme.u1").toMap())
+        // A create whose response carried no id still says it was a create, so the arrival can announce it.
+        val noId = formsListingReturn(createHash, null, created = true).toMap()
+        assertTrue(HP.highlight !in noId && HP.created in noId)
+        // The mark is a navigation key, so it never rides back in as a "search" term...
+        assertTrue(HP.created !in formsSearchFromHash(mapOf(HP.created to "1", EI.q to "roof")))
+        // ...and it is not spelled like a trait id a client could declare a filter on (#758 review).
+        assertTrue(HP.created != GSORT.created)
+    }
+
+    /**
+     * The whole path, return into arrival (#758 review): what a create writes into the hash is what the listing
+     * reads back, so the flag's spelling cannot drift between the two. On the page: silent. Filtered out: the
+     * create wording. An edit's return through the same path keeps the edit wording; no id: announced plainly.
+     */
+    @Test
+    fun aCreatesReturnIsReadBackByTheArrivalNote() {
+        val others = listOf("g.fd.acme.a")
+        val createHash = mapOf(HP.page to "newForm", EI.q to "roof")
+        val arriving = formsListingReturn(createHash, "g.fd.acme.new", created = true).toMap()
+        val applied = formsSearchFromHash(arriving)
+        assertNull(formsArrivalNote(arriving, applied, listOf("g.fd.acme.new")))
+        assertTrue(formsArrivalNote(arriving, applied, others)!!.startsWith("The form was created"))
+        val edited = formsListingReturn(createHash, "g.fd.acme.new").toMap()
+        assertTrue(formsArrivalNote(edited, applied, others)!!.startsWith("The form you just saved"))
+        val noId = formsListingReturn(createHash, null, created = true).toMap()
+        assertEquals("The form was created.", formsArrivalNote(noId, applied, others))
+        // An ordinary arrival -- nothing saved -- says nothing.
+        assertNull(formsArrivalNote(mapOf(HP.page to "forms", EI.q to "roof"), applied, others))
+    }
+
+    /**
+     * The note names the **reason** (#758 review): under a custom sort a filter is not necessarily at fault, so
+     * the note says either could be rather than sending the user to clear a filter; with no filter a created
+     * row's absence is the sort's doing, and the note says how to bring it up. The default order (absent, or
+     * newest-updated first) is not a custom sort.
+     */
+    @Test
+    fun theNoteBlamesTheSortWhenTheSortCanBeAtFault() {
+        val others = listOf("g.fd.acme.a")
+        val filter = mapOf(EI.q to "roof")
+        val both = savedNotShownNote("g.fd.acme.new", filter, others, created = true, customSort = true)!!
+        assertTrue(both.contains("filter") && both.contains("sort") && !both.contains("Clear the filter"))
+        val sortOnly = savedNotShownNote("g.fd.acme.new", emptyMap(), others, created = true, customSort = true)!!
+        assertTrue(sortOnly.contains("sort") && !sortOnly.contains("filter"))
+        // An edit with no filter stays unremarked, custom sort or not.
+        assertNull(savedNotShownNote("g.fd.acme.new", emptyMap(), others, customSort = true))
+        assertTrue(!formsCustomSort(mapOf(HP.page to "forms")))
+        assertTrue(!formsCustomSort(mapOf(GSORT.sort to GSORT.updated, GSORT.sortDir to GSORT.desc)))
+        assertTrue(formsCustomSort(mapOf(GSORT.sort to GSORT.updated, GSORT.sortDir to GSORT.asc)))
+        assertTrue(formsCustomSort(mapOf(GSORT.sort to "name")))
+    }
+
+    /**
+     * A create returns only while the user is still on the page it was launched from (#758 review): a slow
+     * response must not pull them out of wherever they went next. Create-for-user returns with the launching
+     * search and sort, the user's client chosen, and any `user` scope dropped.
+     */
+    @Test
+    fun aCreateReturnsOnlyFromThePageItWasLaunchedOn() {
+        val launched = mapOf(HP.page to "newForm", HP.from to "forms", GSORT.sort to "name")
+        val back = formsCreateReturn(launched, launched, "g.fd.acme.new")!!.toMap()
+        assertEquals("forms", back[HP.page])
+        assertEquals("name", back[GSORT.sort])
+        assertTrue(HP.created in back)
+        assertNull(formsCreateReturn(launched, mapOf(HP.page to "users"), "g.fd.acme.new"))
+        assertNull(formsCreateReturn(launched, mapOf(HP.page to "forms"), "g.fd.acme.new"))
+        val forUser = mapOf(HP.page to "createForUser", EI.user to "42", EI.q to "roof", GSORT.sort to "name")
+        val context = formsSearchForClient(formsSearchFromHash(forUser), "acme")
+        val home = formsCreateReturn(forUser, forUser, "g.fd.acme.new", context)!!.toMap()
+        assertEquals("acme", home[EI.client])
+        assertEquals("roof", home[EI.q])
+        assertEquals("name", home[GSORT.sort])
+        assertTrue(EI.user !in home)
     }
 
     // --- survey status column (issue #694) --------------------------------------------------------------

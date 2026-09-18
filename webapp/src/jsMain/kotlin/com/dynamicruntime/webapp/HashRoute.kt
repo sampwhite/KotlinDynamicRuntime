@@ -75,6 +75,17 @@ object HP {
      */
     const val highlight = "hl"
 
+    /**
+     * Forms page: present (`hlc=1`) beside [highlight] when the highlighted form was just **created** rather
+     * than edited (issue #758), so the listing's note for a row that is not on screen can say the form was
+     * created -- the confirmation a create must never lose. Transient, exactly as [highlight] is.
+     *
+     * Spelled `hlc`, not `created` (#758 review): every forms hash key that is not a navigation key is read as a
+     * search parameter, and a client's string usage mints one named for its **trait id** -- a trait called
+     * `created` is a plausible one, and its filter would have been stripped on every round-trip.
+     */
+    const val created = "hlc"
+
     /** Home page: the id of the open Markdown document, or absent for the welcome copy. */
     const val doc = "doc"
 
