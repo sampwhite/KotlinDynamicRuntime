@@ -391,7 +391,8 @@ class AuthUserRow(
              * and has no context to ask for the time; null leaves both unset.
              */
             createdAt: Instant? = null,
-            /** Whether the person has claimed this user at creation (issue #749): a code proved it, the fixture made it, or they made it for themself. */
+            /** Whether the person has claimed this user at creation (issue #749): a code proved it, the fixture
+             * made it, or they made it for themself. */
             registered: Boolean = false,
         ): Map<String, Any?> = mapOf(
             AU.identityId to identityId,

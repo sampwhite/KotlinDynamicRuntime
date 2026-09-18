@@ -79,6 +79,7 @@ data class UserChoice(
         if (isDefault) put(UCF.isDefault, true)
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
         /** Schema type name for [toInfo]. */
         const val infoTypeName = "UserChoice"

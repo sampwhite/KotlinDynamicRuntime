@@ -212,7 +212,7 @@ class UserService : ServiceInitializer {
      * address in a way that names no user of theirs -- a Google sign-in with no registered user (issue #749);
      * later, a first login against a client that admits unprovisioned people. An enabled user under the key is
      * registered if it was not; a **disabled** one is re-enabled as an administrator's re-enable leaves it --
-     * roles, username and name kept, activated now -- and registered (the person is behind this, so it is not
+     * roles, username, and name kept, activated now -- and registered (the person is behind this, so it is not
      * the unregistered recovery `provisionUser` performs for an administrator); none, and a registered user is
      * created with [roles]. Returns the user.
      */
@@ -238,7 +238,7 @@ class UserService : ServiceInitializer {
 
     /**
      * The users the caller may switch to (issue #749): the registered, enabled users of the session's identity,
-     * the current one and the chosen default marked. Empty for a caller no identity backs -- a logged-out
+     * the current one, and the chosen default marked. Empty for a caller no identity backs -- a logged-out
      * caller, a manufactured profile, or a cookie issued before the split.
      */
     fun selfUserChoices(cxt: KdrCxt): List<UserChoice> {
