@@ -200,9 +200,28 @@ unrestricted scope). The rules that follow from that:
   found nothing for `public`, and the edit page said the account had "no way to edit forms").
 - **The workflow view and its save follow the resolved path.** `clientOfResolvedPath` says whether the view
   came from X's copy; the save posts to the same copy, so a survey is edited under X's rules.
-- **Create stays the caller's own.** `NewFormPage` makes the form in the admin's own client, so "New form" is
-  not offered under a chosen client and the note under the selector says so. Creating on another client's
-  behalf is #672 Slice 3.
+- **Every way home from a save goes through `formsListingReturn`.** The editors' Done (#726) and all three
+  create surfaces -- the trait picker, the creation workflow, create-for-user -- go home the same way: the
+  listing's search, sort and chosen client carried back, and the row flagged to flash. (A survey *save* stays
+  on the form; Done is what returns.) A create goes through `formsCreateReturn`, which adds two rules: it is
+  marked (`hlc=1`) so a row the listing cannot show is announced rather than silently absent, and it returns
+  **only while the user is still on the page the create was launched from** -- capture `hashParams()` before
+  the `launch`, because a slow response must not pull someone out of wherever they went next. Keep the save
+  button busy across that navigation (no `running = false`, no `finally` reset): the page unmounts a tick
+  later, and a live button in between makes a second form. Create-for-user returns to the listing it was
+  launched from, as it was (#762 review; see the next bullet). `formsArrivalNote` is the reading half, and
+  names the reason (filter, sort, or neither). A new save surface calls the helpers; it does not build its own
+  hash. #758 was the workflow create keeping an in-place "Form created" page after the picker had moved to
+  this return (#663).
+- **"New form" creates in the caller's own client**, so it is not offered under a chosen client and the note
+  under the selector says so. Creating for someone else is its own surface, **Create a form for a user**
+  (`CreateForUserPage`, #727): pick the user, then fill in the form drawn from *that user's client's* create
+  schema and posted to the admin on-behalf endpoint. Both create pages draw the client's create schema and
+  omit the same fields (`formCreateOmittedFields`: the power flag and `user`) -- the user is the page's answer,
+  appended to the body by `formForUserBody`, never a box in the form (#762 was one page drawing it). A success
+  returns to the listing the page was launched from **as it was**, never to the user's client's listing: that
+  switched the admin's Client selector to a client they never chose, and the cross-client view shows the new
+  row with its Client column anyway.
 - **Choosing a client drops the `user` scope** (`formsSearchForClient`): a user belongs to one client. A shared
   `client=X` link opened by a caller without `allClients` drops the selector from the search too
   (`formsInitialSearch`), since no control would let them clear it.

@@ -121,10 +121,11 @@ val FormsPage = FC<Props> {
     // and cleared after a beat so the flash is a one-time flourish, not a state a reload repeats.
     var highlightRowId by useState<String?>(null)
     val highlightTimer = useRef<Int>(null)
-    // Substitute feedback when the just-saved row is not on screen (issue #669): a create (or an edit) returns
-    // carrying the row's id to flash, but an active filter can exclude it, so the flash has nothing to land on.
-    // This note is then the only sign the save took. It persists until the next list action clears it (below) --
-    // clearing the filter, the natural next move, both dismisses it and reveals the row.
+    // Substitute feedback when the just-saved row is not on screen (issues #669, #758): a create (or an edit)
+    // returns carrying the row's id to flash, but an active filter -- or, for a create, a sort or a full first
+    // page -- can leave it off the page, so the flash has nothing to land on. This note is then the only sign the
+    // save took. It persists until the next list action clears it (below) -- clearing the filter, the natural next
+    // move, both dismisses it and reveals the row. `formsArrivalNote` is the rule.
     var savedOffscreenNote by useState<String?>(null)
     // Whether the grouped filter panel is open; closed by default so the search does not take the screen.
     var filtersOpen by useState(false)
@@ -192,8 +193,8 @@ val FormsPage = FC<Props> {
      * (issues #417, #592, #669; shared since the #714 review so the switch cannot skip it). A row's armed delete
      * confirm belongs to the page it was armed on, so a primed "Yes" never lingers on a row navigated past; the
      * just-saved flash plays once on arrival and never re-runs when the rows are rebuilt; and the off-screen
-     * "you saved it but it's filtered out" note has done its job once the user acts -- most often by clearing
-     * the filter, which reveals the row itself.
+     * "you saved it but it isn't shown" note has done its job once the user acts -- most often by clearing the
+     * filter, which reveals the row itself.
      */
     fun beginListAction() {
         rowConfirmDeleteId = null
@@ -367,9 +368,11 @@ val FormsPage = FC<Props> {
             // hash from the applied search and drops it -- so a reload does not re-flash.
             val saved = hashParams()[HP.highlight]
             highlightRowId = saved
-            // When the saved row is not on this freshly-loaded page and a filter is active, the flash lands on
-            // nothing, so leave a note instead (issue #669); the rule is a pure function so it is unit-tested.
-            savedOffscreenNote = savedNotShownNote(saved, appliedSearch, rows.map { it[GDF.gedraId] as? String })
+            // When the saved row is not on this freshly-loaded page the flash lands on nothing, so leave a note
+            // instead (issues #669, #758): for a filtered-out save, and for a create wherever it went, since a
+            // create says so -- its flag rides beside the highlight, and is as transient. The rule reads the
+            // arriving hash itself and is a pure function, so the whole return-then-arrive path is unit-tested.
+            savedOffscreenNote = formsArrivalNote(hashParams(), appliedSearch, rows.map { it[GDF.gedraId] as? String })
             restored = true
         }
     }
@@ -553,9 +556,20 @@ val FormsPage = FC<Props> {
             // nothing is a different state, handled in the list branch so its box stays on screen to be cleared),
             // and no reload failure -- an empty page after a failed request is unknown, not empty (#562 review).
             rows.isEmpty() && offset == 0 && appliedSearch.isEmpty() && searchError == null -> {
-                p {
-                    className = ClassName("subtitle")
-                    +"You haven't created any forms yet."
+                // A create that returned to an empty page still says it happened (#758 review): without a filter
+                // this branch is where such an arrival lands, and "you haven't created any forms yet" straight
+                // after creating one is the create-reads-as-failed outcome the note exists to prevent.
+                val arrivalNote = savedOffscreenNote
+                if (arrivalNote != null) {
+                    p {
+                        className = ClassName("form-ok")
+                        +arrivalNote
+                    }
+                } else {
+                    p {
+                        className = ClassName("subtitle")
+                        +"You haven't created any forms yet."
+                    }
                 }
                 // Offered only when the caller's surface can create -- the same rule the edit/delete controls
                 // follow, so the empty state never dangles a button that would 404.
@@ -647,9 +661,10 @@ val FormsPage = FC<Props> {
                         }
                     }
                 }
-                // The saved-but-off-screen note (issue #669): shown when a create or edit returned to a filtered
-                // list the saved row is not in, so the flash had nothing to land on. `form-ok` -- the save did
-                // happen, which is the point being made -- and it clears on the next list action.
+                // The saved-but-off-screen note (issues #669, #758): shown when a create or edit returned to a
+                // list the saved row is not on -- filtered out, or for a create sorted or paged away -- so the
+                // flash had nothing to land on. `form-ok` -- the save did happen, which is the point being made
+                // -- and it clears on the next list action.
                 savedOffscreenNote?.let {
                     p {
                         className = ClassName("form-ok")
