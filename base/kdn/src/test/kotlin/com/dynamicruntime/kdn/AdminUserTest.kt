@@ -13,7 +13,13 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
+import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.AdminRules
+import com.dynamicruntime.common.user.PERSONA
+import com.dynamicruntime.common.user.UCF
+import com.dynamicruntime.common.user.USF
+import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.core.spec.style.StringSpec
@@ -21,6 +27,7 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 
 /**
@@ -345,4 +352,65 @@ class AdminUserTest : StringSpec({
         TestUser.rolesOf(stored) shouldNotContain ROLE.admin
     }
 
+})
+
+/**
+ * Personas on the admin create (issue #750): the registry's default roles, the associated user an
+ * administrator makes at their own address, and the key the database holds.
+ */
+class AdminPersonaTest : StringSpec({
+    val cxt = Startup.mkTestBootCxt("adminPersona", "adminPersonaTest")
+
+    "a persona names the roles a new user starts with, and an explicit list still wins" {
+        val admin = TestUser.createFullAdmin(cxt, "persona-chief@other.com")
+        val member = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "persona-member@other.com"))
+        member[ADF.persona] shouldBe PERSONA.member
+        member[ADF.personId] shouldBe ""
+        TestUser.rolesOf(member) shouldBe listOf(ROLE.user)
+        val made = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "persona-admin@other.com", ADF.persona to PERSONA.admin))
+        made[ADF.persona] shouldBe PERSONA.admin
+        TestUser.rolesOf(made) shouldBe listOf(ROLE.user, ROLE.admin)
+        // Roles given explicitly are what the user gets, whatever the persona would have said.
+        val plain = admin.postData(
+            ADEP.userCreate,
+            mapOf(ADF.primaryId to "persona-plain@other.com", ADF.persona to PERSONA.admin, ADF.roles to listOf(ROLE.user)),
+        )
+        TestUser.rolesOf(plain) shouldBe listOf(ROLE.user)
+        // The listing shows the persona and the personId, and the search field finds them.
+        admin.getItems(ADEP.userSearch, mapOf(USF.persona to PERSONA.admin)).map { it[ADF.primaryId] } shouldContain "persona-admin@other.com"
+    }
+
+    "an administrator creating a user at their own address makes an associated, registered user" {
+        val address = "persona-own@other.com"
+        val admin = TestUser.createFullAdmin(cxt, address)
+        // A second persona under the same identity: a second user, the person's own from the start.
+        val made = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.persona to PERSONA.admin))
+        (made[ADF.userId] as Long) shouldNotBe admin.userId
+        made[USF.registered.at].shouldNotBeNull()
+        // It is in the switcher at once, and switchable.
+        admin.getData(AEP.selfUsers)[AFLD.users].toJsonListOfMaps().map { it[UCF.userId] } shouldContain made[ADF.userId]
+        admin.postData(AEP.switchUser, mapOf(AFLD.userId to made[ADF.userId]))[UPF.persona] shouldBe PERSONA.admin
+    }
+
+    "a duplicate key is refused with a message that names it, and a personId makes it a different user" {
+        val address = "persona-dup@other.com"
+        val admin = TestUser.createFullAdmin(cxt, address)
+        // The administrator's own user already holds (public, member, ""): the same key again is refused...
+        val refused = admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to address))
+        (refused[EP.errorMessage] as String) shouldContain "persona"
+        // ...while a personId names a further user of the same persona.
+        val batch = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.personId to "B"))
+        batch[ADF.personId] shouldBe "B"
+        admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.personId to "B"))
+    }
+
+    "an unknown persona and a malformed personId are refused" {
+        val admin = TestUser.createFullAdmin(cxt, "persona-bad@other.com")
+        // Refused by the schema: the persona field is a closed choice list, so a name outside the registry never reaches the handler.
+        (admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "bad1@other.com", ADF.persona to "wizard"))[EP.errorMessage] as String) shouldContain ADF.persona
+        admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "bad2@other.com", ADF.personId to "way-too-long"))
+        // Somebody else's address is not the administrator's to provision a further user for: that is an invitation (phase E).
+        TestUser.create(cxt, "persona-other@other.com")
+        admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "persona-other@other.com", ADF.persona to PERSONA.admin))
+    }
 })

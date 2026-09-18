@@ -136,25 +136,14 @@ is rebuilt any time there is a data update to the config, unless `staticConfig` 
 case it will only occur when a formal deployment occurs or a scheduled event or admin action
 takes place.
 
-The test fixture that allows creation of users will have a parameter to specify the client, and a similar
-option will exist for creating users for internal unit tests. And for users ending in `example.com` or
-the env value of `KDR_ADMIN_EMAIL_DOMAIN`, we will support an option where the value after a `+` will specify
-the clientId. There is one extra feature to this, the characters for the client ID are only read up
-to the first character that would make it an illegal clientId. An example would be, `user1+acme#featureX@example.com`.
-For this user the `clientId` would be `acme` not `acme#featureX`. When a new user is created with such
-an embedded `clientId` in its email, the user will be created in that client, if it exists and is enabled. If it
-does not exist or is not enabled, the user falls back to `public`, with a warning logged and nothing else said.
-
-A `%persona` suffix after the client id names a **persona**, so `user1+hub%admin@example.com` is an admin of
-`hub`; `%` is one of the characters that terminates the client id. **A client with no persona is an ordinary
-user**: `user1+acme@example.com` is a normal user of `acme`, not an administrator of it. A persona is deliberately not called a
-role: for now it is a **subset** of the roles, and it **cannot grant `allClients`**. When more capabilities
-exist there will be a formal definition of a persona and of how it maps onto roles and capabilities, with some
-capabilities possibly depending on the client's own definition. An address on these two domains with **no**
-`+` at all grants `admin` and `operator` in whatever client the user is assigned to. Outside production such
-admins will eventually also hold `allClients`; in production only a subset will, and `example.com` does not work
-there at all. This replaces the present rule, under which a `+` tag *disqualifies* an address from being made an
-administrator.
+The test fixture that allows creation of users takes a parameter to specify the client, and a similar
+option exists for creating users in internal unit tests. A self-registered user lands in `public`, the
+placeholder client for a person who has not yet been invited anywhere; the request's host will later be able
+to name a client instead (the "default client" rule the Google sign-in and registration share). An address on
+`example.com` or the env value of `KDR_ADMIN_EMAIL_DOMAIN` with **no** `+` at all grants `admin` (and, outside
+production, `allClients`) in whatever client the user is assigned to -- how a deployment's first administrator
+comes to exist. *(The `+clientId%persona` address tags that once named a client and a persona on those domains
+were retired in issue #750 -- see "Users, clients and personas" below.)*
 
 One thing not addressed here is how clients will introduce their variants to Markdown fragments.
 Also not addressed here is the automatic creation of endpoints that are restricted down
@@ -340,42 +329,29 @@ sample module already does.
 
 ## Users, clients and personas
 
-On the two domains this applies to — `example.com` and `KDR_ADMIN_EMAIL_DOMAIN`:
+A **persona** says what relationship a user has to the application -- `member` (the default: the person
+belongs to the client) or `admin` to start, `reviewer` and `advisor` sketched -- and is a **registry**
+(`PERSONA` in the kernel, issue #750): each has a name, a label, and the roles a user of it starts with. It is
+frozen at creation and part of the user's unique key with its identity, client and `personId`; changing
+persona means creating a new user with its own data. A persona is deliberately **not a role**: `admin` here
+says how to read the user, and the roles say what they may do -- and no persona's default roles ever include
+`allClients`, which is a grant an administrator makes to a user, never a property of what kind of user they
+are. A client may later add its own personas under this word's reservation.
 
-- **no `+`** grants `admin` **and** `operator` in whatever client the user is assigned to;
-- **`+<clientId>`** puts the user in that client;
-- **`%<persona>`** after the client id names the role — `user1+hub%admin@example.com` is an admin of `hub`.
-  The client id is read only up to the first character that could not be in one, so `%` terminates it.
+An administrator provisions a user with a persona and, for a further user of the same address, client and
+persona (a UAT batch), a `personId`; a person proves such a user by invitation (phase E of #746), or, when the
+address is the administrator's own, holds it from the start as an associated user. That is why the
+`+clientId%persona` address convention that once did this on the controlled domains was **retired** in #750:
+what survives of it is the no-tag rule alone -- on `example.com` and `KDR_ADMIN_EMAIL_DOMAIN`, an address with
+**no `+`** is one of the deployment's own people and earns the auto-admin grant, and a `+` tag says only that
+it is not.
 
-Outside production such admins will eventually also hold `allClients`; in production only a subset will, and
-`example.com` does not work there at all.
-
-**A persona is not a role, and the difference is the point.** For now it is a subset of the roles, and it
-**cannot grant `allClients`** — so the persona vocabulary is the *escalation ceiling of the email convention*:
-whatever it grows into, an address can never mint a caller with global scope. A formal definition of a persona,
-and of how one maps onto roles and capabilities, waits until there are more capabilities to map — some of which
-may depend on the client's own definition.
-
-One consequence reads backwards until it is said out loud: **naming a persona narrows**. `user+acme%operator` is
-*less* privileged than `user@acme.com`, because the plain address takes the full auto-admin grant while the
-persona takes only what it names. The two are separate paths — the `allClients` that non-production admins
-receive comes from the auto-admin rule, never from a persona.
-
-`deferred-work.md` used *persona* for a different payload in the same part of an address — the identity-bound
+`deferred-work.md` used *persona* for a different payload in the same part of an address -- the identity-bound
 quality that makes a test user fail on demand. That use has been renamed to **fault**, which is not a coinage:
 #227 already uses it for deliberate failure. The formal concept keeps the word.
 
-**This supersedes the rule where a `+` tag disqualifies an address from auto-admin**, and the inversion is the
-thing to be careful about: an account deliberately created as a non-admin under the old rule reads as a client
-assignment under the new one. It also overtakes a `deferred-work.md` item — *auto-admin should grant the level,
-not global scope* — whose trigger has now fired and whose answer turns out to be environment-dependent rather
-than the flat rule it anticipated. That item should be promoted and rewritten rather than followed.
-
-**An address naming a client that does not exist falls back to `public`**, logging a warning and otherwise
-staying silent. Marked as likely to evolve.
-
-**The fixtures take an explicit client and role**, which makes the email convention a convenience rather than
-the mechanism — and makes it the part worth building first, since everything else can be tested through it.
+**The fixtures take an explicit client, persona and personId**, which makes any address convention a
+convenience rather than the mechanism -- and is what everything else is tested through.
 
 ## Usage types, and what a caller is shown
 

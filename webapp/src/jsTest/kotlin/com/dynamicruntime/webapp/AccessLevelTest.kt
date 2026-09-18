@@ -3,8 +3,11 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.user.PERSONA
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Pure-logic coverage (issue #161) for [AdminUser.level] -- the level the Users page reads off a row's role
@@ -138,5 +141,22 @@ class AccessLevelTest {
     fun operatorIsOfferedOnlyWhenSelectable() {
         assertEquals(listOf(ROLE.user, ROLE.operator, ROLE.admin), offeredAccessLevels(operatorSelectable = true))
         assertEquals(listOf(ROLE.user, ROLE.admin), offeredAccessLevels(operatorSelectable = false))
+    }
+}
+
+/** The persona controls on the create form (issue #750): the level a persona implies, and when the personId box is offered. */
+class PersonaFormTest {
+    @Test
+    fun aPersonaMovesTheLevelToItsDefault() {
+        assertEquals(ROLE.admin, levelForPersona(PERSONA.admin))
+        assertEquals(ROLE.user, levelForPersona(PERSONA.member))
+        assertEquals(ROLE.user, levelForPersona("wizard"))
+    }
+
+    @Test
+    fun thePersonIdIsOfferedOnlyForAKeyCollision() {
+        assertTrue(isUserKeyCollision("A user for 'a@b.com' already exists in client 'public' (persona 'member')."))
+        assertFalse(isUserKeyCollision("Username 'ada' has already been taken."))
+        assertFalse(isUserKeyCollision(null))
     }
 }

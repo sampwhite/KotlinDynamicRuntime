@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -18,6 +19,8 @@ class UserCellValueTest {
         username = "ada_l",
         roles = listOf("user"),
         client = "acme",
+        persona = "admin",
+        personId = "B",
         org = "eng",
         isEntity = false,
         name = "Ada Lovelace",
@@ -26,6 +29,12 @@ class UserCellValueTest {
         deleted = false,
         updatedAt = "2026-08-24T18:00:00.000Z",
     )
+
+    @Test
+    fun thePersonaColumnShowsTheLabelAndThePersonId() {
+        assertEquals("Admin B", personaCell("admin", "B"))
+        assertEquals("Member", personaCell("member", ""))
+    }
 
     @Test
     fun everySpecFieldHasADisplayValue() {

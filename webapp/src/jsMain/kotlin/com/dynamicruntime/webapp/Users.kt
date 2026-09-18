@@ -4,6 +4,8 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.user.PERSONA
+import com.dynamicruntime.common.user.PERSONID
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.userSearchFieldSpecs
@@ -90,6 +92,12 @@ val Users = FC<Props> {
     var draftIsEntity by useState(false)
     var draftName by useState("")
     var draftEnabled by useState(true)
+    // The persona and personId (issue #750): chosen at creation, shown read-only afterward. The personId box is
+    // offered only once a create collides with an existing user of the same address, client and persona --
+    // the one situation it is for -- rather than sitting on every form as a field nobody needs.
+    var draftPersona by useState(PERSONA.member)
+    var draftPersonId by useState("")
+    var personIdOffered by useState(false)
 
     // Whether the permanent-delete danger button has been armed -- a two-step confirm, since there is no
     // Popconfirm wrapper and an irreversible delete is the one action here a stray click must not perform.
@@ -231,6 +239,9 @@ val Users = FC<Props> {
         draftIsEntity = user?.isEntity == true
         draftName = user?.name ?: ""
         draftEnabled = user?.enabled ?: true
+        draftPersona = user?.persona ?: PERSONA.member
+        draftPersonId = user?.personId ?: ""
+        personIdOffered = false
         confirmingDelete = false
         note = null
         error = null
@@ -362,12 +373,20 @@ val Users = FC<Props> {
                 error = DisplayError.expected("\"$email\" is not a valid email address.")
                 return@run
             }
-            val created = AdminApi.createUser(
-                email, username = null, roles = draftRoles(emptyList()),
-                org = draftOrg.trim().ifEmpty { null },
-                isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
-                client = draftClient.trim().ifEmpty { null }, enabled = draftEnabled,
-            )
+            val created = try {
+                AdminApi.createUser(
+                    email, username = null, roles = draftRoles(emptyList()),
+                    org = draftOrg.trim().ifEmpty { null },
+                    isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
+                    client = draftClient.trim().ifEmpty { null }, enabled = draftEnabled,
+                    persona = draftPersona, personId = draftPersonId,
+                )
+            } catch (e: Throwable) {
+                // A collision on (address, client, persona) is what the personId is for: offer it, keep the
+                // form, and let the refusal show as it is.
+                if (isUserKeyCollision(e.message)) personIdOffered = true
+                throw e
+            }
             note = "Created ${created.primaryId}."
         } else {
             var changed = false
@@ -583,6 +602,44 @@ val Users = FC<Props> {
                 }
             } else {
                 readOnlyField("Client", draftClient.ifEmpty { "—" })
+            }
+
+            // The persona (issue #750): frozen at creation, like the client, so a selector on create and plain
+            // text afterward. Choosing one moves the access level to the persona's default, which the
+            // administrator may still change: the persona says what kind of user this is, the level what they
+            // may do, and the default is only where the two usually agree.
+            if (creating) {
+                div {
+                    className = ClassName("row")
+                    span {
+                        className = ClassName("field-label")
+                        +"Persona"
+                    }
+                    Select {
+                        value = draftPersona
+                        options = personaOptions()
+                        disabled = busy
+                        style = js("({ minWidth: 180 })")
+                        onChange = { v ->
+                            val chosen = v as? String ?: PERSONA.member
+                            draftPersona = chosen
+                            draftLevel = levelForPersona(chosen)
+                        }
+                    }
+                }
+                p {
+                    className = ClassName("type-hint")
+                    +personaHint
+                }
+                if (personIdOffered || draftPersonId.isNotEmpty()) {
+                    textField("Person id", draftPersonId, disabled = busy) { draftPersonId = it }
+                    p {
+                        className = ClassName("type-hint")
+                        +personIdHint
+                    }
+                }
+            } else {
+                readOnlyField("Persona", personaCell(draftPersona, draftPersonId))
             }
 
             // Editable only by someone not confined to an organization: the backend lets a confined
@@ -978,6 +1035,39 @@ private val accessLevelLabels = mapOf(
  */
 fun offeredAccessLevels(operatorSelectable: Boolean): List<String> =
     RoleLadder.ordered.filter { it != ROLE.operator || operatorSelectable }
+
+/** The persona registry as antd `{ label, value }` option objects (issue #750), in the registry's order. */
+private fun personaOptions(): Array<dynamic> =
+    PERSONA.defs.map { def ->
+        val obj: dynamic = js("({})")
+        obj.label = def.label
+        obj.value = def.name
+        obj
+    }.toTypedArray()
+
+/**
+ * The access level a persona's default roles put a user at -- what the level selector moves to when a persona
+ * is chosen (issue #750). The ladder's floor for a persona the registry does not hold. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun levelForPersona(persona: String): String =
+    PERSONA.def(persona)?.let { RoleLadder.highestHeld(it.defaultRoles) } ?: ROLE.user
+
+/**
+ * Whether a create was refused because a user with the same address, client and persona already exists --
+ * the backend's duplicate-key refusal, which is the one situation the personId box answers. Matched on the
+ * refusal's wording, which is the backend's contract here; a different refusal (a taken username, a bad
+ * address) leaves the box unoffered. Pure, covered under `jsNodeTest`.
+ */
+fun isUserKeyCollision(message: String?): Boolean = message?.contains("already exists in client") == true
+
+private const val personaHint =
+    "What kind of user this is: a member of the client, or one of its administrators. Chosen once, at " +
+        "creation. Picking one sets the access level to its usual value, which you may still change."
+
+private val personIdHint =
+    "A user of this address, client and persona already exists. Give this one a short id (up to " +
+        "${PERSONID.maxLength} letters or digits: 1, 2, A, B) to create it as a further user of the same kind."
 
 /** The [offeredAccessLevels] as antd `{ label, value }` option objects. */
 private fun accessLevelOptions(operatorSelectable: Boolean): Array<dynamic> =

@@ -124,6 +124,13 @@ A fourth is **belonging**, and behaves unlike the other three:
   Offered only to a caller holding `allClients`, who is also the only one able to read `/admin/clients` to
   populate it; a scoped administrator's client is not a decision. The list gains a **Client** column under the
   same condition, because a column that says one thing says nothing.
+- **Persona** (issue #750) — what kind of user this is, from the kernel's `PERSONA` registry (`Member`,
+  `Admin`), chosen at creation and never again, so a `Select` while creating and read-only afterward. Choosing
+  one moves the access level to the persona's default roles, which the administrator may still change.
+  Creating a user at your **own** address makes an associated user of yours, registered at once and in the
+  badge's switcher. The **Person id** box is offered only after a create collides with an existing user of the
+  same address, client and persona (the backend's duplicate-key refusal, `isUserKeyCollision`): it is the UAT
+  batch discriminator, and a field nobody else needs. The list shows both in a **Persona** column (`Member B`).
 
 Two are **identity**, and sit at the top of the editor beside the email for that reason — they say who the
 account is, not what it may do:

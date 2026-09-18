@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.http.request.ROLE
+
 // Auth/profile constants that the *frontend* (Kotlin/JS) shares with the backend: endpoint paths, request and
 // response field (JSON key) names, UI-config feature flags, schema type names, and fragment file ids. They
 // live in the KMP kernel (not base:common) precisely so the transpiled frontend can reference the same
@@ -153,16 +155,26 @@ object AERR {
 }
 
 /**
+ * One persona a user may be created with (issues #747, #750): its wire [name], the [label] a person sees, and
+ * the [defaultRoles] a user of it starts with. The roles are applied **at creation only** -- after that they
+ * are whatever an administrator makes them, the way the auto-admin rule works -- and are ladder roles alone:
+ * a persona never carries `allClients` or any other capability (see `PERSONA`).
+ */
+class PersonaDef(val name: String, val label: String, val defaultRoles: List<String>)
+
+/**
  * The personas a user may be created with (issue #747): what relationship the user has to the application,
- * frozen at creation and part of the user's unique key with its identity, client and `personId`. Two to
- * start; phase D makes this a registry with default roles and labels, and a client may later add its own. A
- * persona is deliberately **not** a role -- `admin` here says how to read the user, and the roles say what
- * they may do.
+ * frozen at creation and part of the user's unique key with its identity, client and `personId`. A registry
+ * (issue #750) of two to start; a client may later add its own under `client-definition.md`'s reservation of
+ * the word. A persona is deliberately **not** a role -- `admin` here says how to read the user, and the roles
+ * say what they may do -- though each names the roles a user of it *starts* with.
  *
  * The default persona is **`member`** (Sam, 2026-09-18), not `user`: what it says is that the person belongs
  * to the client, which pairs naturally with `admin` and the later `reviewer` and `advisor`, and it stays clear
  * of the *role* `user`, a rung on the privilege ladder on a different axis. (The alternatives -- standard,
  * regular, ordinary -- read as tiers or carry an edge.)
+ *
+ * In the kernel so the console offers the same choices, with the same labels, that the backend accepts.
  */
 @Suppress("ConstPropertyName")
 object PERSONA {
@@ -170,9 +182,38 @@ object PERSONA {
     const val admin = "admin"
 
     /**
-     * How a persona is shown: capitalized, `Member` / `Admin`. The wire value stays lowercase; phase D's
-     * registry gives each persona a proper label, and this is the rule until then -- in the kernel so the bar
-     * and the backend show the same word.
+     * The registry, in the order a chooser offers them. **No capability appears in a default role list, by
+     * construction**: `allClients` is a grant an administrator makes to a user, never a property of what kind
+     * of user they are, and a persona that could carry it would be the escalation route the email tags were
+     * retired to close.
      */
-    fun label(persona: String): String = persona.replaceFirstChar { it.uppercaseChar() }
+    val defs: List<PersonaDef> = listOf(
+        PersonaDef(member, "Member", listOf(ROLE.user)),
+        PersonaDef(admin, "Admin", listOf(ROLE.user, ROLE.admin)),
+    )
+
+    /** The registry by name. */
+    val byName: Map<String, PersonaDef> = defs.associateBy { it.name }
+
+    /** The persona named [persona], or null when the registry holds none of that name. */
+    fun def(persona: String): PersonaDef? = byName[persona]
+
+    /** How a persona is shown: its registered label, or the name capitalized for one the registry does not hold. */
+    fun label(persona: String): String = def(persona)?.label ?: persona.replaceFirstChar { it.uppercaseChar() }
+}
+
+/** The `personId` rules (issue #747): the UAT batch discriminator, empty for the ordinary user. */
+@Suppress("ConstPropertyName")
+object PERSONID {
+    /** At most this many characters -- `1`, `2`, `A`, `B`, or a short word that means something to the creator. */
+    const val maxLength = 8
+
+    /**
+     * Whether [personId] is one a user may be created with: empty (the ordinary user), or up to [maxLength]
+     * ASCII letters, digits and underscores -- the tightly controlled charset an id has, so two personIds that
+     * look alike to a person cannot name different users. A tombstone's `deleted-<userId>` is not one of
+     * these and never goes through this check: it is written by the delete, not chosen.
+     */
+    fun isValid(personId: String): Boolean =
+        personId.length <= maxLength && personId.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '_' }
 }

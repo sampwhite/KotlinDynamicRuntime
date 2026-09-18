@@ -158,6 +158,8 @@ class AuthUserRow(
         ADF.primaryId to primaryId,
         ADF.username to username,
         ADF.client to client,
+        ADF.persona to persona,
+        ADF.personId to personId,
         ADF.org to org,
         ADF.isEntity to isEntity,
         ADF.name to name,
@@ -306,6 +308,8 @@ class AuthUserRow(
                     items { type = SCT.string }
                 }
                 property(ADF.client, "The client the user belongs to.", required = true)
+                property(ADF.persona, "The user's persona (member, admin, ...), frozen at creation.", required = true)
+                property(ADF.personId, "The UAT batch discriminator; empty for the ordinary user.", required = true) { emptyIsAbsent = false }
                 property(ADF.org, "The user's primary organization within their client, when they have one.")
                 property(ADF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
                 property(ADF.name, "The account's real-world name: a person's full name, or a business's name.")

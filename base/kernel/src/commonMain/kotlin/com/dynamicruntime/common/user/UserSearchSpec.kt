@@ -93,6 +93,8 @@ val userSearchFieldSpecs: List<UserSearchFieldSpec> = listOf(
     UserSearchFieldSpec(USF.email, "Email", UserFilterKind.substring, sortable = true),
     UserSearchFieldSpec(USF.name, "Name", UserFilterKind.substring, sortable = true),
     UserSearchFieldSpec(USF.client, "Client", UserFilterKind.exact, sortable = true, allClientsOnly = true),
+    // Which of a person's users this is (issue #750): the persona, and the personId when there is one.
+    UserSearchFieldSpec(USF.persona, "Persona", UserFilterKind.substring, sortable = true),
     // The three dates the console shows (issue #462). `updatedAt` and `registeredAt` are deliberately absent:
     // the endpoint still sorts on both, but neither earns a column -- `updatedAt` moves on a login and so
     // answers a question nobody is asking here, and `registeredAt` moves once, when the person claims the user.

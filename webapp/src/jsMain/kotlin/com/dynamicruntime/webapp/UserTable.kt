@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import react.FC
@@ -117,6 +118,8 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
     // The account's own name; an unnamed account shows the placeholder rather than the username standing in.
     USF.name -> user.name?.takeIf { it.isNotBlank() } ?: "—"
     USF.client -> user.client
+    // Which of a person's users this is (issue #750): the persona's label, and the personId when there is one.
+    USF.persona -> personaCell(user.persona, user.personId)
     // The three tracked dates the console shows (issue #462). A dash rather than a blank: "never" is a fact
     // about the account -- never logged in, never edited -- and an empty cell reads as a rendering failure.
     USF.lastEdited.at -> user.lastEditedAt?.let { formatTimestamp(it) } ?: "—"
@@ -124,6 +127,10 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
     USF.activated.at -> user.activatedAt?.let { formatTimestamp(it) } ?: "—"
     else -> unmappedCell
 }
+
+/** The Persona column's value: `Member`, `Admin`, `Member B`. Pure, covered under `jsNodeTest`. */
+fun personaCell(persona: String, personId: String): String =
+    if (personId.isEmpty()) PERSONA.label(persona) else "${PERSONA.label(persona)} $personId"
 
 /** What [cellValue] returns for a spec field with no display branch -- the tell `UserCellValueTest` catches. */
 const val unmappedCell = "(?)"
@@ -157,6 +164,8 @@ private val columnWidths: Map<String, Int> = mapOf(
     // the right column to spend a second line on: it is the one whose content has no bound, and the row is
     // clickable if the whole of it is wanted.
     USF.email to 190, USF.name to 130, USF.client to 85,
+    // `Member B` at its widest; taken from the email column's share.
+    USF.persona to 95,
     // Fixed-width content, so these are the figures that must not be shaved: `2026-08-27 19:23 UTC` measures
     // 153px and never varies. Everything else here was sized around them.
     USF.lastEdited.at to 175, USF.lastLoggedIn.at to 175, USF.activated.at to 175,

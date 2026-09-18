@@ -296,6 +296,14 @@ class UserService : ServiceInitializer {
         registered: Boolean = false,
         customize: (MutableMap<String, Any?>) -> Unit = {},
     ): Long {
+        // The one provisioning path, so the one place the key's vocabulary is checked (issue #750): a persona
+        // the registry holds, and a personId within the id rules. Refused as input, whichever surface asked.
+        if (PERSONA.def(persona) == null) {
+            throw KdrException.mkInput("'$persona' is not a persona; the personas are ${PERSONA.defs.joinToString(", ") { it.name }}.")
+        }
+        if (!PERSONID.isValid(personId)) {
+            throw KdrException.mkInput("'$personId' is not a valid personId: up to ${PERSONID.maxLength} letters, digits or underscores.")
+        }
         val identity = getOrCreateIdentity(cxt, primaryId, verifiedAt)
         val siblings = usersOfIdentity(cxt, identity.identityId)
         // The placeholder username is `@<address>` for an identity's first user, as it always was; `username`

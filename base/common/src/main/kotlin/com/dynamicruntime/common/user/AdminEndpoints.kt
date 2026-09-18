@@ -126,6 +126,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 "Exact client id to confine to. Only meaningful to an '${ROLE.allClients}' caller; anyone " +
                     "else is already confined to their own client.",
             )
+            field(USF.persona, "Case-insensitive substring to match against the persona or the personId.")
             // One pair per date attribute, generated from the registry (issue #462) rather than written out:
             // the keys and the wording both follow the root, so adding a date adds its range with them.
             for (date in userDateFields) {
@@ -167,7 +168,17 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         inputFields = {
             field(ADF.primaryId, "The new user's primary email address.", required = true)
             field(ADF.username, "The new user's username; defaults to a placeholder they can change.")
-            field(ADF.roles, "Roles to grant; defaults to just '${ROLE.user}'.") {
+            field(
+                ADF.persona,
+                "The new user's persona, frozen at creation: ${PERSONA.defs.joinToString(", ") { "'${it.name}'" }}. " +
+                    "Defaults to '${PERSONA.member}'.",
+            ) { for (def in PERSONA.defs) option(def.name, def.label) }
+            field(
+                ADF.personId,
+                "Distinguishes a further user of the same address, client and persona (a UAT batch: '1', '2', 'A', " +
+                    "'B'); up to ${PERSONID.maxLength} letters, digits or underscores. Empty for the ordinary user.",
+            ) { maxLength = PERSONID.maxLength }
+            field(ADF.roles, "Roles to grant; defaults to the persona's own (just '${ROLE.user}' for a member).") {
                 type = SCT.array
                 items { type = SCT.string }
             }
@@ -194,10 +205,24 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             throw KdrException.mkInput("'$primaryId' is not a valid email address.")
         }
         val username = request[ADF.username].toOptStr()
-        val roles = request[ADF.roles].toJsonListOfStrings().ifEmpty { listOf(ROLE.user) }
+        // The persona is frozen at creation and names the roles a user of it starts with (issue #750); an
+        // explicit role list still wins, as it always has, and is checked against what the caller may grant.
+        val persona = request[ADF.persona].toOptStr()?.trim()?.ifEmpty { null } ?: PERSONA.member
+        val personaDef = PERSONA.def(persona)
+            ?: throw KdrException.mkInput("'$persona' is not a persona; the personas are ${PERSONA.defs.joinToString(", ") { it.name }}.")
+        val personId = request[ADF.personId].toOptStr()?.trim() ?: ""
+        val roles = request[ADF.roles].toJsonListOfStrings().ifEmpty { personaDef.defaultRoles }
         requireUsableRoles(c, roles)
         val service = userService(c)
-        if (service.queryByPrimaryId(c, primaryId) != null) {
+        // A user the administrator creates at their **own** address is an *associated* user -- another of the
+        // person's own, registered from the start since the identity is already theirs (issue #750) -- and the
+        // key (client, persona, personId) says which; a duplicate key is refused by `provisionUser`. Any other
+        // address that already has an identity is somebody else's, and provisioning a user for them is phase E's
+        // invitation, so it is still refused here.
+        // Guarded on `isRowBacked` like every other read of the actor's row: an env-authed administrator has
+        // no row, and asking would send a query after the system user id.
+        val ownAddress = c.userProfile.isRowBacked && service.queryByUserId(c, c.userProfile.userId)?.primaryId == primaryId
+        if (!ownAddress && service.queryByPrimaryId(c, primaryId) != null) {
             throw KdrException.mkInput("A user with the email '$primaryId' already exists.")
         }
         if (username != null && service.queryByUsername(c, username) != null) {
@@ -211,16 +236,9 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // administrator creating a user outside their own scope would immediately lose sight of them.
         val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null } ?: c.userProfile.org
         requireAssignableOrg(c, org)
-        // A user the administrator creates at their **own** address is theirs from the start -- registered
-        // (issue #749); one created for somebody else waits for that person to prove it. The refusal above
-        // keeps the first case theoretical until associated users can be created (phase D), but the rule is
-        // the create's, so it lives here.
-        // Guarded on `isRowBacked` like every other read of the actor's row: an env-authed administrator has
-        // no row, and asking would send a query after the system user id.
-        val ownAddress = c.userProfile.isRowBacked && service.queryByUserId(c, c.userProfile.userId)?.primaryId == primaryId
         val userId = service.provisionUser(
-            c, primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now(), username = username,
-            registered = ownAddress,
+            c, primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now(),
+            persona = persona, personId = personId, username = username, registered = ownAddress,
         ) { authUserData ->
             // The address and its contact are the identity's (issue #748), which `provisionUser` creates
             // unverified: only a code read from the inbox proves it, and the person's first code login does
@@ -241,7 +259,8 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             loadUser(c, userId).let { it.enabled = false; service.updateUser(c, it) }
         }
         LogAuth.info(c) {
-            "Admin ${c.userProfile.userId} created user $userId ('$primaryId') with roles $roles" +
+            "Admin ${c.userProfile.userId} created user $userId ('$primaryId', persona '$persona'" +
+                (if (personId.isEmpty()) "" else ", personId '$personId'") + ") with roles $roles" +
                 (if (!enabled) " (disabled)." else ".")
         }
         loadUser(c, userId).toAdminInfo()
