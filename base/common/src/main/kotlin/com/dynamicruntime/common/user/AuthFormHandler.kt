@@ -369,20 +369,22 @@ class AuthFormHandler(
      * default among the registered ones, and the sign-in registers nothing. None: Google can reach exactly one
      * user, the one the rules name -- the client the address says (`AddressRules.clientForNewUser`, the first
      * such rule; the request's host will join it), the `member` persona, no personId -- which the person is
-     * claiming by signing in: an existing one under that key, disabled or unregistered, is activated and
-     * registered, and otherwise a registered user is created (`provisionUser`, so the initial-roles rule
-     * reaches a Google-provisioned operator as it does a registration). So a non-admin cannot validate further
-     * users through Google; those take a verification code.
+     * claiming by signing in (`UserService.claimUser`): an existing one under that key is registered, a
+     * disabled one re-enabled as it was and registered, and otherwise a registered user is created with the
+     * initial roles, so the auto-admin domain reaches a Google-provisioned operator as it does a registration.
+     * So a non-admin cannot validate further users through Google; those take a verification code.
+     *
+     * Still to come (Sam, 2026-09-18): the client the rules choose will say whether a person with **no
+     * provisioned user** there may sign in at all -- historically clients have not allowed it, and `public`
+     * will -- so the create at the end becomes a per-client decision.
      */
     private fun googleUserOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow {
         userService.registeredDefaultOf(cxt, identity)?.let { return it }
         val address = identity.primaryId
-        val userId = userService.provisionUser(
-            cxt, address, AddressRules.clientForNewUser(cxt, address), AdminRules.initialRoles(cxt, address),
-            createdAt = cxt.now(), registered = true,
+        return userService.claimUser(
+            cxt, identity, AddressRules.clientForNewUser(cxt, address), PERSONA.member, personId = "",
+            roles = AdminRules.initialRoles(cxt, address),
         )
-        return userService.queryByUserId(cxt, userId)
-            ?: throw KdrException("Could not load the user '$address' signed in through Google.", code = EXC.internalError)
     }
 
     // --- password management ------------------------------------------------

@@ -190,9 +190,51 @@ class UserService : ServiceInitializer {
     fun registeredDefaultOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow? =
         pickDefault(identity, registeredUsersOf(cxt, identity))
 
-    /** The identity's registered, enabled users, lowest `userId` first -- the ones the person may act as. */
-    private fun registeredUsersOf(cxt: KdrCxt, identity: AuthIdentityRow): List<AuthUserRow> =
-        usersOfIdentity(cxt, identity.identityId).filter { it.enabled && it.isRegistered }
+    /**
+     * The identity's registered, enabled users, lowest `userId` first -- the ones the person may act as. From
+     * the user cache's `identityId` index when there is one: the cache holds exactly the enabled rows, and this
+     * sits on the shell config, fetched on every refresh by every signed-in caller, so it must not be the SQL
+     * read `usersOfIdentity` is. SQL only when the cache is absent.
+     */
+    private fun registeredUsersOf(cxt: KdrCxt, identity: AuthIdentityRow): List<AuthUserRow> {
+        val cache = userCache
+        val rows = if (cache != null) {
+            cache.checkRefresh(cxt)
+            cache.snapshot.allByIndex(AU.identityId, identity.identityId).map { AuthUserRow.extract(it.value, identityOf(cxt)) }
+        } else {
+            usersOfIdentity(cxt, identity.identityId)
+        }
+        return rows.filter { it.enabled && it.isRegistered }.sortedBy { it.userId }
+    }
+
+    /**
+     * The user a person **claims** under the key (identity, [client], [persona], [personId]) when they prove the
+     * address in a way that names no user of theirs -- a Google sign-in with no registered user (issue #749);
+     * later, a first login against a client that admits unprovisioned people. An enabled user under the key is
+     * registered if it was not; a **disabled** one is re-enabled as an administrator's re-enable leaves it --
+     * roles, username and name kept, activated now -- and registered (the person is behind this, so it is not
+     * the unregistered recovery `provisionUser` performs for an administrator); none, and a registered user is
+     * created with [roles]. Returns the user.
+     */
+    fun claimUser(
+        cxt: KdrCxt, identity: AuthIdentityRow, client: String, persona: String, personId: String, roles: List<String>,
+    ): AuthUserRow {
+        val now = cxt.now()
+        val existing = usersOfIdentity(cxt, identity.identityId)
+            .firstOrNull { it.client == client && it.persona == persona && it.personId == personId && !it.isDeleted }
+        if (existing != null) {
+            if (!existing.enabled) {
+                existing.enabled = true
+                existing.activatedAt = now
+            }
+            if (!existing.isRegistered) existing.registeredAt = now
+            updateUser(cxt, existing, isEdit = false) // an activation and a registration, not an edit
+            return existing
+        }
+        val userId = provisionUser(cxt, identity.primaryId, client, roles, createdAt = now, persona = persona, personId = personId, registered = true)
+        return queryByUserId(cxt, userId)
+            ?: throw KdrException("Could not load the just-created user '${identity.primaryId}'.", code = EXC.internalError)
+    }
 
     /**
      * The users the caller may switch to (issue #749): the registered, enabled users of the session's identity,
@@ -231,10 +273,9 @@ class UserService : ServiceInitializer {
      * ones provisioned, activated now -- from which it registers again by the normal mechanism (a code, later
      * an invitation). Its org, name, and entity flag are kept, as the recoverable delete promised; so is the
      * identity's password, which is the person's and not this user's (issue #748). An **enabled** user under
-     * the key is refused as a duplicate (the unique index is the backstop behind this check) -- unless it is
-     * unregistered and this provisioning is [registered], in which case the person is **claiming** it: it is
-     * marked registered, everything else about it untouched (issue #749). A permanently deleted one never
-     * matches: its tombstone gave up the key.
+     * the key is refused as a duplicate (the unique index is the backstop behind this check). A permanently
+     * deleted one never matches: its tombstone gave up the key. (A person proving an address that names no
+     * user of theirs goes through [claimUser] instead, which re-enables rather than recovers.)
      *
      * [registered] says the person is behind this provisioning -- a code proved the address for this user, the
      * test fixture made it, they made it for themself -- so the user is theirs from the start. Absent it, an
@@ -262,12 +303,6 @@ class UserService : ServiceInitializer {
         // `@<address>|<client>|<persona>|<personId>` -- until the person chooses a real one.
         val placeholder = AuthUserRow.usernameTmpPrefix + if (siblings.isEmpty()) primaryId else "$primaryId|$client|$persona|$personId"
         siblings.firstOrNull { it.client == client && it.persona == persona && it.personId == personId }?.let { existing ->
-            if (existing.enabled && registered && !existing.isRegistered) {
-                // The person claiming a user provisioned for them: registration, not a create or a recovery.
-                existing.registeredAt = createdAt ?: cxt.now()
-                updateUser(cxt, existing, isEdit = false)
-                return existing.userId
-            }
             if (existing.enabled || existing.isDeleted) {
                 throw KdrException.mkInput("A user for '$primaryId' already exists in client '$client' (persona '$persona'${if (personId.isEmpty()) "" else ", personId '$personId'"}).")
             }

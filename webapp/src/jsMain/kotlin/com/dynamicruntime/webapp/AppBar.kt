@@ -457,7 +457,10 @@ val AppBar = FC<AppBarProps> { props ->
                         className = ClassName("identity-badge has-users")
                         asDynamic()["aria-haspopup"] = "menu"
                         asDynamic()["aria-expanded"] = userMenuOpen
-                        title = "You are acting as ${users.first { it.isCurrent }.label()}. Click to switch users."
+                        // The list holds registered, enabled users only, so a session acting as one that is
+                        // neither has no current entry here -- the badge then just offers the others.
+                        title = users.firstOrNull { it.isCurrent }?.let { "You are acting as ${it.label()}. Click to switch users." }
+                            ?: "Click to switch users."
                         onClick = { userMenuOpen = !userMenuOpen }
                         +identityBadgeText(label, users)
                         span { className = ClassName("app-menu-caret"); +(if (userMenuOpen) "▲" else "▼") }

@@ -214,7 +214,9 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // (issue #749); one created for somebody else waits for that person to prove it. The refusal above
         // keeps the first case theoretical until associated users can be created (phase D), but the rule is
         // the create's, so it lives here.
-        val ownAddress = service.queryByUserId(c, c.userProfile.userId)?.primaryId == primaryId
+        // Guarded on `isRowBacked` like every other read of the actor's row: an env-authed administrator has
+        // no row, and asking would send a query after the system user id.
+        val ownAddress = c.userProfile.isRowBacked && service.queryByUserId(c, c.userProfile.userId)?.primaryId == primaryId
         val userId = service.provisionUser(
             c, primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now(), username = username,
             registered = ownAddress,

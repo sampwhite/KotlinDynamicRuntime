@@ -123,6 +123,16 @@ class GoogleLoginTest : StringSpec({
         // The same user, now the person's -- not a second one beside it.
         info[UPF.userId].toOptLong() shouldBe made
         users.queryByUserId(cxt, made).shouldNotBeNull().isRegistered shouldBe true
+        // A disabled user under the rule-chosen key is re-enabled as it was -- roles kept -- and registered,
+        // rather than recovered into the provisioned state: the person is behind this sign-in.
+        val dormant = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "dormant@example.com", ADF.roles to listOf(ROLE.user, ROLE.admin)))[ADF.userId] as Long
+        admin.postData(ADEP.userSetEnabled, mapOf(ADF.userId to dormant, ADF.enabled to false))
+        login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-dormant", "dormant@example.com"))[UPF.userId].toOptLong() shouldBe dormant
+        users.queryByUserId(cxt, dormant).shouldNotBeNull().let {
+            it.enabled shouldBe true
+            it.isRegistered shouldBe true
+            it.roles shouldBe listOf(ROLE.user, ROLE.admin)
+        }
         // A registered user already there is simply what the sign-in lands on.
         val registered = TestUser.create(cxt, "goog-registered@example.com")
         login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-reg", "goog-registered@example.com"))[UPF.userId]
