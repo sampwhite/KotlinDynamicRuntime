@@ -246,9 +246,6 @@ class RequestService : ServiceInitializer {
         }
     }
 
-    /** The role an application path's section requires, or null when the section is anonymous (or unruled). */
-    fun requiredRoleFor(appPath: String): String? = sectionRulesMap[sectionOf(appPath)]?.requiredRole
-
     /**
      * Whether [profile] may call [appPath] -- the single answer the dispatcher enforces and the endpoint
      * catalog filters on (issue #211), so what is advertised and what is served cannot drift apart.
