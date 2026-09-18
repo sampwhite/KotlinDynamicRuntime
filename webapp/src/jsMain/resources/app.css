@@ -287,7 +287,7 @@ body {
    most likely to have misread as "still loading". Spelled out rather than signalled by colour alone, the
    same reasoning as `.admin-badge` above. */
 .identity-badge {
-    max-width: 22ch;
+    max-width: 34ch;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -372,6 +372,21 @@ body {
 /* The right-hand expand/collapse chevron -- a dropdown-style caret, sized to be clearly visible. */
 .app-menu-caret { margin-left: 12px; font-size: 0.8em; color: var(--accent-bright); opacity: 0.85; }
 .app-menu-children .app-menu-item { padding-left: 32px; }
+
+/* The identity badge as a user menu (issue #749): for a person with several users the badge is a button --
+   the same look, a caret, a pointer -- and its menu drops under it like the hamburger's. The user you already
+   are is marked like the current page, and inert. */
+.identity-badge.has-users {
+    cursor: pointer;
+    font: inherit;
+    background: none;
+    color: inherit;
+    border: 1px solid var(--border);
+}
+.identity-badge.has-users:hover { background: var(--border); }
+.identity-badge.has-users .app-menu-caret { margin-left: 6px; font-size: 0.7em; }
+.user-menu { min-width: 12rem; }
+.user-menu .app-menu-item:disabled { cursor: default; }
 
 /* The ↗ affordance on a menu item whose action leaves the app (issue #493) -- a quiet trailing glyph, not a
    second control. Decorative: the accessible name already says "leaves this app". */

@@ -37,7 +37,7 @@ class AuthUserRow(
     val hasPassword: Boolean = false,
 ) {
     /** The user's persona (issue #747), frozen at creation; see `PERSONA`. */
-    var persona: String = PERSONA.user
+    var persona: String = PERSONA.member
 
     /** Distinguishes same-persona users of one identity in one client (issue #747); `""` for the ordinary one. */
     var personId: String = ""
@@ -82,10 +82,19 @@ class AuthUserRow(
     var updatedAt: Instant? = null
 
     /**
-     * When the account was first created; never overwritten once set (issue #462). Read from
-     * [AD.registeredAt] in the auth data, like the three below.
+     * When the person **proved this user is theirs** (issues #462, #749), or null for a user nobody has claimed
+     * -- one an administrator provisioned for somebody else. Set by a verification code used for this user, by
+     * the test fixture, or by the person creating the user for themself; cleared when a recoverably deleted
+     * user is provisioned again. Read from [AD.registeredAt] in the auth data, like the three below.
      */
     var registeredAt: Instant? = null
+
+    /**
+     * Whether the person has claimed this user. Only a registered user is offered as a login target or in the
+     * switcher (`UserService.defaultUserOf`, `userChoicesFor`): an unclaimed one is not yet the person's to
+     * act as.
+     */
+    val isRegistered: Boolean get() = registeredAt != null
 
     /** When the account most recently became active -- at creation, and on each re-enable. */
     var activatedAt: Instant? = null
@@ -336,7 +345,7 @@ class AuthUserRow(
             val primaryId = AuthIdentityRow.addressIn(identity)
                 ?: throw KdrException("AuthUsers row $userId points at identity '$identityId', which has no address.")
             val row = AuthUserRow(userId, client, identityId, primaryId, AuthIdentityRow.hasPasswordIn(identity))
-            row.persona = data[AU.persona].toOptStr() ?: PERSONA.user
+            row.persona = data[AU.persona].toOptStr() ?: PERSONA.member
             row.personId = data[AU.personId].toOptStr() ?: ""
             row.enabled = data[PF.enabled] == true
             row.username = data[AU.username].toOptStr() ?: (usernameTmpPrefix + primaryId)
@@ -374,15 +383,17 @@ class AuthUserRow(
             client: String,
             roles: List<String>,
             org: String? = null,
-            persona: String = PERSONA.user,
+            persona: String = PERSONA.member,
             personId: String = "",
             /**
-             * When the account came into being (issue #462), stamped as both [AD.registeredAt] and
-             * [AD.activatedAt]. Passed in rather than read here because this builds a map and has no context
-             * to ask for the time; null leaves both unset, which is what a caller with no clock to hand gets
-             * and what an older row already looks like.
+             * When the account came into being (issue #462), stamped as [AD.activatedAt] -- and as
+             * [AD.registeredAt] when [registered]. Passed in rather than read here because this builds a map
+             * and has no context to ask for the time; null leaves both unset.
              */
             createdAt: Instant? = null,
+            /** Whether the person has claimed this user at creation (issue #749): a code proved it, the fixture
+             * made it, or they made it for themself. */
+            registered: Boolean = false,
         ): Map<String, Any?> = mapOf(
             AU.identityId to identityId,
             AU.persona to persona,
@@ -391,11 +402,11 @@ class AuthUserRow(
             PF.client to client,
             AU.authUserData to mutableMapOf<String, Any?>(AD.roles to roles).also {
                 if (org != null) it[AD.org] = org
-                // Both, from one moment: creation is the first activation. They part company later, when a
-                // re-enable moves `activatedAt` and leaves `registeredAt` where it was.
+                // Creation is the first activation. Registration is stamped from the same moment when the
+                // person is behind the creation; otherwise it waits for them to prove the user (issue #749).
                 if (createdAt != null) {
-                    it[AD.registeredAt] = createdAt
                     it[AD.activatedAt] = createdAt
+                    if (registered) it[AD.registeredAt] = createdAt
                 }
             },
         )

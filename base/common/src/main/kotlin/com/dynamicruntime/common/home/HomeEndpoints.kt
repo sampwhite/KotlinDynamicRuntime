@@ -24,6 +24,8 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.AdminRules
+import com.dynamicruntime.common.user.UserChoice
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.refreshActingRoles
 
 /**
@@ -77,6 +79,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
 
     // UserInfo (declared with UserProfile) describes who the caller is, for the menu's signed-in label.
     UserProfile.defineInfoType(this)
+    UserChoice.defineInfoType(this)
 
     // The home widget-group's UI config: which fragment file holds its copy, which layout affordances are
     // enabled, the links to offer, and the menu this particular caller gets.
@@ -115,6 +118,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
             property(HFLD.userInfo, "Who the caller is (the anonymous profile when signed out).", required = true) {
                 ref(UserProfile.infoTypeName)
             }
+            property(HFLD.users, "The users the caller's identity may act as (issue #749); empty when signed out.", required = true) {
+                type = SCT.array
+                items { ref(UserChoice.infoTypeName) }
+            }
             property(
                 HFLD.sourceRepoBase,
                 "The source repository's blob base (.../blob/<branch>) for rewriting a document's interior " +
@@ -149,6 +156,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
                 put(HFLD.links, homeLinksFor(c))
                 put(HFLD.menu, resolvedMenu(c))
                 put(HFLD.userInfo, c.userProfile.toUserInfo())
+                // The switcher's list rides the shell config (issue #749), which the bar already re-reads on
+                // every refresh generation -- a sign-in, a switch -- so it needs no fetch of its own. An edge
+                // carries no user service, and no user to list: empty there.
+                put(HFLD.users, UserService.getOrNull(c)?.selfUserChoices(c).orEmpty().map { it.toInfo() })
                 // Only when configured -- an absent field says "no source repo", which is how the frontend
                 // leaves a non-document interior link as written (issue #492).
                 sourceRepoBase(c)?.let { put(HFLD.sourceRepoBase, it) }

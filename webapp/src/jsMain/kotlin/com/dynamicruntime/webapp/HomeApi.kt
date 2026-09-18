@@ -7,6 +7,7 @@ import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiAction
 import com.dynamicruntime.common.uiblock.parseUiAction
+import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.util.resolveDocLink
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -43,6 +44,11 @@ class HomeConfig(
     val menu: List<MenuItem>,
     /** Who the caller is; the anonymous profile when signed out. */
     val user: UserProfile,
+    /**
+     * The users the caller's identity may act as (issue #749), the current one marked -- what the account menu
+     * offers to switch to. Empty when signed out; a list of one means there is nothing to switch to.
+     */
+    val users: List<UserChoice>,
     /** Whether the caller may create and edit other users (drives the Users page, not just the menu). */
     val canManageUsers: Boolean,
     /** Whether the caller administers across clients (holds allClients, issue #668) -- drives the forms list's
@@ -94,12 +100,20 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         links = links,
         menu = menu,
         user = UserProfile.fromUserInfo(config.state[HFLD.userInfo].toJsonMapOrEmpty()),
+        users = userChoicesFrom(config.state[HFLD.users]),
         canManageUsers = config.features[HFEAT.canManageUsers] == true,
         canSeeAllClients = config.features[HFEAT.canSeeAllClients] == true,
         hasSurvey = config.features[HFEAT.hasSurvey] == true,
         sourceRepoBase = config.state[HFLD.sourceRepoBase] as? String,
     )
 }
+
+/**
+ * The `UserChoice`s in a `users` list as the backend serves it (issue #749), read by the kernel's own
+ * `UserChoice.fromInfo` so the two sides cannot disagree about the shape; an entry without an id is dropped.
+ * Pure, covered by `jsNodeTest`.
+ */
+fun userChoicesFrom(raw: Any?): List<UserChoice> = raw.toJsonListOfMaps().mapNotNull { UserChoice.fromInfo(it) }
 
 /**
  * The repo source path -> in-app link id map (issue #492): how a document's interior link to a repo file is

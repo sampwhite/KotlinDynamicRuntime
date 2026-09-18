@@ -35,6 +35,15 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     }
     // The shared UserInfo type (declared with UserProfile) is what login and self-info endpoints return.
     UserProfile.defineInfoType(this)
+    // The switcher's list (issue #749): the users the signed-in person may act as, as `UserChoice`s.
+    UserChoice.defineInfoType(this)
+    type(ATYPE.userChoices) {
+        type = SCT.kObject
+        property(AFLD.users, "The registered, enabled users of the caller's identity; the current one is marked.", required = true) {
+            type = SCT.array
+            items { ref(UserChoice.infoTypeName) }
+        }
+    }
 
     // The auth widget-group's UI config (issue #70): the manifest the frontend fetches to build the
     // register/login flow -- which fragment file holds its copy, which features are on, and the caller's state.
@@ -198,6 +207,25 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
         // Auth self-info: part of the published API (issue #489) and consumed by the frontend auth flow.
         HttpMethod.GET, outputRef = UserProfile.infoTypeName, publicApi = true, tags = setOf(ETAG.frontend)) { c, _ ->
         currentUserInfo(c)
+    }
+
+    // The switcher (issue #749), under the login-gated `user` section: the gate re-reads the acting row, so a
+    // disabled or detached user cannot switch away from itself, and every call acts on the session's identity.
+    generalEndpoint(AEP.selfUsers, "Lists the users the signed-in person may act as.",
+        HttpMethod.GET, outputRef = ATYPE.userChoices, tags = setOf(ETAG.frontend)) { c, _ ->
+        authHandler(c).selfUsers(c)
+    }
+    generalEndpoint(AEP.switchUser, "Becomes another of the signed-in person's users (a fresh session).",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.userId, "The user to become: a registered, enabled user of the caller's own identity.", required = true) { type = SCT.integer }
+        }) { c, req ->
+        authHandler(c).switchUser(c, req.getReqLong(AFLD.userId))
+    }
+    generalEndpoint(AEP.setDefaultUser, "Chooses which of the signed-in person's users their address logs in as.",
+        HttpMethod.POST, outputRef = ATYPE.userChoices, inputFields = {
+            field(AFLD.userId, "The user to make the default: a registered, enabled user of the caller's own identity.", required = true) { type = SCT.integer }
+        }) { c, req ->
+        authHandler(c).setDefaultUser(c, req.getReqLong(AFLD.userId))
     }
 
     // Log out: flag the request so the auth hook clears the session cookie.

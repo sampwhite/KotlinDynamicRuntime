@@ -5,11 +5,14 @@ import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.GOOG
 import com.dynamicruntime.common.user.JwtKeySource
 import com.dynamicruntime.common.user.LSRC
+import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.base64Encode
 import com.dynamicruntime.common.util.getOptStr
@@ -105,6 +108,35 @@ class GoogleLoginTest : StringSpec({
         linked.primaryId shouldBe "ida@example.com"
         linked.verifiedAt.shouldNotBeNull()
         info[UPF.identityId] shouldBe linked.identityId
+    }
+
+    // The registered-user rule for Google (issue #749): a registered user at the address is what the sign-in
+    // lands on; with none, Google reaches exactly the one user the rules name, claiming it.
+    "a Google sign-in claims the rule-chosen user when the person has not registered one" {
+        val cxt = bootGoogle("googClaim", "googClaimTest")
+        val users = UserService.get(cxt)
+        val admin = TestUser.createFullAdmin(cxt, "goog-claim-admin@example.com")
+        // Provisioned by an administrator: the public client, the ordinary persona, unregistered.
+        val made = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "claimed@example.com"))[ADF.userId] as Long
+        users.queryByUserId(cxt, made).shouldNotBeNull().isRegistered shouldBe false
+        val info = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-claim", "claimed@example.com"))
+        // The same user, now the person's -- not a second one beside it.
+        info[UPF.userId].toOptLong() shouldBe made
+        users.queryByUserId(cxt, made).shouldNotBeNull().isRegistered shouldBe true
+        // A disabled user under the rule-chosen key is re-enabled as it was -- roles kept -- and registered,
+        // rather than recovered into the provisioned state: the person is behind this sign-in.
+        val dormant = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "dormant@example.com", ADF.roles to listOf(ROLE.user, ROLE.admin)))[ADF.userId] as Long
+        admin.postData(ADEP.userSetEnabled, mapOf(ADF.userId to dormant, ADF.enabled to false))
+        login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-dormant", "dormant@example.com"))[UPF.userId].toOptLong() shouldBe dormant
+        users.queryByUserId(cxt, dormant).shouldNotBeNull().let {
+            it.enabled shouldBe true
+            it.isRegistered shouldBe true
+            it.roles shouldBe listOf(ROLE.user, ROLE.admin)
+        }
+        // A registered user already there is simply what the sign-in lands on.
+        val registered = TestUser.create(cxt, "goog-registered@example.com")
+        login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-reg", "goog-registered@example.com"))[UPF.userId]
+            .toOptLong() shouldBe registered.userId
     }
 
     "signing in again with the same Google identity returns the same user" {

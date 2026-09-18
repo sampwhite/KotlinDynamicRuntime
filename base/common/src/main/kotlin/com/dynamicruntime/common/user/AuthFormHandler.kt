@@ -194,7 +194,8 @@ class AuthFormHandler(
         // `+acme` tag puts them in `acme`, and anything else -- including a client this node does not carry --
         // is `public`, exactly as every registration was before.
         val now = cxt.now()
-        // The proof, and the contact it proves, are recorded on the identity (issues #747, #748).
+        // The proof, and the contact it proves, are recorded on the identity (issues #747, #748); the user the
+        // code was used for is the person's from the start -- registered (issue #749).
         return if (existing != null) {
             // A lingering row (started-but-unfinished, or recoverably deleted) is re-provisioned in place; its
             // identity is marked verified now, as a fresh one would be.
@@ -203,12 +204,13 @@ class AuthFormHandler(
             existing.roles = initialRoles
             existing.authUserData = mutableMapOf()
             existing.enabled = true
+            existing.registeredAt = now
             userService.updateUser(cxt, existing)
             existing.userId
         } else {
             userService.provisionUser(
                 cxt, address, AddressRules.clientForNewUser(cxt, address), initialRoles,
-                createdAt = now, verifiedAt = now,
+                createdAt = now, verifiedAt = now, registered = true,
             )
         }
     }
@@ -335,9 +337,7 @@ class AuthFormHandler(
 
         // An identity we have seen before: the link is the answer, and the email is not consulted at all.
         userService.queryLinkedIdentity(cxt, LSRC.google, token.subject)?.let { linked ->
-            val user = userService.defaultUserOf(cxt, linked)
-                ?: throw KdrException("The identity linked to Google subject '${token.subject}' has no user.", code = EXC.internalError)
-            return completeLogin(cxt, user, byCode = false)
+            return completeLogin(cxt, googleUserOf(cxt, linked), byCode = false)
         }
 
         // First sight of this Google account -- the only path that may touch an existing local user.
@@ -352,33 +352,39 @@ class AuthFormHandler(
         }
 
         // The existing identity at the address, marked verified by Google's word for it, or a new one.
-        val row = userService.queryByPrimaryId(cxt, email)?.also {
-            userService.getOrCreateIdentity(cxt, email, verifiedAt = cxt.now())
-        } ?: mkGoogleUser(cxt, email)
+        val identity = userService.getOrCreateIdentity(cxt, email, verifiedAt = cxt.now())
+        val row = googleUserOf(cxt, identity)
         userService.insertLinkedIdentity(
-            cxt, LSRC.google, token.subject, row.identityId,
+            cxt, LSRC.google, token.subject, identity.identityId,
             // Captured for support and for showing the user what is linked -- never read back as an authority
             // on identity, which is the `sub` in the key.
             mapOf(GOOG.email to email, GOOG.name to token.displayName),
         )
-        LogAuth.info(cxt) { "Linked Google subject '${token.subject}' to identity '${row.identityId}' ('${row.primaryId}')." }
+        LogAuth.info(cxt) { "Linked Google subject '${token.subject}' to identity '${identity.identityId}' ('${identity.primaryId}')." }
         return completeLogin(cxt, row, byCode = false)
     }
 
     /**
-     * Provisions a local identity and user for a Google identity whose (Google-verified) [email] matches no
-     * existing account. The initial-roles rule applies exactly as it does to a registration, so a
-     * deployment's auto-admin domain reaches a Google-provisioned operator too. The identity is verified from
-     * the start: Google has vouched for the address, and the link that records so is written right after.
+     * The user a Google sign-in acts as (issue #749). A **registered** user of [identity] exists: the standard
+     * default among the registered ones, and the sign-in registers nothing. None: Google can reach exactly one
+     * user, the one the rules name -- the client the address says (`AddressRules.clientForNewUser`, the first
+     * such rule; the request's host will join it), the `member` persona, no personId -- which the person is
+     * claiming by signing in (`UserService.claimUser`): an existing one under that key is registered, a
+     * disabled one re-enabled as it was and registered, and otherwise a registered user is created with the
+     * initial roles, so the auto-admin domain reaches a Google-provisioned operator as it does a registration.
+     * So a non-admin cannot validate further users through Google; those take a verification code.
+     *
+     * Still to come (Sam, 2026-09-18): the client the rules choose will say whether a person with **no
+     * provisioned user** there may sign in at all -- historically clients have not allowed it, and `public`
+     * will -- so the create at the end becomes a per-client decision.
      */
-    private fun mkGoogleUser(cxt: KdrCxt, email: String): AuthUserRow {
-        val now = cxt.now()
-        val userId = userService.provisionUser(
-            cxt, email, AddressRules.clientForNewUser(cxt, email), AdminRules.initialRoles(cxt, email),
-            createdAt = now, verifiedAt = now,
+    private fun googleUserOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow {
+        userService.registeredDefaultOf(cxt, identity)?.let { return it }
+        val address = identity.primaryId
+        return userService.claimUser(
+            cxt, identity, AddressRules.clientForNewUser(cxt, address), PERSONA.member, personId = "",
+            roles = AdminRules.initialRoles(cxt, address),
         )
-        return userService.queryByUserId(cxt, userId)
-            ?: throw KdrException("Could not load the just-created user '$email'.", code = EXC.internalError)
     }
 
     // --- password management ------------------------------------------------
@@ -454,13 +460,13 @@ class AuthFormHandler(
      */
     fun becomeUserByEmail(
         cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
-        client: String? = null, name: String? = null, persona: String = PERSONA.user, personId: String = "",
+        client: String? = null, name: String? = null, persona: String = PERSONA.member, personId: String = "",
     ): Map<String, Any?> {
         val address = email.normalizeEmail()
         // A username as the login id resolves directly; an address resolves to its identity's users, and the
         // one to become is the match on (client, persona, personId) when the caller named any of them, else
         // the identity's default user (issue #747) -- so a test can put several users under one address.
-        val named = client != null || persona != PERSONA.user || personId.isNotEmpty()
+        val named = client != null || persona != PERSONA.member || personId.isNotEmpty()
         val existing = if (address.contains('@')) {
             val identity = userService.queryIdentityByAddress(cxt, address)
             val users = identity?.let { userService.usersOfIdentity(cxt, it.identityId) }.orEmpty()
@@ -476,12 +482,13 @@ class AuthFormHandler(
             if (failIfUserAlreadyExists) {
                 throw KdrException("A user with email '$address' already exists.", code = EXC.badInput)
             }
-            return completeLogin(cxt, existing, byCode = false)
+            // The fixture is proof by fiat (issue #749): becoming a user nobody has claimed registers it.
+            return completeLogin(cxt, existing, byCode = false, register = true)
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
         val userId = userService.provisionUser(
             cxt, address, fixtureClient(cxt, address, client), roles,
-            createdAt = cxt.now(), persona = persona, personId = personId, verifiedAt = cxt.now(),
+            createdAt = cxt.now(), persona = persona, personId = personId, verifiedAt = cxt.now(), registered = true,
         ) { authUserData ->
             // The person's real-world name (issue #736), set the same way the admin-create path does -- display
             // copy, independent of the username, so a fixture can exercise a name-driven feature (a prefill) that
@@ -520,13 +527,56 @@ class AuthFormHandler(
         return client
     }
 
+    // --- the switcher (issue #749) --------------------------------------------
+
+    /** The users the caller may switch to, as the endpoint lists them. */
+    fun selfUsers(cxt: KdrCxt): Map<String, Any?> = mapOf(AFLD.users to userService.selfUserChoices(cxt).map { it.toInfo() })
+
+    /**
+     * Becomes another of the person's users: a fresh session as [userId], which must be a registered, enabled
+     * user of the **session's own identity** -- strictly same-identity; impersonation is a later, separately
+     * gated capability. Completes as a login does (the cookie reissued, the timeout reset, `lastUsedUserId`
+     * stamped), without touching device trust: a switch proves nothing new about the person.
+     */
+    fun switchUser(cxt: KdrCxt, userId: Long): Map<String, Any?> = completeLogin(cxt, ownUser(cxt, userId), byCode = false)
+
+    /** Chooses which of the person's users an address logs in as ([UserService.defaultUserOf]'s first rule); returns the list. */
+    fun setDefaultUser(cxt: KdrCxt, userId: Long): Map<String, Any?> {
+        val target = ownUser(cxt, userId)
+        val identity = userService.identityOfUser(cxt, target)
+        if (identity.defaultUserId != target.userId) {
+            identity.defaultUserId = target.userId
+            userService.updateIdentity(cxt, identity)
+        }
+        return selfUsers(cxt)
+    }
+
+    /**
+     * The user [userId] as one the caller may act as, or a refusal. One message for every way it is not --
+     * unknown, another person's, disabled, or not yet claimed -- so the endpoint confirms nothing about users
+     * that are not the caller's. A session issued before the split carries no identity and is asked to log in
+     * again, since nothing then says whose users are whose.
+     */
+    private fun ownUser(cxt: KdrCxt, userId: Long): AuthUserRow {
+        val identityId = cxt.userProfile.identityId
+            ?: throw KdrException("This session predates identities; log in again to switch users.", code = EXC.authNeeded)
+        val target = userService.queryByUserId(cxt, userId)
+        if (target == null || target.identityId != identityId || !target.enabled || !target.isRegistered) {
+            throw KdrException.mkInput("User $userId is not one of your users.")
+        }
+        return target
+    }
+
     /**
      * Binds the acting profile and flags the request for the cookie hook; returns the user-info payload. A
      * [byCode] login additionally flags the device to be marked familiar (see KdrRequest.trustDevice), and
-     * -- having just read a code from the inbox -- proves the identity's address if nothing had yet.
+     * -- having just read a code from the inbox -- proves the identity's address if nothing had yet, and the
+     * user it landed on ([register], which the fixture also asserts): a code used for this user is what makes
+     * it the person's (issue #749).
      */
-    private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean): Map<String, Any?> {
+    private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean, register: Boolean = byCode): Map<String, Any?> {
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
+        if (register && !row.isRegistered) row.registeredAt = cxt.now()
         // The identity records the proof and which user the person last acted as (the fallback default,
         // issue #747); written only when either moved, so the ordinary repeat login costs no identity write.
         val identity = userService.identityOfUser(cxt, row)
