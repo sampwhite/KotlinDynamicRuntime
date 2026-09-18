@@ -1,8 +1,6 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.HttpMethod
-import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchFailure
@@ -30,8 +28,8 @@ private val createForUserScope = MainScope()
  * page: pick the user (a type-ahead over the users the caller administers), then fill in the form **in that
  * user's client's rules** -- its schema, fetched by the user's client, through the same [SchemaForm] the ordinary
  * create page uses. Submitting posts to the admin on-behalf endpoint, which owns the form by the chosen user in
- * their client while the admin stays the actor. A success returns to the forms listing scoped to that client,
- * flashing the new row.
+ * their client while the admin stays the actor. A success returns to the forms listing the page was launched
+ * from, as it was, flashing the new row.
  *
  * The ordinary [NewFormPage] is untouched: that one always creates in the caller's own client (#672), and this
  * one is the separate surface for creating on someone else's behalf.
@@ -141,10 +139,8 @@ val CreateForUserPage = FC<Props> {
                     friendly = true
                     cfacts = cat.cfacts
                     layouts = cat.layouts
-                    // `allowAdditionalTraits` is a power flag, and `user` (issue #727) is the picker's answer, made
-                    // above -- both are omitted from the drawn form, as the ordinary create page omits them (issue
-                    // #762: this page drew the `user` field, asking again for the user it was opened for).
-                    omit = listOf(GDF.allowAdditionalTraits, EI.user)
+                    // The fields the page answers itself, not the form (issue #762): the one list both create pages use.
+                    omit = formCreateOmittedFields
                     this.failures = failures
                     onChange = { values = it }
                     onFieldEdit = { path ->
@@ -173,10 +169,15 @@ val CreateForUserPage = FC<Props> {
                                 createForUserScope.launch {
                                     try {
                                         val newId = AdminApi.createFormForUser(user.primaryId, payload)
-                                        // Return to the listing scoped to the user's client (issue #714), flashing
-                                        // the new row (issue #663). No running=false: this navigation unmounts the page.
+                                        // Back to the listing this page was launched from -- its search, sort and
+                                        // chosen client as they were -- flashing the new row (issue #663). Not to the
+                                        // user's client's listing (#762 review): that silently switched the admin's
+                                        // Client selector to a client they never chose, and the cross-client view
+                                        // shows the row anyway, with its Client column saying whose it is; a listing
+                                        // that cannot show it says the form was created. No running=false: this
+                                        // navigation unmounts the page.
                                         val flag = newId?.let { listOf(HP.highlight to it) } ?: emptyList()
-                                        navigateHash(listOf(HP.page to HMENU.pageForms, EI.client to user.client) + flag)
+                                        navigateHash(listOf(HP.page to HMENU.pageForms) + formsSearchHashParams(formsSearchFromHash(hashParams())) + flag)
                                     } catch (e: Throwable) {
                                         runError = userFacingError(e)
                                         running = false

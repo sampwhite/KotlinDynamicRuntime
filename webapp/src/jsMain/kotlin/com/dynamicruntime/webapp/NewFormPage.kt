@@ -137,9 +137,9 @@ val NewFormPage = FC<Props> {
                     // The per-type layouts (issue #586): a field's label/description come from the layout for
                     // its type, cascading over the schema's title/description. Joined by type name inside the form.
                     layouts = cat.layouts
-                    // `allowAdditionalTraits` is a power flag, and `user` (issue #727) is driven by the picker
-                    // above, not a raw field -- both are omitted from the drawn form; each defaults absent.
-                    omit = listOf(GDF.allowAdditionalTraits, EI.user)
+                    // The fields the page answers itself, not the form (issues #727, #762): the one list both
+                    // create pages use; each defaults absent.
+                    omit = formCreateOmittedFields
                     this.failures = failures
                     onChange = { values = it }
                     // Clearing on edit rather than re-checking: a field being corrected must not keep showing the
@@ -174,7 +174,7 @@ val NewFormPage = FC<Props> {
                                     try {
                                         // Create for the picked user when an admin chose one (issue #727); absent
                                         // is the ordinary self-create.
-                                        val body = pickedUser?.let { payload + (EI.user to it.primaryId) } ?: payload
+                                        val body = pickedUser?.let { formForUserBody(it.primaryId, payload) } ?: payload
                                         val response = SchemaCatalogApi.invoke(ep, body)
                                         // Back to the listing (issue #663), flashing the new row -- the same
                                         // confirmation the edit form's save gives (issue #592) -- rather than an

@@ -290,19 +290,22 @@ class GedraFormsTest {
 
     /**
      * An on-behalf create's body (issues #727, #762): the picked user always names the owner -- a `user` the
-     * form's payload carried (the client schema declares the field, and the page once drew it) is dropped, and
-     * the pick is trimmed; everything else in the payload rides through untouched.
+     * form's payload carried (the client schema declares the field) loses to the pick, and everything else in
+     * the payload rides through untouched. Both create pages build their body this way.
      */
     @Test
     fun theOnBehalfCreateBodyIsOwnedByThePickedUser() {
-        val payload = mapOf(GDF.entries to listOf(mapOf("traitId" to "name")), GDF.allowAdditionalTraits to true, EI.user to "someone.else@example.org")
-        val body = formForUserBody(" 42 ", payload)
-        assertEquals("42", body[EI.user])
-        assertEquals(payload[GDF.entries], body[GDF.entries])
-        assertEquals(true, body[GDF.allowAdditionalTraits])
-        assertEquals(3, body.size)
+        val entries = listOf(mapOf(GE.traitId to "name"))
+        val payload = mapOf(GDF.entries to entries, GDF.allowAdditionalTraits to true, EI.user to "someone.else@example.org")
+        assertEquals(mapOf(GDF.entries to entries, GDF.allowAdditionalTraits to true, EI.user to "42"), formForUserBody("42", payload))
         // No stray user in the payload: the pick is simply added.
-        assertEquals(mapOf(GDF.entries to emptyList<Any?>(), EI.user to "42"), formForUserBody("42", mapOf(GDF.entries to emptyList<Any?>())))
+        assertEquals(mapOf(GDF.entries to entries, EI.user to "42"), formForUserBody("42", mapOf(GDF.entries to entries)))
+    }
+
+    /** What neither create page draws (issue #762): the power flag, and the user the page answers itself. */
+    @Test
+    fun theCreatePagesOmitThePowerFlagAndTheUser() {
+        assertEquals(setOf(GDF.allowAdditionalTraits, EI.user), formCreateOmittedFields.toSet())
     }
 
     /** A one-branch-per-trait union: a `name` branch and an `expenseReport` branch, the latter with a title. */
