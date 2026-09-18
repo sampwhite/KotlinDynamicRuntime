@@ -77,6 +77,14 @@ private const val emailLocalExtra = ".!#$%&'*+/=?^_`{|}~-"
  * (`AuthUsers.primaryId` is a unique index on the normalized form). Idempotent, so normalizing twice is harmless.
  * In the kernel because the admin console runs it in the browser before its own check.
  */
+/**
+ * This string with surrounding whitespace stripped, or null when it is null or becomes empty -- so a
+ * whitespace-only value reads as "no value". The one operation the trim-and-blank-check helpers share: a bare
+ * `String?` normalizer (`AuthUserRow.normalizeName`) and the string half of the map accessors
+ * `getReqNonBlankStr` / `getOptNonBlankStr` both delegate here.
+ */
+fun String?.trimToNull(): String? = this?.trim()?.ifEmpty { null }
+
 fun String.normalizeEmail(): String = trim().lowercase()
 
 /**
