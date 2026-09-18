@@ -308,7 +308,11 @@ class AuthUserRow(
                     items { type = SCT.string }
                 }
                 property(ADF.client, "The client the user belongs to.", required = true)
-                property(ADF.persona, "The user's persona (member, admin, ...), frozen at creation.", required = true)
+                // The registry's names as options, so the documented API says which values a reader can expect
+                // (the same list the create input binds to).
+                property(ADF.persona, "The user's persona, frozen at creation.", required = true) {
+                    for (def in PERSONA.defs) option(def.name, def.label)
+                }
                 property(ADF.personId, "The UAT batch discriminator; empty for the ordinary user.", required = true) { emptyIsAbsent = false }
                 property(ADF.org, "The user's primary organization within their client, when they have one.")
                 property(ADF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
