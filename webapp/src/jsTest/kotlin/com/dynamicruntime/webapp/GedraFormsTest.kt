@@ -288,6 +288,26 @@ class GedraFormsTest {
         assertTrue(note.contains(formsAllClientsLabel))
     }
 
+    /**
+     * An on-behalf create's body (issues #727, #762): the picked user always names the owner -- a `user` the
+     * form's payload carried (the client schema declares the field) loses to the pick, and everything else in
+     * the payload rides through untouched. Both create pages build their body this way.
+     */
+    @Test
+    fun theOnBehalfCreateBodyIsOwnedByThePickedUser() {
+        val entries = listOf(mapOf(GE.traitId to "name"))
+        val payload = mapOf(GDF.entries to entries, GDF.allowAdditionalTraits to true, EI.user to "someone.else@example.org")
+        assertEquals(mapOf(GDF.entries to entries, GDF.allowAdditionalTraits to true, EI.user to "42"), formForUserBody("42", payload))
+        // No stray user in the payload: the pick is simply added.
+        assertEquals(mapOf(GDF.entries to entries, EI.user to "42"), formForUserBody("42", mapOf(GDF.entries to entries)))
+    }
+
+    /** What neither create page draws (issue #762): the power flag, and the user the page answers itself. */
+    @Test
+    fun theCreatePagesOmitThePowerFlagAndTheUser() {
+        assertEquals(setOf(GDF.allowAdditionalTraits, EI.user), formCreateOmittedFields.toSet())
+    }
+
     /** A one-branch-per-trait union: a `name` branch and an `expenseReport` branch, the latter with a title. */
     private fun unionDefs(): Map<String, Any?> = mapOf(
         "t.NameEntry" to mapOf(
@@ -719,8 +739,9 @@ class GedraFormsTest {
 
     /**
      * A create returns only while the user is still on the page it was launched from (#758 review): a slow
-     * response must not pull them out of wherever they went next. Create-for-user returns with the launching
-     * search and sort, the user's client chosen, and any `user` scope dropped.
+     * response must not pull them out of wherever they went next. The launching hash is the context by default
+     * -- create-for-user returns to the listing it came from, as it was (#762 review) -- and a caller may pass
+     * another.
      */
     @Test
     fun aCreateReturnsOnlyFromThePageItWasLaunchedOn() {
@@ -731,13 +752,15 @@ class GedraFormsTest {
         assertTrue(HP.created in back)
         assertNull(formsCreateReturn(launched, mapOf(HP.page to "users"), "g.fd.acme.new"))
         assertNull(formsCreateReturn(launched, mapOf(HP.page to "forms"), "g.fd.acme.new"))
-        val forUser = mapOf(HP.page to "createForUser", EI.user to "42", EI.q to "roof", GSORT.sort to "name")
-        val context = formsSearchForClient(formsSearchFromHash(forUser), "acme")
-        val home = formsCreateReturn(forUser, forUser, "g.fd.acme.new", context)!!.toMap()
-        assertEquals("acme", home[EI.client])
+        // Create-for-user, launched from a cross-client listing with a search and sort: home is that listing,
+        // untouched -- no client chosen on the admin's behalf.
+        val forUser = mapOf(HP.page to "createForUser", HP.from to "forms", EI.q to "roof", GSORT.sort to "name")
+        val home = formsCreateReturn(forUser, forUser, "g.fd.acme.new")!!.toMap()
         assertEquals("roof", home[EI.q])
         assertEquals("name", home[GSORT.sort])
-        assertTrue(EI.user !in home)
+        assertTrue(EI.client !in home && HP.from !in home)
+        // A caller may still name another context.
+        assertEquals("acme", formsCreateReturn(forUser, forUser, "g.fd.acme.new", mapOf(EI.client to "acme"))!!.toMap()[EI.client])
     }
 
     // --- survey status column (issue #694) --------------------------------------------------------------

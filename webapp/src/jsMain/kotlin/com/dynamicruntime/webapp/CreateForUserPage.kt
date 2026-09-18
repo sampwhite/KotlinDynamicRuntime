@@ -1,8 +1,6 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.HttpMethod
-import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
@@ -29,8 +27,8 @@ private val createForUserScope = MainScope()
  * page: pick the user (a type-ahead over the users the caller administers), then fill in the form **in that
  * user's client's rules** -- its schema, fetched by the user's client, through the same [SchemaForm] the ordinary
  * create page uses. Submitting posts to the admin on-behalf endpoint, which owns the form by the chosen user in
- * their client while the admin stays the actor. A success returns to the forms listing scoped to that client,
- * flashing the new row.
+ * their client while the admin stays the actor. A success returns to the forms listing the page was launched
+ * from, as it was, flashing the new row.
  *
  * The ordinary [NewFormPage] is untouched: that one always creates in the caller's own client (#672), and this
  * one is the separate surface for creating on someone else's behalf.
@@ -140,7 +138,8 @@ val CreateForUserPage = FC<Props> {
                     friendly = true
                     cfacts = cat.cfacts
                     layouts = cat.layouts
-                    omit = listOf(GDF.allowAdditionalTraits)
+                    // The fields the page answers itself, not the form (issue #762): the one list both create pages use.
+                    omit = formCreateOmittedFields
                     this.failures = failures
                     onChange = { values = it }
                     onFieldEdit = { path ->
@@ -170,14 +169,15 @@ val CreateForUserPage = FC<Props> {
                                 createForUserScope.launch {
                                     try {
                                         val newId = AdminApi.createFormForUser(user.primaryId, payload)
-                                        // Return to the listing scoped to the user's client (issue #714), flashing
-                                        // the new row (issue #663) through the one shared return (issue #758): the
-                                        // launching listing's search and sort come home too, with the client chosen
-                                        // as the selector would choose it -- which drops a `user` scope, since that
-                                        // user belonged to the old client. No running=false: this navigation
-                                        // unmounts the page.
-                                        val context = formsSearchForClient(formsSearchFromHash(launched), user.client)
-                                        formsCreateReturn(launched, hashParams(), newId, context)?.let { navigateHash(it) }
+                                        // Back to the listing this page was launched from -- its search, sort and
+                                        // chosen client as they were -- flashing the new row (issue #663), through the
+                                        // one shared create return (issue #758: only while the user is still here).
+                                        // Not to the user's client's listing (#762 review): that silently switched the
+                                        // admin's Client selector to a client they never chose, and the cross-client
+                                        // view shows the row anyway, with its Client column saying whose it is; a
+                                        // listing that cannot show it says the form was created. No running=false:
+                                        // this navigation unmounts the page.
+                                        formsCreateReturn(launched, hashParams(), newId)?.let { navigateHash(it) }
                                     } catch (e: Throwable) {
                                         runError = userFacingError(e)
                                         running = false
