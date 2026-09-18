@@ -133,10 +133,9 @@ private fun inlineDataTypeName(config: GedraConfig, trait: GedraTrait): String? 
  * Used for both data traits ([CCT.traitDef]) and state traits, which add their [CCT.stateClass].
  */
 private fun traitToEntry(config: GedraConfig, trait: GedraTrait): Map<String, Any?> = buildMap {
-    put(CCT.traitId, trait.traitId)
-    put(CCT.typeName, trait.typeName)
-    put(CCT.appliesTo, trait.appliesTo.map { it.name })
-    if (trait.primaryKey.isNotEmpty()) put(CCT.primaryKey, trait.primaryKey)
+    // The shared metadata projection (issue #702), then this path's config-only extras. `omitEmptyPrimaryKey`
+    // keeps the stored form as lean as it was -- an empty key is left out rather than written as `[]`.
+    putAll(trait.toMetadataMap(omitEmptyPrimaryKey = true))
     // The description lives on the generated entry type, not on `GedraTrait` (`traitEntry` puts it there via
     // `variantBranch`), so read it back from there -- otherwise a store/load cycle strips a trait's docs.
     config.defs[trait.typeName].toJsonMapOrEmpty()[SCH.description].toOptStr()?.let { put(CCT.description, it) }
@@ -145,13 +144,8 @@ private fun traitToEntry(config: GedraConfig, trait: GedraTrait): Map<String, An
     trait.stateClass?.let { put(CCT.stateClass, it.name) }
 }
 
-private fun usageToEntry(usage: ClientTraitUsage): Map<String, Any?> = buildMap {
-    put(CCT.traitId, usage.traitId)
-    put(CCT.label, usage.label)
-    put(CCT.display, usage.display)
-    put(CCT.kind, usage.kind.name)
-    put(CCT.substring, usage.substring)
-}
+// The full usage rule, `display` included -- the shared projection (issue #702).
+private fun usageToEntry(usage: ClientTraitUsage): Map<String, Any?> = usage.toRuleMap()
 
 private fun cfactToEntry(cfact: CFactDef): Map<String, Any?> = linkedMapOf(
     CCT.name to cfact.name,

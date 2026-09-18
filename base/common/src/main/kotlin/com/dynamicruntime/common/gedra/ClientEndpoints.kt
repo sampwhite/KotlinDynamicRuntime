@@ -73,30 +73,22 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
     // One of a client's traits, as metadata: its id, the generated entry type, the gedra kinds it applies to, and
     // its primary key. Not the resolved field schema -- see the note above. Field keys are `CCT`'s (co-located
     // with `GedraTrait`), so a rename is one edit.
+    // One of a client's traits, as metadata. The map and this schema are the shared trait projection
+    // (`GedraTrait.toMetadataMap` / `traitMetadataFields`, issue #702) -- the same shape the config serializer
+    // writes, minus the config-only extras. Not the resolved field schema; see the note above.
     type(CLD.traitInfoTypeName) {
         type = SCT.kObject
         description = "One of a client's traits: its id, generated entry type, applicable gedra kinds and primary key."
-        property(CCT.traitId, "The trait's globally unique id.", required = true)
-        property(CCT.typeName, "The fully qualified name of the entry type this trait generated.", required = true)
-        property(CCT.appliesTo, "The gedra kinds an entry of this trait may be carried on.", required = true) {
-            type = SCT.array
-            items { options(GedraDataType.entries) }
-        }
-        property(CCT.primaryKey, "The data fields that tell several entries apart; empty when single-instance.", required = true) {
-            type = SCT.array
-            items { type = SCT.string }
-        }
+        traitMetadataFields()
     }
 
-    // One of a client's trait-usage rules -- a listing column and its search behavior (issues #537, #538). Field
-    // keys are `UF`'s, co-located with `ClientTraitUsage`.
+    // One of a client's trait-usage rules -- a listing column and its search behavior (issues #537, #538). The
+    // shared usage projection (`ClientTraitUsage.toRuleMap` / `usageRuleFields`, issue #702) without `display`,
+    // the internal expression an admin view has no use for.
     type(CLD.usageInfoTypeName) {
         type = SCT.kObject
         description = "One of a client's trait-usage rules: a listing column and how its value searches."
-        property(UF.traitId, "The trait whose value the column shows.", required = true)
-        property(UF.label, "The column header.", required = true)
-        property(UF.kind, "How the value is read and compared.", required = true) { options(UsageKind.entries) }
-        property(UF.substring, "Whether a string column also offers a contains search.", required = true) { type = SCT.boolean }
+        usageRuleFields(includeDisplay = false)
     }
 
     type(CLD.definitionTypeName) {
@@ -182,17 +174,10 @@ private fun workflowIdsFor(cxt: KdrCxt, clientId: String): List<String> =
  *  absent off a test instance. */
 private fun clientDefinitionOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
     val schema = SchemaService.get(cxt)
-    val traits = schema.supportedGedraTraitsFor(def.clientId, def).map { t ->
-        mapOf(
-            CCT.traitId to t.traitId,
-            CCT.typeName to t.typeName,
-            CCT.appliesTo to t.appliesTo.map { it.name },
-            CCT.primaryKey to t.primaryKey,
-        )
-    }
-    val usages = schema.traitUsagesFor(def.clientId).map { u ->
-        mapOf(UF.traitId to u.traitId, UF.label to u.label, UF.kind to u.kind.name, UF.substring to u.substring)
-    }
+    // The shared projections (issue #702): a trait's metadata as the serializer writes it, and a usage rule
+    // without its internal `display` expression.
+    val traits = schema.supportedGedraTraitsFor(def.clientId, def).map { it.toMetadataMap() }
+    val usages = schema.traitUsagesFor(def.clientId).map { it.toRuleMap(includeDisplay = false) }
     return mapOf(
         CLD.client to def.toInfo(),
         CLD.traits to traits,
