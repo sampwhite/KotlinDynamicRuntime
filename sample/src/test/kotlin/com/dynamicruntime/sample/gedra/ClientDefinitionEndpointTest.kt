@@ -1,11 +1,25 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UF
+import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -18,6 +32,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
 
@@ -32,8 +47,13 @@ import io.kotest.matchers.string.shouldStartWith
  * it deliberately omits (`managerApproval`).
  */
 class ClientDefinitionEndpointTest : StringSpec({
+    // The sample plus a fixture client enabled only in `local` (issue #703): a `unit` boot therefore *knows* it
+    // but does not *carry* it, which is what lets the present-only contract be tested -- a `known()`-based handler
+    // would serve it and these tests would catch that.
     val cxt = Startup.mkTestBootCxt(
-        "clientDef", "clientDefTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()),
+        "clientDef", "clientDefTest",
+        mapOf("KDR_LOAD_SAMPLE" to "true", RetiredClientComponent.loadFlag.name to "true"),
+        additionalComponents = listOf(SampleComponent(), RetiredClientComponent()),
     )
 
     "an allClients admin retrieves a client's definition -- attributes, supported traits, usages and workflows" {
@@ -86,4 +106,72 @@ class ClientDefinitionEndpointTest : StringSpec({
         scoped.expectError(EXC.notAuthorized, ADEP.clientDefinition, args = mapOf(CLD.client to SC.acme))
         scoped.expectError(EXC.notAuthorized, ADEP.clientSummaries)
     }
+
+    "a client known but not present in this environment is a 404, and absent from the summary (issue #703)" {
+        // The retired fixture is enabled only in `local`, so this `unit` boot knows it and does not carry it.
+        // Present-only, not merely known: a retrieve is a 404 (the same as an unknown client), and the
+        // cross-client summary lists the present clients, so it leaves the retired one out.
+        ClientService.get(cxt).known(RetiredClientComponent.clientId).shouldNotBeNull()
+        ClientService.get(cxt).present(RetiredClientComponent.clientId) shouldBe null
+
+        val admin = TestUser.createFullAdmin(cxt, "clientdef-retired@example.com")
+        admin.expectError(EXC.notFound, ADEP.clientDefinition, args = mapOf(CLD.client to RetiredClientComponent.clientId))
+        admin.getItems(ADEP.clientSummaries).map { it[CLD.clientId].toOptStr() } shouldNotContain RetiredClientComponent.clientId
+    }
+
+    "testFeatures is projected on a test instance and neutralized off one (issue #703)" {
+        // acme is the one sample client declaring `testFeatures`. On a test instance the retrieve's projection
+        // (`ClientDef.toInfo()`) carries it; on a non-test node `ClientService` strips it from the present
+        // definition, so the very same projection omits the key -- the boundary #696 draws, seen through toInfo().
+        ClientService.get(cxt).present(SC.acme).shouldNotBeNull().toInfo().containsKey(CLD.testFeatures) shouldBe true
+
+        val prodCxt = Startup.mkTestBootCxt(
+            "clientDefProd", "clientDefProdTest",
+            mapOf(ACFG.isTestInstance to false, "KDR_LOAD_SAMPLE" to "true"),
+            additionalComponents = listOf(SampleComponent()),
+        )
+        ClientService.get(prodCxt).present(SC.acme).shouldNotBeNull().toInfo().containsKey(CLD.testFeatures) shouldBe false
+    }
+
+    "an unauthenticated caller reaches neither endpoint (401)" {
+        val anon = TestHttpClient(cxt.instanceConfig)
+        (anon.sendJsonGetRequest(ADEP.clientDefinition, mapOf(CLD.client to SC.acme))[EP.status] as? Number)?.toInt() shouldBe 401
+        (anon.sendJsonGetRequest(ADEP.clientSummaries)[EP.status] as? Number)?.toInt() shouldBe 401
+    }
 })
+
+/**
+ * A fixture component contributing one client enabled in `local` only (issue #703), so a `unit` boot knows it
+ * and does not carry it -- the population the present-only tests need. Self-gates on [loadFlag] the way
+ * `SampleComponent` gates on `KDR_LOAD_SAMPLE`, since components register once per VM and a fixture that loaded
+ * unconditionally would drop its client into every other test's boot. Mirrors `base/kdn`'s `OffsiteClientComponent`.
+ */
+class RetiredClientComponent : ComponentDefinition {
+    override val providerName: String = "retiredClientFixture"
+
+    override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
+
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        gedraConfig(cxt, "retiredClient", "retiredconfig", clientId) {
+            defineClient(
+                ClientDef(
+                    clientId = clientId,
+                    name = "Retired",
+                    description = "A client this node knows about and does not carry.",
+                    usageType = ClientUsageType.dev,
+                    audience = ClientAudience.customer,
+                    enabledEnvironments = setOf(ENV.local),
+                ),
+            )
+        },
+    )
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        val loadFlag = EnvVarDef(
+            "KDR_LOAD_RETIRED_CLIENT", group = ENVGRP.application, defaultDoc = "off",
+            description = "Test-only flag that loads the retired-client fixture regardless of environment.",
+        )
+        const val clientId = "retired703"
+    }
+}
