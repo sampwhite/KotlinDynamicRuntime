@@ -38,14 +38,35 @@ data class UserChoice(
     val isDefault: Boolean = false,
 ) {
     /**
-     * The menu label: the client and persona, the personId when there is one, and the name when there is one --
-     * `acme / admin`, `acme / user 2 -- Ada Lovelace`. Client first because it is what most often differs between
-     * a person's users; the name last because it usually does not. Pure, covered under `jsNodeTest`.
+     * The full label: the client and persona, the personId when there is one, and the name when there is one --
+     * `acme / Admin`, `acme / Member 2 -- Ada Lovelace`. Client first because it is what most often differs
+     * between a person's users; the name last because it usually does not. What a tooltip says; the bar shows
+     * the shorter `qualifierWithin`. Pure, covered under `jsNodeTest`.
      */
     fun label(): String {
-        val key = if (personId.isEmpty()) "$client / $persona" else "$client / $persona $personId"
+        val shownPersona = PERSONA.label(persona)
+        val key = if (personId.isEmpty()) "$client / $shownPersona" else "$client / $shownPersona $personId"
         val shown = name?.trim()?.ifEmpty { null } ?: return key
         return "$key -- $shown"
+    }
+
+    /**
+     * What tells this user from the others in [siblings], the person's users (issue #749): the client when
+     * they span clients, the persona when they differ in persona **or any of them carries a personId** (so a
+     * batch reads `Member`, `Member B` rather than a bare `B`), and the personId when there is one -- joined
+     * with ` · `. Never empty for a list of two or more, since the key is unique across a person's users; empty
+     * for a person with one user, who has nothing to tell apart. Pure, covered under `jsNodeTest`.
+     */
+    fun qualifierWithin(siblings: List<UserChoice>): String {
+        if (siblings.size < 2) return ""
+        val personaShown = siblings.any { it.persona != persona } || siblings.any { it.personId.isNotEmpty() }
+        // The persona and the personId read as one term (`Member 2`), as they do in the full label.
+        val personaPart = listOfNotNull(if (personaShown) PERSONA.label(persona) else null, personId.ifEmpty { null })
+        val parts = buildList {
+            if (siblings.any { it.client != client }) add(client)
+            if (personaPart.isNotEmpty()) add(personaPart.joinToString(" "))
+        }
+        return parts.joinToString(" · ")
     }
 
     fun toInfo(): Map<String, Any?> = buildMap {
@@ -66,7 +87,7 @@ data class UserChoice(
         fun fromInfo(info: Map<String, Any?>): UserChoice? = UserChoice(
             userId = info.getOptLong(UCF.userId) ?: return null,
             client = info.getOptStr(UCF.client) ?: return null,
-            persona = info.getOptStr(UCF.persona) ?: PERSONA.user,
+            persona = info.getOptStr(UCF.persona) ?: PERSONA.member,
             personId = info.getOptStr(UCF.personId) ?: "",
             name = info.getOptStr(UCF.name),
             isCurrent = info[UCF.isCurrent] == true,

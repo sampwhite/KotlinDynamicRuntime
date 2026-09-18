@@ -86,7 +86,7 @@ class AuthIdentityTest : StringSpec({
         val row = users.queryByUserId(cxt, user.userId).shouldNotBeNull()
         row.identityId shouldBe identity.identityId
         row.primaryId shouldBe "ident-reg@example.com" // derived through the identity, not stored on the row
-        row.persona shouldBe PERSONA.user
+        row.persona shouldBe PERSONA.member
         row.personId shouldBe ""
         users.usersOfIdentity(cxt, identity.identityId).map { it.userId } shouldBe listOf(user.userId)
         // The address resolves to that user: the identity's default (its only one).
@@ -107,10 +107,10 @@ class AuthIdentityTest : StringSpec({
         val identity = users.queryIdentityByAddress(cxt, "ident-session@example.com").shouldNotBeNull()
         // The login response, and then self-info -- which is restored from the cookie, not the row.
         user.userInfo[UPF.identityId] shouldBe identity.identityId
-        user.userInfo[UPF.persona] shouldBe PERSONA.user
+        user.userInfo[UPF.persona] shouldBe PERSONA.member
         val self = user.getData(AEP.selfInfo)
         self[UPF.identityId] shouldBe identity.identityId
-        self[UPF.persona] shouldBe PERSONA.user
+        self[UPF.persona] shouldBe PERSONA.member
     }
 
     "the database holds the key: a second user of one identity needs a different client, persona or personId" {

@@ -3,7 +3,6 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.app.EnvAuthOp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.home.HACT
-import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.uiblock.UiRoute
 import com.dynamicruntime.common.user.UserChoice
@@ -56,23 +55,24 @@ fun identityLabel(loaded: Boolean, isLoggedIn: Boolean, displayName: String?): S
 const val signedInFallback = "Signed in"
 
 /**
- * What the bar shows beside the identity label to say *which* of the person's users this is (issue #749), or
- * null to show nothing: the persona, but only when the person holds more than one user. A person with one user
- * has nothing to tell apart, and every such person would otherwise carry a `user` chip that says nothing.
- * Pure, covered under `jsNodeTest`.
+ * The identity badge's text (issue #749): the [label] -- who is signed in -- followed, for a person with more
+ * than one user, by **which** of their users this is, in brackets: `Demo Person [hub · Member B]`,
+ * `Ada [Admin]`. The bracket holds only what tells this user from the person's others
+ * (`UserChoice.qualifierWithin`); a person with one user sees the label alone, as before. Pure, covered under
+ * `jsNodeTest`.
  */
-fun personaLabel(persona: String?, userCount: Int): String? =
-    if (userCount > 1) persona?.trim()?.ifEmpty { null } else null
+fun identityBadgeText(label: String, users: List<UserChoice>): String {
+    val current = users.firstOrNull { it.isCurrent } ?: return label
+    val qualifier = current.qualifierWithin(users)
+    return if (qualifier.isEmpty()) label else "$label [$qualifier]"
+}
 
 /**
- * The users the account menu offers to switch to (issue #749): the list as the backend sent it when there is
- * more than one, and nothing when there is one or none -- a menu section with a single entry, the user you
- * already are, is a control that does nothing. Pure, covered under `jsNodeTest`.
+ * The users the identity badge offers to switch to (issue #749): the list as the backend sent it when there is
+ * more than one, and nothing when there is one or none -- a menu with a single entry, the user you already
+ * are, is a control that does nothing, so the badge stays a plain label. Pure, covered under `jsNodeTest`.
  */
 fun switchableUsers(users: List<UserChoice>): List<UserChoice> = if (users.size > 1) users else emptyList()
-
-/** The header over the switcher's entries in the account menu. */
-const val switchUserHeader = "Switch user"
 
 /**
  * What the app bar's brand area should show -- an explicit **three-state** rather than inferring from an absent
@@ -164,6 +164,8 @@ val AppBar = FC<AppBarProps> { props ->
         error("Deliberate shell fault from the debug page (issue #227).")
     }
     var open by useState(false)
+    // Whether the identity badge's user menu is open (issue #749); independent of the hamburger's.
+    var userMenuOpen by useState(false)
     // Which drill-down groups are expanded (issue #540). Collapsed by default -- a group's children show on
     // demand, keeping a long menu short -- and remembered per browser, so an operator who opens the Operator
     // group finds it open next time. Held as the set of expanded parent ids.
@@ -238,7 +240,7 @@ val AppBar = FC<AppBarProps> { props ->
     // nothing, which is the `becomeUser` pattern the guide describes. A failure stays in the console (never
     // swallowed), and the menu closes either way.
     fun switchUserAction(userId: Long) {
-        open = false
+        userMenuOpen = false
         appBarScope.launch {
             val switched = runCatching { AuthApi.switchUser(userId) }
             switched.exceptionOrNull()?.let {
@@ -439,19 +441,34 @@ val AppBar = FC<AppBarProps> { props ->
             // Identity in the bar itself, not only inside the menu (issue #276). Being signed out is a fact
             // worth stating: rendering nothing for it reads exactly like a config that has not arrived, so a
             // user cannot tell "I am signed out" from "this has not loaded". Null while genuinely unknown.
+            //
+            // For a person with several users (issue #749) the badge says which one this is, in brackets, and
+            // is the control that switches: a button with a caret opening a menu of the others, the way a user
+            // menu sits top-right in a conventional shell. With one user it stays the plain label it was.
             identityLabel(config != null, config?.user?.isLoggedIn == true, config?.user?.displayName)?.let { label ->
-                span {
-                    className = ClassName(if (label == signedOutLabel) "identity-badge signed-out" else "identity-badge")
-                    +label
-                }
-            }
-            // Which of the person's users this is (issue #749), beside who they are -- shown only when they
-            // hold more than one, since then it is the one thing the name does not say.
-            personaLabel(config?.user?.persona, config?.users?.size ?: 0)?.let { persona ->
-                span {
-                    className = ClassName("bar-badge persona-badge")
-                    title = "You are acting as your '$persona' user. Switch users from the Account menu."
-                    +persona
+                val users = switchableUsers(config?.users.orEmpty())
+                if (users.isEmpty()) {
+                    span {
+                        className = ClassName(if (label == signedOutLabel) "identity-badge signed-out" else "identity-badge")
+                        +label
+                    }
+                } else {
+                    button {
+                        className = ClassName("identity-badge has-users")
+                        asDynamic()["aria-haspopup"] = "menu"
+                        asDynamic()["aria-expanded"] = userMenuOpen
+                        title = "You are acting as ${users.first { it.isCurrent }.label()}. Click to switch users."
+                        onClick = { userMenuOpen = !userMenuOpen }
+                        +identityBadgeText(label, users)
+                        span { className = ClassName("app-menu-caret"); +(if (userMenuOpen) "▲" else "▼") }
+                    }
+                    if (userMenuOpen) {
+                        div {
+                            className = ClassName("app-menu-overlay")
+                            onClick = { userMenuOpen = false }
+                        }
+                        userMenu(users) { switchUserAction(it) }
+                    }
                 }
             }
             button {
@@ -517,13 +534,6 @@ val AppBar = FC<AppBarProps> { props ->
                                     asDynamic()["aria-labelledby"] = headerId
                                     for (child in node.children) {
                                         menuItemView(child, frontendActions, props.currentPage, props.onRevisit) { open = false }
-                                    }
-                                    // The switcher (issue #749) sits at the foot of the Account group: the
-                                    // person's other users, one entry each, the current one marked. Not menu
-                                    // items from the block -- they are per caller and change as users are
-                                    // made -- so they ride the shell config's `users` and are drawn here.
-                                    if (node.item.id == HMENU.account) {
-                                        userSwitcher(switchableUsers(config?.users.orEmpty())) { switchUserAction(it) }
                                     }
                                 }
                             }
@@ -596,23 +606,25 @@ private fun clearTimer(id: Int) {
 }
 
 /**
- * The switcher's entries (issue #749): a header, then one button per user labelled by the kernel's
- * `UserChoice.label` (client, persona, personId, name), the current user marked like the page on screen and
- * inert -- you are already them. Renders nothing for an empty list.
+ * The identity badge's menu (issue #749): one row per user, each showing what tells it from the others in the
+ * same bracket style as the badge (`UserChoice.qualifierWithin`), the full label as its tooltip; the current
+ * user marked like the page on screen and inert -- you are already them. Not items from the menu block: they
+ * are per caller and change as users are made, so they ride the shell config's `users`.
  */
-private fun ChildrenBuilder.userSwitcher(users: List<UserChoice>, onSwitch: (Long) -> Unit) {
-    if (users.isEmpty()) return
+private fun ChildrenBuilder.userMenu(users: List<UserChoice>, onSwitch: (Long) -> Unit) {
     div {
-        className = ClassName("app-menu-subhead")
-        +switchUserHeader
-    }
-    for (user in users) {
-        button {
-            className = ClassName(if (user.isCurrent) "app-menu-item is-current" else "app-menu-item")
-            if (user.isCurrent) asDynamic()["aria-current"] = "true"
-            disabled = user.isCurrent
-            onClick = { onSwitch(user.userId) }
-            +user.label()
+        className = ClassName("app-menu user-menu")
+        asDynamic()["role"] = "menu"
+        for (user in users) {
+            button {
+                className = ClassName(if (user.isCurrent) "app-menu-item is-current" else "app-menu-item")
+                asDynamic()["role"] = "menuitem"
+                if (user.isCurrent) asDynamic()["aria-current"] = "true"
+                disabled = user.isCurrent
+                title = user.label()
+                onClick = { onSwitch(user.userId) }
+                +"[${user.qualifierWithin(users)}]"
+            }
         }
     }
 }

@@ -155,11 +155,24 @@ object AERR {
 /**
  * The personas a user may be created with (issue #747): what relationship the user has to the application,
  * frozen at creation and part of the user's unique key with its identity, client and `personId`. Two to
- * start; phase D makes this a registry with default roles, and a client may later add its own. A persona is
- * deliberately **not** a role -- `admin` here says how to read the user, and the roles say what they may do.
+ * start; phase D makes this a registry with default roles and labels, and a client may later add its own. A
+ * persona is deliberately **not** a role -- `admin` here says how to read the user, and the roles say what
+ * they may do.
+ *
+ * The default persona is **`member`** (Sam, 2026-09-18), not `user`: what it says is that the person belongs
+ * to the client, which pairs naturally with `admin` and the later `reviewer` and `advisor`, and it stays clear
+ * of the *role* `user`, a rung on the privilege ladder on a different axis. (The alternatives -- standard,
+ * regular, ordinary -- read as tiers or carry an edge.)
  */
 @Suppress("ConstPropertyName")
 object PERSONA {
-    const val user = "user"
+    const val member = "member"
     const val admin = "admin"
+
+    /**
+     * How a persona is shown: capitalized, `Member` / `Admin`. The wire value stays lowercase; phase D's
+     * registry gives each persona a proper label, and this is the rule until then -- in the kernel so the bar
+     * and the backend show the same word.
+     */
+    fun label(persona: String): String = persona.replaceFirstChar { it.uppercaseChar() }
 }

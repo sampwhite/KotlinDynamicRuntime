@@ -37,7 +37,7 @@ class AuthUserRow(
     val hasPassword: Boolean = false,
 ) {
     /** The user's persona (issue #747), frozen at creation; see `PERSONA`. */
-    var persona: String = PERSONA.user
+    var persona: String = PERSONA.member
 
     /** Distinguishes same-persona users of one identity in one client (issue #747); `""` for the ordinary one. */
     var personId: String = ""
@@ -345,7 +345,7 @@ class AuthUserRow(
             val primaryId = AuthIdentityRow.addressIn(identity)
                 ?: throw KdrException("AuthUsers row $userId points at identity '$identityId', which has no address.")
             val row = AuthUserRow(userId, client, identityId, primaryId, AuthIdentityRow.hasPasswordIn(identity))
-            row.persona = data[AU.persona].toOptStr() ?: PERSONA.user
+            row.persona = data[AU.persona].toOptStr() ?: PERSONA.member
             row.personId = data[AU.personId].toOptStr() ?: ""
             row.enabled = data[PF.enabled] == true
             row.username = data[AU.username].toOptStr() ?: (usernameTmpPrefix + primaryId)
@@ -383,7 +383,7 @@ class AuthUserRow(
             client: String,
             roles: List<String>,
             org: String? = null,
-            persona: String = PERSONA.user,
+            persona: String = PERSONA.member,
             personId: String = "",
             /**
              * When the account came into being (issue #462), stamped as [AD.activatedAt] -- and as

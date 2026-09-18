@@ -247,7 +247,7 @@ class UserService : ServiceInitializer {
         roles: List<String>,
         org: String? = null,
         createdAt: Instant? = null,
-        persona: String = PERSONA.user,
+        persona: String = PERSONA.member,
         personId: String = "",
         verifiedAt: Instant? = null,
         /** A chosen username; absent leaves the `@<address>` placeholder for the person to replace. */

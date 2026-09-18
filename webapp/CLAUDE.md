@@ -96,8 +96,10 @@ Current UI-config endpoints:
   marked), `POST /user/self/switch {userId}` reissues the session as one of them (the app then does a full
   reload, since the client usually changes), `POST /user/self/setDefault {userId}` chooses which user the
   address logs in as. The shell config (`/home/ui/config`) carries the same list as `state.users`, so the app
-  bar draws the switcher at the foot of the Account group without a fetch of its own, and shows the persona
-  chip beside the identity label only when the person holds more than one user.
+  bar needs no fetch of its own: for a person with more than one user the **identity badge** says which one this
+  is in brackets (`Demo Person [hub · Member B]`, only what tells it from the others -- `UserChoice.qualifierWithin`)
+  and becomes the menu that switches; with one user it is the plain label it always was. The default persona
+  is `member` (shown `Member`); `admin` is the other so far.
 
 The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
 the envelope consistent across groups.
