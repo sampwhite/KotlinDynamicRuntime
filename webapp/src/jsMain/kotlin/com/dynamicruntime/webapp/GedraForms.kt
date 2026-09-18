@@ -159,6 +159,17 @@ fun savedNotShownNote(savedId: String?, appliedSearch: Map<String, Any?>, rowIds
     }
 
 /**
+ * The body of an on-behalf create (issues #727, #762): the form's [payload] with the picked user's [userRef]
+ * beside it -- put **last**, and any `user` the payload carried dropped first, so the page's pick always
+ * names the owner. The client's create schema declares an optional `user` field (the ordinary create page's
+ * picker fills it), and a map union lets its right-hand side win: `mapOf(user) + payload` would have let a
+ * stray value typed into that field override the user the page was opened for. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun formForUserBody(userRef: String, payload: Map<String, Any?>): Map<String, Any?> =
+    (payload - EI.user) + (EI.user to userRef.trim())
+
+/**
  * The applied forms [search] as hash params (issue #592): its non-blank entries, to merge beside the page and
  * the open form. The inverse of [formsSearchFromHash]. Pure, and covered under `jsNodeTest`.
  */

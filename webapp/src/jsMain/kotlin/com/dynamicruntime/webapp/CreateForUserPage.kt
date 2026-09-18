@@ -141,7 +141,10 @@ val CreateForUserPage = FC<Props> {
                     friendly = true
                     cfacts = cat.cfacts
                     layouts = cat.layouts
-                    omit = listOf(GDF.allowAdditionalTraits)
+                    // `allowAdditionalTraits` is a power flag, and `user` (issue #727) is the picker's answer, made
+                    // above -- both are omitted from the drawn form, as the ordinary create page omits them (issue
+                    // #762: this page drew the `user` field, asking again for the user it was opened for).
+                    omit = listOf(GDF.allowAdditionalTraits, EI.user)
                     this.failures = failures
                     onChange = { values = it }
                     onFieldEdit = { path ->

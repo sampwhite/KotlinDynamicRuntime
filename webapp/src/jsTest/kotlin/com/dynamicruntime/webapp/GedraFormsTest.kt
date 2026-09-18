@@ -288,6 +288,23 @@ class GedraFormsTest {
         assertTrue(note.contains(formsAllClientsLabel))
     }
 
+    /**
+     * An on-behalf create's body (issues #727, #762): the picked user always names the owner -- a `user` the
+     * form's payload carried (the client schema declares the field, and the page once drew it) is dropped, and
+     * the pick is trimmed; everything else in the payload rides through untouched.
+     */
+    @Test
+    fun theOnBehalfCreateBodyIsOwnedByThePickedUser() {
+        val payload = mapOf(GDF.entries to listOf(mapOf("traitId" to "name")), GDF.allowAdditionalTraits to true, EI.user to "someone.else@example.org")
+        val body = formForUserBody(" 42 ", payload)
+        assertEquals("42", body[EI.user])
+        assertEquals(payload[GDF.entries], body[GDF.entries])
+        assertEquals(true, body[GDF.allowAdditionalTraits])
+        assertEquals(3, body.size)
+        // No stray user in the payload: the pick is simply added.
+        assertEquals(mapOf(GDF.entries to emptyList<Any?>(), EI.user to "42"), formForUserBody("42", mapOf(GDF.entries to emptyList<Any?>())))
+    }
+
     /** A one-branch-per-trait union: a `name` branch and an `expenseReport` branch, the latter with a title. */
     private fun unionDefs(): Map<String, Any?> = mapOf(
         "t.NameEntry" to mapOf(
