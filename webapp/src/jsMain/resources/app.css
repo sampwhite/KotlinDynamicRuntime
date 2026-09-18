@@ -373,6 +373,22 @@ body {
 .app-menu-caret { margin-left: 12px; font-size: 0.8em; color: var(--accent-bright); opacity: 0.85; }
 .app-menu-children .app-menu-item { padding-left: 32px; }
 
+/* The switcher's header inside the Account group (issue #749): a quiet label over the person's users, indented
+   with the children it heads. Not a control, so no hover. */
+.app-menu-subhead {
+    padding: 8px 16px 2px 32px;
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+}
+/* The user you already are: marked like the current page, and inert. */
+.app-menu-children .app-menu-item:disabled { cursor: default; }
+
+/* Which of the person's users this is (issue #749), beside the identity badge; shown only when they hold more
+   than one. Shares the chip look of the session badges. */
+.persona-badge { text-transform: lowercase; }
+
 /* The ↗ affordance on a menu item whose action leaves the app (issue #493) -- a quiet trailing glyph, not a
    second control. Decorative: the accessible name already says "leaves this app". */
 .app-menu-external {

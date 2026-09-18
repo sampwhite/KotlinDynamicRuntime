@@ -3,8 +3,10 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.app.EnvAuthOp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.home.HACT
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.uiblock.UiRoute
+import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.splitComma
 import kotlinx.coroutines.MainScope
@@ -52,6 +54,25 @@ fun identityLabel(loaded: Boolean, isLoggedIn: Boolean, displayName: String?): S
 
 /** Shown in place of a name for a signed-in caller who has none -- still says *signed in*, which is the point. */
 const val signedInFallback = "Signed in"
+
+/**
+ * What the bar shows beside the identity label to say *which* of the person's users this is (issue #749), or
+ * null to show nothing: the persona, but only when the person holds more than one user. A person with one user
+ * has nothing to tell apart, and every such person would otherwise carry a `user` chip that says nothing.
+ * Pure, covered under `jsNodeTest`.
+ */
+fun personaLabel(persona: String?, userCount: Int): String? =
+    if (userCount > 1) persona?.trim()?.ifEmpty { null } else null
+
+/**
+ * The users the account menu offers to switch to (issue #749): the list as the backend sent it when there is
+ * more than one, and nothing when there is one or none -- a menu section with a single entry, the user you
+ * already are, is a control that does nothing. Pure, covered under `jsNodeTest`.
+ */
+fun switchableUsers(users: List<UserChoice>): List<UserChoice> = if (users.size > 1) users else emptyList()
+
+/** The header over the switcher's entries in the account menu. */
+const val switchUserHeader = "Switch user"
 
 /**
  * What the app bar's brand area should show -- an explicit **three-state** rather than inferring from an absent
@@ -208,6 +229,24 @@ val AppBar = FC<AppBarProps> { props ->
             // Bump so the menu (and every config consumer) re-reads even when we were already home -- setting
             // the same hash fires no hashchange, which is why the direct re-read used to be needed here.
             bump()
+        }
+    }
+
+    // Switching user (issue #749): a fresh session as another of the person's users, then a **full reload**
+    // rather than a bump. A switch usually changes the client, and every per-caller surface -- the menu, the
+    // forms list, the catalog -- caches something about the caller; a reload re-fetches all of it from
+    // nothing, which is the `becomeUser` pattern the guide describes. A failure stays in the console (never
+    // swallowed), and the menu closes either way.
+    fun switchUserAction(userId: Long) {
+        open = false
+        appBarScope.launch {
+            val switched = runCatching { AuthApi.switchUser(userId) }
+            switched.exceptionOrNull()?.let {
+                console.error("$errorLogPrefix could not switch user: ${it.message}")
+                return@launch
+            }
+            navigateHash(emptyList())
+            reloadWebApp()
         }
     }
 
@@ -406,6 +445,15 @@ val AppBar = FC<AppBarProps> { props ->
                     +label
                 }
             }
+            // Which of the person's users this is (issue #749), beside who they are -- shown only when they
+            // hold more than one, since then it is the one thing the name does not say.
+            personaLabel(config?.user?.persona, config?.users?.size ?: 0)?.let { persona ->
+                span {
+                    className = ClassName("bar-badge persona-badge")
+                    title = "You are acting as your '$persona' user. Switch users from the Account menu."
+                    +persona
+                }
+            }
             button {
                 className = ClassName("hamburger")
                 onClick = { open = !open }
@@ -469,6 +517,13 @@ val AppBar = FC<AppBarProps> { props ->
                                     asDynamic()["aria-labelledby"] = headerId
                                     for (child in node.children) {
                                         menuItemView(child, frontendActions, props.currentPage, props.onRevisit) { open = false }
+                                    }
+                                    // The switcher (issue #749) sits at the foot of the Account group: the
+                                    // person's other users, one entry each, the current one marked. Not menu
+                                    // items from the block -- they are per caller and change as users are
+                                    // made -- so they ride the shell config's `users` and are drawn here.
+                                    if (node.item.id == HMENU.account) {
+                                        userSwitcher(switchableUsers(config?.users.orEmpty())) { switchUserAction(it) }
                                     }
                                 }
                             }
@@ -538,6 +593,28 @@ fun useDelayedFlag(active: Boolean, delayMs: Int = brandFlashDelayMs): Boolean {
 private fun setTimer(block: () -> Unit, delayMs: Int): Int = js("setTimeout(block, delayMs)") as Int
 private fun clearTimer(id: Int) {
     js("clearTimeout(id)")
+}
+
+/**
+ * The switcher's entries (issue #749): a header, then one button per user labelled by the kernel's
+ * `UserChoice.label` (client, persona, personId, name), the current user marked like the page on screen and
+ * inert -- you are already them. Renders nothing for an empty list.
+ */
+private fun ChildrenBuilder.userSwitcher(users: List<UserChoice>, onSwitch: (Long) -> Unit) {
+    if (users.isEmpty()) return
+    div {
+        className = ClassName("app-menu-subhead")
+        +switchUserHeader
+    }
+    for (user in users) {
+        button {
+            className = ClassName(if (user.isCurrent) "app-menu-item is-current" else "app-menu-item")
+            if (user.isCurrent) asDynamic()["aria-current"] = "true"
+            disabled = user.isCurrent
+            onClick = { onSwitch(user.userId) }
+            +user.label()
+        }
+    }
 }
 
 /** One anchor menu item; navigating by hash fires `hashchange`, which the router and this bar react to. */

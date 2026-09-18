@@ -8,6 +8,7 @@ import com.dynamicruntime.common.test.TSE
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
+import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
@@ -168,6 +169,23 @@ object AuthApi {
     suspend fun logout() {
         Http.getApi(AEP.logout)
     }
+
+    /**
+     * Becomes another of the signed-in person's users (issue #749): the backend issues a fresh session as
+     * [userId], so the caller should then reload the app -- a client change re-fetches every per-caller
+     * surface, the same way a `becomeUser` does. Refused unless the user is a registered, enabled user of the
+     * caller's own identity.
+     */
+    suspend fun switchUser(userId: Long): UserProfile =
+        userFrom(Http.sendApi("POST", AEP.switchUser, mapOf(AFLD.userId to userId)))
+
+    /** Chooses which of the person's users their address logs in as (issue #749); returns the refreshed list. */
+    suspend fun setDefaultUser(userId: Long): List<UserChoice> =
+        userChoicesFrom(Http.sendApi("POST", AEP.setDefaultUser, mapOf(AFLD.userId to userId))[EP.results].toJsonMapOrEmpty()[AFLD.users])
+
+    /** The users the signed-in person may act as (issue #749); the shell config carries the same list. */
+    suspend fun fetchUsers(): List<UserChoice> =
+        userChoicesFrom(Http.getApi(AEP.selfUsers)[EP.results].toJsonMapOrEmpty()[AFLD.users])
 
     /**
      * Dev convenience: when email is simulated, reads the verification code back from the captured email for

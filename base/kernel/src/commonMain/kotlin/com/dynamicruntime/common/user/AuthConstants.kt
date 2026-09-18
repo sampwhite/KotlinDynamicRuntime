@@ -24,6 +24,16 @@ object AEP {
     const val profileUiConfig = "/profile/ui/config"
     const val profileClearPassword = "/profile/self/clearPassword"
     const val profileSetName = "/profile/self/setName"
+
+    // The switcher (issue #749), in the login-gated `user` section rather than the anonymous `auth` one: every
+    // call acts on the session's identity, so the gate -- which also re-reads the acting row -- is the right
+    // one, and there is nothing here for a logged-out caller.
+    /** The users the signed-in person may act as. */
+    const val selfUsers = "/user/self/users"
+    /** Become another of the person's users; issues a fresh session cookie. */
+    const val switchUser = "/user/self/switch"
+    /** Choose which of the person's users an address logs in as. */
+    const val setDefaultUser = "/user/self/setDefault"
 }
 
 /** Auth request/response field (JSON key) names, shared so the frontend builds and reads payloads by constant. */
@@ -62,6 +72,9 @@ object AFLD {
 
     /** The `state.userInfo` key of a UI-config payload (the caller's user info). */
     const val userInfo = "userInfo"
+
+    /** The `items` of the users list (issue #749): the caller's `UserChoice`s. */
+    const val users = "users"
 }
 
 /** UI-config feature-flag keys for the auth and profile widget-groups. */
@@ -88,6 +101,8 @@ object ATYPE {
     const val userIdResult = "UserIdResult"
     const val authUiConfig = "AuthUiConfig"
     const val profileUiConfig = "ProfileUiConfig"
+    /** The users list (issue #749): the caller's `UserChoice`s under `users`. */
+    const val userChoices = "UserChoices"
 }
 
 /** Markdown fragment file ids for the auth-area widget-groups (each also the group's fragment namespace). */

@@ -91,6 +91,13 @@ Current UI-config endpoints:
   `showErrorDetail` is on, so a developer has the exact string to register.
 - `GET /profile/ui/config` — **login-required** (`profile` section); features `{hasPassword, canSetPassword}`,
   state `{userInfo}`. Fragment file `profile`.
+- The **switcher** (issue #749), login-required (`user` section): `GET /user/self/users` lists the `UserChoice`s
+  the signed-in person may act as (registered, enabled users of their identity; `isCurrent` / `isDefault`
+  marked), `POST /user/self/switch {userId}` reissues the session as one of them (the app then does a full
+  reload, since the client usually changes), `POST /user/self/setDefault {userId}` chooses which user the
+  address logs in as. The shell config (`/home/ui/config`) carries the same list as `state.users`, so the app
+  bar draws the switcher at the foot of the Account group without a fetch of its own, and shows the persona
+  chip beside the identity label only when the person holds more than one user.
 
 The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
 the envelope consistent across groups.
@@ -449,8 +456,9 @@ a test fixture rather than the real email-code flow:
   (the address) may have a user per client, persona and personId. Naming any of `client`, `persona` or
   `personId` picks *that* user of the address, creating it when there is none and **recovering** it when it
   was deleted recoverably (same user, all its content back, unregistered again); naming none logs in as the
-  identity's default user: the one most recently acted as (every login stamps it, issue #748), else its first.
-  `personId` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
+  identity's default user: the chosen default, else the one most recently acted as (every login stamps it,
+  issue #748), else its first -- among the **registered** users (issue #749; a fixture user is registered on
+  creation). `personId` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
 
 This is one `fetch`, not a heavyweight login — reach for it rather than declaring a login-gated change
 unverifiable. Other test fixtures exist for more specialized needs (for example reading a real login code back

@@ -16,7 +16,9 @@ import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.IDD
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -207,10 +209,34 @@ class AuthIdentityTest : StringSpec({
         admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address))
         // Unverified: the administrator asserted the address, nobody has read a code from its inbox yet.
         users.queryIdentityByAddress(cxt, address).shouldNotBeNull().verifiedAt.shouldBeNull()
-        loginByCode(mkBrowser("10.48.0.1"), address, address)
+        // ...and the user is not yet the person's: unregistered (issue #749).
+        users.queryByPrimaryId(cxt, address).shouldNotBeNull().isRegistered shouldBe false
+        val landedOn = loginByCode(mkBrowser("10.48.0.1"), address, address)[UPF.userId]
         val proven = users.queryIdentityByAddress(cxt, address).shouldNotBeNull()
         proven.verifiedAt.shouldNotBeNull()
         proven.identityData[IDD.validatedContacts] shouldBe listOf(address)
+        // The code was used for this user, so it is registered by it.
+        users.queryByUserId(cxt, landedOn as Long).shouldNotBeNull().isRegistered shouldBe true
+    }
+
+    "an unregistered sibling is neither the default nor switchable until a code lands on it" {
+        val address = "ident-unclaimed@example.com"
+        val mine = TestUser.create(cxt, address)
+        // Provisioned for the person by somebody else (what an administrator's create will do in phase D):
+        // enabled, but nobody has claimed it.
+        // A lowercase personId, because the placeholder username below doubles as the login id here, and a login
+        // id carrying an `@` is normalized as an address -- lowercased -- before it is looked up.
+        val unclaimed = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user), personId = "u")
+        val row = users.queryByUserId(cxt, unclaimed).shouldNotBeNull()
+        row.isRegistered shouldBe false
+        // Not offered, not switchable, and not where the address lands -- the registered user is.
+        mine.getData(AEP.selfUsers)[AFLD.users].toJsonListOfMaps().map { it[UCF.userId] } shouldBe listOf(mine.userId)
+        mine.expectError(EXC.badInput, AEP.switchUser, mapOf(AFLD.userId to unclaimed))
+        users.queryByPrimaryId(cxt, address).shouldNotBeNull().userId shouldBe mine.userId
+        // A code login naming that user (its placeholder username is a login id) is the person claiming it.
+        loginByCode(mkBrowser("10.48.0.4"), row.username, address)[UPF.userId] shouldBe unclaimed
+        users.queryByUserId(cxt, unclaimed).shouldNotBeNull().isRegistered shouldBe true
+        mine.getData(AEP.selfUsers)[AFLD.users].toJsonListOfMaps() shouldHaveSize 2
     }
 
     "the password and the familiar device are the person's, and serve every user they hold" {

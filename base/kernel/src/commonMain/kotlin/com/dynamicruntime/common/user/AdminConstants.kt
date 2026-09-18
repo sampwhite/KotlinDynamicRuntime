@@ -177,9 +177,12 @@ object USF {
     val updated = UserDateKeys("updated", "updated")
 
     /**
-     * When the account was **first created**. Never overwritten -- it is the one of these that cannot move,
-     * which is what makes it worth keeping and also why the console does not show it: [activated] answers the
-     * everyday question, and a column that never changes is noise in a list somebody is scanning.
+     * When the person **proved this user is theirs** -- registered it (issue #749): a verification code used
+     * for this user, the test fixture, or a user created by the person for themself. Absent for a user an
+     * administrator provisioned that nobody has claimed yet, which is what keeps it off the default-user rule
+     * and out of the switcher; cleared when a recoverably deleted user is provisioned again, since it then
+     * registers afresh. Otherwise it never moves, and that is why the console does not show it: [activated]
+     * answers the everyday question, and a column that rarely changes is noise in a list somebody is scanning.
      */
     val registered = UserDateKeys("registered", "registered")
 

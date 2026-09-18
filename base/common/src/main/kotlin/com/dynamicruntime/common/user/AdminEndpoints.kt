@@ -210,8 +210,14 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // administrator creating a user outside their own scope would immediately lose sight of them.
         val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null } ?: c.userProfile.org
         requireAssignableOrg(c, org)
+        // A user the administrator creates at their **own** address is theirs from the start -- registered
+        // (issue #749); one created for somebody else waits for that person to prove it. The refusal above
+        // keeps the first case theoretical until associated users can be created (phase D), but the rule is
+        // the create's, so it lives here.
+        val ownAddress = service.queryByUserId(c, c.userProfile.userId)?.primaryId == primaryId
         val userId = service.provisionUser(
             c, primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now(), username = username,
+            registered = ownAddress,
         ) { authUserData ->
             // The address and its contact are the identity's (issue #748), which `provisionUser` creates
             // unverified: only a code read from the inbox proves it, and the person's first code login does

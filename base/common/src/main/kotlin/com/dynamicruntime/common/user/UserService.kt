@@ -171,16 +171,45 @@ class UserService : ServiceInitializer {
 
     /**
      * The user an [identity] logs in as (issue #747): its chosen default, else the one it most recently acted
-     * as, else its earliest -- whichever of those exists. **Among the enabled users first** (issue #748): a
-     * disabled default falls through to the next enabled one, so disabling one of a person's users does not
-     * lock the person out of the others. Only when none is enabled does the same rule pick a disabled one, so
-     * a login reports that account as inactive rather than as unknown, and an administrative lookup by
-     * address still lands on a user.
+     * as, else its earliest -- whichever of those exists. **Among the registered, enabled users first**
+     * (issues #748, #749): a disabled default falls through to the next enabled one, so disabling one of a
+     * person's users does not lock the person out of the others, and a user nobody has claimed yet is never
+     * the one a login lands on while a claimed one exists. Then the enabled ones -- a code login landing on an
+     * unregistered user is what registers it, so it must be reachable when it is all there is -- and only when
+     * none is enabled does the same rule pick a disabled one, so a login reports that account as inactive
+     * rather than as unknown, and an administrative lookup by address still lands on a user.
      */
     fun defaultUserOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow? {
         val users = usersOfIdentity(cxt, identity.identityId)
         val enabled = users.filter { it.enabled }
-        return pickDefault(identity, enabled.ifEmpty { users })
+        val registered = enabled.filter { it.isRegistered }
+        return pickDefault(identity, registered.ifEmpty { enabled }.ifEmpty { users })
+    }
+
+    /** [defaultUserOf] confined to the registered, enabled users, or null when the identity has none (issue #749). */
+    fun registeredDefaultOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow? =
+        pickDefault(identity, registeredUsersOf(cxt, identity))
+
+    /** The identity's registered, enabled users, lowest `userId` first -- the ones the person may act as. */
+    private fun registeredUsersOf(cxt: KdrCxt, identity: AuthIdentityRow): List<AuthUserRow> =
+        usersOfIdentity(cxt, identity.identityId).filter { it.enabled && it.isRegistered }
+
+    /**
+     * The users the caller may switch to (issue #749): the registered, enabled users of the session's identity,
+     * the current one and the chosen default marked. Empty for a caller no identity backs -- a logged-out
+     * caller, a manufactured profile, or a cookie issued before the split.
+     */
+    fun selfUserChoices(cxt: KdrCxt): List<UserChoice> {
+        val profile = cxt.userProfile
+        val identityId = profile.identityId ?: return emptyList()
+        if (!profile.isLoggedIn) return emptyList()
+        val identity = queryIdentityById(cxt, identityId) ?: return emptyList()
+        return registeredUsersOf(cxt, identity).map {
+            UserChoice(
+                it.userId, it.client, it.persona, it.personId, it.name,
+                isCurrent = it.userId == profile.userId, isDefault = it.userId == identity.defaultUserId,
+            )
+        }
     }
 
     private fun pickDefault(identity: AuthIdentityRow, users: List<AuthUserRow>): AuthUserRow? {
@@ -202,8 +231,14 @@ class UserService : ServiceInitializer {
      * ones provisioned, activated now -- from which it registers again by the normal mechanism (a code, later
      * an invitation). Its org, name, and entity flag are kept, as the recoverable delete promised; so is the
      * identity's password, which is the person's and not this user's (issue #748). An **enabled** user under
-     * the key is refused as a duplicate (the unique index is the backstop behind this check). A permanently
-     * deleted one never matches: its tombstone gave up the key.
+     * the key is refused as a duplicate (the unique index is the backstop behind this check) -- unless it is
+     * unregistered and this provisioning is [registered], in which case the person is **claiming** it: it is
+     * marked registered, everything else about it untouched (issue #749). A permanently deleted one never
+     * matches: its tombstone gave up the key.
+     *
+     * [registered] says the person is behind this provisioning -- a code proved the address for this user, the
+     * test fixture made it, they made it for themself -- so the user is theirs from the start. Absent it, an
+     * administrator has provisioned a user for somebody who has yet to claim it.
      */
     fun provisionUser(
         cxt: KdrCxt,
@@ -217,6 +252,7 @@ class UserService : ServiceInitializer {
         verifiedAt: Instant? = null,
         /** A chosen username; absent leaves the `@<address>` placeholder for the person to replace. */
         username: String? = null,
+        registered: Boolean = false,
         customize: (MutableMap<String, Any?>) -> Unit = {},
     ): Long {
         val identity = getOrCreateIdentity(cxt, primaryId, verifiedAt)
@@ -226,6 +262,12 @@ class UserService : ServiceInitializer {
         // `@<address>|<client>|<persona>|<personId>` -- until the person chooses a real one.
         val placeholder = AuthUserRow.usernameTmpPrefix + if (siblings.isEmpty()) primaryId else "$primaryId|$client|$persona|$personId"
         siblings.firstOrNull { it.client == client && it.persona == persona && it.personId == personId }?.let { existing ->
+            if (existing.enabled && registered && !existing.isRegistered) {
+                // The person claiming a user provisioned for them: registration, not a create or a recovery.
+                existing.registeredAt = createdAt ?: cxt.now()
+                updateUser(cxt, existing, isEdit = false)
+                return existing.userId
+            }
             if (existing.enabled || existing.isDeleted) {
                 throw KdrException.mkInput("A user for '$primaryId' already exists in client '$client' (persona '$persona'${if (personId.isEmpty()) "" else ", personId '$personId'"}).")
             }
@@ -233,12 +275,13 @@ class UserService : ServiceInitializer {
             existing.roles = roles
             if (org != null) existing.org = org
             existing.activatedAt = createdAt
+            existing.registeredAt = if (registered) createdAt else null
             customize(existing.authUserData)
             existing.enabled = true
             updateUser(cxt, existing, isEdit = false) // a re-enable, like the admin toggle: not an edit
             return existing.userId
         }
-        val data = AuthUserRow.mkInitialUser(identity.identityId, primaryId, client, roles, org, persona, personId, createdAt).toMutableMap()
+        val data = AuthUserRow.mkInitialUser(identity.identityId, primaryId, client, roles, org, persona, personId, createdAt, registered).toMutableMap()
         data[AU.username] = username ?: placeholder
         val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
         customize(authUserData)
@@ -800,5 +843,8 @@ class UserService : ServiceInitializer {
 
         fun get(cxt: KdrCxt): UserService = cxt.instanceConfig.get(serviceName) as? UserService
             ?: throw KdrException("The $serviceName is not available on this node.")
+
+        /** The service, or null on a node that carries no account machinery -- an edge (see `CommonComponent`). */
+        fun getOrNull(cxt: KdrCxt): UserService? = cxt.instanceConfig.get(serviceName) as? UserService
     }
 }

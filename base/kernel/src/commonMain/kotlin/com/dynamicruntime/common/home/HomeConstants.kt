@@ -69,6 +69,13 @@ object HFLD {
     /** `state.userInfo`: who the caller is (the anonymous profile when signed out). */
     const val userInfo = "userInfo"
 
+    /**
+     * `state.users`: the users the caller's identity may act as (issue #749), as `UserChoice`s -- registered
+     * and enabled ones only, the current one marked. Empty when signed out, and a list of one for a person with
+     * a single user, which is what tells the bar there is nothing to switch to.
+     */
+    const val users = "users"
+
     /** A link's stable id (used to address it in the frontend's URL). */
     const val id = "id"
 
