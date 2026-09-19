@@ -72,7 +72,7 @@ object AddressRules {
      *
      * `email_verified` plus a matching address domain is deliberately **not** enough. A Google *consumer*
      * account can be registered against an arbitrary address -- ownership proven by receiving mail there, which
-     * a stale alias, a forward or a catch-all can also do -- and it presents `email_verified: true` with **no**
+     * a stale alias, a forward, or a catch-all can also do -- and it presents `email_verified: true` with **no**
      * `hd`. Only a Workspace account carries `hd`, and Google says that claim, being inside the signed token,
      * is the one that may be trusted. So the perimeter requires it, matched **exactly** against the configured
      * domain: unlike [isControlledDomain]'s subdomain latitude for *addresses*, `eu.acme.com` does not satisfy

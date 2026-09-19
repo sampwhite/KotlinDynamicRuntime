@@ -130,7 +130,7 @@ object ADF {
 
     /**
      * The UAT batch discriminator (issue #747): read on the "create" call (empty when absent, and only needed for
-     * a further user of the same address, client and persona) and reported on every user. Create only, as part
+     * a further user of the same address, client, and persona) and reported on every user. Create only, as part
      * of the user's key.
      */
     const val personId = "personId"

@@ -234,7 +234,7 @@ object PERSONID {
 
     /**
      * Whether [personId] is one a user may be created with: empty (the ordinary user), or up to [maxLength]
-     * ASCII letters, digits and underscores -- the tightly controlled charset an id has, so two personIds that
+     * ASCII letters, digits, and underscores -- the tightly controlled charset an id has, so two personIds that
      * look alike to a person cannot name different users. A tombstone's `deleted-<userId>` is not one of
      * these and never goes through this check: it is written by the delete, not chosen.
      */
