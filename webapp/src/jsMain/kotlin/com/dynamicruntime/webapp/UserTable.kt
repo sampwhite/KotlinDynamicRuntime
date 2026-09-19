@@ -119,6 +119,8 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
     // about the account -- never logged in, never edited -- and an empty cell reads as a rendering failure.
     USF.lastEdited.at -> user.lastEditedAt?.let { formatTimestamp(it) } ?: "—"
     USF.lastLoggedIn.at -> user.lastLoggedInAt?.let { formatTimestamp(it) } ?: "—"
+    // Absent means unclaimed (issue #750), which the Status column also says in a word.
+    USF.registered.at -> user.registeredAt?.let { formatTimestamp(it) } ?: "—"
     USF.activated.at -> user.activatedAt?.let { formatTimestamp(it) } ?: "—"
     else -> unmappedCell
 }
@@ -176,7 +178,7 @@ private val columnWidths: Map<String, Int> = mapOf(
     USF.persona to 95,
     // Fixed-width content, so these are the figures that must not be shaved: `2026-08-27 19:23 UTC` measures
     // 153px and never varies. Everything else here was sized around them.
-    USF.lastEdited.at to 175, USF.lastLoggedIn.at to 175, USF.activated.at to 175,
+    USF.lastEdited.at to 175, USF.lastLoggedIn.at to 175, USF.registered.at to 175, USF.activated.at to 175,
     // Bounded vocabularies: "Person"/"Business", and "enabled"/"disabled"/"deleted".
     typeColumn to 80, statusColumn to 85,
     // A list, so it is the other one that may wrap. Sized so that it does not at the case that actually

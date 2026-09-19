@@ -28,6 +28,10 @@ class UserCellValueTest {
         hasPassword = true,
         deleted = false,
         updatedAt = "2026-08-24T18:00:00.000Z",
+        lastEditedAt = "2026-08-24T18:00:00.000Z",
+        lastLoggedInAt = "2026-08-24T18:00:00.000Z",
+        activatedAt = "2026-08-24T18:00:00.000Z",
+        registeredAt = "2026-08-24T18:00:00.000Z",
     )
 
     @Test

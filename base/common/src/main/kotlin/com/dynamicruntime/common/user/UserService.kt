@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.sql.KdrColumn
@@ -317,7 +318,16 @@ class UserService : ServiceInitializer {
         val placeholder = AuthUserRow.usernameTmpPrefix + if (siblings.isEmpty()) primaryId else "$primaryId|$client|$persona|$personId"
         siblings.firstOrNull { it.client == client && it.persona == persona && it.personId == personId }?.let { existing ->
             if (existing.enabled || existing.isDeleted) {
-                throw KdrException.mkInput("A user for '$primaryId' already exists in client '$client' (persona '$persona'${if (personId.isEmpty()) "" else ", personId '$personId'"}).")
+                // A keyed message with the key's parts as params, and the key as the envelope's logical error
+                // code (issue #750): what a surface branches on -- the console offers the personId box -- so the
+                // sentence can be reworded or localized without anything downstream noticing.
+                throw KdrException.mkMsg(
+                    KdrMsg(AFRAG.auth, AERR.ns, AERR.userKeyTaken),
+                    mapOf(
+                        AERR.emailParam to primaryId, AERR.clientParam to client, AERR.personaParam to persona,
+                        AERR.personIdNoteParam to (if (personId.isEmpty()) "" else ", personId '$personId'"),
+                    ),
+                ).also { it.extraData[KdrException.errorCodeKey] = AERR.userKeyTaken }
             }
             existing.username = username ?: placeholder
             existing.roles = roles

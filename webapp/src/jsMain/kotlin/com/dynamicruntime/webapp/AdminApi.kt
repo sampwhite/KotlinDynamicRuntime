@@ -90,6 +90,8 @@ class AdminUser(
     val lastEditedAt: String? = null,
     val lastLoggedInAt: String? = null,
     val activatedAt: String? = null,
+    /** When the person claimed the user (issue #750); absent while nobody has, which is what [registered] reads. */
+    val registeredAt: String? = null,
 ) {
     /**
      * This user's access level: the highest rung of [RoleLadder] they hold, which is what the Users page's
@@ -286,6 +288,7 @@ object AdminApi {
         enabled = this[ADF.enabled] == true,
         hasPassword = this[ADF.hasPassword] == true,
         registered = this[USF.registered.at] != null,
+        registeredAt = this[USF.registered.at] as? String,
         deleted = this[ADF.deleted] == true,
         updatedAt = this[ADF.updatedAt] as? String,
         lastEditedAt = this[USF.lastEdited.at] as? String,

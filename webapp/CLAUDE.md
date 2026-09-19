@@ -133,8 +133,10 @@ A fourth is **belonging**, and behaves unlike the other three:
   creation and says nothing about that).
   Creating a user at your **own** address makes an associated user of yours, registered at once and in the
   badge's switcher. The **Person id** box is offered only after a create collides with an existing user of the
-  same address, client and persona (the backend's duplicate-key refusal, `isUserKeyCollision`): it is the UAT
-  batch discriminator, and a field nobody else needs. The list shows both in a **Persona** column (`Member B`).
+  same address, client and persona -- the backend's duplicate-key refusal, recognized by the envelope's logical
+  `errorCode` (`AERR.userKeyTaken`), never by its wording: it is the UAT batch discriminator, and a field
+  nobody else needs. The list shows both in a **Persona** column (`Member B`), and a **Registered** column says
+  when the person claimed the user.
 
 Two are **identity**, and sit at the top of the editor beside the email for that reason — they say who the
 account is, not what it may do:

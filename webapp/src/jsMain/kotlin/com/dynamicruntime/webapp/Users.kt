@@ -4,6 +4,7 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.user.AERR
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.PERSONID
 import com.dynamicruntime.common.user.USF
@@ -389,7 +390,7 @@ val Users = FC<Props> {
             } catch (e: Throwable) {
                 // A collision on (address, client, persona) is what the personId is for: offer it, keep the
                 // form, and let the refusal show as it is.
-                if (isUserKeyCollision(e.message)) personIdOffered = true
+                if (isUserKeyCollision(e)) personIdOffered = true
                 throw e
             }
             note = "Created ${created.primaryId}."
@@ -1072,11 +1073,12 @@ fun personaForLevel(level: String): String = PERSONA.defaultFor(RoleLadder.roles
 
 /**
  * Whether a create was refused because a user with the same address, client and persona already exists --
- * the backend's duplicate-key refusal, which is the one situation the personId box answers. Matched on the
- * refusal's wording, which is the backend's contract here; a different refusal (a taken username, a bad
- * address) leaves the box unoffered. Pure, covered under `jsNodeTest`.
+ * the backend's duplicate-key refusal, which is the one situation the personId box answers. Keyed on the
+ * envelope's logical error code (`AERR.userKeyTaken`), not the sentence, so the wording is free to change; a
+ * different refusal (a taken username, a bad address) leaves the box unoffered. Pure, covered under
+ * `jsNodeTest`.
  */
-fun isUserKeyCollision(message: String?): Boolean = message?.contains("already exists in client") == true
+fun isUserKeyCollision(error: Throwable): Boolean = (error as? ApiError)?.errorCode == AERR.userKeyTaken
 
 private const val personaHint =
     "What kind of user this is: a member of the client, or one of its administrators. Chosen once, at " +

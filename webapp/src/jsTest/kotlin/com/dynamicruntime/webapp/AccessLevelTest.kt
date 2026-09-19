@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.user.AERR
 import com.dynamicruntime.common.user.PERSONA
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -164,8 +165,10 @@ class PersonaFormTest {
 
     @Test
     fun thePersonIdIsOfferedOnlyForAKeyCollision() {
-        assertTrue(isUserKeyCollision("A user for 'a@b.com' already exists in client 'public' (persona 'member')."))
-        assertFalse(isUserKeyCollision("Username 'ada' has already been taken."))
-        assertFalse(isUserKeyCollision(null))
+        val taken = ApiError("A user for a@b.com already exists in client public with persona member.", fromFragment = true, status = 400, errorCode = AERR.userKeyTaken, traceId = null)
+        assertTrue(isUserKeyCollision(taken))
+        // The wording is not what decides it: the same sentence with no code, or another refusal, offers nothing.
+        assertFalse(isUserKeyCollision(ApiError(taken.message, fromFragment = true, status = 400, errorCode = null, traceId = null)))
+        assertFalse(isUserKeyCollision(IllegalStateException("Username 'ada' has already been taken.")))
     }
 }

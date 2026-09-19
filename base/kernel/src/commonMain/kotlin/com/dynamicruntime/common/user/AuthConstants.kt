@@ -153,6 +153,17 @@ object AERR {
 
     /** Param key the `${...}` placeholder in [emailNotAvailable] references. */
     const val emailParam = "email"
+
+    /**
+     * A user with the same (address, client, persona, personId) already exists (issue #750). Also the
+     * envelope's logical `errorCode`, which is what the console keys on to offer the personId box -- the
+     * wording is free to change. Params: [emailParam], [clientParam], [personaParam], [personIdNoteParam].
+     */
+    const val userKeyTaken = "userKeyTaken"
+    const val clientParam = "client"
+    const val personaParam = "persona"
+    /** `, personId 'B'` when the key carried one, else empty -- so one sentence serves both. */
+    const val personIdNoteParam = "personIdNote"
 }
 
 /**
