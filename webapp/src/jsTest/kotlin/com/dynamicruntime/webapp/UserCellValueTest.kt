@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,6 +48,13 @@ class UserCellValueTest {
             userId = 3L, primaryId = "deleted-3@deleted.invalid", username = "deleted-3", roles = emptyList(), client = "acme",
             org = null, isEntity = false, name = null, enabled = false, hasPassword = false, registered = false, deleted = true,
         )))
+    }
+
+    @Test
+    fun theIdentifyingColumnsArePinnedAndTheRestScroll() {
+        for (field in listOf("userId", USF.email, USF.name, USF.client, USF.persona)) assertEquals("left", pinnedSide(field))
+        assertEquals("right", pinnedSide("status"))
+        for (field in listOf(USF.registered.at, USF.activated.at, "type", "roles")) assertEquals(null, pinnedSide(field))
     }
 
     /** antd's third click on a header cancels the sort; that must land on the default order, not be dropped. */

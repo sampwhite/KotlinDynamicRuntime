@@ -47,7 +47,7 @@ val UserTable = FC<UserTableProps> { props ->
         tableLayout = "fixed"
         pagination = false
         rowKey = "key"
-        columns = buildList {
+        val cols = buildList {
             add(column("Id", idColumn, columnWidths[idColumn]))
             // The search columns, straight from the shared spec -- label, sortability, and order included.
             for (spec in userSearchFieldSpecs) {
@@ -62,7 +62,17 @@ val UserTable = FC<UserTableProps> { props ->
             add(column("Type", typeColumn, columnWidths[typeColumn]))
             add(column("Roles", rolesColumn, columnWidths[rolesColumn]))
             add(column("Status", statusColumn, columnWidths[statusColumn]))
-        }.toTypedArray()
+        }
+        // The columns that identify a user stay in view while the rest scroll (issue #750): who this is on the
+        // left, and whether they are live on the right. antd pins a column only when the table has an explicit
+        // horizontal extent, so `scroll.x` is the declared widths' sum -- under it the middle scrolls inside the
+        // card; above it the surplus is shared out as before.
+        for (c in cols) {
+            pinnedSide(c.dataIndex as String)?.let { c.fixed = it }
+        }
+        columns = cols.toTypedArray()
+        val total = cols.sumOf { (it.width as? Int) ?: 0 }
+        scroll = js("({ x: total })")
         dataSource = props.users.map { user ->
             val row: dynamic = js("({})")
             row.key = user.userId.toString()
@@ -164,6 +174,18 @@ private const val rolesColumn = "roles"
 private const val statusColumn = "status"
 
 /**
+ * Which edge a column is pinned to while the middle scrolls, or null for one that scrolls (issue #750). The
+ * columns that say *who* -- id, email, name, client, persona -- hold the left; the one that says whether they
+ * are live holds the right; the dates, type and roles are what you scroll to read. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun pinnedSide(dataIndex: String): String? = when (dataIndex) {
+    idColumn, USF.email, USF.name, USF.client, USF.persona -> "left"
+    statusColumn -> "right"
+    else -> null
+}
+
+/**
  * Column widths (a presentation detail, so front-end only) keyed by the spec field name; absent = auto.
  *
  * **Every column declares one now**, because "absent = auto" meant antd divided the leftover space by its own
@@ -192,10 +214,10 @@ private val columnWidths: Map<String, Int> = mapOf(
     USF.lastEdited.at to 175, USF.lastLoggedIn.at to 175, USF.registered.at to 175, USF.activated.at to 175,
     // Bounded vocabularies: "Person"/"Business", and "enabled"/"disabled"/"deleted".
     typeColumn to 80, statusColumn to 85,
-    // A list, so it is the other one that may wrap. Sized so that it does not at the case that actually
-    // occurs -- `user, admin, allClients`, which is what a full administrator holds and measures 159px. The
-    // 15px it needed over the obvious figure came from `Client` and `Type`, both of which had headroom.
-    rolesColumn to 160,
+    // A list, so it is the other one that may wrap -- and now does, on the rows that hold three roles
+    // (`user, admin, allClients`, a full administrator) or a long-named one, which are the minority. The 40px
+    // it gave up went to the Registered column (issue #750); two lines on a few rows beat a scrollbar on all.
+    rolesColumn to 120,
 )
 
 /** Builds an antd column config `{ title, dataIndex, key, width? }`. */

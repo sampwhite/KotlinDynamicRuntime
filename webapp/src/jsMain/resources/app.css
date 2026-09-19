@@ -539,7 +539,7 @@ body {
 
    This only pays off because the controls inside declare their own widths. While they did not, every pixel
    this rule adds went to the search boxes -- one reached 816px -- and the columns stayed exactly as cramped. */
-.card.full { width: min(1600px, calc(100vw - 48px)); }
+.card.full { width: min(1700px, calc(100vw - 48px)); }
 /* ...and when the window is narrower than the table wants, the table scrolls **inside** the card rather than
    spilling over its edge -- which is what it did, rows running past the rounded corner and off the screen.
    Pre-existing (ten columns never fitted a phone) and made more visible by the three columns #462 added, so
