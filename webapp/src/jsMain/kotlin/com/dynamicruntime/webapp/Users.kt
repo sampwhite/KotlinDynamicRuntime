@@ -98,6 +98,10 @@ val Users = FC<Props> {
     var draftPersona by useState(PERSONA.member)
     var draftPersonId by useState("")
     var personIdOffered by useState(false)
+    // Whether the administrator chose the persona themselves. Until they do, it follows the access level
+    // (roles provide a default persona); once they do, the level may still move without dragging it back --
+    // and only a chosen persona is sent, so the backend applies the same rule to an unnamed one.
+    var personaChosen by useState(false)
 
     // Whether the permanent-delete danger button has been armed -- a two-step confirm, since there is no
     // Popconfirm wrapper and an irreversible delete is the one action here a stray click must not perform.
@@ -242,6 +246,7 @@ val Users = FC<Props> {
         draftPersona = user?.persona ?: PERSONA.member
         draftPersonId = user?.personId ?: ""
         personIdOffered = false
+        personaChosen = false
         confirmingDelete = false
         note = null
         error = null
@@ -379,7 +384,7 @@ val Users = FC<Props> {
                     org = draftOrg.trim().ifEmpty { null },
                     isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
                     client = draftClient.trim().ifEmpty { null }, enabled = draftEnabled,
-                    persona = draftPersona, personId = draftPersonId,
+                    persona = if (personaChosen) draftPersona else null, personId = draftPersonId,
                 )
             } catch (e: Throwable) {
                 // A collision on (address, client, persona) is what the personId is for: offer it, keep the
@@ -539,7 +544,12 @@ val Users = FC<Props> {
                     options = accessLevelOptions(operatorSelectable)
                     disabled = busy || self
                     style = js("({ minWidth: 180 })")
-                    onChange = { v -> draftLevel = v as? String ?: ROLE.user }
+                    onChange = { v ->
+                        val level = v as? String ?: ROLE.user
+                        draftLevel = level
+                        // Roles provide a default persona (issue #750), until one is chosen outright.
+                        if (creating && !personaChosen) draftPersona = personaForLevel(level)
+                    }
                 }
             }
             p {
@@ -623,6 +633,7 @@ val Users = FC<Props> {
                         onChange = { v ->
                             val chosen = v as? String ?: PERSONA.member
                             draftPersona = chosen
+                            personaChosen = true
                             draftLevel = levelForPersona(chosen)
                         }
                     }
@@ -1054,6 +1065,12 @@ fun levelForPersona(persona: String): String =
     PERSONA.def(persona)?.let { RoleLadder.highestHeld(it.defaultRoles) } ?: ROLE.user
 
 /**
+ * The persona a user created at [level] takes when none is chosen -- the same rule the backend applies to an
+ * unnamed persona (`PERSONA.defaultFor`), asked of the level's role list. Pure, covered under `jsNodeTest`.
+ */
+fun personaForLevel(level: String): String = PERSONA.defaultFor(RoleLadder.rolesAtLevel(emptyList(), level))
+
+/**
  * Whether a create was refused because a user with the same address, client and persona already exists --
  * the backend's duplicate-key refusal, which is the one situation the personId box answers. Matched on the
  * refusal's wording, which is the backend's contract here; a different refusal (a taken username, a bad
@@ -1063,7 +1080,8 @@ fun isUserKeyCollision(message: String?): Boolean = message?.contains("already e
 
 private const val personaHint =
     "What kind of user this is: a member of the client, or one of its administrators. Chosen once, at " +
-        "creation. Picking one sets the access level to its usual value, which you may still change."
+        "creation. It follows the access level until you pick one; picking one sets the level to its usual " +
+        "value, which you may still change."
 
 private val personIdHint =
     "A user of this address, client and persona already exists. Give this one a short id (up to " +

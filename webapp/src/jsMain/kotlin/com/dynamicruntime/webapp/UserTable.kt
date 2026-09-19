@@ -75,12 +75,7 @@ val UserTable = FC<UserTableProps> { props ->
             }
             row.type = if (user.isEntity) "Business" else "Person"
             row.roles = user.roles.joinToString(", ")
-            row.status = buildList {
-                // A permanently-deleted tombstone reads as "deleted", not "disabled" -- it is disabled, but
-                // saying only that would hide that it is the irreversible kind and cannot be re-enabled.
-                add(if (user.deleted) "deleted" else if (user.enabled) "enabled" else "disabled")
-                if (user.hasPassword) add("password set")
-            }.joinToString(", ")
+            row.status = statusWords(user).joinToString(", ")
             row
         }.toTypedArray()
         // A header click re-sorts on the server. `sortDirections` on each sortable column keeps the cycle to
@@ -126,6 +121,19 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
     USF.lastLoggedIn.at -> user.lastLoggedInAt?.let { formatTimestamp(it) } ?: "—"
     USF.activated.at -> user.activatedAt?.let { formatTimestamp(it) } ?: "—"
     else -> unmappedCell
+}
+
+/**
+ * The Status column's words. A permanently-deleted tombstone reads as "deleted", not "disabled" -- it is
+ * disabled, but saying only that would hide that it is the irreversible kind and cannot be re-enabled. A user
+ * nobody has claimed yet reads "unclaimed" (issue #750): the one thing an administrator who provisioned it
+ * for somebody else wants to know, and not something the activated date says, since that is stamped at
+ * creation. Pure, covered under `jsNodeTest`.
+ */
+fun statusWords(user: AdminUser): List<String> = buildList {
+    add(if (user.deleted) "deleted" else if (user.enabled) "enabled" else "disabled")
+    if (!user.registered && !user.deleted) add("unclaimed")
+    if (user.hasPassword) add("password set")
 }
 
 /** The Persona column's value: `Member`, `Admin`, `Member B`. Pure, covered under `jsNodeTest`. */

@@ -280,6 +280,10 @@ class UserService : ServiceInitializer {
      * [registered] says the person is behind this provisioning -- a code proved the address for this user, the
      * test fixture made it, they made it for themself -- so the user is theirs from the start. Absent it, an
      * administrator has provisioned a user for somebody who has yet to claim it.
+     *
+     * [persona] null takes the persona the [roles] imply (`PERSONA.defaultFor`): personas grant roles by
+     * default, and roles provide a default persona, so a user created as an administrator without naming a
+     * persona is an `admin`.
      */
     fun provisionUser(
         cxt: KdrCxt,
@@ -288,7 +292,7 @@ class UserService : ServiceInitializer {
         roles: List<String>,
         org: String? = null,
         createdAt: Instant? = null,
-        persona: String = PERSONA.member,
+        persona: String? = null,
         personId: String = "",
         verifiedAt: Instant? = null,
         /** A chosen username; absent leaves the `@<address>` placeholder for the person to replace. */
@@ -296,6 +300,7 @@ class UserService : ServiceInitializer {
         registered: Boolean = false,
         customize: (MutableMap<String, Any?>) -> Unit = {},
     ): Long {
+        val persona = persona ?: PERSONA.defaultFor(roles)
         // The one provisioning path, so the one place the key's vocabulary is checked (issue #750): a persona
         // the registry holds, and a personId within the id rules. Refused as input, whichever surface asked.
         if (PERSONA.def(persona) == null) {

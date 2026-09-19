@@ -333,7 +333,10 @@ A **persona** says what relationship a user has to the application -- `member` (
 belongs to the client) or `admin` to start, `reviewer` and `advisor` sketched -- and is a **registry**
 (`PERSONA` in the kernel, issue #750): each has a name, a label, and the roles a user of it starts with. It is
 frozen at creation and part of the user's unique key with its identity, client and `personId`; changing
-persona means creating a new user with its own data. A persona is deliberately **not a role**: `admin` here
+persona means creating a new user with its own data. The relationship with roles runs both ways: a persona
+grants its default roles to a user created with it, and roles provide a default persona to a user created
+without naming one (`PERSONA.defaultFor`), so a user created as an administrator, by the auto-admin domain or
+by an explicit role list, is an `admin`. A persona is deliberately **not a role**: `admin` here
 says how to read the user, and the roles say what they may do -- and no persona's default roles ever include
 `allClients`, which is a grant an administrator makes to a user, never a property of what kind of user they
 are. A client may later add its own personas under this word's reservation.

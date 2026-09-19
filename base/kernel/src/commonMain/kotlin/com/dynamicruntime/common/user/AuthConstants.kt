@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 
 // Auth/profile constants that the *frontend* (Kotlin/JS) shares with the backend: endpoint paths, request and
 // response field (JSON key) names, UI-config feature flags, schema type names, and fragment file ids. They
@@ -200,6 +201,18 @@ object PERSONA {
 
     /** How a persona is shown: its registered label, or the name capitalized for one the registry does not hold. */
     fun label(persona: String): String = def(persona)?.label ?: persona.replaceFirstChar { it.uppercaseChar() }
+
+    /**
+     * The persona a user created with [roles] takes when none is named (Sam, 2026-09-18): personas grant roles
+     * by default, and conversely roles provide a default persona. The registry entry whose default roles put a
+     * user on the same rung of `RoleLadder` as [roles] do -- `admin` for an administrator, `member` otherwise
+     * (an operator, whose rung no persona names, is a member). So the deployment's first administrator, the
+     * fixture's admin-level user and an admin created with an explicit role list all read as what they are.
+     */
+    fun defaultFor(roles: Collection<String>): String {
+        val rung = RoleLadder.highestHeld(roles)
+        return defs.lastOrNull { RoleLadder.highestHeld(it.defaultRoles) == rung }?.name ?: member
+    }
 }
 
 /** The `personId` rules (issue #747): the UAT batch discriminator, empty for the ordinary user. */

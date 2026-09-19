@@ -31,6 +31,21 @@ class UserCellValueTest {
     )
 
     @Test
+    fun theStatusSaysUnclaimedForAUserNobodyHasClaimed() {
+        val claimed = populatedUser()
+        assertEquals(listOf("enabled", "password set"), statusWords(claimed))
+        assertEquals(listOf("enabled", "unclaimed"), statusWords(AdminUser(
+            userId = 2L, primaryId = "b@example.com", username = "@b@example.com", roles = listOf("user"), client = "acme",
+            org = null, isEntity = false, name = null, enabled = true, hasPassword = false, registered = false, deleted = false,
+        )))
+        // A tombstone is deleted, whatever it was before; it never reads as unclaimed.
+        assertEquals(listOf("deleted"), statusWords(AdminUser(
+            userId = 3L, primaryId = "deleted-3@deleted.invalid", username = "deleted-3", roles = emptyList(), client = "acme",
+            org = null, isEntity = false, name = null, enabled = false, hasPassword = false, registered = false, deleted = true,
+        )))
+    }
+
+    @Test
     fun thePersonaColumnShowsTheLabelAndThePersonId() {
         assertEquals("Admin B", personaCell("admin", "B"))
         assertEquals("Member", personaCell("member", ""))

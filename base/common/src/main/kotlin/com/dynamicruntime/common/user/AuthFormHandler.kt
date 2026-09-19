@@ -368,7 +368,8 @@ class AuthFormHandler(
      * The user a Google sign-in acts as (issue #749). A **registered** user of [identity] exists: the standard
      * default among the registered ones, and the sign-in registers nothing. None: Google can reach exactly one
      * user, the one the rules name -- the default client (`AddressRules.defaultClient`, `public` until the
-     * request's host can say otherwise), the `member` persona, no personId -- which the person is
+     * request's host can say otherwise), the persona the initial roles imply (`member`, or `admin` on the
+     * auto-admin domain), no personId -- which the person is
      * claiming by signing in (`UserService.claimUser`): an existing one under that key is registered, a
      * disabled one re-enabled as it was and registered, and otherwise a registered user is created with the
      * initial roles, so the auto-admin domain reaches a Google-provisioned operator as it does a registration.
@@ -381,9 +382,10 @@ class AuthFormHandler(
     private fun googleUserOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow {
         userService.registeredDefaultOf(cxt, identity)?.let { return it }
         val address = identity.primaryId
+        val roles = AdminRules.initialRoles(cxt, address)
         return userService.claimUser(
-            cxt, identity, AddressRules.defaultClient(cxt), PERSONA.member, personId = "",
-            roles = AdminRules.initialRoles(cxt, address),
+            cxt, identity, AddressRules.defaultClient(cxt), PERSONA.defaultFor(roles), personId = "",
+            roles = roles,
         )
     }
 
@@ -460,18 +462,19 @@ class AuthFormHandler(
      */
     fun becomeUserByEmail(
         cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
-        client: String? = null, name: String? = null, persona: String = PERSONA.member, personId: String = "",
+        client: String? = null, name: String? = null, persona: String? = null, personId: String = "",
     ): Map<String, Any?> {
         val address = email.normalizeEmail()
         // A username as the login id resolves directly; an address resolves to its identity's users, and the
         // one to become is the match on (client, persona, personId) when the caller named any of them, else
-        // the identity's default user (issue #747) -- so a test can put several users under one address.
-        val named = client != null || persona != PERSONA.member || personId.isNotEmpty()
+        // the identity's default user (issue #747) -- so a test can put several users under one address. An
+        // unnamed persona is the one the level implies on a create (`PERSONA.defaultFor`), and any on a find.
+        val named = client != null || persona != null || personId.isNotEmpty()
         val existing = if (address.contains('@')) {
             val identity = userService.queryIdentityByAddress(cxt, address)
             val users = identity?.let { userService.usersOfIdentity(cxt, it.identityId) }.orEmpty()
             if (named) {
-                users.firstOrNull { (client == null || it.client == client) && it.persona == persona && it.personId == personId }
+                users.firstOrNull { (client == null || it.client == client) && (persona == null || it.persona == persona) && it.personId == personId }
             } else {
                 identity?.let { userService.defaultUserOf(cxt, it) }
             }

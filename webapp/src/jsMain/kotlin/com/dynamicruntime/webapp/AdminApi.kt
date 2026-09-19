@@ -73,6 +73,12 @@ class AdminUser(
     val name: String?,
     val enabled: Boolean,
     val hasPassword: Boolean,
+    /**
+     * Whether the person has claimed this user (issue #749): a code used for it, the fixture, or a user they
+     * made for themself. False for one an administrator provisioned that nobody has logged into yet. Read off
+     * the registered date, since that is what records the claim.
+     */
+    val registered: Boolean = true,
     /** Whether the account was permanently deleted -- an obfuscated tombstone that can no longer be edited. */
     val deleted: Boolean,
     /**
@@ -279,6 +285,7 @@ object AdminApi {
         name = this[ADF.name] as? String,
         enabled = this[ADF.enabled] == true,
         hasPassword = this[ADF.hasPassword] == true,
+        registered = this[USF.registered.at] != null,
         deleted = this[ADF.deleted] == true,
         updatedAt = this[ADF.updatedAt] as? String,
         lastEditedAt = this[USF.lastEdited.at] as? String,

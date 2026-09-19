@@ -154,6 +154,15 @@ class PersonaFormTest {
     }
 
     @Test
+    fun theLevelProvidesTheDefaultPersona() {
+        assertEquals(PERSONA.admin, personaForLevel(ROLE.admin))
+        assertEquals(PERSONA.member, personaForLevel(ROLE.user))
+        // No persona names the operator rung, so an operator is a member.
+        assertEquals(PERSONA.member, personaForLevel(ROLE.operator))
+        assertEquals(PERSONA.admin, PERSONA.defaultFor(listOf(ROLE.user, ROLE.admin, ROLE.allClients)))
+    }
+
+    @Test
     fun thePersonIdIsOfferedOnlyForAKeyCollision() {
         assertTrue(isUserKeyCollision("A user for 'a@b.com' already exists in client 'public' (persona 'member')."))
         assertFalse(isUserKeyCollision("Username 'ada' has already been taken."))

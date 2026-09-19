@@ -171,7 +171,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             field(
                 ADF.persona,
                 "The new user's persona, frozen at creation: ${PERSONA.defs.joinToString(", ") { "'${it.name}'" }}. " +
-                    "Defaults to '${PERSONA.member}'.",
+                    "Absent, the one the roles imply ('${PERSONA.admin}' for an administrator, else '${PERSONA.member}').",
             ) { for (def in PERSONA.defs) option(def.name, def.label) }
             field(
                 ADF.personId,
@@ -205,13 +205,14 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             throw KdrException.mkInput("'$primaryId' is not a valid email address.")
         }
         val username = request[ADF.username].toOptStr()
-        // The persona is frozen at creation and names the roles a user of it starts with (issue #750); an
-        // explicit role list still wins, as it always has, and is checked against what the caller may grant.
-        val persona = request[ADF.persona].toOptStr()?.trim()?.ifEmpty { null } ?: PERSONA.member
-        val personaDef = PERSONA.def(persona)
-            ?: throw KdrException.mkInput("'$persona' is not a persona; the personas are ${PERSONA.defs.joinToString(", ") { it.name }}.")
+        // The persona is frozen at creation and names the roles a user of it starts with (issue #750), and the
+        // other way round: roles given without a persona imply one (`PERSONA.defaultFor`). An explicit role
+        // list still wins over the persona's defaults, and is checked against what the caller may grant.
+        val namedPersona = request[ADF.persona].toOptStr()?.trim()?.ifEmpty { null }
         val personId = request[ADF.personId].toOptStr()?.trim() ?: ""
-        val roles = request[ADF.roles].toJsonListOfStrings().ifEmpty { personaDef.defaultRoles }
+        val givenRoles = request[ADF.roles].toJsonListOfStrings()
+        val roles = givenRoles.ifEmpty { PERSONA.def(namedPersona ?: PERSONA.member)?.defaultRoles ?: listOf(ROLE.user) }
+        val persona = namedPersona ?: PERSONA.defaultFor(roles)
         requireUsableRoles(c, roles)
         val service = userService(c)
         // A user the administrator creates at their **own** address is an *associated* user -- another of the
@@ -223,7 +224,13 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // no row, and asking would send a query after the system user id.
         val ownAddress = c.userProfile.isRowBacked && service.queryByUserId(c, c.userProfile.userId)?.primaryId == primaryId
         if (!ownAddress && service.queryByPrimaryId(c, primaryId) != null) {
-            throw KdrException.mkInput("A user with the email '$primaryId' already exists.")
+            // Not a duplicate in the key's sense: the address is another person's, and a further user for them
+            // is theirs to accept -- phase E's invitation -- so the message says what is not offered rather
+            // than reading as "you already made this".
+            throw KdrException.mkInput(
+                "'$primaryId' already belongs to a user. Provisioning a further user for another person is done " +
+                    "by invitation, which is not yet offered; only a user at your own address can be added here.",
+            )
         }
         if (username != null && service.queryByUsername(c, username) != null) {
             throw KdrException.mkInput("Username '$username' has already been taken.")
