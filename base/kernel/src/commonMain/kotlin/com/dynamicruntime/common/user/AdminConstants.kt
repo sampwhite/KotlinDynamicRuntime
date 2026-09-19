@@ -121,6 +121,20 @@ object ADF {
     const val client = "client"
     const val hasPassword = "hasPassword"
 
+    /**
+     * The user's persona (issues #747, #750): read on the "create" call -- one of the `PERSONA` registry, `member`
+     * when absent -- and reported on every user. **Create only**, like [client]: a persona is frozen at creation,
+     * so there is no set-persona call.
+     */
+    const val persona = "persona"
+
+    /**
+     * The UAT batch discriminator (issue #747): read on the "create" call (empty when absent, and only needed for
+     * a further user of the same address, client, and persona) and reported on every user. Create only, as part
+     * of the user's key.
+     */
+    const val personId = "personId"
+
     /** Whether the account was permanently deleted -- an obfuscated tombstone that can no longer be edited. */
     const val deleted = "deleted"
 
@@ -162,6 +176,12 @@ object USF {
      * on the field the console shows as "Name", which is what an administrator types when searching for someone.
      */
     const val name = "name"
+
+    /**
+     * Case-insensitive **substring** of the persona or the personId (issue #750) -- `admin`, or the `B` of a UAT
+     * batch -- so a console box finds a person's administrator user, or one member of a batch.
+     */
+    const val persona = "persona"
 
     /**
      * **Exact** client id to confine the search to. Only an `allClients` caller can widen past their own

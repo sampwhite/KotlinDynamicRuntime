@@ -17,12 +17,12 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * Which client a newly created user lands in, and what their address is allowed to say about it (issue #352).
+ * Which client a newly created user lands in (issue #352), and -- since the `+client%persona` address tags
+ * were retired (issue #750) -- that an address no longer says anything about it.
  *
- * Two routes, deliberately tested apart because they answer a bad client differently. The **fixture** takes an
- * explicit client and refuses one this node does not carry; a **registration** reads the client off the
- * address and falls back to `public`. The asymmetry is the point -- a test that asked for the wrong client has
- * made a mistake worth stopping for, and a person registering has not.
+ * Two routes, deliberately tested apart. The **fixture** takes an explicit client and refuses one this node
+ * does not carry; a **registration** lands in `public`, whatever the address carries. A test that asked for
+ * the wrong client has made a mistake worth stopping for, and a person registering has not.
  *
  * `hub` is the client used throughout because it is present in every environment, which makes it the one real
  * alternative to `public` that #343 left behind.
@@ -41,7 +41,7 @@ class UserClientTest : StringSpec({
         user.selfClient() shouldBe CL.hub
     }
 
-    "the fixture defaults to what the address says, which for a plain address is public" {
+    "the fixture defaults to the placeholder client" {
         TestUser.create(boot(), "fixture-plain@example.com").selfClient() shouldBe CL.public
     }
 
@@ -60,18 +60,20 @@ class UserClientTest : StringSpec({
         envelope[EP.errorMessage].toOptStr()!! shouldContain CL.hub
     }
 
-    // --- a registration, which is read ------------------------------------------
-
-    "a plus tag on a controlled domain puts the new user in that client" {
-        TestUser.register(boot(), "reg+hub@example.com", "reghub").selfClient() shouldBe CL.hub
-    }
-
-    "an address naming a client this node does not carry falls back to public" {
-        TestUser.register(boot(), "reg+nosuch@example.com", "regnosuch").selfClient() shouldBe CL.public
-    }
+    // --- a registration, which lands in public ------------------------------------
 
     "an ordinary address is a public user, as it always was" {
         TestUser.register(boot(), "reg-plain@example.com", "regplain").selfClient() shouldBe CL.public
+    }
+
+    // The tag no longer provisions (issue #750): neither the client nor the persona it once named is read. A
+    // tagged address on a controlled domain is simply not the deployment's own person -- an ordinary member of
+    // `public`, with no grant.
+    "a plus tag on a controlled domain no longer names a client or a persona" {
+        val user = TestUser.register(boot(), "reg+hub%admin@example.com", "reghubadmin")
+        user.selfClient() shouldBe CL.public
+        user.selfRoles() shouldContain ROLE.user
+        user.selfRoles() shouldNotContain ROLE.admin
     }
 
     // --- the administrator's choice, on create only ------------------------------
@@ -125,37 +127,5 @@ class UserClientTest : StringSpec({
         val admin = TestUser.createFullAdmin(cxt, "create-default@example.com")
         val made = admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to "created-default@other.test"))
         made[ADF.client].toOptStr() shouldBe admin.selfClient()
-    }
-
-    // --- what a persona grants, and what it cannot -------------------------------
-
-    "a persona grants its rung" {
-        val user = TestUser.register(boot(), "reg+hub%admin@example.com", "reghubadmin")
-        user.selfClient() shouldBe CL.hub
-        user.selfRoles() shouldContain ROLE.admin
-    }
-
-    // The inversion: a `+` tag used to mean only *not an admin*. A client with no persona still is not one --
-    // which is the half that reads backwards and so is worth asserting on its own.
-    "a client with no persona is an ordinary user" {
-        val user = TestUser.register(boot(), "reg+hub-plain@example.com", "reghubplain")
-        user.selfRoles() shouldNotContain ROLE.admin
-        user.selfRoles() shouldContain ROLE.user
-    }
-
-    // Structural rather than a check: `RoleLadder.rolesAtLevel` composes a level from the ladder plus the
-    // capabilities already held, and a newly provisioned user holds none -- so no persona can name its way to
-    // a capability. This is the escalation ceiling of the whole email convention.
-    "a persona cannot grant a capability, allClients least of all" {
-        val user = TestUser.register(boot(), "reg+hub%allClients@example.com", "reghuballclients")
-        user.selfRoles() shouldNotContain ROLE.allClients
-        user.selfRoles() shouldNotContain ROLE.admin
-        user.selfRoles() shouldContain ROLE.user
-    }
-
-    "a persona that names nothing on the ladder makes an ordinary user" {
-        val user = TestUser.register(boot(), "reg+hub%wizard@example.com", "reghubwizard")
-        user.selfRoles() shouldContain ROLE.user
-        user.selfRoles() shouldNotContain ROLE.admin
     }
 })

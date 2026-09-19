@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import react.FC
@@ -46,7 +47,7 @@ val UserTable = FC<UserTableProps> { props ->
         tableLayout = "fixed"
         pagination = false
         rowKey = "key"
-        columns = buildList {
+        val cols = buildList {
             add(column("Id", idColumn, columnWidths[idColumn]))
             // The search columns, straight from the shared spec -- label, sortability, and order included.
             for (spec in userSearchFieldSpecs) {
@@ -61,7 +62,17 @@ val UserTable = FC<UserTableProps> { props ->
             add(column("Type", typeColumn, columnWidths[typeColumn]))
             add(column("Roles", rolesColumn, columnWidths[rolesColumn]))
             add(column("Status", statusColumn, columnWidths[statusColumn]))
-        }.toTypedArray()
+        }
+        // The columns that identify a user stay in view while the rest scroll (issue #750): who this is on the
+        // left, and whether they are live on the right. antd pins a column only when the table has an explicit
+        // horizontal extent, so `scroll.x` is the declared widths' sum -- under it the middle scrolls inside the
+        // card; above it the surplus is shared out as before.
+        for (c in cols) {
+            pinnedSide(c.dataIndex as String)?.let { c.fixed = it }
+        }
+        columns = cols.toTypedArray()
+        val total = cols.sumOf { (it.width as? Int) ?: 0 }
+        scroll = js("({ x: total })")
         dataSource = props.users.map { user ->
             val row: dynamic = js("({})")
             row.key = user.userId.toString()
@@ -74,21 +85,16 @@ val UserTable = FC<UserTableProps> { props ->
             }
             row.type = if (user.isEntity) "Business" else "Person"
             row.roles = user.roles.joinToString(", ")
-            row.status = buildList {
-                // A permanently-deleted tombstone reads as "deleted", not "disabled" -- it is disabled, but
-                // saying only that would hide that it is the irreversible kind and cannot be re-enabled.
-                add(if (user.deleted) "deleted" else if (user.enabled) "enabled" else "disabled")
-                if (user.hasPassword) add("password set")
-            }.joinToString(", ")
+            row.status = statusWords(user).joinToString(", ")
             row
         }.toTypedArray()
-        // A header click re-sorts on the server. `sortDirections` on each sortable column keeps the cycle to
-        // ascend<->descend (never "none"), so `order` is always defined and the field maps straight to a sort key.
+        // A header click re-sorts on the server. antd's cycle on a sortable column is ascend, descend, then
+        // *none* -- the third click, which its tooltip announces as "Click to cancel sorting", hands back a null
+        // order. Cancelling means the default order, not no order (the listing always has one), so that click
+        // goes back to the default key and direction rather than being dropped, which is what it used to be.
         onChange = { _, _, sorter ->
-            val field = sorter.field as? String
-            val order = sorter.order as? String
-            if (field != null && order != null) {
-                props.onSort(field, order == "descend")
+            sortAfterHeaderClick(sorter.field as? String, sorter.order as? String)?.let { (field, descending) ->
+                props.onSort(field, descending)
             }
         }
         // The whole row is the selection target; look the user back up by the key the row carries.
@@ -117,13 +123,45 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
     // The account's own name; an unnamed account shows the placeholder rather than the username standing in.
     USF.name -> user.name?.takeIf { it.isNotBlank() } ?: "—"
     USF.client -> user.client
+    // Which of a person's users this is (issue #750): the persona's label, and the personId when there is one.
+    USF.persona -> personaCell(user.persona, user.personId)
     // The three tracked dates the console shows (issue #462). A dash rather than a blank: "never" is a fact
     // about the account -- never logged in, never edited -- and an empty cell reads as a rendering failure.
     USF.lastEdited.at -> user.lastEditedAt?.let { formatTimestamp(it) } ?: "—"
     USF.lastLoggedIn.at -> user.lastLoggedInAt?.let { formatTimestamp(it) } ?: "—"
+    // Absent means unclaimed (issue #750), which the Status column also says in a word.
+    USF.registered.at -> user.registeredAt?.let { formatTimestamp(it) } ?: "—"
     USF.activated.at -> user.activatedAt?.let { formatTimestamp(it) } ?: "—"
     else -> unmappedCell
 }
+
+/**
+ * What a column-header click sorts by: the clicked [field] in the [order] antd reports (`ascend` / `descend`),
+ * or -- for the cancel click, which antd reports as a null order -- the console's default order. Null when the
+ * click named no field, which is not a sort. Pure, covered under `jsNodeTest`.
+ */
+fun sortAfterHeaderClick(field: String?, order: String?): Pair<String, Boolean>? = when {
+    field == null -> null
+    order == null -> defaultUserSortKey to defaultUserSortDescending
+    else -> field to (order == "descend")
+}
+
+/**
+ * The Status column's words. A permanently-deleted tombstone reads as "deleted", not "disabled" -- it is
+ * disabled, but saying only that would hide that it is the irreversible kind and cannot be re-enabled. A user
+ * nobody has claimed yet reads "unclaimed" (issue #750): the one thing an administrator who provisioned it
+ * for somebody else wants to know, and not something the activated date says, since that is stamped at
+ * creation. Pure, covered under `jsNodeTest`.
+ */
+fun statusWords(user: AdminUser): List<String> = buildList {
+    add(if (user.deleted) "deleted" else if (user.enabled) "enabled" else "disabled")
+    if (!user.registered && !user.deleted) add("unclaimed")
+    if (user.hasPassword) add("password set")
+}
+
+/** The Persona column's value: `Member`, `Admin`, `Member B`. Pure, covered under `jsNodeTest`. */
+fun personaCell(persona: String, personId: String): String =
+    if (personId.isEmpty()) PERSONA.label(persona) else "${PERSONA.label(persona)} $personId"
 
 /** What [cellValue] returns for a spec field with no display branch -- the tell `UserCellValueTest` catches. */
 const val unmappedCell = "(?)"
@@ -134,6 +172,18 @@ private const val idColumn = "userId"
 private const val typeColumn = "type"
 private const val rolesColumn = "roles"
 private const val statusColumn = "status"
+
+/**
+ * Which edge a column is pinned to while the middle scrolls, or null for one that scrolls (issue #750). The
+ * columns that say *who* -- id, email, name, client, persona -- hold the left; the one that says whether they
+ * are live holds the right; the dates, type and roles are what you scroll to read. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun pinnedSide(dataIndex: String): String? = when (dataIndex) {
+    idColumn, USF.email, USF.name, USF.client, USF.persona -> "left"
+    statusColumn -> "right"
+    else -> null
+}
 
 /**
  * Column widths (a presentation detail, so front-end only) keyed by the spec field name; absent = auto.
@@ -157,15 +207,17 @@ private val columnWidths: Map<String, Int> = mapOf(
     // the right column to spend a second line on: it is the one whose content has no bound, and the row is
     // clickable if the whole of it is wanted.
     USF.email to 190, USF.name to 130, USF.client to 85,
+    // `Member B` at its widest; taken from the email column's share.
+    USF.persona to 95,
     // Fixed-width content, so these are the figures that must not be shaved: `2026-08-27 19:23 UTC` measures
     // 153px and never varies. Everything else here was sized around them.
-    USF.lastEdited.at to 175, USF.lastLoggedIn.at to 175, USF.activated.at to 175,
+    USF.lastEdited.at to 175, USF.lastLoggedIn.at to 175, USF.registered.at to 175, USF.activated.at to 175,
     // Bounded vocabularies: "Person"/"Business", and "enabled"/"disabled"/"deleted".
     typeColumn to 80, statusColumn to 85,
-    // A list, so it is the other one that may wrap. Sized so that it does not at the case that actually
-    // occurs -- `user, admin, allClients`, which is what a full administrator holds and measures 159px. The
-    // 15px it needed over the obvious figure came from `Client` and `Type`, both of which had headroom.
-    rolesColumn to 160,
+    // A list, so it is the other one that may wrap -- and now does, on the rows that hold three roles
+    // (`user, admin, allClients`, a full administrator) or a long-named one, which are the minority. The 40px
+    // it gave up went to the Registered column (issue #750); two lines on a few rows beat a scrollbar on all.
+    rolesColumn to 120,
 )
 
 /** Builds an antd column config `{ title, dataIndex, key, width? }`. */

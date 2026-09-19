@@ -3,20 +3,16 @@ package com.dynamicruntime.common.user
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.gedra.ClientService
 
 /** Constants for the address conventions (issue #352). */
 @Suppress("ConstPropertyName")
 object ADR {
-    /** Introduces a persona, and is one of the characters that ends a client id. */
-    const val personaChar = '%'
-
     /**
      * The domain reserved for examples, which is controlled everywhere but production.
      *
      * Reserved by RFC 2606 precisely so that nobody can own it, which is what makes it safe to treat as ours.
      * Excluded in production for the same reason it is safe elsewhere: an address nobody can receive mail at
-     * should not be able to name a client on a deployment that has real ones.
+     * should not be able to earn a grant on a deployment that has real ones.
      */
     const val exampleDomain = "example.com"
 
@@ -29,71 +25,36 @@ object ADR {
 }
 
 /**
- * What a **controlled** address says about the user it creates: which client, and which persona (issue #352).
+ * What a **controlled** address says about the user it creates (issue #352): whether it is one of the
+ * deployment's own, and so may earn the auto-admin grant.
  *
  * Two domains are controlled -- the deployment's configured admin domain, and [ADR.exampleDomain] outside
- * production -- and on those two the local part's `+` tag stops being an arbitrary label and starts carrying
- * meaning: `user1+acme%admin@example.com` is an `admin` of `acme`. Anywhere else a `+` tag means nothing at
- * all, exactly as it did before.
+ * production. That is all an address says now. The `+client%persona` tags that once named a client and a
+ * persona on these domains were **retired** in issue #750: an administrator provisions a user with a persona
+ * and a personId through the console, and a person proves such a user by invitation (phase E), so an address
+ * no longer needs to carry either. What survives of the convention is [AdminRules.isAutoAdminAddress]'s
+ * no-tag rule -- a `+` tag still says "not the deployment's own person", and nothing more.
  *
- * This is the parsing half only. What a persona *grants* is [AdminRules]' business, which is the division the
- * design draws: an address can say who somebody is, and only the rules say what that is worth. It is also why
- * a persona is deliberately not a role -- whatever the vocabulary grows into, an address can never mint a
- * caller with global scope.
- *
- * **This supersedes the rule where a `+` tag disqualified an address from auto-admin**, and the inversion is
- * the thing to be careful about: an account deliberately created as a non-admin under the old rule reads as a
- * client assignment under the new one.
+ * What a controlled address *grants* is [AdminRules]' business, which is the division the design draws: an
+ * address can say who somebody is, and only the rules say what that is worth.
  */
 object AddressRules {
     /**
-     * The client and persona [address] names, both null when it names neither or is not controlled.
-     *
-     * The domain check comes first, so an ordinary user at an ordinary domain can plus-address as freely as
-     * they always could and nothing here looks at it.
+     * The client a self-registered user lands in: [CL.public], the placeholder client for a person who has not
+     * yet been invited anywhere. The address used to be able to name one (retired, issue #750); the request's
+     * host will be able to, later (the "default client" rule the Google sign-in and the registration share).
+     * Kept as a function so those callers name the seam rather than the constant.
      */
-    fun tagsFor(cxt: KdrCxt, address: String): AddressTags {
-        if (!isControlledDomain(cxt, address)) {
-            return AddressTags.none
-        }
-        return readTags(address)
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun defaultClient(cxt: KdrCxt): String = CL.public
 
     /**
-     * The client a user created with [address] belongs to.
-     *
-     * A named client this node does not carry falls back to [CL.public], logging a warning and otherwise
-     * staying silent. Deliberately lenient, and the opposite of what the fixture does with an explicit client:
-     * there is a person on the other end of a registration who cannot be told to fix their address, and
-     * refusing the account teaches them nothing. Marked in the design as likely to evolve.
-     *
-     * The check is *present*, not *known*: a client this deployment declares but does not enable here is one
-     * whose users cannot get in, so putting somebody in it would be creating an account that does not work.
-     *
-     * This is the one place the `user` package reaches into `gedra`, for `ClientService`. The registry is
-     * foundational enough that user creation depending on it reads the right way round; keeping it to a single
-     * file is what stops that being an argument anybody has to have again.
-     */
-    fun clientForNewUser(cxt: KdrCxt, address: String): String {
-        val named = tagsFor(cxt, address).clientId ?: return CL.public
-        val clients = ClientService.get(cxt)
-        if (clients.isPresent(named)) {
-            return named
-        }
-        LogAuth.warn(cxt) {
-            "Address '$address' names the client '$named', which this node does not carry; " +
-                "creating the user in '${CL.public}' instead."
-        }
-        return CL.public
-    }
-
-    /**
-     * Whether [address] sits on a domain whose `+` tags this deployment reads.
+     * Whether [address] sits on a domain this deployment treats as its own.
      *
      * Matched against the address's **domain part only**, and against a subdomain of it, exactly as
      * [AdminRules.isAutoAdminAddress] does -- a bare suffix test over the whole address would make
      * `notacme.com` match a configured `acme.com`, which is how somebody buys an admin account for the price
-     * of a domain registration. The same mistake would here buy a choice of client.
+     * of a domain registration.
      */
     fun isControlledDomain(cxt: KdrCxt, address: String): Boolean {
         val domain = domainOf(address) ?: return false
@@ -111,7 +72,7 @@ object AddressRules {
      *
      * `email_verified` plus a matching address domain is deliberately **not** enough. A Google *consumer*
      * account can be registered against an arbitrary address -- ownership proven by receiving mail there, which
-     * a stale alias, a forward or a catch-all can also do -- and it presents `email_verified: true` with **no**
+     * a stale alias, a forward, or a catch-all can also do -- and it presents `email_verified: true` with **no**
      * `hd`. Only a Workspace account carries `hd`, and Google says that claim, being inside the signed token,
      * is the one that may be trusted. So the perimeter requires it, matched **exactly** against the configured
      * domain: unlike [isControlledDomain]'s subdomain latitude for *addresses*, `eu.acme.com` does not satisfy
@@ -131,38 +92,6 @@ object AddressRules {
         return hd == configured
     }
 
-    /**
-     * Reads the tags out of [address] **without** checking the domain -- the parsing on its own, which is what
-     * a test of the conventions wants to exercise. Callers deciding anything want [tagsFor].
-     *
-     * The client id is read up to the first character a client id could not hold, so
-     * `user1+acme#featureX@example.com` names `acme` and nothing is refused for the rest. A persona is read
-     * only when that terminating character is [ADR.personaChar], because a persona is defined as a suffix on
-     * the client id rather than a tag of its own.
-     */
-    fun readTags(address: String): AddressTags {
-        val at = address.lastIndexOf(ADMR.atChar)
-        val local = if (at <= 0) return AddressTags.none else address.substring(0, at)
-        val plus = local.indexOf(ADMR.plusAddressChar)
-        if (plus < 0) {
-            return AddressTags.none
-        }
-        val tag = local.substring(plus + 1)
-        val idEnd = idEndIn(tag)
-        // Empty covers both a bare `+` and a tag opening with something a client id cannot start with, which
-        // are the same answer: this address names no client, whatever else it may be doing.
-        if (idEnd == 0) {
-            return AddressTags.none
-        }
-        val clientId = tag.substring(0, idEnd)
-        if (idEnd >= tag.length || tag[idEnd] != ADR.personaChar) {
-            return AddressTags(clientId, null)
-        }
-        val personaTag = tag.substring(idEnd + 1)
-        val personaEnd = idEndIn(personaTag)
-        return AddressTags(clientId, if (personaEnd == 0) null else personaTag.substring(0, personaEnd))
-    }
-
     /** [address]'s domain part, lower-cased, or null when it has no usable one. */
     private fun domainOf(address: String): String? {
         val trimmed = address.trim().lowercase()
@@ -175,50 +104,4 @@ object AddressRules {
 
     private fun matches(domain: String, controlled: String): Boolean =
         domain == controlled || domain.endsWith(ADMR.domainSep + controlled)
-
-    /**
-     * How far into [tag] a legal client id runs: zero when it does not start with one.
-     *
-     * The same charset `GedraId` holds a client to, spelled out here rather than shared, because the two are
-     * answering different questions -- that one refuses a bad id, this one finds where a good one stops. ASCII
-     * on purpose, as there: a client id admitting Cyrillic lookalikes would be a way to write two addresses
-     * that read identically to a person and name different clients.
-     */
-    private fun idEndIn(tag: String): Int {
-        if (tag.isEmpty() || !(tag[0].isAsciiLetter() || tag[0] == '_')) {
-            return 0
-        }
-        var i = 1
-        while (i < tag.length && (tag[i].isAsciiLetter() || tag[i] in '0'..'9' || tag[i] == '_')) {
-            i++
-        }
-        return i
-    }
-
-    private fun Char.isAsciiLetter() = this in 'a'..'z' || this in 'A'..'Z'
-}
-
-/**
- * What a controlled address named: a client, and a persona within it. Both absent is the ordinary case.
- *
- * A persona without a client is not representable, which is the shape the conventions actually have -- the
- * persona is read as a suffix on the client id, so there is nowhere for one to appear without the other.
- */
-class AddressTags(
-    /** The client this address names, or null when it names none. */
-    val clientId: String?,
-    /**
-     * The persona this address names within [clientId], or null for an ordinary user.
-     *
-     * **A client with no persona is an ordinary user** -- `user1+acme@example.com` is a normal user of `acme`,
-     * not an administrator of it. Worth saying because the reverse is the intuitive reading and it is wrong.
-     */
-    val persona: String?,
-) {
-    override fun toString(): String = "client=$clientId, persona=$persona"
-
-    companion object {
-        /** What an address that names neither yields; shared, since it is by far the common answer. */
-        val none: AddressTags = AddressTags(null, null)
-    }
 }

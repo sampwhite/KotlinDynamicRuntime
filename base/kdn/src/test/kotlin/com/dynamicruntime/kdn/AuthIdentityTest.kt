@@ -80,17 +80,18 @@ class AuthIdentityTest : StringSpec({
         browser.sendJsonPostRequest(AEP.loginByPassword, mapOf(AFLD.loginId to loginId, AFLD.password to password))
 
     "registering through the real flow creates a verified identity and one user pointing at it" {
-        val user = TestUser.register(cxt, "ident-reg@example.com", "identreg")
-        val identity = users.queryIdentityByAddress(cxt, "ident-reg@example.com").shouldNotBeNull()
+        // An ordinary domain: example.com is a controlled one here, whose registrations become administrators.
+        val user = TestUser.register(cxt, "ident-reg@other.test", "identreg")
+        val identity = users.queryIdentityByAddress(cxt, "ident-reg@other.test").shouldNotBeNull()
         identity.verifiedAt.shouldNotBeNull()
         val row = users.queryByUserId(cxt, user.userId).shouldNotBeNull()
         row.identityId shouldBe identity.identityId
-        row.primaryId shouldBe "ident-reg@example.com" // derived through the identity, not stored on the row
+        row.primaryId shouldBe "ident-reg@other.test" // derived through the identity, not stored on the row
         row.persona shouldBe PERSONA.member
         row.personId shouldBe ""
         users.usersOfIdentity(cxt, identity.identityId).map { it.userId } shouldBe listOf(user.userId)
         // The address resolves to that user: the identity's default (its only one).
-        users.queryByPrimaryId(cxt, "ident-reg@example.com").shouldNotBeNull().userId shouldBe user.userId
+        users.queryByPrimaryId(cxt, "ident-reg@other.test").shouldNotBeNull().userId shouldBe user.userId
     }
 
     "an admin-created user gets an identity that is not yet verified, and can still log in by code" {
@@ -173,7 +174,8 @@ class AuthIdentityTest : StringSpec({
         users.queryByUserId(cxt, original.userId).shouldNotBeNull().enabled shouldBe false
         // Provisioning the same key again is not a create: the same user comes back, enabled and unregistered
         // (placeholder username, no password, the provisioned roles), its name kept.
-        val recovered = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user), createdAt = cxt.now())
+        // The original was created at the admin level, so it is an admin-persona user: the key to provision again.
+        val recovered = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user), createdAt = cxt.now(), persona = PERSONA.admin)
         recovered shouldBe original.userId
         val row = users.queryByUserId(cxt, recovered).shouldNotBeNull()
         row.enabled shouldBe true

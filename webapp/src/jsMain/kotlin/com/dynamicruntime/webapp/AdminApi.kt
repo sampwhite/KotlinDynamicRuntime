@@ -11,6 +11,7 @@ import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADF
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.userSearchFieldSpecs
@@ -60,6 +61,10 @@ class AdminUser(
     val roles: List<String>,
     /** The client they belong to (issue #352). Fixed at creation: moving one would strand their content. */
     val client: String,
+    /** The user's persona (issue #750), frozen at creation; `member` unless said otherwise. */
+    val persona: String = PERSONA.member,
+    /** The UAT batch discriminator (issue #747); empty for the ordinary user. */
+    val personId: String = "",
     /** Their primary organization within the client, or null when they have none (issue #225). */
     val org: String?,
     /** Whether this account belongs to a business rather than a person. */
@@ -68,6 +73,12 @@ class AdminUser(
     val name: String?,
     val enabled: Boolean,
     val hasPassword: Boolean,
+    /**
+     * Whether the person has claimed this user (issue #749): a code used for it, the fixture, or a user they
+     * made for themself. False for one an administrator provisioned that nobody has logged into yet. Read off
+     * the registered date, since that is what records the claim.
+     */
+    val registered: Boolean = true,
     /** Whether the account was permanently deleted -- an obfuscated tombstone that can no longer be edited. */
     val deleted: Boolean,
     /**
@@ -79,6 +90,8 @@ class AdminUser(
     val lastEditedAt: String? = null,
     val lastLoggedInAt: String? = null,
     val activatedAt: String? = null,
+    /** When the person claimed the user (issue #750); absent while nobody has, which is what [registered] reads. */
+    val registeredAt: String? = null,
 ) {
     /**
      * This user's access level: the highest rung of [RoleLadder] they hold, which is what the Users page's
@@ -165,10 +178,15 @@ object AdminApi {
     suspend fun createUser(
         primaryId: String, username: String?, roles: List<String>?, org: String?,
         isEntity: Boolean = false, name: String? = null, client: String? = null, enabled: Boolean = true,
+        persona: String? = null, personId: String? = null,
     ): AdminUser {
         val body = buildMap<String, Any?> {
             put(ADF.primaryId, primaryId.trim())
             username?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.username, it) }
+            // The persona and personId (issue #750), sent only when chosen; the backend defaults to `member`
+            // and the ordinary (empty) personId.
+            persona?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.persona, it) }
+            personId?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.personId, it) }
             roles?.takeIf { it.isNotEmpty() }?.let { put(ADF.roles, it) }
             org?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.org, it) }
             // Sent only when chosen, so an administrator who never saw the selector gets the backend's own
@@ -262,11 +280,15 @@ object AdminApi {
         username = this[ADF.username] as? String ?: "",
         roles = this[ADF.roles].toJsonListOfStrings(),
         client = this[ADF.client] as? String ?: "",
+        persona = this[ADF.persona] as? String ?: PERSONA.member,
+        personId = this[ADF.personId] as? String ?: "",
         org = this[ADF.org] as? String,
         isEntity = this[ADF.isEntity] == true,
         name = this[ADF.name] as? String,
         enabled = this[ADF.enabled] == true,
         hasPassword = this[ADF.hasPassword] == true,
+        registered = this[USF.registered.at] != null,
+        registeredAt = this[USF.registered.at] as? String,
         deleted = this[ADF.deleted] == true,
         updatedAt = this[ADF.updatedAt] as? String,
         lastEditedAt = this[USF.lastEdited.at] as? String,
@@ -274,6 +296,13 @@ object AdminApi {
         activatedAt = this[USF.activated.at] as? String,
     )
 }
+
+/**
+ * The console's default order: most recently edited first. One place, since the query default, the hash
+ * decode and "cancel sorting" on a column header all have to mean the same thing by it.
+ */
+val defaultUserSortKey: String = USF.lastEdited.at
+const val defaultUserSortDescending = true
 
 /** A from/to bound over an instant (ISO-8601 strings), for a [UserFilterKind.dateRange] field. */
 class DateRange(val after: String? = null, val before: String? = null) {
@@ -291,8 +320,8 @@ class DateRange(val after: String? = null, val before: String? = null) {
 class UserSearchQuery(
     val textTerms: Map<String, String> = emptyMap(),
     val ranges: Map<String, DateRange> = emptyMap(),
-    val sortBy: String = USF.lastEdited.at,
-    val descending: Boolean = true,
+    val sortBy: String = defaultUserSortKey,
+    val descending: Boolean = defaultUserSortDescending,
     /**
      * A single free-text term matched across email, name, and username at once (issue #581) -- the OR term the
      * scope-bar type-ahead sends, distinct from the per-field [textTerms] which AND. Blank is no constraint.

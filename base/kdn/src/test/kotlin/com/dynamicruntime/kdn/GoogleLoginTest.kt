@@ -116,10 +116,12 @@ class GoogleLoginTest : StringSpec({
         val cxt = bootGoogle("googClaim", "googClaimTest")
         val users = UserService.get(cxt)
         val admin = TestUser.createFullAdmin(cxt, "goog-claim-admin@example.com")
-        // Provisioned by an administrator: the public client, the ordinary persona, unregistered.
-        val made = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "claimed@example.com"))[ADF.userId] as Long
+        // Provisioned by an administrator: the public client, the member persona, unregistered. An ordinary
+        // domain, since on the controlled `example.com` the sign-in's initial roles are an administrator's and
+        // the rule-chosen persona is then `admin` -- a different key from the member user made here.
+        val made = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "claimed@other.test"))[ADF.userId] as Long
         users.queryByUserId(cxt, made).shouldNotBeNull().isRegistered shouldBe false
-        val info = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-claim", "claimed@example.com"))
+        val info = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-claim", "claimed@other.test"))
         // The same user, now the person's -- not a second one beside it.
         info[UPF.userId].toOptLong() shouldBe made
         users.queryByUserId(cxt, made).shouldNotBeNull().isRegistered shouldBe true
