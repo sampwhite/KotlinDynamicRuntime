@@ -297,6 +297,13 @@ object AdminApi {
     )
 }
 
+/**
+ * The console's default order: most recently edited first. One place, since the query default, the hash
+ * decode and "cancel sorting" on a column header all have to mean the same thing by it.
+ */
+val defaultUserSortKey: String = USF.lastEdited.at
+const val defaultUserSortDescending = true
+
 /** A from/to bound over an instant (ISO-8601 strings), for a [UserFilterKind.dateRange] field. */
 class DateRange(val after: String? = null, val before: String? = null) {
     val isEmpty: Boolean get() = after == null && before == null
@@ -313,8 +320,8 @@ class DateRange(val after: String? = null, val before: String? = null) {
 class UserSearchQuery(
     val textTerms: Map<String, String> = emptyMap(),
     val ranges: Map<String, DateRange> = emptyMap(),
-    val sortBy: String = USF.lastEdited.at,
-    val descending: Boolean = true,
+    val sortBy: String = defaultUserSortKey,
+    val descending: Boolean = defaultUserSortDescending,
     /**
      * A single free-text term matched across email, name, and username at once (issue #581) -- the OR term the
      * scope-bar type-ahead sends, distinct from the per-field [textTerms] which AND. Blank is no constraint.

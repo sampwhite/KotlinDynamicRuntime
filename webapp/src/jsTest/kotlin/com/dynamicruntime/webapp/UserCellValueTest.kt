@@ -49,6 +49,15 @@ class UserCellValueTest {
         )))
     }
 
+    /** antd's third click on a header cancels the sort; that must land on the default order, not be dropped. */
+    @Test
+    fun cancellingASortReturnsToTheDefaultOrder() {
+        assertEquals("activatedAt" to false, sortAfterHeaderClick("activatedAt", "ascend"))
+        assertEquals("activatedAt" to true, sortAfterHeaderClick("activatedAt", "descend"))
+        assertEquals(defaultUserSortKey to defaultUserSortDescending, sortAfterHeaderClick("activatedAt", null))
+        assertEquals(null, sortAfterHeaderClick(null, null))
+    }
+
     @Test
     fun thePersonaColumnShowsTheLabelAndThePersonId() {
         assertEquals("Admin B", personaCell("admin", "B"))

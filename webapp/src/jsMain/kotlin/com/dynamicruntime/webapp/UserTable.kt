@@ -78,13 +78,13 @@ val UserTable = FC<UserTableProps> { props ->
             row.status = statusWords(user).joinToString(", ")
             row
         }.toTypedArray()
-        // A header click re-sorts on the server. `sortDirections` on each sortable column keeps the cycle to
-        // ascend<->descend (never "none"), so `order` is always defined and the field maps straight to a sort key.
+        // A header click re-sorts on the server. antd's cycle on a sortable column is ascend, descend, then
+        // *none* -- the third click, which its tooltip announces as "Click to cancel sorting", hands back a null
+        // order. Cancelling means the default order, not no order (the listing always has one), so that click
+        // goes back to the default key and direction rather than being dropped, which is what it used to be.
         onChange = { _, _, sorter ->
-            val field = sorter.field as? String
-            val order = sorter.order as? String
-            if (field != null && order != null) {
-                props.onSort(field, order == "descend")
+            sortAfterHeaderClick(sorter.field as? String, sorter.order as? String)?.let { (field, descending) ->
+                props.onSort(field, descending)
             }
         }
         // The whole row is the selection target; look the user back up by the key the row carries.
@@ -123,6 +123,17 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
     USF.registered.at -> user.registeredAt?.let { formatTimestamp(it) } ?: "—"
     USF.activated.at -> user.activatedAt?.let { formatTimestamp(it) } ?: "—"
     else -> unmappedCell
+}
+
+/**
+ * What a column-header click sorts by: the clicked [field] in the [order] antd reports (`ascend` / `descend`),
+ * or -- for the cancel click, which antd reports as a null order -- the console's default order. Null when the
+ * click named no field, which is not a sort. Pure, covered under `jsNodeTest`.
+ */
+fun sortAfterHeaderClick(field: String?, order: String?): Pair<String, Boolean>? = when {
+    field == null -> null
+    order == null -> defaultUserSortKey to defaultUserSortDescending
+    else -> field to (order == "descend")
 }
 
 /**

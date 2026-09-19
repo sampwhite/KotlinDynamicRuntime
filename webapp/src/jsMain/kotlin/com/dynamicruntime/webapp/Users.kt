@@ -62,8 +62,8 @@ val Users = FC<Props> {
     var textFilters by useState<Map<String, String>>(emptyMap())
     var rangeFilters by useState<Map<String, DateRange>>(emptyMap())
     // The sort, driven by the table's column headers. Default: newest first, as the issue specifies.
-    var sortBy by useState(USF.lastEdited.at)
-    var descending by useState(true)
+    var sortBy by useState(defaultUserSortKey)
+    var descending by useState(defaultUserSortDescending)
     // Whether the filter well is open (issue #683). View state, not search state: it is not in the URL, so a
     // shared link arrives with the well closed and the filters it carries said as chips. Tuple form so the
     // toggle is a functional update (`{ !it }`), the convention App.kt documents for its own counters.
@@ -933,7 +933,7 @@ fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery {
     return UserSearchQuery(
         textTerms = texts,
         ranges = ranges,
-        sortBy = hp[USF.sortBy]?.takeIf { userSortKeys.contains(it) } ?: USF.lastEdited.at,
+        sortBy = hp[USF.sortBy]?.takeIf { userSortKeys.contains(it) } ?: defaultUserSortKey,
         // Descending is the default; only an explicit "false" means ascending.
         descending = hp[USF.descending] != "false",
         // The any-text term (issue #581) round-trips through the hash like the other filters -- read back so a
