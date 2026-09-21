@@ -14,7 +14,6 @@ import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
 /** Constants for invitations (issue #751). */
-@Suppress("ConstPropertyName")
 object INVITE {
     /**
      * The URL a browser reaches this deployment at, for the links a mail carries. A mailed link has to name
@@ -59,7 +58,7 @@ object INVITE {
 }
 
 /**
- * The key a claim names (issue #751): the address plus the client, persona and personId, with the defaults
+ * The key a claim names (issue #751): the address plus the client, persona, and personId, with the defaults
  * applied for a blank client (`public`) and persona (`member`). Built once from the typed values and carried
  * as an object -- never round-tripped through a joined string, which a `|` in an address's local part or in a
  * free-typed client would misalign.
@@ -90,6 +89,7 @@ class ClaimKey(address: String, client: String?, persona: String?, personId: Str
     fun matches(user: AuthUserRow): Boolean =
         user.client == client && user.persona == persona && user.personId == personId && !user.isDeleted
 
+    @Suppress("ConstPropertyName")
     companion object {
         /** The most a typed client or persona may be: ids are short, and an echoed value must stay one. */
         const val maxPartLength = 64

@@ -144,7 +144,7 @@ class InvitationTest : StringSpec({
 })
 
 /**
- * Claiming an account created for you from the login page (issue #751): the address, client and persona name
+ * Claiming an account created for you from the login page (issue #751): the address, client, and persona name
  * the user, the mailed code proves the address *and* the key, and the page is no oracle -- the send always
  * answers as a success, and the mail says what matched.
  */

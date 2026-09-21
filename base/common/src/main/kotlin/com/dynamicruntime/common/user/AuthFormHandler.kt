@@ -594,7 +594,7 @@ class AuthFormHandler(
     }
 
     /**
-     * What an invitation [token] is for, before it is accepted: the address, client, persona, personId and
+     * What an invitation [token] is for, before it is accepted: the address, client, persona, personId, and
      * name of the invited user. So the page can say what accepting means, and so that merely *opening* the
      * link -- which a mail scanner does -- accepts nothing.
      */
@@ -621,7 +621,7 @@ class AuthFormHandler(
     }
 
     /**
-     * The user a [token] invites the reader to claim, or a refusal: one message for a malformed, tampered or
+     * The user a [token] invites the reader to claim, or a refusal: one message for a malformed, tampered, or
      * expired token and for a user that no longer fits it (gone, deleted, or now under another identity), and
      * another for one already claimed.
      */

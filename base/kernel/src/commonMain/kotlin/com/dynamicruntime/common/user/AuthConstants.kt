@@ -40,16 +40,16 @@ object AEP {
 
     // Invitations (issue #751), anonymous like the rest of the register/login flow: the mailed link is the
     // proof, and the person opening it has no session yet.
-    /** What an invitation token is for -- the address, client and persona -- before it is accepted. */
+    /** What an invitation token is for -- the address, client, and persona -- before it is accepted. */
     const val invitationPreview = "/auth/invitation/preview"
     /** Accept an invitation: proves the address, registers the invited user, and logs in as it. */
     const val invitationAccept = "/auth/invitation/accept"
 
     // Claiming an account created for you (issue #751), from the login page with nothing but what the
     // invitation said: the address, the client and the persona name the user; a mailed code proves the address.
-    /** Mails a verification code for the user the address, client and persona name -- or a mail saying no user matches. */
+    /** Mails a verification code for the user the address, client, and persona name -- or a mail saying no user matches. */
     const val claimSendVerify = "/auth/claim/sendVerify"
-    /** Registers (and logs in as) the user the address, client and persona name, with the mailed code. */
+    /** Registers (and logs in as) the user the address, client, and persona name, with the mailed code. */
     const val claimAccount = "/auth/claim/register"
 }
 
@@ -94,7 +94,7 @@ object AFLD {
     const val users = "users"
 
     /**
-     * On registration (issue #751), for an `allClients` caller only: which client, persona and personId the
+     * On registration (issue #751), for an `allClients` caller only: which client, persona, and personId the
      * new user takes. Anyone else registers into `public` as a member, and naming one of these is refused.
      */
     const val client = "client"
