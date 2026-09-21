@@ -41,6 +41,22 @@
 # +finish Create account
 # +orDivider or
 
+/- Claiming an account created for you (issue #751): the third mode of the auth flow. No choice lists -- the
+   client and persona are typed from the invitation, so an anonymous caller learns nothing about a client's
+   configuration -- and the page reports the code as sent whatever the backend found: the mail says the rest. -/
+# @claim
+# +title Claim an account created for you
+# +intro Somebody created an account for you and told you the client and the persona. Enter them with your email address, and a code will be sent to that address.
+# +emailLabel Email address
+# +clientLabel Client
+# +personaLabel Persona
+# +personaHelp As the invitation gave it: `admin`, or `member B` when it named a person id. Leave blank for `member`.
+# +sendCode Send verification code
+# +codeSent If `${user.email}` has that account, a code is on its way. Check the address, the client and the persona.
+# +codeLabel Verification code
+# +finish Claim and sign in
+# +loginLink Claim an account created for you
+
 # @verify
 # +expiresNote The code expires in fifteen minutes.
 

@@ -109,6 +109,15 @@ Current UI-config endpoints:
   link. `POST /clientAdmin/user/invite {userId}` re-sends a lapsed one (the editor offers it for an unclaimed
   user). The **register form** shows Client / Persona / Person id to an `allClients` caller only; set, they ride
   `createInitial` and the backend refuses them from anyone else.
+- **Claiming from the login page** (issue #751), since a mailed link cannot be required: the auth flow's third
+  mode, `#page=claim` ("Claim an account created for you", linked from the login page). The person types the
+  address, the client and the persona as the invitation spelled them (`admin`, `member B`; `PERSONA.splitTyped`),
+  with no choice lists so an anonymous caller learns nothing about a client. `POST /auth/claim/sendVerify`
+  **always answers as a success** and the mail says the rest: the code, or that nothing matched (acknowledging
+  the client when the address has a user there); the code is computed over the whole key, defaults applied, so
+  it cannot be replayed against another user. `POST /auth/claim/register` is a code login aimed at that user:
+  it claims an unclaimed one and simply signs in as a claimed one -- the one way to log in as a particular
+  non-default user by address alone.
 
 The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
 the envelope consistent across groups.

@@ -568,9 +568,13 @@ class AuthFormHandler(
         val token = InvitationToken(user.identityId, user.userId, cxt.now().toEpochMilliseconds() + AUTHC.invitationMillis).encode(node)
         val url = INVITE.invitationUrl(INVITE.publicUrlFor(cxt), token)
         val what = "'${user.client}' as ${PERSONA.label(user.persona)}" + (if (user.personId.isEmpty()) "" else " ${user.personId}")
+        // The recipe for the login page's "claim" path (issue #751) rides beside the link, since a link is a
+        // courtesy some mail clients and scanners spoil: the client and the persona as the page wants them typed.
         val template = $$"An account has been created for you in ${what}. Open this link to accept it and sign in: " +
-            $$"${url}\n\nThe link expires in seven days. If you were not expecting this, ignore it."
-        val text = template.evalTemplate(mapOf("what" to what, "url" to url))
+            $$"${url}\n\nOr, from the login page, choose \"Claim an account created for you\" and enter your email " +
+            $$"address with client \"${client}\" and persona \"${typed}\"; a code will be sent to you there.\n\n" +
+            "The link expires in seven days. If you were not expecting this, ignore it."
+        val text = template.evalTemplate(mapOf("what" to what, "url" to url, "client" to user.client, "typed" to PERSONA.typed(user.persona, user.personId)))
         mail.sendEmail(cxt, to = user.primaryId, subject = "You have been invited", text = text)
         LogAuth.info(cxt) { "Invited user ${user.userId} ('${user.primaryId}') to '${user.client}' as '${user.persona}'." }
         return token
@@ -618,6 +622,75 @@ class AuthFormHandler(
         }
         if (user.isRegistered) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.invitationUsed))
         return user
+    }
+
+    // --- claiming an account created for you (issue #751) ----------------------
+
+    /**
+     * The key a claim names, with the defaults applied (`public`, `member`, no personId), as one string the
+     * code is computed over -- so a code mailed for one user cannot be replayed against another of the same
+     * address, and a key mistyped at the code step fails as an incorrect code.
+     */
+    private fun claimKey(cxt: KdrCxt, address: String, client: String?, persona: String?, personId: String): String =
+        listOf(address, client?.trim()?.ifEmpty { null } ?: AddressRules.defaultClient(cxt), persona?.trim()?.ifEmpty { null } ?: PERSONA.member, personId.trim()).joinToString("|")
+
+    /** The enabled, non-deleted user of [address] under the key, or null. */
+    private fun claimedUser(cxt: KdrCxt, key: String): AuthUserRow? {
+        val (address, client, persona, personId) = key.split("|")
+        val identity = userService.queryIdentityByAddress(cxt, address) ?: return null
+        return userService.usersOfIdentity(cxt, identity.identityId)
+            .firstOrNull { it.client == client && it.persona == persona && it.personId == personId && !it.isDeleted }
+    }
+
+    /**
+     * Mails what the claim page asks for (issue #751): a verification code for the user that [address],
+     * [client] and [persona] (+ [personId]) name, or -- when nothing matches -- a mail saying so, as
+     * specifically as the inbox's owner is entitled to (that the address does have a user in that client, when
+     * it does). Either way this returns normally and the page reports a code as sent: the truth goes to the
+     * inbox, never to an anonymous caller, so the page is no oracle for who has what.
+     */
+    fun sendClaimCode(cxt: KdrCxt, address: String, client: String?, persona: String?, personId: String, formAuthToken: String) {
+        requireValidToken(cxt, formAuthToken)
+        if (!address.isEmailAddress()) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.emailInvalid))
+        requireSendAllowed(cxt, address)
+        val key = claimKey(cxt, address, client, persona, personId)
+        val (_, keyClient, keyPersona, keyPersonId) = key.split("|")
+        val where = $$"client \"${client}\" as ${persona}".evalTemplate(mapOf("client" to keyClient, "persona" to PERSONA.typed(keyPersona, keyPersonId)))
+        val user = claimedUser(cxt, key)
+        val text = if (user != null) {
+            $$"Your verification code for claiming your account in ${where} is ${code}. Enter it on the page where you asked " +
+                "for it. It expires in fifteen minutes."
+        } else {
+            val identity = userService.queryIdentityByAddress(cxt, address)
+            val inClient = identity != null && userService.usersOfIdentity(cxt, identity.identityId).any { it.client == keyClient && !it.isDeleted }
+            $$"We could not find an account for ${address} in ${where}. " + if (inClient) {
+                "This address does have an account in that client; check the persona (and person id) you were given."
+            } else {
+                "If you were invited, check the client and persona in the invitation; otherwise nothing has been created."
+            }
+        }
+        LogAuth.info(cxt) { "Claim code requested for '$address' ($where): ${if (user != null) "user ${user.userId}" else "no match"}." }
+        mail.sendEmail(
+            cxt, to = address, subject = "Claiming your account",
+            text = text.evalTemplate(mapOf("where" to where, "code" to node.computeVerifyCode(formAuthToken, key), "address" to address)),
+        )
+    }
+
+    /**
+     * Registers -- and logs in as -- the user that [address], [client] and [persona] (+ [personId]) name, on
+     * the code mailed for that key. The code proves both the address and the key, so this is a code login
+     * that lands on a *named* user: it claims an unclaimed one (registering it and verifying the identity), and
+     * simply signs in as one already claimed, which is also the one way to log in as a particular non-default
+     * user by address alone. A key that names no user is refused exactly as a wrong code is.
+     */
+    fun claimAccount(
+        cxt: KdrCxt, address: String, client: String?, persona: String?, personId: String, formAuthToken: String, verifyCode: String,
+    ): Map<String, Any?> {
+        requireValidToken(cxt, formAuthToken)
+        val key = claimKey(cxt, address, client, persona, personId)
+        verifyCodeOrThrow(cxt, key, formAuthToken, verifyCode)
+        val user = claimedUser(cxt, key) ?: throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.codeIncorrect))
+        return completeLogin(cxt, user, byCode = true)
     }
 
     // --- the switcher (issue #749) --------------------------------------------

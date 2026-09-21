@@ -142,3 +142,83 @@ class InvitationTest : StringSpec({
         (refused[EP.errorMessage] as String) shouldContain ROLE.allClients
     }
 })
+
+/**
+ * Claiming an account created for you from the login page (issue #751): the address, client and persona name
+ * the user, the mailed code proves the address *and* the key, and the page is no oracle -- the send always
+ * answers as a success, and the mail says what matched.
+ */
+class ClaimAccountTest : StringSpec({
+    val cxt = Startup.mkTestBootCxt("claim", "claimAccountTest")
+    val users = UserService.get(cxt)
+    val node = com.dynamicruntime.common.node.NodeService.get(cxt)
+
+    fun results(resp: Map<String, Any?>): Map<String, Any?> = resp[EP.results]?.toJsonMap()
+        ?: throw AssertionError("Expected a success but got ${resp[EP.status]}: ${resp[EP.errorMessage]}")
+
+    fun tokenOf(browser: TestHttpClient): String = results(browser.sendJsonGetRequest(AEP.createToken))[AFLD.formAuthToken] as String
+
+    fun sendClaim(browser: TestHttpClient, token: String, address: String, client: String?, persona: String?, personId: String? = null) =
+        browser.sendJsonPostRequest(AEP.claimSendVerify, buildMap {
+            put(AFLD.contactAddress, address); put(AFLD.formAuthToken, token)
+            client?.let { put(AFLD.client, it) }; persona?.let { put(AFLD.persona, it) }; personId?.let { put(AFLD.personId, it) }
+        })
+
+    fun claim(browser: TestHttpClient, token: String, code: String, address: String, client: String?, persona: String?, personId: String? = null) =
+        browser.sendJsonPostRequest(AEP.claimAccount, buildMap {
+            put(AFLD.contactAddress, address); put(AFLD.formAuthToken, token); put(AFLD.verifyCode, code)
+            client?.let { put(AFLD.client, it) }; persona?.let { put(AFLD.persona, it) }; personId?.let { put(AFLD.personId, it) }
+        })
+
+    /** The code the server mailed, read from the mail the way the person would. */
+    fun codeMailedTo(address: String): String {
+        val text = MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text
+        return Regex("code for claiming your account in .* is (\\S+?)\\.").find(text).shouldNotBeNull().groupValues[1]
+    }
+
+    "an invited user is claimed from the login page with the address, client and persona, and a mailed code" {
+        val admin = TestUser.createFullAdmin(cxt, "claim-admin@other.test")
+        val address = "claim-me@other.test"
+        val userId = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.client to CL.hub, ADF.persona to PERSONA.admin))[ADF.userId] as Long
+        // The invitation mail spells out the recipe for this page.
+        MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text shouldContain "client \"${CL.hub}\" and persona \"${PERSONA.admin}\""
+
+        val browser = TestHttpClient(cxt.instanceConfig)
+        val token = tokenOf(browser)
+        sendClaim(browser, token, address, CL.hub, PERSONA.admin)[EP.status].shouldBeNull()
+        val code = codeMailedTo(address)
+        // The code is bound to the key: the same code against another persona is a wrong code.
+        claim(browser, token, code, address, CL.hub, PERSONA.member)[EP.status] shouldBe EXC.badInput
+        val info = results(claim(browser, token, code, address, CL.hub, PERSONA.admin))
+        info[UPF.userId] shouldBe userId
+        users.queryByUserId(cxt, userId).shouldNotBeNull().isRegistered shouldBe true
+        users.queryIdentityByAddress(cxt, address).shouldNotBeNull().verifiedAt.shouldNotBeNull()
+        results(browser.sendJsonGetRequest(AEP.selfInfo))[UPF.userId] shouldBe userId
+    }
+
+    "a claim that matches nothing still answers as sent, and the mail says what it can" {
+        val admin = TestUser.createFullAdmin(cxt, "claim-admin2@other.test")
+        val address = "claim-none@other.test"
+        val browser = TestHttpClient(cxt.instanceConfig)
+        // No account at all: the page is told the code is on its way; the inbox is told nothing was created.
+        sendClaim(browser, tokenOf(browser), address, CL.hub, PERSONA.admin)[EP.status].shouldBeNull()
+        MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text shouldContain "could not find an account"
+        // A user in that client under another persona: the mail acknowledges the client and points at the persona.
+        admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.client to CL.hub))
+        sendClaim(browser, tokenOf(browser), address, CL.hub, PERSONA.admin)[EP.status].shouldBeNull()
+        MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text shouldContain "does have an account in that client"
+        // And a code for a key with no user behind it registers nobody, however it was obtained.
+        val token = tokenOf(browser)
+        val key = listOf(address, CL.hub, PERSONA.admin, "").joinToString("|")
+        claim(browser, token, node.computeVerifyCode(token, key), address, CL.hub, PERSONA.admin)[EP.status] shouldBe EXC.badInput
+    }
+
+    "the defaults apply, and a claimed user is simply logged into" {
+        val address = "claim-default@other.test"
+        val person = TestUser.create(cxt, address) // registered, in public, a member: the defaults name it
+        val browser = TestHttpClient(cxt.instanceConfig)
+        val token = tokenOf(browser)
+        sendClaim(browser, token, address, client = null, persona = null)[EP.status].shouldBeNull()
+        results(claim(browser, token, codeMailedTo(address), address, client = null, persona = null))[UPF.userId] shouldBe person.userId
+    }
+})

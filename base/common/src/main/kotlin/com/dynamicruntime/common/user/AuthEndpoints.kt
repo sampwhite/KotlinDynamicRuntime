@@ -3,6 +3,7 @@ package com.dynamicruntime.common.user
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.ETAG
@@ -131,6 +132,38 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             personId = req.getOptStr(AFLD.personId)?.trim() ?: "",
         )
         mapOf(AFLD.userId to userId)
+    }
+
+    // Claiming an account created for you (issue #751): the login page's path for an invited person who has
+    // nothing but what the invitation said. The client and persona are typed, never offered, and the send
+    // always answers as a success -- the mail says whether anything matched.
+    generalEndpoint(AEP.claimSendVerify, "Mails a verification code for the user an address, client and persona name.",
+        HttpMethod.POST, outputRef = ATYPE.authAck, inputFields = {
+            field(AFLD.contactAddress, "The email address the account was created for.", required = true)
+            field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.")
+            field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.")
+            field(AFLD.personId, "The person id the invitation named, when it did.") { maxLength = PERSONID.maxLength }
+            field(AFLD.formAuthToken, "The form auth token.", required = true)
+        }) { c, req ->
+        authHandler(c).sendClaimCode(
+            c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getOptStr(AFLD.client), req.getOptStr(AFLD.persona),
+            req.getOptStr(AFLD.personId)?.trim() ?: "", req.getReqStr(AFLD.formAuthToken),
+        )
+        emptyMap<String, Any?>()
+    }
+    generalEndpoint(AEP.claimAccount, "Registers and logs in as the user an address, client and persona name, with the mailed code.",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.contactAddress, "The email address the account was created for.", required = true)
+            field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.")
+            field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.")
+            field(AFLD.personId, "The person id the invitation named, when it did.") { maxLength = PERSONID.maxLength }
+            field(AFLD.formAuthToken, "The form auth token.", required = true)
+            field(AFLD.verifyCode, "The verification code mailed for this claim.", required = true)
+        }) { c, req ->
+        authHandler(c).claimAccount(
+            c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getOptStr(AFLD.client), req.getOptStr(AFLD.persona),
+            req.getOptStr(AFLD.personId)?.trim() ?: "", req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
+        )
     }
 
     // Invitations (issue #751). Preview says what the link is for and changes nothing; accept is the claim.

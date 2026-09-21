@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.passwordRuleError
@@ -20,7 +21,7 @@ import web.cssom.ClassName
 private val authScope = MainScope()
 
 external interface AuthFlowProps : Props {
-    /** "login" or "register". */
+    /** "login", "register", or "claim" (an account created for you, issue #751). */
     var mode: String
 }
 
@@ -33,6 +34,12 @@ external interface AuthFlowProps : Props {
  */
 val AuthFlow = FC<AuthFlowProps> { props ->
     val register = props.mode == "register"
+    // Claiming an account somebody created for you (issue #751): the address plus the client and persona the
+    // invitation named, typed rather than chosen, then a mailed code -- the login flow aimed at one named user.
+    val claim = props.mode == HMENU.pageClaim
+    // The plain login mode: the one with the password path, the set-a-password code, and Google sign-in --
+    // none of which belongs on the register or claim pages.
+    val login = !register && !claim
 
     var config by useState<AuthConfig?>(null)
     var copy by useState(Copy.empty)
@@ -49,6 +56,9 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     var placePersona by useState("")
     var placePersonId by useState("")
     var clientChoices by useState<List<ClientChoice>>(emptyList())
+    // The claim's key beside the address: the client, and the persona as typed (`admin`, `member B`).
+    var claimClient by useState("")
+    var claimPersona by useState("")
     // The form token, set once a verification code has been sent, also marks the "enter the code" step.
     var token by useState<String?>(null)
     var error by useState<DisplayError?>(null)
@@ -92,6 +102,8 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         placeClient = ""
         placePersona = ""
         placePersonId = ""
+        claimClient = ""
+        claimPersona = ""
         token = null
         error = null
         devFilled = false
@@ -118,7 +130,11 @@ val AuthFlow = FC<AuthFlowProps> { props ->
 
     fun goHomeSignedIn() = navigateHash(emptyList())
 
-    val ns = if (register) "register" else "login"
+    val ns = when {
+        register -> "register"
+        claim -> "claim"
+        else -> "login"
+    }
 
     /**
      * Emails a verification code. [withPassword] asks for the code that also *sets* a password (login only):
@@ -135,7 +151,11 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         settingPassword = withPassword
         run {
             val tk = AuthApi.createToken()
-            if (register) AuthApi.sendVerifyNewContact(id, tk) else AuthApi.sendVerifyUser(id, tk, withPassword)
+            when {
+                register -> AuthApi.sendVerifyNewContact(id, tk)
+                claim -> AuthApi.sendClaimCode(id, claimClient, claimPersona, tk)
+                else -> AuthApi.sendVerifyUser(id, tk, withPassword)
+            }
             token = tk
             // Local dev only: when email is simulated (per the config), read the code back and pre-fill it.
             // Gated on the flag so a real-email deployment never calls the (404) dev endpoint.
@@ -165,6 +185,8 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                         isEntity = isEntity, name = name.trim().ifEmpty { null },
                     )
                 }
+                // The claim: registers the named user if nobody has, and signs in as it either way.
+                claim -> AuthApi.claimAccount(id, claimClient, claimPersona, tk, code.trim())
                 // Setting a password *is* a code login, so this both saves it and signs the user in.
                 settingPassword -> AuthApi.setPassword(id, password, tk, code.trim())
                 else -> AuthApi.loginByCode(id, tk, code.trim())
@@ -195,11 +217,28 @@ val AuthFlow = FC<AuthFlowProps> { props ->
 
         val codeSent = token != null
 
+        if (claim) {
+            p {
+                className = ClassName("subtitle")
+                +t("claim", "intro", "Somebody created an account for you and told you the client and the persona. Enter them with your email address, and a code will be sent to that address.")
+            }
+        }
         // The email (login id) is always shown; it locks once a code has been sent.
         textField(
             t(ns, "emailLabel", "Email address"), email, disabled = busy || codeSent,
             autoComplete = AC.username,
         ) { email = it }
+        // The claim's key (issue #751): typed, never offered -- an anonymous caller is told nothing about which
+        // clients exist or what personas they have. Locked with the address once the code is on its way, since
+        // the code was computed over all of them.
+        if (claim) {
+            textField(t("claim", "clientLabel", "Client"), claimClient, disabled = busy || codeSent) { claimClient = it }
+            textField(t("claim", "personaLabel", "Persona"), claimPersona, disabled = busy || codeSent) { claimPersona = it }
+            p {
+                className = ClassName("type-hint")
+                +t("claim", "personaHelp", "As the invitation gave it: `admin`, or `member B` when it named a person id. Leave blank for `member`.")
+            }
+        }
 
         // What kind of account this is, and its name. Register mode only, and both stay visible through the
         // code step so the choice is not lost when the email field locks. The name is asked of everyone -- a
@@ -265,7 +304,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
 
         if (!codeSent) {
             // Login-only password path, when the deployment enables it.
-            if (!register && config?.features?.passwordLogin == true) {
+            if (login && config?.features?.passwordLogin == true) {
                 textField(
                     t("login", "passwordLabel", "Password"), password, isPassword = true, disabled = busy,
                     autoComplete = AC.currentPassword,
@@ -288,7 +327,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 }
                 // Log in by code *and* set a password for a user who has none yet or has forgotten theirs.
                 // Offered only where password login is on -- otherwise a password would be unusable.
-                if (!register && config?.features?.passwordLogin == true) {
+                if (login && config?.features?.passwordLogin == true) {
                     Button {
                         type = "link"
                         loading = busy
@@ -300,9 +339,10 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             }
 
             // Google sign-in, when the deployment configured it. Placed after the email paths and set off by a
-            // divider: it is an alternative to the whole email flow above, not another button within it.
+            // divider: it is an alternative to the whole email flow above, not another button within it. Not
+            // on the claim page: Google lands on the rule-chosen user, never on a named one.
             val googleCfg = config
-            if (googleCfg != null && googleCfg.features.googleLogin && googleCfg.googleClientId.isNotEmpty()) {
+            if (!claim && googleCfg != null && googleCfg.features.googleLogin && googleCfg.googleClientId.isNotEmpty()) {
                 p {
                     className = ClassName("type-hint")
                     +t(ns, "orDivider", "or")
@@ -325,8 +365,11 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 MarkdownInline {
                     source = t(
                         ns, "codeSent",
-                        if (register) $$"A code was sent to `${user.email}`."
-                        else $$"If `${user.email}` has an account, a code is on its way. Check that the address is correct.",
+                        when {
+                            register -> $$"A code was sent to `${user.email}`."
+                            claim -> $$"If `${user.email}` has that account, a code is on its way. Check the address, the client and the persona."
+                            else -> $$"If `${user.email}` has an account, a code is on its way. Check that the address is correct."
+                        },
                     ).evalTemplate(mapOf("user" to mapOf("email" to email.trim())))
                 }
             }
@@ -369,7 +412,11 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                     loading = busy
                     disabled = code.isBlank() || passwordBlocks
                     onClick = { submitCode() }
-                    +t(ns, "finish", if (register) "Create account" else "Log in")
+                    +t(ns, "finish", when {
+                        register -> "Create account"
+                        claim -> "Claim and sign in"
+                        else -> "Log in"
+                    })
                 }
                 Button {
                     type = "link"
@@ -403,11 +450,11 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             }
         }
 
-        // Switch between the two modes.
+        // Switch between the modes: register and claim offer the way back to login; login offers both.
         div {
             className = ClassName("row")
             when {
-                register -> Button {
+                register || claim -> Button {
                     type = "link"
                     onClick = { navigateHash(listOf("page" to "login")) }
                     +t("menu", "login", "Log in")
@@ -416,6 +463,13 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                     type = "link"
                     onClick = { navigateHash(listOf("page" to "register")) }
                     +t("menu", "register", "Register")
+                }
+            }
+            if (!register && !claim) {
+                Button {
+                    type = "link"
+                    onClick = { navigateHash(listOf("page" to HMENU.pageClaim)) }
+                    +t("claim", "loginLink", "Claim an account created for you")
                 }
             }
         }

@@ -130,6 +130,30 @@ object AuthApi {
         return results[AFLD.userId].toOptLong() ?: error("The server did not return a user id.")
     }
 
+    /**
+     * Mails a code for claiming the account [email], [client] and [persona] name (issue #751); [personaTyped]
+     * is the persona as typed (`admin`, `member B`), split here by the kernel's rule. Always answers as a
+     * success -- the mail says whether anything matched -- so the caller shows the same "code sent" either way.
+     */
+    suspend fun sendClaimCode(email: String, client: String, personaTyped: String, token: String) {
+        val (persona, personId) = PERSONA.splitTyped(personaTyped)
+        Http.sendApi("POST", AEP.claimSendVerify, claimBody(email, client, persona, personId, token))
+    }
+
+    /** Claims the named account with the mailed [code]: registers it if unclaimed, and signs in as it either way. */
+    suspend fun claimAccount(email: String, client: String, personaTyped: String, token: String, code: String): UserProfile {
+        val (persona, personId) = PERSONA.splitTyped(personaTyped)
+        return userFrom(Http.sendApi("POST", AEP.claimAccount, claimBody(email, client, persona, personId, token) + (AFLD.verifyCode to code)))
+    }
+
+    private fun claimBody(email: String, client: String, persona: String, personId: String, token: String): Map<String, Any?> = buildMap {
+        put(AFLD.contactAddress, email)
+        client.trim().takeIf { it.isNotEmpty() }?.let { put(AFLD.client, it) }
+        put(AFLD.persona, persona)
+        personId.takeIf { it.isNotEmpty() }?.let { put(AFLD.personId, it) }
+        put(AFLD.formAuthToken, token)
+    }
+
     /** What an invitation link is for (issue #751), without accepting it: the invited address, client, persona. */
     suspend fun previewInvitation(token: String): InvitationInfo =
         invitationInfoFrom(Http.sendApi("POST", AEP.invitationPreview, mapOf(AFLD.invitationToken to token))[EP.results].toJsonMapOrEmpty())

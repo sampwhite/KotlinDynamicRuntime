@@ -44,6 +44,13 @@ object AEP {
     const val invitationPreview = "/auth/invitation/preview"
     /** Accept an invitation: proves the address, registers the invited user, and logs in as it. */
     const val invitationAccept = "/auth/invitation/accept"
+
+    // Claiming an account created for you (issue #751), from the login page with nothing but what the
+    // invitation said: the address, the client and the persona name the user; a mailed code proves the address.
+    /** Mails a verification code for the user the address, client and persona name -- or a mail saying no user matches. */
+    const val claimSendVerify = "/auth/claim/sendVerify"
+    /** Registers (and logs in as) the user the address, client and persona name, with the mailed code. */
+    const val claimAccount = "/auth/claim/register"
 }
 
 /** Auth request/response field (JSON key) names, shared so the frontend builds and reads payloads by constant. */
@@ -96,6 +103,13 @@ object AFLD {
 
     /** The invitation token (issue #751): the encrypted (identityId, userId, expiry) the mailed link carries. */
     const val invitationToken = "invitationToken"
+
+    /**
+     * On the claim page (issue #751): the persona **as typed**, `admin` or `member B` -- the persona name with
+     * the personId as a suffix, so an anonymous caller enters one thing and is offered no list of either.
+     * Split by `PERSONA.splitTyped`.
+     */
+    const val personaTyped = "personaTyped"
 
     /** On the invitation preview: the invited address (the user's name rides under [name]). */
     const val email = "email"
@@ -253,6 +267,22 @@ object PERSONA {
         val rung = RoleLadder.highestHeld(roles)
         return defs.lastOrNull { RoleLadder.highestHeld(it.defaultRoles) == rung }?.name ?: member
     }
+
+    /**
+     * A persona as a person types it on the claim page (issue #751), `admin` or `member B`, split into the
+     * persona name and the personId suffix (empty when there is none): the first word and whatever follows it,
+     * trimmed. Blank is the default persona. What `typed` shows: the two joined by a space, as the invitation
+     * mail spells them. Pure, in the kernel so the page and the backend read one rule.
+     */
+    fun splitTyped(text: String): Pair<String, String> {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return member to ""
+        val space = trimmed.indexOfFirst { it.isWhitespace() }
+        return if (space < 0) trimmed.lowercase() to "" else trimmed.substring(0, space).lowercase() to trimmed.substring(space + 1).trim()
+    }
+
+    /** The claim-page spelling of a persona and personId: `admin`, `member B`. */
+    fun typed(persona: String, personId: String): String = if (personId.isEmpty()) persona else "$persona $personId"
 }
 
 /** The `personId` rules (issue #747): the UAT batch discriminator, empty for the ordinary user. */

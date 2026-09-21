@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.user.UserChoice
 import kotlin.test.Test
@@ -83,5 +84,18 @@ class InvitationPageTest {
         assertEquals("acme as Member B", invitationWhat(invitationInfoFrom(mapOf("email" to "b@acme.com", "client" to "acme", "persona" to "member", "personId" to "B"))))
         // Absent persona reads as the default; absent personId as the ordinary user.
         assertEquals("public as Member", invitationWhat(invitationInfoFrom(mapOf("email" to "c@acme.com", "client" to "public"))))
+    }
+}
+
+/** The claim page's persona field (issue #751): one typed value, split by the kernel's rule. */
+class PersonaTypedTest {
+    @Test
+    fun splitsThePersonaAndThePersonIdSuffix() {
+        assertEquals("admin" to "", PERSONA.splitTyped("admin"))
+        assertEquals("member" to "B", PERSONA.splitTyped("member B"))
+        assertEquals("member" to "B", PERSONA.splitTyped("  Member   B "))
+        assertEquals("member" to "", PERSONA.splitTyped("   "))
+        assertEquals("member B", PERSONA.typed("member", "B"))
+        assertEquals("admin", PERSONA.typed("admin", ""))
     }
 }
