@@ -13,13 +13,13 @@ import kotlin.test.assertEquals
 class UserSwitcherTest {
 
     private val ada = UserChoice(7L, "acme", "admin", name = "Ada Lovelace", isCurrent = true)
-    private val batch = UserChoice(8L, "acme", "member", personId = "2")
+    private val batch = UserChoice(8L, "acme", "member", personaSuffix = "2")
 
     @Test
-    fun labelsClientPersonaPersonIdAndName() {
+    fun labelsClientPersonaPersonaSuffixAndName() {
         assertEquals("acme / Admin -- Ada Lovelace", ada.label())
         assertEquals("acme / Member 2", batch.label())
-        // A blank name is no name; a personId is shown only when there is one; the persona is capitalized.
+        // A blank name is no name; a personaSuffix is shown only when there is one; the persona is capitalized.
         assertEquals("public / Member", UserChoice(9L, "public", "member", name = "  ").label())
     }
 
@@ -34,11 +34,11 @@ class UserSwitcherTest {
         assertEquals("Member", member.qualifierWithin(listOf(ada, member)))
         // Clients differ, same persona: the client alone.
         assertEquals("hub", hubMember.qualifierWithin(listOf(member, hubMember)))
-        // A batch: the persona is shown for every user once any carries a personId, so the plain one is not
+        // A batch: the persona is shown for every user once any carries a personaSuffix, so the plain one is not
         // left with an empty bracket -- `Member` beside `Member 2`, or `hub · Member B`.
         assertEquals("Member", member.qualifierWithin(listOf(member, batch)))
         assertEquals("Member 2", batch.qualifierWithin(listOf(member, batch)))
-        val hubBatch = UserChoice(10L, "hub", "member", personId = "B")
+        val hubBatch = UserChoice(10L, "hub", "member", personaSuffix = "B")
         assertEquals("hub · Member B", hubBatch.qualifierWithin(listOf(member, hubBatch)))
     }
 
@@ -56,7 +56,7 @@ class UserSwitcherTest {
         val parsed = userChoicesFrom(
             listOf(
                 mapOf(UCF.userId to 7L, UCF.client to "acme", UCF.persona to "admin", UCF.name to "Ada Lovelace", UCF.isCurrent to true),
-                mapOf(UCF.userId to 8L, UCF.client to "acme", UCF.persona to "member", UCF.personId to "2", UCF.isDefault to true),
+                mapOf(UCF.userId to 8L, UCF.client to "acme", UCF.persona to "member", UCF.personaSuffix to "2", UCF.isDefault to true),
                 mapOf(UCF.client to "acme"),
             ),
         )
@@ -78,11 +78,11 @@ class UserSwitcherTest {
 class InvitationPageTest {
     @Test
     fun parsesThePreviewAndSaysWhatTheAccountIs() {
-        val info = invitationInfoFrom(mapOf("email" to "ada@acme.com", "client" to "hub", "persona" to "admin", "personId" to ""))
+        val info = invitationInfoFrom(mapOf("email" to "ada@acme.com", "client" to "hub", "persona" to "admin", "personaSuffix" to ""))
         assertEquals("ada@acme.com", info.email)
         assertEquals("hub as Admin", invitationWhat(info))
-        assertEquals("acme as Member B", invitationWhat(invitationInfoFrom(mapOf("email" to "b@acme.com", "client" to "acme", "persona" to "member", "personId" to "B"))))
-        // Absent persona reads as the default; absent personId as the ordinary user.
+        assertEquals("acme as Member B", invitationWhat(invitationInfoFrom(mapOf("email" to "b@acme.com", "client" to "acme", "persona" to "member", "personaSuffix" to "B"))))
+        // Absent persona reads as the default; absent personaSuffix as the ordinary user.
         assertEquals("public as Member", invitationWhat(invitationInfoFrom(mapOf("email" to "c@acme.com", "client" to "public"))))
     }
 }
@@ -90,7 +90,7 @@ class InvitationPageTest {
 /** The claim page's persona field (issue #751): one typed value, split by the kernel's rule. */
 class PersonaTypedTest {
     @Test
-    fun splitsThePersonaAndThePersonIdSuffix() {
+    fun splitsThePersonaAndItsSuffix() {
         assertEquals("admin" to "", PERSONA.splitTyped("admin"))
         assertEquals("member" to "B", PERSONA.splitTyped("member B"))
         assertEquals("member" to "B", PERSONA.splitTyped("  Member   B "))

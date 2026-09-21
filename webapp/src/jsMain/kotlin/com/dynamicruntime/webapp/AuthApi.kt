@@ -56,14 +56,14 @@ fun authConfigFrom(config: UiConfig): AuthConfig = AuthConfig(
 )
 
 /** What an invitation is for (issue #751), as the preview reports it. */
-class InvitationInfo(val email: String, val client: String, val persona: String, val personId: String, val name: String?)
+class InvitationInfo(val email: String, val client: String, val persona: String, val personaSuffix: String, val name: String?)
 
-/** The pure map -> [InvitationInfo] mapping; the persona and personId read as the badge labels them. Covered by `jsNodeTest`. */
+/** The pure map -> [InvitationInfo] mapping; the persona and personaSuffix read as the badge labels them. Covered by `jsNodeTest`. */
 fun invitationInfoFrom(info: Map<String, Any?>): InvitationInfo = InvitationInfo(
     email = info[AFLD.email] as? String ?: "",
     client = info[AFLD.client] as? String ?: "",
     persona = info[AFLD.persona] as? String ?: PERSONA.member,
-    personId = info[AFLD.personId] as? String ?: "",
+    personaSuffix = info[AFLD.personaSuffix] as? String ?: "",
     name = info[AFLD.name] as? String,
 )
 
@@ -108,12 +108,12 @@ object AuthApi {
 
     /**
      * Provisions the initial user row from a verified email + code, returning the new userId. [client],
-     * [persona] and [personId] place the new user (issue #751) and are sent only when given -- only an
+     * [persona] and [personaSuffix] place the new user (issue #751) and are sent only when given -- only an
      * `allClients` caller may name them, and the backend refuses anyone else.
      */
     suspend fun createInitial(
         email: String, token: String, code: String,
-        client: String? = null, persona: String? = null, personId: String? = null,
+        client: String? = null, persona: String? = null, personaSuffix: String? = null,
     ): Long {
         val results = Http.sendApi(
             "PUT", AEP.createInitial,
@@ -124,7 +124,7 @@ object AuthApi {
                 put(AFLD.verifyCode, code)
                 client?.trim()?.takeIf { it.isNotEmpty() }?.let { put(AFLD.client, it) }
                 persona?.trim()?.takeIf { it.isNotEmpty() }?.let { put(AFLD.persona, it) }
-                personId?.trim()?.takeIf { it.isNotEmpty() }?.let { put(AFLD.personId, it) }
+                personaSuffix?.trim()?.takeIf { it.isNotEmpty() }?.let { put(AFLD.personaSuffix, it) }
             },
         )[EP.results].toJsonMapOrEmpty()
         return results[AFLD.userId].toOptLong() ?: error("The server did not return a user id.")
@@ -136,21 +136,21 @@ object AuthApi {
      * success -- the mail says whether anything matched -- so the caller shows the same "code sent" either way.
      */
     suspend fun sendClaimCode(email: String, client: String, personaTyped: String, token: String) {
-        val (persona, personId) = PERSONA.splitTyped(personaTyped)
-        Http.sendApi("POST", AEP.claimSendVerify, claimBody(email, client, persona, personId, token))
+        val (persona, personaSuffix) = PERSONA.splitTyped(personaTyped)
+        Http.sendApi("POST", AEP.claimSendVerify, claimBody(email, client, persona, personaSuffix, token))
     }
 
     /** Claims the named account with the mailed [code]: registers it if unclaimed, and signs in as it either way. */
     suspend fun claimAccount(email: String, client: String, personaTyped: String, token: String, code: String): UserProfile {
-        val (persona, personId) = PERSONA.splitTyped(personaTyped)
-        return userFrom(Http.sendApi("POST", AEP.claimAccount, claimBody(email, client, persona, personId, token) + (AFLD.verifyCode to code)))
+        val (persona, personaSuffix) = PERSONA.splitTyped(personaTyped)
+        return userFrom(Http.sendApi("POST", AEP.claimAccount, claimBody(email, client, persona, personaSuffix, token) + (AFLD.verifyCode to code)))
     }
 
-    private fun claimBody(email: String, client: String, persona: String, personId: String, token: String): Map<String, Any?> = buildMap {
+    private fun claimBody(email: String, client: String, persona: String, personaSuffix: String, token: String): Map<String, Any?> = buildMap {
         put(AFLD.contactAddress, email)
         client.trim().takeIf { it.isNotEmpty() }?.let { put(AFLD.client, it) }
         put(AFLD.persona, persona)
-        personId.takeIf { it.isNotEmpty() }?.let { put(AFLD.personId, it) }
+        personaSuffix.takeIf { it.isNotEmpty() }?.let { put(AFLD.personaSuffix, it) }
         put(AFLD.formAuthToken, token)
     }
 

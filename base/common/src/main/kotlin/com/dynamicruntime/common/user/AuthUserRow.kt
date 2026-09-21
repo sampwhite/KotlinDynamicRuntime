@@ -41,7 +41,7 @@ class AuthUserRow(
     var persona: String = PERSONA.member
 
     /** Distinguishes same-persona users of one identity in one client (issue #747); `""` for the ordinary one. */
-    var personId: String = ""
+    var personaSuffix: String = ""
 
     /** The user's primary organization within [client], or null when they have none (issue #225). */
     var org: String? = null
@@ -159,7 +159,7 @@ class AuthUserRow(
         ADF.username to username,
         ADF.client to client,
         ADF.persona to persona,
-        ADF.personId to personId,
+        ADF.personaSuffix to personaSuffix,
         ADF.org to org,
         ADF.isEntity to isEntity,
         ADF.name to name,
@@ -205,7 +205,7 @@ class AuthUserRow(
         val retData = data.toMutableMap()
         retData[AU.identityId] = identityId
         retData[AU.persona] = persona
-        retData[AU.personId] = personId
+        retData[AU.personaSuffix] = personaSuffix
         retData[AU.username] = username
         retData[AU.authUserData] = newAuthData
         // Every typed field this class exposes has to travel back out, or a caller that sets one sees it
@@ -234,8 +234,8 @@ class AuthUserRow(
         /** The obfuscated username a permanently deleted [userId] is given: `deleted-<userId>` (unique). */
         fun deletedUsername(userId: Long): String = "deleted-$userId"
 
-        /** The personId a tombstone takes, `deleted-<userId>`, so its (identity, client, persona, personId) key is freed. */
-        fun deletedPersonId(userId: Long): String = "deleted-$userId"
+        /** The personaSuffix a tombstone takes, `deleted-<userId>`, so its (identity, client, persona, personaSuffix) key is freed. */
+        fun deletedPersonaSuffix(userId: Long): String = "deleted-$userId"
 
         /**
          * A **permanently deleted tombstone** of [original]: non-recoverable by construction, but a *retirement*
@@ -263,8 +263,8 @@ class AuthUserRow(
             val row = AuthUserRow(original.userId, original.client, original.identityId, deletedPrimaryId(original.userId))
             row.persona = original.persona
             // The tombstone gives up the key (issue #747), as it gives up the username: with the original
-            // personId kept, the person could never again hold an ordinary user in this client.
-            row.personId = deletedPersonId(original.userId)
+            // personaSuffix kept, the person could never again hold an ordinary user in this client.
+            row.personaSuffix = deletedPersonaSuffix(original.userId)
             row.username = deletedUsername(original.userId)
             row.enabled = false
             // Roles are dropped too, not merely made inert by the disable: a tombstone must not read as an
@@ -313,7 +313,7 @@ class AuthUserRow(
                 property(ADF.persona, "The user's persona, frozen at creation.", required = true) {
                     for (def in PERSONA.defs) option(def.name, def.label)
                 }
-                property(ADF.personId, "The UAT batch discriminator; empty for the ordinary user.", required = true) { emptyIsAbsent = false }
+                property(ADF.personaSuffix, "The UAT batch discriminator; empty for the ordinary user.", required = true) { emptyIsAbsent = false }
                 property(ADF.org, "The user's primary organization within their client, when they have one.")
                 property(ADF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
                 property(ADF.name, "The account's real-world name: a person's full name, or a business's name.")
@@ -355,7 +355,7 @@ class AuthUserRow(
                 ?: throw KdrException("AuthUsers row $userId points at identity '$identityId', which has no address.")
             val row = AuthUserRow(userId, client, identityId, primaryId, AuthIdentityRow.hasPasswordIn(identity))
             row.persona = data[AU.persona].toOptStr() ?: PERSONA.member
-            row.personId = data[AU.personId].toOptStr() ?: ""
+            row.personaSuffix = data[AU.personaSuffix].toOptStr() ?: ""
             row.enabled = data[PF.enabled] == true
             row.username = data[AU.username].toOptStr() ?: (usernameTmpPrefix + primaryId)
             val userData = (data[AU.authUserData]?.toJsonMap() ?: emptyMap()).toMutableMap()
@@ -383,7 +383,7 @@ class AuthUserRow(
         /**
          * The initially provisioned row for a user of the identity [identityId] at address [primaryId] (the
          * address only seeds the placeholder username; it is not stored here since issue #747), in [client]
-         * with [persona] and [personId]. Callers go through `UserService.provisionUser`, which creates or finds
+         * with [persona] and [personaSuffix]. Callers go through `UserService.provisionUser`, which creates or finds
          * the identity first.
          */
         fun mkInitialUser(
@@ -393,7 +393,7 @@ class AuthUserRow(
             roles: List<String>,
             org: String? = null,
             persona: String = PERSONA.member,
-            personId: String = "",
+            personaSuffix: String = "",
             /**
              * When the account came into being (issue #462), stamped as [AD.activatedAt] -- and as
              * [AD.registeredAt] when [registered]. Passed in rather than read here because this builds a map
@@ -406,7 +406,7 @@ class AuthUserRow(
         ): Map<String, Any?> = mapOf(
             AU.identityId to identityId,
             AU.persona to persona,
-            AU.personId to personId,
+            AU.personaSuffix to personaSuffix,
             AU.username to (usernameTmpPrefix + primaryId),
             PF.client to client,
             AU.authUserData to mutableMapOf<String, Any?>(AD.roles to roles).also {

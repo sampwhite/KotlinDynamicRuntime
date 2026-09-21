@@ -64,7 +64,7 @@ class AdminUser(
     /** The user's persona (issue #750), frozen at creation; `member` unless said otherwise. */
     val persona: String = PERSONA.member,
     /** The UAT batch discriminator (issue #747); empty for the ordinary user. */
-    val personId: String = "",
+    val personaSuffix: String = "",
     /** Their primary organization within the client, or null when they have none (issue #225). */
     val org: String?,
     /** Whether this account belongs to a business rather than a person. */
@@ -178,15 +178,15 @@ object AdminApi {
     suspend fun createUser(
         primaryId: String, username: String?, roles: List<String>?, org: String?,
         isEntity: Boolean = false, name: String? = null, client: String? = null, enabled: Boolean = true,
-        persona: String? = null, personId: String? = null,
+        persona: String? = null, personaSuffix: String? = null,
     ): AdminUser {
         val body = buildMap<String, Any?> {
             put(ADF.primaryId, primaryId.trim())
             username?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.username, it) }
-            // The persona and personId (issue #750), sent only when chosen; the backend defaults to `member`
-            // and the ordinary (empty) personId.
+            // The persona and personaSuffix (issue #750), sent only when chosen; the backend defaults to `member`
+            // and the ordinary (empty) personaSuffix.
             persona?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.persona, it) }
-            personId?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.personId, it) }
+            personaSuffix?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.personaSuffix, it) }
             roles?.takeIf { it.isNotEmpty() }?.let { put(ADF.roles, it) }
             org?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.org, it) }
             // Sent only when chosen, so an administrator who never saw the selector gets the backend's own
@@ -285,7 +285,7 @@ object AdminApi {
         roles = this[ADF.roles].toJsonListOfStrings(),
         client = this[ADF.client] as? String ?: "",
         persona = this[ADF.persona] as? String ?: PERSONA.member,
-        personId = this[ADF.personId] as? String ?: "",
+        personaSuffix = this[ADF.personaSuffix] as? String ?: "",
         org = this[ADF.org] as? String,
         isEntity = this[ADF.isEntity] == true,
         name = this[ADF.name] as? String,

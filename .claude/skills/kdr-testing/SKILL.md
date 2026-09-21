@@ -455,12 +455,12 @@ that user*. `level` is a rung of the privilege ladder (`ROLE.user`, the default,
 existing user gets you whoever is already there, roles and all. `name` (create-only) sets their real-world name
 (a person's full name, distinct from the username / `publicName`) — reach for it when the feature under test
 reads the owner's name, e.g. a `prefillFromOwner` on the `name` attribute (issue #736). Since the identity split
-(issue #747) an address is an **identity** that may have several users, one per client, persona and `personId`:
-`userClient`, `persona` and `personId` together name *which* of the address's users to become -- found when it
+(issue #747) an address is an **identity** that may have several users, one per client, persona and `personaSuffix`:
+`userClient`, `persona` and `personaSuffix` together name *which* of the address's users to become -- found when it
 exists, created when it does not, and **recovered** (same user, unregistered again) when it was deleted
 recoverably -- and naming none logs in as the identity's default user (the chosen default, else the one most
 recently acted as, else its first, among the registered users; a fixture user is registered on creation).
-`personId` is the UAT batch discriminator (`A`, `B`, `1`, `2`).
+`personaSuffix` is the UAT batch discriminator (`A`, `B`, `1`, `2`).
 
 ```kotlin
 val alice = TestUser.create(cxt, "alice@example.com", level = ROLE.admin)

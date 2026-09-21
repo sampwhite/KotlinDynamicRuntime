@@ -123,8 +123,8 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
     // The account's own name; an unnamed account shows the placeholder rather than the username standing in.
     USF.name -> user.name?.takeIf { it.isNotBlank() } ?: "—"
     USF.client -> user.client
-    // Which of a person's users this is (issue #750): the persona's label, and the personId when there is one.
-    USF.persona -> personaCell(user.persona, user.personId)
+    // Which of a person's users this is (issue #750): the persona's label, and the personaSuffix when there is one.
+    USF.persona -> personaCell(user.persona, user.personaSuffix)
     // The three tracked dates the console shows (issue #462). A dash rather than a blank: "never" is a fact
     // about the account -- never logged in, never edited -- and an empty cell reads as a rendering failure.
     USF.lastEdited.at -> user.lastEditedAt?.let { formatTimestamp(it) } ?: "—"
@@ -160,8 +160,8 @@ fun statusWords(user: AdminUser): List<String> = buildList {
 }
 
 /** The Persona column's value: `Member`, `Admin`, `Member B`. Pure, covered under `jsNodeTest`. */
-fun personaCell(persona: String, personId: String): String =
-    if (personId.isEmpty()) PERSONA.label(persona) else "${PERSONA.label(persona)} $personId"
+fun personaCell(persona: String, personaSuffix: String): String =
+    if (personaSuffix.isEmpty()) PERSONA.label(persona) else "${PERSONA.label(persona)} $personaSuffix"
 
 /** What [cellValue] returns for a spec field with no display branch -- the tell `UserCellValueTest` catches. */
 const val unmappedCell = "(?)"

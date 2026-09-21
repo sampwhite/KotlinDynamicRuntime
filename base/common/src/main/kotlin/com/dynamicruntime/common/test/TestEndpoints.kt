@@ -66,7 +66,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             }
             field(
                 TEP.client,
-                "Client of the user to become: with `persona` / `personId` it names WHICH of the address's users " +
+                "Client of the user to become: with `persona` / `personaSuffix` it names WHICH of the address's users " +
                     "(issue #747), found when it exists and created when it does not. Absent, the address's " +
                     "default user; for a new address, whatever the address names, which for an ordinary address " +
                     "is the public client. A client this node does not carry is refused rather than quietly replaced.",
@@ -80,7 +80,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
                 for (def in PERSONA.defs) option(def.name, def.label)
             }
             field(
-                TEP.personId,
+                TEP.personaSuffix,
                 "Distinguishes several users of one address with the same persona in one client (issue #747); " +
                     "absent is the ordinary user. With `client` or `persona`, names WHICH of the address's users to " +
                     "become, creating it when there is none.",
@@ -98,7 +98,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             client = request.getOptStr(TEP.client),
             name = request.getOptStr(TEP.name),
             persona = request.getOptStr(TEP.persona),
-            personId = request.getOptStr(TEP.personId) ?: "",
+            personaSuffix = request.getOptStr(TEP.personaSuffix) ?: "",
         )
     }
 

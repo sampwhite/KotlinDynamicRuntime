@@ -17,11 +17,11 @@ import web.cssom.ClassName
 private val inviteScope = MainScope()
 
 /**
- * What the invitation page says the account is: the client and the persona (with the personId, for a batch
+ * What the invitation page says the account is: the client and the persona (with the personaSuffix, for a batch
  * user) -- `hub as Admin`, `acme as Member B`. Pure, covered under `jsNodeTest`.
  */
 fun invitationWhat(info: InvitationInfo): String {
-    val persona = PERSONA.label(info.persona) + (if (info.personId.isEmpty()) "" else " ${info.personId}")
+    val persona = PERSONA.label(info.persona) + (if (info.personaSuffix.isEmpty()) "" else " ${info.personaSuffix}")
     return "${info.client} as $persona"
 }
 
@@ -96,7 +96,7 @@ val InvitePage = FC<Props> {
                             mapOf(
                                 "invite" to mapOf(
                                     "email" to invite.email, "client" to invite.client,
-                                    "persona" to PERSONA.label(invite.persona) + (if (invite.personId.isEmpty()) "" else " ${invite.personId}"),
+                                    "persona" to PERSONA.label(invite.persona) + (if (invite.personaSuffix.isEmpty()) "" else " ${invite.personaSuffix}"),
                                 ),
                             ),
                         )

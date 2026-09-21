@@ -133,9 +133,9 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
             capabilities: List<String> = emptyList(),
             userClient: String? = null,
             name: String? = null,
-            /** The user's persona and personId (issue #747); with a client, which of the address's users to become. */
+            /** The user's persona and personaSuffix (issue #747); with a client, which of the address's users to become. */
             persona: String? = null,
-            personId: String? = null,
+            personaSuffix: String? = null,
         ): TestUser {
             val client = TestHttpClient(cxt.instanceConfig)
             val body = buildMap {
@@ -147,7 +147,7 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
                 if (userClient != null) put(TEP.client, userClient)
                 if (name != null) put(TEP.name, name)
                 if (persona != null) put(TEP.persona, persona)
-                if (personId != null) put(TEP.personId, personId)
+                if (personaSuffix != null) put(TEP.personaSuffix, personaSuffix)
             }
             val userInfo = client.sendJsonPostRequest(TEP.becomeUser, body)[EP.results].toJsonMapOrEmpty()
             return TestUser(client, cxt, userInfo)
@@ -185,7 +185,7 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
         fun register(
             cxt: KdrCxt, email: String, name: String,
             /** Where the new user goes (issue #751); only an `allClients` caller's browser may say, so pass [asClient] for one. */
-            userClient: String? = null, persona: String? = null, personId: String? = null,
+            userClient: String? = null, persona: String? = null, personaSuffix: String? = null,
             /** The browser to register from -- one already signed in as an `allClients` administrator when placing the user. */
             asClient: TestHttpClient? = null,
         ): TestUser {
@@ -211,7 +211,7 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
                     put(AFLD.verifyCode, code)
                     userClient?.let { put(AFLD.client, it) }
                     persona?.let { put(AFLD.persona, it) }
-                    personId?.let { put(AFLD.personId, it) }
+                    personaSuffix?.let { put(AFLD.personaSuffix, it) }
                 },
             )[EP.results].toJsonMapOrEmpty()[AFLD.userId].toOptLong()
                 ?: throw IllegalStateException("createInitial returned no user id.")

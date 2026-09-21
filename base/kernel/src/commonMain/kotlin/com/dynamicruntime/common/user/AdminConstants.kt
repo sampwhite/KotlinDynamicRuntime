@@ -137,7 +137,7 @@ object ADF {
      * a further user of the same address, client, and persona) and reported on every user. Create only, as part
      * of the user's key.
      */
-    const val personId = "personId"
+    const val personaSuffix = "personaSuffix"
 
     /** Whether the account was permanently deleted -- an obfuscated tombstone that can no longer be edited. */
     const val deleted = "deleted"
@@ -182,7 +182,7 @@ object USF {
     const val name = "name"
 
     /**
-     * Case-insensitive **substring** of the persona or the personId (issue #750) -- `admin`, or the `B` of a UAT
+     * Case-insensitive **substring** of the persona or the personaSuffix (issue #750) -- `admin`, or the `B` of a UAT
      * batch -- so a console box finds a person's administrator user, or one member of a batch.
      */
     const val persona = "persona"

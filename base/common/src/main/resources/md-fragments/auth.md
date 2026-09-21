@@ -28,10 +28,10 @@
 # @register
 # +title Create your account
 # +emailLabel Email address
-/- For an allClients administrator only (issue #751): the client, persona and personId the new user takes. -/
+/- For an allClients administrator only (issue #751): the client, persona and personaSuffix the new user takes. -/
 # +clientLabel Client
 # +personaLabel Persona
-# +personIdLabel Person id
+# +personaSuffixLabel Persona suffix
 # +provisionHelp As an administrator across clients, you may place the new account: which client, what kind of user, and a short id for a further user of the same kind. Leave them alone for an ordinary registration.
 # +sendCode Send verification code
 # +codeSent A code was sent to `${user.email}`. Enter it below.
@@ -50,7 +50,7 @@
 # +emailLabel Email address
 # +clientLabel Client
 # +personaLabel Persona
-# +personaHelp As the invitation gave it: `admin`, or `member B` when it named a person id. Leave blank for `member`.
+# +personaHelp As the invitation gave it: `admin`, or `member B` when it named a persona suffix. Leave blank for `member`.
 # +sendCode Send verification code
 # +codeSent If `${user.email}` has that account, a code is on its way. Check the address, the client and the persona.
 # +codeLabel Verification code
@@ -89,6 +89,6 @@
 # +googleTokenInvalid Google sign-in could not be verified. Please try again.
 # +googleEmailUnverified Google has not verified the email address on that account, so it cannot be used to sign in here.
 # +emailNotAvailable The email *${email}* is not available for creating a new account.
-# +userKeyTaken A user for ${email} already exists in client ${client} with persona ${persona}${personIdNote}.
+# +userKeyTaken A user for ${email} already exists in client ${client} with persona ${persona}${personaSuffixNote}.
 # +invitationInvalid This invitation link is not valid, or has expired. Ask the person who invited you to send a new one.
 # +invitationUsed This invitation has already been accepted. Log in with the address it was sent to.

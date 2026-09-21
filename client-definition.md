@@ -332,7 +332,7 @@ sample module already does.
 A **persona** says what relationship a user has to the application -- `member` (the default: the person
 belongs to the client) or `admin` to start, `reviewer` and `advisor` sketched -- and is a **registry**
 (`PERSONA` in the kernel, issue #750): each has a name, a label, and the roles a user of it starts with. It is
-frozen at creation and part of the user's unique key with its identity, client and `personId`; changing
+frozen at creation and part of the user's unique key with its identity, client and `personaSuffix`; changing
 persona means creating a new user with its own data. The relationship with roles runs both ways: a persona
 grants its default roles to a user created with it, and roles provide a default persona to a user created
 without naming one (`PERSONA.defaultFor`), so a user created as an administrator, by the auto-admin domain or
@@ -342,7 +342,7 @@ says how to read the user, and the roles say what they may do -- and no persona'
 are. A client may later add its own personas under this word's reservation.
 
 An administrator provisions a user with a persona and, for a further user of the same address, client and
-persona (a UAT batch), a `personId`; a person proves such a user by invitation (phase E of #746), or, when the
+persona (a UAT batch), a `personaSuffix`; a person proves such a user by invitation (phase E of #746), or, when the
 address is the administrator's own, holds it from the start as an associated user. That is why the
 `+clientId%persona` address convention that once did this on the controlled domains was **retired** in #750:
 what survives of it is the no-tag rule alone -- on `example.com` and `KDR_ADMIN_EMAIL_DOMAIN`, an address with
@@ -353,7 +353,7 @@ it is not.
 quality that makes a test user fail on demand. That use has been renamed to **fault**, which is not a coinage:
 #227 already uses it for deliberate failure. The formal concept keeps the word.
 
-**The fixtures take an explicit client, persona and personId**, which makes any address convention a
+**The fixtures take an explicit client, persona and personaSuffix**, which makes any address convention a
 convenience rather than the mechanism -- and is what everything else is tested through.
 
 ## Usage types, and what a caller is shown
