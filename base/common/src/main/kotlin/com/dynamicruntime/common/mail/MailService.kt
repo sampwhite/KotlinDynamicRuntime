@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.mail
 
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.ACT
@@ -10,6 +12,8 @@ import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.sql.SecretsUtil
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.user.AddressRules
+import com.dynamicruntime.common.util.toOptBool
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Base64
@@ -45,6 +49,30 @@ object MAIL {
      * for real.
      */
     const val useSimulatedEmail = "useSimulatedEmail"
+
+    /**
+     * When true on a **simulating** instance, mail to an address on the deployment's admin domain
+     * (`KDR_ADMIN_EMAIL_DOMAIN`, or a subdomain of it) is **also transmitted** -- captured in the sink as
+     * every simulated mail is, and sent for real through the provider as well, when an API key is configured.
+     * For trying the real mails (an invitation, a claim code) from a local instance without giving up the
+     * read-back of everything else. Off by default, and deliberately an opt-in rather than implied by the key's
+     * presence: a developer whose secrets hold a key must not have unit tests mailing `boss@acme.com` because
+     * a test set that domain. Defaults from [MAILENV.transmitToAdminDomain].
+     */
+    const val transmitToAdminDomain = "transmitToAdminDomain"
+}
+
+/** Environment variables of the mail service. */
+@Suppress("ConstPropertyName")
+object MAILENV {
+    /** Env var that defaults [MAIL.transmitToAdminDomain] when the config option is unset. */
+    val transmitToAdminDomain = EnvVarDef(
+        "KDR_MAIL_TRANSMIT_ADMIN_DOMAIN", group = ENVGRP.application, defaultDoc = "false",
+        description = "On a test instance that simulates email, also transmit mail addressed to the admin " +
+            "domain (KDR_ADMIN_EMAIL_DOMAIN or a subdomain) for real, through the provider, when its API key " +
+            "is configured -- the mail is still captured for read-back. For trying real invitations and codes " +
+            "locally. Off by default; has no effect on a non-simulating instance, which transmits everything.",
+    )
 }
 
 /** A "sent" (or simulated) email, retained briefly so tests and troubleshooting can inspect what went out. */
@@ -54,8 +82,13 @@ class SentEmail(
     val from: String,
     val subject: String,
     val text: String,
-    /** True when no API key was configured, so the mail was recorded but not actually transmitted. */
+    /** True when the mail was recorded in the simulated sink (a simulating instance). */
     val simulated: Boolean,
+    /**
+     * True when the mail went out through the provider. The two are not exclusive since [MAIL.transmitToAdminDomain]:
+     * a simulating instance may both capture a mail and transmit it.
+     */
+    val transmitted: Boolean = !simulated,
 )
 
 /**
@@ -78,8 +111,12 @@ class MailService : ServiceInitializer {
     lateinit var fromAddressForApp: String
     private var apiKey: String? = null
 
-    /** Whether email is simulated (no transmit, no API key, recent-emails endpoint enabled). See [MAIL.useSimulatedEmail]. */
+    /** Whether email is simulated (captured, recent-emails endpoint enabled). See [MAIL.useSimulatedEmail]. */
     var useSimulatedEmail: Boolean = false
+        private set
+
+    /** Whether a simulating instance also transmits mail to the admin domain; see [MAIL.transmitToAdminDomain]. */
+    var transmitToAdminDomain: Boolean = false
         private set
 
     private val mailId = AtomicInteger(1)
@@ -108,8 +145,11 @@ class MailService : ServiceInitializer {
                     "make this a test instance (${KdrInstanceConfig.testInstanceEnvVar}, inMemoryOnly, or the unit environment).",
             )
         }
-        // Only load the (secret) API key when we actually transmit; simulated mail never needs it.
-        apiKey = if (useSimulatedEmail) {
+        transmitToAdminDomain = (cxt.instanceConfig.get(MAIL.transmitToAdminDomain) as? Boolean)
+            ?: (cxt.getEnvVar(MAILENV.transmitToAdminDomain)?.toOptBool() == true)
+        // Only load the (secret) API key when something may transmit: always on a real instance, and on a
+        // simulating one only when the admin-domain opt-in is on. Simulated mail otherwise never needs it.
+        apiKey = if (useSimulatedEmail && !transmitToAdminDomain) {
             null
         } else {
             val secretName = (cxt.instanceConfig.get(MAIL.mailgunApiKeySecretKey) as? String)
@@ -118,19 +158,20 @@ class MailService : ServiceInitializer {
         }
     }
 
+    /** Whether a mail to [to] goes out for real: every mail on a transmitting instance, and on a simulating one only the admin-domain opt-in's. */
+    private fun transmits(cxt: KdrCxt, to: String): Boolean =
+        apiKey != null && (!useSimulatedEmail || (transmitToAdminDomain && AddressRules.isAdminDomain(cxt, to)))
+
     /**
      * Sends [text] to [to] with [subject]. Returns the [SentEmail] record (also retained in
-     * [recentSentEmails]). With no configured API key, the "send" is simulated (recorded, not transmitted).
+     * [recentSentEmails]). On a simulating instance the "send" is recorded rather than transmitted -- unless
+     * the admin-domain opt-in ([MAIL.transmitToAdminDomain]) applies to [to], in which case it is both.
      */
     fun sendEmail(cxt: KdrCxt, to: String, subject: String, text: String, from: String = fromAddressForApp): SentEmail {
-        val key = apiKey
-        val sent = if (!useSimulatedEmail && key != null) {
-            transmit(cxt, to, from, subject, text, key)
-            SentEmail(mailId.getAndIncrement().toString(), to, from, subject, text, simulated = false)
-        } else {
-            LogMail.debug(cxt) { "Simulated email to $to: '$subject'." }
-            SentEmail(mailId.getAndIncrement().toString(), to, from, subject, text, simulated = true)
-        }
+        val transmitted = transmits(cxt, to)
+        if (transmitted) transmit(cxt, to, from, subject, text, apiKey!!)
+        if (useSimulatedEmail) LogMail.debug(cxt) { "Simulated email to $to: '$subject'" + (if (transmitted) " (also transmitted)." else ".") }
+        val sent = SentEmail(mailId.getAndIncrement().toString(), to, from, subject, text, simulated = useSimulatedEmail, transmitted = transmitted)
         // Retain only on a simulating (test) instance -- the kept copy exists solely to be read back through the
         // test-only endpoint. A real transmission is never held in memory (issue #158).
         if (useSimulatedEmail) {
