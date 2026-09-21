@@ -58,3 +58,4 @@
 # +googleTokenInvalid Google sign-in could not be verified. Please try again.
 # +googleEmailUnverified Google has not verified the email address on that account, so it cannot be used to sign in here.
 # +emailNotAvailable The email *${email}* is not available for creating a new account.
+# +userKeyTaken A user for ${email} already exists in client ${client} with persona ${persona}${personIdNote}.

@@ -121,6 +121,13 @@ val userSearchFields: List<UserSearchField> = listOf(
     ),
     // Exact, not substring: the client is a picked id, not a fragment someone types.
     UserSearchField(USF.client, textsOf = { listOf(it.client) }, substring = false, sortOf = { it.client.lowercase() }),
+    // Which of a person's users this is (issue #750): the persona and the personId are matched separately, so
+    // `admin` finds the administrators and `B` finds one member of a batch; sorted as the label the console
+    // shows (`Member B`), so a batch sorts together.
+    UserSearchField(
+        USF.persona, textsOf = { listOfNotNull(it.persona, it.personId.ifEmpty { null }) }, substring = true,
+        sortOf = { (it.persona + " " + it.personId).trim().lowercase() },
+    ),
 ) + userDateFields.map { it.asSearchField() }
 
 

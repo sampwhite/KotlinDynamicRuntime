@@ -124,6 +124,19 @@ A fourth is **belonging**, and behaves unlike the other three:
   Offered only to a caller holding `allClients`, who is also the only one able to read `/admin/clients` to
   populate it; a scoped administrator's client is not a decision. The list gains a **Client** column under the
   same condition, because a column that says one thing says nothing.
+- **Persona** (issue #750) — what kind of user this is, from the kernel's `PERSONA` registry (`Member`,
+  `Admin`), chosen at creation and never again, so a `Select` while creating and read-only afterward. Personas
+  grant roles by default and roles provide a default persona: until the administrator picks a persona it
+  follows the access level (`personaForLevel`), picking one moves the level to its defaults (`levelForPersona`),
+  and only a chosen persona is sent, so the backend applies the same rule to an unnamed one. The Status column
+  says `unclaimed` for a user nobody has logged into yet (no registered date; the activated date is stamped at
+  creation and says nothing about that).
+  Creating a user at your **own** address makes an associated user of yours, registered at once and in the
+  badge's switcher. The **Person id** box is offered only after a create collides with an existing user of the
+  same address, client and persona -- the backend's duplicate-key refusal, recognized by the envelope's logical
+  `errorCode` (`AERR.userKeyTaken`), never by its wording: it is the UAT batch discriminator, and a field
+  nobody else needs. The list shows both in a **Persona** column (`Member B`), and a **Registered** column says
+  when the person claimed the user.
 
 Two are **identity**, and sit at the top of the editor beside the email for that reason — they say who the
 account is, not what it may do:

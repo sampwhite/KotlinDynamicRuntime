@@ -6,7 +6,6 @@ import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.http.request.RoleLadder
 
 /**
  * How far a caller's user administration reaches (issue #225) -- the *scope* half of an administrator's
@@ -66,10 +65,10 @@ object ADMR {
  * them. A deployment that configures its domain late reaches its operator through the `GrantRole` script or
  * through another administrator, which is where role changes belong.
  *
- * The `+` exclusion is no longer "this address is deliberately not an admin". A `+` tag now names a client and
- * optionally a persona within it (see [AddressRules]), so the exclusion here says something narrower: an
- * address that names a client is describing a user of that client, and the blanket grant is for the
- * deployment's own people rather than for anyone who tagged their way into one.
+ * The `+` exclusion says: a tagged address is not one of the deployment's own people. It once also named a
+ * client and a persona (the `+client%persona` convention, retired in issue #750 in favor of the console and
+ * invitations), and the exclusion outlived that: the blanket grant is for the deployment's own people, and a
+ * tag is the one thing an address can still carry to say it is not that.
  *
  * The domain is matched against the address's domain part only, never as a suffix of the whole address -- see
  * [AddressRules.isControlledDomain] for why that distinction is the one that matters.
@@ -174,43 +173,16 @@ object AdminRules {
     val autoAdminRoles: List<String> = listOf(ROLE.admin, ROLE.allClients)
 
     /**
-     * The roles a newly provisioned user gets: [ROLE.user], plus whatever their address earns them.
-     *
-     * Two routes, and they cannot both apply: [autoAdminRoles] when the address carries no `+` tag and
-     * matches the configured domain, and otherwise whatever persona the tag names (issue #352). That is the
-     * whole of the inversion the design describes -- a `+` tag used to mean only *not an admin*, and now it
-     * says which client and, optionally, what within it.
+     * The roles a newly provisioned user gets: the [persona]'s default roles (`PERSONA`, issue #750), or
+     * [autoAdminRoles] on top of [ROLE.user] when the address carries no `+` tag and matches the configured
+     * domain. The two cannot both apply, and the grant wins: it is how a deployment's first administrator comes
+     * to exist, whatever persona the registration asked for. An unknown persona is refused by `provisionUser`
+     * before anything reaches here; a caller with no registered persona in hand passes the default.
      */
-    fun initialRoles(cxt: KdrCxt, primaryId: String): List<String> {
+    fun initialRoles(cxt: KdrCxt, primaryId: String, persona: String = PERSONA.member): List<String> {
         if (isAutoAdminAddress(cxt, primaryId)) {
             return listOf(ROLE.user) + autoAdminRoles
         }
-        return personaRoles(cxt, primaryId)
-    }
-
-    /**
-     * What the persona in [primaryId] grants, or just [ROLE.user] when it names none (issue #352).
-     *
-     * **A persona can never grant [ROLE.allClients], and that is structural rather than a check.**
-     * [RoleLadder.rolesAtLevel] composes a level out of the ladder plus the capabilities already held, and
-     * here nothing is held -- so a persona naming a capability, `allClients` included, produces the floor.
-     * The escalation ceiling of the whole email convention is therefore a property of how the roles are
-     * built, not a rule somebody has to remember to apply. **A client with no persona is an ordinary user**,
-     * which falls out of the same call.
-     *
-     * A persona that names nothing on the ladder is logged rather than refused. It can only ever
-     * *under*-grant, so the failure is safe, and a typo that silently produced an ordinary user with no word
-     * said is the thing worth avoiding.
-     */
-    fun personaRoles(cxt: KdrCxt, primaryId: String): List<String> {
-        val persona = AddressRules.tagsFor(cxt, primaryId).persona ?: return listOf(ROLE.user)
-        val roles = RoleLadder.rolesAtLevel(emptyList(), persona)
-        if (persona != ROLE.user && roles.size == 1) {
-            LogAuth.warn(cxt) {
-                "Address '$primaryId' names the persona '$persona', which is not one of " +
-                    "${RoleLadder.ordered.joinToString(", ")}; creating an ordinary user."
-            }
-        }
-        return roles
+        return PERSONA.def(persona)?.defaultRoles ?: listOf(ROLE.user)
     }
 }

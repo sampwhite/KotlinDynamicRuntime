@@ -76,7 +76,9 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
                 "The created user's real-world name -- a person's full name, distinct from the username. " +
                     "Ignored when the user already exists; absent leaves the account unnamed.",
             )
-            field(TEP.persona, "The user's persona (issue #747): `${PERSONA.member}` (the default) or `${PERSONA.admin}`.")
+            field(TEP.persona, "The user's persona (issue #747); absent, the one the level implies (`${PERSONA.admin}` for an admin, else `${PERSONA.member}`).") {
+                for (def in PERSONA.defs) option(def.name, def.label)
+            }
             field(
                 TEP.personId,
                 "Distinguishes several users of one address with the same persona in one client (issue #747); " +
@@ -95,7 +97,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
             failIfUserAlreadyExists = request[TEP.failIfUserAlreadyExists] == true,
             client = request.getOptStr(TEP.client),
             name = request.getOptStr(TEP.name),
-            persona = request.getOptStr(TEP.persona) ?: PERSONA.member,
+            persona = request.getOptStr(TEP.persona),
             personId = request.getOptStr(TEP.personId) ?: "",
         )
     }
