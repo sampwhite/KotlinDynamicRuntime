@@ -191,6 +191,14 @@ class AuthFormHandler(
         verifyCodeOrThrow(cxt, address, formAuthToken, verifyCode)
         val existing = userService.queryByPrimaryId(cxt, address)
         if (existing != null && existing.enabled && (!existing.needsRealUsername || existing.hasPassword)) {
+            // A privileged caller placing a user is told plainly (there is no oracle to protect against them): a
+            // further user for a person who already has one is the Users page's create, which invites them.
+            if (placing) {
+                throw KdrException.mkInput(
+                    "'$address' already has an account. To give that person a further user, create it from the Users " +
+                        "page, which sends them an invitation; registration is for an address that has none.",
+                )
+            }
             // FUTURE (with the other security hardening -- single-use verify tokens, logout invalidating the
             // auth cookie): rather than an error, *pretend success* here and email the existing account that
             // someone tried to register with their address. For now, it is a sensitive error -- obfuscated to a
@@ -631,20 +639,11 @@ class AuthFormHandler(
 
     // --- claiming an account created for you (issue #751) ----------------------
 
-    /**
-     * The key a claim names, with the defaults applied (`public`, `member`, no personId), as one string the
-     * code is computed over -- so a code mailed for one user cannot be replayed against another of the same
-     * address, and a key mistyped at the code step fails as an incorrect code.
-     */
-    private fun claimKey(cxt: KdrCxt, address: String, client: String?, persona: String?, personId: String): String =
-        listOf(address, client?.trim()?.ifEmpty { null } ?: AddressRules.defaultClient(cxt), persona?.trim()?.ifEmpty { null } ?: PERSONA.member, personId.trim()).joinToString("|")
-
-    /** The enabled, non-deleted user of [address] under the key, or null. */
-    private fun claimedUser(cxt: KdrCxt, key: String): AuthUserRow? {
-        val (address, client, persona, personId) = key.split("|")
-        val identity = userService.queryIdentityByAddress(cxt, address) ?: return null
-        return userService.usersOfIdentity(cxt, identity.identityId)
-            .firstOrNull { it.client == client && it.persona == persona && it.personId == personId && !it.isDeleted }
+    /** The user [key] names, or null: the enabled or disabled, non-deleted user under it, never for an invalid key. */
+    private fun claimedUser(cxt: KdrCxt, key: ClaimKey): AuthUserRow? {
+        if (!key.isValid) return null
+        val identity = userService.queryIdentityByAddress(cxt, key.address) ?: return null
+        return userService.usersOfIdentity(cxt, identity.identityId).firstOrNull { key.matches(it) }
     }
 
     /**
@@ -653,34 +652,42 @@ class AuthFormHandler(
      * specifically as the inbox's owner is entitled to (that the address does have a user in that client, when
      * it does). Either way this returns normally and the page reports a code as sent: the truth goes to the
      * inbox, never to an anonymous caller, so the page is no oracle for who has what.
+     *
+     * **Nothing typed reaches a mail unless it is an id** (`ClaimKey.isValid`): this is anonymous and mails any
+     * address, so echoing a free value would let a stranger put their own sentence into a message sent from
+     * the deployment's domain. A key that is not made of ids names nobody, and its mail says only that.
      */
     fun sendClaimCode(cxt: KdrCxt, address: String, client: String?, persona: String?, personId: String, formAuthToken: String) {
         requireValidToken(cxt, formAuthToken)
         if (!address.isEmailAddress()) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.emailInvalid))
         requireSendAllowed(cxt, address)
-        val key = claimKey(cxt, address, client, persona, personId)
-        val (_, keyClient, keyPersona, keyPersonId) = key.split("|")
-        val where = $$"client \"${client}\" as ${persona}".evalTemplate(mapOf("client" to keyClient, "persona" to PERSONA.typed(keyPersona, keyPersonId)))
+        val key = ClaimKey(address, client, persona, personId)
         val user = claimedUser(cxt, key)
         // The address is spelled out in every variant for the same reason the invitation spells it: a tester's
         // plus-addressed mails to one inbox must not fold into one another.
-        val text = if (user != null) {
-            $$"Your verification code for claiming the account ${address} in ${where} is ${code}. Enter it on the page " +
-                "where you asked for it. It expires in fifteen minutes."
-        } else {
-            val identity = userService.queryIdentityByAddress(cxt, address)
-            val inClient = identity != null && userService.usersOfIdentity(cxt, identity.identityId).any { it.client == keyClient && !it.isDeleted }
-            $$"We could not find an account for ${address} in ${where}. " + if (inClient) {
-                "This address does have an account in that client; check the persona (and person id) you were given."
-            } else {
-                "If you were invited, check the client and persona in the invitation; otherwise nothing has been created."
+        val text = when {
+            user != null ->
+                "Your verification code for claiming the account $address in ${key.describe()} is " +
+                    "${node.computeVerifyCode(formAuthToken, key.hashText)}. Enter it on the page where you asked for it. " +
+                    "It expires in fifteen minutes."
+            !key.isValid ->
+                "We could not find an account for $address matching what was entered on the claim page. If you were " +
+                    "invited, enter the client and persona exactly as the invitation gave them; otherwise nothing has been created."
+            else -> {
+                val identity = userService.queryIdentityByAddress(cxt, address)
+                val inClient = identity != null && userService.usersOfIdentity(cxt, identity.identityId).any { it.client == key.client && !it.isDeleted }
+                "We could not find an account for $address in ${key.describe()}. " + if (inClient) {
+                    "This address does have an account in that client; check the persona (and person id) you were given."
+                } else {
+                    "If you were invited, check the client and persona in the invitation; otherwise nothing has been created."
+                }
             }
         }
-        LogAuth.info(cxt) { "Claim code requested for '$address' ($where): ${if (user != null) "user ${user.userId}" else "no match"}." }
-        mail.sendEmail(
-            cxt, to = address, subject = "Claiming your account",
-            text = text.evalTemplate(mapOf("where" to where, "code" to node.computeVerifyCode(formAuthToken, key), "address" to address)),
-        )
+        LogAuth.info(cxt) {
+            "Claim code requested for '$address' (${if (key.isValid) key.describe() else "not an id"}): " +
+                (if (user != null) "user ${user.userId}." else "no match.")
+        }
+        mail.sendEmail(cxt, to = address, subject = "Claiming your account", text = text)
     }
 
     /**
@@ -694,8 +701,8 @@ class AuthFormHandler(
         cxt: KdrCxt, address: String, client: String?, persona: String?, personId: String, formAuthToken: String, verifyCode: String,
     ): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
-        val key = claimKey(cxt, address, client, persona, personId)
-        verifyCodeOrThrow(cxt, key, formAuthToken, verifyCode)
+        val key = ClaimKey(address, client, persona, personId)
+        verifyCodeOrThrow(cxt, key.hashText, formAuthToken, verifyCode)
         val user = claimedUser(cxt, key) ?: throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.codeIncorrect))
         return completeLogin(cxt, user, byCode = true)
     }

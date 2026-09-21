@@ -258,9 +258,15 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             loadUser(c, userId).let { it.enabled = false; service.updateUser(c, it) }
         }
         // Somebody else's user, live: invite them to claim it. A disabled one waits for its enable, and the
-        // administrator sends the invitation then (`userInvite`).
+        // administrator sends the invitation then (`userInvite`). A mail that cannot go out (the provider down)
+        // does not fail the create -- the user exists, and a retry would only be refused as a duplicate -- it is
+        // logged, and the editor offers to send the invitation again.
         if (!ownAddress && enabled) {
-            authHandler(c).inviteUser(c, loadUser(c, userId))
+            try {
+                authHandler(c).inviteUser(c, loadUser(c, userId))
+            } catch (e: KdrException) {
+                LogAuth.warn(c) { "User $userId ('$primaryId') was created but its invitation could not be sent: ${e.message}" }
+            }
         }
         LogAuth.info(c) {
             "Admin ${c.userProfile.userId} created user $userId ('$primaryId', persona '$persona'" +

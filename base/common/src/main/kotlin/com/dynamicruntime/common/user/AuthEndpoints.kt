@@ -140,8 +140,8 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     generalEndpoint(AEP.claimSendVerify, "Mails a verification code for the user an address, client and persona name.",
         HttpMethod.POST, outputRef = ATYPE.authAck, inputFields = {
             field(AFLD.contactAddress, "The email address the account was created for.", required = true)
-            field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.")
-            field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.")
+            field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.") { maxLength = ClaimKey.maxPartLength }
+            field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.") { maxLength = ClaimKey.maxPartLength }
             field(AFLD.personId, "The person id the invitation named, when it did.") { maxLength = PERSONID.maxLength }
             field(AFLD.formAuthToken, "The form auth token.", required = true)
         }) { c, req ->
@@ -154,8 +154,8 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     generalEndpoint(AEP.claimAccount, "Registers and logs in as the user an address, client and persona name, with the mailed code.",
         HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
             field(AFLD.contactAddress, "The email address the account was created for.", required = true)
-            field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.")
-            field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.")
+            field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.") { maxLength = ClaimKey.maxPartLength }
+            field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.") { maxLength = ClaimKey.maxPartLength }
             field(AFLD.personId, "The person id the invitation named, when it did.") { maxLength = PERSONID.maxLength }
             field(AFLD.formAuthToken, "The form auth token.", required = true)
             field(AFLD.verifyCode, "The verification code mailed for this claim.", required = true)

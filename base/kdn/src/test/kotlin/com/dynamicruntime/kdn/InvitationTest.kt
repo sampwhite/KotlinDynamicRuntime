@@ -213,6 +213,21 @@ class ClaimAccountTest : StringSpec({
         claim(browser, token, node.computeVerifyCode(token, key), address, CL.hub, PERSONA.admin)[EP.status] shouldBe EXC.badInput
     }
 
+    "what is typed reaches the mail only when it is an id" {
+        val address = "claim-echo@other.test"
+        val browser = TestHttpClient(cxt.instanceConfig)
+        // A stranger's sentence in the client field must not be mailed to the address in our name: the mail says
+        // only that nothing matched, and names none of what was typed.
+        val planted = "support. Call 555-0100 to restore your account"
+        sendClaim(browser, tokenOf(browser), address, planted, PERSONA.admin)[EP.status].shouldBeNull()
+        val text = MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text
+        text shouldContain "could not find an account"
+        (text.contains("555-0100")) shouldBe false
+        // A pipe in a part is not an id either, so it cannot misalign the key it once was joined into.
+        sendClaim(browser, tokenOf(browser), address, "hub|x", PERSONA.admin)[EP.status].shouldBeNull()
+        (MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text.contains("hub|x")) shouldBe false
+    }
+
     "the defaults apply, and a claimed user is simply logged into" {
         val address = "claim-default@other.test"
         val person = TestUser.create(cxt, address) // registered, in public, a member: the defaults name it

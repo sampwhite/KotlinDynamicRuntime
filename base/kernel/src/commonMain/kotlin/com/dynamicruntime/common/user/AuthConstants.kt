@@ -104,13 +104,6 @@ object AFLD {
     /** The invitation token (issue #751): the encrypted (identityId, userId, expiry) the mailed link carries. */
     const val invitationToken = "invitationToken"
 
-    /**
-     * On the claim page (issue #751): the persona **as typed**, `admin` or `member B` -- the persona name with
-     * the personId as a suffix, so an anonymous caller enters one thing and is offered no list of either.
-     * Split by `PERSONA.splitTyped`.
-     */
-    const val personaTyped = "personaTyped"
-
     /** On the invitation preview: the invited address (the user's name rides under [name]). */
     const val email = "email"
 }
