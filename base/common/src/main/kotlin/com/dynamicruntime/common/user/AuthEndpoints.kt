@@ -9,6 +9,8 @@ import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.gedra.clientAttribute
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getOptBool
@@ -113,11 +115,44 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             field(AFLD.contactType, "The contact type (currently only 'email').", required = true)
             field(AFLD.formAuthToken, "The form auth token.", required = true)
             field(AFLD.verifyCode, "The verification code emailed to the contact.", required = true)
+            // Where the new user goes (issue #751): for an allClients caller only; refused for anyone else.
+            field(AFLD.client, "The new user's client; only an '${ROLE.allClients}' caller may name one (else 'public').") { clientAttribute() }
+            field(AFLD.persona, "The new user's persona; only an '${ROLE.allClients}' caller may name one (else '${PERSONA.member}').") {
+                for (def in PERSONA.defs) option(def.name, def.label)
+            }
+            field(AFLD.personId, "A further user of the same address, client and persona; only an '${ROLE.allClients}' caller may name one.") {
+                maxLength = PERSONID.maxLength
+            }
         }) { c, req ->
         val userId = authHandler(c).createInitialUser(
             c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
+            client = req.getOptStr(AFLD.client)?.trim()?.ifEmpty { null },
+            persona = req.getOptStr(AFLD.persona)?.trim()?.ifEmpty { null },
+            personId = req.getOptStr(AFLD.personId)?.trim() ?: "",
         )
         mapOf(AFLD.userId to userId)
+    }
+
+    // Invitations (issue #751). Preview says what the link is for and changes nothing; accept is the claim.
+    type(ATYPE.invitationInfo) {
+        type = SCT.kObject
+        property(AFLD.email, "The invited address.", required = true)
+        property(AFLD.client, "The client the invited user is in.", required = true)
+        property(AFLD.persona, "The invited user's persona.", required = true)
+        property(AFLD.personId, "The invited user's personId; empty for the ordinary user.", required = true) { emptyIsAbsent = false }
+        property(AFLD.name, "The invited user's name, when the inviter gave one.")
+    }
+    generalEndpoint(AEP.invitationPreview, "Says what an invitation link is for, without accepting it.",
+        HttpMethod.POST, outputRef = ATYPE.invitationInfo, inputFields = {
+            field(AFLD.invitationToken, "The token from the mailed link.", required = true)
+        }) { c, req ->
+        authHandler(c).previewInvitation(c, req.getReqStr(AFLD.invitationToken))
+    }
+    generalEndpoint(AEP.invitationAccept, "Accepts an invitation: registers the invited user and logs in as it.",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.invitationToken, "The token from the mailed link.", required = true)
+        }) { c, req ->
+        authHandler(c).acceptInvitation(c, req.getReqStr(AFLD.invitationToken))
     }
 
     // Set username (and optional password) after verifying, then log in.

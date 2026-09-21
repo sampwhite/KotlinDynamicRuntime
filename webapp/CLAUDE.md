@@ -100,6 +100,15 @@ Current UI-config endpoints:
   is in brackets (`Demo Person [hub · Member B]`, only what tells it from the others -- `UserChoice.qualifierWithin`)
   and becomes the menu that switches; with one user it is the plain label it always was. The default persona
   is `member` (shown `Member`); `admin` is the other so far.
+- **Invitations** (issue #751), anonymous like the rest of the auth flow: an administrator's create for an
+  address that is not their own -- new, or another person's -- provisions an unclaimed user and mails a link
+  to `#page=invite&token=<token>` (built under `KDR_PUBLIC_URL`, else the request's scheme and host). The
+  **invite page** (`InvitePage`) POSTs `/auth/invitation/preview {invitationToken}` to say what the account is
+  and waits for **Accept**, which POSTs `/auth/invitation/accept`: the link is the proof, so accepting registers
+  the user, verifies a new identity, signs the browser in, and reloads. Nothing happens on merely opening the
+  link. `POST /clientAdmin/user/invite {userId}` re-sends a lapsed one (the editor offers it for an unclaimed
+  user). The **register form** shows Client / Persona / Person id to an `allClients` caller only; set, they ride
+  `createInitial` and the backend refuses them from anyone else.
 
 The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
 the envelope consistent across groups.

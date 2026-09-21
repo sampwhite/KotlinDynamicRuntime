@@ -182,8 +182,14 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
          * [create], which provisions rows directly, this exercises the ordinary registration path -- so it is
          * the right instrument when the thing under test is what a *registration* grants. [name] is the username.
          */
-        fun register(cxt: KdrCxt, email: String, name: String): TestUser {
-            val client = TestHttpClient(cxt.instanceConfig)
+        fun register(
+            cxt: KdrCxt, email: String, name: String,
+            /** Where the new user goes (issue #751); only an `allClients` caller's browser may say, so pass [asClient] for one. */
+            userClient: String? = null, persona: String? = null, personId: String? = null,
+            /** The browser to register from -- one already signed in as an `allClients` administrator when placing the user. */
+            asClient: TestHttpClient? = null,
+        ): TestUser {
+            val client = asClient ?: TestHttpClient(cxt.instanceConfig)
             val token = client.sendJsonGetRequest(AEP.createToken)[EP.results].toJsonMapOrEmpty()[AFLD.formAuthToken]
                 as? String ?: throw IllegalStateException("createToken returned no form token.")
             client.sendJsonPostRequest(
@@ -198,10 +204,15 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
             val code = node.computeVerifyCode(token, email.normalizeEmail())
             val userId = client.sendJsonPutRequest(
                 AEP.createInitial,
-                mapOf(
-                    AFLD.contactAddress to email, AFLD.contactType to emailContactType,
-                    AFLD.formAuthToken to token, AFLD.verifyCode to code,
-                ),
+                buildMap {
+                    put(AFLD.contactAddress, email)
+                    put(AFLD.contactType, emailContactType)
+                    put(AFLD.formAuthToken, token)
+                    put(AFLD.verifyCode, code)
+                    userClient?.let { put(AFLD.client, it) }
+                    persona?.let { put(AFLD.persona, it) }
+                    personId?.let { put(AFLD.personId, it) }
+                },
             )[EP.results].toJsonMapOrEmpty()[AFLD.userId].toOptLong()
                 ?: throw IllegalStateException("createInitial returned no user id.")
             val userInfo = client.sendJsonPutRequest(

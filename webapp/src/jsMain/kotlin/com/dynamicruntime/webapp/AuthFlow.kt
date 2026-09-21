@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.passwordRuleError
 import com.dynamicruntime.common.util.evalTemplate
 import kotlinx.coroutines.MainScope
@@ -9,6 +11,7 @@ import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.span
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
@@ -39,6 +42,13 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     // Business-account registration (entity accounts). Both reset on a mode change, below.
     var isEntity by useState(false)
     var name by useState("")
+    // Where the new account goes (issue #751), for an allClients administrator only: sent only when set, so an
+    // ordinary registration is unchanged. The client list is fetched for that caller alone (it is a cross-client
+    // question the endpoint answers only to them).
+    var placeClient by useState("")
+    var placePersona by useState("")
+    var placePersonId by useState("")
+    var clientChoices by useState<List<ClientChoice>>(emptyList())
     // The form token, set once a verification code has been sent, also marks the "enter the code" step.
     var token by useState<String?>(null)
     var error by useState<DisplayError?>(null)
@@ -59,6 +69,9 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 config = c
                 // Recover a stale build id (a rolling deploy) rather than erroring on a healthy runtime (#469).
                 copy = fetchCopyWithRetry(c.fragment) { runCatching { AuthApi.fetchConfig().fragment }.getOrNull() }
+                if (register && c.user.roles.contains(ROLE.allClients)) {
+                    clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
+                }
             } catch (e: Throwable) {
                 error = userFacingError(e)
             }
@@ -76,6 +89,9 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         code = ""
         isEntity = false
         name = ""
+        placeClient = ""
+        placePersona = ""
+        placePersonId = ""
         token = null
         error = null
         devFilled = false
@@ -139,7 +155,11 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             when {
                 // Registration takes the password (if any) straight into the account it is creating.
                 register -> {
-                    val userId = AuthApi.createInitial(id, tk, code.trim())
+                    val userId = AuthApi.createInitial(
+                        id, tk, code.trim(),
+                        client = placeClient.ifEmpty { null }, persona = placePersona.ifEmpty { null },
+                        personId = placePersonId.trim().ifEmpty { null },
+                    )
                     AuthApi.finishRegistration(
                         userId, tk, code.trim(), password.ifEmpty { null },
                         isEntity = isEntity, name = name.trim().ifEmpty { null },
@@ -203,6 +223,43 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             p {
                 className = ClassName("type-hint")
                 +t("register", "nameHelp", "The name shown for your account. It need not be unique.")
+            }
+            // Placing the new account (issue #751): an allClients administrator registering somebody -- or
+            // themself again -- somewhere other than `public`. Unset, the registration is the ordinary one.
+            if (config?.user?.roles?.contains(ROLE.allClients) == true) {
+                if (clientChoices.isNotEmpty()) {
+                    div {
+                        className = ClassName("row")
+                        span { className = ClassName("field-label"); +t("register", "clientLabel", "Client") }
+                        Select {
+                            value = placeClient.ifEmpty { null }
+                            options = clientOptions(clientChoices)
+                            disabled = busy || codeSent
+                            allowClear = true
+                            placeholder = "public"
+                            style = js("({ minWidth: 180 })")
+                            onChange = { v -> placeClient = v as? String ?: "" }
+                        }
+                    }
+                }
+                div {
+                    className = ClassName("row")
+                    span { className = ClassName("field-label"); +t("register", "personaLabel", "Persona") }
+                    Select {
+                        value = placePersona.ifEmpty { null }
+                        options = personaOptions()
+                        disabled = busy || codeSent
+                        allowClear = true
+                        placeholder = PERSONA.label(PERSONA.member)
+                        style = js("({ minWidth: 180 })")
+                        onChange = { v -> placePersona = v as? String ?: "" }
+                    }
+                }
+                textField(t("register", "personIdLabel", "Person id"), placePersonId, disabled = busy || codeSent) { placePersonId = it }
+                p {
+                    className = ClassName("type-hint")
+                    +t("register", "provisionHelp", "As an administrator across clients, you may place the new account. Leave these alone for an ordinary registration.")
+                }
             }
         }
 

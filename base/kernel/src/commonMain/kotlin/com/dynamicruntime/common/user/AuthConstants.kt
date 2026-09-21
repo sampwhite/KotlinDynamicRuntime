@@ -37,6 +37,13 @@ object AEP {
     const val switchUser = "/user/self/switch"
     /** Choose which of the person's users an address logs in as. */
     const val setDefaultUser = "/user/self/setDefault"
+
+    // Invitations (issue #751), anonymous like the rest of the register/login flow: the mailed link is the
+    // proof, and the person opening it has no session yet.
+    /** What an invitation token is for -- the address, client and persona -- before it is accepted. */
+    const val invitationPreview = "/auth/invitation/preview"
+    /** Accept an invitation: proves the address, registers the invited user, and logs in as it. */
+    const val invitationAccept = "/auth/invitation/accept"
 }
 
 /** Auth request/response field (JSON key) names, shared so the frontend builds and reads payloads by constant. */
@@ -78,6 +85,20 @@ object AFLD {
 
     /** The `items` of the users list (issue #749): the caller's `UserChoice`s. */
     const val users = "users"
+
+    /**
+     * On registration (issue #751), for an `allClients` caller only: which client, persona and personId the
+     * new user takes. Anyone else registers into `public` as a member, and naming one of these is refused.
+     */
+    const val client = "client"
+    const val persona = "persona"
+    const val personId = "personId"
+
+    /** The invitation token (issue #751): the encrypted (identityId, userId, expiry) the mailed link carries. */
+    const val invitationToken = "invitationToken"
+
+    /** On the invitation preview: the invited address (the user's name rides under [name]). */
+    const val email = "email"
 }
 
 /** UI-config feature-flag keys for the auth and profile widget-groups. */
@@ -106,6 +127,8 @@ object ATYPE {
     const val profileUiConfig = "ProfileUiConfig"
     /** The users list (issue #749): the caller's `UserChoice`s under `users`. */
     const val userChoices = "UserChoices"
+    /** What an invitation is for (issue #751): address, client, persona, personId, name. */
+    const val invitationInfo = "InvitationInfo"
 }
 
 /** Markdown fragment file ids for the auth-area widget-groups (each also the group's fragment namespace). */
@@ -162,6 +185,12 @@ object AERR {
     const val userKeyTaken = "userKeyTaken"
     const val clientParam = "client"
     const val personaParam = "persona"
+
+    /** The invitation link is malformed, tampered with, expired, or names a user that no longer fits it (issue #751). */
+    const val invitationInvalid = "invitationInvalid"
+
+    /** The invitation was already accepted: the user is registered, and a mailed link is not a standing login. */
+    const val invitationUsed = "invitationUsed"
     /** `, personId 'B'` when the key carried one, else empty -- so one sentence serves both. */
     const val personIdNoteParam = "personIdNote"
 }

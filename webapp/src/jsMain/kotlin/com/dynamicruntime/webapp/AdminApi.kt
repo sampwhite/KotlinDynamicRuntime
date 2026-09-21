@@ -246,6 +246,10 @@ object AdminApi {
             if (org != null) put(ADF.org, org)
         }).results().toAdminUser()
 
+    /** (Re)sends the invitation for a user nobody has claimed yet (issue #751); refused for a claimed or disabled one. */
+    suspend fun inviteUser(userId: Long): AdminUser =
+        Http.sendApi("POST", UADEP.userInvite, mapOf(ADF.userId to userId)).results().toAdminUser()
+
     /** Sets a user's name, and whether the account is a business; the name survives a change of [isEntity]. */
     suspend fun setName(userId: Long, name: String?, isEntity: Boolean): AdminUser =
         Http.sendApi("POST", UADEP.userSetName, buildMap {

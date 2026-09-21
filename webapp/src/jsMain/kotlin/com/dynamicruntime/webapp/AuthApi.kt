@@ -8,6 +8,7 @@ import com.dynamicruntime.common.test.TSE
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -54,6 +55,18 @@ fun authConfigFrom(config: UiConfig): AuthConfig = AuthConfig(
     googleClientId = config.state[AFLD.googleClientId] as? String ?: "",
 )
 
+/** What an invitation is for (issue #751), as the preview reports it. */
+class InvitationInfo(val email: String, val client: String, val persona: String, val personId: String, val name: String?)
+
+/** The pure map -> [InvitationInfo] mapping; the persona and personId read as the badge labels them. Covered by `jsNodeTest`. */
+fun invitationInfoFrom(info: Map<String, Any?>): InvitationInfo = InvitationInfo(
+    email = info[AFLD.email] as? String ?: "",
+    client = info[AFLD.client] as? String ?: "",
+    persona = info[AFLD.persona] as? String ?: PERSONA.member,
+    personId = info[AFLD.personId] as? String ?: "",
+    name = info[AFLD.name] as? String,
+)
+
 @Suppress("ConstPropertyName")
 /**
  * The auth widget-group's backend calls, keyed off the shared kernel constants ([AEP]/[AFLD]/[AFEAT]/[UIC]) so
@@ -93,17 +106,37 @@ object AuthApi {
         )
     }
 
-    /** Provisions the initial user row from a verified email + code, returning the new userId. */
-    suspend fun createInitial(email: String, token: String, code: String): Long {
+    /**
+     * Provisions the initial user row from a verified email + code, returning the new userId. [client],
+     * [persona] and [personId] place the new user (issue #751) and are sent only when given -- only an
+     * `allClients` caller may name them, and the backend refuses anyone else.
+     */
+    suspend fun createInitial(
+        email: String, token: String, code: String,
+        client: String? = null, persona: String? = null, personId: String? = null,
+    ): Long {
         val results = Http.sendApi(
             "PUT", AEP.createInitial,
-            mapOf(
-                AFLD.contactAddress to email, AFLD.contactType to emailContactType,
-                AFLD.formAuthToken to token, AFLD.verifyCode to code,
-            ),
+            buildMap {
+                put(AFLD.contactAddress, email)
+                put(AFLD.contactType, emailContactType)
+                put(AFLD.formAuthToken, token)
+                put(AFLD.verifyCode, code)
+                client?.trim()?.takeIf { it.isNotEmpty() }?.let { put(AFLD.client, it) }
+                persona?.trim()?.takeIf { it.isNotEmpty() }?.let { put(AFLD.persona, it) }
+                personId?.trim()?.takeIf { it.isNotEmpty() }?.let { put(AFLD.personId, it) }
+            },
         )[EP.results].toJsonMapOrEmpty()
         return results[AFLD.userId].toOptLong() ?: error("The server did not return a user id.")
     }
+
+    /** What an invitation link is for (issue #751), without accepting it: the invited address, client, persona. */
+    suspend fun previewInvitation(token: String): InvitationInfo =
+        invitationInfoFrom(Http.sendApi("POST", AEP.invitationPreview, mapOf(AFLD.invitationToken to token))[EP.results].toJsonMapOrEmpty())
+
+    /** Accepts an invitation: registers the invited user and signs this browser in as it (the session cookie is written). */
+    suspend fun acceptInvitation(token: String): UserProfile =
+        userFrom(Http.sendApi("POST", AEP.invitationAccept, mapOf(AFLD.invitationToken to token)))
 
     /**
      * Finishes registration, which logs the user in. No username (the frontend doesn't use them); [password] is

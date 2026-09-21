@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.mail.MailService
@@ -170,10 +171,23 @@ class AuthFormHandler(
      * Provisions the initial user row for a freshly verified email [contactAddress], returning its `userId`.
      * A fresh email inserts a new row; a lingering placeholder (started-but-unfinished) row is re-provisioned.
      * An active, real user already at that email cannot be recreated.
+     *
+     * An **`allClients` caller** may say where the new user goes (issue #751): [client], [persona] and
+     * [personId] beside the address, the code arriving at that address as for anyone. That is how an
+     * administrator provisions a truly new identity somewhere other than `public` -- a new identity is only
+     * ever created by proving its address, so even they go through the code. Anyone else naming one of the
+     * three is refused: a self-registration lands in `public` as a member.
      */
-    fun createInitialUser(cxt: KdrCxt, contactAddress: String, formAuthToken: String, verifyCode: String): Long {
+    fun createInitialUser(
+        cxt: KdrCxt, contactAddress: String, formAuthToken: String, verifyCode: String,
+        client: String? = null, persona: String? = null, personId: String = "",
+    ): Long {
         val address = contactAddress.normalizeEmail()
         requireValidToken(cxt, formAuthToken)
+        val placing = client != null || persona != null || personId.isNotEmpty()
+        if (placing && !cxt.userProfile.roles.contains(ROLE.allClients)) {
+            throw KdrException.mkInput("Only an administrator holding '${ROLE.allClients}' may choose the client, persona or personId of a new account.")
+        }
         verifyCodeOrThrow(cxt, address, formAuthToken, verifyCode)
         val existing = userService.queryByPrimaryId(cxt, address)
         if (existing != null && existing.enabled && (!existing.needsRealUsername || existing.hasPassword)) {
@@ -187,15 +201,23 @@ class AuthFormHandler(
                 sensitive = true,
             )
         }
-        // The roles a new user starts with: the member persona's, but an address matching the deployment's
-        // configured admin domain is provisioned as an admin -- how the first admin comes to exist (AdminRules).
-        val initialRoles = AdminRules.initialRoles(cxt, address)
-        // A self-registered user lands in the placeholder client (`public`) with the default persona; the
-        // `+client%persona` tag that could once say otherwise is retired (issue #750), and an `allClients`
-        // caller's choice of client, persona and personId at registration is phase E's.
+        // The roles a new user starts with: the persona's (the member's unless an allClients caller named one),
+        // but an address matching the deployment's configured admin domain is provisioned as an admin -- how
+        // the first admin comes to exist (AdminRules).
+        val initialRoles = AdminRules.initialRoles(cxt, address, persona ?: PERSONA.member)
         val now = cxt.now()
         // The proof, and the contact it proves, are recorded on the identity (issues #747, #748); the user the
         // code was used for is the person's from the start -- registered (issue #749).
+        if (placing) {
+            // Placed by an allClients caller: the one provisioning path creates it under the named key, or
+            // recovers a recoverably deleted user there, or refuses an enabled one as the duplicate it is.
+            return userService.provisionUser(
+                cxt, address, namedClientOrRefuse(cxt, client), initialRoles, createdAt = now,
+                persona = persona, personId = personId, verifiedAt = now, registered = true,
+            )
+        }
+        // A self-registration lands in the placeholder client (`public`) with the default persona; the
+        // `+client%persona` tag that could once say otherwise is retired (issue #750).
         return if (existing != null) {
             // A lingering row (started-but-unfinished, or recoverably deleted) is re-provisioned in place; its
             // identity is marked verified now, as a fresh one would be.
@@ -490,7 +512,7 @@ class AuthFormHandler(
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
         val userId = userService.provisionUser(
-            cxt, address, fixtureClient(cxt, address, client), roles,
+            cxt, address, namedClientOrRefuse(cxt, client), roles,
             createdAt = cxt.now(), persona = persona, personId = personId, verifiedAt = cxt.now(), registered = true,
         ) { authUserData ->
             // The person's real-world name (issue #736), set the same way the admin-create path does -- display
@@ -505,15 +527,15 @@ class AuthFormHandler(
     }
 
     /**
-     * The client the fixture creates a user in: [named] when it is given, and otherwise the default client a
-     * registration lands in.
+     * The client a caller named for a new user -- the fixture's, or an allClients registration's (issue #751)
+     * -- or the default client a registration lands in when [named] is null.
      *
-     * An explicit client this node does not carry is **refused**, where a registration falls back to `public`.
-     * The difference is who is on the other end. A test asking for a client that is not present has made a
-     * mistake, and silently getting `public` is how it goes unnoticed until an assertion three files away
-     * fails for a reason that has nothing to do with what it was checking.
+     * An explicit client this node does not carry is **refused**, where a plain registration lands in `public`.
+     * The difference is who is on the other end. A test or an administrator asking for a client that is not
+     * present has made a mistake, and silently getting `public` is how it goes unnoticed until an assertion
+     * three files away fails for a reason that has nothing to do with what it was checking.
      */
-    private fun fixtureClient(cxt: KdrCxt, @Suppress("UNUSED_PARAMETER") email: String, named: String?): String {
+    private fun namedClientOrRefuse(cxt: KdrCxt, named: String?): String {
         val client = named ?: return AddressRules.defaultClient(cxt)
         val clients = ClientService.get(cxt)
         if (!clients.isPresent(client)) {
@@ -529,6 +551,73 @@ class AuthFormHandler(
             )
         }
         return client
+    }
+
+    // --- invitations (issue #751) ---------------------------------------------
+
+    /**
+     * Mails [user]'s person an invitation to claim it: a link carrying an [InvitationToken] for the user, good
+     * for [AUTHC.invitationMillis]. What an administrator's create sends for a user at somebody else's address
+     * -- a new identity, or a further user for an existing one -- and what `admin/user/invite` re-sends. The
+     * link is the proof: opening it and accepting registers the user (and verifies the identity, if nothing
+     * had), with no code to type, since the token reached only the inbox. Returns the token, for a test.
+     */
+    fun inviteUser(cxt: KdrCxt, user: AuthUserRow): String {
+        if (user.isRegistered) throw KdrException.mkInput("User ${user.userId} has already been claimed; there is nothing to invite them to.")
+        if (!user.enabled) throw KdrException.mkInput("User ${user.userId} is disabled; enable the account before inviting.")
+        val token = InvitationToken(user.identityId, user.userId, cxt.now().toEpochMilliseconds() + AUTHC.invitationMillis).encode(node)
+        val url = INVITE.invitationUrl(INVITE.publicUrlFor(cxt), token)
+        val what = "'${user.client}' as ${PERSONA.label(user.persona)}" + (if (user.personId.isEmpty()) "" else " ${user.personId}")
+        val template = $$"An account has been created for you in ${what}. Open this link to accept it and sign in: " +
+            $$"${url}\n\nThe link expires in seven days. If you were not expecting this, ignore it."
+        val text = template.evalTemplate(mapOf("what" to what, "url" to url))
+        mail.sendEmail(cxt, to = user.primaryId, subject = "You have been invited", text = text)
+        LogAuth.info(cxt) { "Invited user ${user.userId} ('${user.primaryId}') to '${user.client}' as '${user.persona}'." }
+        return token
+    }
+
+    /**
+     * What an invitation [token] is for, before it is accepted: the address, client, persona, personId and
+     * name of the invited user. So the page can say what accepting means, and so that merely *opening* the
+     * link -- which a mail scanner does -- accepts nothing.
+     */
+    fun previewInvitation(cxt: KdrCxt, token: String): Map<String, Any?> {
+        val user = invitedUser(cxt, token)
+        return buildMap {
+            put(AFLD.email, user.primaryId)
+            put(AFLD.client, user.client)
+            put(AFLD.persona, user.persona)
+            put(AFLD.personId, user.personId)
+            user.name?.let { put(AFLD.name, it) }
+        }
+    }
+
+    /**
+     * Accepts an invitation: the user it names is registered -- and its identity verified, if nothing had yet
+     * -- and the session becomes that user, with the device made familiar, exactly as a code login does. The
+     * token reached only the inbox, so it is the same proof a code is. A second acceptance is refused: a
+     * registered user is logged into by the ordinary means, and a mailed link must not be a standing login.
+     */
+    fun acceptInvitation(cxt: KdrCxt, token: String): Map<String, Any?> {
+        val user = invitedUser(cxt, token)
+        return completeLogin(cxt, user, byCode = true)
+    }
+
+    /**
+     * The user a [token] invites the reader to claim, or a refusal: one message for a malformed, tampered or
+     * expired token and for a user that no longer fits it (gone, deleted, or now under another identity), and
+     * another for one already claimed.
+     */
+    private fun invitedUser(cxt: KdrCxt, token: String): AuthUserRow {
+        val decoded = InvitationToken.decode(node, token)
+        val user = decoded?.let { userService.queryByUserId(cxt, it.userId) }
+        if (decoded == null || user == null || user.isDeleted || user.identityId != decoded.identityId ||
+            cxt.now().toEpochMilliseconds() > decoded.expireEpochMs
+        ) {
+            throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.invitationInvalid))
+        }
+        if (user.isRegistered) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.invitationUsed))
+        return user
     }
 
     // --- the switcher (issue #749) --------------------------------------------

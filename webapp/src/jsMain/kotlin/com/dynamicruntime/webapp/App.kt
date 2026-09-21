@@ -179,6 +179,7 @@ val App = FC<Props> {
                             pageDocs -> DocsPage {}
                             pageLogin -> AuthFlow { mode = pageLogin }
                             pageRegister -> AuthFlow { mode = pageRegister }
+                            pageInvite -> InvitePage {}
                             pageProfile -> Profile {}
                             pageUsers -> Users {}
                             pageEnv -> EnvReferencePage {}
@@ -239,6 +240,8 @@ private const val pageRegister = "register"
 // as success on purpose), and which the hash cannot reset because it does not change. Opt-in, not every page:
 // see the boundary key in [App] for what a remount costs the others.
 private val restartOnRevisit = setOf(pageLogin, pageRegister)
+// The invitation page (issue #751): reached from a mailed link (`#page=invite&token=...`), never from the menu.
+private const val pageInvite = HMENU.pageInvite
 private const val pageProfile = "profile"
 // The user-administration page. Reachable only when the shell's menu offers it (the backend decides), but the
 // route exists unconditionally: the page itself reports honestly when the caller lacks the capability.
@@ -294,6 +297,7 @@ private fun currentPage(): String {
         params[HP.page] == pageDocs || params.containsKey(HP.doc) -> pageDocs
         params[HP.page] == pageLogin -> pageLogin
         params[HP.page] == pageRegister -> pageRegister
+        params[HP.page] == pageInvite -> pageInvite
         params[HP.page] == pageProfile -> pageProfile
         params[HP.page] == pageUsers -> pageUsers
         params[HP.page] == pageEnv -> pageEnv

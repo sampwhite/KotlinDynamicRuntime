@@ -184,6 +184,10 @@ object HMENU {
     const val pageProfile = "profile"
     const val pageLogin = "login"
     const val pageRegister = "register"
+    /** The invitation page (issue #751): `#page=invite&token=...`, reached from a mailed link, never from the menu. */
+    const val pageInvite = "invite"
+    /** The hash parameter the invitation page reads its token from; the backend builds the link with it. */
+    const val inviteTokenParam = "token"
     const val pageDebug = "debug"
 }
 

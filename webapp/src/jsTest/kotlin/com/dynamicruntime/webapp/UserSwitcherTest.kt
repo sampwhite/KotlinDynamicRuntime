@@ -72,3 +72,16 @@ class UserSwitcherTest {
         assertEquals(listOf(ada, batch), switchableUsers(listOf(ada, batch)))
     }
 }
+
+/** The invitation page's pure parts (issue #751): the preview parse and what it says the account is. */
+class InvitationPageTest {
+    @Test
+    fun parsesThePreviewAndSaysWhatTheAccountIs() {
+        val info = invitationInfoFrom(mapOf("email" to "ada@acme.com", "client" to "hub", "persona" to "admin", "personId" to ""))
+        assertEquals("ada@acme.com", info.email)
+        assertEquals("hub as Admin", invitationWhat(info))
+        assertEquals("acme as Member B", invitationWhat(invitationInfoFrom(mapOf("email" to "b@acme.com", "client" to "acme", "persona" to "member", "personId" to "B"))))
+        // Absent persona reads as the default; absent personId as the ordinary user.
+        assertEquals("public as Member", invitationWhat(invitationInfoFrom(mapOf("email" to "c@acme.com", "client" to "public"))))
+    }
+}
