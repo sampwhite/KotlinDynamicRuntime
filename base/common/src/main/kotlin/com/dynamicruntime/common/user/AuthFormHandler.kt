@@ -570,11 +570,16 @@ class AuthFormHandler(
         val what = "'${user.client}' as ${PERSONA.label(user.persona)}" + (if (user.personId.isEmpty()) "" else " ${user.personId}")
         // The recipe for the login page's "claim" path (issue #751) rides beside the link, since a link is a
         // courtesy some mail clients and scanners spoil: the client and the persona as the page wants them typed.
-        val template = $$"An account has been created for you in ${what}. Open this link to accept it and sign in: " +
+        // The address is spelled out although it is the `to`: Gmail folds the repeated tail of a thread's mails
+        // behind an ellipsis, and a tester's plus-addressed variants of one inbox would otherwise all read alike.
+        val template = $$"An account has been created for ${address} in ${what}. Open this link to accept it and sign in: " +
             $$"${url}\n\nOr, from the login page, choose \"Claim an account created for you\" and enter your email " +
-            $$"address with client \"${client}\" and persona \"${typed}\"; a code will be sent to you there.\n\n" +
+            $$"address ${address} with client \"${client}\" and persona \"${typed}\"; a code will be sent to you there.\n\n" +
             "The link expires in seven days. If you were not expecting this, ignore it."
-        val text = template.evalTemplate(mapOf("what" to what, "url" to url, "client" to user.client, "typed" to PERSONA.typed(user.persona, user.personId)))
+        val text = template.evalTemplate(mapOf(
+            "address" to user.primaryId, "what" to what, "url" to url, "client" to user.client,
+            "typed" to PERSONA.typed(user.persona, user.personId),
+        ))
         mail.sendEmail(cxt, to = user.primaryId, subject = "You have been invited", text = text)
         LogAuth.info(cxt) { "Invited user ${user.userId} ('${user.primaryId}') to '${user.client}' as '${user.persona}'." }
         return token
@@ -657,9 +662,11 @@ class AuthFormHandler(
         val (_, keyClient, keyPersona, keyPersonId) = key.split("|")
         val where = $$"client \"${client}\" as ${persona}".evalTemplate(mapOf("client" to keyClient, "persona" to PERSONA.typed(keyPersona, keyPersonId)))
         val user = claimedUser(cxt, key)
+        // The address is spelled out in every variant for the same reason the invitation spells it: a tester's
+        // plus-addressed mails to one inbox must not fold into one another.
         val text = if (user != null) {
-            $$"Your verification code for claiming your account in ${where} is ${code}. Enter it on the page where you asked " +
-                "for it. It expires in fifteen minutes."
+            $$"Your verification code for claiming the account ${address} in ${where} is ${code}. Enter it on the page " +
+                "where you asked for it. It expires in fifteen minutes."
         } else {
             val identity = userService.queryIdentityByAddress(cxt, address)
             val inClient = identity != null && userService.usersOfIdentity(cxt, identity.identityId).any { it.client == keyClient && !it.isDeleted }

@@ -173,7 +173,7 @@ class ClaimAccountTest : StringSpec({
     /** The code the server mailed, read from the mail the way the person would. */
     fun codeMailedTo(address: String): String {
         val text = MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text
-        return Regex("code for claiming your account in .* is (\\S+?)\\.").find(text).shouldNotBeNull().groupValues[1]
+        return Regex("code for claiming the account .* is (\\S+?)\\.").find(text).shouldNotBeNull().groupValues[1]
     }
 
     "an invited user is claimed from the login page with the address, client and persona, and a mailed code" {

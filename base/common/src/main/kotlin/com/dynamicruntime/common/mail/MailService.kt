@@ -63,7 +63,6 @@ object MAIL {
 }
 
 /** Environment variables of the mail service. */
-@Suppress("ConstPropertyName")
 object MAILENV {
     /** Env var that defaults [MAIL.transmitToAdminDomain] when the config option is unset. */
     val transmitToAdminDomain = EnvVarDef(
