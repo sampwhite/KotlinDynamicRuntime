@@ -41,8 +41,11 @@ class SchType(
     val visibleOnly: Boolean = false,
     /**
      * Custom `g-outerWhitespace` keyword (resolved): how leading/trailing whitespace on a string value is
-     * handled (issue #541) -- see [SCH.outerWhitespace]. Null unless declared (whitespace kept, as today), and
-     * only ever set on a plain string type; the parser refuses it elsewhere.
+     * handled (issues #541, #765) -- see [SCH.outerWhitespace]. Null unless declared, and only ever set on a
+     * plain string type; the parser refuses it elsewhere. Null no longer means "always keep whitespace": since
+     * #765 a plain string field with no declared mode is trimmed on the **input** path by default (the
+     * validator's `effectiveOuterWhitespace`), so [SchOuterWhitespace.keep] is the explicit opt-out for a field
+     * that must preserve edge whitespace even on input.
      */
     val outerWhitespace: SchOuterWhitespace? = null,
     /**
@@ -178,10 +181,16 @@ class SchType(
 )
 
 /**
- * The two modes of the `g-outerWhitespace` keyword (issue #541), resolved from its [SOWS] wire values. An enum
- * rather than a string because it is a genuinely closed operational set the validator switches on -- the kind
- * of use enums are kept for here. Entries are lower-case-first to match the wire spelling ([SOWS.trim] /
- * [SOWS.reject]); absent is modeled as a null [SchType.outerWhitespace], not an entry.
+ * The modes of the `g-outerWhitespace` keyword (issues #541, #765), resolved from its [SOWS] wire values. An
+ * enum rather than a string because it is a genuinely closed operational set the validator switches on -- the
+ * kind of use enums are kept for here. Entries are lower-case-first to match the wire spelling ([SOWS.trim] /
+ * [SOWS.reject] / [SOWS.keep]).
+ *
+ * Absent (null [SchType.outerWhitespace]) is **not** the same as [keep] since #765: a plain string field with
+ * no declared mode defaults to trimming *on the input path* (see the validator's `effectiveOuterWhitespace`),
+ * so absent means "trim endpoint input, leave everything else alone", while [keep] is the explicit opt-out that
+ * turns even the input default off. On the output/stored path absent and [keep] behave identically (both leave
+ * whitespace untouched); the distinction only bites for endpoint input.
  */
 @Suppress("EnumEntryName")
 enum class SchOuterWhitespace {
@@ -190,4 +199,11 @@ enum class SchOuterWhitespace {
 
     /** Fail a value carrying leading/trailing whitespace with `badValue`; alter nothing. */
     reject,
+
+    /**
+     * Leave edge whitespace untouched, opting a field out of the input-path trim default (issue #765). The rare
+     * field whose leading/trailing whitespace is content -- a free-text block, a value round-tripped verbatim --
+     * rather than a paste artifact. On output/stored validation this is what absent already did.
+     */
+    keep,
 }

@@ -125,7 +125,9 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
         HttpMethod.PUT, outputRef = UserProfile.infoTypeName, inputFields = {
             field(AFLD.userId, "The user's numeric id.", required = true) { type = SCT.integer }
             field(AFLD.username, "The chosen username.")
-            field(AFLD.password, "An optional password to set (login by code works without one).")
+            // A password's edge whitespace is content, not a paste artifact: opt out of the input trim default
+            // (issue #765) so the credential is stored exactly as given, the same on the login path below.
+            field(AFLD.password, "An optional password to set (login by code works without one).") { preserveWhitespace() }
             field(AFLD.isEntity, "Whether this is a business account rather than a personal one.") { type = SCT.boolean }
             field(AFLD.name, "The account's name: the registrant's full name, or the business's name.")
             field(AFLD.formAuthToken, "The form auth token.", required = true)
@@ -153,7 +155,9 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     generalEndpoint(AEP.loginByPassword, "Logs a user in by password (familiar devices only).",
         HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
             field(AFLD.loginId, "The user's username or email address.", required = true)
-            field(AFLD.password, "The user's password.", required = true)
+            // Match the value exactly as set (issue #765): trimming here could fail a password whose stored
+            // form legitimately carries edge whitespace.
+            field(AFLD.password, "The user's password.", required = true) { preserveWhitespace() }
         }) { c, req ->
         authHandler(c).loginByPassword(c, req.getReqStr(AFLD.loginId).normalizeLoginId(), req.getReqStr(AFLD.password))
     }
@@ -172,7 +176,8 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     generalEndpoint(AEP.setPassword, "Sets or changes the user's password (verified by a code).",
         HttpMethod.PUT, outputRef = UserProfile.infoTypeName, inputFields = {
             field(AFLD.loginId, "The user's username or email address.", required = true)
-            field(AFLD.password, "The new password.", required = true)
+            // Store the new credential exactly as given (issue #765); see the note on the set-login-data call.
+            field(AFLD.password, "The new password.", required = true) { preserveWhitespace() }
             field(AFLD.formAuthToken, "The form auth token.", required = true)
             field(AFLD.verifyCode, "The verification code.", required = true)
         }) { c, req ->

@@ -237,6 +237,51 @@ JSON schema as a whole. The same will be true for complex application configurat
 Besides using "$ref" constructs to do linkage, we will also allow overrides where recursive map merges can
 modify either schema or configuration.
 
+### Relaxed validation and coercion is the default
+
+When a schema processes an incoming value, we lean toward **accepting and cleaning it** rather than refusing it
+on a technicality. Concretely, this shows up as several defaults that all point the same way: numeric, boolean
+and date-format fields coerce from strings unless told not to (`g-allowCoerce`); a blank or whitespace-only
+value reads as *absent* rather than as a validation error (`g-emptyIsAbsent`), so an empty query parameter or
+an empty spreadsheet cell is "not supplied" rather than a `400`; and a plain string input field trims its edge
+whitespace by default before its own length/pattern/option checks see it (`g-outerWhitespace`, issue #765).
+None of this is blanket leniency -- strings, arrays and objects that already have a faithful spelling on a
+transport stay strict, and where an exact value is the point (a password, a code) a field opts out. But the
+resting posture is forgiving.
+
+There are several reasons we choose this, and they compound:
+
+* **Some transports carry only text.** A query string and a form encoding have no way to spell `5` or `true`
+  as anything but a string, so without coercion those parameters could not be supplied at all. The rule for
+  what coerces is "could this value only ever arrive as text?"
+* **Spreadsheet and CSV ingestion is a planned direction.** CSV data is almost entirely raw, untyped strings,
+  often with stray whitespace and empty cells standing in for "no value". A little coercion and trimming in the
+  schema turns a wall of strings into typed, usable values with far less special-casing in the endpoints and
+  handlers that consume them -- the cleaning happens once, at the edge, instead of being repeated everywhere
+  the data is read.
+* **Script evaluation feeds the same engine.** Values produced by our in-string script evaluations flow into
+  the schema conversion and validation engine as their outcomes. Building a little forgiveness into how those
+  outputs are processed keeps a script from having to produce byte-perfect typed values for the schema to
+  accept them, which is a poor fit for a small expression language whose natural output is often text.
+* **It keeps friction off the common case.** Trimming ordinary free-text input and treating blanks as absent
+  removes a class of "your form is fine but the whitespace isn't" rejections that help no one, and lets the
+  handler receive a value it does not have to re-clean.
+
+One deliberate asymmetry is worth stating, because it is easy to mistake for inconsistency: we are relaxed
+about **the values flowing through** a schema, but **strict about our own schema-authoring keywords**. A
+mistyped `g-` keyword, an unknown error code, a `g-outerWhitespace` mode we do not recognize -- these fail the
+boot by name rather than being ignored, because that kind of mistake is otherwise *silent*: the schema looks
+like it says something and quietly does not. Leniency is for the data; fail-fast is for the schema author.
+
+**The accepted downside.** Relaxed coercion and validation will sometimes let data into the system that
+tighter, stricter rules would have caught and rejected -- a value that was malformed in a way we chose to
+clean past rather than refuse. We accept that risk knowingly. The cost of the occasional too-forgiving
+acceptance is judged smaller than the cost of a system that is brittle to paste artifacts, empty cells, and
+the untyped reality of the spreadsheet and script inputs we intend to feed it. Where a particular field cannot
+afford that trade -- a credential, an identifier, anything where a wrong-but-plausible value is dangerous --
+that field tightens itself explicitly (`g-outerWhitespace: "reject"` / `"keep"`, an explicit `g-allowCoerce:
+false`, a pattern or a bounded option list), and the relaxed default steps aside for it.
+
 ### Whether to put logic in the frontend or backend
 
 In many cases when designing an SDUI-style implementation, you need to decide whether the logic for how the UI
