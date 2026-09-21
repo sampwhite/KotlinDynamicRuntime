@@ -8,6 +8,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.gedra.clientAttribute
@@ -139,31 +140,19 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     // always answers as a success -- the mail says whether anything matched.
     generalEndpoint(AEP.claimSendVerify, "Mails a verification code for the user an address, client and persona name.",
         HttpMethod.POST, outputRef = ATYPE.authAck, inputFields = {
-            field(AFLD.contactAddress, "The email address the account was created for.", required = true)
-            field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.") { maxLength = ClaimKey.maxPartLength }
-            field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.") { maxLength = ClaimKey.maxPartLength }
-            field(AFLD.personId, "The person id the invitation named, when it did.") { maxLength = PERSONID.maxLength }
+            claimKeyInput()
             field(AFLD.formAuthToken, "The form auth token.", required = true)
         }) { c, req ->
-        authHandler(c).sendClaimCode(
-            c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getOptStr(AFLD.client), req.getOptStr(AFLD.persona),
-            req.getOptStr(AFLD.personId)?.trim() ?: "", req.getReqStr(AFLD.formAuthToken),
-        )
+        authHandler(c).sendClaimCode(c, claimKeyOf(req), req.getReqStr(AFLD.formAuthToken))
         emptyMap<String, Any?>()
     }
     generalEndpoint(AEP.claimAccount, "Registers and logs in as the user an address, client and persona name, with the mailed code.",
         HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
-            field(AFLD.contactAddress, "The email address the account was created for.", required = true)
-            field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.") { maxLength = ClaimKey.maxPartLength }
-            field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.") { maxLength = ClaimKey.maxPartLength }
-            field(AFLD.personId, "The person id the invitation named, when it did.") { maxLength = PERSONID.maxLength }
+            claimKeyInput()
             field(AFLD.formAuthToken, "The form auth token.", required = true)
             field(AFLD.verifyCode, "The verification code mailed for this claim.", required = true)
         }) { c, req ->
-        authHandler(c).claimAccount(
-            c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getOptStr(AFLD.client), req.getOptStr(AFLD.persona),
-            req.getOptStr(AFLD.personId)?.trim() ?: "", req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
-        )
+        authHandler(c).claimAccount(c, claimKeyOf(req), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode))
     }
 
     // Invitations (issue #751). Preview says what the link is for and changes nothing; accept is the claim.
@@ -305,6 +294,25 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     // The recent-simulated-emails endpoint moved to the `test` module as `/test/simulatedEmails` (issue #158),
     // governed by the unified test-instance gate instead of a bespoke runtime check.
 }
+
+/**
+ * The fields that name the user a claim is for (issue #751), shared by the claim send and the claim itself: the
+ * address, and the client, persona and person id the invitation named. Each endpoint adds its own token
+ * fields after these. The parts are read back as one [ClaimKey] by [claimKeyOf], which is where the defaults
+ * for an absent client or persona are applied.
+ */
+private fun InputFieldsBuilder.claimKeyInput() {
+    field(AFLD.contactAddress, "The email address the account was created for.", required = true)
+    field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.") { maxLength = ClaimKey.maxPartLength }
+    field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.") { maxLength = ClaimKey.maxPartLength }
+    field(AFLD.personId, "The person id the invitation named, when it did.") { maxLength = PERSONID.maxLength }
+}
+
+/** The [ClaimKey] a request's [claimKeyInput] fields name. */
+private fun claimKeyOf(req: Map<String, Any?>): ClaimKey = ClaimKey(
+    req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getOptStr(AFLD.client), req.getOptStr(AFLD.persona),
+    req.getOptStr(AFLD.personId)?.trim() ?: "",
+)
 
 /** Resolves the [AuthFormHandler] (ensuring it is built). Shared with the profile endpoints (same package). */
 internal fun authHandler(cxt: KdrCxt): AuthFormHandler {

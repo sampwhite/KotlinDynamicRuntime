@@ -647,21 +647,20 @@ class AuthFormHandler(
     }
 
     /**
-     * Mails what the claim page asks for (issue #751): a verification code for the user that [address],
-     * [client] and [persona] (+ [personId]) name, or -- when nothing matches -- a mail saying so, as
-     * specifically as the inbox's owner is entitled to (that the address does have a user in that client, when
-     * it does). Either way this returns normally and the page reports a code as sent: the truth goes to the
+     * Mails what the claim page asks for (issue #751): a verification code for the user the [key] names, or
+     * -- when nothing matches -- a mail saying so, as specifically as the inbox's owner is entitled to (that the
+     * address does have a user in that client, when it does). Either way this returns normally and the page reports a code as sent: the truth goes to the
      * inbox, never to an anonymous caller, so the page is no oracle for who has what.
      *
      * **Nothing typed reaches a mail unless it is an id** (`ClaimKey.isValid`): this is anonymous and mails any
      * address, so echoing a free value would let a stranger put their own sentence into a message sent from
      * the deployment's domain. A key that is not made of ids names nobody, and its mail says only that.
      */
-    fun sendClaimCode(cxt: KdrCxt, address: String, client: String?, persona: String?, personId: String, formAuthToken: String) {
+    fun sendClaimCode(cxt: KdrCxt, key: ClaimKey, formAuthToken: String) {
         requireValidToken(cxt, formAuthToken)
+        val address = key.address
         if (!address.isEmailAddress()) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.emailInvalid))
         requireSendAllowed(cxt, address)
-        val key = ClaimKey(address, client, persona, personId)
         val user = claimedUser(cxt, key)
         // The address is spelled out in every variant for the same reason the invitation spells it: a tester's
         // plus-addressed mails to one inbox must not fold into one another.
@@ -691,17 +690,13 @@ class AuthFormHandler(
     }
 
     /**
-     * Registers -- and logs in as -- the user that [address], [client] and [persona] (+ [personId]) name, on
-     * the code mailed for that key. The code proves both the address and the key, so this is a code login
+     * Registers -- and logs in as -- the user the [key] names, on the code mailed for that key. The code proves both the address and the key, so this is a code login
      * that lands on a *named* user: it claims an unclaimed one (registering it and verifying the identity), and
      * simply signs in as one already claimed, which is also the one way to log in as a particular non-default
      * user by address alone. A key that names no user is refused exactly as a wrong code is.
      */
-    fun claimAccount(
-        cxt: KdrCxt, address: String, client: String?, persona: String?, personId: String, formAuthToken: String, verifyCode: String,
-    ): Map<String, Any?> {
+    fun claimAccount(cxt: KdrCxt, key: ClaimKey, formAuthToken: String, verifyCode: String): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
-        val key = ClaimKey(address, client, persona, personId)
         verifyCodeOrThrow(cxt, key.hashText, formAuthToken, verifyCode)
         val user = claimedUser(cxt, key) ?: throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.codeIncorrect))
         return completeLogin(cxt, user, byCode = true)
