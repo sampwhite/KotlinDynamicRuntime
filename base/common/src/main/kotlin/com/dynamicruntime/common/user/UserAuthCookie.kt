@@ -27,6 +27,14 @@ object AUTHC {
 
     /** How long a form auth token is valid before a fresh one is needed, in milliseconds (15 minutes). */
     const val formTokenMillis = 15L * 60 * 1000
+
+    /**
+     * How long a mailed invitation link stays acceptable, in milliseconds (7 days, issue #751). Longer than a
+     * code, since an invitation waits in an inbox for a person who was not expecting it; bounded, since the
+     * link is the proof and a link that never expired would be a standing login. An administrator re-sends one
+     * that lapsed.
+     */
+    const val invitationMillis = 7L * 24 * 3600 * 1000
 }
 
 /**

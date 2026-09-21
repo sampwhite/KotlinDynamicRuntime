@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -31,6 +32,26 @@ class SimulatedEmailEndpointTest : StringSpec({
         val results = client.sendJsonGetRequest(TEP.simulatedEmails).getValue(EP.results)!!.toJsonMap()
         val emails = results.getValue(TSE.emails) as List<*>
         emails.isEmpty() shouldBe false
+    }
+
+    // The admin-domain opt-in (KDR_MAIL_TRANSMIT_ADMIN_DOMAIN): a simulating instance still captures every
+    // mail, and would also transmit one to the admin domain -- but only with a provider key. The key is looked
+    // up under a name no secrets file holds, so this never sends for real on a developer's machine whose
+    // secrets carry the genuine key; the record then shows the mail captured and not sent.
+    "with the admin-domain opt-in and no provider key, mail is captured and not transmitted" {
+        val cxt = Startup.mkTestBootCxt(
+            "simEmailsOptIn", "simEmailsOptInInst",
+            mapOf(
+                MAIL.transmitToAdminDomain to true, ACFG.adminEmailDomain to "acme.com",
+                MAIL.mailgunApiKeySecretKey to "noSuchSecretForThisTest",
+            ),
+        )
+        val mail = MailService.get(cxt)
+        mail.transmitToAdminDomain shouldBe true
+        val sent = mail.sendEmail(cxt, "boss@acme.com", "Hi", "Your verification code is 424242.")
+        sent.simulated shouldBe true
+        sent.transmitted shouldBe false
+        mail.lastEmailTo("boss@acme.com")!!.subject shouldBe "Hi"
     }
 
     "a non-test instance refuses to start when useSimulatedEmail is on" {

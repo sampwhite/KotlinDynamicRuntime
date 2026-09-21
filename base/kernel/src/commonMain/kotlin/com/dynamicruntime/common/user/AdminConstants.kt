@@ -31,6 +31,8 @@ object ADEP {
     const val userSetEnabled = "/${SECT.admin}/user/setEnabled"
     const val userSetOrg = "/${SECT.admin}/user/setOrg"
     const val userSetName = "/${SECT.admin}/user/setName"
+    /** (Re)sends the invitation for a user nobody has claimed yet (issue #751). */
+    const val userInvite = "/${SECT.admin}/user/invite"
     /**
      * The verb says what happens; the path names the resource (issue #335). Its input rides in the query
      * string, since a DELETE carries no body -- see [com.dynamicruntime.common.endpoint.HttpMethod.DELETE].
@@ -92,6 +94,8 @@ object UADEP {
     const val userSetEnabled = "/${SECT.clientAdmin}/user/setEnabled"
     const val userSetOrg = "/${SECT.clientAdmin}/user/setOrg"
     const val userSetName = "/${SECT.clientAdmin}/user/setName"
+    /** The scoped counterpart to [ADEP.userInvite]. */
+    const val userInvite = "/${SECT.clientAdmin}/user/invite"
     /** `DELETE`, like [ADEP.userDelete], and scoped to the caller's own client. */
     const val userDelete = "/${SECT.clientAdmin}/user"
 }

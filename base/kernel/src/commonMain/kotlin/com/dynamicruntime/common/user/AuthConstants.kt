@@ -37,6 +37,20 @@ object AEP {
     const val switchUser = "/user/self/switch"
     /** Choose which of the person's users an address logs in as. */
     const val setDefaultUser = "/user/self/setDefault"
+
+    // Invitations (issue #751), anonymous like the rest of the register/login flow: the mailed link is the
+    // proof, and the person opening it has no session yet.
+    /** What an invitation token is for -- the address, client, and persona -- before it is accepted. */
+    const val invitationPreview = "/auth/invitation/preview"
+    /** Accept an invitation: proves the address, registers the invited user, and logs in as it. */
+    const val invitationAccept = "/auth/invitation/accept"
+
+    // Claiming an account created for you (issue #751), from the login page with nothing but what the
+    // invitation said: the address, the client and the persona name the user; a mailed code proves the address.
+    /** Mails a verification code for the user the address, client, and persona name -- or a mail saying no user matches. */
+    const val claimSendVerify = "/auth/claim/sendVerify"
+    /** Registers (and logs in as) the user the address, client, and persona name, with the mailed code. */
+    const val claimAccount = "/auth/claim/register"
 }
 
 /** Auth request/response field (JSON key) names, shared so the frontend builds and reads payloads by constant. */
@@ -78,6 +92,20 @@ object AFLD {
 
     /** The `items` of the users list (issue #749): the caller's `UserChoice`s. */
     const val users = "users"
+
+    /**
+     * On registration (issue #751), for an `allClients` caller only: which client, persona, and personId the
+     * new user takes. Anyone else registers into `public` as a member, and naming one of these is refused.
+     */
+    const val client = "client"
+    const val persona = "persona"
+    const val personId = "personId"
+
+    /** The invitation token (issue #751): the encrypted (identityId, userId, expiry) the mailed link carries. */
+    const val invitationToken = "invitationToken"
+
+    /** On the invitation preview: the invited address (the user's name rides under [name]). */
+    const val email = "email"
 }
 
 /** UI-config feature-flag keys for the auth and profile widget-groups. */
@@ -106,6 +134,8 @@ object ATYPE {
     const val profileUiConfig = "ProfileUiConfig"
     /** The users list (issue #749): the caller's `UserChoice`s under `users`. */
     const val userChoices = "UserChoices"
+    /** What an invitation is for (issue #751): address, client, persona, personId, name. */
+    const val invitationInfo = "InvitationInfo"
 }
 
 /** Markdown fragment file ids for the auth-area widget-groups (each also the group's fragment namespace). */
@@ -162,6 +192,12 @@ object AERR {
     const val userKeyTaken = "userKeyTaken"
     const val clientParam = "client"
     const val personaParam = "persona"
+
+    /** The invitation link is malformed, tampered with, expired, or names a user that no longer fits it (issue #751). */
+    const val invitationInvalid = "invitationInvalid"
+
+    /** The invitation was already accepted: the user is registered, and a mailed link is not a standing login. */
+    const val invitationUsed = "invitationUsed"
     /** `, personId 'B'` when the key carried one, else empty -- so one sentence serves both. */
     const val personIdNoteParam = "personIdNote"
 }
@@ -224,6 +260,22 @@ object PERSONA {
         val rung = RoleLadder.highestHeld(roles)
         return defs.lastOrNull { RoleLadder.highestHeld(it.defaultRoles) == rung }?.name ?: member
     }
+
+    /**
+     * A persona as a person types it on the claim page (issue #751), `admin` or `member B`, split into the
+     * persona name and the personId suffix (empty when there is none): the first word and whatever follows it,
+     * trimmed. Blank is the default persona. What `typed` shows: the two joined by a space, as the invitation
+     * mail spells them. Pure, in the kernel so the page and the backend read one rule.
+     */
+    fun splitTyped(text: String): Pair<String, String> {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return member to ""
+        val space = trimmed.indexOfFirst { it.isWhitespace() }
+        return if (space < 0) trimmed.lowercase() to "" else trimmed.substring(0, space).lowercase() to trimmed.substring(space + 1).trim()
+    }
+
+    /** The claim-page spelling of a persona and personId: `admin`, `member B`. */
+    fun typed(persona: String, personId: String): String = if (personId.isEmpty()) persona else "$persona $personId"
 }
 
 /** The `personId` rules (issue #747): the UAT batch discriminator, empty for the ordinary user. */

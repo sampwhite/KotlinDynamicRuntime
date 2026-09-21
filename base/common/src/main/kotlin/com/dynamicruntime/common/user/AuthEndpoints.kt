@@ -3,12 +3,16 @@ package com.dynamicruntime.common.user
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.ETAG
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.gedra.clientAttribute
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getOptBool
@@ -113,11 +117,64 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             field(AFLD.contactType, "The contact type (currently only 'email').", required = true)
             field(AFLD.formAuthToken, "The form auth token.", required = true)
             field(AFLD.verifyCode, "The verification code emailed to the contact.", required = true)
+            // Where the new user goes (issue #751): for an allClients caller only; refused for anyone else.
+            field(AFLD.client, "The new user's client; only an '${ROLE.allClients}' caller may name one (else 'public').") { clientAttribute() }
+            field(AFLD.persona, "The new user's persona; only an '${ROLE.allClients}' caller may name one (else '${PERSONA.member}').") {
+                for (def in PERSONA.defs) option(def.name, def.label)
+            }
+            field(AFLD.personId, "A further user of the same address, client and persona; only an '${ROLE.allClients}' caller may name one.") {
+                maxLength = PERSONID.maxLength
+            }
         }) { c, req ->
         val userId = authHandler(c).createInitialUser(
             c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
+            client = req.getOptStr(AFLD.client)?.trim()?.ifEmpty { null },
+            persona = req.getOptStr(AFLD.persona)?.trim()?.ifEmpty { null },
+            personId = req.getOptStr(AFLD.personId)?.trim() ?: "",
         )
         mapOf(AFLD.userId to userId)
+    }
+
+    // Claiming an account created for you (issue #751): the login page's path for an invited person who has
+    // nothing but what the invitation said. The client and persona are typed, never offered, and the send
+    // always answers as a success -- the mail says whether anything matched.
+    generalEndpoint(AEP.claimSendVerify, "Mails a verification code for the user an address, client and persona name.",
+        HttpMethod.POST, outputRef = ATYPE.authAck, inputFields = {
+            claimKeyInput()
+            field(AFLD.formAuthToken, "The form auth token.", required = true)
+        }) { c, req ->
+        authHandler(c).sendClaimCode(c, claimKeyOf(req), req.getReqStr(AFLD.formAuthToken))
+        emptyMap<String, Any?>()
+    }
+    generalEndpoint(AEP.claimAccount, "Registers and logs in as the user an address, client and persona name, with the mailed code.",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            claimKeyInput()
+            field(AFLD.formAuthToken, "The form auth token.", required = true)
+            field(AFLD.verifyCode, "The verification code mailed for this claim.", required = true)
+        }) { c, req ->
+        authHandler(c).claimAccount(c, claimKeyOf(req), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode))
+    }
+
+    // Invitations (issue #751). Preview says what the link is for and changes nothing; accept is the claim.
+    type(ATYPE.invitationInfo) {
+        type = SCT.kObject
+        property(AFLD.email, "The invited address.", required = true)
+        property(AFLD.client, "The client the invited user is in.", required = true)
+        property(AFLD.persona, "The invited user's persona.", required = true)
+        property(AFLD.personId, "The invited user's personId; empty for the ordinary user.", required = true) { emptyIsAbsent = false }
+        property(AFLD.name, "The invited user's name, when the inviter gave one.")
+    }
+    generalEndpoint(AEP.invitationPreview, "Says what an invitation link is for, without accepting it.",
+        HttpMethod.POST, outputRef = ATYPE.invitationInfo, inputFields = {
+            field(AFLD.invitationToken, "The token from the mailed link.", required = true)
+        }) { c, req ->
+        authHandler(c).previewInvitation(c, req.getReqStr(AFLD.invitationToken))
+    }
+    generalEndpoint(AEP.invitationAccept, "Accepts an invitation: registers the invited user and logs in as it.",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.invitationToken, "The token from the mailed link.", required = true)
+        }) { c, req ->
+        authHandler(c).acceptInvitation(c, req.getReqStr(AFLD.invitationToken))
     }
 
     // Set username (and optional password) after verifying, then log in.
@@ -242,6 +299,25 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
     // The recent-simulated-emails endpoint moved to the `test` module as `/test/simulatedEmails` (issue #158),
     // governed by the unified test-instance gate instead of a bespoke runtime check.
 }
+
+/**
+ * The fields that name the user a claim is for (issue #751), shared by the claim send and the claim itself: the
+ * address, and the client, persona and person id the invitation named. Each endpoint adds its own token
+ * fields after these. The parts are read back as one [ClaimKey] by [claimKeyOf], which is where the defaults
+ * for an absent client or persona are applied.
+ */
+private fun InputFieldsBuilder.claimKeyInput() {
+    field(AFLD.contactAddress, "The email address the account was created for.", required = true)
+    field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.") { maxLength = ClaimKey.maxPartLength }
+    field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.") { maxLength = ClaimKey.maxPartLength }
+    field(AFLD.personId, "The person id the invitation named, when it did.") { maxLength = PERSONID.maxLength }
+}
+
+/** The [ClaimKey] a request's [claimKeyInput] fields name. */
+private fun claimKeyOf(req: Map<String, Any?>): ClaimKey = ClaimKey(
+    req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getOptStr(AFLD.client), req.getOptStr(AFLD.persona),
+    req.getOptStr(AFLD.personId)?.trim() ?: "",
+)
 
 /** Resolves the [AuthFormHandler] (ensuring it is built). Shared with the profile endpoints (same package). */
 internal fun authHandler(cxt: KdrCxt): AuthFormHandler {

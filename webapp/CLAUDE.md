@@ -100,6 +100,24 @@ Current UI-config endpoints:
   is in brackets (`Demo Person [hub · Member B]`, only what tells it from the others -- `UserChoice.qualifierWithin`)
   and becomes the menu that switches; with one user it is the plain label it always was. The default persona
   is `member` (shown `Member`); `admin` is the other so far.
+- **Invitations** (issue #751), anonymous like the rest of the auth flow: an administrator's create for an
+  address that is not their own -- new, or another person's -- provisions an unclaimed user and mails a link
+  to `#page=invite&token=<token>` (built under `KDR_PUBLIC_URL`, else the request's scheme and host). The
+  **invite page** (`InvitePage`) POSTs `/auth/invitation/preview {invitationToken}` to say what the account is
+  and waits for **Accept**, which POSTs `/auth/invitation/accept`: the link is the proof, so accepting registers
+  the user, verifies a new identity, signs the browser in, and reloads. Nothing happens on merely opening the
+  link. `POST /clientAdmin/user/invite {userId}` re-sends a lapsed one (the editor offers it for an unclaimed
+  user). The **register form** shows Client / Persona / Person id to an `allClients` caller only; set, they ride
+  `createInitial` and the backend refuses them from anyone else.
+- **Claiming from the login page** (issue #751), since a mailed link cannot be required: the auth flow's third
+  mode, `#page=claim` ("Claim an account created for you", linked from the login page). The person types the
+  address, the client and the persona as the invitation spelled them (`admin`, `member B`; `PERSONA.splitTyped`),
+  with no choice lists so an anonymous caller learns nothing about a client. `POST /auth/claim/sendVerify`
+  **always answers as a success** and the mail says the rest: the code, or that nothing matched (acknowledging
+  the client when the address has a user there); the code is computed over the whole key, defaults applied, so
+  it cannot be replayed against another user. `POST /auth/claim/register` is a code login aimed at that user:
+  it claims an unclaimed one and simply signs in as a claimed one -- the one way to log in as a particular
+  non-default user by address alone.
 
 The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
 the envelope consistent across groups.

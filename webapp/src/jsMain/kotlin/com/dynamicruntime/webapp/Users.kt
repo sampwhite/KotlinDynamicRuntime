@@ -694,6 +694,23 @@ val Users = FC<Props> {
                     +"This is your own account: another administrator has to change your role or disable you."
                 }
             }
+            // An unclaimed user (issue #751): the person has not accepted their invitation. Offer to send it
+            // again -- a lapsed link, a lost mail, a user created disabled and enabled since. The backend
+            // refuses a claimed or disabled one, so the button is shown only where it can succeed.
+            if (editing?.registered == false && editing?.enabled == true) {
+                div {
+                    className = ClassName("row")
+                    Button {
+                        disabled = busy
+                        onClick = { run { AdminApi.inviteUser(editing!!.userId); note = "Invitation sent to ${editing?.primaryId}." } }
+                        +"Send invitation again"
+                    }
+                }
+                p {
+                    className = ClassName("type-hint")
+                    +"Nobody has accepted this account's invitation yet. Sending again mails a fresh link, good for seven days."
+                }
+            }
 
             div {
                 className = ClassName("row")
@@ -1049,7 +1066,7 @@ fun offeredAccessLevels(operatorSelectable: Boolean): List<String> =
     RoleLadder.ordered.filter { it != ROLE.operator || operatorSelectable }
 
 /** The persona registry as antd `{ label, value }` option objects (issue #750), in the registry's order. */
-private fun personaOptions(): Array<dynamic> =
+fun personaOptions(): Array<dynamic> =
     PERSONA.defs.map { def ->
         val obj: dynamic = js("({})")
         obj.label = def.label

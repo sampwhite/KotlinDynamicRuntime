@@ -57,13 +57,20 @@ object AddressRules {
      * of a domain registration.
      */
     fun isControlledDomain(cxt: KdrCxt, address: String): Boolean {
+        if (isAdminDomain(cxt, address)) return true
         val domain = domainOf(address) ?: return false
-        AdminRules.adminEmailDomain(cxt.instanceConfig)?.let {
-            if (matches(domain, it)) {
-                return true
-            }
-        }
         return cxt.instanceConfig.env != ENV.prod && matches(domain, ADR.exampleDomain)
+    }
+
+    /**
+     * Whether [address] sits on the deployment's configured admin domain (`KDR_ADMIN_EMAIL_DOMAIN`) or a
+     * subdomain of it -- the deployment's own people, as distinct from the example domain that is also
+     * controlled outside production. False when no admin domain is configured.
+     */
+    fun isAdminDomain(cxt: KdrCxt, address: String): Boolean {
+        val domain = domainOf(address) ?: return false
+        val configured = AdminRules.adminEmailDomain(cxt.instanceConfig) ?: return false
+        return matches(domain, configured)
     }
 
     /**
