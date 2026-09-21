@@ -423,8 +423,9 @@ fun parseVisibleOnly(raw: Any?, typeName: String?, jsonType: String?, format: St
 }
 
 /**
- * Reads the custom `g-outerWhitespace` keyword (issue #541): absent is null (whitespace kept), `"trim"` and
- * `"reject"` map to [SchOuterWhitespace], and anything else fails the parse.
+ * Reads the custom `g-outerWhitespace` keyword (issues #541, #765): absent is null, `"trim"` / `"reject"` /
+ * `"keep"` map to [SchOuterWhitespace], and anything else fails the parse. Null is not the same as `"keep"`:
+ * the validator trims a null-mode plain string on the input path by default (#765), and `"keep"` is the opt-out.
  *
  * **Strict where the standard keywords are lenient**, on the same reasoning as [parseVisibleOnly]: the keyword
  * is ours, so no stock-validator document is at stake, and the failure it prevents is the silent kind -- a
@@ -440,8 +441,9 @@ fun parseOuterWhitespace(raw: Any?, typeName: String?, jsonType: String?, format
     val mode = when (raw) {
         SOWS.trim -> SchOuterWhitespace.trim
         SOWS.reject -> SchOuterWhitespace.reject
+        SOWS.keep -> SchOuterWhitespace.keep
         else -> throw KdrException.mkConv(
-            "'${SCH.outerWhitespace}'$where must be '${SOWS.trim}' or '${SOWS.reject}', not '$raw'."
+            "'${SCH.outerWhitespace}'$where must be '${SOWS.trim}', '${SOWS.reject}' or '${SOWS.keep}', not '$raw'."
         )
     }
     if (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format)) {

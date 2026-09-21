@@ -145,9 +145,12 @@ object SCH {
      * [allowCoerce] is dropped, since JSON Schema cannot say "a string is also accepted here"; [visibleOnly]
      * is dropped too, because its nearest spelling (`pattern` over `\p{C}` and `\p{Z}` classes) is honored by
      * some regex engines and not others, so it would be stricter for one consumer and meaningless for the
-     * next. [outerWhitespace] exports, in *both* modes, as `pattern: "^\S(?:[\s\S]*\S)?$"` -- exactly what
-     * `"reject"` accepts, and stricter than `"trim"` (which would accept the whitespace and clean it), so it
-     * honors the stricter-than-us rule; its `\s` is the regex Unicode-ish class, a near-match for our `<= ' '`.
+     * next. [outerWhitespace] exports its `"trim"` and `"reject"` modes as `pattern: "^\S(?:[\s\S]*\S)?$"` --
+     * exactly what `"reject"` accepts, and stricter than `"trim"` (which would accept the whitespace and clean
+     * it), so it honors the stricter-than-us rule; its `\s` is the regex Unicode-ish class, a near-match for our
+     * `<= ' '`. `"keep"`, and the input-path trim *default* (issue #765, which is validation behavior rather
+     * than a declared keyword and cannot be said input-only in a single shared `$defs` bag anyway -- see
+     * `g-derived`'s note in EndpointBuilder), export as nothing.
      * Stripping by default is exhaustive by construction: a keyword nobody remembered to consider never
      * escapes. And where
      * a conversion cannot be exact, the export must be **stricter than us, never looser** -- a stricter export
@@ -185,16 +188,22 @@ object SCH {
     const val visibleOnly = "g-visibleOnly"
 
     /**
-     * Whether leading/trailing whitespace on a string value is stripped or refused (issue #541). A closed
-     * string vocabulary ([SOWS]) on a plain string property: absent leaves whitespace alone (the default,
-     * as today), `"trim"` strips it, `"reject"` fails a value that carries any. Off unless declared, and only
-     * a plain string type may declare it -- the parser refuses it elsewhere.
+     * How leading/trailing whitespace on a string value is handled (issues #541, #765). A closed string
+     * vocabulary ([SOWS]) on a plain string property: `"trim"` strips it, `"reject"` fails a value that carries
+     * any, `"keep"` leaves it alone. Only a plain string type may declare it -- the parser refuses it elsewhere.
      *
-     * One keyword for both modes because "trim it" and "reject it" are the same rule read two ways; two
-     * booleans would need a precedence rule for the both-set case. `"reject"` is for a field where silent
-     * trimming would hide a paste error (a code, a password, an identifier); `"trim"` is for ordinary free
-     * text. "Whitespace" here is the kernel's `<= ' '` test (see the validator's whitespace helper), not
-     * Kotlin's Unicode [trim]; the two disagree on a no-break space, and the rest of the kernel uses `<= ' '`.
+     * **The default is not "keep" -- it is input-sensitive (issue #765).** A plain string field with no
+     * declared mode is trimmed on the **endpoint-input** path (so `minLength` / `pattern` / `options` and the
+     * handler all see the trimmed value, closing the advertise-vs-enforce gap where `"  ab  "` slipped past a
+     * `minLength: 3` the handler then stored as `"ab"`), and left untouched on the output/stored path. `"keep"`
+     * is the explicit opt-out for the rare input field whose edge whitespace is content rather than a paste
+     * artifact; `"reject"` is for a code/password/identifier where silent trimming would hide a paste error;
+     * `"trim"` forces the strip on every path, not only input.
+     *
+     * One keyword for every mode because they are the same rule read different ways; separate booleans would
+     * need a precedence rule for the conflicting-set case. "Whitespace" here is the kernel's `<= ' '` test (see
+     * the validator's whitespace helper), not Kotlin's Unicode [trim]; the two disagree on a no-break space, and
+     * the rest of the kernel uses `<= ' '`.
      */
     const val outerWhitespace = "g-outerWhitespace"
 
@@ -395,7 +404,7 @@ object SFMT {
 }
 
 /**
- * Values of the [SCH.outerWhitespace] keyword (issue #541): the two modes for edge whitespace on a string.
+ * Values of the [SCH.outerWhitespace] keyword (issues #541, #765): the modes for edge whitespace on a string.
  * A closed set -- an unrecognized value fails the parse -- resolved onto [SchType.outerWhitespace].
  */
 @Suppress("ConstPropertyName", "unused")
@@ -405,6 +414,13 @@ object SOWS {
 
     /** Fail a value carrying leading/trailing whitespace with `badValue`; alter nothing. */
     const val reject = "reject"
+
+    /**
+     * Leave edge whitespace untouched -- the explicit opt-out from the input-path trim default (issue #765).
+     * On the output/stored path this is what an absent keyword already did; it earns its own value only because
+     * absent now means "trim on input" for a plain string.
+     */
+    const val keep = "keep"
 }
 
 /**
