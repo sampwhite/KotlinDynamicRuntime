@@ -23,6 +23,7 @@ import com.dynamicruntime.common.schema.indexPath
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.schema.isPathAtOrBelow
+import com.dynamicruntime.common.schema.orderedFieldNames
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonStr
@@ -675,7 +676,11 @@ private fun ChildrenBuilder.renderProperties(
         }
     }
 
-    type.properties.forEach { (name, prop) ->
+    // The field order and candidate set come from the kernel seam (issue #777): schema order under an overlay
+    // layout (the default), the layout's order/membership under `reorder`/`authoritative`. The per-field gates
+    // below still run on top, so the layout narrows and orders but never widens past what the schema shows.
+    orderedFieldNames(type, type.name?.let { opts.layouts[it] }).forEach { name ->
+        val prop = type.properties[name] ?: return@forEach
         if (name == skip || name in hideFields) {
             return@forEach
         }

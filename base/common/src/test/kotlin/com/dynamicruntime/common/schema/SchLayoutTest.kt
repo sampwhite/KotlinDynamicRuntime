@@ -71,6 +71,69 @@ class SchLayoutTest : StringSpec({
         parseSchLayout("Type 'X'", block).fields.single().defaultMode shouldBe SLDM.filled
     }
 
+    // --- mode (issue #777): the layout's authority over field order and membership -------------------------
+
+    fun blockWith(mode: String?) = buildMap {
+        put(SL.schemaFields, listOf(mapOf(SL.field to "topic")))
+        if (mode != null) put(SL.mode, mode)
+    }
+
+    "parseSchLayout defaults mode to overlay and reads reorder/authoritative" {
+        parseSchLayout("Type 'X'", blockWith(null)).mode shouldBe SchLayoutMode.overlay
+        parseSchLayout("Type 'X'", blockWith(SLM.overlay)).mode shouldBe SchLayoutMode.overlay
+        parseSchLayout("Type 'X'", blockWith(SLM.reorder)).mode shouldBe SchLayoutMode.reorder
+        parseSchLayout("Type 'X'", blockWith(SLM.authoritative)).mode shouldBe SchLayoutMode.authoritative
+    }
+
+    "an unrecognized mode fails the boot rather than silently doing nothing" {
+        shouldThrow<KdrException> { parseSchLayout("Type 'X'", blockWith("exclusive")) }
+            .message.orEmpty() shouldContain SL.mode
+    }
+
+    "mode round-trips through toJsonMap, and overlay is omitted to keep the wire form unchanged" {
+        parseSchLayout("Type 'X'", blockWith(SLM.authoritative)).toJsonMap()[SL.mode] shouldBe SLM.authoritative
+        // Overlay is the default, so it is not written -- an overlay layout serializes exactly as before #777.
+        parseSchLayout("Type 'X'", blockWith(null)).toJsonMap().containsKey(SL.mode) shouldBe false
+    }
+
+    // A type with a required `b` (optionally derived) beside optional `a`/`c`, for the completeness boot check.
+    fun recType(derivedRequired: Boolean = false): SchType = parseSchemaTypes(
+        mapOf(
+            "t.Rec" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.required to listOf("b"),
+                SCH.properties to mapOf<String, Any?>(
+                    "a" to mapOf(SCH.type to SCT.string),
+                    "b" to buildMap<String, Any?> { put(SCH.type, SCT.string); if (derivedRequired) put(SCH.derived, true) },
+                    "c" to mapOf(SCH.type to SCT.string),
+                ),
+            ),
+        ),
+    ).getValue("t.Rec")
+
+    fun authLayout(vararg fields: String) =
+        SchLayout(null, null, fields.map { SchLayoutField(it, null, null, null) }, mode = SchLayoutMode.authoritative)
+
+    "an authoritative layout that omits a required field fails the boot" {
+        val problems = layoutFieldProblems("Type 'X'", authLayout("a", "c"), recType())
+        problems.single() shouldContain "'b'"
+    }
+
+    "an authoritative layout that lists every required field passes" {
+        layoutFieldProblems("Type 'X'", authLayout("b", "a"), recType()) shouldBe emptyList()
+    }
+
+    "a derived required field need not be listed -- the server supplies it, not the form" {
+        layoutFieldProblems("Type 'X'", authLayout("a"), recType(derivedRequired = true)) shouldBe emptyList()
+    }
+
+    "reorder and overlay owe no required field, since they hide nothing" {
+        val reorder = SchLayout(null, null, listOf(SchLayoutField("a", null, null, null)), mode = SchLayoutMode.reorder)
+        val overlay = SchLayout(null, null, listOf(SchLayoutField("a", null, null, null)), mode = SchLayoutMode.overlay)
+        layoutFieldProblems("Type 'X'", reorder, recType()) shouldBe emptyList()
+        layoutFieldProblems("Type 'X'", overlay, recType()) shouldBe emptyList()
+    }
+
     "defaultMode survives the delivery round-trip (issue #709)" {
         // store model -> the wire form both friendly surfaces deliver -> the frontend's read of it.
         val layout = parseSchLayout(
