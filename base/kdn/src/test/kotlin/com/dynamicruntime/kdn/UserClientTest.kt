@@ -63,7 +63,16 @@ class UserClientTest : StringSpec({
     // --- a registration, which lands in public ------------------------------------
 
     "an ordinary address is a public user, as it always was" {
-        TestUser.register(boot(), "reg-plain@example.com", "regplain").selfClient() shouldBe CL.public
+        // An uncontrolled domain: no grant, so the guests' placeholder client.
+        TestUser.register(boot(), "reg-plain@other.test", "regplain").selfClient() shouldBe CL.public
+    }
+
+    // The auto-admin rule grants `allClients` on the controlled domain, and a user holding it is the house's --
+    // so it lands in the hub, not the guests' client (issue #799).
+    "the auto-admin address lands in the hub, the deployment's own client" {
+        val user = TestUser.register(boot(), "reg-admin@example.com", "regadmin")
+        user.selfRoles() shouldContain ROLE.allClients
+        user.selfClient() shouldBe CL.hub
     }
 
     // The tag no longer provisions (issue #750): neither the client nor the persona it once named is read. A

@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -118,8 +119,9 @@ class GoogleLoginTest : StringSpec({
         val admin = TestUser.createFullAdmin(cxt, "goog-claim-admin@example.com")
         // Provisioned by an administrator: the public client, the member persona, unregistered. An ordinary
         // domain, since on the controlled `example.com` the sign-in's initial roles are an administrator's and
-        // the rule-chosen persona is then `admin` -- a different key from the member user made here.
-        val made = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "claimed@other.test"))[ADF.userId] as Long
+        // the rule-chosen key is then `hub` / `admin` -- a different key from the member user made here. The
+        // client is named, because the admin's own (where an unnamed create lands) is the hub (issue #799).
+        val made = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "claimed@other.test", ADF.client to CL.public))[ADF.userId] as Long
         users.queryByUserId(cxt, made).shouldNotBeNull().isRegistered shouldBe false
         val info = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-claim", "claimed@other.test"))
         // The same user, now the person's -- not a second one beside it.

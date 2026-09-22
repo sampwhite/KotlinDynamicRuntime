@@ -16,7 +16,7 @@ import io.kotest.matchers.shouldBe
 
 /**
  * The brute-force user-cache search endpoint, end to end (issue #411): a full-scope administrator over the
- * in-process pipeline, so the section gate, the input coercion, the list envelope and the response-schema
+ * in-process pipeline, so the section gate, the input coercion, the list envelope, and the response-schema
  * validation (which `mkTestBootCxt` turns on) are all exercised for real.
  *
  * The in-memory database is **shared across every spec in the JVM run** (the #408 pollution lesson), so this
@@ -133,9 +133,10 @@ class UserSearchEndpointTest : StringSpec({
     "a client-scoped administrator sees their client's users through the client index" {
         // A scoped admin (admin level, no allClients) is confined to their own client, so searchUsers serves
         // from the cache's client index rather than the whole table. They see the same-client users the full
-        // admin created (all default to the same client), isolated here by the unique marker. Its own email is
-        // on a separate domain so this admin account never drifts into the `usrch.test` counts above.
-        val scoped = TestUser.create(cxt, "scopedadmin@uscope.test", level = ROLE.admin)
+        // admin created -- an unnamed create lands in the creator's own client, so the scoped admin is placed
+        // there too (the hub, issue #799) -- isolated here by the unique marker. Its own email is on a separate
+        // domain so this admin account never drifts into the `usrch.test` counts above.
+        val scoped = TestUser.create(cxt, "scopedadmin@uscope.test", level = ROLE.admin, userClient = admin.selfClient())
         val env = scoped.client.sendJsonGetRequest(UADEP.userSearch, mapOf(USF.email to "usrch.test"))
         emails(env).sorted() shouldContainExactly listOf("alice@usrch.test", "bob@usrch.test", "carol@usrch.test")
     }

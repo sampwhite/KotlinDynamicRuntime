@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.http.request.ROLE
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
@@ -63,7 +64,16 @@ class AddressRulesTest : StringSpec({
     }
 
     "a self-registered user lands in the placeholder client" {
-        AddressRules.defaultClient(cxtIn(ENV.local)) shouldBe CL.public
+        AddressRules.defaultClient(cxtIn(ENV.local), listOf(ROLE.user)) shouldBe CL.public
+        // Admin alone is not the trigger -- a client-scoped admin is still a guest's-client default.
+        AddressRules.defaultClient(cxtIn(ENV.local), listOf(ROLE.user, ROLE.admin)) shouldBe CL.public
+    }
+
+    "a user granted allClients lands in the hub, the deployment's own client (issue #799)" {
+        // The auto-admin grant is the common case: admin and allClients together.
+        AddressRules.defaultClient(cxtIn(ENV.local), listOf(ROLE.user, ROLE.admin, ROLE.allClients)) shouldBe CL.hub
+        // The capability is what decides, even below the admin rung where it is dormant.
+        AddressRules.defaultClient(cxtIn(ENV.local), listOf(ROLE.user, ROLE.allClients)) shouldBe CL.hub
     }
 
     // --- whether Google is authoritative for the perimeter (issue #429) ---------

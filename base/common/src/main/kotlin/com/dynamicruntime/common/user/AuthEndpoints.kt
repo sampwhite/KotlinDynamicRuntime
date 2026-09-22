@@ -118,7 +118,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             field(AFLD.formAuthToken, "The form auth token.", required = true)
             field(AFLD.verifyCode, "The verification code emailed to the contact.", required = true)
             // Where the new user goes (issue #751): for an allClients caller only; refused for anyone else.
-            field(AFLD.client, "The new user's client; only an '${ROLE.allClients}' caller may name one (else 'public').") { clientAttribute() }
+            field(AFLD.client, "The new user's client; only an '${ROLE.allClients}' caller may name one (else '${CL.hub}' for a user granted '${ROLE.allClients}', '${CL.public}' otherwise).") { clientAttribute() }
             field(AFLD.persona, "The new user's persona; only an '${ROLE.allClients}' caller may name one (else '${PERSONA.member}').") {
                 for (def in PERSONA.defs) option(def.name, def.label)
             }
@@ -302,7 +302,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
 
 /**
  * The fields that name the user a claim is for (issue #751), shared by the claim send and the claim itself: the
- * address, and the client, persona and persona suffix the invitation named. Each endpoint adds its own token
+ * address, and the client, persona, and persona suffix the invitation named. Each endpoint adds its own token
  * fields after these. The parts are read back as one [ClaimKey] by [claimKeyOf], which is where the defaults
  * for an absent client or persona are applied.
  */

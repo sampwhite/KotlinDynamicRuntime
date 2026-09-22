@@ -3,6 +3,7 @@ package com.dynamicruntime.common.user
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.http.request.ROLE
 
 /** Constants for the address conventions (issue #352). */
 @Suppress("ConstPropertyName")
@@ -40,13 +41,21 @@ object ADR {
  */
 object AddressRules {
     /**
-     * The client a self-registered user lands in: [CL.public], the placeholder client for a person who has not
-     * yet been invited anywhere. The address used to be able to name one (retired, issue #750); the request's
-     * host will be able to, later (the "default client" rule the Google sign-in and the registration share).
-     * Kept as a function so those callers name the seam rather than the constant.
+     * The client a new user lands in when nobody named one, given the [roles] it is being provisioned with.
+     *
+     * A user holding [ROLE.allClients] goes to [CL.hub], the deployment's own client (issue #799): such a user
+     * is the house's -- most often the deployment's first admin, whom [AdminRules.initialRoles] grants the
+     * capability on the auto-admin domain -- and parking them in the guests' placeholder client made the first
+     * thing an operator saw a client that is nobody's. Everyone else lands in [CL.public], the placeholder for a
+     * person who has not yet been invited anywhere.
+     *
+     * The address used to be able to name a client (retired, issue #750); the request's host will be able to,
+     * later (the "default client" rule the Google sign-in and the registration share). Kept as a function so
+     * those callers name the seam rather than the constant. An explicitly named client always wins over this.
      */
     @Suppress("UNUSED_PARAMETER")
-    fun defaultClient(cxt: KdrCxt): String = CL.public
+    fun defaultClient(cxt: KdrCxt, roles: Collection<String>): String =
+        if (ROLE.allClients in roles) CL.hub else CL.public
 
     /**
      * Whether [address] sits on a domain this deployment treats as its own.

@@ -162,9 +162,13 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
          *
          * Use [create] with `level = ROLE.admin` and no capabilities for the *scoped* administrator instead --
          * the two must stay separable, since the difference between them is the thing under test.
+         *
+         * With no [userClient] the admin lands where a real one does -- the `hub`, the default client for a user
+         * holding `allClients` (issue #799) -- and so does anything they create without naming a client. Name one
+         * when a test depends on the admin's own client (a client that does not vary, the client its users share).
          */
-        fun createFullAdmin(cxt: KdrCxt, email: String): TestUser =
-            create(cxt, email, level = ROLE.admin, capabilities = listOf(ROLE.allClients))
+        fun createFullAdmin(cxt: KdrCxt, email: String, userClient: String? = null): TestUser =
+            create(cxt, email, level = ROLE.admin, capabilities = listOf(ROLE.allClients), userClient = userClient)
 
         /**
          * A **deployment operator**: [ROLE.operator] plus [ROLE.allClients] (issue #464). The `operator`
