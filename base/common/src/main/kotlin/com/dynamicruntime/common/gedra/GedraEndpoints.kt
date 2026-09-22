@@ -690,17 +690,22 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val workflowId = request[GDF.workflowId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
         val row = stateTargetRow(c, request)
+        val engaged = request.getOptBool(WFS.engaged) != false
         // A typo must not create an engagement with nothing. The deriver tolerates an engaged workflow whose
-        // definition has since gone (configuration changed underneath a form); it does not invite one.
+        // definition has since gone (configuration changed underneath a form); it does not invite one. So
+        // *engaging* needs a declared normal workflow, while *disengaging* also accepts one the form already has
+        // an engagement with -- otherwise a retired workflow's entry could never be taken back out.
         val declared = WorkflowService.get(c).forClient(row.client).workflow(workflowId)
-        if (declared == null || declared.def.entry != WfEntry.normal) {
+        val isNormal = declared != null && declared.def.entry == WfEntry.normal
+        val canDisengage = !engaged &&
+            WorkflowEngagement.hasEngagement(GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c)), workflowId)
+        if (!isNormal && !canDisengage) {
             throw KdrException.mkInput(
                 "'$workflowId' is not a normal workflow of client '${row.client}'. A form engages with the " +
                     "workflows it is offered, not with an arbitrary id.",
             )
         }
-        val engaged = request.getOptBool(WFS.engaged) != false
-        val states = WorkflowEngagement.setEngaged(c, row.gedraId, workflowId, engaged, ReadScopeRules.forCaller(c))
+        val states = WorkflowEngagement.setEngaged(c, row, workflowId, engaged)
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to states)
     }
 
@@ -878,13 +883,13 @@ private fun surveyFormRow(cxt: KdrCxt, fullId: String): GedraDataRow {
  */
 private fun stateTargetRow(cxt: KdrCxt, request: Map<String, Any?>): GedraDataRow {
     val fullId = request[GDF.gedraId].toOptStr()
-        ?: throw KdrException.mkInput("A ${'$'}{GDF.gedraId} is required.")
+        ?: throw KdrException.mkInput("A ${GDF.gedraId} is required.")
     val row = GedraDataService.get(cxt).queryGedra(cxt, fullId, GedraDataType.formDoc, ReadScopeRules.forCaller(cxt))
-        ?: throw KdrException("No form '${'$'}fullId' for this caller.", code = EXC.notFound)
+        ?: throw KdrException("No form '$fullId' for this caller.", code = EXC.notFound)
     if (row.client != cxt.client) {
         throw KdrException.mkInput(
-            "Form '${'$'}fullId' belongs to client '${'$'}{row.client}', and this endpoint is for " +
-                "'${'$'}{cxt.client}'. Use that client's own endpoint.",
+            "Form '$fullId' belongs to client '${row.client}', and this endpoint is for " +
+                "'${cxt.client}'. Use that client's own endpoint.",
         )
     }
     return row

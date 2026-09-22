@@ -1,10 +1,9 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataService
-import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -26,39 +25,41 @@ import kotlin.time.Instant
  */
 object WorkflowEngagement {
     /**
-     * Sets whether [gedraId] is engaged with [workflowId], recording the transition, and recomputes the form's derived state so the per-workflow entries follow. Returns the form's state
-     * entries as they stand afterwards.
+     * Sets whether the form [row] is engaged with [workflowId], recording the transition, and recomputes the
+     * form's derived state so the per-workflow entries follow. Returns the form's state entries as they stand
+     * afterwards.
      *
-     * Two writes rather than one transaction, deliberately for this slice: the state write and the recompute are
-     * each transactional on their own, and an engagement that landed without its recompute is corrected by the
-     * next write or recompute rather than being wrong -- the derived entries are a projection, after all. A
-     * single-transaction form belongs with the batch work (issue #793), where the recompute loop is built.
+     * One locked read-modify-write ([GedraDataService.changeState]): the engagement is merged into the state as
+     * it stands *under the lock*, so two engagements at once cannot each write back a set missing the other,
+     * and a state row this creates belongs to the form's owner rather than to whoever engaged it. [row] is the
+     * form as the caller was admitted to it.
      */
-    fun setEngaged(
-        cxt: KdrCxt,
-        gedraId: GedraId,
-        workflowId: String,
-        engaged: Boolean,
-        scope: ReadScope,
-    ): List<Map<String, Any?>> {
-        val svc = GedraDataService.get(cxt)
-        val current = svc.readState(cxt, gedraId, scope)
-        svc.writeState(
-            cxt, gedraId,
-            withEngagement(current, workflowId, engaged, cxt.instanceNow(), cxt.userProfile.userId),
-        )
-        // The derived entries are computed against the engagement that now stands, so refresh them.
-        svc.recomputeDerivedState(cxt, gedraId, scope)
-        return svc.readState(cxt, gedraId, scope)
+    fun setEngaged(cxt: KdrCxt, row: GedraDataRow, workflowId: String, engaged: Boolean): List<Map<String, Any?>> {
+        // The actor and the moment, taken before the owner binding -- they are who did it, not whose form it is.
+        val at = cxt.instanceNow()
+        val by = cxt.userProfile.userId
+        return GedraDataService.get(cxt).changeState(cxt, row) { current ->
+            withEngagement(current, workflowId, engaged, at, by)
+        }
     }
+
+    /** Whether [entries] hold an engagement entry for [workflowId], engaged or not. */
+    fun hasEngagement(entries: List<Map<String, Any?>>, workflowId: String): Boolean =
+        entries.any { isEngagementFor(it, workflowId) }
+
+    /** Whether the state [entry] is the engagement entry for [workflowId]. */
+    fun isEngagementFor(entry: Map<String, Any?>, workflowId: String): Boolean =
+        entry[GE.traitId].toOptStr() == WFS.workflowEngagement &&
+            entry[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() == workflowId
 
     /**
      * [current] with the [workflowId] engagement entry set to [engaged] and its transition recorded -- every
      * other entry carried through as it stands, since `writeState` replaces the whole set.
      *
      * Pure, so the merge rule is testable without a database: an entry that exists keeps what it holds and has
-     * its trail extended; one that does not is created with this event as its first. Disengaging **keeps** the entry and records the
-     * transition rather than removing it -- that a form was once in a workflow is part of its history.
+     * its trail extended; one that does not is created with this event as its first. Disengaging **keeps** the
+     * entry and records the transition rather than removing it -- that a form was once in a workflow is part of
+     * its history.
      *
      * [at] and [by] are the moment and the actor; `lastEngagedAt`/`lastEngagedBy` move only on an *engage*, so
      * "since when, and who put it here" survives a later disengage, while the event is appended either way.
@@ -70,11 +71,7 @@ object WorkflowEngagement {
         at: Instant,
         by: Long,
     ): List<Map<String, Any?>> {
-        fun isThisEngagement(entry: Map<String, Any?>): Boolean =
-            entry[GE.traitId].toOptStr() == WFS.workflowEngagement &&
-                entry[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() == workflowId
-
-        val existing = current.firstOrNull { isThisEngagement(it) }?.get(GE.data).toJsonMapOrEmpty()
+        val existing = current.firstOrNull { isEngagementFor(it, workflowId) }?.get(GE.data).toJsonMapOrEmpty()
         val event = linkedMapOf<String, Any?>(
             WFS.kind to if (engaged) WFS.engagedEvent else WFS.disengagedEvent,
             WFS.at to at,
@@ -96,7 +93,7 @@ object WorkflowEngagement {
                 updated[k] = v
             }
         }
-        val others = current.filterNot { isThisEngagement(it) }
+        val others = current.filterNot { isEngagementFor(it, workflowId) }
             .map { mapOf(GE.traitId to it[GE.traitId], GE.data to it[GE.data].toJsonMapOrEmpty()) }
         return others + listOf(mapOf(GE.traitId to WFS.workflowEngagement, GE.data to updated))
     }

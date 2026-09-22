@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -16,6 +17,7 @@ import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlin.time.Instant
@@ -100,6 +102,50 @@ class WorkflowStateFoundationTest : StringSpec({
         // A typo, and the survey workflow -- neither is a normal workflow this form may be put into.
         user.expectError(EXC.badInput, engage, data = mapOf(GDF.gedraId to gid, GDF.workflowId to "nosuchworkflow"))
         user.expectError(EXC.badInput, engage, data = mapOf(GDF.gedraId to gid, GDF.workflowId to SW.reviewForm))
+    }
+
+    "a form engaged by someone else stays its owner's, with the engager recorded as the actor" {
+        val owner = TestUser.create(cxt, "wfs-owner@acme.test", userClient = SC.acme)
+        val acmeAdmin = TestUser.create(cxt, "wfs-admin@acme.test", userClient = SC.acme, level = ROLE.admin)
+        val gid = newForm(owner)
+        acmeAdmin.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview))
+        // The owner reads in their own-user scope: had the state row been re-owned by the admin, it would be
+        // invisible to them here and the engagement would read as absent.
+        val seen = entriesOf(statesOf(owner.postData(recompute, mapOf(GDF.gedraId to gid))), WFS.workflowEngagement)
+        seen.single()[WFS.lastEngagedBy].toString() shouldBe acmeAdmin.userId.toString()
+    }
+
+    "a workflow retired from configuration keeps its engaged form's entry, and can still be disengaged" {
+        val user = TestUser.create(cxt, "wfs-retired@acme.test", userClient = SC.acme)
+        val admin = TestUser.createFullAdmin(cxt, "wfs-retired-admin@example.com")
+        val gid = newForm(user)
+        val retired = "retiredAudit"
+        // Stands in for a form engaged with a workflow the client has since removed: no engage call could make
+        // this (it refuses an undeclared workflow), so the state is written the way an operator would.
+        admin.postItem(
+            GEP.adminGedraState,
+            mapOf(
+                GDF.gedraId to gid,
+                GDF.states to listOf(
+                    mapOf(GE.traitId to WFS.workflowEngagement, GE.data to mapOf(WFD.workflowId to retired, WFS.engaged to true)),
+                ),
+            ),
+        )
+        // The deriver keeps a bare entry for it -- no revision, since there is no definition left to compute
+        // against -- beside the declared workflow's.
+        val before = entriesOf(statesOf(user.postData(recompute, mapOf(GDF.gedraId to gid))), WFS.workflowState)
+        before.map { it[WFD.workflowId].toOptStr() } shouldContainExactly listOf(SW.auditReview, retired)
+        before.single { it[WFD.workflowId].toOptStr() == retired }[WFS.computedAgainstRef].shouldBeNull()
+
+        // Re-engaging it is still refused -- the form cannot be put *into* a workflow that no longer exists...
+        user.expectError(EXC.badInput, engage, data = mapOf(GDF.gedraId to gid, GDF.workflowId to retired))
+        // ...but it can be taken out, and its derived entry then goes, while the engagement keeps its trail.
+        val after = statesOf(
+            user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to retired, WFS.engaged to false)),
+        )
+        entriesOf(after, WFS.workflowState).map { it[WFD.workflowId].toOptStr() } shouldContainExactly
+            listOf(SW.auditReview)
+        entriesOf(after, WFS.workflowEngagement).single()[WFS.engaged] shouldBe false
     }
 
     "the engagement merge creates an entry, then extends it, leaving other entries alone" {

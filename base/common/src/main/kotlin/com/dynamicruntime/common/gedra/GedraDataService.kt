@@ -636,6 +636,43 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
+     * Changes [row]'s state by [change] -- a read-modify-write of the whole entry set -- and recomputes its derived
+     * state after, **all under one lock** (issue #794): the way an act *asserts* state (engaging a form with a
+     * workflow, say) without racing another. [change] is handed the entries as they stand under the lock and
+     * answers with the complete set to store.
+     *
+     * Why not `readState` then [writeState]: the read would come from the resident cache, outside any lock, so
+     * two acts on one form at once -- or one landing within another node's cache throttle -- would each write
+     * back a set missing the other's change, and an asserted fact would be silently lost. The same reason
+     * [recomputeDerivedStateUnderLock] reads its asserted entries under the lock.
+     *
+     * The context is bound to the gedra's owner first, as the recompute binds it, so a state row this write
+     * *creates* belongs to the form's owner rather than to whoever acted; the actor stays in the audit fields.
+     * [row] is read by the caller (scope-checked there); its data feeds the recompute, as it does for
+     * [recomputeDerivedState]. Returns the state entries as they stand afterwards.
+     */
+    fun changeState(
+        cxt: KdrCxt,
+        row: GedraDataRow,
+        change: (List<Map<String, Any?>>) -> List<Map<String, Any?>>,
+    ): List<Map<String, Any?>> {
+        val txCxt = cxt.mkTransactionSubContext(tranStateChange)
+        val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
+        val table = gedraStatesTable(txCxt)
+        fun entriesUnderLock(): List<Map<String, Any?>> =
+            readStateRowUnderLock(txCxt, sqlCxt, table, row.gedraId)?.get(GD.data)
+                .toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
+        var result: List<Map<String, Any?>> = emptyList()
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranStateChange, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
+            txCxt.bindTransactionOwner(row.userId, row.client, row.org)
+            writeState(txCxt, row.gedraId, change(entriesUnderLock()))
+            recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
+            result = entriesUnderLock()
+        }
+        return result
+    }
+
+    /**
      * Whether a deriver's opt-in [featureName] is on: a null feature always runs; a named one runs only when the
      * gedra's client lists it in [ClientDef.testFeatures] (issue #599). So a demo derivation stays off clients
      * that did not ask for it. The **test-instance** half of the gate lives at the boundary now (issue #696):
@@ -1569,6 +1606,9 @@ class GedraDataService : ServiceInitializer {
 
         /** Name of the standalone derived-state recompute transaction (issue #675); prefixes the transaction id. */
         const val tranRecompute = "recomputeGedraState"
+
+        /** Name of the locked read-modify-write of state (issue #794); prefixes the transaction id. */
+        const val tranStateChange = "changeGedraState"
 
         /** The service; throws naming it on a node that does not run it. */
         fun get(cxt: KdrCxt): GedraDataService = cxt.instanceConfig.get(serviceName) as? GedraDataService
