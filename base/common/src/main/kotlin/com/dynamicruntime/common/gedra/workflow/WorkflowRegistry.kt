@@ -113,10 +113,10 @@ fun buildWorkflowRegistries(
     issues: MutableList<GedraConfigIssue>,
 ): WorkflowRegistries {
     // The entry kinds that are implemented; a workflow declaring any other is dropped rather than run
-    // half-built. `normal` joins this when it lands.
-    val builtEntries = setOf(WfEntry.creation, WfEntry.survey)
+    // half-built. `normal` landed with issue #794.
+    val builtEntries = setOf(WfEntry.creation, WfEntry.survey, WfEntry.normal)
     // The entry kinds a scope has at most one of: declaring one takes over that kind, and a second is refused.
-    // `normal` will be many-per-form, so it is deliberately not here even once it is built.
+    // `normal` is many-per-form, so it is deliberately not here now that it is built.
     val singletonEntries = setOf(WfEntry.creation, WfEntry.survey)
 
     fun declaredIn(owner: String): List<WfDeclared> = configs.configs

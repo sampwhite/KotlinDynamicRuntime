@@ -79,6 +79,16 @@ val Users = FC<Props> {
     // The user being edited, or null in the list view. `creating` opens the same editor with an empty draft.
     var editing by useState<AdminUser?>(null)
     var creating by useState(false)
+    // A create for the caller's own address (issue #797): the address is theirs and locked, and the user is
+    // registered on creation with no invitation -- the backend's own-address rule, which this only names.
+    var creatingForSelf by useState(false)
+    // The caller's own address, from the profile config (its login id is the primary address); null until
+    // known, and the "for me" button waits for it.
+    var ownAddress by useState<String?>(null)
+    // Read through a ref by [startCreate] and [applyEditorHash]: the hashchange listener is registered once,
+    // so it would otherwise see the null this held on the first render (the same reason [usersRef] exists).
+    val ownAddressRef = useRef<String>(null)
+    ownAddressRef.current = ownAddress
     // True once the hash has been read for a record to open; until then the URL is not written back.
     var restored by useState(false)
 
@@ -93,12 +103,13 @@ val Users = FC<Props> {
     var draftIsEntity by useState(false)
     var draftName by useState("")
     var draftEnabled by useState(true)
-    // The persona and personaSuffix (issue #750): chosen at creation, shown read-only afterward. The personaSuffix box is
-    // offered only once a create collides with an existing user of the same address, client and persona --
-    // the one situation it is for -- rather than sitting on every form as a field nobody needs.
+    // The persona and personaSuffix (issue #750): chosen at creation, shown read-only afterward. The suffix box
+    // is on every create form (issue #797): a first "Member B" needs it as much as a second one does. A create
+    // that collides with an existing user of the same address, client and persona sets [personaSuffixCollided],
+    // which turns the box's hint into the reason it is now needed.
     var draftPersona by useState(PERSONA.member)
     var draftPersonaSuffix by useState("")
-    var personaSuffixOffered by useState(false)
+    var personaSuffixCollided by useState(false)
     // Whether the administrator chose the persona themselves. Until they do, it follows the access level
     // (roles provide a default persona); once they do, the level may still move without dragging it back --
     // and only a chosen persona is sent, so the backend applies the same rule to an unnamed one.
@@ -109,6 +120,7 @@ val Users = FC<Props> {
     var confirmingDelete by useState(false)
 
     val generation = useRefreshGeneration()
+    val bump = useRefreshBump()
     // Guards against out-of-order search responses: only the newest request may publish its results.
     val searchSeq = useRef(0)
     // Pending debounce timer id, so a fast typist makes one request rather than one per keystroke.
@@ -125,6 +137,11 @@ val Users = FC<Props> {
         usersScope.launch {
             try {
                 block()
+                // Every action here can change what the caller may switch to (issue #797) -- a user created,
+                // disabled or deleted at their own address -- and the badge reads that from the shell config,
+                // which re-reads on a bump. Bumping after any success rather than working out which did is the
+                // refresh bus's intent: a bump that changed nothing costs one re-fetch.
+                bump()
             } catch (e: Throwable) {
                 error = userFacingError(e)
             } finally {
@@ -216,6 +233,13 @@ val Users = FC<Props> {
             val c = runCatching { HomeApi.fetchConfig() }.getOrNull()
             config = c
             if (c?.canManageUsers == true) {
+                // The caller's own address, for "Create a user for me" (issue #797). Before the search, so it is
+                // known by the time the rows arrive and a reload inside the self form restores that form. A
+                // failure leaves the button off rather than showing an error: it is a convenience over the
+                // ordinary create.
+                val own = runCatching { ProfileApi.fetchConfig().loginId }.getOrNull()?.ifBlank { null }
+                ownAddress = own
+                ownAddressRef.current = own
                 // Seed the controls from the URL and run *that* search, so a shared/bookmarked link reproduces
                 // the sender's filters and sort rather than the default view (issue #411).
                 val q = searchQueryFromHash(hashParams())
@@ -246,7 +270,7 @@ val Users = FC<Props> {
         draftEnabled = user?.enabled ?: true
         draftPersona = user?.persona ?: PERSONA.member
         draftPersonaSuffix = user?.personaSuffix ?: ""
-        personaSuffixOffered = false
+        personaSuffixCollided = false
         personaChosen = false
         confirmingDelete = false
         note = null
@@ -260,16 +284,19 @@ val Users = FC<Props> {
         seedDraft(user)
     }
 
-    /** Opens the editor on a new user. */
-    fun startCreate() {
+    /** Opens the editor on a new user -- for the caller's own address when [forSelf] (issue #797). */
+    fun startCreate(forSelf: Boolean = false) {
         editing = null
         creating = true
+        creatingForSelf = forSelf
         seedDraft(null)
+        if (forSelf) draftEmail = ownAddressRef.current ?: ""
     }
 
     fun closeEditor() {
         editing = null
         creating = false
+        creatingForSelf = false
         error = null
     }
 
@@ -281,7 +308,7 @@ val Users = FC<Props> {
 
     /** Who the editor is open on, as the hash should say it: a user id, `new`, or nothing in the list view. */
     fun openRecord(): String? = when {
-        creating -> HP.newRecord
+        creating -> if (creatingForSelf) HP.selfRecord else HP.newRecord
         else -> editing?.userId?.toString()
     }
 
@@ -295,6 +322,9 @@ val Users = FC<Props> {
         when {
             open == null -> closeEditor()
             open == HP.newRecord -> startCreate()
+            // Needs the caller's address; until it is known the self form cannot be shown, so the ordinary one
+            // opens instead rather than a self form with an empty, locked address.
+            open == HP.selfRecord -> startCreate(forSelf = ownAddressRef.current != null)
             else -> {
                 // Resolved against the rows we hold: there is no fetch-one call, and the draft is seeded from
                 // a row in any case. A record we cannot find leaves the editor shut rather than half-open --
@@ -347,7 +377,7 @@ val Users = FC<Props> {
         // Reachable means the hash as it stands names something this page could show. A `u=` naming a row we
         // do not hold is a URL to correct in place -- otherwise Back onto it would push again and never move.
         val current = hashParams()[HP.user]
-        val reachable = current == null || current == HP.newRecord ||
+        val reachable = current == null || current == HP.newRecord || current == HP.selfRecord ||
             users.any { it.userId.toString() == current }
         applyHashWrite(params, userIdentity, reachable)
     }
@@ -390,7 +420,7 @@ val Users = FC<Props> {
             } catch (e: Throwable) {
                 // A collision on (address, client, persona) is what the personaSuffix is for: offer it, keep the
                 // form, and let the refusal show as it is.
-                if (isUserKeyCollision(e)) personaSuffixOffered = true
+                if (isUserKeyCollision(e)) personaSuffixCollided = true
                 throw e
             }
             note = "Created ${created.primaryId}."
@@ -461,7 +491,7 @@ val Users = FC<Props> {
                     +"← Back to users"
                 }
             }
-            h1 { +if (creating) "Create a user" else "Edit user" }
+            h1 { +editorTitle(creating, creatingForSelf) }
 
             error?.let { errorText(it) }
 
@@ -484,13 +514,20 @@ val Users = FC<Props> {
                         "it cannot be recovered, edited, or re-enabled. The name is kept for reference.")
                 }
             } else {
-            if (creating) {
+            if (creating && creatingForSelf) {
+                // Locked: the point of this form is that the address is the caller's own.
+                readOnlyField("Email address", draftEmail)
+                p {
+                    className = ClassName("type-hint")
+                    +createAddressHint(forSelf = true)
+                }
+            } else if (creating) {
                 textField("Email address", draftEmail, disabled = busy, autoComplete = AC.username) {
                     draftEmail = it
                 }
                 p {
                     className = ClassName("type-hint")
-                    +"A user created here skips email verification: the address is taken as already confirmed."
+                    +createAddressHint(forSelf = false)
                 }
             } else {
                 // Identity is display-only: the backend offers no rename, and showing an editable field that
@@ -643,12 +680,10 @@ val Users = FC<Props> {
                     className = ClassName("type-hint")
                     +personaHint
                 }
-                if (personaSuffixOffered || draftPersonaSuffix.isNotEmpty()) {
-                    textField("Persona suffix", draftPersonaSuffix, disabled = busy) { draftPersonaSuffix = it }
-                    p {
-                        className = ClassName("type-hint")
-                        +personaSuffixHint
-                    }
+                textField("Persona suffix", draftPersonaSuffix, disabled = busy) { draftPersonaSuffix = it }
+                p {
+                    className = ClassName("type-hint")
+                    +personaSuffixHint(collided = personaSuffixCollided)
                 }
             } else {
                 readOnlyField("Persona", personaCell(draftPersona, draftPersonaSuffix))
@@ -803,6 +838,14 @@ val Users = FC<Props> {
                 Button {
                     onClick = { startCreate() }
                     +"Create user"
+                }
+                // A further user for the caller's own address (issue #797): registered on creation and switchable
+                // at once from the badge, with no invitation -- the case that otherwise meant typing your own address.
+                if (ownAddress != null) {
+                    Button {
+                        onClick = { startCreate(forSelf = true) }
+                        +"Create a user for me"
+                    }
                 }
                 // The filters live behind a toggle (issue #683), closed by default, so the table -- what the
                 // page is for -- is on screen without first scrolling past six controls and their hints.
@@ -1102,9 +1145,38 @@ private const val personaHint =
         "creation. It follows the access level until you pick one; picking one sets the level to its usual " +
         "value, which you may still change."
 
-private val personaSuffixHint =
-    "A user of this address, client and persona already exists. Give this one a short id (up to " +
+/** The editor's heading: which record it is open on (issue #797 adds the caller's own). Pure, jsNodeTest-covered. */
+fun editorTitle(creating: Boolean, forSelf: Boolean): String = when {
+    creating && forSelf -> "Create a user for me"
+    creating -> "Create a user"
+    else -> "Edit user"
+}
+
+/**
+ * What happens at the address a create names (issues #751, #797) -- the backend's rule, said before the click:
+ * the caller's own address gives a user registered at once, and anyone else's gets an invitation. Pure,
+ * jsNodeTest-covered.
+ */
+fun createAddressHint(forSelf: Boolean): String = if (forSelf) {
+    "Your own address. The new user is registered as soon as it is created, no invitation is sent, and it " +
+        "appears in your account menu to switch to."
+} else {
+    "An invitation is mailed to this address, and the user is claimed when its owner accepts it. If it is " +
+        "your own address, the user is registered at once instead, and no invitation is sent."
+}
+
+/**
+ * The persona suffix box's hint (issues #750, #797): what the suffix is for, or -- once a create has collided
+ * with an existing user of the same address, client and persona -- why this one now needs one. Pure,
+ * jsNodeTest-covered.
+ */
+fun personaSuffixHint(collided: Boolean): String = if (collided) {
+    "A user of this address, client and persona already exists. Give this one a short suffix (up to " +
         "${PERSONASUFFIX.maxLength} letters or digits: 1, 2, A, B) to create it as a further user of the same kind."
+} else {
+    "Optional. A short suffix (up to ${PERSONASUFFIX.maxLength} letters or digits: 1, 2, A, B) for a further " +
+        "user of the same address, client and persona -- shown as \"Member B\". Leave blank for the first one."
+}
 
 /** The [offeredAccessLevels] as antd `{ label, value }` option objects. */
 private fun accessLevelOptions(operatorSelectable: Boolean): Array<dynamic> =

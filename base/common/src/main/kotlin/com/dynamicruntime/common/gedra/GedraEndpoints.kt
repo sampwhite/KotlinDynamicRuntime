@@ -18,7 +18,10 @@ import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.surveyStatusOf
 import com.dynamicruntime.common.gedra.workflow.PFO
+import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
+import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
@@ -652,6 +655,80 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         }
     }
 
+    // --- per-workflow state: engage, and recompute (issue #794) -------------------------------------------
+
+    type(GEP.workflowStatesType) {
+        type = SCT.kObject
+        description = "A form and its state entries, as they stand after an engagement change or a recompute."
+        property(GDF.gedraId, "The form these states belong to.", required = true)
+        property(GDF.states, "The form's state entries, per-workflow ones included.", required = true) {
+            type = SCT.array
+            items { ref("${GCFG.globalNamespace}.${GU.stateUnionName}") }
+        }
+    }
+
+    // Puts a form into a normal workflow, or takes it back out. Engagement is an *asserted* fact -- a person
+    // chose this -- so it survives every recompute; the derived per-workflow entries are refreshed here so the
+    // answer already reflects the change.
+    generalEndpoint(
+        GEP.workflowEngage,
+        "Puts a form into a normal workflow, or takes it back out, and answers with the form's state as it " +
+            "then stands.",
+        HttpMethod.POST,
+        outputRef = GEP.workflowStatesType,
+        inputFields = {
+            field(GDF.gedraId, "The form to engage or disengage.", required = true)
+            field(GDF.workflowId, "The normal workflow to engage with.", required = true)
+            field(WFS.engaged, "Whether the form is engaged with the workflow; true when absent.") {
+                type = SCT.boolean
+                emptyIsAbsent = true
+            }
+        },
+        publicApi = true,
+        needsClientConfig = true,
+    ) { c, request ->
+        val workflowId = request[GDF.workflowId].toOptStr()
+            ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
+        val row = stateTargetRow(c, request)
+        val engaged = request.getOptBool(WFS.engaged) != false
+        // A typo must not create an engagement with nothing. The deriver tolerates an engaged workflow whose
+        // definition has since gone (configuration changed underneath a form); it does not invite one. So
+        // *engaging* needs a declared normal workflow, while *disengaging* also accepts one the form already has
+        // an engagement with -- otherwise a retired workflow's entry could never be taken back out.
+        val declared = WorkflowService.get(c).forClient(row.client).workflow(workflowId)
+        val isNormal = declared != null && declared.def.entry == WfEntry.normal
+        val canDisengage = !engaged &&
+            WorkflowEngagement.hasEngagement(GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c)), workflowId)
+        if (!isNormal && !canDisengage) {
+            throw KdrException.mkInput(
+                "'$workflowId' is not a normal workflow of client '${row.client}'. A form engages with the " +
+                    "workflows it is offered, not with an arbitrary id.",
+            )
+        }
+        val states = WorkflowEngagement.setEngaged(c, row, workflowId, engaged)
+        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to states)
+    }
+
+    // Recomputes one form's derived state on demand (issue #794). Batch jobs (issue #793) will do this in bulk;
+    // this endpoint exists first, and is what a test uses to force a recompute even once they do.
+    generalEndpoint(
+        GEP.formDocRecomputeState,
+        "Recomputes one form's derived state, its per-workflow entries included, and answers with the result.",
+        HttpMethod.POST,
+        outputRef = GEP.workflowStatesType,
+        inputFields = {
+            field(GDF.gedraId, "The form whose state to recompute.", required = true)
+        },
+        publicApi = true,
+        needsClientConfig = true,
+    ) { c, request ->
+        val row = stateTargetRow(c, request)
+        val scope = ReadScopeRules.forCaller(c)
+        val svc = GedraDataService.get(c)
+        svc.recomputeDerivedState(c, row.gedraId, scope)
+        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to svc.readState(c, row.gedraId, scope))
+    }
+
     // --- the workflow save (issue #535) -------------------------------------------------------------------
 
     type(GEP.workflowSaveType) {
@@ -794,6 +871,25 @@ private fun surveyFormRow(cxt: KdrCxt, fullId: String): GedraDataRow {
         throw KdrException.mkInput(
             "Form '$fullId' belongs to client '${row.client}', and this survey view is for '${cxt.client}'. " +
                 "Use that client's own survey view.",
+        )
+    }
+    return row
+}
+
+/**
+ * The form a per-workflow state endpoint acts on (issue #794): read in the caller's own scope, so one out of
+ * reach answers 404, and confined to the client the path named -- the same two guards [surveyFormRow] applies,
+ * for the same reasons.
+ */
+private fun stateTargetRow(cxt: KdrCxt, request: Map<String, Any?>): GedraDataRow {
+    val fullId = request[GDF.gedraId].toOptStr()
+        ?: throw KdrException.mkInput("A ${GDF.gedraId} is required.")
+    val row = GedraDataService.get(cxt).queryGedra(cxt, fullId, GedraDataType.formDoc, ReadScopeRules.forCaller(cxt))
+        ?: throw KdrException("No form '$fullId' for this caller.", code = EXC.notFound)
+    if (row.client != cxt.client) {
+        throw KdrException.mkInput(
+            "Form '$fullId' belongs to client '${row.client}', and this endpoint is for " +
+                "'${cxt.client}'. Use that client's own endpoint.",
         )
     }
     return row

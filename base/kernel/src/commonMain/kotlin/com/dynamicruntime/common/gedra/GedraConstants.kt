@@ -63,6 +63,19 @@ object GEP {
     /** The resolved-workflow view a creation page renders (issue #534). */
     const val workflowView = "/gedra/workflow/view"
 
+    /** Puts a form into a normal workflow, or takes it back out (issue #794). */
+    const val workflowEngage = "/gedra/workflow/engage"
+
+    /**
+     * Recomputes one form's derived state, per-workflow entries included (issue #794). The design asks for this
+     * before batch jobs exist, and expects it to stay the preferred way to force a recompute in a test after
+     * they do.
+     */
+    const val formDocRecomputeState = "/gedra/formDoc/recomputeState"
+
+    /** Response type of [workflowEngage] and [formDocRecomputeState]: a form id and its state entries. */
+    const val workflowStatesType = "WorkflowStates"
+
     /** The type naming a resolved workflow view -- open by design, like a UiBlock. */
     const val workflowViewType = "WorkflowView"
 
