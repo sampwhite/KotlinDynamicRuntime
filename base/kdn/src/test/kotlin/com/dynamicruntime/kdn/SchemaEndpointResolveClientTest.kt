@@ -105,9 +105,10 @@ class SchemaEndpointResolveClientTest : StringSpec({
     "an allClients caller resolves a bare path on another client's surface" {
         // The lookup takes the listing's `client` (issue #714): an allClients admin editing a hub form asks for
         // hub's copy of the patch endpoint -- in hub's `$defs` -- rather than forming `/gedra/hub/patch` itself.
-        // The admin is in the default client, which does not vary, so without `client` the bare path answers.
+        // The admin is placed in `public`, which does not vary, so without `client` the bare path answers. (Named:
+        // an allClients admin's own default is the hub, issue #799, which here has copies of its own.)
         val cxt = boot("adminOther")
-        val admin = TestUser.createFullAdmin(cxt, "admin-other@resolve.test")
+        val admin = TestUser.createFullAdmin(cxt, "admin-other@resolve.test", userClient = CL.public)
 
         paths(lookup(admin, GEP.patch, resolveClient = true)) shouldContainExactly listOf(GEP.patch)
         paths(lookup(admin, GEP.patch, resolveClient = true, client = CL.hub)) shouldContainExactly

@@ -202,8 +202,9 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
   with the Jira number — which makes a cross-spec collision essentially impossible without thinking about it.
   (A per-spec prefix works too; the examples above keep short names only for readability.) Or give the spec its
   own DB with a `KDR_DB_NAME` overlay (`mkTestBootCxt("x", "x", mapOf("KDR_DB_NAME" to "mySpecDb"))`). A user
-  created with no `userClient` lands in `public`, whose stored config accumulates across specs — prefer placing
-  users in your own client.
+  created with no `userClient` lands in the default client — `public`, or `hub` for one holding `allClients`
+  (`createFullAdmin`, issue #799) — whose stored config accumulates across specs; prefer placing users in your
+  own client.
 - **Collisions are strict in `unit`/`local`, degraded in production:** two clients claiming one `traitId`, or a
   namespace with two owners, fails the reload in a test (which is what `GedraConfigReloadTest`'s rollback case
   checks) but is tolerated live.

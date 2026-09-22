@@ -504,7 +504,8 @@ a test fixture rather than the real email-code flow:
   same-hash navigate does not reload — call `location.reload()`).
 - **Pass `client` to become a *specific* client's user** (`client: "acme"`). This is what a **per-client**
   surface needs — a client's schema variant, its usage columns and search fields — and without it you land in
-  the default client and verify the wrong variant. An unknown client is refused rather than silently downgraded.
+  the default client (`hub` for a user given the `allClients` capability, else `public`; issue #799) and verify
+  the wrong variant. An unknown client is refused rather than silently downgraded.
   Since the identity split (issue #747) `client` is part of *which* user you become: an address that already
   has a user in another client gets a **second** user in the one you name, not the existing one.
 - **`level` is the privilege rung** (`user` / `admin` / …); `admin` is client-wide, so a gedra listing it runs

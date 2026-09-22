@@ -216,12 +216,13 @@ class AuthFormHandler(
             // Placed by an allClients caller: the one provisioning path creates it under the named key, or
             // recovers a recoverably deleted user there, or refuses an enabled one as the duplicate it is.
             return userService.provisionUser(
-                cxt, address, namedClientOrRefuse(cxt, client), initialRoles, createdAt = now,
+                cxt, address, namedClientOrRefuse(cxt, client, initialRoles), initialRoles, createdAt = now,
                 persona = persona, personaSuffix = personaSuffix, verifiedAt = now, registered = true,
             )
         }
-        // A self-registration lands in the placeholder client (`public`) with the default persona; the
-        // `+client%persona` tag that could once say otherwise is retired (issue #750).
+        // A self-registration lands in the default client for its roles -- `hub` for an allClients user (the
+        // auto-admin domain's first admin, issue #799), else the placeholder `public` -- with the default persona;
+        // the `+client%persona` tag that could once say otherwise is retired (issue #750).
         return if (existing != null) {
             // A lingering row (started-but-unfinished, or recoverably deleted) is re-provisioned in place; its
             // identity is marked verified now, as a fresh one would be.
@@ -235,7 +236,7 @@ class AuthFormHandler(
             existing.userId
         } else {
             userService.provisionUser(
-                cxt, address, AddressRules.defaultClient(cxt), initialRoles,
+                cxt, address, AddressRules.defaultClient(cxt, initialRoles), initialRoles,
                 createdAt = now, verifiedAt = now, registered = true,
             )
         }
@@ -393,8 +394,9 @@ class AuthFormHandler(
     /**
      * The user a Google sign-in acts as (issue #749). A **registered** user of [identity] exists: the standard
      * default among the registered ones, and the sign-in registers nothing. None: Google can reach exactly one
-     * user, the one the rules name -- the default client (`AddressRules.defaultClient`, `public` until the
-     * request's host can say otherwise), the persona the initial roles imply (`member`, or `admin` on the
+     * user, the one the rules name -- the default client for the initial roles (`AddressRules.defaultClient`:
+     * `hub` for an allClients user, else `public`, until the request's host can say otherwise), the persona the
+     * initial roles imply (`member`, or `admin` on the
      * auto-admin domain), no personaSuffix -- which the person is
      * claiming by signing in (`UserService.claimUser`): an existing one under that key is registered, a
      * disabled one re-enabled as it was and registered, and otherwise a registered user is created with the
@@ -410,7 +412,7 @@ class AuthFormHandler(
         val address = identity.primaryId
         val roles = AdminRules.initialRoles(cxt, address)
         return userService.claimUser(
-            cxt, identity, AddressRules.defaultClient(cxt), PERSONA.defaultFor(roles), personaSuffix = "",
+            cxt, identity, AddressRules.defaultClient(cxt, roles), PERSONA.defaultFor(roles), personaSuffix = "",
             roles = roles,
         )
     }
@@ -516,7 +518,7 @@ class AuthFormHandler(
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
         val userId = userService.provisionUser(
-            cxt, address, namedClientOrRefuse(cxt, client), roles,
+            cxt, address, namedClientOrRefuse(cxt, client, roles), roles,
             createdAt = cxt.now(), persona = persona, personaSuffix = personaSuffix, verifiedAt = cxt.now(), registered = true,
         ) { authUserData ->
             // The person's real-world name (issue #736), set the same way the admin-create path does -- display
@@ -532,15 +534,16 @@ class AuthFormHandler(
 
     /**
      * The client a caller named for a new user -- the fixture's, or an allClients registration's (issue #751)
-     * -- or the default client a registration lands in when [named] is null.
+     * -- or, when [named] is null, the default client for the [roles] being provisioned
+     * ([AddressRules.defaultClient]: `hub` for an allClients user, else `public`; issue #799).
      *
-     * An explicit client this node does not carry is **refused**, where a plain registration lands in `public`.
+     * An explicit client this node does not carry is **refused**, where an unnamed one takes the default.
      * The difference is who is on the other end. A test or an administrator asking for a client that is not
      * present has made a mistake, and silently getting `public` is how it goes unnoticed until an assertion
      * three files away fails for a reason that has nothing to do with what it was checking.
      */
-    private fun namedClientOrRefuse(cxt: KdrCxt, named: String?): String {
-        val client = named ?: return AddressRules.defaultClient(cxt)
+    private fun namedClientOrRefuse(cxt: KdrCxt, named: String?, roles: Collection<String>): String {
+        val client = named ?: return AddressRules.defaultClient(cxt, roles)
         val clients = ClientService.get(cxt)
         if (!clients.isPresent(client)) {
             val why = if (clients.known(client) != null) {
