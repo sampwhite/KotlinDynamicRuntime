@@ -240,6 +240,14 @@ object AuthApi {
     suspend fun setDefaultUser(userId: Long): List<UserChoice> =
         userChoicesFrom(Http.sendApi("POST", AEP.setDefaultUser, mapOf(AFLD.userId to userId))[EP.results].toJsonMapOrEmpty()[AFLD.users])
 
+    /**
+     * Permanently removes [userId], one of the person's own `public` users (issue #752); returns who the
+     * session acts as afterward, which is another user when the removed one was the acting user -- the caller
+     * then reloads, as after a switch.
+     */
+    suspend fun removePublicUser(userId: Long): UserProfile =
+        userFrom(Http.sendApi("POST", AEP.removePublicUser, mapOf(AFLD.userId to userId)))
+
     /** The users the signed-in person may act as (issue #749); the shell config carries the same list. */
     suspend fun fetchUsers(): List<UserChoice> =
         userChoicesFrom(Http.getApi(AEP.selfUsers)[EP.results].toJsonMapOrEmpty()[AFLD.users])

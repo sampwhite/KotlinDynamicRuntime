@@ -95,7 +95,12 @@ Current UI-config endpoints:
   the signed-in person may act as (registered, enabled users of their identity; `isCurrent` / `isDefault`
   marked), `POST /user/self/switch {userId}` reissues the session as one of them (the app then does a full
   reload, since the client usually changes), `POST /user/self/setDefault {userId}` chooses which user the
-  address logs in as. The shell config (`/home/ui/config`) carries the same list as `state.users`, so the app
+  address logs in as, and `POST /user/self/removePublic {userId}` permanently removes one of the person's own
+  `public` users (issue #752), down to nothing -- a `public` user's owner registered themselves and can register
+  again, so the last user may go too, retiring the identity. Removing the acting user moves the session to the
+  person's default user, or ends it when none remains. The **profile page** offers it ("Your public account")
+  for every `public` user in the switcher's list, and says when it is the whole registration
+  (`removablePublicUsers`, `removalEndsEverything`). The shell config (`/home/ui/config`) carries the same list as `state.users`, so the app
   bar needs no fetch of its own: for a person with more than one user the **identity badge** says which one this
   is in brackets (`Demo Person [hub · Member B]`, only what tells it from the others -- `UserChoice.qualifierWithin`)
   and becomes the menu that switches; with one user it is the plain label it always was. The default persona
@@ -538,8 +543,9 @@ a test fixture rather than the real email-code flow:
   `personaSuffix` picks *that* user of the address, creating it when there is none and **recovering** it when it
   was deleted recoverably (same user, all its content back, unregistered again); naming none logs in as the
   identity's default user: the chosen default, else the one most recently acted as (every login stamps it,
-  issue #748), else its first -- among the **registered** users (issue #749; a fixture user is registered on
-  creation). `personaSuffix` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
+  issue #748), else its first outside `public` (issue #752), else its first -- among the **registered** users
+  (issue #749; a fixture user is registered on creation). Given only an address that already has a real-client
+  user, the fixture therefore signs in as that one: name `client: "public"` to get the placeholder. `personaSuffix` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
 
 This is one `fetch`, not a heavyweight login — reach for it rather than declaring a login-gated change
 unverifiable. Other test fixtures exist for more specialized needs (for example reading a real login code back
