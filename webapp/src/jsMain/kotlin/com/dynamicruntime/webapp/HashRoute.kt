@@ -55,6 +55,12 @@ object HP {
     /** [user]'s value when the editor is open on a user who does not exist yet. */
     const val newRecord = "new"
 
+    /**
+     * [user]'s value when the editor is open on a new user **for the caller's own address** (issue #797): the
+     * same editor as [newRecord] with the address filled in and locked, so Back and Forward reopen the right one.
+     */
+    const val selfRecord = "me"
+
     /** Forms page: the gedra id of the form document open in the read-only view, or absent in the list view. */
     const val gedra = "g"
 
