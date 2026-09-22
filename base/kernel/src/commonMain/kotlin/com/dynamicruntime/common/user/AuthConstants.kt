@@ -94,12 +94,12 @@ object AFLD {
     const val users = "users"
 
     /**
-     * On registration (issue #751), for an `allClients` caller only: which client, persona, and personId the
+     * On registration (issue #751), for an `allClients` caller only: which client, persona, and personaSuffix the
      * new user takes. Anyone else registers into `public` as a member, and naming one of these is refused.
      */
     const val client = "client"
     const val persona = "persona"
-    const val personId = "personId"
+    const val personaSuffix = "personaSuffix"
 
     /** The invitation token (issue #751): the encrypted (identityId, userId, expiry) the mailed link carries. */
     const val invitationToken = "invitationToken"
@@ -134,7 +134,7 @@ object ATYPE {
     const val profileUiConfig = "ProfileUiConfig"
     /** The users list (issue #749): the caller's `UserChoice`s under `users`. */
     const val userChoices = "UserChoices"
-    /** What an invitation is for (issue #751): address, client, persona, personId, name. */
+    /** What an invitation is for (issue #751): address, client, persona, personaSuffix, name. */
     const val invitationInfo = "InvitationInfo"
 }
 
@@ -185,9 +185,9 @@ object AERR {
     const val emailParam = "email"
 
     /**
-     * A user with the same (address, client, persona, personId) already exists (issue #750). Also the
-     * envelope's logical `errorCode`, which is what the console keys on to offer the personId box -- the
-     * wording is free to change. Params: [emailParam], [clientParam], [personaParam], [personIdNoteParam].
+     * A user with the same (address, client, persona, personaSuffix) already exists (issue #750). Also the
+     * envelope's logical `errorCode`, which is what the console keys on to offer the personaSuffix box -- the
+     * wording is free to change. Params: [emailParam], [clientParam], [personaParam], [personaSuffixNoteParam].
      */
     const val userKeyTaken = "userKeyTaken"
     const val clientParam = "client"
@@ -198,8 +198,8 @@ object AERR {
 
     /** The invitation was already accepted: the user is registered, and a mailed link is not a standing login. */
     const val invitationUsed = "invitationUsed"
-    /** `, personId 'B'` when the key carried one, else empty -- so one sentence serves both. */
-    const val personIdNoteParam = "personIdNote"
+    /** `, personaSuffix 'B'` when the key carried one, else empty -- so one sentence serves both. */
+    const val personaSuffixNoteParam = "personaSuffixNote"
 }
 
 /**
@@ -212,7 +212,7 @@ class PersonaDef(val name: String, val label: String, val defaultRoles: List<Str
 
 /**
  * The personas a user may be created with (issue #747): what relationship the user has to the application,
- * frozen at creation and part of the user's unique key with its identity, client and `personId`. A registry
+ * frozen at creation and part of the user's unique key with its identity, client and `personaSuffix`. A registry
  * (issue #750) of two to start; a client may later add its own under `client-definition.md`'s reservation of
  * the word. A persona is deliberately **not** a role -- `admin` here says how to read the user, and the roles
  * say what they may do -- though each names the roles a user of it *starts* with.
@@ -263,7 +263,7 @@ object PERSONA {
 
     /**
      * A persona as a person types it on the claim page (issue #751), `admin` or `member B`, split into the
-     * persona name and the personId suffix (empty when there is none): the first word and whatever follows it,
+     * persona name and the personaSuffix suffix (empty when there is none): the first word and whatever follows it,
      * trimmed. Blank is the default persona. What `typed` shows: the two joined by a space, as the invitation
      * mail spells them. Pure, in the kernel so the page and the backend read one rule.
      */
@@ -274,22 +274,22 @@ object PERSONA {
         return if (space < 0) trimmed.lowercase() to "" else trimmed.substring(0, space).lowercase() to trimmed.substring(space + 1).trim()
     }
 
-    /** The claim-page spelling of a persona and personId: `admin`, `member B`. */
-    fun typed(persona: String, personId: String): String = if (personId.isEmpty()) persona else "$persona $personId"
+    /** The claim-page spelling of a persona and personaSuffix: `admin`, `member B`. */
+    fun typed(persona: String, personaSuffix: String): String = if (personaSuffix.isEmpty()) persona else "$persona $personaSuffix"
 }
 
-/** The `personId` rules (issue #747): the UAT batch discriminator, empty for the ordinary user. */
+/** The `personaSuffix` rules (issue #747): the UAT batch discriminator, empty for the ordinary user. */
 @Suppress("ConstPropertyName")
-object PERSONID {
+object PERSONASUFFIX {
     /** At most this many characters -- `1`, `2`, `A`, `B`, or a short word that means something to the creator. */
     const val maxLength = 8
 
     /**
-     * Whether [personId] is one a user may be created with: empty (the ordinary user), or up to [maxLength]
-     * ASCII letters, digits, and underscores -- the tightly controlled charset an id has, so two personIds that
+     * Whether [personaSuffix] is one a user may be created with: empty (the ordinary user), or up to [maxLength]
+     * ASCII letters, digits, and underscores -- the tightly controlled charset an id has, so two personaSuffixes that
      * look alike to a person cannot name different users. A tombstone's `deleted-<userId>` is not one of
      * these and never goes through this check: it is written by the delete, not chosen.
      */
-    fun isValid(personId: String): Boolean =
-        personId.length <= maxLength && personId.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '_' }
+    fun isValid(personaSuffix: String): Boolean =
+        personaSuffix.length <= maxLength && personaSuffix.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '_' }
 }

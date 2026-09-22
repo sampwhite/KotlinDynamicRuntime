@@ -145,7 +145,7 @@ class AccessLevelTest {
     }
 }
 
-/** The persona controls on the create form (issue #750): the level a persona implies, and when the personId box is offered. */
+/** The persona controls on the create form (issue #750): the level a persona implies, and when the personaSuffix box is offered. */
 class PersonaFormTest {
     @Test
     fun aPersonaMovesTheLevelToItsDefault() {
@@ -164,7 +164,7 @@ class PersonaFormTest {
     }
 
     @Test
-    fun thePersonIdIsOfferedOnlyForAKeyCollision() {
+    fun thePersonaSuffixIsOfferedOnlyForAKeyCollision() {
         val taken = ApiError("A user for a@b.com already exists in client public with persona member.", fromFragment = true, status = 400, errorCode = AERR.userKeyTaken, traceId = null)
         assertTrue(isUserKeyCollision(taken))
         // The wording is not what decides it: the same sentence with no code, or another refusal, offers nothing.

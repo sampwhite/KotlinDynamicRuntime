@@ -107,7 +107,7 @@ Current UI-config endpoints:
   and waits for **Accept**, which POSTs `/auth/invitation/accept`: the link is the proof, so accepting registers
   the user, verifies a new identity, signs the browser in, and reloads. Nothing happens on merely opening the
   link. `POST /clientAdmin/user/invite {userId}` re-sends a lapsed one (the editor offers it for an unclaimed
-  user). The **register form** shows Client / Persona / Person id to an `allClients` caller only; set, they ride
+  user). The **register form** shows Client / Persona / Persona suffix to an `allClients` caller only; set, they ride
   `createInitial` and the backend refuses them from anyone else.
 - **Claiming from the login page** (issue #751), since a mailed link cannot be required: the auth flow's third
   mode, `#page=claim` ("Claim an account created for you", linked from the login page). The person types the
@@ -150,7 +150,7 @@ A fourth is **belonging**, and behaves unlike the other three:
   says `unclaimed` for a user nobody has logged into yet (no registered date; the activated date is stamped at
   creation and says nothing about that).
   Creating a user at your **own** address makes an associated user of yours, registered at once and in the
-  badge's switcher. The **Person id** box is offered only after a create collides with an existing user of the
+  badge's switcher. The **Persona suffix** box is offered only after a create collides with an existing user of the
   same address, client and persona -- the backend's duplicate-key refusal, recognized by the envelope's logical
   `errorCode` (`AERR.userKeyTaken`), never by its wording: it is the UAT batch discriminator, and a field
   nobody else needs. The list shows both in a **Persona** column (`Member B`), and a **Registered** column says
@@ -485,7 +485,7 @@ is not even *visible* to a signed-out caller, so `/schema/endpoints` omits it an
 comes back empty. Verifying such a change in a browser therefore starts with a session, and the fast way in is
 a test fixture rather than the real email-code flow:
 
-- **`POST /kda/fixture/becomeUser`** with `{email, level, client, capabilities, name, persona, personId}` creates-or-finds the user
+- **`POST /kda/fixture/becomeUser`** with `{email, level, client, capabilities, name, persona, personaSuffix}` creates-or-finds the user
   and logs you straight in — **no verification code**. It is a `forTestingOnly` endpoint, so it exists only on a
   test instance (`KDR_TEST_INSTANCE`, which the in-memory local server is). Call it from the browser page's own
   `fetch()` so the session cookie lands in the browser, then reload the app to fetch as the new identity (a
@@ -504,13 +504,13 @@ a test fixture rather than the real email-code flow:
   `publicName`, which falls back to the email). Set it when verifying a feature that reads the owner's *name* —
   a `prefillFromOwner` on the `name` attribute, say — since a nameless fixture user has nothing there to show.
   Ignored when the user already exists, like `level` (issue #736).
-- **Pass `persona` / `personId` to become one of several users under one address** (issue #747): an identity
-  (the address) may have a user per client, persona and personId. Naming any of `client`, `persona` or
-  `personId` picks *that* user of the address, creating it when there is none and **recovering** it when it
+- **Pass `persona` / `personaSuffix` to become one of several users under one address** (issue #747): an identity
+  (the address) may have a user per client, persona and personaSuffix. Naming any of `client`, `persona` or
+  `personaSuffix` picks *that* user of the address, creating it when there is none and **recovering** it when it
   was deleted recoverably (same user, all its content back, unregistered again); naming none logs in as the
   identity's default user: the chosen default, else the one most recently acted as (every login stamps it,
   issue #748), else its first -- among the **registered** users (issue #749; a fixture user is registered on
-  creation). `personId` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
+  creation). `personaSuffix` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
 
 This is one `fetch`, not a heavyweight login — reach for it rather than declaring a login-gated change
 unverifiable. Other test fixtures exist for more specialized needs (for example reading a real login code back

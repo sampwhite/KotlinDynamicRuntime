@@ -173,20 +173,20 @@ class AuthFormHandler(
      * An active, real user already at that email cannot be recreated.
      *
      * An **`allClients` caller** may say where the new user goes (issue #751): [client], [persona] and
-     * [personId] beside the address, the code arriving at that address as for anyone. That is how an
+     * [personaSuffix] beside the address, the code arriving at that address as for anyone. That is how an
      * administrator provisions a truly new identity somewhere other than `public` -- a new identity is only
      * ever created by proving its address, so even they go through the code. Anyone else naming one of the
      * three is refused: a self-registration lands in `public` as a member.
      */
     fun createInitialUser(
         cxt: KdrCxt, contactAddress: String, formAuthToken: String, verifyCode: String,
-        client: String? = null, persona: String? = null, personId: String = "",
+        client: String? = null, persona: String? = null, personaSuffix: String = "",
     ): Long {
         val address = contactAddress.normalizeEmail()
         requireValidToken(cxt, formAuthToken)
-        val placing = client != null || persona != null || personId.isNotEmpty()
+        val placing = client != null || persona != null || personaSuffix.isNotEmpty()
         if (placing && !cxt.userProfile.roles.contains(ROLE.allClients)) {
-            throw KdrException.mkInput("Only an administrator holding '${ROLE.allClients}' may choose the client, persona or personId of a new account.")
+            throw KdrException.mkInput("Only an administrator holding '${ROLE.allClients}' may choose the client, persona or personaSuffix of a new account.")
         }
         verifyCodeOrThrow(cxt, address, formAuthToken, verifyCode)
         val existing = userService.queryByPrimaryId(cxt, address)
@@ -221,7 +221,7 @@ class AuthFormHandler(
             // recovers a recoverably deleted user there, or refuses an enabled one as the duplicate it is.
             return userService.provisionUser(
                 cxt, address, namedClientOrRefuse(cxt, client), initialRoles, createdAt = now,
-                persona = persona, personId = personId, verifiedAt = now, registered = true,
+                persona = persona, personaSuffix = personaSuffix, verifiedAt = now, registered = true,
             )
         }
         // A self-registration lands in the placeholder client (`public`) with the default persona; the
@@ -399,7 +399,7 @@ class AuthFormHandler(
      * default among the registered ones, and the sign-in registers nothing. None: Google can reach exactly one
      * user, the one the rules name -- the default client (`AddressRules.defaultClient`, `public` until the
      * request's host can say otherwise), the persona the initial roles imply (`member`, or `admin` on the
-     * auto-admin domain), no personId -- which the person is
+     * auto-admin domain), no personaSuffix -- which the person is
      * claiming by signing in (`UserService.claimUser`): an existing one under that key is registered, a
      * disabled one re-enabled as it was and registered, and otherwise a registered user is created with the
      * initial roles, so the auto-admin domain reaches a Google-provisioned operator as it does a registration.
@@ -414,7 +414,7 @@ class AuthFormHandler(
         val address = identity.primaryId
         val roles = AdminRules.initialRoles(cxt, address)
         return userService.claimUser(
-            cxt, identity, AddressRules.defaultClient(cxt), PERSONA.defaultFor(roles), personId = "",
+            cxt, identity, AddressRules.defaultClient(cxt), PERSONA.defaultFor(roles), personaSuffix = "",
             roles = roles,
         )
     }
@@ -492,19 +492,19 @@ class AuthFormHandler(
      */
     fun becomeUserByEmail(
         cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
-        client: String? = null, name: String? = null, persona: String? = null, personId: String = "",
+        client: String? = null, name: String? = null, persona: String? = null, personaSuffix: String = "",
     ): Map<String, Any?> {
         val address = email.normalizeEmail()
         // A username as the login id resolves directly; an address resolves to its identity's users, and the
-        // one to become is the match on (client, persona, personId) when the caller named any of them, else
+        // one to become is the match on (client, persona, personaSuffix) when the caller named any of them, else
         // the identity's default user (issue #747) -- so a test can put several users under one address. An
         // unnamed persona is the one the level implies on a create (`PERSONA.defaultFor`), and any on a find.
-        val named = client != null || persona != null || personId.isNotEmpty()
+        val named = client != null || persona != null || personaSuffix.isNotEmpty()
         val existing = if (address.contains('@')) {
             val identity = userService.queryIdentityByAddress(cxt, address)
             val users = identity?.let { userService.usersOfIdentity(cxt, it.identityId) }.orEmpty()
             if (named) {
-                users.firstOrNull { (client == null || it.client == client) && (persona == null || it.persona == persona) && it.personId == personId }
+                users.firstOrNull { (client == null || it.client == client) && (persona == null || it.persona == persona) && it.personaSuffix == personaSuffix }
             } else {
                 identity?.let { userService.defaultUserOf(cxt, it) }
             }
@@ -521,7 +521,7 @@ class AuthFormHandler(
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
         val userId = userService.provisionUser(
             cxt, address, namedClientOrRefuse(cxt, client), roles,
-            createdAt = cxt.now(), persona = persona, personId = personId, verifiedAt = cxt.now(), registered = true,
+            createdAt = cxt.now(), persona = persona, personaSuffix = personaSuffix, verifiedAt = cxt.now(), registered = true,
         ) { authUserData ->
             // The person's real-world name (issue #736), set the same way the admin-create path does -- display
             // copy, independent of the username, so a fixture can exercise a name-driven feature (a prefill) that
@@ -575,7 +575,7 @@ class AuthFormHandler(
         if (!user.enabled) throw KdrException.mkInput("User ${user.userId} is disabled; enable the account before inviting.")
         val token = InvitationToken(user.identityId, user.userId, cxt.now().toEpochMilliseconds() + AUTHC.invitationMillis).encode(node)
         val url = INVITE.invitationUrl(INVITE.publicUrlFor(cxt), token)
-        val what = "'${user.client}' as ${PERSONA.label(user.persona)}" + (if (user.personId.isEmpty()) "" else " ${user.personId}")
+        val what = "'${user.client}' as ${PERSONA.label(user.persona)}" + (if (user.personaSuffix.isEmpty()) "" else " ${user.personaSuffix}")
         // The recipe for the login page's "claim" path (issue #751) rides beside the link, since a link is a
         // courtesy some mail clients and scanners spoil: the client and the persona as the page wants them typed.
         // The address is spelled out although it is the `to`: Gmail folds the repeated tail of a thread's mails
@@ -586,7 +586,7 @@ class AuthFormHandler(
             "The link expires in seven days. If you were not expecting this, ignore it."
         val text = template.evalTemplate(mapOf(
             "address" to user.primaryId, "what" to what, "url" to url, "client" to user.client,
-            "typed" to PERSONA.typed(user.persona, user.personId),
+            "typed" to PERSONA.typed(user.persona, user.personaSuffix),
         ))
         mail.sendEmail(cxt, to = user.primaryId, subject = "You have been invited", text = text)
         LogAuth.info(cxt) { "Invited user ${user.userId} ('${user.primaryId}') to '${user.client}' as '${user.persona}'." }
@@ -594,7 +594,7 @@ class AuthFormHandler(
     }
 
     /**
-     * What an invitation [token] is for, before it is accepted: the address, client, persona, personId, and
+     * What an invitation [token] is for, before it is accepted: the address, client, persona, personaSuffix, and
      * name of the invited user. So the page can say what accepting means, and so that merely *opening* the
      * link -- which a mail scanner does -- accepts nothing.
      */
@@ -604,7 +604,7 @@ class AuthFormHandler(
             put(AFLD.email, user.primaryId)
             put(AFLD.client, user.client)
             put(AFLD.persona, user.persona)
-            put(AFLD.personId, user.personId)
+            put(AFLD.personaSuffix, user.personaSuffix)
             user.name?.let { put(AFLD.name, it) }
         }
     }
@@ -676,7 +676,7 @@ class AuthFormHandler(
                 val identity = userService.queryIdentityByAddress(cxt, address)
                 val inClient = identity != null && userService.usersOfIdentity(cxt, identity.identityId).any { it.client == key.client && !it.isDeleted }
                 "We could not find an account for $address in ${key.describe()}. " + if (inClient) {
-                    "This address does have an account in that client; check the persona (and person id) you were given."
+                    "This address does have an account in that client; check the persona (and persona suffix) you were given."
                 } else {
                     "If you were invited, check the client and persona in the invitation; otherwise nothing has been created."
                 }

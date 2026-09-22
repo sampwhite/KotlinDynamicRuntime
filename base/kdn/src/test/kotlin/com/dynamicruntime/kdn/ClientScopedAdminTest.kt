@@ -511,7 +511,7 @@ class ClientScopedAdminTest : StringSpec({
         val cxt = Startup.mkTestBootCxt("searchEntity", "adminSearchEntityTest")
         val service = users(cxt)
         // A personal user whose address has no overlap with the business name below, so it cannot be the hit.
-        val personId = seedUserInClient(cxt, "person@example.com", CL.public)
+        val personaSuffix = seedUserInClient(cxt, "person@example.com", CL.public)
         // An entity whose address is likewise unrelated to its name, so a match can only be the name matching.
         val entityId = seedUserInClient(cxt, "contact@example.com", CL.public)
         val entity = service.queryAdministrableUser(cxt, entityId, ReadScope.unrestricted)
@@ -531,7 +531,7 @@ class ClientScopedAdminTest : StringSpec({
 
         // A person's full name is searched by the same rule -- the field is not business-only. The name has to
         // be unique across the whole suite: every test in a run shares one in-memory database.
-        val named = service.queryAdministrableUser(cxt, personId, ReadScope.unrestricted)
+        val named = service.queryAdministrableUser(cxt, personaSuffix, ReadScope.unrestricted)
             ?: error("Seeded person should be readable.")
         named.name = "Grace Hopper"
         service.updateUser(cxt, named)

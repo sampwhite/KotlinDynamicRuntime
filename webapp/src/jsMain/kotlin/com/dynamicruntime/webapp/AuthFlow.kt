@@ -54,7 +54,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     // question the endpoint answers only to them).
     var placeClient by useState("")
     var placePersona by useState("")
-    var placePersonId by useState("")
+    var placePersonaSuffix by useState("")
     var clientChoices by useState<List<ClientChoice>>(emptyList())
     // The claim's key beside the address: the client, and the persona as typed (`admin`, `member B`).
     var claimClient by useState("")
@@ -101,7 +101,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         name = ""
         placeClient = ""
         placePersona = ""
-        placePersonId = ""
+        placePersonaSuffix = ""
         claimClient = ""
         claimPersona = ""
         token = null
@@ -178,7 +178,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                     val userId = AuthApi.createInitial(
                         id, tk, code.trim(),
                         client = placeClient.ifEmpty { null }, persona = placePersona.ifEmpty { null },
-                        personId = placePersonId.trim().ifEmpty { null },
+                        personaSuffix = placePersonaSuffix.trim().ifEmpty { null },
                     )
                     AuthApi.finishRegistration(
                         userId, tk, code.trim(), password.ifEmpty { null },
@@ -236,7 +236,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             textField(t("claim", "personaLabel", "Persona"), claimPersona, disabled = busy || codeSent) { claimPersona = it }
             p {
                 className = ClassName("type-hint")
-                +t("claim", "personaHelp", "As the invitation gave it: `admin`, or `member B` when it named a person id. Leave blank for `member`.")
+                +t("claim", "personaHelp", "As the invitation gave it: `admin`, or `member B` when it named a persona suffix. Leave blank for `member`.")
             }
         }
 
@@ -294,7 +294,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                         onChange = { v -> placePersona = v as? String ?: "" }
                     }
                 }
-                textField(t("register", "personIdLabel", "Person id"), placePersonId, disabled = busy || codeSent) { placePersonId = it }
+                textField(t("register", "personaSuffixLabel", "Persona suffix"), placePersonaSuffix, disabled = busy || codeSent) { placePersonaSuffix = it }
                 p {
                     className = ClassName("type-hint")
                     +t("register", "provisionHelp", "As an administrator across clients, you may place the new account. Leave these alone for an ordinary registration.")

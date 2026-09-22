@@ -32,7 +32,7 @@ import io.kotest.matchers.shouldNotBe
 
 /**
  * The identity split. Phase A (issue #747): an `AuthIdentities` row above every user, keyed by a random id and
- * reachable by the address; the user keyed `(identityId, client, persona, personId)` by the database; the
+ * reachable by the address; the user keyed `(identityId, client, persona, personaSuffix)` by the database; the
  * session carrying the identity -- behavior-preserving, so those cases are about the rows and the key. Phase
  * B (issue #748): the password, the verification, and the familiar device are the identity's, so they serve
  * every user the person holds; those cases are driven through the real login endpoints, since what they claim
@@ -88,7 +88,7 @@ class AuthIdentityTest : StringSpec({
         row.identityId shouldBe identity.identityId
         row.primaryId shouldBe "ident-reg@other.test" // derived through the identity, not stored on the row
         row.persona shouldBe PERSONA.member
-        row.personId shouldBe ""
+        row.personaSuffix shouldBe ""
         users.usersOfIdentity(cxt, identity.identityId).map { it.userId } shouldBe listOf(user.userId)
         // The address resolves to that user: the identity's default (its only one).
         users.queryByPrimaryId(cxt, "ident-reg@other.test").shouldNotBeNull().userId shouldBe user.userId
@@ -114,17 +114,17 @@ class AuthIdentityTest : StringSpec({
         self[UPF.persona] shouldBe PERSONA.member
     }
 
-    "the database holds the key: a second user of one identity needs a different client, persona or personId" {
+    "the database holds the key: a second user of one identity needs a different client, persona or personaSuffix" {
         val address = "ident-key@example.com"
         TestUser.create(cxt, address)
         val identity = users.queryIdentityByAddress(cxt, address).shouldNotBeNull()
-        // The same (identity, client, persona, personId) again, while that user is enabled: refused as a
+        // The same (identity, client, persona, personaSuffix) again, while that user is enabled: refused as a
         // duplicate -- a plain input error, with the unique index as the backstop behind it.
         shouldThrow<KdrException> { users.provisionUser(cxt, address, CL.public, listOf(ROLE.user)) }.code shouldBe EXC.badInput
-        // A different personId is a different user of the same identity -- the UAT batch case.
-        val second = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user), personId = "2")
+        // A different personaSuffix is a different user of the same identity -- the UAT batch case.
+        val second = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user), personaSuffix = "2")
         users.usersOfIdentity(cxt, identity.identityId) shouldHaveSize 2
-        users.queryByUserId(cxt, second).shouldNotBeNull().personId shouldBe "2"
+        users.queryByUserId(cxt, second).shouldNotBeNull().personaSuffix shouldBe "2"
         // Both users read the one address off the identity.
         users.usersOfIdentity(cxt, identity.identityId).map { it.primaryId }.toSet() shouldBe setOf(address)
     }
@@ -132,10 +132,10 @@ class AuthIdentityTest : StringSpec({
     "the fixture names which of an address's users to become, creating it when there is none" {
         val address = "ident-fixture@example.com"
         val first = TestUser.create(cxt, address)
-        val batchA = TestUser.create(cxt, address, personId = "A")
+        val batchA = TestUser.create(cxt, address, personaSuffix = "A")
         batchA.userId shouldNotBe first.userId
         // Asking again finds the same user rather than making a third.
-        TestUser.create(cxt, address, personId = "A").userId shouldBe batchA.userId
+        TestUser.create(cxt, address, personaSuffix = "A").userId shouldBe batchA.userId
         // Unnamed, the address logs in as the identity's default user: with none chosen, the one most recently
         // acted as (every login stamps it, issue #748) -- batchA, just now. Naming the client picks the ordinary
         // user, and from then on that is the most recently used one.
@@ -192,11 +192,11 @@ class AuthIdentityTest : StringSpec({
         val admin = TestUser.createFullAdmin(cxt, "ident-free-admin@example.com")
         val address = "ident-free@example.com"
         val a = TestUser.create(cxt, address)
-        val b = TestUser.create(cxt, address, personId = "B") // keeps the identity alive past a's deletion
+        val b = TestUser.create(cxt, address, personaSuffix = "B") // keeps the identity alive past a's deletion
         admin.deleteData(ADEP.userDelete, mapOf(ADF.userId to a.userId, ADF.permanent to true))
         val identityId = users.queryByUserId(cxt, b.userId).shouldNotBeNull().identityId
         users.queryIdentityByAddress(cxt, address).shouldNotBeNull().identityId shouldBe identityId // not retired: b is live
-        users.queryByUserId(cxt, a.userId).shouldNotBeNull().personId shouldBe AuthUserRow.deletedPersonId(a.userId)
+        users.queryByUserId(cxt, a.userId).shouldNotBeNull().personaSuffix shouldBe AuthUserRow.deletedPersonaSuffix(a.userId)
         // The ordinary key is free again: a new user, not the tombstone.
         val again = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user))
         again shouldNotBe a.userId
@@ -226,9 +226,9 @@ class AuthIdentityTest : StringSpec({
         val mine = TestUser.create(cxt, address)
         // Provisioned for the person by somebody else (what an administrator's create will do in phase D):
         // enabled, but nobody has claimed it.
-        // A lowercase personId, because the placeholder username below doubles as the login id here, and a login
+        // A lowercase personaSuffix, because the placeholder username below doubles as the login id here, and a login
         // id carrying an `@` is normalized as an address -- lowercased -- before it is looked up.
-        val unclaimed = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user), personId = "u")
+        val unclaimed = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user), personaSuffix = "u")
         val row = users.queryByUserId(cxt, unclaimed).shouldNotBeNull()
         row.isRegistered shouldBe false
         // Not offered, not switchable, and not where the address lands -- the registered user is.
@@ -245,7 +245,7 @@ class AuthIdentityTest : StringSpec({
         val address = "ident-pw@example.com"
         val password = "sekret-pw-123"
         val first = TestUser.create(cxt, address)
-        val second = TestUser.create(cxt, address, personId = "2")
+        val second = TestUser.create(cxt, address, personaSuffix = "2")
         // The placeholder usernames are login ids too, and each names its own user of the identity.
         val firstName = users.queryByUserId(cxt, first.userId).shouldNotBeNull().username
         val secondName = users.queryByUserId(cxt, second.userId).shouldNotBeNull().username

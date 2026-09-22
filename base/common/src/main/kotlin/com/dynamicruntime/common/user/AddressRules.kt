@@ -31,7 +31,7 @@ object ADR {
  * Two domains are controlled -- the deployment's configured admin domain, and [ADR.exampleDomain] outside
  * production. That is all an address says now. The `+client%persona` tags that once named a client and a
  * persona on these domains were **retired** in issue #750: an administrator provisions a user with a persona
- * and a personId through the console, and a person proves such a user by invitation (phase E), so an address
+ * and a personaSuffix through the console, and a person proves such a user by invitation (phase E), so an address
  * no longer needs to carry either. What survives of the convention is [AdminRules.isAutoAdminAddress]'s
  * no-tag rule -- a `+` tag still says "not the deployment's own person", and nothing more.
  *

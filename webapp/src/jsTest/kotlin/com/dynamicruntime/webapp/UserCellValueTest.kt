@@ -21,7 +21,7 @@ class UserCellValueTest {
         roles = listOf("user"),
         client = "acme",
         persona = "admin",
-        personId = "B",
+        personaSuffix = "B",
         org = "eng",
         isEntity = false,
         name = "Ada Lovelace",
@@ -67,7 +67,7 @@ class UserCellValueTest {
     }
 
     @Test
-    fun thePersonaColumnShowsTheLabelAndThePersonId() {
+    fun thePersonaColumnShowsTheLabelAndThePersonaSuffix() {
         assertEquals("Admin B", personaCell("admin", "B"))
         assertEquals("Member", personaCell("member", ""))
     }

@@ -6,7 +6,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.user.AERR
 import com.dynamicruntime.common.user.PERSONA
-import com.dynamicruntime.common.user.PERSONID
+import com.dynamicruntime.common.user.PERSONASUFFIX
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.userSearchFieldSpecs
@@ -93,12 +93,12 @@ val Users = FC<Props> {
     var draftIsEntity by useState(false)
     var draftName by useState("")
     var draftEnabled by useState(true)
-    // The persona and personId (issue #750): chosen at creation, shown read-only afterward. The personId box is
+    // The persona and personaSuffix (issue #750): chosen at creation, shown read-only afterward. The personaSuffix box is
     // offered only once a create collides with an existing user of the same address, client and persona --
     // the one situation it is for -- rather than sitting on every form as a field nobody needs.
     var draftPersona by useState(PERSONA.member)
-    var draftPersonId by useState("")
-    var personIdOffered by useState(false)
+    var draftPersonaSuffix by useState("")
+    var personaSuffixOffered by useState(false)
     // Whether the administrator chose the persona themselves. Until they do, it follows the access level
     // (roles provide a default persona); once they do, the level may still move without dragging it back --
     // and only a chosen persona is sent, so the backend applies the same rule to an unnamed one.
@@ -245,8 +245,8 @@ val Users = FC<Props> {
         draftName = user?.name ?: ""
         draftEnabled = user?.enabled ?: true
         draftPersona = user?.persona ?: PERSONA.member
-        draftPersonId = user?.personId ?: ""
-        personIdOffered = false
+        draftPersonaSuffix = user?.personaSuffix ?: ""
+        personaSuffixOffered = false
         personaChosen = false
         confirmingDelete = false
         note = null
@@ -385,12 +385,12 @@ val Users = FC<Props> {
                     org = draftOrg.trim().ifEmpty { null },
                     isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
                     client = draftClient.trim().ifEmpty { null }, enabled = draftEnabled,
-                    persona = if (personaChosen) draftPersona else null, personId = draftPersonId,
+                    persona = if (personaChosen) draftPersona else null, personaSuffix = draftPersonaSuffix,
                 )
             } catch (e: Throwable) {
-                // A collision on (address, client, persona) is what the personId is for: offer it, keep the
+                // A collision on (address, client, persona) is what the personaSuffix is for: offer it, keep the
                 // form, and let the refusal show as it is.
-                if (isUserKeyCollision(e)) personIdOffered = true
+                if (isUserKeyCollision(e)) personaSuffixOffered = true
                 throw e
             }
             note = "Created ${created.primaryId}."
@@ -643,15 +643,15 @@ val Users = FC<Props> {
                     className = ClassName("type-hint")
                     +personaHint
                 }
-                if (personIdOffered || draftPersonId.isNotEmpty()) {
-                    textField("Person id", draftPersonId, disabled = busy) { draftPersonId = it }
+                if (personaSuffixOffered || draftPersonaSuffix.isNotEmpty()) {
+                    textField("Persona suffix", draftPersonaSuffix, disabled = busy) { draftPersonaSuffix = it }
                     p {
                         className = ClassName("type-hint")
-                        +personIdHint
+                        +personaSuffixHint
                     }
                 }
             } else {
-                readOnlyField("Persona", personaCell(draftPersona, draftPersonId))
+                readOnlyField("Persona", personaCell(draftPersona, draftPersonaSuffix))
             }
 
             // Editable only by someone not confined to an organization: the backend lets a confined
@@ -1090,7 +1090,7 @@ fun personaForLevel(level: String): String = PERSONA.defaultFor(RoleLadder.roles
 
 /**
  * Whether a create was refused because a user with the same address, client and persona already exists --
- * the backend's duplicate-key refusal, which is the one situation the personId box answers. Keyed on the
+ * the backend's duplicate-key refusal, which is the one situation the personaSuffix box answers. Keyed on the
  * envelope's logical error code (`AERR.userKeyTaken`), not the sentence, so the wording is free to change; a
  * different refusal (a taken username, a bad address) leaves the box unoffered. Pure, covered under
  * `jsNodeTest`.
@@ -1102,9 +1102,9 @@ private const val personaHint =
         "creation. It follows the access level until you pick one; picking one sets the level to its usual " +
         "value, which you may still change."
 
-private val personIdHint =
+private val personaSuffixHint =
     "A user of this address, client and persona already exists. Give this one a short id (up to " +
-        "${PERSONID.maxLength} letters or digits: 1, 2, A, B) to create it as a further user of the same kind."
+        "${PERSONASUFFIX.maxLength} letters or digits: 1, 2, A, B) to create it as a further user of the same kind."
 
 /** The [offeredAccessLevels] as antd `{ label, value }` option objects. */
 private fun accessLevelOptions(operatorSelectable: Boolean): Array<dynamic> =

@@ -366,7 +366,7 @@ class AdminPersonaTest : StringSpec({
         val admin = TestUser.createFullAdmin(cxt, "persona-chief@other.com")
         val member = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "persona-member@other.com"))
         member[ADF.persona] shouldBe PERSONA.member
-        member[ADF.personId] shouldBe ""
+        member[ADF.personaSuffix] shouldBe ""
         TestUser.rolesOf(member) shouldBe listOf(ROLE.user)
         val made = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "persona-admin@other.com", ADF.persona to PERSONA.admin))
         made[ADF.persona] shouldBe PERSONA.admin
@@ -383,7 +383,7 @@ class AdminPersonaTest : StringSpec({
             ADEP.userCreate, mapOf(ADF.primaryId to "persona-implied@other.com", ADF.roles to listOf(ROLE.user, ROLE.admin)),
         )[ADF.persona] shouldBe PERSONA.admin
         admin.getItems(ADEP.users, mapOf(ADF.search to "persona-chief@other.com")).single()[ADF.persona] shouldBe PERSONA.admin
-        // The listing shows the persona and the personId, and the search field finds them.
+        // The listing shows the persona and the personaSuffix, and the search field finds them.
         admin.getItems(ADEP.userSearch, mapOf(USF.persona to PERSONA.admin)).map { it[ADF.primaryId] } shouldContain "persona-admin@other.com"
     }
 
@@ -400,23 +400,23 @@ class AdminPersonaTest : StringSpec({
         admin.postData(AEP.switchUser, mapOf(AFLD.userId to made[ADF.userId]))[UPF.persona] shouldBe PERSONA.member
     }
 
-    "a duplicate key is refused with a message that names it, and a personId makes it a different user" {
+    "a duplicate key is refused with a message that names it, and a personaSuffix makes it a different user" {
         val address = "persona-dup@other.com"
         val admin = TestUser.createFullAdmin(cxt, address)
         // The administrator's own user holds (public, admin, ""): the same key again is refused...
         val refused = admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.persona to PERSONA.admin))
         (refused[EP.errorMessage] as String) shouldContain "persona"
-        // ...while a personId names a further user of the same persona.
-        val batch = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.persona to PERSONA.admin, ADF.personId to "B"))
-        batch[ADF.personId] shouldBe "B"
-        admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.persona to PERSONA.admin, ADF.personId to "B"))
+        // ...while a personaSuffix names a further user of the same persona.
+        val batch = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.persona to PERSONA.admin, ADF.personaSuffix to "B"))
+        batch[ADF.personaSuffix] shouldBe "B"
+        admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.persona to PERSONA.admin, ADF.personaSuffix to "B"))
     }
 
-    "an unknown persona and a malformed personId are refused" {
+    "an unknown persona and a malformed personaSuffix are refused" {
         val admin = TestUser.createFullAdmin(cxt, "persona-bad@other.com")
         // Refused by the schema: the persona field is a closed choice list, so a name outside the registry never reaches the handler.
         (admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "bad1@other.com", ADF.persona to "wizard"))[EP.errorMessage] as String) shouldContain ADF.persona
-        admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "bad2@other.com", ADF.personId to "way-too-long"))
+        admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "bad2@other.com", ADF.personaSuffix to "way-too-long"))
         // Somebody else's address: a further user for them, unclaimed, with an invitation mailed (phase E, #751);
         // the same key again is the duplicate it is.
         TestUser.create(cxt, "persona-other@other.com")

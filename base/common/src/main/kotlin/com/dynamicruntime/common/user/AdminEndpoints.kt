@@ -127,7 +127,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 "Exact client id to confine to. Only meaningful to an '${ROLE.allClients}' caller; anyone " +
                     "else is already confined to their own client.",
             )
-            field(USF.persona, "Case-insensitive substring to match against the persona or the personId.")
+            field(USF.persona, "Case-insensitive substring to match against the persona or the personaSuffix.")
             // One pair per date attribute, generated from the registry (issue #462) rather than written out:
             // the keys and the wording both follow the root, so adding a date adds its range with them.
             for (date in userDateFields) {
@@ -175,10 +175,10 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                     "Absent, the one the roles imply ('${PERSONA.admin}' for an administrator, else '${PERSONA.member}').",
             ) { for (def in PERSONA.defs) option(def.name, def.label) }
             field(
-                ADF.personId,
+                ADF.personaSuffix,
                 "Distinguishes a further user of the same address, client and persona (a UAT batch: '1', '2', 'A', " +
-                    "'B'); up to ${PERSONID.maxLength} letters, digits or underscores. Empty for the ordinary user.",
-            ) { maxLength = PERSONID.maxLength }
+                    "'B'); up to ${PERSONASUFFIX.maxLength} letters, digits or underscores. Empty for the ordinary user.",
+            ) { maxLength = PERSONASUFFIX.maxLength }
             field(ADF.roles, "Roles to grant; defaults to the persona's own (just '${ROLE.user}' for a member).") {
                 type = SCT.array
                 items { type = SCT.string }
@@ -210,7 +210,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // other way round: roles given without a persona imply one (`PERSONA.defaultFor`). An explicit role
         // list still wins over the persona's defaults, and is checked against what the caller may grant.
         val namedPersona = request[ADF.persona].toOptStr()?.trim()?.ifEmpty { null }
-        val personId = request[ADF.personId].toOptStr()?.trim() ?: ""
+        val personaSuffix = request[ADF.personaSuffix].toOptStr()?.trim() ?: ""
         val givenRoles = request[ADF.roles].toJsonListOfStrings()
         val roles = givenRoles.ifEmpty { PERSONA.def(namedPersona ?: PERSONA.member)?.defaultRoles ?: listOf(ROLE.user) }
         val persona = namedPersona ?: PERSONA.defaultFor(roles)
@@ -218,7 +218,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val service = userService(c)
         // A user the administrator creates at their **own** address is an *associated* user -- another of the
         // person's own, registered from the start since the identity is already theirs (issue #750) -- and the
-        // key (client, persona, personId) says which; a duplicate key is refused by `provisionUser`. Any other
+        // key (client, persona, personaSuffix) says which; a duplicate key is refused by `provisionUser`. Any other
         // address -- new, or another person's -- gets a user nobody has claimed yet and an **invitation** to
         // claim it (issue #751): the mailed link is the proof, and accepting registers the user (and verifies
         // a new identity). Guarded on `isRowBacked` like every other read of the actor's row: an env-authed
@@ -237,7 +237,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         requireAssignableOrg(c, org)
         val userId = service.provisionUser(
             c, primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now(),
-            persona = persona, personId = personId, username = username, registered = ownAddress,
+            persona = persona, personaSuffix = personaSuffix, username = username, registered = ownAddress,
         ) { authUserData ->
             // The address and its contact are the identity's (issue #748), which `provisionUser` creates
             // unverified: only a code read from the inbox proves it, and the person's first code login does
@@ -270,7 +270,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         }
         LogAuth.info(c) {
             "Admin ${c.userProfile.userId} created user $userId ('$primaryId', persona '$persona'" +
-                (if (personId.isEmpty()) "" else ", personId '$personId'") + ") with roles $roles" +
+                (if (personaSuffix.isEmpty()) "" else ", personaSuffix '$personaSuffix'") + ") with roles $roles" +
                 (if (!enabled) " (disabled)." else ".")
         }
         loadUser(c, userId).toAdminInfo()

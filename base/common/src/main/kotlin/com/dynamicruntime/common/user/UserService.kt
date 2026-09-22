@@ -209,7 +209,7 @@ class UserService : ServiceInitializer {
     }
 
     /**
-     * The user a person **claims** under the key (identity, [client], [persona], [personId]) when they prove the
+     * The user a person **claims** under the key (identity, [client], [persona], [personaSuffix]) when they prove the
      * address in a way that names no user of theirs -- a Google sign-in with no registered user (issue #749);
      * later, a first login against a client that admits unprovisioned people. An enabled user under the key is
      * registered if it was not; a **disabled** one is re-enabled as an administrator's re-enable leaves it --
@@ -218,11 +218,11 @@ class UserService : ServiceInitializer {
      * created with [roles]. Returns the user.
      */
     fun claimUser(
-        cxt: KdrCxt, identity: AuthIdentityRow, client: String, persona: String, personId: String, roles: List<String>,
+        cxt: KdrCxt, identity: AuthIdentityRow, client: String, persona: String, personaSuffix: String, roles: List<String>,
     ): AuthUserRow {
         val now = cxt.now()
         val existing = usersOfIdentity(cxt, identity.identityId)
-            .firstOrNull { it.client == client && it.persona == persona && it.personId == personId && !it.isDeleted }
+            .firstOrNull { it.client == client && it.persona == persona && it.personaSuffix == personaSuffix && !it.isDeleted }
         if (existing != null) {
             if (!existing.enabled) {
                 existing.enabled = true
@@ -232,7 +232,7 @@ class UserService : ServiceInitializer {
             updateUser(cxt, existing, isEdit = false) // an activation and a registration, not an edit
             return existing
         }
-        val userId = provisionUser(cxt, identity.primaryId, client, roles, createdAt = now, persona = persona, personId = personId, registered = true)
+        val userId = provisionUser(cxt, identity.primaryId, client, roles, createdAt = now, persona = persona, personaSuffix = personaSuffix, registered = true)
         return queryByUserId(cxt, userId)
             ?: throw KdrException("Could not load the just-created user '${identity.primaryId}'.", code = EXC.internalError)
     }
@@ -249,7 +249,7 @@ class UserService : ServiceInitializer {
         val identity = queryIdentityById(cxt, identityId) ?: return emptyList()
         return registeredUsersOf(cxt, identity).map {
             UserChoice(
-                it.userId, it.client, it.persona, it.personId, it.name,
+                it.userId, it.client, it.persona, it.personaSuffix, it.name,
                 isCurrent = it.userId == profile.userId, isDefault = it.userId == identity.defaultUserId,
             )
         }
@@ -269,7 +269,7 @@ class UserService : ServiceInitializer {
      * user's `authUserData` before the insert (a name, the entity flag). Returns the userId.
      *
      * **Provisioning a key that already exists is not a create.** A user with the same (identity, client,
-     * persona, personId) that was deleted *recoverably* (disabled) is **recovered**: the same `userId`, so all
+     * persona, personaSuffix) that was deleted *recoverably* (disabled) is **recovered**: the same `userId`, so all
      * of its content comes back, put into the unregistered state -- placeholder username, roles reset to the
      * ones provisioned, activated now -- from which it registers again by the normal mechanism (a code, later
      * an invitation). Its org, name, and entity flag are kept, as the recoverable delete promised; so is the
@@ -294,7 +294,7 @@ class UserService : ServiceInitializer {
         org: String? = null,
         createdAt: Instant? = null,
         persona: String? = null,
-        personId: String = "",
+        personaSuffix: String = "",
         verifiedAt: Instant? = null,
         /** A chosen username; absent leaves the `@<address>` placeholder for the person to replace. */
         username: String? = null,
@@ -303,29 +303,29 @@ class UserService : ServiceInitializer {
     ): Long {
         val persona = persona ?: PERSONA.defaultFor(roles)
         // The one provisioning path, so the one place the key's vocabulary is checked (issue #750): a persona
-        // the registry holds, and a personId within the id rules. Refused as input, whichever surface asked.
+        // the registry holds, and a personaSuffix within the id rules. Refused as input, whichever surface asked.
         if (PERSONA.def(persona) == null) {
             throw KdrException.mkInput("'$persona' is not a persona; the personas are ${PERSONA.defs.joinToString(", ") { it.name }}.")
         }
-        if (!PERSONID.isValid(personId)) {
-            throw KdrException.mkInput("'$personId' is not a valid personId: up to ${PERSONID.maxLength} letters, digits or underscores.")
+        if (!PERSONASUFFIX.isValid(personaSuffix)) {
+            throw KdrException.mkInput("'$personaSuffix' is not a valid personaSuffix: up to ${PERSONASUFFIX.maxLength} letters, digits or underscores.")
         }
         val identity = getOrCreateIdentity(cxt, primaryId, verifiedAt)
         val siblings = usersOfIdentity(cxt, identity.identityId)
         // The placeholder username is `@<address>` for an identity's first user, as it always was; `username`
         // is globally unique, so a further user of the same address (issue #747) gets the key appended --
-        // `@<address>|<client>|<persona>|<personId>` -- until the person chooses a real one.
-        val placeholder = AuthUserRow.usernameTmpPrefix + if (siblings.isEmpty()) primaryId else "$primaryId|$client|$persona|$personId"
-        siblings.firstOrNull { it.client == client && it.persona == persona && it.personId == personId }?.let { existing ->
+        // `@<address>|<client>|<persona>|<personaSuffix>` -- until the person chooses a real one.
+        val placeholder = AuthUserRow.usernameTmpPrefix + if (siblings.isEmpty()) primaryId else "$primaryId|$client|$persona|$personaSuffix"
+        siblings.firstOrNull { it.client == client && it.persona == persona && it.personaSuffix == personaSuffix }?.let { existing ->
             if (existing.enabled || existing.isDeleted) {
                 // A keyed message with the key's parts as params, and the key as the envelope's logical error
-                // code (issue #750): what a surface branches on -- the console offers the personId box -- so the
+                // code (issue #750): what a surface branches on -- the console offers the personaSuffix box -- so the
                 // sentence can be reworded or localized without anything downstream noticing.
                 throw KdrException.mkMsg(
                     KdrMsg(AFRAG.auth, AERR.ns, AERR.userKeyTaken),
                     mapOf(
                         AERR.emailParam to primaryId, AERR.clientParam to client, AERR.personaParam to persona,
-                        AERR.personIdNoteParam to (if (personId.isEmpty()) "" else ", personId '$personId'"),
+                        AERR.personaSuffixNoteParam to (if (personaSuffix.isEmpty()) "" else ", personaSuffix '$personaSuffix'"),
                     ),
                 ).also { it.extraData[KdrException.errorCodeKey] = AERR.userKeyTaken }
             }
@@ -339,7 +339,7 @@ class UserService : ServiceInitializer {
             updateUser(cxt, existing, isEdit = false) // a re-enable, like the admin toggle: not an edit
             return existing.userId
         }
-        val data = AuthUserRow.mkInitialUser(identity.identityId, primaryId, client, roles, org, persona, personId, createdAt, registered).toMutableMap()
+        val data = AuthUserRow.mkInitialUser(identity.identityId, primaryId, client, roles, org, persona, personaSuffix, createdAt, registered).toMutableMap()
         data[AU.username] = username ?: placeholder
         val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
         customize(authUserData)

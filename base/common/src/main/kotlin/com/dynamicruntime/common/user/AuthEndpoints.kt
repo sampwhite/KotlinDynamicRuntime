@@ -122,15 +122,15 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
             field(AFLD.persona, "The new user's persona; only an '${ROLE.allClients}' caller may name one (else '${PERSONA.member}').") {
                 for (def in PERSONA.defs) option(def.name, def.label)
             }
-            field(AFLD.personId, "A further user of the same address, client and persona; only an '${ROLE.allClients}' caller may name one.") {
-                maxLength = PERSONID.maxLength
+            field(AFLD.personaSuffix, "A further user of the same address, client and persona; only an '${ROLE.allClients}' caller may name one.") {
+                maxLength = PERSONASUFFIX.maxLength
             }
         }) { c, req ->
         val userId = authHandler(c).createInitialUser(
             c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
             client = req.getOptStr(AFLD.client)?.trim()?.ifEmpty { null },
             persona = req.getOptStr(AFLD.persona)?.trim()?.ifEmpty { null },
-            personId = req.getOptStr(AFLD.personId)?.trim() ?: "",
+            personaSuffix = req.getOptStr(AFLD.personaSuffix)?.trim() ?: "",
         )
         mapOf(AFLD.userId to userId)
     }
@@ -161,7 +161,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
         property(AFLD.email, "The invited address.", required = true)
         property(AFLD.client, "The client the invited user is in.", required = true)
         property(AFLD.persona, "The invited user's persona.", required = true)
-        property(AFLD.personId, "The invited user's personId; empty for the ordinary user.", required = true) { emptyIsAbsent = false }
+        property(AFLD.personaSuffix, "The invited user's personaSuffix; empty for the ordinary user.", required = true) { emptyIsAbsent = false }
         property(AFLD.name, "The invited user's name, when the inviter gave one.")
     }
     generalEndpoint(AEP.invitationPreview, "Says what an invitation link is for, without accepting it.",
@@ -302,7 +302,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
 
 /**
  * The fields that name the user a claim is for (issue #751), shared by the claim send and the claim itself: the
- * address, and the client, persona and person id the invitation named. Each endpoint adds its own token
+ * address, and the client, persona and persona suffix the invitation named. Each endpoint adds its own token
  * fields after these. The parts are read back as one [ClaimKey] by [claimKeyOf], which is where the defaults
  * for an absent client or persona are applied.
  */
@@ -310,13 +310,13 @@ private fun InputFieldsBuilder.claimKeyInput() {
     field(AFLD.contactAddress, "The email address the account was created for.", required = true)
     field(AFLD.client, "The client the invitation named; '${CL.public}' when absent.") { maxLength = ClaimKey.maxPartLength }
     field(AFLD.persona, "The persona the invitation named; '${PERSONA.member}' when absent.") { maxLength = ClaimKey.maxPartLength }
-    field(AFLD.personId, "The person id the invitation named, when it did.") { maxLength = PERSONID.maxLength }
+    field(AFLD.personaSuffix, "The persona suffix the invitation named, when it did.") { maxLength = PERSONASUFFIX.maxLength }
 }
 
 /** The [ClaimKey] a request's [claimKeyInput] fields name. */
 private fun claimKeyOf(req: Map<String, Any?>): ClaimKey = ClaimKey(
     req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getOptStr(AFLD.client), req.getOptStr(AFLD.persona),
-    req.getOptStr(AFLD.personId)?.trim() ?: "",
+    req.getOptStr(AFLD.personaSuffix)?.trim() ?: "",
 )
 
 /** Resolves the [AuthFormHandler] (ensuring it is built). Shared with the profile endpoints (same package). */

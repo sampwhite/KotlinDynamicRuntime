@@ -11,7 +11,7 @@ object UCF {
     const val userId = "userId"
     const val client = "client"
     const val persona = "persona"
-    const val personId = "personId"
+    const val personaSuffix = "personaSuffix"
     const val name = "name"
     const val isCurrent = "isCurrent"
     const val isDefault = "isDefault"
@@ -29,7 +29,7 @@ data class UserChoice(
     val client: String,
     val persona: String,
     /** The UAT batch discriminator (issue #747); empty for the ordinary user. */
-    val personId: String = "",
+    val personaSuffix: String = "",
     /** The user's real-world name, when it has one. */
     val name: String? = null,
     /** Whether this is the user the session is acting as. */
@@ -38,30 +38,30 @@ data class UserChoice(
     val isDefault: Boolean = false,
 ) {
     /**
-     * The full label: the client and persona, the personId when there is one, and the name when there is one --
+     * The full label: the client and persona, the personaSuffix when there is one, and the name when there is one --
      * `acme / Admin`, `acme / Member 2 -- Ada Lovelace`. Client first because it is what most often differs
      * between a person's users; the name last because it usually does not. What a tooltip says; the bar shows
      * the shorter `qualifierWithin`. Pure, covered under `jsNodeTest`.
      */
     fun label(): String {
         val shownPersona = PERSONA.label(persona)
-        val key = if (personId.isEmpty()) "$client / $shownPersona" else "$client / $shownPersona $personId"
+        val key = if (personaSuffix.isEmpty()) "$client / $shownPersona" else "$client / $shownPersona $personaSuffix"
         val shown = name?.trim()?.ifEmpty { null } ?: return key
         return "$key -- $shown"
     }
 
     /**
      * What tells this user from the others in [siblings], the person's users (issue #749): the client when
-     * they span clients, the persona when they differ in persona **or any of them carries a personId** (so a
-     * batch reads `Member`, `Member B` rather than a bare `B`), and the personId when there is one -- joined
+     * they span clients, the persona when they differ in persona **or any of them carries a personaSuffix** (so a
+     * batch reads `Member`, `Member B` rather than a bare `B`), and the personaSuffix when there is one -- joined
      * with ` · `. Never empty for a list of two or more, since the key is unique across a person's users; empty
      * for a person with one user, who has nothing to tell apart. Pure, covered under `jsNodeTest`.
      */
     fun qualifierWithin(siblings: List<UserChoice>): String {
         if (siblings.size < 2) return ""
-        val personaShown = siblings.any { it.persona != persona } || siblings.any { it.personId.isNotEmpty() }
-        // The persona and the personId read as one term (`Member 2`), as they do in the full label.
-        val personaPart = listOfNotNull(if (personaShown) PERSONA.label(persona) else null, personId.ifEmpty { null })
+        val personaShown = siblings.any { it.persona != persona } || siblings.any { it.personaSuffix.isNotEmpty() }
+        // The persona and the personaSuffix read as one term (`Member 2`), as they do in the full label.
+        val personaPart = listOfNotNull(if (personaShown) PERSONA.label(persona) else null, personaSuffix.ifEmpty { null })
         val parts = buildList {
             if (siblings.any { it.client != client }) add(client)
             if (personaPart.isNotEmpty()) add(personaPart.joinToString(" "))
@@ -73,7 +73,7 @@ data class UserChoice(
         put(UCF.userId, userId)
         put(UCF.client, client)
         put(UCF.persona, persona)
-        if (personId.isNotEmpty()) put(UCF.personId, personId)
+        if (personaSuffix.isNotEmpty()) put(UCF.personaSuffix, personaSuffix)
         if (name != null) put(UCF.name, name)
         if (isCurrent) put(UCF.isCurrent, true)
         if (isDefault) put(UCF.isDefault, true)
@@ -89,7 +89,7 @@ data class UserChoice(
             userId = info.getOptLong(UCF.userId) ?: return null,
             client = info.getOptStr(UCF.client) ?: return null,
             persona = info.getOptStr(UCF.persona) ?: PERSONA.member,
-            personId = info.getOptStr(UCF.personId) ?: "",
+            personaSuffix = info.getOptStr(UCF.personaSuffix) ?: "",
             name = info.getOptStr(UCF.name),
             isCurrent = info[UCF.isCurrent] == true,
             isDefault = info[UCF.isDefault] == true,
@@ -102,7 +102,7 @@ data class UserChoice(
                 property(UCF.userId, "The user's numeric id.", required = true) { type = SCT.integer }
                 property(UCF.client, "The client the user belongs to.", required = true)
                 property(UCF.persona, "The user's persona.", required = true)
-                property(UCF.personId, "The UAT batch discriminator; absent for the ordinary user.")
+                property(UCF.personaSuffix, "The UAT batch discriminator; absent for the ordinary user.")
                 property(UCF.name, "The user's real-world name, when it has one.")
                 property(UCF.isCurrent, "Whether the session is acting as this user.") { type = SCT.boolean }
                 property(UCF.isDefault, "Whether this is the identity's chosen default user.") { type = SCT.boolean }

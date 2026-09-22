@@ -115,13 +115,13 @@ class InvitationTest : StringSpec({
         val admin = TestUser.createFullAdmin(cxt, "invite-admin4@other.test")
         val placed = TestUser.register(
             cxt, "placed-new@other.test", "placednew",
-            userClient = CL.hub, persona = PERSONA.admin, personId = "Q", asClient = admin.client,
+            userClient = CL.hub, persona = PERSONA.admin, personaSuffix = "Q", asClient = admin.client,
         )
         placed.selfClient() shouldBe CL.hub
         placed.userInfo[UPF.persona] shouldBe PERSONA.admin
         placed.selfRoles() shouldContain ROLE.admin
         users.queryByUserId(cxt, placed.userId).shouldNotBeNull().let {
-            it.personId shouldBe "Q"
+            it.personaSuffix shouldBe "Q"
             it.isRegistered shouldBe true
         }
         // A client this node does not carry is refused, as the fixture refuses it.
@@ -131,7 +131,7 @@ class InvitationTest : StringSpec({
         ), method = com.dynamicruntime.common.endpoint.HttpMethod.PUT)
     }
 
-    "anyone else naming a client, persona or personId on registration is refused" {
+    "anyone else naming a client, persona or personaSuffix on registration is refused" {
         val ordinary = TestUser.create(cxt, "invite-ordinary@other.test")
         // A real form token, so the refusal is about the placing and not about the token.
         val token = ordinary.getData(AEP.createToken)[AFLD.formAuthToken] as String
@@ -158,16 +158,16 @@ class ClaimAccountTest : StringSpec({
 
     fun tokenOf(browser: TestHttpClient): String = results(browser.sendJsonGetRequest(AEP.createToken))[AFLD.formAuthToken] as String
 
-    fun sendClaim(browser: TestHttpClient, token: String, address: String, client: String?, persona: String?, personId: String? = null) =
+    fun sendClaim(browser: TestHttpClient, token: String, address: String, client: String?, persona: String?, personaSuffix: String? = null) =
         browser.sendJsonPostRequest(AEP.claimSendVerify, buildMap {
             put(AFLD.contactAddress, address); put(AFLD.formAuthToken, token)
-            client?.let { put(AFLD.client, it) }; persona?.let { put(AFLD.persona, it) }; personId?.let { put(AFLD.personId, it) }
+            client?.let { put(AFLD.client, it) }; persona?.let { put(AFLD.persona, it) }; personaSuffix?.let { put(AFLD.personaSuffix, it) }
         })
 
-    fun claim(browser: TestHttpClient, token: String, code: String, address: String, client: String?, persona: String?, personId: String? = null) =
+    fun claim(browser: TestHttpClient, token: String, code: String, address: String, client: String?, persona: String?, personaSuffix: String? = null) =
         browser.sendJsonPostRequest(AEP.claimAccount, buildMap {
             put(AFLD.contactAddress, address); put(AFLD.formAuthToken, token); put(AFLD.verifyCode, code)
-            client?.let { put(AFLD.client, it) }; persona?.let { put(AFLD.persona, it) }; personId?.let { put(AFLD.personId, it) }
+            client?.let { put(AFLD.client, it) }; persona?.let { put(AFLD.persona, it) }; personaSuffix?.let { put(AFLD.personaSuffix, it) }
         })
 
     /** The code the server mailed, read from the mail the way the person would. */

@@ -27,8 +27,8 @@ object TEP {
     /** The created user's persona (issue #747); defaults to `user`. */
     const val persona = "persona"
 
-    /** The created user's personId (issue #747); defaults to "" (the ordinary user). */
-    const val personId = "personId"
+    /** The created user's personaSuffix (issue #747); defaults to "" (the ordinary user). */
+    const val personaSuffix = "personaSuffix"
 
     /**
      * The client to create the user in (issue #352). Absent means whatever the email address says, which for

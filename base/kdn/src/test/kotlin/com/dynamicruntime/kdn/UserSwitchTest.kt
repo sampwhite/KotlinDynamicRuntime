@@ -54,7 +54,7 @@ class UserSwitchTest : StringSpec({
     "a user of another identity, or a disabled sibling, is refused with one message" {
         val address = "switch-refuse@example.com"
         val me = TestUser.create(cxt, address)
-        val sibling = TestUser.create(cxt, address, personId = "2")
+        val sibling = TestUser.create(cxt, address, personaSuffix = "2")
         val stranger = TestUser.create(cxt, "switch-stranger@example.com")
         val admin = TestUser.createFullAdmin(cxt, "switch-admin@example.com")
 
@@ -74,14 +74,14 @@ class UserSwitchTest : StringSpec({
     "the chosen default wins over the most recently used user when an address logs in unnamed" {
         val address = "switch-default@example.com"
         val first = TestUser.create(cxt, address)
-        val second = TestUser.create(cxt, address, personId = "B")
+        val second = TestUser.create(cxt, address, personaSuffix = "B")
         // `second` was acted as last, so an unnamed login lands there -- until a default is chosen.
         TestUser.create(cxt, address).userId shouldBe second.userId
         val listed = first.postData(AEP.setDefaultUser, mapOf(AFLD.userId to first.userId))[AFLD.users].toJsonListOfMaps()
         listed.single { it[UCF.isDefault] == true }[UCF.userId] shouldBe first.userId
         TestUser.create(cxt, address).userId shouldBe first.userId
         // Acting as `second` again does not displace the choice.
-        TestUser.create(cxt, address, personId = "B").userId shouldBe second.userId
+        TestUser.create(cxt, address, personaSuffix = "B").userId shouldBe second.userId
         TestUser.create(cxt, address).userId shouldBe first.userId
     }
 })
