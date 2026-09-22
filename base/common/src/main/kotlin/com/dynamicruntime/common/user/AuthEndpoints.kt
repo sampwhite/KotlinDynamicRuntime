@@ -302,7 +302,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
 
 /**
  * The fields that name the user a claim is for (issue #751), shared by the claim send and the claim itself: the
- * address, and the client, persona and persona suffix the invitation named. Each endpoint adds its own token
+ * address, and the client, persona, and persona suffix the invitation named. Each endpoint adds its own token
  * fields after these. The parts are read back as one [ClaimKey] by [claimKeyOf], which is where the defaults
  * for an absent client or persona are applied.
  */

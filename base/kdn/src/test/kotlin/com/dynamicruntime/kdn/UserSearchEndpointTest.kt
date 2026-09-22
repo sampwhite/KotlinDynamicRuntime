@@ -16,7 +16,7 @@ import io.kotest.matchers.shouldBe
 
 /**
  * The brute-force user-cache search endpoint, end to end (issue #411): a full-scope administrator over the
- * in-process pipeline, so the section gate, the input coercion, the list envelope and the response-schema
+ * in-process pipeline, so the section gate, the input coercion, the list envelope, and the response-schema
  * validation (which `mkTestBootCxt` turns on) are all exercised for real.
  *
  * The in-memory database is **shared across every spec in the JVM run** (the #408 pollution lesson), so this
