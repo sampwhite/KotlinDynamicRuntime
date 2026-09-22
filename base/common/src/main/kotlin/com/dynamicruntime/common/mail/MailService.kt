@@ -83,6 +83,8 @@ class SentEmail(
     val text: String,
     /** True when the mail was recorded in the simulated sink (a simulating instance). */
     val simulated: Boolean,
+    /** The `text/html` part, when the mail carried one (issue #773); the mails from `MailCopy` always do. */
+    val html: String? = null,
     /**
      * True when the mail went out through the provider. The two are not exclusive since [MAIL.transmitToAdminDomain]:
      * a simulating instance may both capture a mail and transmit it.
@@ -102,6 +104,14 @@ class SentEmail(
  * `private/secrets.properties` (default `mailgunApiKey`), and [SecretsUtil] reads the actual key from there,
  * so the key is never stored in -- or logged from -- application config. Eventually other providers will be
  * supported alongside Mailgun.
+ *
+ * ### Deliverability is the deployment's
+ *
+ * Whether a mail this sends reaches an inbox rather than a spam folder is decided by the **sending domain's**
+ * DNS, not by anything here: SPF and DKIM records that authorize the provider to send for the domain the
+ * from-address ([MAIL.appFromAddress]) is on, and a DMARC policy over both. The provider's dashboard shows
+ * what a domain still lacks. Nothing in the message shape helps until those are in place; once they are, the
+ * text-and-HTML pair `MailCopy` produces (issue #773) is the ordinary, well-received form.
  */
 class MailService : ServiceInitializer {
     override val serviceName: String = MailService.serviceName
@@ -162,15 +172,22 @@ class MailService : ServiceInitializer {
         apiKey != null && (!useSimulatedEmail || (transmitToAdminDomain && AddressRules.isAdminDomain(cxt, to)))
 
     /**
-     * Sends [text] to [to] with [subject]. Returns the [SentEmail] record (also retained in
-     * [recentSentEmails]). On a simulating instance the "send" is recorded rather than transmitted -- unless
-     * the admin-domain opt-in ([MAIL.transmitToAdminDomain]) applies to [to], in which case it is both.
+     * Sends [text] -- and [html], the `text/html` part of the same message, when given -- to [to] with
+     * [subject]. Returns the [SentEmail] record (also retained in [recentSentEmails]). On a simulating
+     * instance the "send" is recorded rather than transmitted -- unless the admin-domain opt-in
+     * ([MAIL.transmitToAdminDomain]) applies to [to], in which case it is both.
+     *
+     * The two parts are the message as given: the provider takes both and generates neither, so a mail with
+     * no [html] is a text-only mail, not one the provider dresses up. The auth mails come through
+     * [sendFragmentMail], which supplies both from one piece of copy.
      */
-    fun sendEmail(cxt: KdrCxt, to: String, subject: String, text: String, from: String = fromAddressForApp): SentEmail {
+    fun sendEmail(cxt: KdrCxt, to: String, subject: String, text: String, html: String? = null, from: String = fromAddressForApp): SentEmail {
         val transmitted = transmits(cxt, to)
-        if (transmitted) transmit(cxt, to, from, subject, text, apiKey!!)
+        if (transmitted) transmit(cxt, to, from, subject, text, html, apiKey!!)
         if (useSimulatedEmail) LogMail.debug(cxt) { "Simulated email to $to: '$subject'" + (if (transmitted) " (also transmitted)." else ".") }
-        val sent = SentEmail(mailId.getAndIncrement().toString(), to, from, subject, text, simulated = useSimulatedEmail, transmitted = transmitted)
+        val sent = SentEmail(
+            mailId.getAndIncrement().toString(), to, from, subject, text, simulated = useSimulatedEmail, html = html, transmitted = transmitted,
+        )
         // Retain only on a simulating (test) instance -- the kept copy exists solely to be read back through the
         // test-only endpoint. A real transmission is never held in memory (issue #158).
         if (useSimulatedEmail) {
@@ -182,15 +199,27 @@ class MailService : ServiceInitializer {
         return sent
     }
 
+    /**
+     * Sends the mail [mail] of the `mail` fragment file to [to], rendered by [MailCopy] with [params] as the
+     * [client] the mail is about reads it (issue #773): the subject, the text part, and the HTML part all come
+     * from that one piece of copy. What the auth flows call instead of composing a body in code.
+     */
+    fun sendFragmentMail(cxt: KdrCxt, to: String, client: String?, mail: String, params: Map<String, Any?>): SentEmail {
+        val rendered = MailCopy.render(cxt, client, mail, params)
+        return sendEmail(cxt, to, rendered.subject, rendered.text, rendered.html)
+    }
+
     /** Recently sent (or simulated) emails, with the most recent first. For tests and troubleshooting. */
     fun recentSentEmails(): List<SentEmail> = synchronized(recent) { recent.toList() }
 
     /** The most recent email sent to [to], or null. */
     fun lastEmailTo(to: String): SentEmail? = synchronized(recent) { recent.firstOrNull { it.to == to } }
 
-    private fun transmit(cxt: KdrCxt, to: String, from: String, subject: String, text: String, key: String) {
-        val body = listOf("from" to from, "to" to to, "subject" to subject, "text" to text)
-            .joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, StandardCharsets.UTF_8)}" }
+    private fun transmit(cxt: KdrCxt, to: String, from: String, subject: String, text: String, html: String?, key: String) {
+        // Mailgun takes the two parts as two fields of one message and generates neither.
+        val fields = listOf("from" to from, "to" to to, "subject" to subject, "text" to text) +
+            (if (html != null) listOf("html" to html) else emptyList())
+        val body = fields.joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, StandardCharsets.UTF_8)}" }
         val basic = Base64.getEncoder().encodeToString("api:$key".toByteArray(StandardCharsets.UTF_8))
         // The one outbound client (issue #420). The content type rides on the body, so only the auth header is
         // passed here. The client's own connect/timeout error names the endpoint, not the recipient, so keep

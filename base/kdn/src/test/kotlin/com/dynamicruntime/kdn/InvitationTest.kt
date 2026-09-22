@@ -58,7 +58,7 @@ class InvitationTest : StringSpec({
         made[USF.registered.at].shouldBeNull()
         users.queryIdentityByAddress(cxt, address).shouldNotBeNull().verifiedAt.shouldBeNull()
         val mailed = MailService.get(cxt).lastEmailTo(address).shouldNotBeNull()
-        mailed.text shouldContain "'${CL.hub}' as Admin"
+        mailed.text shouldContain "at Hub, as Admin"
         val token = tokenMailedTo(address)
 
         // Merely opening the link previews and changes nothing.
@@ -181,7 +181,7 @@ class ClaimAccountTest : StringSpec({
         val address = "claim-me@other.test"
         val userId = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.client to CL.hub, ADF.persona to PERSONA.admin))[ADF.userId] as Long
         // The invitation mail spells out the recipe for this page.
-        MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text shouldContain "client \"${CL.hub}\" and persona \"${PERSONA.admin}\""
+        MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text shouldContain "- Client: ${CL.hub}\n- Persona: ${PERSONA.admin}"
 
         val browser = TestHttpClient(cxt.instanceConfig)
         val token = tokenOf(browser)

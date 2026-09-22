@@ -8,6 +8,11 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.mail.MCOPY
+import com.dynamicruntime.common.mail.MailCopy
+import com.dynamicruntime.common.mail.MailService
+import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -22,6 +27,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * Fragment layering on a real node (issue #456): a base file, a `_overlay.md` beside it, an overlay written
@@ -91,6 +97,24 @@ class FragmentOverlayTest : StringSpec({
         shellCopy(cxt) shouldBe "KDR"
         shellCopy(acmeCxt) shouldBe "ACME KDR"
         shellCopy(globexCxt) shouldBe "KDR"
+    }
+
+    "each sample client signs its mails, and a mail about nobody's client is unsigned" {
+        // The `mail` file is private, so it is read through MailCopy rather than fetched (issue #773). The
+        // footer is the shared key both clients overlay; the bodies they left alone stay as shipped.
+        val code = mapOf(MCOPY.codeParam to "424242")
+        MailCopy.render(cxt, SC.acme, MCOPY.verifyCode, code).text shouldContain "on behalf of Acme"
+        MailCopy.render(cxt, SC.globex, MCOPY.verifyCode, code).text shouldContain "on behalf of Globex"
+        MailCopy.render(cxt, null, MCOPY.verifyCode, code).text shouldContain "sent automatically"
+        MailCopy.render(cxt, SC.acme, MCOPY.verifyCode, code).text shouldContain "Your verification code is 424242."
+        // Through the real path: an invitation into acme is signed by acme, although a full-scope administrator
+        // in another client sent it -- the copy follows the user the mail is about.
+        val admin = TestUser.createFullAdmin(cxt, "mail-admin@example.com")
+        val invited = "invited@acme.test"
+        admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to invited, ADF.client to SC.acme))
+        val sent = MailService.get(cxt).lastEmailTo(invited).shouldNotBeNull()
+        sent.text shouldContain "on behalf of Acme"
+        sent.html.shouldNotBeNull() shouldContain "on behalf of Acme"
     }
 
     "the shell's fragment ref differs for a client, so its copy is fetched separately" {

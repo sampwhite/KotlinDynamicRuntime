@@ -8,10 +8,10 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.logging.KdrLogger
+import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.util.checkPassword
-import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.mkRndString
 import com.dynamicruntime.common.util.normalizeEmail
@@ -114,7 +114,8 @@ class AuthFormHandler(
         val address = contactAddress.normalizeEmail()
         if (!address.isEmailAddress()) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.emailInvalid))
         requireSendAllowed(cxt, address)
-        sendVerifyEmail(cxt, address, node.computeVerifyCode(formAuthToken, address), addPassword = false)
+        // No user yet, so no client the mail is about: the caller's own, which for a registration is none.
+        sendVerifyEmail(cxt, address, node.computeVerifyCode(formAuthToken, address), addPassword = false, client = cxt.client)
     }
 
     /**
@@ -137,7 +138,7 @@ class AuthFormHandler(
             return
         }
         requireSendAllowed(cxt, user.primaryId)
-        sendVerifyEmail(cxt, user.primaryId, node.computeVerifyCode(formAuthToken, user.primaryId), addPassword)
+        sendVerifyEmail(cxt, user.primaryId, node.computeVerifyCode(formAuthToken, user.primaryId), addPassword, client = user.client)
     }
 
     /** Throttles verification emails per source IP and per targeted contact, to blunt flooding. */
@@ -154,15 +155,10 @@ class AuthFormHandler(
         }
     }
 
-    private fun sendVerifyEmail(cxt: KdrCxt, address: String, verifyCode: String, addPassword: Boolean) {
-        val template = if (addPassword) {
-            $$"Your verification code is ${verifyCode}. Enter it to set or change your password. " +
-                "It expires in fifteen minutes."
-        } else {
-            $$"Your verification code is ${verifyCode}. It expires in fifteen minutes."
-        }
-        val text = template.evalTemplate(mapOf("verifyCode" to verifyCode))
-        mail.sendEmail(cxt, to = address, subject = "Your verification code", text = text)
+    /** The code mail, as [client] words it (issue #773); the password framing is its own copy. */
+    private fun sendVerifyEmail(cxt: KdrCxt, address: String, verifyCode: String, addPassword: Boolean, client: String?) {
+        val which = if (addPassword) MCOPY.verifyCodePassword else MCOPY.verifyCode
+        mail.sendFragmentMail(cxt, address, client, which, mapOf(MCOPY.codeParam to verifyCode))
     }
 
     // --- user creation ------------------------------------------------------
@@ -575,20 +571,16 @@ class AuthFormHandler(
         if (!user.enabled) throw KdrException.mkInput("User ${user.userId} is disabled; enable the account before inviting.")
         val token = InvitationToken(user.identityId, user.userId, cxt.now().toEpochMilliseconds() + AUTHC.invitationMillis).encode(node)
         val url = INVITE.invitationUrl(INVITE.publicUrlFor(cxt), token)
-        val what = "'${user.client}' as ${PERSONA.label(user.persona)}" + (if (user.personaSuffix.isEmpty()) "" else " ${user.personaSuffix}")
-        // The recipe for the login page's "claim" path (issue #751) rides beside the link, since a link is a
-        // courtesy some mail clients and scanners spoil: the client and the persona as the page wants them typed.
-        // The address is spelled out although it is the `to`: Gmail folds the repeated tail of a thread's mails
-        // behind an ellipsis, and a tester's plus-addressed variants of one inbox would otherwise all read alike.
-        val template = $$"An account has been created for ${address} in ${what}. Open this link to accept it and sign in: " +
-            $$"${url}\n\nOr, from the login page, choose \"Claim an account created for you\" and enter your email " +
-            $$"address ${address} with client \"${client}\" and persona \"${typed}\"; a code will be sent to you there.\n\n" +
-            "The link expires in seven days. If you were not expecting this, ignore it."
-        val text = template.evalTemplate(mapOf(
-            "address" to user.primaryId, "what" to what, "url" to url, "client" to user.client,
-            "typed" to PERSONA.typed(user.persona, user.personaSuffix),
-        ))
-        mail.sendEmail(cxt, to = user.primaryId, subject = "You have been invited", text = text)
+        // The copy (issue #773) carries the link and, beside it, the recipe for the login page's "claim" path
+        // -- the client and the persona as the page wants them typed -- rendered as the user's client words it.
+        mail.sendFragmentMail(
+            cxt, user.primaryId, user.client, MCOPY.invitation,
+            mapOf(
+                MCOPY.addressParam to user.primaryId, MCOPY.clientParam to user.client, MCOPY.urlParam to url,
+                MCOPY.personaParam to PERSONA.typed(user.persona, user.personaSuffix),
+                MCOPY.personaLabelParam to PERSONA.typed(PERSONA.label(user.persona), user.personaSuffix),
+            ),
+        )
         LogAuth.info(cxt) { "Invited user ${user.userId} ('${user.primaryId}') to '${user.client}' as '${user.persona}'." }
         return token
     }
@@ -662,31 +654,29 @@ class AuthFormHandler(
         if (!address.isEmailAddress()) throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.emailInvalid))
         requireSendAllowed(cxt, address)
         val user = claimedUser(cxt, key)
-        // The address is spelled out in every variant for the same reason the invitation spells it: a tester's
-        // plus-addressed mails to one inbox must not fold into one another.
-        val text = when {
-            user != null ->
-                "Your verification code for claiming the account $address in ${key.describe()} is " +
-                    "${node.computeVerifyCode(formAuthToken, key.hashText)}. Enter it on the page where you asked for it. " +
-                    "It expires in fifteen minutes."
-            !key.isValid ->
-                "We could not find an account for $address matching what was entered on the claim page. If you were " +
-                    "invited, enter the client and persona exactly as the invitation gave them; otherwise nothing has been created."
+        // Which copy (issue #773): the code, or one of three "no match" answers that say as much as the inbox's
+        // owner is entitled to. A key that is not made of ids names nobody, so its answer names nothing typed.
+        val code = if (user != null) node.computeVerifyCode(formAuthToken, key.hashText) else null
+        val which = when {
+            user != null -> MCOPY.claimCode
+            !key.isValid -> MCOPY.claimNoMatch
             else -> {
                 val identity = userService.queryIdentityByAddress(cxt, address)
                 val inClient = identity != null && userService.usersOfIdentity(cxt, identity.identityId).any { it.client == key.client && !it.isDeleted }
-                "We could not find an account for $address in ${key.describe()}. " + if (inClient) {
-                    "This address does have an account in that client; check the persona (and persona suffix) you were given."
-                } else {
-                    "If you were invited, check the client and persona in the invitation; otherwise nothing has been created."
-                }
+                if (inClient) MCOPY.claimNoMatchInClient else MCOPY.claimNoMatchNamed
             }
         }
         LogAuth.info(cxt) {
             "Claim code requested for '$address' (${if (key.isValid) key.describe() else "not an id"}): " +
                 (if (user != null) "user ${user.userId}." else "no match.")
         }
-        mail.sendEmail(cxt, to = address, subject = "Claiming your account", text = text)
+        val params = mapOf(MCOPY.addressParam to address, MCOPY.codeParam to code) +
+            if (key.isValid) mapOf(
+                MCOPY.clientParam to key.client,
+                MCOPY.personaParam to PERSONA.typed(key.persona, key.personaSuffix),
+                MCOPY.personaLabelParam to PERSONA.typed(PERSONA.label(key.persona), key.personaSuffix),
+            ) else emptyMap()
+        mail.sendFragmentMail(cxt, address, if (key.isValid) key.client else null, which, params)
     }
 
     /**

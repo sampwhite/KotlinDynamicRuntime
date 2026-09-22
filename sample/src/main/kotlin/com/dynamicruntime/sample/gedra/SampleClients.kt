@@ -11,6 +11,8 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.mail.MCOPY
+import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.menuItem
@@ -252,6 +254,15 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             }
         }
 
+        // The mails too (issue #773): every mail about an acme user -- a code, an invitation, a claim answer
+        // -- is signed by acme, because the footer is shared by every mail and the copy is rendered for the
+        // client of the user the mail is about, whoever sent it. One key; the bodies stay as shipped.
+        fragmentOverlay(AFRAG.mail) {
+            namespace(MCOPY.common) {
+                key(MCOPY.footer, "Sent on behalf of Acme. Acme site services will help if something looks wrong.")
+            }
+        }
+
         // --- an interface of its own --------------------------------------------------------------------
         //
         // Acme renames one item and adds one of its own. The renamed item is matched by the base's primary
@@ -417,6 +428,14 @@ private fun globexClient(cxt: KdrCxt): GedraConfig =
                 includedTraits = listOf(CLD.allGlobal),
             ),
         )
+
+        // Globex signs its own mails (issue #773) and, unlike acme, rewords nothing else -- the one-line
+        // overlay a client that only wants its name on the mails would write.
+        fragmentOverlay(AFRAG.mail) {
+            namespace(MCOPY.common) {
+                key(MCOPY.footer, "Sent on behalf of Globex Corporation.")
+            }
+        }
 
         // --- a creation workflow (issue #533) --------------------------------------------------------------
         //

@@ -143,6 +143,13 @@ object ATYPE {
 object AFRAG {
     const val auth = "auth"
     const val profile = "profile"
+
+    /**
+     * The mails the auth flows send (issue #773): a **backend** file, never served, whose namespaces are one
+     * per mail (`MailCopy` in `base:common` reads it). Here beside the delivered files because a client
+     * overlays it the same way, through its config.
+     */
+    const val mail = "mail"
 }
 
 /**

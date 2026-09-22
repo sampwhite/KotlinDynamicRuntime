@@ -20,6 +20,7 @@ import com.dynamicruntime.common.operator.operatorSchema
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.backendFragmentFiles
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientSyncService
@@ -200,7 +201,9 @@ class CommonComponent : ComponentDefinition {
      * names it, and an unchecked error fragment is exactly the one you find out about during an incident.
      */
     override fun fragments(cxt: KdrCxt): List<FragmentSource> =
-        fragmentFiles(AFRAG.auth, AFRAG.profile, HFRAG.home, FRAG.errors, FRAG.sample)
+        fragmentFiles(AFRAG.auth, AFRAG.profile, HFRAG.home, FRAG.errors, FRAG.sample) +
+            // The auth mails (issue #773): private copy, read by `MailCopy` rather than delivered.
+            backendFragmentFiles(AFRAG.mail)
 
     /**
      * Startup services -- fully initialized before regular services. [GedraConfigLoadService] leads (issue

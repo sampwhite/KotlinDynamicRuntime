@@ -93,6 +93,7 @@ object TSE {
     const val to = "to"
     const val subject = "subject"
     const val text = "text"
+    const val html = "html"
 
     const val emailType = "SimulatedEmail"
     const val emailsType = "SimulatedEmails"

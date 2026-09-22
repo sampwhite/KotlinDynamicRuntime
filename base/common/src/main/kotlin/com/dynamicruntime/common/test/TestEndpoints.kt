@@ -110,6 +110,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         property(TSE.to, "The recipient address.", required = true)
         property(TSE.subject, "The subject line.", required = true)
         property(TSE.text, "The full message text (it contains the verification code).", required = true)
+        property(TSE.html, "The message's HTML part, when it carried one (issue #773).")
     }
     type(TSE.emailsType) {
         type = SCT.kObject
@@ -131,7 +132,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
         val to = req.getOptStr(TSE.to)
         val emails = mail.recentSentEmails()
             .filter { to == null || it.to == to }
-            .map { mapOf(TSE.to to it.to, TSE.subject to it.subject, TSE.text to it.text) }
+            .map { mapOf(TSE.to to it.to, TSE.subject to it.subject, TSE.text to it.text, TSE.html to it.html) }
         mapOf(TSE.emails to emails)
     }
 

@@ -32,6 +32,9 @@ class SimulatedEmailEndpointTest : StringSpec({
         val results = client.sendJsonGetRequest(TEP.simulatedEmails).getValue(EP.results)!!.toJsonMap()
         val emails = results.getValue(TSE.emails) as List<*>
         emails.isEmpty() shouldBe false
+        // A text-only send has no HTML part to report (issue #773); the field is there, and null.
+        ((emails.first() as Map<*, *>).containsKey(TSE.html)) shouldBe true
+        (emails.first() as Map<*, *>)[TSE.html] shouldBe null
     }
 
     // The admin-domain opt-in (KDR_MAIL_TRANSMIT_ADMIN_DOMAIN): a simulating instance still captures every
