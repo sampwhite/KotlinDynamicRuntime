@@ -28,6 +28,11 @@
 # @register
 # +title Create your account
 # +emailLabel Email address
+/- For an allClients administrator only (issue #751): the client, persona and personId the new user takes. -/
+# +clientLabel Client
+# +personaLabel Persona
+# +personIdLabel Person id
+# +provisionHelp As an administrator across clients, you may place the new account: which client, what kind of user, and a short id for a further user of the same kind. Leave them alone for an ordinary registration.
 # +sendCode Send verification code
 # +codeSent A code was sent to `${user.email}`. Enter it below.
 # +codeLabel Verification code
@@ -36,8 +41,34 @@
 # +finish Create account
 # +orDivider or
 
+/- Claiming an account created for you (issue #751): the third mode of the auth flow. No choice lists -- the
+   client and persona are typed from the invitation, so an anonymous caller learns nothing about a client's
+   configuration -- and the page reports the code as sent whatever the backend found: the mail says the rest. -/
+# @claim
+# +title Claim an account created for you
+# +intro Somebody created an account for you and told you the client and the persona. Enter them with your email address, and a code will be sent to that address.
+# +emailLabel Email address
+# +clientLabel Client
+# +personaLabel Persona
+# +personaHelp As the invitation gave it: `admin`, or `member B` when it named a person id. Leave blank for `member`.
+# +sendCode Send verification code
+# +codeSent If `${user.email}` has that account, a code is on its way. Check the address, the client and the persona.
+# +codeLabel Verification code
+# +finish Claim and sign in
+# +loginLink Claim an account created for you
+
 # @verify
 # +expiresNote The code expires in fifteen minutes.
+
+/- The invitation page (issue #751): reached from a mailed link. Nothing happens until the person accepts,
+   so a mail scanner that opens the link accepts nothing on their behalf. -/
+# @invite
+# +title You have been invited
+# +summary An account has been created for **${invite.email}** in **${invite.client}** as **${invite.persona}**.
+# +explain Accepting proves you can read mail at that address, makes the account yours, and signs you in.
+# +accept Accept and sign in
+# +accepted You are signed in. The account is now yours; it appears in the account menu when you have others.
+# +invalid This invitation link is not valid, or has expired.
 /- The way back as well as a resend (issue #565): it unlocks the address. -/
 # +resend Change the address or send a new code
 
@@ -59,3 +90,5 @@
 # +googleEmailUnverified Google has not verified the email address on that account, so it cannot be used to sign in here.
 # +emailNotAvailable The email *${email}* is not available for creating a new account.
 # +userKeyTaken A user for ${email} already exists in client ${client} with persona ${persona}${personIdNote}.
+# +invitationInvalid This invitation link is not valid, or has expired. Ask the person who invited you to send a new one.
+# +invitationUsed This invitation has already been accepted. Log in with the address it was sent to.

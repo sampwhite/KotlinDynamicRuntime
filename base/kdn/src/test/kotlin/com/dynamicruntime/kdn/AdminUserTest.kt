@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.user.UserService
@@ -416,9 +417,10 @@ class AdminPersonaTest : StringSpec({
         // Refused by the schema: the persona field is a closed choice list, so a name outside the registry never reaches the handler.
         (admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "bad1@other.com", ADF.persona to "wizard"))[EP.errorMessage] as String) shouldContain ADF.persona
         admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "bad2@other.com", ADF.personId to "way-too-long"))
-        // Somebody else's address is not the administrator's to provision a further user for: that is an invitation
-        // (phase E), and the refusal says so rather than reading as a duplicate.
+        // Somebody else's address: a further user for them, unclaimed, with an invitation mailed (phase E, #751);
+        // the same key again is the duplicate it is.
         TestUser.create(cxt, "persona-other@other.com")
-        (admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "persona-other@other.com", ADF.persona to PERSONA.admin))[EP.errorMessage] as String) shouldContain "invitation"
+        admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "persona-other@other.com", ADF.persona to PERSONA.admin))[USF.registered.at].shouldBeNull()
+        admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "persona-other@other.com", ADF.persona to PERSONA.admin))
     }
 })

@@ -54,13 +54,14 @@ class UserAdminPaths(
     val userSetEnabled: String,
     val userSetOrg: String,
     val userSetName: String,
+    val userInvite: String,
     val userDelete: String,
 )
 
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
 fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, SECT.admin,
-    UserAdminPaths(ADEP.users, ADEP.userSearch, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetName, ADEP.userDelete),
+    UserAdminPaths(ADEP.users, ADEP.userSearch, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetName, ADEP.userInvite, ADEP.userDelete),
 )
 
 /**
@@ -74,7 +75,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, SECT.clientAdmin,
-    UserAdminPaths(UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetName, UADEP.userDelete),
+    UserAdminPaths(UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetName, UADEP.userInvite, UADEP.userDelete),
 )
 
 private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPaths): SchModule =
@@ -218,20 +219,11 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // A user the administrator creates at their **own** address is an *associated* user -- another of the
         // person's own, registered from the start since the identity is already theirs (issue #750) -- and the
         // key (client, persona, personId) says which; a duplicate key is refused by `provisionUser`. Any other
-        // address that already has an identity is somebody else's, and provisioning a user for them is phase E's
-        // invitation, so it is still refused here.
-        // Guarded on `isRowBacked` like every other read of the actor's row: an env-authed administrator has
-        // no row, and asking would send a query after the system user id.
+        // address -- new, or another person's -- gets a user nobody has claimed yet and an **invitation** to
+        // claim it (issue #751): the mailed link is the proof, and accepting registers the user (and verifies
+        // a new identity). Guarded on `isRowBacked` like every other read of the actor's row: an env-authed
+        // administrator has no row, and asking would send a query after the system user id.
         val ownAddress = c.userProfile.isRowBacked && service.queryByUserId(c, c.userProfile.userId)?.primaryId == primaryId
-        if (!ownAddress && service.queryByPrimaryId(c, primaryId) != null) {
-            // Not a duplicate in the key's sense: the address is another person's, and a further user for them
-            // is theirs to accept -- phase E's invitation -- so the message says what is not offered rather
-            // than reading as "you already made this".
-            throw KdrException.mkInput(
-                "'$primaryId' already belongs to a user. Provisioning a further user for another person is done " +
-                    "by invitation, which is not yet offered; only a user at your own address can be added here.",
-            )
-        }
         if (username != null && service.queryByUsername(c, username) != null) {
             throw KdrException.mkInput("Username '$username' has already been taken.")
         }
@@ -265,12 +257,37 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         if (!enabled) {
             loadUser(c, userId).let { it.enabled = false; service.updateUser(c, it) }
         }
+        // Somebody else's user, live: invite them to claim it. A disabled one waits for its enable, and the
+        // administrator sends the invitation then (`userInvite`). A mail that cannot go out (the provider down)
+        // does not fail the create -- the user exists, and a retry would only be refused as a duplicate -- it is
+        // logged, and the editor offers to send the invitation again.
+        if (!ownAddress && enabled) {
+            try {
+                authHandler(c).inviteUser(c, loadUser(c, userId))
+            } catch (e: KdrException) {
+                LogAuth.warn(c) { "User $userId ('$primaryId') was created but its invitation could not be sent: ${e.message}" }
+            }
+        }
         LogAuth.info(c) {
             "Admin ${c.userProfile.userId} created user $userId ('$primaryId', persona '$persona'" +
                 (if (personId.isEmpty()) "" else ", personId '$personId'") + ") with roles $roles" +
                 (if (!enabled) " (disabled)." else ".")
         }
         loadUser(c, userId).toAdminInfo()
+    }
+
+    // (Re)send the invitation for a user nobody has claimed (issue #751): a lapsed link, a lost mail, or a
+    // user created disabled and enabled since. Refused for a claimed or disabled user, with the reason.
+    generalEndpoint(
+        paths.userInvite,
+        "Sends (or re-sends) the invitation for a user nobody has claimed yet.",
+        HttpMethod.POST,
+        outputRef = ADTY.adminUser,
+        inputFields = { field(ADF.userId, "Id of the unclaimed user to invite.", required = true) { type = SCT.integer } },
+    ) { c, request ->
+        val row = loadEditableUser(c, requireUserId(request))
+        authHandler(c).inviteUser(c, row)
+        row.toAdminInfo()
     }
 
     // --- edit ---------------------------------------------------------------

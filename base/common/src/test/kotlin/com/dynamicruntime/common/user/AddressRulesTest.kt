@@ -54,6 +54,14 @@ class AddressRulesTest : StringSpec({
         AddressRules.isControlledDomain(cxtIn(ENV.local), "user1") shouldBe false
     }
 
+    "the admin domain is the deployment's own, apart from the example domain" {
+        val cxt = cxtIn(ENV.local, "acme.com")
+        AddressRules.isAdminDomain(cxt, "user1@acme.com") shouldBe true
+        AddressRules.isAdminDomain(cxt, "user1@mail.acme.com") shouldBe true
+        AddressRules.isAdminDomain(cxt, "user1@example.com") shouldBe false // controlled, but not the admin domain
+        AddressRules.isAdminDomain(cxtIn(ENV.local), "user1@acme.com") shouldBe false // none configured
+    }
+
     "a self-registered user lands in the placeholder client" {
         AddressRules.defaultClient(cxtIn(ENV.local)) shouldBe CL.public
     }

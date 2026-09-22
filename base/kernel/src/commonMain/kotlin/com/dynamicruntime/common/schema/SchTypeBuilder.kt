@@ -125,9 +125,11 @@ open class SchTypeBuilder(
     var visibleOnly: Boolean? by SchAttr(data, SCH.visibleOnly)
 
     /**
-     * Custom `g-outerWhitespace` keyword (issue #541): [SOWS.trim] strips leading/trailing whitespace,
-     * [SOWS.reject] fails a value that carries any. Unset leaves it alone (the default). Only a plain string
-     * field may set it -- the parser refuses it on any other type. Prefer the [trimmed] / [noOuterWhitespace]
+     * Custom `g-outerWhitespace` keyword (issues #541, #765): [SOWS.trim] strips leading/trailing whitespace,
+     * [SOWS.reject] fails a value that carries any, [SOWS.keep] leaves it alone. Unset is **not** [SOWS.keep]:
+     * a plain string field with no declared mode is trimmed on the endpoint-input path by default (#765), so
+     * reach for [preserveWhitespace] to opt an input field out. Only a plain string field may set it -- the
+     * parser refuses it on any other type. Prefer the [trimmed] / [noOuterWhitespace] / [preserveWhitespace]
      * helpers to setting the raw value.
      */
     var outerWhitespace: String? by SchAttr(data, SCH.outerWhitespace)
@@ -404,8 +406,9 @@ open class SchTypeBuilder(
     }
 
     /**
-     * Strips leading/trailing whitespace from this string value (issue #541): `g-outerWhitespace: "trim"`.
-     * For ordinary free text where edge whitespace is a paste artifact, not content.
+     * Strips leading/trailing whitespace from this string value on **every** path (issues #541, #765):
+     * `g-outerWhitespace: "trim"`. Endpoint input is already trimmed by default, so reach for this only to force
+     * the strip on the output/stored path too; for ordinary input free text the default already covers it.
      */
     fun trimmed() {
         outerWhitespace = SOWS.trim
@@ -418,6 +421,15 @@ open class SchTypeBuilder(
      */
     fun noOuterWhitespace() {
         outerWhitespace = SOWS.reject
+    }
+
+    /**
+     * Opts this string field out of the input-path trim default (issue #765): `g-outerWhitespace: "keep"`, so
+     * leading/trailing whitespace survives even as endpoint input. For the rare field whose edge whitespace is
+     * content -- a free-text block, a value meant to round-trip verbatim -- rather than a paste artifact.
+     */
+    fun preserveWhitespace() {
+        outerWhitespace = SOWS.keep
     }
 
     /** Marks this schema as a day-only date string (JSON Schema `format: "date"`, e.g. `2021-06-01`). */

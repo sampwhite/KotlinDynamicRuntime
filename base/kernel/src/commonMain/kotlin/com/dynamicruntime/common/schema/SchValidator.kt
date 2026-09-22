@@ -188,7 +188,7 @@ private fun SchType.resolvedUserMessage(
     val field = path.substringAfterLast('.').substringBefore('[')
     return try {
         template.evalTemplate(errorContextData(code, this, field, value, options))
-    } catch (e: KdrException) {
+    } catch (_: KdrException) {
         template
     }
 }
@@ -422,7 +422,7 @@ fun validateValue(
         val coerced = coerceMismatch(type, value, path, coerce, failures, opts)
         // Edge-whitespace handling runs on the coerced string before the bounds see it, exactly as for a value
         // that arrived as a string (below).
-        val effective = applyOuterWhitespace(type, coerced, path, failures)
+        val effective = applyOuterWhitespace(type, coerced, opts.forInput, path, failures)
         checkVisible(type, effective, path, failures)
         checkBounds(type, effective, path, failures)
         return effective
@@ -430,9 +430,10 @@ fun validateValue(
 
     // Edge whitespace is trimmed (or rejected) before any of the checks below, so `minLength`/`maxLength`,
     // `const` and `options` all measure the cleaned value -- otherwise `" a "` would pass a `minLength: 3` it
-    // should fail (issue #541). In validate-only mode the trimmed value is what the checks see and the caller
-    // discards it, the same way `allowCoerce` validates against the coerced form without emitting it.
-    val effective = applyOuterWhitespace(type, value, path, failures)
+    // should fail (issue #541). On the input path a plain string with no declared mode trims by default (issue
+    // #765). In validate-only mode the trimmed value is what the checks see and the caller discards it, the same
+    // way `allowCoerce` validates against the coerced form without emitting it.
+    val effective = applyOuterWhitespace(type, value, opts.forInput, path, failures)
 
     // Character rules run on every string that reached here, ahead of `const` and `options`: a value that is
     // one of the listed choices yet carries an invisible character is a broken list, and saying so beats
@@ -973,7 +974,7 @@ fun coerceStringToObject(
  *
  * **The parser is not a complete validator, so this is not either**, and the gap is worth naming because #316
  * exists to catch bad schemas: `parseSchemaTypes` leaves a *bare, top-level* `$ref` unresolved (it resolves
- * refs only in property, item and branch positions), and it does not reject an unrecognized `type` value. A
+ * refs only in property, item, and branch positions), and it does not reject an unrecognized `type` value. A
  * caller that needs those rejected -- the config write endpoint (#613) -- has to add the check; this reports
  * only what the parser refuses.
  *
@@ -1156,10 +1157,32 @@ fun checkVisible(type: SchType, value: Any?, path: String, failures: MutableList
 }
 
 /**
- * Applies the `g-outerWhitespace` rule (issue #541) to a string [value], returning the value the downstream
- * checks (`minLength`/`maxLength`, `const`, `options`) and the coerced output should use:
+ * The edge-whitespace mode actually applied to [type] on this path (issues #541, #765). It is
+ * [SchType.outerWhitespace] as declared, except that a plain string field with **no** declared mode defaults to
+ * [SchOuterWhitespace.trim] when [forInput], and to nothing otherwise:
  *
- *  - no keyword, or a non-string value -> returned unchanged;
+ *  - an explicit `"trim"` / `"reject"` applies on every path, as declared;
+ *  - an explicit [SchOuterWhitespace.keep] is the opt-out -- it maps to null here, so nothing happens;
+ *  - **no** keyword on a plain string trims *endpoint input* (so `minLength` / `pattern` / `options` and the
+ *    handler all measure the trimmed value) and leaves output/stored values untouched.
+ *
+ * The input default is confined to a plain string: a date is parsed to an `Instant` and a binary is bytes, so
+ * neither has edge text for the rule to see (and both return before this in [validateValue] anyway -- the guard
+ * is belt-and-suspenders and documents the intent).
+ */
+@KdrPrivate
+fun effectiveOuterWhitespace(type: SchType, forInput: Boolean): SchOuterWhitespace? {
+    type.outerWhitespace?.let { return if (it == SchOuterWhitespace.keep) null else it }
+    val plainString = type.jsonType == SCT.string && !isDateFormat(type.format) && !isBinaryFormat(type.format)
+    return if (forInput && plainString) SchOuterWhitespace.trim else null
+}
+
+/**
+ * Applies the `g-outerWhitespace` rule (issues #541, #765) to a string [value], returning the value the
+ * downstream checks (`minLength`/`maxLength`, `const`, `options`) and the coerced output should use. The mode
+ * is [effectiveOuterWhitespace] -- as declared, or the input-path trim default:
+ *
+ *  - null mode, or a non-string value -> returned unchanged;
  *  - [SchOuterWhitespace.trim] -> the trimmed string. Returned in both modes: coerce mode emits it, and
  *    validate-only checks against it and discards the return, the same contract `coerceMismatch` follows;
  *  - [SchOuterWhitespace.reject] -> the value unchanged, plus a `badValue` failure when it carries leading or
@@ -1169,8 +1192,8 @@ fun checkVisible(type: SchType, value: Any?, path: String, failures: MutableList
  * Unicode [trim]; the two disagree on a no-break space, and the rest of the kernel uses `<= ' '`.
  */
 @KdrPrivate
-fun applyOuterWhitespace(type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>): Any? {
-    val mode = type.outerWhitespace ?: return value
+fun applyOuterWhitespace(type: SchType, value: Any?, forInput: Boolean, path: String, failures: MutableList<SchFailure>): Any? {
+    val mode = effectiveOuterWhitespace(type, forInput) ?: return value
     if (value !is String) {
         return value
     }
@@ -1187,6 +1210,9 @@ fun applyOuterWhitespace(type: SchType, value: Any?, path: String, failures: Mut
             }
             value
         }
+        // effectiveOuterWhitespace maps a declared "keep" to null, so it never reaches here; the branch is for
+        // the compiler's exhaustiveness, and returns the value untouched, which is what "keep" would mean.
+        SchOuterWhitespace.keep -> value
     }
 }
 

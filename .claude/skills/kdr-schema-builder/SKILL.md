@@ -97,16 +97,24 @@ and a no-break space that looks like a space and compares unequal. It does **not
 from another script; that is a different problem. Off unless set, and only a plain string may set it -- the
 parser refuses it on any other type, and on a date or binary format, where it would constrain nothing.
 
-A string field can also **strip or refuse leading/trailing whitespace** with `g-outerWhitespace` (issue #541),
-whose two modes are the [SOWS] values: `trimmed()` sets `"trim"` (strip the edges), `noOuterWhitespace()` sets
-`"reject"` (fail a value that carries any, as `badValue`; alter nothing). Absent leaves whitespace alone, as
-before -- a string that arrives as a string is otherwise never touched. The cleaning happens **before**
-`minLength`/`maxLength`, `const` and `options` are checked, so `" a "` fails a `minLength: 3` rather than
-sneaking past on its padding; in validate-only mode `"trim"` checks the trimmed form and passes, the same way
-`allowCoerce` validates against the coerced value without emitting it. "Whitespace" here is the kernel's
-`<= ' '` test (so a no-break space is *not* outer whitespace -- that is `visibleOnly`'s job), and like
-`visibleOnly` it is string-only and refused at parse time elsewhere. Reach for `"reject"` on a code, password
-or identifier where silent trimming would hide a paste error; `"trim"` on ordinary free text.
+A string field can also **strip or refuse leading/trailing whitespace** with `g-outerWhitespace` (issues #541,
+#765), whose modes are the [SOWS] values: `trimmed()` sets `"trim"` (strip the edges on *every* path),
+`noOuterWhitespace()` sets `"reject"` (fail a value that carries any, as `badValue`; alter nothing),
+`preserveWhitespace()` sets `"keep"` (leave it alone). The cleaning happens **before** `minLength`/`maxLength`,
+`const` and `options` are checked, so `" a "` fails a `minLength: 3` rather than sneaking past on its padding;
+in validate-only mode `"trim"` checks the trimmed form and passes, the same way `allowCoerce` validates against
+the coerced value without emitting it. "Whitespace" here is the kernel's `<= ' '` test (so a no-break space is
+*not* outer whitespace -- that is `visibleOnly`'s job), and like `visibleOnly` it is string-only and refused at
+parse time elsewhere.
+
+**A plain string with no declared mode trims on the input path by default (issue #765)** -- so endpoint input
+reaches the handler trimmed and its bounds/options measure the trimmed value, while the output/stored path
+(validated with `forInput = false`) leaves whitespace untouched. This is why you rarely set anything here: the
+common case (ordinary free text) is already covered. Reach for `preserveWhitespace()` (`"keep"`) on the rare
+input field whose edge whitespace is content -- a **password** is the canonical case, so its exact bytes are
+stored and matched; `noOuterWhitespace()` (`"reject"`) on a code or identifier where surfacing a paste error
+beats silently cleaning it; `trimmed()` (`"trim"`) only to force the strip on output/stored values too, since
+input already trims. This default is part of the codebase's relaxed-coercion posture (see `code-guide.md`).
 
 ## Choice lists: written down, or sourced at render time
 

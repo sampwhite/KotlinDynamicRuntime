@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.user.UserChoice
 import kotlin.test.Test
@@ -70,5 +71,31 @@ class UserSwitcherTest {
         assertEquals(emptyList(), switchableUsers(emptyList()))
         assertEquals(emptyList(), switchableUsers(listOf(ada)))
         assertEquals(listOf(ada, batch), switchableUsers(listOf(ada, batch)))
+    }
+}
+
+/** The invitation page's pure parts (issue #751): the preview parse and what it says the account is. */
+class InvitationPageTest {
+    @Test
+    fun parsesThePreviewAndSaysWhatTheAccountIs() {
+        val info = invitationInfoFrom(mapOf("email" to "ada@acme.com", "client" to "hub", "persona" to "admin", "personId" to ""))
+        assertEquals("ada@acme.com", info.email)
+        assertEquals("hub as Admin", invitationWhat(info))
+        assertEquals("acme as Member B", invitationWhat(invitationInfoFrom(mapOf("email" to "b@acme.com", "client" to "acme", "persona" to "member", "personId" to "B"))))
+        // Absent persona reads as the default; absent personId as the ordinary user.
+        assertEquals("public as Member", invitationWhat(invitationInfoFrom(mapOf("email" to "c@acme.com", "client" to "public"))))
+    }
+}
+
+/** The claim page's persona field (issue #751): one typed value, split by the kernel's rule. */
+class PersonaTypedTest {
+    @Test
+    fun splitsThePersonaAndThePersonIdSuffix() {
+        assertEquals("admin" to "", PERSONA.splitTyped("admin"))
+        assertEquals("member" to "B", PERSONA.splitTyped("member B"))
+        assertEquals("member" to "B", PERSONA.splitTyped("  Member   B "))
+        assertEquals("member" to "", PERSONA.splitTyped("   "))
+        assertEquals("member B", PERSONA.typed("member", "B"))
+        assertEquals("admin", PERSONA.typed("admin", ""))
     }
 }
