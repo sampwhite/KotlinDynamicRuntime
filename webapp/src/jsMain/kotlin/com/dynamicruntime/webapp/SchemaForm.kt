@@ -56,17 +56,6 @@ import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 
 /**
- * Renders a kernel [SchType] as a form — the generic display engine. It dispatches each field to a widget by
- * the field's parsed schema (`jsonType` / `format` / `options` / `itemType` / nested `properties`), marking
- * required fields from the parent type's `required` set. A nested object recurses into an indented sub-form;
- * a self-referential type ([SchType.name] already seen on the path) renders a collapsed marker instead of
- * expanding forever.
- *
- * One dispatch serves both faces: with [editable] false, widgets render disabled (the read-only view); with
- * [editable] true, they call back through [onChange], which threads an immutable value update up to the top.
- * The kernel validator ([EndpointCatalog]) checks the assembled values with the exact backend logic.
- */
-/**
  * How the form renders, beyond the schema itself (issue #408): whether it is a **friendly** data-entry form or
  * the wire-documenting catalog view, and any root fields to omit. The defaults reproduce the catalog's
  * behavior exactly, so a caller that passes nothing is unchanged.
@@ -521,6 +510,18 @@ internal fun buildCfactGate(cfacts: Map<String, Boolean>?): (String) -> Boolean 
     }
 }
 
+/**
+ * Renders a kernel [SchType] as a form — the generic display engine. It dispatches each field to a widget by
+ * the field's parsed schema (`jsonType` / `format` / `options` / `itemType` / nested `properties`), marking
+ * required fields from the parent type's `required` set. A nested object recurses into an indented sub-form;
+ * a self-referential type ([SchType.name] already seen on the path) renders a collapsed marker instead of
+ * expanding forever.
+ *
+ * One dispatch serves both faces: with [SchemaFormProps.editable] false, widgets render disabled (the read-only
+ * view); with it true, they call back through [SchemaFormProps.onChange], which threads an immutable value
+ * update up to the top. The kernel validator ([EndpointCatalog]) checks the assembled values with the exact
+ * backend logic.
+ */
 val SchemaForm = FC<SchemaFormProps> { props ->
     val errors = FieldErrors(props.failures ?: emptyList(), props.onFieldEdit ?: {}, props.onFieldCommit ?: {})
     // An external-interface Boolean arrives as `undefined` when a caller omits it, so read it as `== true`
