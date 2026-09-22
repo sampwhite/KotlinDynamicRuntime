@@ -556,16 +556,21 @@ class GedraDataService : ServiceInitializer {
      * [existingState] is the state as it stands before this recompute, handed on through [GedraStateContext]
      * (issue #794) so a derivation can stay in step with an asserted fact beside it -- a workflow the form is
      * engaged with keeps its derived entry even when nothing else would emit one.
+     *
+     * The derivers run **in registration order, each seeing what the earlier ones produced**
+     * ([GedraStateContext.derivedThisPass], issue #783), so a projection built on another's output -- eligibility
+     * on the survey's cfacts -- is current with this write rather than one behind it.
      */
     private fun computeDerivedState(
         cxt: KdrCxt,
         row: GedraDataRow,
         existingState: List<Map<String, Any?>>,
     ): List<Map<String, Any?>> {
-        val state = GedraStateContext(row, existingState)
-        return SchemaService.get(cxt).stateDerivers()
+        val derived = mutableListOf<Map<String, Any?>>()
+        SchemaService.get(cxt).stateDerivers()
             .filter { row.kind in it.appliesTo && featureEnabled(cxt, it.featureName) }
-            .flatMap { it.derive(cxt, state) }
+            .forEach { derived.addAll(it.derive(cxt, GedraStateContext(row, existingState, derived.toList()))) }
+        return derived
     }
 
     /** Fires the registered post-write hooks (issue #675) after a data write, inside its transaction. */
@@ -638,8 +643,15 @@ class GedraDataService : ServiceInitializer {
     /**
      * Changes [row]'s state by [change] -- a read-modify-write of the whole entry set -- and recomputes its derived
      * state after, **all under one lock** (issue #794): the way an act *asserts* state (engaging a form with a
-     * workflow, say) without racing another. [change] is handed the entries as they stand under the lock and
-     * answers with the complete set to store.
+     * workflow, say) without racing another. [change] is handed the entries as they stand under the lock --
+     * **freshly recomputed** first -- and answers with the complete set to store.
+     *
+     * Why recompute *before* the change as well as after (issue #783 review): stored derived state is current
+     * with the last data write, not with configuration. A change that decides from derived state -- the engage
+     * gate reads the form's cfacts -- would otherwise decide against facts the form no longer has (a survey that
+     * gained a required trait since) or has never had stored (a form older than its client's survey), and the
+     * recompute after the change would then store the opposite verdict beside it. The recompute after stays,
+     * because the change itself can alter what is derived (an engaged workflow keeps a derived entry).
      *
      * Why not `readState` then [writeState]: the read would come from the resident cache, outside any lock, so
      * two acts on one form at once -- or one landing within another node's cache throttle -- would each write
@@ -665,6 +677,7 @@ class GedraDataService : ServiceInitializer {
         var result: List<Map<String, Any?>> = emptyList()
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranStateChange, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
             txCxt.bindTransactionOwner(row.userId, row.client, row.org)
+            recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
             writeState(txCxt, row.gedraId, change(entriesUnderLock()))
             recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
             result = entriesUnderLock()

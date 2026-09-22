@@ -1,9 +1,11 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataService
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -33,12 +35,36 @@ object WorkflowEngagement {
      * it stands *under the lock*, so two engagements at once cannot each write back a set missing the other,
      * and a state row this creates belongs to the form's owner rather than to whoever engaged it. [row] is the
      * form as the caller was admitted to it.
+     *
+     * **Engaging is gated on eligibility** (issue #783) when [def] -- the workflow's definition -- is given: a form
+     * that fails any of its tests is refused, and the refusal carries every reason. Evaluated here, under the
+     * lock, against the form's cfacts as [GedraDataService.changeState] has just recomputed them -- not as they
+     * were last stored, which can predate a configuration change -- and against the *definition* rather than a
+     * stored `eligible` flag, so a test added since already binds. Disengaging is never gated: taking a form out
+     * of a workflow needs no qualification.
      */
-    fun setEngaged(cxt: KdrCxt, row: GedraDataRow, workflowId: String, engaged: Boolean): List<Map<String, Any?>> {
+    fun setEngaged(
+        cxt: KdrCxt,
+        row: GedraDataRow,
+        workflowId: String,
+        engaged: Boolean,
+        def: WfDef?,
+    ): List<Map<String, Any?>> {
         // The actor and the moment, taken before the owner binding -- they are who did it, not whose form it is.
         val at = cxt.instanceNow()
         val by = cxt.userProfile.userId
+        val registry = SchemaService.get(cxt).cfactsFor(row.client)
         return GedraDataService.get(cxt).changeState(cxt, row) { current ->
+            if (engaged && def != null) {
+                val failures = WorkflowEligibility.failures(registry, def, WorkflowEligibility.formFacts(current))
+                if (failures.isNotEmpty()) {
+                    val reasons = WorkflowEligibility.explain(cxt, def, failures)
+                    throw KdrException.mkInput(
+                        "This form is not eligible for workflow '$workflowId': " + reasons.joinToString(" ") +
+                            " (failed: ${failures.joinToString(", ")}).",
+                    )
+                }
+            }
             withEngagement(current, workflowId, engaged, at, by)
         }
     }

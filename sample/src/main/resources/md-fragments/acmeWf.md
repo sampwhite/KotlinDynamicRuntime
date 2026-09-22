@@ -28,3 +28,10 @@
 
 # +label Confirm your contact details
 # +save Save changes
+
+/- The normal workflow's eligibility explanations (issue #783): shown as the reasons a form cannot be put
+   into the audit review, under a namespace named for the workflow, keyed by the eligibility test's id. -/
+
+# @auditReview
+
+# +surveyDone Finish reviewing your form first -- an audit review starts from a completed review.

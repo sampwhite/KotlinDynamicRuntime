@@ -42,6 +42,14 @@ class GedraStateContext(
      * read under the lock. Empty when the gedra has no state row yet.
      */
     val currentState: List<Map<String, Any?>>,
+    /**
+     * The entries the derivers registered **before** this one produced in this same recompute (issue #783), in
+     * registration order. What lets one derived projection build on another without lagging a write behind: the
+     * survey's deriver emits the form's cfacts, and the per-workflow deriver evaluates eligibility against them
+     * -- reading [currentState] instead would see the cfacts as they stood *before* this write. Registration
+     * order is therefore meaningful; a deriver reads only what came earlier.
+     */
+    val derivedThisPass: List<Map<String, Any?>> = emptyList(),
 )
 
 interface GedraStateDeriver {

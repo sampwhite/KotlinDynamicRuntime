@@ -33,6 +33,7 @@ object WFD {
     const val traitRefType = "WfTraitRef"
     const val saveType = "WfSave"
     const val layoutType = "WfLayout"
+    const val eligibilityType = "WfEligibility"
 
     const val workflowId = "workflowId"
     const val entry = "entry"
@@ -60,6 +61,18 @@ object WFD {
 
     const val order = "order"
     const val edit = "edit"
+
+    /**
+     * A normal workflow's ordered eligibility tests (issue #783): each an [id], a cfact [test] the form must
+     * meet, and the [explanation] shown when it does not.
+     */
+    const val eligibility = "eligibility"
+
+    /** On an eligibility entry: the cfact expression the form's cfacts must match. */
+    const val test = "test"
+
+    /** On an eligibility entry: why the form is not eligible when [test] fails -- a template, like a label. */
+    const val explanation = "explanation"
 
     /** Separates a bundle id from a workflow id in a [WfRef]'s text form. */
     const val refSep = '#'
@@ -241,6 +254,21 @@ class WfTraitRef(val traitId: String, val required: Boolean = true)
 class WfSave(val id: String, val label: String, val kind: WfSaveKind)
 
 /**
+ * One **eligibility test** of a normal workflow (issue #783): a form is eligible when every test's cfact
+ * expression matches the form's cfacts, and each one that does not contributes its [explanation] to the list of
+ * reasons shown for why the form is not eligible.
+ *
+ * The test is a **requirement**, written the way the form should be (`surveyComplete`), so a failing test is
+ * the reason. Several small tests rather than one blanket expression, because one expression can only say
+ * "not eligible"; an array can say *why* -- Cedar's ran past eight entries.
+ *
+ * [id] is what a stored failure records, and what finds this entry again to explain it, so it is unique within
+ * the workflow; ids tend to say what kind of check they are. [explanation] is a template evaluated in two
+ * passes like a label, so it can pull a fragment.
+ */
+class WfEligibility(val id: String, val test: String, val explanation: String)
+
+/**
  * The minimum a page needs to draw a task: the order its traits appear in, and how they are edited. The
  * fuller layout family -- summaries, pop-ups, headers, static text -- is deferred; this is only what a creation
  * workflow cannot do without.
@@ -339,12 +367,19 @@ class WfDef(
      * none, and a page then falls back to its own generic title ("Edit form", "New form").
      */
     val label: String = "",
+    eligibility: List<WfEligibility> = emptyList(),
 ) {
     /** The tasks, in the order they are presented. */
     val tasks: List<WfTask> = tasks.toList()
 
     /** Tasks by id. */
     val tasksById: Map<String, WfTask> = tasks.associateBy { it.id }
+
+    /**
+     * The eligibility tests, in declaration order (issue #783) -- the order the reasons are listed in. Only a
+     * [WfEntry.normal] workflow has any: creation and survey are not chosen, so there is nothing to be eligible for.
+     */
+    val eligibility: List<WfEligibility> = eligibility.toList()
 
     /** The workflow-global function **usages** this def declares (e.g. `cfactCalc`), in priority order (issue #677). */
     val functionUsages: List<WfFunctionUsage> = functionUsages.sortedBy { it.priority }
@@ -425,6 +460,35 @@ class WfDef(
             // normal workflow is a multi-stage process, and a task can legitimately offer no save -- an approval
             // task advances through its own endpoint rather than by persisting collected entries (issue #787).
         }
+        if (eligibility.isNotEmpty() && entry != WfEntry.normal) {
+            throw KdrException.mkConv(
+                "${entry.name.replaceFirstChar { it.uppercase() }} workflow '$workflowId' declares eligibility " +
+                    "tests; only a normal workflow has them, since only a normal workflow is chosen for a form.",
+            )
+        }
+        val seenEligibility = HashSet<String>()
+        for (e in eligibility) {
+            // The id is what a stored failure records and what finds this entry again to explain it -- from
+            // code, from data and from a stored state entry -- so it follows the workflow id's naming rule.
+            if (!e.id.isVariableName()) {
+                throw KdrException.mkConv(
+                    "'${e.id}' cannot be an eligibility id in workflow '$workflowId': it has to be usable as a " +
+                        "variable name, since a stored failure refers to it by name.",
+                )
+            }
+            if (!seenEligibility.add(e.id)) {
+                throw KdrException.mkConv(
+                    "Workflow '$workflowId' has two eligibility tests with the id '${e.id}'; a stored failure " +
+                        "names its test by id, so two with one id could not be told apart.",
+                )
+            }
+            if (e.test.isBlank()) {
+                throw KdrException.mkConv(
+                    "Eligibility test '${e.id}' in workflow '$workflowId' has no cfact test. Write '#always' " +
+                        "for one that always passes, so the intent is explicit.",
+                )
+            }
+        }
     }
 
     /** The task named, or null. */
@@ -487,6 +551,13 @@ object WfDefSchema {
             }
             property(WFD.edit, "How the task's traits are edited.") { options(WfEditMode.entries) }
         }
+        type(WFD.eligibilityType) {
+            type = SCT.kObject
+            description = "One eligibility test of a normal workflow: a cfact requirement and the reason shown when it is not met."
+            property(WFD.id, "Stable id of this test, unique within the workflow; what a stored failure records.", required = true)
+            property(WFD.test, "The cfact expression a form's cfacts must match for this test to pass.", required = true)
+            property(WFD.explanation, "Why the form is not eligible when the test fails -- a template, evaluated in two passes.", required = true)
+        }
         type(WFD.taskType) {
             type = SCT.kObject
             description = "One task of a workflow: the traits it collects and the saves it offers."
@@ -527,6 +598,11 @@ object WfDefSchema {
                 allowCoerce = true
                 items { type = SCT.kObject }
             }
+            property(WFD.eligibility, "A normal workflow's eligibility tests, in the order their reasons are listed. Every one is evaluated; an empty list of failures means eligible.") {
+                type = SCT.array
+                allowCoerce = true
+                items { ref(WFD.eligibilityType) }
+            }
         }
     }
 
@@ -552,6 +628,8 @@ object WfDefSchema {
 fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
     put(WFD.workflowId, workflowId)
     put(WFD.entry, entry.name)
+    // Emitted when set, as the builder does -- a stored definition that dropped it would lose its page title.
+    if (label.isNotEmpty()) put(WFD.label, label)
     put(
         WFD.tasks,
         tasks.map { task ->
@@ -568,6 +646,12 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
         },
     )
     if (functionUsages.isNotEmpty()) put(WFD.functions, functionUsages.map { it.toJsonMap() })
+    if (eligibility.isNotEmpty()) {
+        put(
+            WFD.eligibility,
+            eligibility.map { linkedMapOf(WFD.id to it.id, WFD.test to it.test, WFD.explanation to it.explanation) },
+        )
+    }
 }
 
 /**
@@ -615,6 +699,13 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
             )
         },
         functionUsages = usagesOf(m[WFD.functions]),
+        eligibility = m[WFD.eligibility].toJsonListOfMaps().map { e ->
+            WfEligibility(
+                e[WFD.id].toOptStr() ?: "",
+                e[WFD.test].toOptStr() ?: "",
+                e[WFD.explanation].toOptStr() ?: "",
+            )
+        },
     )
 }
 
@@ -633,6 +724,7 @@ private fun <E : Enum<E>> enumNamed(entries: List<E>, value: Any?): E {
 class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     private val tasks = mutableListOf<Map<String, Any?>>()
     private val functions = mutableListOf<Map<String, Any?>>()
+    private val eligibility = mutableListOf<Map<String, Any?>>()
 
     /**
      * What the workflow is called (issue #719): a page's title over its form. A template like a task's label,
@@ -655,6 +747,14 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
         functions.add(initData)
     }
 
+    /**
+     * An eligibility test (issue #783), in the order the reasons are listed: the form must meet the cfact [test],
+     * and [explanation] -- a template, like a label -- says why it is not eligible when it does not.
+     */
+    fun eligibility(id: String, test: String, explanation: String) {
+        eligibility.add(linkedMapOf(WFD.id to id, WFD.test to test, WFD.explanation to explanation))
+    }
+
     /** The definition as JSON, ready for [parseWfDef]. */
     fun build(): Map<String, Any?> = buildMap {
         put(WFD.workflowId, workflowId)
@@ -662,6 +762,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
         label?.let { put(WFD.label, it) }
         put(WFD.tasks, tasks.toList())
         if (functions.isNotEmpty()) put(WFD.functions, functions.toList())
+        if (eligibility.isNotEmpty()) put(WFD.eligibility, eligibility.toList())
     }
 }
 

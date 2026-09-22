@@ -72,6 +72,7 @@ class WorkflowService : ServiceInitializer {
                     )
                 }
             },
+            cfactNames = { SchemaService.get(cxt).cfactsFor(it).names },
             mode = gedraConfigCheckMode(cxt), issues = found,
         )
         // The second pass (issue #677): now that every component has registered its function kinds, resolve each
