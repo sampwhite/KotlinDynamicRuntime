@@ -2,9 +2,14 @@
    answers. A backend file -- never served, read by `MailCopy` for the client of the user the mail is about --
    so a client's overlay can reword a mail and name itself in it. Each mail is one namespace holding its
    `subject` and its `body`; the body is Markdown, sent as written for the text part and rendered for the HTML
-   part. The `${...}` params are sanitized before substitution, so a value cannot inject a link or markup;
-   a param holding a URL becomes a link in the HTML part on its own, and every other param is wrapped there
-   so that Gmail does not turn an address into a mailto link.
+   part. The `${...}` params are sanitized before substitution, so a value cannot inject a link or markup.
+   In the HTML part a param holding a URL becomes a link on its own, and every other param is set in bold
+   (the code large and monospaced) inside an anchor that keeps Gmail from turning an address into a mailto
+   link -- so the copy itself carries no emphasis marks, and the text part reads clean. `clientName` is the
+   client's display name ("Acme"), supplied with `client` (its id) whenever a mail is about a client.
+
+   The lists are what a person has to type on the claim page, one value per line, which reads as well in
+   plain text as in HTML.
 
    Every body spells out the address it is about, although it is the `to`: Gmail folds the repeated tail of a
    thread's mails behind an ellipsis, and a tester's plus-addressed variants of one inbox would otherwise all
@@ -21,21 +26,37 @@
    that phrase. -/
 # @verifyCode
 # +subject Your verification code
-# +body Your verification code is ${code}. It expires in fifteen minutes.
+# +body
+Your verification code is ${code}.
+
+Enter it where you asked for it. It expires in fifteen minutes.
+
 
 # @verifyCodePassword
 # +subject Your verification code
-# +body Your verification code is ${code}. Enter it to set or change your password. It expires in fifteen minutes.
+# +body
+Your verification code is ${code}.
 
-/- The link is the proof; the recipe beside it is for the login page's "claim" path, since a link is a
-   courtesy some mail clients and scanners spoil. `persona` is the typed form the page wants ("admin",
-   "member B"); `personaLabel` the displayed one ("Admin", "Member B"). -/
+Enter it to set or change your password. It expires in fifteen minutes.
+
+
+/- The link is the proof; the list is the recipe for the login page's "claim" path, since a link is a courtesy
+   some mail clients and scanners spoil: the values as the page wants them typed (`persona` is the typed form,
+   "admin" or "member B"; `personaLabel` the displayed one, "Admin" or "Member B"). -/
 # @invitation
 # +subject You have been invited
 # +body
-An account has been created for ${address} in '${client}' as ${personaLabel}. Open this link to accept it and sign in: ${url}
+An account has been created for ${address} at ${clientName}, as ${personaLabel}.
 
-Or, from the login page, choose "Claim an account created for you" and enter your email address ${address} with client "${client}" and persona "${persona}"; a code will be sent to you there.
+Accept it and sign in here: ${url}
+
+If the link does not work for you, go to the login page, choose "Claim an account created for you", and enter:
+
+- Email: ${address}
+- Client: ${client}
+- Persona: ${persona}
+
+A code will then be sent to ${address}.
 
 The link expires in seven days.
 
@@ -45,17 +66,40 @@ The link expires in seven days.
    as specifically as the inbox's owner is entitled to. -/
 # @claimCode
 # +subject Claiming your account
-# +body Your verification code for claiming the account ${address} in client "${client}" as ${personaLabel} is ${code}. Enter it on the page where you asked for it. It expires in fifteen minutes.
+# +body
+Your verification code for claiming the account ${address} at ${clientName} as ${personaLabel} is ${code}.
+
+Enter it on the page where you asked for it. It expires in fifteen minutes.
+
 
 /- Nothing typed was even an id, so nothing typed is named. -/
 # @claimNoMatch
 # +subject Claiming your account
-# +body We could not find an account for ${address} matching what was entered on the claim page. If you were invited, enter the client and persona exactly as the invitation gave them; otherwise nothing has been created.
+# +body
+We could not find an account for ${address} matching what was entered on the claim page.
+
+If you were invited, enter the client and persona exactly as the invitation gave them; otherwise nothing has been created.
+
 
 # @claimNoMatchInClient
 # +subject Claiming your account
-# +body We could not find an account for ${address} in client "${client}" as ${personaLabel}. This address does have an account in that client; check the persona (and persona suffix) you were given.
+# +body
+We could not find an account matching what was entered on the claim page:
+
+- Email: ${address}
+- Client: ${client}
+- Persona: ${persona}
+
+This address does have an account in that client; check the persona (and persona suffix) against what the invitation gave you.
+
 
 # @claimNoMatchNamed
 # +subject Claiming your account
-# +body We could not find an account for ${address} in client "${client}" as ${personaLabel}. If you were invited, check the client and persona in the invitation; otherwise nothing has been created.
+# +body
+We could not find an account matching what was entered on the claim page:
+
+- Email: ${address}
+- Client: ${client}
+- Persona: ${persona}
+
+If you were invited, check these against the invitation; otherwise nothing has been created.

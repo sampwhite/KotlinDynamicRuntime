@@ -3,6 +3,7 @@ package com.dynamicruntime.common.mail
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.renderMarkdown
@@ -47,6 +48,8 @@ object MCOPY {
     /** The persona as displayed: `Admin`, `Member B`. */
     const val personaLabelParam = "personaLabel"
     const val urlParam = "url"
+    /** The client's display name (`Acme`), supplied by `MailCopy.render` beside [clientParam] whenever a mail has a client. */
+    const val clientNameParam = "clientName"
 
     /**
      * The most a string param may be after sanitizing. Well above the UI default (an invitation link runs to
@@ -74,16 +77,21 @@ class RenderedMail(val subject: String, val text: String, val html: String)
  * client. A param whose value is an `http(s)` URL becomes a link in the HTML part on its own, and stays the
  * bare URL in the text part, where mail clients linkify it.
  *
- * **Every other param is kept from being linkified.** Gmail's web client turns any address it finds into a
- * `mailto:` link (and a run of digits into a phone number) and offers no opt-out, which makes copying the
- * address out of the claim recipe fiddly: the click opens a compose window. Nothing can be done in the text
- * part -- breaking the pattern with an invisible character would make the pasted value fail our own address
- * check -- but Gmail does not re-linkify inside an existing anchor, so in the HTML part each substituted value
- * is wrapped in an anchor with no `href` and `color: inherit; text-decoration: none`: it renders as plain
- * text and selects normally. Applied to every value rather than to addresses alone, since the client, the
- * persona and the code are the other things a person copies out. Partial by nature (Gmail sometimes rewrites
- * inline styles), and harmless where no linkifier runs. The wrap happens through a placeholder that survives
- * the Markdown pass, so the renderer's escaping is untouched and no word of the copy can be caught by it.
+ * **Every other param is emphasized, and kept from being linkified.** A value is what a reader copies out --
+ * the address, the client, the persona, the code -- so in the HTML part each one is set in bold, and the code
+ * large and monospaced. The emphasis is applied here rather than written into the copy as `**...**`, so the
+ * text part carries no marks at all and the phrase the code is read out of stays exactly as written. The
+ * same wrap solves a second problem: Gmail's web client turns any address it finds into a `mailto:` link (and a
+ * run of digits into a phone number) and offers no opt-out, which makes copying the address fiddly -- the
+ * click opens a compose window. Nothing can be done in the text part (breaking the pattern with an invisible
+ * character would make the pasted value fail our own address check), but Gmail does not re-linkify inside an
+ * existing anchor, so each value's emphasis is an anchor with no `href` and `color: inherit; text-decoration:
+ * none`: it renders as styled text and selects normally. Partial by nature (Gmail sometimes rewrites inline
+ * styles), and harmless where no linkifier runs. The wrap happens through a placeholder that survives the
+ * Markdown pass, so the renderer's escaping is untouched and no word of the copy can be caught by it.
+ *
+ * **The client's name** is supplied as a param beside its id whenever a mail has a client, so the copy can
+ * say "at Acme" where the recipe has to say `acme`.
  *
  * **Params are sanitized** before substitution, exactly as an error message's are (`RequestHandler.renderMsg`):
  * the characters that structure a Markdown link or code span are removed and whitespace is collapsed, so a
@@ -101,7 +109,10 @@ object MailCopy {
         fun copy(namespace: String, key: String): String = content[namespace]?.get(key)
             ?: throw KdrException("No mail copy '$namespace.$key' in the fragment file '${AFRAG.mail}'.")
 
-        val safe = params.mapValues { (_, v) -> if (v is String) v.sanitizeForDisplay(MCOPY.maxParamLength) else v }
+        val named = if (client == null || MCOPY.clientNameParam in params) params else {
+            params + (MCOPY.clientNameParam to (ClientService.get(cxt).known(client)?.name ?: client))
+        }
+        val safe = named.mapValues { (_, v) -> if (v is String) v.sanitizeForDisplay(MCOPY.maxParamLength) else v }
         val subject = copy(mail, MCOPY.subject).evalTemplate(safe)
         val body = copy(mail, MCOPY.body)
         val footer = copy(MCOPY.common, MCOPY.footer)
@@ -110,18 +121,18 @@ object MailCopy {
         // The same source again for the HTML part: a URL-valued param written as a Markdown link so the
         // renderer makes it an anchor (the text part keeps the bare URL), and every other string value replaced
         // by a placeholder, wrapped in its plain-text anchor once the Markdown has been rendered and escaped.
-        val plain = ArrayList<String>()
-        val forHtml = safe.mapValues { (_, v) ->
+        val plain = ArrayList<Pair<String, String>>()
+        val forHtml = safe.mapValues { (name, v) ->
             when {
                 v !is String -> v
                 isHttpUrl(v) -> "[$v]($v)"
-                else -> { plain.add(v); placeholder(plain.size - 1) }
+                else -> { plain.add(name to v); placeholder(plain.size - 1) }
             }
         }
         var rendered = body.evalTemplate(forHtml).renderMarkdown() +
             "<p style=\"$footerStyle\">" + footer.evalTemplate(forHtml).renderMarkdownInline() + "</p>"
-        plain.forEachIndexed { i, v ->
-            rendered = rendered.replace(placeholder(i), "<a style=\"$plainStyle\">${escapeHtml(v)}</a>")
+        plain.forEachIndexed { i, (name, v) ->
+            rendered = rendered.replace(placeholder(i), "<a style=\"${valueStyle(name)}\">${escapeHtml(v)}</a>")
         }
         return RenderedMail(subject, text, wrapHtml(rendered, copy(MCOPY.common, MCOPY.htmlStyle)))
     }
@@ -132,8 +143,15 @@ object MailCopy {
      */
     private fun placeholder(i: Int): String = "\uE000$i\uE001"
 
-    /** The anchor a plain value is wrapped in: no `href`, and invisible as an anchor. See the class note. */
-    private const val plainStyle = "color: inherit; text-decoration: none;"
+    /** How a substituted value is set in the HTML part: the code to be read off and typed, everything else bold. */
+    private fun valueStyle(param: String): String = if (param == MCOPY.codeParam) codeStyle else valueStyle
+
+    /** A value's emphasis, as an anchor with no `href` so it is never linkified (see the class note). */
+    private const val valueStyle = "font-weight: bold; color: inherit; text-decoration: none;"
+
+    /** The code: large, monospaced, spaced out, for reading off a phone and typing elsewhere. */
+    private const val codeStyle = "font-family: Menlo, Consolas, monospace; font-size: 18px; font-weight: bold; " +
+        "letter-spacing: 2px; color: inherit; text-decoration: none;"
 
     private fun isHttpUrl(v: String): Boolean = v.startsWith("http://") || v.startsWith("https://")
 

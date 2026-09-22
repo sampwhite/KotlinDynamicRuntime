@@ -673,6 +673,7 @@ class AuthFormHandler(
         val params = mapOf(MCOPY.addressParam to address, MCOPY.codeParam to code) +
             if (key.isValid) mapOf(
                 MCOPY.clientParam to key.client,
+                MCOPY.personaParam to PERSONA.typed(key.persona, key.personaSuffix),
                 MCOPY.personaLabelParam to PERSONA.typed(PERSONA.label(key.persona), key.personaSuffix),
             ) else emptyMap()
         mail.sendFragmentMail(cxt, address, if (key.isValid) key.client else null, which, params)

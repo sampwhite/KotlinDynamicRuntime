@@ -92,8 +92,11 @@ class MailCopyTest : StringSpec({
         // The frontend's dev autofill and AuthFlowTest read the code out of exactly this phrase.
         val code = Regex("verification code is (\\S+?)[.\\s]").find(sent.text).shouldNotBeNull().groupValues[1]
         code.isNotEmpty() shouldBe true
-        // In the HTML part the code sits in a style-only anchor, so Gmail does not read it as a phone number.
-        sent.html.shouldNotBeNull() shouldContain "<p>Your verification code is <a style=\"color: inherit; text-decoration: none;\">$code</a>."
+        // In the HTML part the code is set large and monospaced, in an anchor with no href so Gmail does not
+        // read it as a phone number; the text part keeps the bare phrase its readers parse.
+        sent.html.shouldNotBeNull() shouldContain "<p>Your verification code is <a style=\"font-family: Menlo"
+        sent.html!! shouldContain "\">$code</a>."
+        sent.text shouldContain "Your verification code is $code."
         sent.html!! shouldContain "<body style=\""
         // Both parts reach the test-only read-back the frontend uses.
         val emails = results(browser.sendJsonGetRequest(TEP.simulatedEmails, mapOf(TSE.to to address)))[TSE.emails].toJsonListOfMaps()
@@ -108,17 +111,22 @@ class MailCopyTest : StringSpec({
         val address = "mailcopy-invited@other.test"
         admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.client to CL.hub, ADF.persona to PERSONA.admin))
         val sent = mail.lastEmailTo(address).shouldNotBeNull()
-        val url = sent.text.substringAfter("sign in: ").takeWhile { !it.isWhitespace() }
+        val url = sent.text.substringAfter("sign in here: ").takeWhile { !it.isWhitespace() }
         url shouldContain "token="
         sent.text shouldNotContain "]($url)"
         sent.html.shouldNotBeNull() shouldContain "<a href=\"${url.replace("&", "&amp;")}\""
-        // Every other value sits in a style-only anchor, so Gmail does not turn the address into a mailto
-        // link (nor the client or the persona into anything); the text part carries them bare.
-        val wrapped = "<a style=\"color: inherit; text-decoration: none;\">$address</a>"
+        // Every other value is bold, in an anchor with no href so Gmail does not turn the address into a
+        // mailto link (nor the client or the persona into anything); the text part carries them bare, with
+        // no emphasis marks, and names the client by its display name where the recipe names its id.
+        val bold = "<a style=\"font-weight: bold; color: inherit; text-decoration: none;\">"
+        val wrapped = "$bold$address</a>"
         sent.html!! shouldContain wrapped
         sent.html!!.split(address).size - 1 shouldBe sent.html!!.split(wrapped).size - 1
-        sent.html!! shouldContain "<a style=\"color: inherit; text-decoration: none;\">${CL.hub}</a>"
+        sent.html!! shouldContain "<li>Client: $bold${CL.hub}</a></li>"
+        sent.text shouldContain "at Hub, as Admin"
+        sent.text shouldContain "- Client: ${CL.hub}"
         sent.text shouldNotContain "<a"
+        sent.text shouldNotContain "**"
     }
 
     "a client's overlay rewords its invitation and signs the footer, and another client's stays as shipped" {
