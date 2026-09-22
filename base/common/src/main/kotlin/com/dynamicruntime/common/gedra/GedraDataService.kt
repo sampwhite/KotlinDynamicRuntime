@@ -549,14 +549,24 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * The initial **derived** state for a freshly written gedra (issue #599): every registered [GedraStateDeriver]
-     * that applies to [row]'s kind and whose opt-in feature is enabled for its client, run and concatenated. Run
-     * by [insertStoredGedra] inside the data write's transaction, so state lands even on a plain create/import.
+     * The **derived** state for a gedra (issue #599): every registered [GedraStateDeriver] that applies to the
+     * row's kind and whose opt-in feature is enabled for its client, run and concatenated. Run by
+     * [insertStoredGedra] inside the data write's transaction, so state lands even on a plain create/import.
+     *
+     * [existingState] is the state as it stands before this recompute, handed on through [GedraStateContext]
+     * (issue #794) so a derivation can stay in step with an asserted fact beside it -- a workflow the form is
+     * engaged with keeps its derived entry even when nothing else would emit one.
      */
-    private fun computeInitialState(cxt: KdrCxt, row: GedraDataRow): List<Map<String, Any?>> =
-        SchemaService.get(cxt).stateDerivers()
+    private fun computeDerivedState(
+        cxt: KdrCxt,
+        row: GedraDataRow,
+        existingState: List<Map<String, Any?>>,
+    ): List<Map<String, Any?>> {
+        val state = GedraStateContext(row, existingState)
+        return SchemaService.get(cxt).stateDerivers()
             .filter { row.kind in it.appliesTo && featureEnabled(cxt, it.featureName) }
-            .flatMap { it.derive(cxt, row) }
+            .flatMap { it.derive(cxt, state) }
+    }
 
     /** Fires the registered post-write hooks (issue #675) after a data write, inside its transaction. */
     private fun fireWriteHooks(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow) {
@@ -595,7 +605,7 @@ class GedraDataService : ServiceInitializer {
         val preservedAsserted = existingEntries.filter {
             stateClassOf[it[GE.traitId].toOptStr()] == StateTraitClass.asserted
         }
-        val recomputed = preservedAsserted + computeInitialState(cxt, row)
+        val recomputed = preservedAsserted + computeDerivedState(cxt, row, existingEntries)
         // Skip an empty write on a gedra that has no state row yet (a client with no derivers), but do write --
         // to clear or update -- when a state row already exists.
         if (recomputed.isEmpty() && existing == null) return

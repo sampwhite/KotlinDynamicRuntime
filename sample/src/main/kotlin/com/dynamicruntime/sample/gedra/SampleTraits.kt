@@ -6,9 +6,9 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataDeriver
-import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
+import com.dynamicruntime.common.gedra.GedraStateContext
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.StateTraitClass
 import com.dynamicruntime.common.gedra.gedraConfig
@@ -403,11 +403,11 @@ object TraitPresenceByYearDeriver : GedraStateDeriver {
     override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
     override val featureName: String = ST.captureTraitPresenceByYear
 
-    override fun derive(cxt: KdrCxt, row: GedraDataRow): List<Map<String, Any?>> {
+    override fun derive(cxt: KdrCxt, state: GedraStateContext): List<Map<String, Any?>> {
         // Group trait ids by the `year` each entry's data carries -- expenseReport and yearly both have one; a
         // trait with no year simply contributes to no year. A sorted map + set keep the output deterministic.
         val byYear = sortedMapOf<Long, MutableSet<String>>()
-        for (entry in row.entries) {
+        for (entry in state.row.entries) {
             val traitId = entry[GE.traitId].toOptStr() ?: continue
             val year = entry[GE.data].toJsonMapOrEmpty()[ST.year].toOptLong() ?: continue
             byYear.getOrPut(year) { sortedSetOf() }.add(traitId)

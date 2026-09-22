@@ -27,7 +27,7 @@ class WfFunctionWiringTest {
     fun usagesParseFromTheBuilderAndRoundTrip() {
         val raw = WfDefBuilder("wf", WfEntry.normal).apply {
             function(fnData("computeCFactsFromData", priority = 5))
-            task("t", "T") { trait("a"); save("s", "S"); function(fnData("prefillFromOwner")) }
+            task("t", "T") { trait("a"); save("s", "S", WfSaveKind.edit); function(fnData("prefillFromOwner")) }
         }.build()
 
         val def = parseWfDef(cxt, raw)
@@ -50,7 +50,7 @@ class WfFunctionWiringTest {
         val raw = WfDefBuilder("wf", WfEntry.normal).apply {
             function(fnData("late", priority = 5))
             function(fnData("early", priority = 1))
-            task("t", "T") { trait("a"); save("s", "S") }
+            task("t", "T") { trait("a"); save("s", "S", WfSaveKind.edit) }
         }.build()
         val def = parseWfDef(cxt, raw)
         assertEquals(listOf("early", "late"), def.functionUsages.map { it.fn })

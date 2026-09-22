@@ -6,9 +6,11 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
 import com.dynamicruntime.common.gedra.workflow.PrefillFromOwnerCreation
 import com.dynamicruntime.common.gedra.workflow.SurveyStateDeriver
+import com.dynamicruntime.common.gedra.workflow.WorkflowStateDeriver
 import com.dynamicruntime.common.gedra.workflow.addSurveyCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
 import com.dynamicruntime.common.gedra.workflow.surveyStateConfig
+import com.dynamicruntime.common.gedra.workflow.workflowStateConfig
 import com.dynamicruntime.common.cfact.cfactSchema
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
@@ -97,6 +99,9 @@ class CommonComponent : ComponentDefinition {
         // state on any create/import path, so a plain create or a bad import is recorded, not only a workflow step.
         addSurveyCFacts(collector)
         collector.addStateDeriver(SurveyStateDeriver)
+        // The per-workflow state a normal workflow computes about a form (issue #794). Registered after the
+        // survey's, so the two run in a fixed order; they write different traits, so the order is cosmetic.
+        collector.addStateDeriver(WorkflowStateDeriver)
         // The first cfactCalc function (issue #678): a workflow's cfactCalc usages emit cfacts into the same
         // form-singleton state the survey derives, run inside that recompute (not a standalone pass).
         collector.addWorkflowFunction(ComputeCFactsFromDataCreation)
@@ -192,7 +197,7 @@ class CommonComponent : ComponentDefinition {
      * reach has to come from a component that always loads.
      */
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> =
-        listOf(coreTraits(cxt), surveyStateConfig(cxt)) + coreClients(cxt)
+        listOf(coreTraits(cxt), surveyStateConfig(cxt), workflowStateConfig(cxt)) + coreClients(cxt)
 
     /**
      * The fragment files `base/common` ships. `errors` and `sample` are here as much as the widget-group

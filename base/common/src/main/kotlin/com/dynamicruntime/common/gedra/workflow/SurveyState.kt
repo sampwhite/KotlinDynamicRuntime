@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraStateContext
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.StateTraitClass
 import com.dynamicruntime.common.gedra.gedraConfig
@@ -92,7 +93,8 @@ fun addSurveyCFacts(collector: SchemaCollector) {
 object SurveyStateDeriver : GedraStateDeriver {
     override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
 
-    override fun derive(cxt: KdrCxt, row: GedraDataRow): List<Map<String, Any?>> {
+    override fun derive(cxt: KdrCxt, state: GedraStateContext): List<Map<String, Any?>> {
+        val row = state.row
         val survey = WorkflowService.get(cxt).forClient(row.client).survey ?: return emptyList()
         return evaluate(cxt, row, survey)
     }

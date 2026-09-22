@@ -204,7 +204,12 @@ enum class WfEntry {
      */
     survey,
 
-    /** Chosen by the user from the workflows a form is eligible for. Not built yet. */
+    /**
+     * Chosen by the user from the workflows a form is eligible for (issue #794). Many per form, unlike the
+     * one-per-form [creation] and [survey]: a form carries per-workflow state for each one it is evaluated
+     * against. Multi-stage, so no task ceiling, and its saves are [WfSaveKind.edit] since the form already
+     * exists. A task may offer no save at all -- an approval task advances through its own endpoint.
+     */
     normal,
 }
 
@@ -405,6 +410,20 @@ class WfDef(
                         "existing form, so its saves are '${WfSaveKind.edit}'.",
                 )
             }
+        }
+        if (entry == WfEntry.normal) {
+            // A normal workflow runs against a form that already exists -- it is chosen from the workflows that
+            // form is eligible for -- so a `create` save would make a second form. Same reasoning as the survey
+            // rule above.
+            tasks.flatMap { it.saves }.firstOrNull { it.kind != WfSaveKind.edit }?.let {
+                throw KdrException.mkConv(
+                    "Normal workflow '$workflowId' has a save '${it.id}' of kind '${it.kind}'; a normal workflow " +
+                        "runs against an existing form, so its saves are '${WfSaveKind.edit}'.",
+                )
+            }
+            // Deliberately no task ceiling (unlike a survey) and no save-per-task rule (unlike a survey): a
+            // normal workflow is a multi-stage process, and a task can legitimately offer no save -- an approval
+            // task advances through its own endpoint rather than by persisting collected entries (issue #787).
         }
     }
 

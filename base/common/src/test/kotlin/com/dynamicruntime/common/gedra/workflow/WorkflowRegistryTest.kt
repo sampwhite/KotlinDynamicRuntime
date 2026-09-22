@@ -62,6 +62,15 @@ class WorkflowRegistryTest : StringSpec({
         }
     }
 
+    fun normal(id: String, vararg traits: String, label: String = "Audit"): GedraConfigBuilderBlock = {
+        workflow(id, WfEntry.normal) {
+            task("only", label) {
+                traits.forEach { trait(it) }
+                save("go", label, WfSaveKind.edit)
+            }
+        }
+    }
+
     fun survey(id: String, vararg traits: String, label: String = "Review"): GedraConfigBuilderBlock = {
         workflow(id, WfEntry.survey) {
             task("only", label) {
@@ -119,13 +128,29 @@ class WorkflowRegistryTest : StringSpec({
         regs.global.creation.shouldNotBeNull().def.workflowId shouldBe "createForm"
     }
 
-    "an entry kind that is not built is refused" {
-        // `normal` is the still-unbuilt kind; `creation` and `survey` are admitted.
-        val bad = client(devCxt, "acme", listOf("name")) {
-            workflow("later", WfEntry.normal) { task("a", "A") { trait("name"); save("s", "S") } }
+    // Every entry kind is built now that `normal` has landed (issue #794), so the unbuilt-kind refusal has
+    // nothing left to refuse. What replaces it is the rule that makes `normal` different from the other two.
+    "normal workflows are admitted, and a scope may declare many of them" {
+        val configs = listOf(
+            globalTraits(devCxt),
+            client(devCxt, "acme", listOf("name", "report")) {
+                normal("auditReview", "name")(this)
+                normal("secondReview", "report")(this)
+            },
+        )
+        val (regs, issues) = build(devCxt, configs)
+        issues.shouldBeEmpty()
+        // Many per scope, unlike creation and survey, where a second declaration takes the kind over.
+        regs.forClient("acme").workflows.keys shouldBe setOf("auditReview", "secondReview")
+    }
+
+    "a normal workflow's saves must be edits, since the form already exists" {
+        val e = shouldThrow<KdrException> {
+            client(devCxt, "acme", listOf("name")) {
+                workflow("later", WfEntry.normal) { task("a", "A") { trait("name"); save("s", "S") } }
+            }
         }
-        val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), bad)) }
-        e.message shouldContain "not built yet"
+        e.message shouldContain "runs against an existing form"
     }
 
     "a survey workflow is admitted, beside the creation workflow in one scope" {
@@ -220,9 +245,9 @@ class WorkflowRegistryTest : StringSpec({
         val configs = listOf(
             globalTraits(devCxt, creation("createForm", "name")),
             client(devCxt, "acme", listOf("name")) {
-                // An unbuilt entry kind collecting an unsupported trait, and two creation workflows: three
-                // refusals in strict mode, none here.
-                workflow("later", WfEntry.normal) { task("a", "A") { trait("report"); save("s", "S") } }
+                // A normal workflow collecting an unsupported trait, and two creation workflows: refusals in
+                // strict mode, none here.
+                workflow("later", WfEntry.normal) { task("a", "A") { trait("report"); save("s", "S", WfSaveKind.edit) } }
                 creation("one", "name")(this)
                 creation("two", "name")(this)
             },
