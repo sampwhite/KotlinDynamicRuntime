@@ -65,6 +65,43 @@ class PreBootConfigFileTest : StringSpec({
         KdrInstanceConfig.lastLoadReport shouldContain empty.absolutePath
     }
 
+    // --- which file (issue #802) -------------------------------------------------------------------------
+
+    /** An environment holding only [KdrInstanceConfig.defaultsFileEnvVar] set to [value] (or nothing). */
+    fun envWith(value: String?): (String) -> String? =
+        { name -> if (name == KdrInstanceConfig.defaultsFileEnvVar.name) value else null }
+
+    "unset, the workspace's own defaults file is read, as it always was" {
+        val dir = workspace("KDR_PORT=7099")
+        val config = inWorkspace(dir) { KdrInstanceConfig.preBootLoadConfig(getEnv = envWith(null)) }
+        config.get("KDR_PORT") shouldBe "7099"
+    }
+
+    /**
+     * The point of the variable: a process that must not inherit the workspace's choices -- an agent's server
+     * in a developer's workspace -- reads nothing, including a value added to the file after it last looked.
+     */
+    "none reads no file at all, and says so" {
+        val dir = workspace("KDR_PORT=7099", "KDR_MAIL_TRANSMIT_ADMIN_DOMAIN=true")
+        val config = inWorkspace(dir) { KdrInstanceConfig.preBootLoadConfig(getEnv = envWith("none")) }
+        config.get("KDR_PORT") shouldBe null
+        config.get("KDR_MAIL_TRANSMIT_ADMIN_DOMAIN") shouldBe null
+        KdrInstanceConfig.lastLoadReport shouldContain "no defaults file read"
+        KdrInstanceConfig.lastLoadReport shouldContain KdrInstanceConfig.defaultsFileEnvVar.name
+    }
+
+    "a path reads that file instead, relative to the workspace or absolute" {
+        val dir = workspace("KDR_PORT=7099")
+        File(dir, "agent.properties").writeText("KDR_PORT=7075\n")
+        val relative = inWorkspace(dir) { KdrInstanceConfig.preBootLoadConfig(getEnv = envWith("agent.properties")) }
+        relative.get("KDR_PORT") shouldBe "7075"
+        val absolute = inWorkspace(dir) {
+            KdrInstanceConfig.preBootLoadConfig(getEnv = envWith(File(dir, "agent.properties").absolutePath))
+        }
+        absolute.get("KDR_PORT") shouldBe "7075"
+        KdrInstanceConfig.lastLoadReport shouldContain "agent.properties"
+    }
+
     /**
      * The precedence the file has always had, asserted here because the fix moves *where* it is read from and
      * must not move *what wins*: the real environment is authoritative and the file is only a fallback.

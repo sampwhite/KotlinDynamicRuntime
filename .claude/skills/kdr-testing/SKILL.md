@@ -136,7 +136,9 @@ WS="${KDR_WORKSPACE_DIR:-$(d=$PWD; while [ "$d" != / ] && [ ! -f "$d/settings.gr
 # Take the first free port at or above 7071 -- never 7070.
 for p in $(seq 7071 7099); do lsof -i:$p -sTCP:LISTEN -t >/dev/null 2>&1 || { PORT=$p; break; }; done
 
-cd "$WS" && KDR_PORT=$PORT KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run > /tmp/srv-$PORT.log 2>&1 &
+# KDR_DEFAULTS_FILE=none: inherit nothing from a defaults file that is not yours (issue #802) -- drop it only
+# in a secondary workspace whose defaults file is the agent's own.
+cd "$WS" && KDR_DEFAULTS_FILE=none KDR_PORT=$PORT KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run > /tmp/srv-$PORT.log 2>&1 &
 # wait for it, then hit it:
 for i in $(seq 1 180); do curl -sf http://localhost:$PORT/kda/health >/dev/null && { echo up; break; }; sleep 1; done
 ```
@@ -202,7 +204,7 @@ build, so a Kotlin exception arrives with no `message` and a mangled `name` — 
 itself as `ji` at a byte offset. Add **`-Pwebapp.dev=true`** to embed the *readable* build instead (issue #230):
 
 ```bash
-cd "$WS" && KDR_PORT=$PORT KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run -Pwebapp.dev=true
+cd "$WS" && KDR_DEFAULTS_FILE=none KDR_PORT=$PORT KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run -Pwebapp.dev=true
 ```
 
 The same crash then reports `IllegalStateException … at DebugFault$lambda`, naming the Kotlin declaration. Same

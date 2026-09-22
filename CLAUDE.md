@@ -50,11 +50,20 @@ server boots.
 
 **You never need to touch it.** `KdrInstanceConfig.readDefaultEnvVars` keeps only the entries whose key is
 **not** already a defined environment variable — the real environment always wins — so passing the variable on
-your own command line is always sufficient and disturbs nobody:
+your own command line is always sufficient and disturbs nobody.
+
+**And do not inherit it either: pass `KDR_DEFAULTS_FILE=none`** (issue #802). Overriding only works for the
+variables you know about, and the file keeps growing a developer's own choices — an admin domain, a switch that
+transmits real mail to it — which a server of yours would otherwise pick up the day they are added. With
+`none`, your server runs on your command line and the built-in defaults alone, and its startup line says so
+(`Workspace defaults: no defaults file read`):
 
 ```
-KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run
+KDR_DEFAULTS_FILE=none KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run
 ```
+
+In a **secondary** workspace (below), whose defaults file is the agent's own, leave `KDR_DEFAULTS_FILE` unset
+so that file is read — or point it at another file with a path.
 
 ## Additional checkouts (issue #345)
 

@@ -293,6 +293,36 @@ class KdrInstanceConfig(
          */
         const val defaultEnvVarsFileName = "default-environment-variables.properties"
 
+        /**
+         * Which defaults file a process reads (issue #802), in place of [defaultEnvVarsFileName] in the
+         * workspace. Read from the **real environment only**: the file cannot say whether to read itself.
+         */
+        val defaultsFileEnvVar = EnvVarDef(
+            "KDR_DEFAULTS_FILE", group = ENVGRP.application, defaultDoc = "unset (the workspace's $defaultEnvVarsFileName)",
+            description = "Which defaults file this process reads for variables the real environment does not set. " +
+                "Unset reads the workspace's `$defaultEnvVarsFileName`; a path reads that file instead (a relative " +
+                "path resolves against the workspace); `$noDefaultsFile` reads no file at all, so the process runs " +
+                "on the real environment and the built-in defaults alone. For a process that must not inherit " +
+                "another developer's workspace choices -- an agent's server in a human-owned workspace, which " +
+                "otherwise picks up every value in that file, including ones added after it last looked. Read " +
+                "from the real environment only; setting it inside a defaults file has no effect.",
+        )
+
+        /** The [defaultsFileEnvVar] value that reads no defaults file at all. */
+        const val noDefaultsFile = "none"
+
+        /**
+         * The defaults file [getEnv] asks for (issue #802): the workspace's [defaultEnvVarsFileName] when
+         * [defaultsFileEnvVar] is unset or blank, the file it names otherwise, or null for [noDefaultsFile].
+         */
+        fun defaultsFileFor(getEnv: (String) -> String?): File? {
+            val named = getEnv(defaultsFileEnvVar.name)?.trim()?.ifEmpty { null }
+                ?: return AppPaths.resolve(defaultEnvVarsFileName)
+            if (named.equals(noDefaultsFile, ignoreCase = true)) return null
+            val file = File(named)
+            return if (file.isAbsolute) file else AppPaths.resolve(named)
+        }
+
         /** Placeholder instance config used for code and unit tests. */
         fun codeTest(): KdrInstanceConfig =
             KdrInstanceConfig("codeTest", ENV.unit, ENV.liveSource)
@@ -300,22 +330,31 @@ class KdrInstanceConfig(
         /**
          * Builds the pre-boot instance config used to load deployment configuration before the application
          * boots. The environment name comes from `KDR_ENV` (default [ENV.local]); the env type is
-         * [ENV.liveSource]. Every entry in [defaultEnvVarsFileName] whose key is not already a defined
-         * environment variable is pushed into the config, so it serves as a default the rest of startup reads
-         * through [getEnvVar].
+         * [ENV.liveSource]. Every entry in the defaults file ([defaultsFileFor]: normally
+         * [defaultEnvVarsFileName], or none) whose key is not already a defined environment variable is pushed
+         * into the config, so it serves as a default the rest of startup reads through [getEnvVar]. [getEnv] is
+         * the real environment, injectable for testing.
          */
-        fun preBootLoadConfig(bootRole: String? = null): KdrInstanceConfig {
+        fun preBootLoadConfig(bootRole: String? = null, getEnv: (String) -> String? = System::getenv): KdrInstanceConfig {
             // Resolved against the WORKSPACE, not the working directory (issue #380). A bare relative path
             // found the file only when the JVM happened to start in the workspace, which a Gradle `run` task
             // does not -- so a deployment's defaults were silently not applied, and a missing KDR_PORT fell
             // through to the built-in default. AppPaths already answers this for the secrets file and the H2
             // data file, and its walk-up from the working directory covers a launch started anywhere inside
             // the workspace, which its own KDoc names as the case it exists for.
-            val fileDefaults = readDefaultEnvVars(AppPaths.resolve(defaultEnvVarsFileName), System::getenv)
+            // Which file, if any, is the real environment's to say (issue #802): an agent's server in a
+            // human-owned workspace reads none, so it inherits nothing it did not set on its own command line.
+            val file = defaultsFileFor(getEnv)
+            val fileDefaults = if (file != null) {
+                readDefaultEnvVars(file, getEnv)
+            } else {
+                lastLoadReport = "no defaults file read (${defaultsFileEnvVar.name}=$noDefaultsFile)"
+                emptyMap()
+            }
             // Role-aware from the very first read: an edge may want its own KDR_EDGE_ENV, and the environment
             // name decides everything downstream, so it cannot be the one variable the role does not reach.
             val env = envVarNamesFor(envName.name, bootRole)
-                .firstNotNullOfOrNull { System.getenv(it) ?: fileDefaults[it] }
+                .firstNotNullOfOrNull { getEnv(it) ?: fileDefaults[it] }
                 ?: ENV.local
             val config = KdrInstanceConfig(env, env, ENV.liveSource, bootRole)
             for ((k, v) in fileDefaults) {
