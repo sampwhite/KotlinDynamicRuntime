@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * A component-registered computation of **derived** gedra state (issue #599): given a gedra's current data, it
@@ -71,4 +73,30 @@ interface GedraStateDeriver {
      * caller (`writeState`), so this returns the same shape a caller of `writeState` would pass.
      */
     fun derive(cxt: KdrCxt, state: GedraStateContext): List<Map<String, Any?>>
+}
+
+/**
+ * Folds every [GT.cfacts] entry in [entries] into **one** (issue #784), keeping every other entry as it is.
+ *
+ * `cfacts` is form-singleton -- a form's cfacts are one set about the form -- but it has several producers: the
+ * survey's deriver contributes its facts, the per-workflow deriver its engaged workflows' singleton cfacts. Each
+ * emits its own contribution rather than reading and rewriting a shared list (which would make every producer
+ * responsible for every other's facts), and the union is taken here, where they all meet. Two entries would
+ * otherwise collide on the unkeyed trait's one address and refuse the whole write.
+ *
+ * The union keeps first-seen order -- registration order, so the survey's facts lead -- and lands where the
+ * first contribution stood.
+ */
+fun mergeCfactContributions(entries: List<Map<String, Any?>>): List<Map<String, Any?>> {
+    val isCfacts = { e: Map<String, Any?> -> e[GE.traitId].toOptStr() == GT.cfacts }
+    if (entries.count(isCfacts) < 2) {
+        return entries
+    }
+    val facts = LinkedHashSet<String>()
+    entries.filter(isCfacts).forEach { e ->
+        (e[GE.data].toJsonMapOrEmpty()[GT.facts] as? List<*>).orEmpty().mapNotNullTo(facts) { it.toOptStr() }
+    }
+    val merged = mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to facts.toList()))
+    val first = entries.indexOfFirst(isCfacts)
+    return entries.filterIndexed { i, e -> i == first || !isCfacts(e) }.map { if (isCfacts(it)) merged else it }
 }

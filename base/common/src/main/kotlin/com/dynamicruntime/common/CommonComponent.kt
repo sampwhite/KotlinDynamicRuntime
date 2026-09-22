@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.workflow.PrefillFromOwnerCreation
 import com.dynamicruntime.common.gedra.workflow.SurveyStateDeriver
 import com.dynamicruntime.common.gedra.workflow.WorkflowStateDeriver
 import com.dynamicruntime.common.gedra.workflow.addSurveyCFacts
+import com.dynamicruntime.common.gedra.workflow.addWorkflowSingletonCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
 import com.dynamicruntime.common.gedra.workflow.surveyStateConfig
 import com.dynamicruntime.common.gedra.workflow.workflowStateConfig
@@ -104,6 +105,9 @@ class CommonComponent : ComponentDefinition {
         // survey's, and the order matters: eligibility (issue #783) is evaluated against the cfacts the survey's
         // deriver emits in the same pass, which a deriver sees only from the derivers registered before it.
         collector.addStateDeriver(WorkflowStateDeriver)
+        // The framework singleton cfacts a normal workflow may emit about a form (issue #784), declared globally
+        // so any scope's expressions can name them.
+        addWorkflowSingletonCFacts(collector)
         // The first cfactCalc function (issue #678): a workflow's cfactCalc usages emit cfacts into the same
         // form-singleton state the survey derives, run inside that recompute (not a standalone pass).
         collector.addWorkflowFunction(ComputeCFactsFromDataCreation)

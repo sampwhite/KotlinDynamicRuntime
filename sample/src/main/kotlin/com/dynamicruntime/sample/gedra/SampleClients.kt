@@ -21,7 +21,9 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
 import com.dynamicruntime.common.gedra.workflow.prefillFromOwner
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.LAYSTR
@@ -138,6 +140,9 @@ object SC {
     const val auditor = "auditor"
     const val findings = "findings"
 
+    /** The [findings] value that means the audit is still open (issue #784) -- what sets [underAudit]. */
+    const val findingsOpen = "open"
+
     // The supplied-defaults demo trait (issue #711): the owner's name and email, both prefilled from the form
     // owner, presented by their `defaultMode` -- name filled, email offered.
     const val userInfo = "userInfo"
@@ -146,8 +151,9 @@ object SC {
     const val userEmail = "email"
 
     /**
-     * A cfact acme declares and nothing yet produces (issue #455) -- the ordinary shape of a client
-     * declaration, since a client's config is data and cannot carry the Kotlin that would decide it.
+     * A cfact acme declares (issue #455) -- the ordinary shape of a client declaration, since a client's config
+     * is data and cannot carry the Kotlin that would decide it. Produced, since issue #784, by the audit review's
+     * `cfactCalc` from the audit's findings: data-driven, which is how a client's own cfact gets a producer.
      */
     const val underAudit = "acmeUnderAudit"
 
@@ -308,14 +314,14 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
 
         // --- a cfact of its own -------------------------------------------------------------------------
         //
-        // Declared and not produced, which is what a client declaration *is*: acme is saying the name exists
-        // so that its own data may write `acmeUnderAudit` in an expression. Nothing else's registry has it,
-        // which is the half that matters -- a global expression naming it would refuse to parse everywhere,
-        // rather than parsing here and quietly meaning nothing anywhere else.
+        // A client declaration is what lets acme's own data write `acmeUnderAudit` in an expression. Nothing
+        // else's registry has it, which is the half that matters -- a global expression naming it would refuse
+        // to parse everywhere, rather than parsing here and quietly meaning nothing anywhere else. Declared
+        // ahead of its producer at first; the audit review's cfactCalc now sets it (issue #784).
         cfact(
             SC.underAudit, SC.auditGroup,
-            "True while a site acme is looking at has an audit open against it. Nothing sets it yet: acme " +
-                "declares it ahead of the workflow that will.",
+            "True while a site acme is looking at has an audit open against it -- the audit review concludes it " +
+                "when the audit's findings are '${SC.findingsOpen}'.",
         )
 
         // --- a creation workflow (issue #533) --------------------------------------------------------------
@@ -384,6 +390,16 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             // once its review is done and still valid. Every test is evaluated, so a form failing both says both.
             eligibility(SW.surveyDone, SVY.surveyComplete, "%{@t(\"${SF.acmeWf}.${SW.auditReview}.${SW.surveyDone}\")}")
             eligibility(SW.surveyClean, SVY.surveyValid, "Some of the form's entries no longer pass their checks.")
+            // The workflow's own cfact (issue #784): an audit whose findings are still open means the site is under
+            // audit. Its own, so it stays on the workflow's state entry rather than in the form's set...
+            function(computeCFactsFromData {
+                trait = SC.siteAudit
+                valuePath = SC.findings
+                map(SC.findingsOpen, SC.underAudit)
+            })
+            // ...while this rule turns it into the framework's `needsReview` on the form -- for as long as the form
+            // is engaged with the review, since only an engaged workflow contributes.
+            singleton(WSC.needsReview, SC.underAudit)
             task(SW.recordAudit, "Record the audit") {
                 trait(SC.siteAudit)
                 save(SW.saveAudit, "Save the audit", WfSaveKind.edit)

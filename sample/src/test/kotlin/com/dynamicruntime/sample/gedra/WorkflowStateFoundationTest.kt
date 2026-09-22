@@ -5,12 +5,17 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.mergeCfactContributions
+import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
+import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
@@ -18,6 +23,7 @@ import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -44,8 +50,8 @@ class WorkflowStateFoundationTest : StringSpec({
     val engage = clientPath(GEP.workflowEngage, SC.acme)
     val recompute = clientPath(GEP.formDocRecomputeState, SC.acme)
 
-    fun auditEntries() = listOf(
-        mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A Person", SC.findings to "seen")),
+    fun auditEntries(findings: String = "seen") = listOf(
+        mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A Person", SC.findings to findings)),
     )
 
     // What acme's review survey requires (an expense report and the owner's details), so a form carrying these
@@ -55,9 +61,12 @@ class WorkflowStateFoundationTest : StringSpec({
         mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "A Person")),
     )
 
-    /** A form in acme; eligible for `auditReview` unless [surveyDone] is false. */
-    fun newForm(user: TestUser, surveyDone: Boolean = true): String {
-        val entries = auditEntries() + if (surveyDone) surveyEntries() else emptyList()
+    /**
+     * A form in acme; eligible for `auditReview` unless [surveyDone] is false. [findings] of
+     * [SC.findingsOpen] gives the workflow its own `acmeUnderAudit` cfact (issue #784).
+     */
+    fun newForm(user: TestUser, surveyDone: Boolean = true, findings: String = "seen"): String {
+        val entries = auditEntries(findings) + if (surveyDone) surveyEntries() else emptyList()
         return user.postItem(create, mapOf(GDF.entries to entries))[GDF.gedraId].toOptStr()!!
     }
 
@@ -211,6 +220,55 @@ class WorkflowStateFoundationTest : StringSpec({
         val after = statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview)))
         entriesOf(after, WFS.workflowEngagement).single()[WFS.engaged] shouldBe true
         auditState(after)[WFS.eligible] shouldBe true
+    }
+
+    // --- singleton cfacts as a contributed set (issue #784) --------------------------------------------------
+
+    "an engaged workflow contributes its singleton to the form's one cfacts set, beside the survey's" {
+        val user = TestUser.create(cxt, "wfs-single@acme.test", userClient = SC.acme)
+        val gid = newForm(user, findings = SC.findingsOpen)
+        fun formFacts(states: List<Map<String, Any?>>) =
+            entriesOf(states, GT.cfacts).single()[GT.facts].toJsonListOrEmpty().map { it.toOptStr() }
+
+        // Not engaged: the workflow has concluded its own cfact from the data, and keeps it on its own entry --
+        // but contributes nothing, so the form's set is the survey's alone.
+        val before = statesOf(user.postData(recompute, mapOf(GDF.gedraId to gid)))
+        auditState(before)[WFS.cfacts].toJsonListOrEmpty().map { it.toOptStr() } shouldContainExactly listOf(SC.underAudit)
+        auditState(before)[WFS.singletonCfacts].toJsonListOrEmpty().shouldBeEmpty()
+        formFacts(before) shouldContainExactly listOf(SVY.surveyComplete, SVY.surveyValid)
+
+        // Engaged: its rule emits `needsReview`, attributed on its entry and merged into the one form set -- after
+        // the survey's facts, which the merge keeps rather than one producer clobbering the other.
+        val engaged = statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview)))
+        auditState(engaged)[WFS.singletonCfacts].toJsonListOrEmpty().map { it.toOptStr() } shouldContainExactly
+            listOf(WSC.needsReview)
+        formFacts(engaged) shouldContainExactly listOf(SVY.surveyComplete, SVY.surveyValid, WSC.needsReview)
+
+        // Disengaged: the contribution goes with the engagement.
+        val out = statesOf(
+            user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview, WFS.engaged to false)),
+        )
+        formFacts(out) shouldContainExactly listOf(SVY.surveyComplete, SVY.surveyValid)
+    }
+
+    "a workflow's own cfacts follow the form's data, so an engaged workflow need not emit anything" {
+        val user = TestUser.create(cxt, "wfs-quiet@acme.test", userClient = SC.acme)
+        val gid = newForm(user)   // findings "seen": the audit is closed, so no acmeUnderAudit
+        val states = statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview)))
+        auditState(states)[WFS.cfacts].toJsonListOrEmpty().shouldBeEmpty()
+        auditState(states)[WFS.singletonCfacts].toJsonListOrEmpty().shouldBeEmpty()
+        entriesOf(states, GT.cfacts).single()[GT.facts].toJsonListOrEmpty().map { it.toOptStr() } shouldNotContain
+            WSC.needsReview
+    }
+
+    "cfacts contributions merge into one entry, in first-seen order, leaving other entries alone" {
+        fun contribution(vararg facts: String) = mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to facts.toList()))
+        val other = mapOf(GE.traitId to WFS.workflowState, GE.data to mapOf(WFD.workflowId to "x"))
+        val merged = mergeCfactContributions(listOf(contribution("a", "b"), other, contribution("b", "c")))
+        merged.map { it[GE.traitId] } shouldContainExactly listOf(GT.cfacts, WFS.workflowState)
+        merged.first()[GE.data].toJsonMapOrEmpty()[GT.facts] shouldBe listOf("a", "b", "c")
+        // A lone contribution passes through untouched.
+        mergeCfactContributions(listOf(contribution("a"))).single()[GE.data].toJsonMapOrEmpty()[GT.facts] shouldBe listOf("a")
     }
 
     "the engagement merge creates an entry, then extends it, leaving other entries alone" {

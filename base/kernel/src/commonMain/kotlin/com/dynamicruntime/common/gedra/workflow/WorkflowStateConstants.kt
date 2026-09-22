@@ -56,6 +56,20 @@ object WFS {
      */
     const val eligibilityFailures = "eligibilityFailures"
 
+    /**
+     * The workflow's **own** cfacts, as its `cfactCalc` functions concluded them from the form's data (issue
+     * #784) -- per workflow, so kept on its entry rather than in the form's set. Stored so a later evaluation
+     * (the needsReview listing, #785) can work from state alone, without reading the form.
+     */
+    const val cfacts = "cfacts"
+
+    /**
+     * The framework singleton cfacts ([WSC]) this workflow contributes to the form (issue #784) -- the
+     * **attribution** behind the form's merged set, which is what answers "which workflows need review?". Empty
+     * unless the form is engaged with the workflow: only an engaged workflow contributes.
+     */
+    const val singletonCfacts = "singletonCfacts"
+
     /** The named type of one [eligibilityFailures] element. */
     const val workflowEligibilityFailure = "WorkflowEligibilityFailure"
 
@@ -119,4 +133,28 @@ object WFS {
 
     /** [kind] of the event recording that a form was taken back out of the workflow. */
     const val disengagedEvent = "disengaged"
+}
+
+/**
+ * The **framework singleton cfacts** a workflow may emit about a form (issue #784): a hardwired list, because
+ * each carries code behavior -- a status chip, a listing, a search. A workflow maps its own cfacts onto these
+ * (`WfDef.singletons`) and may emit nothing else; a client's cfact extensions are ignored for this purpose, since
+ * no code would know what one meant.
+ *
+ * Emitted by an **engaged** workflow, merged into the form's single `cfacts` state set, and attributed on the
+ * workflow's own state entry ([WFS.singletonCfacts]). In `base:kernel` so the frontend names them identically.
+ */
+@Suppress("ConstPropertyName")
+object WSC {
+    /** Some workflow the form is engaged with is waiting on a review. Drives the `Needs Review` chip (#789). */
+    const val needsReview = "needsReview"
+
+    /** Some workflow the form is engaged with has finished. Drives the `Finished` chip (#789). */
+    const val finished = "finished"
+
+    /** The friendly group these present under in the cfact catalog. */
+    const val group = "Workflow"
+
+    /** The whole list: what `WfDef.singletons` is checked against. */
+    val all: Set<String> = setOf(needsReview, finished)
 }

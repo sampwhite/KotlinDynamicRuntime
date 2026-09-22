@@ -177,6 +177,18 @@ class WorkflowRegistryTest : StringSpec({
         e.message shouldContain "eligibility test 'check'"
     }
 
+    "a singleton rule's condition must parse against the scope's cfacts" {
+        fun ruled(cond: String): GedraConfig = client(devCxt, "acme", listOf("name")) {
+            workflow("auditReview", WfEntry.normal) {
+                singleton(WSC.needsReview, cond)
+                task("a", "A") { trait("name"); save("s", "S", WfSaveKind.edit) }
+            }
+        }
+        build(devCxt, listOf(globalTraits(devCxt), ruled("acmeOnly"))).second.shouldBeEmpty()
+        val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), ruled("acmeOnlee"))) }
+        e.message shouldContain "'needsReview' singleton rule"
+    }
+
     "an eligibility explanation rides the label check" {
         val bad = client(devCxt, "acme", listOf("name")) {
             workflow("auditReview", WfEntry.normal) {

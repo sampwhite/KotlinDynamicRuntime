@@ -34,6 +34,7 @@ object WFD {
     const val saveType = "WfSave"
     const val layoutType = "WfLayout"
     const val eligibilityType = "WfEligibility"
+    const val singletonType = "WfSingleton"
 
     const val workflowId = "workflowId"
     const val entry = "entry"
@@ -73,6 +74,18 @@ object WFD {
 
     /** On an eligibility entry: why the form is not eligible when [test] fails -- a template, like a label. */
     const val explanation = "explanation"
+
+    /**
+     * A normal workflow's singleton-cfact rules (issue #784): each emits a framework singleton cfact ([cfact],
+     * one of [WSC.all]) about the form when its [kWhen] expression matches the workflow's current cfacts.
+     */
+    const val singletons = "singletons"
+
+    /** On a singleton rule: the framework singleton cfact it emits. */
+    const val cfact = "cfact"
+
+    /** On a singleton rule: the cfact expression over the workflow's current cfacts that emits it. */
+    const val kWhen = "when"
 
     /** Separates a bundle id from a workflow id in a [WfRef]'s text form. */
     const val refSep = '#'
@@ -269,6 +282,15 @@ class WfSave(val id: String, val label: String, val kind: WfSaveKind)
 class WfEligibility(val id: String, val test: String, val explanation: String)
 
 /**
+ * One **singleton-cfact rule** of a normal workflow (issue #784): emit the framework singleton [cfact] -- one of
+ * [WSC.all], never a name a workflow made up -- about the form while [whenExpr] matches the workflow's current
+ * cfacts (the form's own, plus what the workflow's `cfactCalc` functions conclude). What turns a workflow's
+ * private state into the form-level `Needs Review` / `Finished` a listing shows. Only an engaged workflow's
+ * rules contribute.
+ */
+class WfSingleton(val cfact: String, val whenExpr: String)
+
+/**
  * The minimum a page needs to draw a task: the order its traits appear in, and how they are edited. The
  * fuller layout family -- summaries, pop-ups, headers, static text -- is deferred; this is only what a creation
  * workflow cannot do without.
@@ -368,6 +390,7 @@ class WfDef(
      */
     val label: String = "",
     eligibility: List<WfEligibility> = emptyList(),
+    singletons: List<WfSingleton> = emptyList(),
 ) {
     /** The tasks, in the order they are presented. */
     val tasks: List<WfTask> = tasks.toList()
@@ -380,6 +403,9 @@ class WfDef(
      * [WfEntry.normal] workflow has any: creation and survey are not chosen, so there is nothing to be eligible for.
      */
     val eligibility: List<WfEligibility> = eligibility.toList()
+
+    /** The singleton-cfact rules (issue #784); like [eligibility], only a [WfEntry.normal] workflow has any. */
+    val singletons: List<WfSingleton> = singletons.toList()
 
     /** The workflow-global function **usages** this def declares (e.g. `cfactCalc`), in priority order (issue #677). */
     val functionUsages: List<WfFunctionUsage> = functionUsages.sortedBy { it.priority }
@@ -489,6 +515,35 @@ class WfDef(
                 )
             }
         }
+        if (singletons.isNotEmpty() && entry != WfEntry.normal) {
+            throw KdrException.mkConv(
+                "${entry.name.replaceFirstChar { it.uppercase() }} workflow '$workflowId' declares singleton " +
+                    "cfacts; only a normal workflow emits them, since only an engaged workflow contributes one.",
+            )
+        }
+        val seenSingletons = HashSet<String>()
+        for (r in singletons) {
+            // The list is hardwired because each name carries code behavior; a workflow cannot invent one, and a
+            // client's own cfacts are not candidates -- nothing would know what to do with them.
+            if (r.cfact !in WSC.all) {
+                throw KdrException.mkConv(
+                    "Workflow '$workflowId' emits '${r.cfact}' as a singleton cfact; a workflow may emit only the " +
+                        "framework's ${WSC.all.sorted()}, since each carries behavior in code.",
+                )
+            }
+            if (!seenSingletons.add(r.cfact)) {
+                throw KdrException.mkConv(
+                    "Workflow '$workflowId' has two rules emitting '${r.cfact}'; write one, with the conditions " +
+                        "joined by '|'.",
+                )
+            }
+            if (r.whenExpr.isBlank()) {
+                throw KdrException.mkConv(
+                    "The '${r.cfact}' rule in workflow '$workflowId' has no condition. Write '#always' for one " +
+                        "that always emits, so the intent is explicit.",
+                )
+            }
+        }
     }
 
     /** The task named, or null. */
@@ -558,6 +613,12 @@ object WfDefSchema {
             property(WFD.test, "The cfact expression a form's cfacts must match for this test to pass.", required = true)
             property(WFD.explanation, "Why the form is not eligible when the test fails -- a template, evaluated in two passes.", required = true)
         }
+        type(WFD.singletonType) {
+            type = SCT.kObject
+            description = "One singleton-cfact rule of a normal workflow: a framework singleton cfact, and when it is emitted."
+            property(WFD.cfact, "The framework singleton cfact emitted (needsReview, finished).", required = true)
+            property(WFD.kWhen, "The cfact expression over the workflow's current cfacts that emits it.", required = true)
+        }
         type(WFD.taskType) {
             type = SCT.kObject
             description = "One task of a workflow: the traits it collects and the saves it offers."
@@ -602,6 +663,11 @@ object WfDefSchema {
                 type = SCT.array
                 allowCoerce = true
                 items { ref(WFD.eligibilityType) }
+            }
+            property(WFD.singletons, "A normal workflow's singleton-cfact rules: the framework cfacts it contributes to the form while engaged.") {
+                type = SCT.array
+                allowCoerce = true
+                items { ref(WFD.singletonType) }
             }
         }
     }
@@ -651,6 +717,9 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
             WFD.eligibility,
             eligibility.map { linkedMapOf(WFD.id to it.id, WFD.test to it.test, WFD.explanation to it.explanation) },
         )
+    }
+    if (singletons.isNotEmpty()) {
+        put(WFD.singletons, singletons.map { linkedMapOf(WFD.cfact to it.cfact, WFD.kWhen to it.whenExpr) })
     }
 }
 
@@ -706,6 +775,9 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
                 e[WFD.explanation].toOptStr() ?: "",
             )
         },
+        singletons = m[WFD.singletons].toJsonListOfMaps().map { r ->
+            WfSingleton(r[WFD.cfact].toOptStr() ?: "", r[WFD.kWhen].toOptStr() ?: "")
+        },
     )
 }
 
@@ -725,6 +797,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     private val tasks = mutableListOf<Map<String, Any?>>()
     private val functions = mutableListOf<Map<String, Any?>>()
     private val eligibility = mutableListOf<Map<String, Any?>>()
+    private val singletons = mutableListOf<Map<String, Any?>>()
 
     /**
      * What the workflow is called (issue #719): a page's title over its form. A template like a task's label,
@@ -755,6 +828,14 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
         eligibility.add(linkedMapOf(WFD.id to id, WFD.test to test, WFD.explanation to explanation))
     }
 
+    /**
+     * A singleton-cfact rule (issue #784): emit the framework singleton [cfact] (one of [WSC.all]) about the
+     * form while [whenExpr] matches the workflow's current cfacts -- contributed only while the form is engaged.
+     */
+    fun singleton(cfact: String, whenExpr: String) {
+        singletons.add(linkedMapOf(WFD.cfact to cfact, WFD.kWhen to whenExpr))
+    }
+
     /** The definition as JSON, ready for [parseWfDef]. */
     fun build(): Map<String, Any?> = buildMap {
         put(WFD.workflowId, workflowId)
@@ -763,6 +844,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
         put(WFD.tasks, tasks.toList())
         if (functions.isNotEmpty()) put(WFD.functions, functions.toList())
         if (eligibility.isNotEmpty()) put(WFD.eligibility, eligibility.toList())
+        if (singletons.isNotEmpty()) put(WFD.singletons, singletons.toList())
     }
 }
 

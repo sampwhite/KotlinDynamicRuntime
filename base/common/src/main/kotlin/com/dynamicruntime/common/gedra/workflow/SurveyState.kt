@@ -86,9 +86,9 @@ fun addSurveyCFacts(collector: SchemaCollector) {
  * `formDoc/create`, and an import alike. A form whose client has no survey produces nothing.
  *
  * It writes two entries, both form-singleton: the structured [SVY.surveyCompletion] (what the UI status and
- * CTA read) and the shared [GT.cfacts] list (the two survey facts, for the eligibility bridge). It is the sole
- * `cfacts` producer today; when a second one arrives (a cross-workflow rollup, say) the `cfacts` list becomes
- * an aggregation point rather than one deriver's to own.
+ * CTA read) and its **contribution** to the shared [GT.cfacts] set (the two survey facts, for the eligibility
+ * bridge). A contribution rather than the whole set: the per-workflow deriver contributes too (issue #784), and
+ * the recompute merges the two, so neither producer has to know the other's facts.
  */
 object SurveyStateDeriver : GedraStateDeriver {
     override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
