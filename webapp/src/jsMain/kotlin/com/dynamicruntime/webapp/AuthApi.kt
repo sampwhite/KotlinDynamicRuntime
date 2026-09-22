@@ -131,7 +131,7 @@ object AuthApi {
     }
 
     /**
-     * Mails a code for claiming the account [email], [client] and [persona] name (issue #751); [personaTyped]
+     * Mails a code for claiming the account [email], [client] and `persona` name (issue #751); [personaTyped]
      * is the persona as typed (`admin`, `member B`), split here by the kernel's rule. Always answers as a
      * success -- the mail says whether anything matched -- so the caller shows the same "code sent" either way.
      */
