@@ -477,7 +477,7 @@ turns that into about two seconds, and the flag that makes it work is easy to mi
 - **`-Pwebapp.port`** moves the dev server itself off 8080, for the same reason.
 - `-Pwebapp.open=false` stops it launching Chrome, which an agent session does not want.
 
-Start your backend first (`KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run`), then browse the dev
+Start your backend first (`KDR_DEFAULTS_FILE=none KDR_PORT=7071 KDR_IN_MEMORY_ONLY=true ./gradlew :launch:run`), then browse the dev
 server rather than the backend: **`http://localhost:8081/`**, not `:7071/wa`. The proxy forwards `/kda` and
 `/st`, so the app is same-origin and logins work normally.
 
