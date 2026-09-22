@@ -126,7 +126,9 @@ Current UI-config endpoints:
   client's config overlay of `mail` rewords its mails and signs them as itself, whoever sent them. Params are
   sanitized like an error message's; a URL param becomes an anchor in the HTML part on its own. The dev
   autofill (`fetchDevCode`) and the tests read the code out of the text part's "verification code is <code>."
-  -- keep that phrase when rewording. `/fixture/simulatedEmails` returns both parts (`text`, `html`).
+  -- keep that phrase when rewording. `/fixture/simulatedEmails` returns both parts (`text`, `html`). The
+  sample's acme and globex each overlay `common.footer` alone, so every mail about one of their users is
+  signed by them (`SampleClients.kt`).
 
 The backend helper `fragmentRefs(…)` + `SchTypeBuilder.uiFragmentsProperty()` (in `content/UiConfig.kt`) keep
 the envelope consistent across groups.
