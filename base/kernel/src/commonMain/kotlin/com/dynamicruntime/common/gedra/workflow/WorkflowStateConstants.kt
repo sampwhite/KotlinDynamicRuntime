@@ -42,6 +42,30 @@ object WFS {
      */
     const val computedAgainstRef = "computedAgainstRef"
 
+    /**
+     * Whether the form meets every eligibility test of the workflow (issue #783) -- true exactly when
+     * [eligibilityFailures] is empty. Kept beside the list so a listing can filter on it without reading one.
+     */
+    const val eligible = "eligible"
+
+    /**
+     * The eligibility tests the form fails, in the workflow's declaration order (issue #783): each a
+     * [workflowEligibilityFailure] naming the test by id. **Not the explanation text** -- that stays on the
+     * definition and is found again by id when shown, so a reworded explanation reads correctly without a
+     * recompute, and a stored failure never carries text in someone else's language.
+     */
+    const val eligibilityFailures = "eligibilityFailures"
+
+    /** The named type of one [eligibilityFailures] element. */
+    const val workflowEligibilityFailure = "WorkflowEligibilityFailure"
+
+    /**
+     * On a failure: the values captured when the test was evaluated, which its explanation may reference. Empty
+     * until ambient capture arrives (the follow-up #783 names); declared now so a stored failure's shape does
+     * not change when it does.
+     */
+    const val captured = "captured"
+
     // --- the asserted engagement ---
 
     /** Generated entry type of the [workflowEngagement] trait. */

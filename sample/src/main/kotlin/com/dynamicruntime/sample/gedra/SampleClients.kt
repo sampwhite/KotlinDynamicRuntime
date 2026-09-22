@@ -19,6 +19,7 @@ import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.PFO
+import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.prefillFromOwner
@@ -90,6 +91,13 @@ object SW {
     const val auditReview = "auditReview"
     const val recordAudit = "recordAudit"
     const val saveAudit = "saveAudit"
+
+    /**
+     * `auditReview`'s eligibility test ids (issue #783): the survey is complete, and its entries are valid. The
+     * first explains itself from the `acmeWf` fragment file, the second with literal text, so both paths show.
+     */
+    const val surveyDone = "surveyDone"
+    const val surveyClean = "surveyClean"
 }
 
 /** The sample UiBlock and the keys inside it (issue #457). */
@@ -372,6 +380,10 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         // exercise the state machinery, and a fragment key per label would be noise until it has a real page.
         workflow(SW.auditReview, WfEntry.normal) {
             label = "Audit review"
+            // Eligibility (issue #783), against the cfacts the survey emits: a form is offered the audit review
+            // once its review is done and still valid. Every test is evaluated, so a form failing both says both.
+            eligibility(SW.surveyDone, SVY.surveyComplete, "%{@t(\"${SF.acmeWf}.${SW.auditReview}.${SW.surveyDone}\")}")
+            eligibility(SW.surveyClean, SVY.surveyValid, "Some of the form's entries no longer pass their checks.")
             task(SW.recordAudit, "Record the audit") {
                 trait(SC.siteAudit)
                 save(SW.saveAudit, "Save the audit", WfSaveKind.edit)

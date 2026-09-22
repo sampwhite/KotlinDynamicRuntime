@@ -673,7 +673,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     generalEndpoint(
         GEP.workflowEngage,
         "Puts a form into a normal workflow, or takes it back out, and answers with the form's state as it " +
-            "then stands.",
+            "then stands. Engaging a form that fails the workflow's eligibility tests is refused with the reasons.",
         HttpMethod.POST,
         outputRef = GEP.workflowStatesType,
         inputFields = {
@@ -705,7 +705,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                     "workflows it is offered, not with an arbitrary id.",
             )
         }
-        val states = WorkflowEngagement.setEngaged(c, row, workflowId, engaged)
+        // Engaging a declared workflow is gated on its eligibility tests (issue #783); disengaging is not.
+        val states = WorkflowEngagement.setEngaged(c, row, workflowId, engaged, declared?.def?.takeIf { isNormal })
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to states)
     }
 

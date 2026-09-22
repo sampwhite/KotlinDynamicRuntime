@@ -16,10 +16,12 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import kotlin.time.Instant
 
 /**
@@ -46,13 +48,29 @@ class WorkflowStateFoundationTest : StringSpec({
         mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A Person", SC.findings to "seen")),
     )
 
-    fun newForm(user: TestUser): String =
-        user.postItem(create, mapOf(GDF.entries to auditEntries()))[GDF.gedraId].toOptStr()!!
+    // What acme's review survey requires (an expense report and the owner's details), so a form carrying these
+    // has the `surveyComplete` cfact -- which is what `auditReview`'s eligibility asks for (issue #783).
+    fun surveyEntries() = listOf(
+        mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 2026)),
+        mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "A Person")),
+    )
+
+    /** A form in acme; eligible for `auditReview` unless [surveyDone] is false. */
+    fun newForm(user: TestUser, surveyDone: Boolean = true): String {
+        val entries = auditEntries() + if (surveyDone) surveyEntries() else emptyList()
+        return user.postItem(create, mapOf(GDF.entries to entries))[GDF.gedraId].toOptStr()!!
+    }
 
     fun entriesOf(states: List<Map<String, Any?>>, traitId: String) =
         states.filter { it[GE.traitId].toOptStr() == traitId }.map { it[GE.data].toJsonMapOrEmpty() }
 
     fun statesOf(result: Map<String, Any?>) = result[GDF.states].toJsonListOfMaps()
+
+    fun auditState(states: List<Map<String, Any?>>) =
+        entriesOf(states, WFS.workflowState).single { it[WFD.workflowId].toOptStr() == SW.auditReview }
+
+    fun failureIds(entry: Map<String, Any?>) =
+        entry[WFS.eligibilityFailures].toJsonListOfMaps().map { it[WFD.id].toOptStr() }
 
     "a form carries a derived workflowState entry for each normal workflow, computed against its revision" {
         val user = TestUser.create(cxt, "wfs-create@acme.test", userClient = SC.acme)
@@ -146,6 +164,39 @@ class WorkflowStateFoundationTest : StringSpec({
         entriesOf(after, WFS.workflowState).map { it[WFD.workflowId].toOptStr() } shouldContainExactly
             listOf(SW.auditReview)
         entriesOf(after, WFS.workflowEngagement).single()[WFS.engaged] shouldBe false
+    }
+
+    // --- eligibility (issue #783) -------------------------------------------------------------------------
+
+    "a form's workflow state records whether it is eligible, and which tests it fails" {
+        val user = TestUser.create(cxt, "wfs-elig@acme.test", userClient = SC.acme)
+        val admin = TestUser.createFullAdmin(cxt, "wfs-elig-admin@example.com")
+        // Read through the admin state endpoint, which reads and does not recompute: what is checked is what the
+        // create itself wrote. Before derivers saw each other's output in the same pass, a create computed
+        // eligibility against the cfacts as they stood *before* the write -- none -- and a complete form read
+        // as ineligible until its next write.
+        fun stored(gid: String) = statesOf(admin.getItem(GEP.adminGedraState, mapOf(GDF.gedraId to gid)))
+
+        val done = auditState(stored(newForm(user)))
+        done[WFS.eligible] shouldBe true
+        failureIds(done).shouldBeEmpty()
+
+        // Not done: the survey is incomplete, so `surveyDone` fails -- by id, with no explanation text stored.
+        // `surveyClean` passes, since nothing present is invalid; every test is evaluated, not the first failure.
+        val notDone = auditState(stored(newForm(user, surveyDone = false)))
+        notDone[WFS.eligible] shouldBe false
+        failureIds(notDone) shouldContainExactly listOf(SW.surveyDone)
+    }
+
+    "engaging a form that is not eligible is refused, with the reasons" {
+        val user = TestUser.create(cxt, "wfs-refused@acme.test", userClient = SC.acme)
+        val gid = newForm(user, surveyDone = false)
+        val err = user.expectError(
+            EXC.badInput, engage, data = mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview),
+        )
+        // The explanation is pulled from the acmeWf fragment file, so this is the evaluated text, not the template.
+        err.toString() shouldContain "Finish reviewing your form first"
+        err.toString() shouldContain SW.surveyDone
     }
 
     "the engagement merge creates an entry, then extends it, leaving other entries alone" {

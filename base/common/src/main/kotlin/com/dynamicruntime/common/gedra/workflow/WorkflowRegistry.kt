@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.gedra.workflow
 
+import com.dynamicruntime.common.cfact.parseCFactOrAlways
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraConfig
@@ -109,6 +111,12 @@ fun buildWorkflowRegistries(
     /** The qualified type names a client overlaid -- what `supportedTraits` reads as "customized". */
     overlaidTypes: (client: String) -> Set<String>,
     fragments: WfFragmentLookup,
+    /**
+     * The cfact names a scope's expressions may use -- its cfact registry's (null for the global scope). What an
+     * eligibility test (issue #783) is parsed against, so a misspelled cfact refuses the workflow at boot rather
+     * than being a test that silently never passes.
+     */
+    cfactNames: (scope: String?) -> Set<String>,
     mode: BootCheckMode,
     issues: MutableList<GedraConfigIssue>,
 ): WorkflowRegistries {
@@ -152,6 +160,28 @@ fun buildWorkflowRegistries(
             labelProblem(scope, w.def.label, fragments)?.let {
                 reportConfigProblem(cxt, mode, problem(scope, w, "has a label that $it"), issues)
                 return false
+            }
+        }
+        // Eligibility (issue #783): each test parses against this scope's cfacts, and each explanation rides the
+        // label check. A global workflow is parsed against the global registry only -- a client may add cfact
+        // names but never remove one, so what parses globally parses in every client that inherits it.
+        if (w.def.eligibility.isNotEmpty()) {
+            val allowed = cfactNames(scope)
+            for (e in w.def.eligibility) {
+                try {
+                    parseCFactOrAlways(e.test, allowed)
+                } catch (ex: KdrException) {
+                    reportConfigProblem(
+                        cxt, mode,
+                        problem(scope, w, "has an eligibility test '${e.id}' whose cfact test does not parse: ${ex.message}"),
+                        issues,
+                    )
+                    return false
+                }
+                labelProblem(scope, e.explanation, fragments)?.let {
+                    reportConfigProblem(cxt, mode, problem(scope, w, "has an explanation on eligibility test '${e.id}' that $it"), issues)
+                    return false
+                }
             }
         }
         for (task in w.def.tasks) {

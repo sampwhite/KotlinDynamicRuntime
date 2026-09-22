@@ -94,7 +94,13 @@ class WorkflowRegistryTest : StringSpec({
         configs.forEach { collector.add(cxt, it) }
         val clients = collector.configs.mapNotNull { it.client }.associate { it.clientId to it as ClientDef? }
         val issues = mutableListOf<GedraConfigIssue>()
-        val regs = buildWorkflowRegistries(cxt, collector, clients, { emptySet() }, fragments, mode, issues)
+        // The cfact vocabulary eligibility tests parse against: global gets one name, a client adds its own.
+        val cfactNames: (String?) -> Set<String> = { scope ->
+            if (scope == null) setOf("surveyComplete") else setOf("surveyComplete", "${scope}Only")
+        }
+        val regs = buildWorkflowRegistries(
+            cxt, collector, clients, { emptySet() }, fragments, cfactNames = cfactNames, mode = mode, issues = issues,
+        )
         return regs to issues
     }
 
@@ -151,6 +157,35 @@ class WorkflowRegistryTest : StringSpec({
             }
         }
         e.message shouldContain "runs against an existing form"
+    }
+
+    // Eligibility tests (issue #783) parse against the declaring scope's cfacts, so a misspelled cfact refuses
+    // the workflow at boot instead of being a test that never passes -- and a client's own cfact is usable in
+    // its own workflow, where it would not parse globally.
+    "an eligibility test must parse against the scope's cfacts, and may use the client's own" {
+        fun eligible(test: String): GedraConfig = client(devCxt, "acme", listOf("name")) {
+            workflow("auditReview", WfEntry.normal) {
+                eligibility("check", test, "Not yet.")
+                task("a", "A") { trait("name"); save("s", "S", WfSaveKind.edit) }
+            }
+        }
+        val (regs, issues) = build(devCxt, listOf(globalTraits(devCxt), eligible("surveyComplete, acmeOnly")))
+        issues.shouldBeEmpty()
+        regs.forClient("acme").workflow("auditReview").shouldNotBeNull()
+
+        val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), eligible("surveyComplet"))) }
+        e.message shouldContain "eligibility test 'check'"
+    }
+
+    "an eligibility explanation rides the label check" {
+        val bad = client(devCxt, "acme", listOf("name")) {
+            workflow("auditReview", WfEntry.normal) {
+                eligibility("check", "surveyComplete", """%{@t("wfCopy.identify.gone")}""")
+                task("a", "A") { trait("name"); save("s", "S", WfSaveKind.edit) }
+            }
+        }
+        val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), bad)) }
+        e.message shouldContain "explanation on eligibility test 'check'"
     }
 
     "a survey workflow is admitted, beside the creation workflow in one scope" {

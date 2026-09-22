@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.StateTraitClass
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -43,6 +44,18 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
         additionalProperties = true
     }
 
+    // Named for the same reason: a failure is a structure inside the entry, and one a later slice extends.
+    type(WFS.workflowEligibilityFailure) {
+        type = SCT.kObject
+        description = "One eligibility test a form fails, named by id; its explanation is found again on the definition."
+        property(WFD.id, "The failing test's id, unique within its workflow.", required = true)
+        property(WFS.captured, "Values captured when the test was evaluated, for its explanation to reference.") {
+            type = SCT.kObject
+            additionalProperties = true
+        }
+        additionalProperties = true
+    }
+
     stateTrait(
         WFS.workflowStateEntry, WFS.workflowState, setOf(GedraDataType.formDoc),
         StateTraitClass.derived,
@@ -52,6 +65,11 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
     ) {
         property(WFD.workflowId, "The workflow this entry is about; the entry's primary key.", required = true)
         property(WFS.computedAgainstRef, "The workflow revision this was computed against, as WfRef text.")
+        property(WFS.eligible, "Whether the form meets every eligibility test of the workflow.") { type = SCT.boolean }
+        property(WFS.eligibilityFailures, "The eligibility tests the form fails, in the workflow's order; empty when eligible.") {
+            type = SCT.array
+            items { ref(WFS.workflowEligibilityFailure) }
+        }
         // Open, because this entry is the one every later slice adds to: eligibility failures (#783), the CTA
         // task and its status (#785), and whatever the time windows (#790) need to record. Declaring it open
         // now means those slices add a field rather than reshaping a closed type every consumer has parsed.
@@ -101,8 +119,11 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
  * [WFS.computedAgainstRef], since there is no definition left to compute against -- rather than silently losing
  * the workflow it is engaged with because configuration changed underneath it.
  *
- * This slice fills only the workflow id and the revision it was computed against. Eligibility failures (#783),
- * the CTA task and its status (#785) and the time windows (#790) each add their own fields to the open entry.
+ * A declared workflow's entry also carries its **eligibility** (issue #783): [WFS.eligible] and the ids of the
+ * tests the form fails, evaluated against the cfacts the derivers before this one emitted in the same pass
+ * ([GedraStateContext.derivedThisPass]) -- see [WorkflowEligibility] for why only the form's own cfacts. A
+ * retired-but-engaged workflow's bare entry has none, having no tests left to evaluate. The CTA task and its
+ * status (#785) and the time windows (#790) add their own fields to the open entry.
  */
 object WorkflowStateDeriver : GedraStateDeriver {
     override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
@@ -116,9 +137,16 @@ object WorkflowStateDeriver : GedraStateDeriver {
         // Declared first, in registry order, then any engaged workflow the registry no longer offers -- so the
         // ordering is stable and a vanished-but-engaged workflow lands at the end rather than reordering the rest.
         val ids = declared.keys + engaged.filterNot { it in declared.keys }
+        val registry = SchemaService.get(cxt).cfactsFor(state.row.client)
+        val facts = WorkflowEligibility.formFacts(state.derivedThisPass)
         return ids.map { workflowId ->
             val data = linkedMapOf<String, Any?>(WFD.workflowId to workflowId)
-            declared[workflowId]?.let { data[WFS.computedAgainstRef] = it.ref.text }
+            declared[workflowId]?.let {
+                data[WFS.computedAgainstRef] = it.ref.text
+                val failures = WorkflowEligibility.failures(registry, it.def, facts)
+                data[WFS.eligible] = failures.isEmpty()
+                data[WFS.eligibilityFailures] = WorkflowEligibility.failureEntries(failures)
+            }
             mapOf(GE.traitId to WFS.workflowState, GE.data to data)
         }
     }

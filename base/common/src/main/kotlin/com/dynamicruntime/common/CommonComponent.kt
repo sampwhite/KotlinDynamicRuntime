@@ -100,8 +100,9 @@ class CommonComponent : ComponentDefinition {
         // state on any create/import path, so a plain create or a bad import is recorded, not only a workflow step.
         addSurveyCFacts(collector)
         collector.addStateDeriver(SurveyStateDeriver)
-        // The per-workflow state a normal workflow computes about a form (issue #794). Registered after the
-        // survey's, so the two run in a fixed order; they write different traits, so the order is cosmetic.
+        // The per-workflow state a normal workflow computes about a form (issue #794). Registered **after** the
+        // survey's, and the order matters: eligibility (issue #783) is evaluated against the cfacts the survey's
+        // deriver emits in the same pass, which a deriver sees only from the derivers registered before it.
         collector.addStateDeriver(WorkflowStateDeriver)
         // The first cfactCalc function (issue #678): a workflow's cfactCalc usages emit cfacts into the same
         // form-singleton state the survey derives, run inside that recompute (not a standalone pass).

@@ -556,16 +556,21 @@ class GedraDataService : ServiceInitializer {
      * [existingState] is the state as it stands before this recompute, handed on through [GedraStateContext]
      * (issue #794) so a derivation can stay in step with an asserted fact beside it -- a workflow the form is
      * engaged with keeps its derived entry even when nothing else would emit one.
+     *
+     * The derivers run **in registration order, each seeing what the earlier ones produced**
+     * ([GedraStateContext.derivedThisPass], issue #783), so a projection built on another's output -- eligibility
+     * on the survey's cfacts -- is current with this write rather than one behind it.
      */
     private fun computeDerivedState(
         cxt: KdrCxt,
         row: GedraDataRow,
         existingState: List<Map<String, Any?>>,
     ): List<Map<String, Any?>> {
-        val state = GedraStateContext(row, existingState)
-        return SchemaService.get(cxt).stateDerivers()
+        val derived = mutableListOf<Map<String, Any?>>()
+        SchemaService.get(cxt).stateDerivers()
             .filter { row.kind in it.appliesTo && featureEnabled(cxt, it.featureName) }
-            .flatMap { it.derive(cxt, state) }
+            .forEach { derived.addAll(it.derive(cxt, GedraStateContext(row, existingState, derived.toList()))) }
+        return derived
     }
 
     /** Fires the registered post-write hooks (issue #675) after a data write, inside its transaction. */
