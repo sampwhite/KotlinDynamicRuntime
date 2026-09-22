@@ -549,14 +549,24 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * The initial **derived** state for a freshly written gedra (issue #599): every registered [GedraStateDeriver]
-     * that applies to [row]'s kind and whose opt-in feature is enabled for its client, run and concatenated. Run
-     * by [insertStoredGedra] inside the data write's transaction, so state lands even on a plain create/import.
+     * The **derived** state for a gedra (issue #599): every registered [GedraStateDeriver] that applies to the
+     * row's kind and whose opt-in feature is enabled for its client, run and concatenated. Run by
+     * [insertStoredGedra] inside the data write's transaction, so state lands even on a plain create/import.
+     *
+     * [existingState] is the state as it stands before this recompute, handed on through [GedraStateContext]
+     * (issue #794) so a derivation can stay in step with an asserted fact beside it -- a workflow the form is
+     * engaged with keeps its derived entry even when nothing else would emit one.
      */
-    private fun computeInitialState(cxt: KdrCxt, row: GedraDataRow): List<Map<String, Any?>> =
-        SchemaService.get(cxt).stateDerivers()
+    private fun computeDerivedState(
+        cxt: KdrCxt,
+        row: GedraDataRow,
+        existingState: List<Map<String, Any?>>,
+    ): List<Map<String, Any?>> {
+        val state = GedraStateContext(row, existingState)
+        return SchemaService.get(cxt).stateDerivers()
             .filter { row.kind in it.appliesTo && featureEnabled(cxt, it.featureName) }
-            .flatMap { it.derive(cxt, row) }
+            .flatMap { it.derive(cxt, state) }
+    }
 
     /** Fires the registered post-write hooks (issue #675) after a data write, inside its transaction. */
     private fun fireWriteHooks(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow) {
@@ -595,7 +605,7 @@ class GedraDataService : ServiceInitializer {
         val preservedAsserted = existingEntries.filter {
             stateClassOf[it[GE.traitId].toOptStr()] == StateTraitClass.asserted
         }
-        val recomputed = preservedAsserted + computeInitialState(cxt, row)
+        val recomputed = preservedAsserted + computeDerivedState(cxt, row, existingEntries)
         // Skip an empty write on a gedra that has no state row yet (a client with no derivers), but do write --
         // to clear or update -- when a state row already exists.
         if (recomputed.isEmpty() && existing == null) return
@@ -623,6 +633,43 @@ class GedraDataService : ServiceInitializer {
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranRecompute, null, mapOf(GD.gedraId to gedraId.fullId)) {
             recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
         }
+    }
+
+    /**
+     * Changes [row]'s state by [change] -- a read-modify-write of the whole entry set -- and recomputes its derived
+     * state after, **all under one lock** (issue #794): the way an act *asserts* state (engaging a form with a
+     * workflow, say) without racing another. [change] is handed the entries as they stand under the lock and
+     * answers with the complete set to store.
+     *
+     * Why not `readState` then [writeState]: the read would come from the resident cache, outside any lock, so
+     * two acts on one form at once -- or one landing within another node's cache throttle -- would each write
+     * back a set missing the other's change, and an asserted fact would be silently lost. The same reason
+     * [recomputeDerivedStateUnderLock] reads its asserted entries under the lock.
+     *
+     * The context is bound to the gedra's owner first, as the recompute binds it, so a state row this write
+     * *creates* belongs to the form's owner rather than to whoever acted; the actor stays in the audit fields.
+     * [row] is read by the caller (scope-checked there); its data feeds the recompute, as it does for
+     * [recomputeDerivedState]. Returns the state entries as they stand afterwards.
+     */
+    fun changeState(
+        cxt: KdrCxt,
+        row: GedraDataRow,
+        change: (List<Map<String, Any?>>) -> List<Map<String, Any?>>,
+    ): List<Map<String, Any?>> {
+        val txCxt = cxt.mkTransactionSubContext(tranStateChange)
+        val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
+        val table = gedraStatesTable(txCxt)
+        fun entriesUnderLock(): List<Map<String, Any?>> =
+            readStateRowUnderLock(txCxt, sqlCxt, table, row.gedraId)?.get(GD.data)
+                .toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
+        var result: List<Map<String, Any?>> = emptyList()
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranStateChange, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
+            txCxt.bindTransactionOwner(row.userId, row.client, row.org)
+            writeState(txCxt, row.gedraId, change(entriesUnderLock()))
+            recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
+            result = entriesUnderLock()
+        }
+        return result
     }
 
     /**
@@ -1559,6 +1606,9 @@ class GedraDataService : ServiceInitializer {
 
         /** Name of the standalone derived-state recompute transaction (issue #675); prefixes the transaction id. */
         const val tranRecompute = "recomputeGedraState"
+
+        /** Name of the locked read-modify-write of state (issue #794); prefixes the transaction id. */
+        const val tranStateChange = "changeGedraState"
 
         /** The service; throws naming it on a node that does not run it. */
         fun get(cxt: KdrCxt): GedraDataService = cxt.instanceConfig.get(serviceName) as? GedraDataService

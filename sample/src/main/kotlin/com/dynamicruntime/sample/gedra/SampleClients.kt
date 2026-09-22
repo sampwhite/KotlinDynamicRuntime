@@ -80,6 +80,16 @@ object SW {
     const val profile = "profile"
     const val saveDetails = "saveDetails"
     const val saveProfile = "saveProfile"
+
+    /**
+     * Acme's **normal** workflow (issue #794) -- many-per-form and chosen rather than automatic, unlike the
+     * one-per-form creation and survey. It is what the per-workflow state is computed against: a form in acme
+     * carries a `workflowState` entry for it, and can be engaged with it. Deliberately plain for this slice --
+     * eligibility (#783), a CTA (#785) and an approval task (#787) each arrive with their own.
+     */
+    const val auditReview = "auditReview"
+    const val recordAudit = "recordAudit"
+    const val saveAudit = "saveAudit"
 }
 
 /** The sample UiBlock and the keys inside it (issue #457). */
@@ -354,6 +364,17 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                     targetValuePath = SC.userEmail
                 })
                 save(SW.saveProfile, "%{@t(\"${SF.acmeWf}.${SW.profile}.save\")}", WfSaveKind.edit)
+            }
+        }
+
+        // A normal workflow (issue #794): the many-per-form kind a user chooses for a form, and the first thing
+        // the per-workflow state is computed against. Literal labels rather than fragment pulls -- this exists to
+        // exercise the state machinery, and a fragment key per label would be noise until it has a real page.
+        workflow(SW.auditReview, WfEntry.normal) {
+            label = "Audit review"
+            task(SW.recordAudit, "Record the audit") {
+                trait(SC.siteAudit)
+                save(SW.saveAudit, "Save the audit", WfSaveKind.edit)
             }
         }
 
