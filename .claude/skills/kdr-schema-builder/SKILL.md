@@ -249,9 +249,19 @@ is equivalent):
 ```
 
 - The block's vocabulary is the `SL` object (`schemaFields`, `field`, `label`, `description`, `hint`, `errors`,
-  `defaultMode`, `fragmentFileId`, `strings`). The parser is **strict**: an unknown key on the block or on an
-  entry, a present block with no entries, or a non-object value all fail the boot — a layout must never parse
-  clean and render nothing.
+  `defaultMode`, `fragmentFileId`, `strings`, `mode`). The parser is **strict**: an unknown key on the block or
+  on an entry, a present block with no entries, or a non-object value all fail the boot — a layout must never
+  parse clean and render nothing.
+- **Field order and membership** (`mode`, issue #777): who owns *which* fields render and *in what order* — the
+  `SLM` values, set via `layout(mode = SchLayoutMode.…) { … }`. `overlay` (default) — the schema owns order and
+  the full set, the layout only annotates (historic behavior). `reorder` — the layout's listed fields draw
+  first, in list order, then every other declared field in schema order (nothing hidden). `authoritative` —
+  only the listed fields render, in list order; the boot then requires the list to name every **required,
+  non-derived** property (an omitted required field could never be submitted). All three **narrow and order,
+  never widen**: a field the schema hides (`g-derived` in a friendly form, a `g-visibleWhen` the caller fails,
+  a forbidden field) stays hidden even when `authoritative` lists it. The kernel decides the order in
+  `orderedFieldNames(type, layout)` (`SchFormPlan.kt`) — the render loop calls it and applies its gates on top,
+  so the same rule is JVM-testable and browser-run.
 - **Default handling** (`defaultMode`, issue #709): a per-field `field(..., defaultMode = SLDM.filled)` says how
   a **supplied default** (a value the backend hands the form that a person did not enter — a `prefillData`
   default, later other sources) is presented: `SLDM.filled` (shown in the control, marked) or `SLDM.offer` (an

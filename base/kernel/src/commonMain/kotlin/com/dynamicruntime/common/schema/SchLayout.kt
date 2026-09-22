@@ -14,10 +14,11 @@ import com.dynamicruntime.common.util.toOptStr
  * compiled types in the schema store and **never** on `SchType`; it is stripped from the served schema
  * ([withoutLayouts]) and delivered out-of-band, so the wire schema stays a clean, documentation-grade artifact.
  *
- * This first slice (Stage 1) carries the copy-override fields — [SchLayoutField.label] / `description` / `hint`
- * — and the block's [fragmentFileId]; the error override and field inclusion/order are later stages. Stage 2
- * (issue #585) delivers the model to every friendly surface ([deliveredLayouts]) and parses it back on the
- * frontend ([parseDeliveredLayouts]); nothing renders it yet.
+ * What began as copy overrides ([SchLayoutField.label] / `description` / `hint`) and the block's
+ * [fragmentFileId] has since grown the error override (#588), the default-presentation mode (#709), form-level
+ * [strings] (#641), and — [mode] (#777) — authority over field order and membership, decided by the kernel's
+ * `orderedFieldNames`. The model is delivered to every friendly surface ([deliveredLayouts]) and parsed back on
+ * the frontend ([parseDeliveredLayouts]), which now renders it.
  */
 class SchLayout(
     /** The fragment file the block's `${'$'}{…}` substitutions resolve against, declared once for the block. */
@@ -39,6 +40,13 @@ class SchLayout(
      * "use the built-in copy" the same way an absent field override does.
      */
     val strings: Map<String, String> = emptyMap(),
+    /**
+     * How much authority this layout has over the presented field set and order (issue #777). [SchLayoutMode.overlay]
+     * (the default) is the historic behavior -- annotate only. [SchLayoutMode.reorder] and
+     * [SchLayoutMode.authoritative] hand the layout, respectively, the order and the order-plus-membership; the
+     * render seam [orderedFieldNames] reads it, and the boot check enforces what each mode demands.
+     */
+    val mode: SchLayoutMode = SchLayoutMode.overlay,
 ) : JsonMappable {
     /** The schema properties this layout addresses -- what the boot check holds against the type. */
     val fieldNames: List<String> = fields.map { it.field }
@@ -58,6 +66,9 @@ class SchLayout(
         val out = LinkedHashMap<String, Any?>()
         fragmentFileId?.let { out[SL.fragmentFileId] = it }
         label?.let { out[SL.label] = it }
+        // Written only when it departs from the default, so an overlay layout's wire form is byte-identical to
+        // before issue #777 -- the same reason a null field override is omitted rather than written as null.
+        if (mode != SchLayoutMode.overlay) out[SL.mode] = mode.name
         if (strings.isNotEmpty()) out[SL.strings] = strings
         out[SL.schemaFields] = fields.map { it.toJsonMap() }
         out
@@ -74,7 +85,7 @@ class SchLayout(
      */
     fun prunedTo(props: Set<String>): SchLayout {
         val kept = fields.filter { it.field in props }
-        return if (kept.size == fields.size) this else SchLayout(fragmentFileId, label, kept, strings)
+        return if (kept.size == fields.size) this else SchLayout(fragmentFileId, label, kept, strings, mode)
     }
 }
 
@@ -124,7 +135,11 @@ class SchLayoutField(
  * the raw-map escape hatch because the sample's layouts are read by people, and the sets [SL.blockKeys] /
  * [SL.fieldKeys] the parser is strict about are then spelled once, here.
  */
-class SchLayoutBuilder(private val fragmentFileId: String?, private val label: String? = null) {
+class SchLayoutBuilder(
+    private val fragmentFileId: String?,
+    private val label: String? = null,
+    private val mode: SchLayoutMode = SchLayoutMode.overlay,
+) {
     private val fields = mutableListOf<SchLayoutField>()
     private val strings = LinkedHashMap<String, String>()
 
@@ -153,12 +168,21 @@ class SchLayoutBuilder(private val fragmentFileId: String?, private val label: S
     }
 
     /** The finished block, as the JSON `g-layout` value. */
-    fun build(): Map<String, Any?> = SchLayout(fragmentFileId, label, fields.toList(), strings.toMap()).toJsonMap()
+    fun build(): Map<String, Any?> = SchLayout(fragmentFileId, label, fields.toList(), strings.toMap(), mode).toJsonMap()
 }
 
-/** Attaches a `g-layout` to the type being built; see [SchLayoutBuilder]. Replaces one declared earlier. */
-fun SchTypeBuilder.layout(fragmentFileId: String? = null, label: String? = null, block: SchLayoutBuilder.() -> Unit) {
-    data[SCH.layout] = SchLayoutBuilder(fragmentFileId, label).apply(block).build()
+/**
+ * Attaches a `g-layout` to the type being built; see [SchLayoutBuilder]. Replaces one declared earlier. [mode]
+ * (issue #777) hands the layout authority over the field order ([SchLayoutMode.reorder]) or the order and
+ * membership ([SchLayoutMode.authoritative]); the default [SchLayoutMode.overlay] only annotates.
+ */
+fun SchTypeBuilder.layout(
+    fragmentFileId: String? = null,
+    label: String? = null,
+    mode: SchLayoutMode = SchLayoutMode.overlay,
+    block: SchLayoutBuilder.() -> Unit,
+) {
+    data[SCH.layout] = SchLayoutBuilder(fragmentFileId, label, mode).apply(block).build()
 }
 
 /**
@@ -227,12 +251,16 @@ object SL {
      *  wording the form shows for the type as a whole, not for one field. */
     const val strings = "strings"
 
+    /** On the block: how much authority the layout has over the presented field set and order (issue #777); one
+     *  of [SLM]. Absent means [SLM.overlay] -- the layout only annotates, and the schema owns order and set. */
+    const val mode = "mode"
+
     // Note: [label] doubles as a block key (the type's heading override, issue #605) and a field key (a
     // property's label); the two are told apart by nesting, not by name -- "label" is the override word at
     // either level (`thoughts-workflow-layouts.md` §5).
 
     /** Every key a `g-layout` block may carry. */
-    val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label, strings)
+    val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label, strings, mode)
 
     /** Every key a [schemaFields] entry may carry. */
     val fieldKeys: Set<String> = setOf(field, label, description, hint, errors, defaultMode)
@@ -256,6 +284,46 @@ object SLDM {
 
     /** The closed set of modes; a value outside it fails the boot. */
     val values: Set<String> = setOf(filled, offer)
+}
+
+/**
+ * The wire values of the layout's [SL.mode] (issue #777): how much authority the layout has over which of a
+ * type's fields are presented, and in what order. A closed set resolved onto [SchLayoutMode]; an unrecognized
+ * value fails the boot. The default when the key is absent is [overlay] -- today's behavior.
+ *
+ * All three **narrow and order**; none can *widen*. A field the schema hides (a `g-derived` value in a
+ * friendly form, a `g-visibleWhen` field the caller's cfacts fail, a conditionally-forbidden field) stays
+ * hidden even when the layout lists it -- the layout selects and orders among the fields the schema is willing
+ * to show, it does not overrule the schema's own gates.
+ */
+@Suppress("ConstPropertyName", "unused")
+object SLM {
+    /** The layout only annotates: the schema owns the field set and their order, and the layout supplies copy
+     *  for the fields it happens to address. The default, and every layout's behavior before issue #777. */
+    const val overlay = "overlay"
+
+    /** The layout owns the **order** of the fields it lists (drawn first, in list order); every other declared
+     *  field still renders, appended in schema order. Nothing is hidden, so no completeness rule applies. */
+    const val reorder = "reorder"
+
+    /** The layout owns the field set **and** their order: only the fields it lists render, in list order. The
+     *  boot then requires the list to name every person-entered required property (see [layoutFieldProblems]),
+     *  since a required field the form omits could never be supplied. */
+    const val authoritative = "authoritative"
+
+    /** The closed set; a value outside it fails the boot. */
+    val values: Set<String> = setOf(overlay, reorder, authoritative)
+}
+
+/**
+ * The resolved [SL.mode] of a layout (issue #777), from its [SLM] wire value. An enum because it is a closed
+ * operational set the render seam (`orderedFieldNames`) switches on. Lower-case-first to match the wire spelling.
+ */
+@Suppress("EnumEntryName")
+enum class SchLayoutMode {
+    overlay,
+    reorder,
+    authoritative,
 }
 
 /**
@@ -289,7 +357,14 @@ fun parseSchLayout(where: String, raw: Map<String, Any?>): SchLayout {
         SchLayoutField(field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors, defaultMode)
     }
     val strings = parseLayoutStrings(where, raw[SL.strings])
-    return SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields, strings)
+    val mode = when (val modeStr = raw[SL.mode].toOptStr()) {
+        null -> SchLayoutMode.overlay
+        SLM.overlay -> SchLayoutMode.overlay
+        SLM.reorder -> SchLayoutMode.reorder
+        SLM.authoritative -> SchLayoutMode.authoritative
+        else -> throw KdrException("$where: a '${SCH.layout}' '${SL.mode}' is '$modeStr', not one of ${SLM.values.sorted()}.")
+    }
+    return SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields, strings, mode)
 }
 
 /**
@@ -409,8 +484,26 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
         )
     }
     val props = type.properties.keys
-    return layout.fieldNames.filterNot { it in props }
+    val undeclared = layout.fieldNames.filterNot { it in props }
         .map { "$where: '${SCH.layout}' names field '$it', which the type does not declare." }
+    if (undeclared.isNotEmpty()) return undeclared
+
+    // Authoritative mode (issue #777): the layout is the whole presented set, so a required property it omits
+    // could never be supplied and the form is unsubmittable by construction -- refuse the boot. A *derived*
+    // required property is exempt: the server supplies it, not the person at the form, so it has no field to
+    // list (issue #254). reorder/overlay hide nothing, so nothing is owed. The narrowing path prunes the layout
+    // against the client's type and re-runs this check, so a client's authoritative layout is held to the
+    // client's own required set.
+    if (layout.mode == SchLayoutMode.authoritative) {
+        val listed = layout.fieldNames.toSet()
+        return type.required
+            .filter { it !in listed && type.properties[it]?.valueType?.derived != true }
+            .map {
+                "$where: an ${SLM.authoritative} '${SCH.layout}' must list every required field, but omits '$it' " +
+                    "-- add it, or drop it from '${SCH.required}', or use '${SLM.reorder}'."
+            }
+    }
+    return emptyList()
 }
 
 /**
