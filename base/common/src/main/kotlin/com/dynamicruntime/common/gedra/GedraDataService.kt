@@ -643,8 +643,15 @@ class GedraDataService : ServiceInitializer {
     /**
      * Changes [row]'s state by [change] -- a read-modify-write of the whole entry set -- and recomputes its derived
      * state after, **all under one lock** (issue #794): the way an act *asserts* state (engaging a form with a
-     * workflow, say) without racing another. [change] is handed the entries as they stand under the lock and
-     * answers with the complete set to store.
+     * workflow, say) without racing another. [change] is handed the entries as they stand under the lock --
+     * **freshly recomputed** first -- and answers with the complete set to store.
+     *
+     * Why recompute *before* the change as well as after (issue #783 review): stored derived state is current
+     * with the last data write, not with configuration. A change that decides from derived state -- the engage
+     * gate reads the form's cfacts -- would otherwise decide against facts the form no longer has (a survey that
+     * gained a required trait since) or has never had stored (a form older than its client's survey), and the
+     * recompute after the change would then store the opposite verdict beside it. The recompute after stays,
+     * because the change itself can alter what is derived (an engaged workflow keeps a derived entry).
      *
      * Why not `readState` then [writeState]: the read would come from the resident cache, outside any lock, so
      * two acts on one form at once -- or one landing within another node's cache throttle -- would each write
@@ -670,6 +677,7 @@ class GedraDataService : ServiceInitializer {
         var result: List<Map<String, Any?>> = emptyList()
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranStateChange, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
             txCxt.bindTransactionOwner(row.userId, row.client, row.org)
+            recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
             writeState(txCxt, row.gedraId, change(entriesUnderLock()))
             recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
             result = entriesUnderLock()

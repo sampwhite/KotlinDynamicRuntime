@@ -38,9 +38,10 @@ object WorkflowEngagement {
      *
      * **Engaging is gated on eligibility** (issue #783) when [def] -- the workflow's definition -- is given: a form
      * that fails any of its tests is refused, and the refusal carries every reason. Evaluated here, under the
-     * lock, against the form's stored cfacts (every write recomputes them, so they are the form's current ones),
-     * and against the *definition* rather than a stored `eligible` flag, so a test added since the last recompute
-     * already binds. Disengaging is never gated: taking a form out of a workflow needs no qualification.
+     * lock, against the form's cfacts as [GedraDataService.changeState] has just recomputed them -- not as they
+     * were last stored, which can predate a configuration change -- and against the *definition* rather than a
+     * stored `eligible` flag, so a test added since already binds. Disengaging is never gated: taking a form out
+     * of a workflow needs no qualification.
      */
     fun setEngaged(
         cxt: KdrCxt,

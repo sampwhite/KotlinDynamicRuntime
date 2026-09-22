@@ -199,6 +199,20 @@ class WorkflowStateFoundationTest : StringSpec({
         err.toString() shouldContain SW.surveyDone
     }
 
+    "the engage gate decides on freshly recomputed cfacts, not on what was last stored" {
+        val user = TestUser.create(cxt, "wfs-fresh@acme.test", userClient = SC.acme)
+        val admin = TestUser.createFullAdmin(cxt, "wfs-fresh-admin@example.com")
+        val gid = newForm(user)
+        // Clear the stored state, the stand-in for a form whose stored cfacts predate the configuration (one
+        // created before its client had a survey, say). The data still completes the survey.
+        admin.postItem(GEP.adminGedraState, mapOf(GDF.gedraId to gid, GDF.states to emptyList<Any?>()))
+        // Judged on the stored state, this form has no `surveyComplete` and would be refused. Recomputed first,
+        // its data says it is complete, so it is eligible and the engagement lands.
+        val after = statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview)))
+        entriesOf(after, WFS.workflowEngagement).single()[WFS.engaged] shouldBe true
+        auditState(after)[WFS.eligible] shouldBe true
+    }
+
     "the engagement merge creates an entry, then extends it, leaving other entries alone" {
         val at = Instant.parse("2026-01-01T00:00:00Z")
         val other = mapOf(GE.traitId to WFS.workflowState, GE.data to mapOf(WFD.workflowId to "somethingElse"))
