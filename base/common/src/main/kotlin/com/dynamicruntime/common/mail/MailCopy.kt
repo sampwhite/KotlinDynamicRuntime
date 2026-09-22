@@ -98,6 +98,7 @@ class RenderedMail(val subject: String, val text: String, val html: String)
  * request-supplied value cannot inject a link or markup into a message sent from the deployment's domain.
  * The HTML renderer escapes all text besides, so the two defenses stack.
  */
+@Suppress("ConstPropertyName")
 object MailCopy {
     /**
      * The mail [mail] (one of `MCOPY.mails`) as [client] reads it, with [params] substituted. Throws when the

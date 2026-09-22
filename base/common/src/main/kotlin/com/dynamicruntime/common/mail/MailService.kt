@@ -201,7 +201,7 @@ class MailService : ServiceInitializer {
 
     /**
      * Sends the mail [mail] of the `mail` fragment file to [to], rendered by [MailCopy] with [params] as the
-     * [client] the mail is about reads it (issue #773): the subject, the text part and the HTML part all come
+     * [client] the mail is about reads it (issue #773): the subject, the text part, and the HTML part all come
      * from that one piece of copy. What the auth flows call instead of composing a body in code.
      */
     fun sendFragmentMail(cxt: KdrCxt, to: String, client: String?, mail: String, params: Map<String, Any?>): SentEmail {
