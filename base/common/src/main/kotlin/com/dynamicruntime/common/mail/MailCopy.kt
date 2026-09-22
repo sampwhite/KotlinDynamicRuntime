@@ -74,6 +74,17 @@ class RenderedMail(val subject: String, val text: String, val html: String)
  * client. A param whose value is an `http(s)` URL becomes a link in the HTML part on its own, and stays the
  * bare URL in the text part, where mail clients linkify it.
  *
+ * **Every other param is kept from being linkified.** Gmail's web client turns any address it finds into a
+ * `mailto:` link (and a run of digits into a phone number) and offers no opt-out, which makes copying the
+ * address out of the claim recipe fiddly: the click opens a compose window. Nothing can be done in the text
+ * part -- breaking the pattern with an invisible character would make the pasted value fail our own address
+ * check -- but Gmail does not re-linkify inside an existing anchor, so in the HTML part each substituted value
+ * is wrapped in an anchor with no `href` and `color: inherit; text-decoration: none`: it renders as plain
+ * text and selects normally. Applied to every value rather than to addresses alone, since the client, the
+ * persona and the code are the other things a person copies out. Partial by nature (Gmail sometimes rewrites
+ * inline styles), and harmless where no linkifier runs. The wrap happens through a placeholder that survives
+ * the Markdown pass, so the renderer's escaping is untouched and no word of the copy can be caught by it.
+ *
  * **Params are sanitized** before substitution, exactly as an error message's are (`RequestHandler.renderMsg`):
  * the characters that structure a Markdown link or code span are removed and whitespace is collapsed, so a
  * request-supplied value cannot inject a link or markup into a message sent from the deployment's domain.
@@ -96,28 +107,45 @@ object MailCopy {
         val footer = copy(MCOPY.common, MCOPY.footer)
         val text = body.evalTemplate(safe) + "\n\n" + footer.evalTemplate(safe)
 
-        // The same source again for the HTML part, with a URL-valued param written as a Markdown link so the
-        // renderer makes it an anchor; the text part keeps the bare URL.
-        val linked = safe.mapValues { (_, v) -> if (v is String && isHttpUrl(v)) "[$v]($v)" else v }
-        val html = wrapHtml(
-            body.evalTemplate(linked).renderMarkdown() +
-                "<p style=\"$footerStyle\">" + footer.evalTemplate(linked).renderMarkdownInline() + "</p>",
-            copy(MCOPY.common, MCOPY.htmlStyle),
-        )
-        return RenderedMail(subject, text, html)
+        // The same source again for the HTML part: a URL-valued param written as a Markdown link so the
+        // renderer makes it an anchor (the text part keeps the bare URL), and every other string value replaced
+        // by a placeholder, wrapped in its plain-text anchor once the Markdown has been rendered and escaped.
+        val plain = ArrayList<String>()
+        val forHtml = safe.mapValues { (_, v) ->
+            when {
+                v !is String -> v
+                isHttpUrl(v) -> "[$v]($v)"
+                else -> { plain.add(v); placeholder(plain.size - 1) }
+            }
+        }
+        var rendered = body.evalTemplate(forHtml).renderMarkdown() +
+            "<p style=\"$footerStyle\">" + footer.evalTemplate(forHtml).renderMarkdownInline() + "</p>"
+        plain.forEachIndexed { i, v ->
+            rendered = rendered.replace(placeholder(i), "<a style=\"$plainStyle\">${escapeHtml(v)}</a>")
+        }
+        return RenderedMail(subject, text, wrapHtml(rendered, copy(MCOPY.common, MCOPY.htmlStyle)))
     }
+
+    /**
+     * Stands in for the [i]th plain value through the Markdown pass. Private-use code points, which neither the
+     * renderer nor its escaping touch, and which no copy or sanitized value contains.
+     */
+    private fun placeholder(i: Int): String = "\uE000$i\uE001"
+
+    /** The anchor a plain value is wrapped in: no `href`, and invisible as an anchor. See the class note. */
+    private const val plainStyle = "color: inherit; text-decoration: none;"
 
     private fun isHttpUrl(v: String): Boolean = v.startsWith("http://") || v.startsWith("https://")
 
     /** The minimal document around a rendered body: one style on `body`, one bounded column, nothing else. */
     private fun wrapHtml(rendered: String, bodyStyle: String): String =
         "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n</head>\n" +
-            "<body style=\"${escapeAttribute(bodyStyle)}\">\n<div style=\"max-width: 600px;\">\n$rendered</div>\n</body>\n</html>\n"
+            "<body style=\"${escapeHtml(bodyStyle)}\">\n<div style=\"max-width: 600px;\">\n$rendered</div>\n</body>\n</html>\n"
 
     /** The footer is set off from the message it closes: smaller, and grey. */
     private const val footerStyle = "font-size: 13px; color: #777777;"
 
-    /** Escapes a fragment value for an attribute: the style is copy a client may overlay, not markup. */
-    private fun escapeAttribute(value: String): String =
-        value.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+    /** Escapes a value for element text or an attribute, as the renderer does: none of it is markup. */
+    private fun escapeHtml(value: String): String =
+        value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
 }

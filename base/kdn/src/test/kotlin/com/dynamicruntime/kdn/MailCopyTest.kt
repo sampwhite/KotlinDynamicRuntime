@@ -92,7 +92,8 @@ class MailCopyTest : StringSpec({
         // The frontend's dev autofill and AuthFlowTest read the code out of exactly this phrase.
         val code = Regex("verification code is (\\S+?)[.\\s]").find(sent.text).shouldNotBeNull().groupValues[1]
         code.isNotEmpty() shouldBe true
-        sent.html.shouldNotBeNull() shouldContain "<p>Your verification code is $code."
+        // In the HTML part the code sits in a style-only anchor, so Gmail does not read it as a phone number.
+        sent.html.shouldNotBeNull() shouldContain "<p>Your verification code is <a style=\"color: inherit; text-decoration: none;\">$code</a>."
         sent.html!! shouldContain "<body style=\""
         // Both parts reach the test-only read-back the frontend uses.
         val emails = results(browser.sendJsonGetRequest(TEP.simulatedEmails, mapOf(TSE.to to address)))[TSE.emails].toJsonListOfMaps()
@@ -111,6 +112,13 @@ class MailCopyTest : StringSpec({
         url shouldContain "token="
         sent.text shouldNotContain "]($url)"
         sent.html.shouldNotBeNull() shouldContain "<a href=\"${url.replace("&", "&amp;")}\""
+        // Every other value sits in a style-only anchor, so Gmail does not turn the address into a mailto
+        // link (nor the client or the persona into anything); the text part carries them bare.
+        val wrapped = "<a style=\"color: inherit; text-decoration: none;\">$address</a>"
+        sent.html!! shouldContain wrapped
+        sent.html!!.split(address).size - 1 shouldBe sent.html!!.split(wrapped).size - 1
+        sent.html!! shouldContain "<a style=\"color: inherit; text-decoration: none;\">${CL.hub}</a>"
+        sent.text shouldNotContain "<a"
     }
 
     "a client's overlay rewords its invitation and signs the footer, and another client's stays as shipped" {

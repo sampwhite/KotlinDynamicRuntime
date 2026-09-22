@@ -3,7 +3,8 @@
    so a client's overlay can reword a mail and name itself in it. Each mail is one namespace holding its
    `subject` and its `body`; the body is Markdown, sent as written for the text part and rendered for the HTML
    part. The `${...}` params are sanitized before substitution, so a value cannot inject a link or markup;
-   a param holding a URL becomes a link in the HTML part on its own.
+   a param holding a URL becomes a link in the HTML part on its own, and every other param is wrapped there
+   so that Gmail does not turn an address into a mailto link.
 
    Every body spells out the address it is about, although it is the `to`: Gmail folds the repeated tail of a
    thread's mails behind an ellipsis, and a tester's plus-addressed variants of one inbox would otherwise all

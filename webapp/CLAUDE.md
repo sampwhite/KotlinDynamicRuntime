@@ -124,7 +124,8 @@ Current UI-config endpoints:
   with a text part (the Markdown as written) and an HTML part (the kernel's `renderMarkdown`). `MailCopy`
   renders it for the client of the user the mail is *about* -- an invitation's user, a claim's key -- so a
   client's config overlay of `mail` rewords its mails and signs them as itself, whoever sent them. Params are
-  sanitized like an error message's; a URL param becomes an anchor in the HTML part on its own. The dev
+  sanitized like an error message's; a URL param becomes an anchor in the HTML part on its own, and every
+  other param sits in a style-only anchor there so Gmail does not linkify an address or a code. The dev
   autofill (`fetchDevCode`) and the tests read the code out of the text part's "verification code is <code>."
   -- keep that phrase when rewording. `/fixture/simulatedEmails` returns both parts (`text`, `html`). The
   sample's acme and globex each overlay `common.footer` alone, so every mail about one of their users is
