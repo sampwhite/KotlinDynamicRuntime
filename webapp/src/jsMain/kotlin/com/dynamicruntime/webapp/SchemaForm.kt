@@ -1457,46 +1457,104 @@ private fun ChildrenBuilder.prefillControls(
  * choice, a checkbox, a date or a file settle on the **selection** -- picking is finishing -- so those call it
  * right after they emit. A caller that does not care leaves it as the no-op.
  */
+/**
+ * The input control an editable field draws, decided purely from its schema. Extracted from [widget] (issue
+ * #781) so the mapping — the most consequential presentation rule in the form — is a pure function a
+ * `jsNodeTest` pins, rather than logic only a browser exercises; [widget] switches its antd construction on the
+ * result, so the test and the render cannot drift. A non-editable field is [ReadOnly] whatever its type.
+ */
+enum class ControlKind {
+    /** Not editable: the read-only view renders the value, not a control. */
+    ReadOnly,
+
+    /** An array of closed choices — antd `Select` in `multiple` mode. */
+    MultiSelect,
+
+    /** An array of open choices — antd `Select` in `tags` mode (pick several, or add your own; issue #418). */
+    MultiSelectOpen,
+
+    /** A single open choice — the `OpenChoiceField` (`AutoComplete`): the list suggests, anything else passes. */
+    OpenChoice,
+
+    /** A single closed choice — antd `Select`. */
+    Choice,
+
+    /** A two-state boolean — a checkbox (issue #261); see [booleanIsTwoState] / [checkboxDraw]. */
+    Checkbox,
+
+    /** A boolean with a reachable third (absent) state — a `Select` over `true`/`false` with `allowClear`. */
+    TristateBoolean,
+
+    /** A day-only date (`format: "date"`) — a `DatePicker`. */
+    Date,
+
+    /** A date-time (`format: "date-time"`) — a `DatePicker` with `showTime`. */
+    DateTime,
+
+    /** File content (`format: "binary"`) — a native file input. */
+    File,
+
+    /** A free-form object with no declared properties — the `JsonObjectField` map editor (issue #251). */
+    JsonMap,
+
+    /** string / integer / number / unknown — a text `Input`, coerced by the kernel validator on submit. */
+    Text,
+}
+
+/**
+ * Which [ControlKind] a field draws, from its schema [vt], whether it is [required], and whether it is
+ * [editable] (issue #781). Pure over the kernel [SchType] — the branch order mirrors the historical `widget`
+ * `when`: options win over the base type, an open list is its own kind, a two-state boolean is a checkbox and a
+ * three-state one a select, then the string formats, a property-less object is a JSON map, everything else text.
+ */
+fun controlKind(vt: SchType, required: Boolean, editable: Boolean): ControlKind = when {
+    !editable -> ControlKind.ReadOnly
+    // Multi-select: an array of choices. An open element type accepts a value that is not offered, so it takes
+    // `tags` mode rather than a separate component (a multi-select is already a list, so one more is a mode).
+    vt.jsonType == SCT.array && vt.itemType?.options != null ->
+        if (vt.itemType?.openOptions == true) ControlKind.MultiSelectOpen else ControlKind.MultiSelect
+    vt.options != null && vt.openOptions -> ControlKind.OpenChoice
+    vt.options != null -> ControlKind.Choice
+    vt.jsonType == SCT.boolean && booleanIsTwoState(vt, required) -> ControlKind.Checkbox
+    vt.jsonType == SCT.boolean -> ControlKind.TristateBoolean
+    vt.jsonType == SCT.string && isDateFormat(vt.format) ->
+        if (vt.format == SFMT.date) ControlKind.Date else ControlKind.DateTime
+    vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> ControlKind.File
+    vt.jsonType == SCT.kObject -> ControlKind.JsonMap
+    // string / integer / number / unknown. Lists do not arrive here in edit mode -- a list of choices is the
+    // multi-select above, and any other list is a growing column of these widgets (renderScalarList).
+    else -> ControlKind.Text
+}
+
 private fun ChildrenBuilder.widget(
     vt: SchType, value: Any?, required: Boolean, editable: Boolean, describedBy: String? = null,
     presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
     commit: () -> Unit = {},
     emit: (Any?) -> Unit,
 ) {
-    if (!editable) {
-        readOnlyValue(vt, value, presentation, opts)
-        return
-    }
-    val arrayOptions = if (vt.jsonType == SCT.array) vt.itemType?.options else null
-    val singleOptions = vt.options
-    when {
-        // Multi-select: an array of choices. An **open** element type takes antd's `tags` mode, which is the
-        // same control plus the ability to enter a value that is not offered (issue #418) -- without it the
-        // widget would refuse what the endpoint accepts, which is the advertise-versus-serve drift in
-        // miniature. Unlike the single-choice case this needs no separate component: a multi-select is
-        // already a list of values, so accepting one more is a mode rather than a different control.
-        arrayOptions != null -> Select {
-            mode = if (vt.itemType?.openOptions == true) "tags" else "multiple"
-            options = optionsToJs(arrayOptions)
+    val kind = controlKind(vt, required, editable)
+    when (kind) {
+        ControlKind.ReadOnly -> readOnlyValue(vt, value, presentation, opts)
+        ControlKind.MultiSelect, ControlKind.MultiSelectOpen -> Select {
+            mode = if (kind == ControlKind.MultiSelectOpen) "tags" else "multiple"
+            options = optionsToJs(vt.itemType?.options.orEmpty())
             this.value = value.toJsonListOfStrings().toTypedArray()
             placeholder = "(choose)"
             style = js("({ minWidth: 200 })")
             onChange = { v -> emit(jsToList(v)); commit() }
             markInvalid(asDynamic(), describedBy)
         }
-        // Single choice, open: the list suggests, and anything else is accepted too.
-        singleOptions != null && vt.openOptions -> OpenChoiceField {
+        ControlKind.OpenChoice -> OpenChoiceField {
             // Qualified, because the enclosing function's own `value` / `describedBy` parameters shadow the
             // props of the same name inside this block.
-            this.options = singleOptions
+            this.options = vt.options.orEmpty()
             this.value = value?.toString()
             this.describedBy = describedBy
             this.onEmit = { v -> emit(v) }
             this.onCommit = commit
         }
-        // Single choice.
-        singleOptions != null -> Select {
-            options = optionsToJs(singleOptions)
+        ControlKind.Choice -> Select {
+            options = optionsToJs(vt.options.orEmpty())
             this.value = value?.toString()
             placeholder = "(choose)"
             allowClear = true
@@ -1504,19 +1562,16 @@ private fun ChildrenBuilder.widget(
             onChange = { v -> emit(v as? String); commit() }
             markInvalid(asDynamic(), describedBy)
         }
-        // Boolean, where absent says nothing the field cannot already say: a checkbox, the compact control
-        // (issue #261). See [booleanIsTwoState] for when that is true, and [checkboxDraw] for what it shows.
-        vt.jsonType == SCT.boolean && booleanIsTwoState(vt, required) -> Checkbox {
+        ControlKind.Checkbox -> Checkbox {
             val draw = checkboxDraw(vt, value)
             checked = draw == CheckDraw.on
             indeterminate = draw == CheckDraw.unanswered
             onChange = { e -> emit(e.target.checked as Boolean); commit() }
             markInvalid(asDynamic(), describedBy)
         }
-        // Boolean with a reachable third state: the choice widget above, over `true` / `false`, whose
-        // `allowClear` is the way back to absent. Labels are the wire values rather than Yes / No, for the same
-        // reason the form labels a field with its key: this surface documents the payload.
-        vt.jsonType == SCT.boolean -> Select {
+        // The three-state boolean's labels are the wire values rather than Yes / No, for the same reason the
+        // form labels a field with its key: this surface documents the payload.
+        ControlKind.TristateBoolean -> Select {
             options = optionsToJs(booleanOptions)
             this.value = value?.toString()
             placeholder = "(choose)"
@@ -1530,12 +1585,10 @@ private fun ChildrenBuilder.widget(
         }
         // Date field. Bound like every other widget, which it previously was not: with no `value`, antd's
         // picker is uncontrolled, so a date the form already held -- from a restored link, or a payload loaded
-        // through the request-JSON panel -- never appeared in the field. (It also left the browser free to
-        // repopulate the input on reload from its own form memory, showing a date the form did not have.)
-        //
-        // The conversions are antd's terms, not ours: it speaks Dayjs where the schema says string.
-        vt.jsonType == SCT.string && isDateFormat(vt.format) -> {
-            val dayOnly = vt.format == SFMT.date
+        // through the request-JSON panel -- never appeared in the field. The conversions are antd's terms, not
+        // ours: it speaks Dayjs where the schema says string.
+        ControlKind.Date, ControlKind.DateTime -> {
+            val dayOnly = kind == ControlKind.Date
             DatePicker {
                 this.value = value?.toString()?.takeIf { it.isNotBlank() }?.let { dayjs(it) }?.takeIf { it.isValid() }
                 // A `date-time` field needs the time picked too. Without this the widget can only return a
@@ -1555,7 +1608,7 @@ private fun ChildrenBuilder.widget(
         // field's value alone rather than coercing it, and why SchemaCatalogApi sends this endpoint as
         // multipart/form-data rather than JSON. A plain <input type="file"> rather than antd's Upload: that
         // component wants to own the upload itself, which is the runtime's job here.
-        vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> input {
+        ControlKind.File -> input {
             // `type` is web.html.InputType, an external value over the HTML attribute string; "file" is that
             // attribute's value, cast rather than spelled through the wrapper's own constant, so this does not
             // ride on which of them the current kotlin-wrappers exposes.
@@ -1567,20 +1620,13 @@ private fun ChildrenBuilder.widget(
             }
             markInvalid(asDynamic(), describedBy)
         }
-        // A free-form map: an object declaring no properties of its own, so there are no fields to lay out, and
-        // the structured path in `renderField` never claimed it. Before this it fell through to the text box
-        // below, which showed a Kotlin map's `toString` and turned the map into a string the moment anyone
-        // typed in it (issue #251).
-        vt.jsonType == SCT.kObject -> JsonObjectField {
+        ControlKind.JsonMap -> JsonObjectField {
             this.value = value
             this.describedBy = describedBy
             this.onEmit = emit
             this.onCommit = commit
         }
-        // string / integer / number / unknown: a text box. The kernel validator coerces the entered string to
-        // the declared type on validation. Lists do not arrive here in edit mode -- a list of choices is the
-        // multi-select above, and any other list is a growing column of these widgets (renderScalarList).
-        else -> Input {
+        ControlKind.Text -> Input {
             this.value = displayValue(value)
             placeholder = typeHint(vt)
             onChange = { e -> emit(e.target.value as String) }
@@ -1956,8 +2002,9 @@ fun ChildrenBuilder.schemaTable(elementType: SchType, elements: List<Any?>, opts
     }
 }
 
-/** The field's type named in words, e.g. "string", "boolean", "date", "choice", "list". */
-private fun typeWord(vt: SchType): String = when {
+/** The field's type named in words, e.g. "string", "boolean", "date", "choice", "list". Internal (not private)
+ *  so `ControlKindTest` can pin the choice-vs-open-choice reading it shares with [controlKind] (issue #781). */
+internal fun typeWord(vt: SchType): String = when {
     vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> "file"
     // "open choice" rather than "choice": the word has to carry that the list is not the whole of what is
     // allowed, or the outline documents a constraint the endpoint does not have.
