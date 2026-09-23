@@ -12,7 +12,11 @@ import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.uiblock.collectExpressions
 import com.dynamicruntime.common.util.analyzeTemplate
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 
 /** One workflow as declared: the definition and the bundle it came from, which together make its [ref]. */
 class WfDeclared(val bundle: GedraConfig, val def: WfDef) {
@@ -228,7 +232,20 @@ fun buildWorkflowRegistries(
                     return false
                 }
             }
+            // A task's display (issue #788): every condition in it parses against this scope's cfacts, each branch
+            // names a mode there is, and a text branch's copy rides the label check below -- a display that fails
+            // any of these would mis-render for somebody, and a page is the worst place to find out.
+            task.display?.let { display ->
+                displayProblem(display, cfactNames(scope))?.let {
+                    reportConfigProblem(cxt, mode, problem(scope, w, "has a display on task '${task.id}' that $it"), issues)
+                    return false
+                }
+            }
+            val displayTexts = task.display?.let { displayBranches(it) }.orEmpty()
+                .mapNotNull { it[WDSP.text].toOptStr() }
+                .map { "display text of task '${task.id}'" to it }
             val labels = listOf("task '${task.id}'" to task.label) + task.saves.map { "save '${it.id}'" to it.label } +
+                displayTexts +
                 (task.approval?.let { listOf("approval prompt of task '${task.id}'" to it.prompt, "approval button of task '${task.id}'" to it.button) }
                     ?: emptyList())
             for ((where, label) in labels) {
@@ -352,4 +369,69 @@ private fun labelProblem(client: String?, label: String, fragments: WfFragmentLo
         }
     }
     return null
+}
+
+/**
+ * A task display's **leaf** branches (issue #788) -- what can actually be shown: the display itself when it is a
+ * single branch, and otherwise every branch of its selector, following a branch that is itself a selector down to
+ * its own. Nested selectors are allowed by the resolver, so the boot check has to reach every branch they could
+ * choose. [depth] bounds the walk over what is, for stored config, external data.
+ */
+fun displayBranches(display: Map<String, Any?>, depth: Int = 0): List<Map<String, Any?>> {
+    if (depth > maxDisplayDepth) {
+        throw KdrException.mkConv("A task display nests selectors more than $maxDisplayDepth deep.")
+    }
+    if (!display.containsKey(UIB.select)) {
+        return listOf(display)
+    }
+    return (display[UIB.select] as? List<*>).orEmpty()
+        .filterIsInstance<Map<*, *>>()
+        .flatMap { displayBranches(it.toJsonMapOrEmpty(), depth + 1) }
+}
+
+/** How deep a task display's selectors may nest -- far beyond any real use, a guard on bad stored config. */
+private const val maxDisplayDepth = 10
+
+/**
+ * The first thing wrong with a task [display] (issue #788), or null: a selector, at any depth, that is not a
+ * non-empty list of branches; a leaf branch naming a mode there is not, or a text branch with no text; or a
+ * condition anywhere in it that does not parse against [allowed] -- the scope's cfact names, which include the task
+ * facts (`wfIsCta`, `wfReviewer`, an approval's cfact) since those are declared too.
+ */
+fun displayProblem(display: Map<String, Any?>, allowed: Set<String>): String? {
+    selectorShapeProblem(display, 0)?.let { return it }
+    val branches = try {
+        displayBranches(display)
+    } catch (e: KdrException) {
+        return "is malformed: ${e.message}"
+    }
+    for (branch in branches) {
+        val mode = branch[WDSP.mode].toOptStr() ?: WDSP.defaultMode
+        if (mode !in WDSP.modes) {
+            return "has a branch with mode '$mode'; a branch is one of ${WDSP.modes.sorted()}."
+        }
+        if (mode == WDSP.textMode && branch[WDSP.text].toOptStr().isNullOrBlank()) {
+            return "has a '${WDSP.textMode}' branch with no ${WDSP.text}."
+        }
+    }
+    for (expression in collectExpressions(display)) {
+        try {
+            parseCFactOrAlways(expression, allowed)
+        } catch (e: KdrException) {
+            return "has a condition that does not parse: ${e.message}"
+        }
+    }
+    return null
+}
+
+/** A selector in [node], at any depth down its branches, that is not a non-empty list of objects; or null. */
+private fun selectorShapeProblem(node: Map<String, Any?>, depth: Int): String? {
+    if (!node.containsKey(UIB.select) || depth > maxDisplayDepth) {
+        return null
+    }
+    val raw = node[UIB.select] as? List<*>
+    if (raw == null || raw.isEmpty() || raw.any { it !is Map<*, *> }) {
+        return "has a '${UIB.select}' that is not a non-empty list of branches."
+    }
+    return raw.firstNotNullOfOrNull { selectorShapeProblem((it as Map<*, *>).toJsonMapOrEmpty(), depth + 1) }
 }

@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.uiblock.UIB
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -75,6 +76,26 @@ class WfApprovalDefTest {
         val task = parseWfDef(cxt, normalWithApproval()).task("approve")!!
         // No traits, so presence alone would call it complete; until approved it is not.
         assertEquals(setOf(WFC.taskAvailable, WFC.isCta), WfTaskFacts.of(task, emptyList(), isCta = true))
-        assertEquals(setOf(WFC.taskAvailable, WFC.taskComplete), WfTaskFacts.of(task, emptyList(), approved = true))
+        // Approved: complete, and carrying its own approval cfact for a display selector to name (issue #788).
+        assertEquals(setOf(WFC.taskAvailable, WFC.taskComplete, "auditApproved"), WfTaskFacts.of(task, emptyList(), approved = true))
+    }
+
+    @Test
+    fun aTaskDisplayIsASelectorThatRoundTrips() {
+        val def = parseWfDef(cxt, normalWithApproval {
+            display {
+                whenCfacts("auditApproved") { text("Approved.") }
+                whenCfacts("~${WFC.isCta}") { text("Not yet."); disabled = true }
+                whenCfacts(WFC.reviewer) { defaultRendering() }
+                otherwise { text("Wait.") }
+            }
+        })
+        val display = def.task("approve")?.display
+        // The UiBlock selector shape, branches in declaration order, the last unguarded.
+        val branches = display?.get(UIB.select) as List<*>
+        assertEquals(4, branches.size)
+        assertEquals(mapOf(UIB.cfactExpression to "~${WFC.isCta}", WDSP.mode to WDSP.textMode, WDSP.text to "Not yet.", WDSP.disabled to true), branches[1])
+        assertEquals(mapOf(WDSP.mode to WDSP.textMode, WDSP.text to "Wait."), branches[3])
+        assertEquals(display, parseWfDef(cxt, def.toJsonMap()).task("approve")?.display)
     }
 }

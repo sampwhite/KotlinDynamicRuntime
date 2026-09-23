@@ -52,6 +52,20 @@ object UIB {
      */
     const val parentId = "parentId"
 
+    /**
+     * A **selector** (issue #788): an object carrying this key stands for one of the branches it lists -- an
+     * ordered array of objects, each optionally guarded by a [cfactExpression]. The resolver walks them **in
+     * order** and puts the first whose condition the caller's cfacts satisfy **in place of the selector**; a branch
+     * with no condition always matches, so a last unguarded branch is the default. When nothing matches, the
+     * selector is treated like an object whose condition failed: absent from its field, dropped from its array.
+     *
+     * The ordered sibling of the plain condition, and resolved by the same walk (`filterByCFacts`), so anything a
+     * UiBlock or a workflow view carries can choose between renderings without the resolver knowing what it is:
+     * "the first of these that applies" where a plain condition says "this, if it applies". Resolved on the
+     * backend, like the conditions, so the caller's vocabulary never travels.
+     */
+    const val select = "select"
+
     /** The spacing convention for [displayOrder]: room for 99 later arrivals between any two items. */
     const val orderStep = 100
 

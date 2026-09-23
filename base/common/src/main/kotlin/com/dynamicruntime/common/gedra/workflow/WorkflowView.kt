@@ -155,6 +155,9 @@ fun resolveWorkflowView(
         )
         task.layout?.let { raw[WFD.layout] = linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name) }
         task.approval?.let { raw[WVF.approval] = approvalView(it, approvals[task.id]) }
+        // How the task is shown (issue #788): usually a selector, which the filter below resolves against this
+        // caller's task facts -- so what arrives is the one branch that applies, never the others or their tests.
+        task.display?.let { raw[WFD.display] = it }
         // The entries the page seeds each field from: the task's stored ones (a survey edit; a creation view has
         // none), each trait's g-derived data values computed on read (issue #712) and then decorated with any
         // prefillData defaults (issue #679). Both enrich only the *presented* set, never the `entries` above that
@@ -168,8 +171,13 @@ fun resolveWorkflowView(
         val presented = runPrefillData(cxt, task, ownerAttributes, derived)
         if (presented.isNotEmpty()) raw[WVF.entries] = presented
         // The content pipeline, per task: the request facts (hoisted) plus this task's own, then drop anything
-        // gated on a cfact they do not satisfy. A no-op on today's model (no conditions), real on tomorrow's.
-        return filterByCFacts(raw, requestFacts + taskFacts, cfacts::parse)
+        // gated on a cfact they do not satisfy, and put each selector's chosen branch in its place.
+        val shown = filterByCFacts(raw, requestFacts + taskFacts, cfacts::parse)
+        // The chosen display branch's text through the backend pass, as a label is -- after the choice, so only the
+        // branch that is shown is evaluated. `${'$'}{…}` survives for the frontend, per the layout rule.
+        val display = shown[WFD.display] as? Map<*, *> ?: return shown
+        val text = display[WDSP.text].toOptStr() ?: return shown
+        return shown + (WFD.display to display.entries.associate { it.key.toString() to it.value } + (WDSP.text to label(text)))
     }
 
     // Tasks first: rendering them collects the trait refs the closure needs.

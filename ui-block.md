@@ -64,6 +64,31 @@ registered. Evaluating server-side is what keeps it off the wire.
 
 Stated as one rule: **the backend decides whether and which; the frontend decides how it reads.**
 
+### Choosing among renderings: the selector (issue #788)
+
+A plain `cfactExpression` answers "this, if it applies". Its ordered sibling, **`select`**, answers "the first of
+these that applies": an object carrying `select` stands for one of the branches it lists, each optionally
+guarded by a `cfactExpression`. The resolver tries them **in order** and puts the first whose condition holds in
+place of the selector; a branch with no condition always matches, so an unguarded last branch is the default.
+When nothing matches, the selector is absent -- from its field, or from its array -- exactly like an object whose
+condition failed.
+
+```json
+{"display": {"select": [
+  {"cfactExpression": "acmeAuditApproved", "mode": "text", "text": "Approved by ${approvedByName}."},
+  {"cfactExpression": "~wfIsCta", "mode": "text", "text": "Not yet.", "disabled": true},
+  {"cfactExpression": "wfReviewer", "mode": "default"},
+  {"mode": "text", "text": "You must wait for a reviewer."}
+]}}
+```
+
+It is resolved by the same recursive walk as the plain condition (`filterByCFacts`), so it works anywhere -- a
+menu, a home block, a workflow task's `display` -- without the resolver knowing what it is choosing. The same
+rule applies: only the chosen branch travels, never the others or their conditions. Order is the author's to
+get right; in the example "approved" comes first because an approved step is no longer the CTA, so the
+`~wfIsCta` branch would otherwise claim it. Every branch condition is reached by the boot check's walk, so a
+misspelled cfact in any branch refuses the boot like any other.
+
 ## Invoking frontend functionality: named registries
 
 A UiBlock's third kind of reference, after copy and conditions. A menu item does something when clicked; a

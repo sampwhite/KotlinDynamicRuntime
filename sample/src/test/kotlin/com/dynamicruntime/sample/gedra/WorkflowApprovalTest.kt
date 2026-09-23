@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.workflow.WDSP
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
@@ -15,6 +16,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
@@ -173,6 +175,32 @@ class WorkflowApprovalTest : StringSpec({
         entriesOf(states, WFS.workflowApproval).map { it[WFS.taskId] } shouldBe listOf("renamedAway")
         auditState(states)[WFS.ctaTask] shouldBe SW.approveAudit
         auditState(states)[WFS.cfacts].toJsonListOrEmpty().map { it.toOptStr() } shouldNotContain SC.auditApproved
+    }
+
+    // --- how the approval step shows (issue #788) --------------------------------------------------------------
+
+    "the approval step's display is chosen per caller and per moment, first applicable branch winning" {
+        fun display(user: TestUser, gid: String) = approvalTaskView(user, gid)[WFD.display].toJsonMapOrEmpty()
+
+        // Earlier work outstanding: not the step's turn yet -- shown disabled, to anyone.
+        val early = engagedForm(recorded = false)
+        display(reviewer, early) shouldBe mapOf(
+            WDSP.mode to WDSP.textMode, WDSP.text to "Previous data entry must be completed before review.", WDSP.disabled to true,
+        )
+
+        // Its turn: a reviewer gets the approval's own rendering (the button); anyone else is told to wait.
+        val ready = engagedForm()
+        display(reviewer, ready) shouldBe mapOf(WDSP.mode to WDSP.defaultMode)
+        display(owner, ready)[WDSP.text] shouldBe "You must wait for a reviewer to approve this form."
+
+        // Approved: the first branch, for everyone. Its `${'$'}{approvedByName}` is left for the frontend to fill
+        // from the approval block beside it -- the one frontend substitution a layout may carry.
+        reviewer.postData(approve, approveBody(ready))
+        val done = approvalTaskView(owner, ready)
+        done[WFD.display].toJsonMapOrEmpty()[WDSP.text] shouldBe $$"The form has been approved by ${approvedByName}."
+        done[WVF.approval].toJsonMapOrEmpty()[WVF.approvedByName] shouldBe "approve-reviewer@acme.test"
+        // Only the chosen branch travels: no other branch, and no condition.
+        done[WFD.display].toJsonMapOrEmpty().containsKey(UIB.select) shouldBe false
     }
 
     "an approval waits for the work before it" {

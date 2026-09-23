@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.uiblock.UIB
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -204,6 +205,57 @@ class WorkflowRegistryTest : StringSpec({
         shouldThrow<KdrException> {
             build(devCxt, listOf(globalTraits(devCxt), approving("acmeOnly", prompt = """%{@t("wfCopy.identify.gone")}""")))
         }.message shouldContain "approval prompt of task 'approve'"
+    }
+
+    // A task display (issue #788): its conditions parse against the scope's cfacts, its branches name real modes,
+    // and a text branch's copy rides the label check.
+    "a task display's conditions, modes and copy are checked at boot" {
+        fun displaying(build: WfDisplayBuilder.() -> Unit): GedraConfig = client(devCxt, "acme", listOf("name")) {
+            workflow("auditReview", WfEntry.normal) {
+                task("record", "Record") { trait("name"); save("s", "S", WfSaveKind.edit); display(build) }
+            }
+        }
+        build(devCxt, listOf(globalTraits(devCxt), displaying {
+            whenCfacts("acmeOnly") { text("Yours.") }
+            otherwise { defaultRendering() }
+        })).second.shouldBeEmpty()
+        shouldThrow<KdrException> {
+            build(devCxt, listOf(globalTraits(devCxt), displaying { whenCfacts("acmeOnlee") { text("Typo.") } }))
+        }.message shouldContain "condition that does not parse"
+        shouldThrow<KdrException> {
+            build(devCxt, listOf(globalTraits(devCxt), displaying { otherwise { text("""%{@t("wfCopy.identify.gone")}""") } }))
+        }.message shouldContain "display text of task 'record'"
+        val badMode = client(devCxt, "acme", listOf("name")) {
+            workflowFromMap(
+                WfDefBuilder("auditReview", WfEntry.normal).apply {
+                    task("record", "Record") { trait("name"); save("s", "S", WfSaveKind.edit) }
+                }.build().let { raw ->
+                    val task = (raw[WFD.tasks] as List<*>).single() as Map<*, *>
+                    raw + (WFD.tasks to listOf(task.entries.associate { it.key.toString() to it.value } +
+                        (WFD.display to mapOf(WDSP.mode to "sparkly"))))
+                },
+            )
+        }
+        shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), badMode)) }.message shouldContain "mode 'sparkly'"
+
+        // A branch that is itself a selector: its own branches are held to the same checks -- the resolver can
+        // choose them, so a mode or a pull the check never reached would fail on a caller's view instead.
+        fun nested(inner: Map<String, Any?>): GedraConfig = client(devCxt, "acme", listOf("name")) {
+            workflowFromMap(
+                WfDefBuilder("auditReview", WfEntry.normal).apply {
+                    task("record", "Record") { trait("name"); save("s", "S", WfSaveKind.edit) }
+                }.build().let { raw ->
+                    val task = (raw[WFD.tasks] as List<*>).single() as Map<*, *>
+                    raw + (WFD.tasks to listOf(task.entries.associate { it.key.toString() to it.value } +
+                        (WFD.display to mapOf(UIB.select to listOf(mapOf(UIB.cfactExpression to "acmeOnly", UIB.select to listOf(inner)))))))
+                },
+            )
+        }
+        shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), nested(mapOf(WDSP.mode to "sparkly")))) }
+            .message shouldContain "mode 'sparkly'"
+        shouldThrow<KdrException> {
+            build(devCxt, listOf(globalTraits(devCxt), nested(mapOf(WDSP.mode to WDSP.textMode, WDSP.text to """%{@t("wfCopy.identify.gone")}"""))))
+        }.message shouldContain "display text of task 'record'"
     }
 
     "an eligibility explanation rides the label check" {
