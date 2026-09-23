@@ -66,6 +66,9 @@ fun resolveWorkflowView(
     // The request-scoped cfacts, computed once: they are the same for every task, so only each task's own
     // target facts are unioned onto them below (each cfact source can do real work -- e.g., a section check).
     val requestFacts = cfacts.assemble(cxt)
+    // What is about the *viewer* (issue #786), evaluated per task but looked up once per view -- the same reason
+    // the request facts above are hoisted.
+    val viewerCfacts = ViewerCfacts(cxt, client)
 
     fun label(text: String): String = fragments.backendPass(cxt, text)
 
@@ -112,7 +115,9 @@ fun resolveWorkflowView(
         // trait it left out follows in declaration order (`WfTask.displayOrder`).
         val byId = task.traits.associateBy { it.traitId }
         val orderedTraits = task.displayOrder.mapNotNull { byId[it] }.map { traitView(it) }
-        val taskFacts = WfTaskFacts.of(task, entries, isCta = task.id == ctaTaskId)
+        // The task's own facts, plus what its viewerCfacts functions conclude about the person looking at it
+        // (issue #786) -- a reviewer, say. Temporary by nature: they are about this viewer, so never stored.
+        val taskFacts = WfTaskFacts.of(task, entries, isCta = task.id == ctaTaskId) + viewerCfacts.forTask(task)
         val raw = linkedMapOf<String, Any?>(
             WFD.id to task.id,
             WFD.label to label(task.label),

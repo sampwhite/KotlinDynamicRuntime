@@ -119,6 +119,13 @@ later schema rejects" test.
       stored value on load (`checkClientDefs`) and an explicit `writeConfig` carrying it is **refused** — so a
       test that forces `ACFG.isTestInstance = false` cannot write one, and reads never echo one (the bundle and
       trait reads redact at `GedraConfigRow`). `TestFeaturesBoundaryTest` covers all three faces.
+    - **`userLabels = listOf(...)`** — the user labels this client *suggests* (#786). A label a workflow's
+      `userHasLabel { label = "…" }` names literally is checked against this list when the config loads, so a
+      test that puts that function in its client's workflow must list the label here too — otherwise the
+      function is dropped with "does not suggest (userLabels)", which a unit test sees as a refused
+      `reloadClient`. Each entry is written once, trimmed: the `ClientDef` constructor refuses a blank, padded
+      or repeated one. A *global* workflow's labels are not checked (there is no single client list).
+      `UserLabelsTest` (kdn) is the reference.
   - **`trait(typeName, traitId, appliesTo, description) { <SchTypeBuilder> }`** — a trait whose data shape is
     written inline; the `{ … }` is the `kdr-schema-builder` DSL. An overload takes `dataType` (a `$ref`) instead.
   - **`workflow(workflowId, entry: WfEntry) { <WfDefBuilder> }`** — a workflow definition (or `workflowFromMap`

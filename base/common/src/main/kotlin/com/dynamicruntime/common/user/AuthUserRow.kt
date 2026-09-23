@@ -114,6 +114,17 @@ class AuthUserRow(
     lateinit var username: String
     var roles: List<String> = listOf(ROLE.user)
 
+    /**
+     * The user's free-form labels (issue #786) -- `reviewer`, say -- that a workflow's `userHasLabel` function tests
+     * for. Not roles: a label grants nothing on any surface; it only lets a workflow decide something about the
+     * person viewing it. **Normalized on assignment** ([normalizeUserLabels], the kernel's rule, which the admin
+     * console applies too), for the reason [name] is: every writer gets the same rule without having to remember it.
+     */
+    var labels: List<String> = emptyList()
+        set(value) {
+            field = normalizeUserLabels(value)
+        }
+
     /** The remaining auth-data map (the typed fields promoted out). */
     var authUserData: MutableMap<String, Any?> = mutableMapOf()
 
@@ -164,6 +175,7 @@ class AuthUserRow(
         ADF.isEntity to isEntity,
         ADF.name to name,
         ADF.roles to roles,
+        ADF.labels to labels,
         ADF.enabled to enabled,
         ADF.hasPassword to hasPassword,
         ADF.deleted to isDeleted,
@@ -186,6 +198,8 @@ class AuthUserRow(
     fun toMap(): Map<String, Any?> {
         val newAuthData = authUserData.toMutableMap()
         newAuthData[AD.roles] = roles
+        // Absent when empty, as `org` is: most users carry no labels.
+        if (labels.isNotEmpty()) newAuthData[AD.labels] = labels else newAuthData.remove(AD.labels)
         // Removed rather than written as null when absent: most users have no organization, and an explicit
         // null would be stored in every row's JSON for the sake of the few that do.
         if (org != null) newAuthData[AD.org] = org else newAuthData.remove(AD.org)
@@ -270,6 +284,8 @@ class AuthUserRow(
             // Roles are dropped too, not merely made inert by the disable: a tombstone must not read as an
             // administrator, in the console or anywhere the row is loaded.
             row.roles = emptyList()
+            // Labels are not carried over either -- the new row starts with none, and `toMap` then removes the
+            // stored key -- so a tombstone is nobody's reviewer.
             row.org = original.org
             row.isEntity = original.isEntity
             // Kept for debugging/recognition: this is a retirement, not a privacy erasure (see the doc).
@@ -304,6 +320,10 @@ class AuthUserRow(
                 property(ADF.primaryId, "Primary identifier (the primary email address).", required = true)
                 property(ADF.username, "The user's unique preferred name.", required = true)
                 property(ADF.roles, "The roles granted to the user.", required = true) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(ADF.labels, "The user's free-form labels, which a workflow can test for; they grant nothing.", required = true) {
                     type = SCT.array
                     items { type = SCT.string }
                 }
@@ -360,6 +380,7 @@ class AuthUserRow(
             row.username = data[AU.username].toOptStr() ?: (usernameTmpPrefix + primaryId)
             val userData = (data[AU.authUserData]?.toJsonMap() ?: emptyMap()).toMutableMap()
             row.roles = (userData[AD.roles] as? List<*>)?.mapNotNull { it?.toString() } ?: listOf(ROLE.user)
+            row.labels = (userData[AD.labels] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
             row.org = userData[AD.org].toOptStr()?.ifEmpty { null }
             row.isEntity = userData[AD.isEntity] == true
             row.name = userData[AD.name].toOptStr()

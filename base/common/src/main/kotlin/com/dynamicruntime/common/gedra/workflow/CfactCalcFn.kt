@@ -6,12 +6,13 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.LogGedra
 import com.dynamicruntime.common.startup.SchemaService
 
-/** Names the `cfactCalc` event uses that are not a function's own initialization-data fields. */
+/** Names the cfact-emitting events use that are not a function's own initialization-data fields. */
 @Suppress("ConstPropertyName")
 object CFC {
     /**
      * A `ClientDef.testFeatures` name that turns an undeclared emitted cfact from a logged drop into a thrown
-     * error (issue #678, decision 8). In the spirit of a `testFeatures` gate: normally set only on a unit-test
+     * error (issue #678, decision 8) -- for every function event that emits cfacts, `cfactCalc` and `viewerCfacts`
+     * alike ([declaredCfactsOnly]). In the spirit of a `testFeatures` gate: normally set only on a unit-test
      * client, so a real client silently drops a stray cfact while a test can insist one was declared.
      */
     const val strictUnknownCfact = "strictUnknownCfact"
@@ -92,23 +93,34 @@ fun runCfactCalc(cxt: KdrCxt, def: WfDef, entries: List<Map<String, Any?>>, clie
     }
     val params = CfactCalcParams(entries)
     fns.forEach { it.computeCfacts(cxt, params) }
-    if (params.emitted.isEmpty()) {
+    return declaredCfactsOnly(cxt, client, params.emitted, "A cfactCalc function")
+}
+
+/**
+ * [emitted] narrowed to the cfacts [client] declares -- the runtime half of the rule that a function may only
+ * emit a declared cfact, shared by every cfact-emitting event (`cfactCalc`, `viewerCfacts`). A literal emitted
+ * cfact was already boot-checked (the resolution pass dropped a function naming an undeclared one), so this only
+ * bites a **computed** one: logged and dropped, since a registry would refuse it -- or thrown, when the client
+ * opted into [CFC.strictUnknownCfact] (normally a unit-test client). [source] names the emitter in the message.
+ */
+fun declaredCfactsOnly(cxt: KdrCxt, client: String?, emitted: Set<String>, source: String): Set<String> {
+    if (emitted.isEmpty()) {
         return emptySet()
     }
     val declared = SchemaService.get(cxt).cfactsFor(client).names
-    val (known, unknown) = params.emitted.partition { it in declared }
+    val (known, unknown) = emitted.partition { it in declared }
     if (unknown.isNotEmpty()) {
         val clientDef = client?.let { ClientService.get(cxt).present(it) }
         val strict = clientDef != null && CFC.strictUnknownCfact in clientDef.testFeatures
         if (strict) {
             throw KdrException.mkConv(
-                "A cfactCalc function emitted undeclared cfact(s) ${unknown.sorted()} for client '$client', " +
-                    "and this client asks for that to be an error (${CFC.strictUnknownCfact}).",
+                "$source emitted undeclared cfact(s) ${unknown.sorted()} for client '$client', and this client " +
+                    "asks for that to be an error (${CFC.strictUnknownCfact}).",
             )
         }
         LogGedra.warn(cxt) {
-            "Dropping cfact(s) ${unknown.sorted()} a cfactCalc function emitted for client '$client' that the " +
-                "client does not declare."
+            "Dropping cfact(s) ${unknown.sorted()} ${source.replaceFirstChar { it.lowercase() }} emitted for " +
+                "client '$client' that the client does not declare."
         }
     }
     return known.toSet()

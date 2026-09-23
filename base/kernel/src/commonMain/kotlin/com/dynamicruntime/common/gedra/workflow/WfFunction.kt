@@ -23,6 +23,15 @@ enum class WfEventType(val scope: WfEventScope) {
 
     /** Supplies default values for a task's fields as the view is assembled (issue #679). Per task. */
     prefillData(WfEventScope.task),
+
+    /**
+     * Emits **temporary** cfacts about the person viewing a task, as the view is assembled -- never stored
+     * (issue #786). The other kind of cfact function: `cfactCalc` concludes facts about the *form* and persists
+     * them; this concludes facts about the *viewer* (are they a reviewer?), which differ per person and so could
+     * never be stored on the form. Per task, because the question is asked of a step -- "may review *this*
+     * approval" -- and a workflow with two approval points asks it twice.
+     */
+    viewerCfacts(WfEventScope.task),
 }
 
 /**

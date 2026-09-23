@@ -31,6 +31,10 @@ object ADEP {
     const val userSetEnabled = "/${SECT.admin}/user/setEnabled"
     const val userSetOrg = "/${SECT.admin}/user/setOrg"
     const val userSetName = "/${SECT.admin}/user/setName"
+    /** Replaces a user's free-form labels (issue #786). */
+    const val userSetLabels = "/${SECT.admin}/user/setLabels"
+    /** A client's suggested user labels (issue #786) -- what a label editor offers, without binding to it. */
+    const val userLabelSuggestions = "/${SECT.admin}/user/labelSuggestions"
     /** (Re)sends the invitation for a user nobody has claimed yet (issue #751). */
     const val userInvite = "/${SECT.admin}/user/invite"
     /**
@@ -94,6 +98,10 @@ object UADEP {
     const val userSetEnabled = "/${SECT.clientAdmin}/user/setEnabled"
     const val userSetOrg = "/${SECT.clientAdmin}/user/setOrg"
     const val userSetName = "/${SECT.clientAdmin}/user/setName"
+    /** The scoped counterpart to [ADEP.userSetLabels]. */
+    const val userSetLabels = "/${SECT.clientAdmin}/user/setLabels"
+    /** The scoped counterpart to [ADEP.userLabelSuggestions]. */
+    const val userLabelSuggestions = "/${SECT.clientAdmin}/user/labelSuggestions"
     /** The scoped counterpart to [ADEP.userInvite]. */
     const val userInvite = "/${SECT.clientAdmin}/user/invite"
     /** `DELETE`, like [ADEP.userDelete], and scoped to the caller's own client. */
@@ -111,6 +119,13 @@ object ADF {
     const val isEntity = "isEntity"
     const val name = "name"
     const val enabled = "enabled"
+
+    /**
+     * A user's free-form **labels** (issue #786): strings an administrator applies -- `reviewer`, say -- that a
+     * workflow function can test for. Not roles: a label confers no privilege on any surface, it only lets a
+     * workflow decide something about the person looking at it.
+     */
+    const val labels = "labels"
 
     /** On the delete call: obfuscate the user's identity irrecoverably rather than merely disable them. */
     const val permanent = "permanent"
@@ -254,10 +269,27 @@ object USF {
     const val defaultLimit = 500
 }
 
+/**
+ * Bounds on a user's labels (issue #786). Labels are free text on the user row, which every node holds in its
+ * user cache, so an edit may not grow it without limit; generous for what a label is -- a role-like word.
+ * In the kernel so the admin console can tell an administrator about a limit before the backend refuses it.
+ */
+@Suppress("ConstPropertyName")
+object ULIM {
+    /** The most labels one user may carry. */
+    const val maxLabels = 32
+
+    /** The longest a single label may be, in characters. */
+    const val maxLabelLength = 64
+}
+
 /** Admin schema type names. */
 @Suppress("ConstPropertyName")
 object ADTY {
     const val adminUser = "AdminUser"
+
+    /** What the label-suggestions read returns: a client and the labels it suggests (issue #786). */
+    const val labelSuggestions = "UserLabelSuggestions"
 }
 
 /**

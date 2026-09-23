@@ -13,13 +13,16 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.workflow.ULH
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WfFunction
 import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
 import com.dynamicruntime.common.gedra.workflow.WfFunctionUsage
+import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
 import io.kotest.core.spec.style.StringSpec
@@ -32,7 +35,9 @@ import io.kotest.matchers.shouldBe
  * object, a client's workflow declares a usage of it as data, and the boot pass in `WorkflowService.build`
  * resolves the usage into a runnable `WfFunction` in place on the definition. Booted in **warn** mode so every
  * boot check can be observed as a recorded issue rather than a refused boot -- one boot exercises the good path
- * and all four ways a usage is dropped (unknown fn, bad init data, an undeclared literal cfact, wrong scope).
+ * and all five ways a usage is dropped (unknown fn, bad init data, an undeclared literal cfact, wrong scope, and --
+ * issue #786 -- a literal user label the client does not suggest), plus the one place that label check is waived:
+ * a global workflow, which has no single client's suggestions to be held to.
  *
  * The functions here are test fixtures with no execution: A ships only the framework, and the per-event
  * execution interfaces and real functions arrive with issues #678/#679.
@@ -60,6 +65,16 @@ class WfFunctionResolutionTest : StringSpec({
         reported("needsField", "invalid initialization data") shouldBe true
         reported("emitBadCfact", "does not declare") shouldBe true
         reported("testPing", "does not belong on a task") shouldBe true
+        reported("userHasLabel", "does not suggest") shouldBe true
+    }
+
+    "a global workflow's literal label is not held to any client's suggestions" {
+        // The exemption the label check documents: a null suggestion list means "no list to check against", not
+        // an empty one -- which would drop every global workflow's userHasLabel at boot in strict mode.
+        val cxt = boot()
+        val task = WorkflowService.get(cxt).forClient(null).workflow("globalReview").shouldNotBeNull().def.tasks.single()
+        task.resolvedFunctions.map { it.fn } shouldContainExactly listOf(ULH.fn)
+        WorkflowService.get(cxt).issues.none { it.message.contains("globalReview") } shouldBe true
     }
 })
 
@@ -107,13 +122,27 @@ private class WfFnFixture : ComponentDefinition {
         collector.addWorkflowFunction(TestBadCfactCreation)
     }
 
-    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(good(cxt), bad(cxt))
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(good(cxt), bad(cxt), global(cxt))
 
     private fun clientDef(id: String, name: String) = ClientDef(
         clientId = id, name = name, description = "Workflow-function resolution fixture.",
         usageType = ClientUsageType.dev, audience = ClientAudience.customer,
         enabledEnvironments = setOf(ENV.unit), includedTraits = listOf(CLD.allGlobal),
+        // What a literal label is checked against (issue #786); `reviwer`, below, is not on it.
+        userLabels = listOf("reviewer"),
     )
+
+    /** A global normal workflow naming a label no client suggests -- allowed, since there is no one list to check. */
+    private fun global(cxt: KdrCxt): GedraConfig =
+        gedraConfig(cxt, "wfFnGlobal", GCFG.globalNamespace) {
+            workflow("globalReview", WfEntry.normal) {
+                task("review", "Review") {
+                    trait(GT.name)
+                    function(userHasLabel { label = "anyLabelAtAll" })
+                    save("save", "Save", WfSaveKind.edit)
+                }
+            }
+        }
 
     /** One good, workflow-global `cfactCalc` usage that resolves. */
     private fun good(cxt: KdrCxt): GedraConfig =
@@ -137,6 +166,8 @@ private class WfFnFixture : ComponentDefinition {
                     trait(GT.name)
                     save("create", "Create")
                     function(mapOf(WFD.fn to "testPing"))
+                    // A literal label the client does not suggest -- a misspelling of its `reviewer` (issue #786).
+                    function(userHasLabel { label = "reviwer" })
                 }
             }
         }

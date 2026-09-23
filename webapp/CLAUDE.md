@@ -182,6 +182,17 @@ account is, not what it may do:
   appearing. That mirrors `UserProfile.displayName`, which is `name ?: publicName` with no reference to the
   flag, so the console and the app cannot disagree about what is shown.
 
+One more is neither authority nor identity:
+
+- **Labels** (issue #786) — free-form words an administrator puts on a user (`reviewer`) for a workflow's
+  `userHasLabel` function to test. They **grant nothing**, which is why they sit apart from the access level
+  rather than beside it. A tags `Select` offering the *user's* client's suggestions (`labelSuggestions`, fetched
+  the first time that client is edited and kept keyed by client, so a slow reply can only fill its own client's
+  entry — never land on the next user's editor) while accepting any other label typed. On an existing user
+  only: create has no labels field. Editable on your **own** row too, deliberately — a label is not privilege;
+  a second-person rule for approving, if one is wanted, belongs to the approval endpoint (#787). Saving compares
+  after `normalizeUserLabels`, the kernel rule the backend stores by, so re-spacing a label is no change.
+
 **Unticking "Business account" keeps the name.** It used to clear it, which was right while only a business
 had one and is silent data loss now that a person does — reclassifying an account should not discard what it
 is called. The list shows **Name** and a plain Person/Business **Type**.

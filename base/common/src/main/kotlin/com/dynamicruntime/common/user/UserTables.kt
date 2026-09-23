@@ -135,6 +135,12 @@ object AD {
     const val roles = "roles"
 
     /**
+     * The user's free-form labels (issue #786), absent when they have none. Its own literal rather than
+     * `ADF.labels`, for the reason the dates below give: a storage key and a wire key are different contracts.
+     */
+    const val labels = "labels"
+
+    /**
      * The user's primary organization within their client, or absent when they have none (issue #225).
      *
      * Here rather than in a column on purpose: it rides with the identity (`UserProfile`, and the session

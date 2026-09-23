@@ -8,6 +8,8 @@ import com.dynamicruntime.common.user.AERR
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.PERSONASUFFIX
 import com.dynamicruntime.common.user.USF
+import com.dynamicruntime.common.user.normalizeUserLabels
+import com.dynamicruntime.common.user.userLabelChoices
 import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.user.userSearchFieldSpecsByName
@@ -103,6 +105,16 @@ val Users = FC<Props> {
     var draftIsEntity by useState(false)
     var draftName by useState("")
     var draftEnabled by useState(true)
+    // The user's free-form labels (issue #786), and what each client suggests -- keyed by client, since a
+    // full-scope administrator edits users in many clients and each suggests its own. Keyed rather than one
+    // "current" list so a slow reply can only ever fill in *its own* client: opening an acme user and then a globex
+    // one cannot leave acme's suggestions on the globex editor. It also means a client is fetched once per page.
+    var draftLabels by useState<List<String>>(emptyList())
+    val (labelSuggestions, setLabelSuggestions) = useState<Map<String, List<String>>>(emptyMap())
+    // Read through a ref by [startEdit], which the once-registered hashchange listener reaches -- it would otherwise
+    // see the empty map of the first render and refetch on every open (the reason [usersRef] exists, too).
+    val labelSuggestionsRef = useRef<Map<String, List<String>>>(emptyMap())
+    labelSuggestionsRef.current = labelSuggestions
     // The persona and personaSuffix (issue #750): chosen at creation, shown read-only afterward. The suffix box
     // is on every create form (issue #797): a first "Member B" needs it as much as a second one does. A create
     // that collides with an existing user of the same address, client and persona sets [personaSuffixCollided],
@@ -268,6 +280,7 @@ val Users = FC<Props> {
         draftIsEntity = user?.isEntity == true
         draftName = user?.name ?: ""
         draftEnabled = user?.enabled ?: true
+        draftLabels = user?.labels ?: emptyList()
         draftPersona = user?.persona ?: PERSONA.member
         draftPersonaSuffix = user?.personaSuffix ?: ""
         personaSuffixCollided = false
@@ -282,6 +295,19 @@ val Users = FC<Props> {
         editing = user
         creating = false
         seedDraft(user)
+        // The suggestions of the *user's* client, not the editor's, fetched the first time that client is edited.
+        // A failure leaves the editor offering only the labels the user already has -- they can still type any
+        // other, since labels are free-form -- and is not recorded, so the next open tries again.
+        val client = user.client
+        if (labelSuggestionsRef.current?.containsKey(client) != true) {
+            usersScope.launch {
+                // A functional update: this runs after the await, when the map captured above may be stale -- two
+                // clients fetched at once would otherwise each write back a map missing the other.
+                runCatching { AdminApi.labelSuggestions(client) }.onSuccess { fetched ->
+                    setLabelSuggestions { current -> current + (client to fetched) }
+                }
+            }
+        }
     }
 
     /** Opens the editor on a new user -- for the caller's own address when [forSelf] (issue #797). */
@@ -447,6 +473,13 @@ val Users = FC<Props> {
             }
             if (draftEnabled != target.enabled) {
                 AdminApi.setEnabled(target.userId, draftEnabled)
+                changed = true
+            }
+            // Compared after the kernel's normalization -- the rule the backend stores by -- so re-spacing or
+            // repeating a label is no change, rather than a write that stores what was already there.
+            val desiredLabels = normalizeUserLabels(draftLabels)
+            if (desiredLabels != target.labels) {
+                AdminApi.setLabels(target.userId, desiredLabels)
                 changed = true
             }
             note = if (changed) "Saved ${target.primaryId}." else "No changes to ${target.primaryId}."
@@ -699,6 +732,34 @@ val Users = FC<Props> {
                 }
             } else {
                 readOnlyField("Organization", draftOrg.ifEmpty { "—" })
+            }
+
+            // Labels (issue #786): on an existing user only -- a new one has no client suggestions fetched yet, and
+            // is labelled after it exists. A tags select: the client's suggestions are offered, and anything else
+            // may be typed, because a label is free-form by design.
+            if (!creating) {
+                div {
+                    className = ClassName("row")
+                    span {
+                        className = ClassName("field-label")
+                        +"Labels"
+                    }
+                    Select {
+                        mode = "tags"
+                        value = draftLabels.toTypedArray()
+                        options = labelSelectOptions(
+                            userLabelChoices(labelSuggestions[editing?.client].orEmpty(), draftLabels),
+                        )
+                        placeholder = "(none)"
+                        disabled = busy
+                        style = js("({ minWidth: 240 })")
+                        onChange = { v -> draftLabels = (v.unsafeCast<Array<String>>()).toList() }
+                    }
+                }
+                p {
+                    className = ClassName("type-hint")
+                    +labelsHint
+                }
             }
 
             div {
@@ -1213,6 +1274,19 @@ private const val allClientsDormantHint =
 private const val orgHint =
     "An optional organization within the client. Someone assigned one sees only their own organization, " +
         "plus anything belonging to no organization at all. Leave it blank for client-wide."
+
+/** Says what a label is for -- and, since it sits beside the access level, what it is not. */
+private const val labelsHint =
+    "Free-form labels a workflow can test for -- \"reviewer\" can make someone a reviewer of a workflow's " +
+        "task. They grant no access. The client's suggestions are offered; type to add any other."
+
+/** A label list as antd `Select` `{ label, value }` options -- a label is its own caption. */
+private fun labelSelectOptions(labels: List<String>): Array<dynamic> = labels.map { label ->
+    val option: dynamic = js("({})")
+    option.label = label
+    option.value = label
+    option
+}.toTypedArray()
 
 /** Explains what the name is for, and that it is display copy rather than an identifier. */
 private const val nameHint =

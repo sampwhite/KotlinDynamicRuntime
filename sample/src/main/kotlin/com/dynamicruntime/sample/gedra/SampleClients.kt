@@ -24,6 +24,7 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
+import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.gedra.workflow.prefillFromOwner
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.LAYSTR
@@ -174,6 +175,10 @@ object SC {
      */
     const val underAudit = "acmeUnderAudit"
 
+    /** The user labels acme suggests (issue #786); the first is the one its audit review tests for. */
+    const val reviewerLabel = "reviewer"
+    const val siteLeadLabel = "siteLead"
+
     /** The friendly label [underAudit] presents under. */
     const val auditGroup = "Site audits"
 
@@ -235,6 +240,9 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 // Opt in to the demo state derivation (issue #599): on a test instance, acme's forms get
                 // `traitPresenceByYear` computed on create. A test-only behavior toggle, not a schema variant.
                 testFeatures = setOf(ST.captureTraitPresenceByYear),
+                // The user labels acme suggests (issue #786): what the admin console's label editor offers, and
+                // what a workflow function naming a label is checked against. Suggestions -- any label may be set.
+                userLabels = listOf(SC.reviewerLabel, SC.siteLeadLabel),
             ),
         )
 
@@ -423,6 +431,9 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             eligibility(SW.noOpenReview, "~${WSC.needsReview}", "A review of this form is already waiting.")
             task(SW.recordAudit, "Record the audit") {
                 trait(SC.siteAudit)
+                // Approval authority (issue #786): a viewer carrying acme's `reviewer` label is a reviewer of this
+                // task -- the `reviewer` cfact on its view, which the approval task (#787) will key on.
+                function(userHasLabel { label = SC.reviewerLabel })
                 save(SW.saveAudit, "Save the audit", WfSaveKind.edit)
             }
         }

@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.reportConfigProblem
@@ -31,36 +32,50 @@ fun resolveWorkflowFunctions(
     for (bundle in configs.configs) {
         val client = bundle.gedraId.client
         val declaredCfacts = schemaService.cfactsFor(client).names
+        // The labels the client suggests (issue #786), or null for a bundle with no client definition present
+        // here -- a global workflow has no one client's list to be held to, so its labels are not checked.
+        val suggestedLabels = ClientService.get(cxt).present(client)?.userLabels?.toSet()
+        val bundleScope = ResolutionScope(cxt, client, byFn, declaredCfacts, suggestedLabels, mode, issues)
         for (def in bundle.workflows.values) {
-            def.resolvedFunctions = resolveList(
-                cxt, client, def.workflowId, "the workflow", def.functionUsages, WfEventScope.global,
-                byFn, declaredCfacts, collectedTraits = null, mode, issues,
+            def.resolvedFunctions = bundleScope.resolveList(
+                def.workflowId, "the workflow", def.functionUsages, WfEventScope.global, collectedTraits = null,
             )
             for (task in def.tasks) {
-                task.resolvedFunctions = resolveList(
-                    cxt, client, def.workflowId, "task '${task.id}'", task.functionUsages, WfEventScope.task,
-                    byFn, declaredCfacts, collectedTraits = task.traits.map { it.traitId }.toSet(), mode, issues,
+                task.resolvedFunctions = bundleScope.resolveList(
+                    def.workflowId, "task '${task.id}'", task.functionUsages, WfEventScope.task,
+                    collectedTraits = task.traits.map { it.traitId }.toSet(),
                 )
             }
         }
     }
 }
 
-/** Resolves one scope's usage list, dropping (with a reported problem) any that will not build. */
-private fun resolveList(
-    cxt: KdrCxt,
-    client: String,
+/**
+ * What every usage in one config bundle is checked against -- the same for each of its workflows and tasks, so
+ * gathered once rather than passed down as a dozen parameters. [suggestedLabels] is the client's suggested user
+ * labels (issue #786), or null when there is no client list to check a literal label against.
+ */
+private class ResolutionScope(
+    val cxt: KdrCxt,
+    val client: String,
+    val byFn: Map<String, WfFunctionCreation>,
+    val declaredCfacts: Set<String>,
+    val suggestedLabels: Set<String>?,
+    val mode: BootCheckMode,
+    val issues: MutableList<GedraConfigIssue>,
+)
+
+/**
+ * Resolves one placement's usage list, dropping (with a reported problem) any that will not build.
+ * [collectedTraits] is what the placement collects, for the referenced-trait check -- null on the workflow-global
+ * list, whose functions read anywhere in the form rather than one task's collected traits.
+ */
+private fun ResolutionScope.resolveList(
     workflowId: String,
     where: String,
     usages: List<WfFunctionUsage>,
     scope: WfEventScope,
-    byFn: Map<String, WfFunctionCreation>,
-    declaredCfacts: Set<String>,
-    // The traits the placement collects, for the referenced-trait check; null on the workflow-global list, whose
-    // functions read anywhere in the form rather than one task's collected traits.
     collectedTraits: Set<String>?,
-    mode: BootCheckMode,
-    issues: MutableList<GedraConfigIssue>,
 ): List<WfFunction> {
     if (usages.isEmpty()) {
         return emptyList()
@@ -79,6 +94,8 @@ private fun resolveList(
         val undeclaredCfacts = creation?.let { it.emittedCfacts(usage) - declaredCfacts } ?: emptySet()
         val uncollectedTraits =
             if (creation != null && collectedTraits != null) creation.referencedTraits(usage) - collectedTraits else emptySet()
+        val unsuggestedLabels =
+            if (creation != null && suggestedLabels != null) creation.referencedUserLabels(usage) - suggestedLabels else emptySet()
         when {
             creation == null ->
                 drop("is not a registered workflow function")
@@ -88,6 +105,8 @@ private fun resolveList(
                 drop("emits cfact(s) ${undeclaredCfacts.sorted()} the client does not declare")
             uncollectedTraits.isNotEmpty() ->
                 drop("references trait(s) ${uncollectedTraits.sorted()} the task does not collect")
+            unsuggestedLabels.isNotEmpty() ->
+                drop("tests for user label(s) ${unsuggestedLabels.sorted()} the client does not suggest (userLabels)")
             else -> {
                 // Only a KdrException means "bad initialization data" -- the create contract. Anything else is a
                 // defect in the creation itself, and is left to propagate rather than mislabeled and swallowed.

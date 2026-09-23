@@ -198,12 +198,16 @@ object WSF {
 }
 
 /**
- * The cfact names a task's statuses are reported under -- **target facts** about the task being rendered,
- * passed to the registry's `assemble` rather than computed from the request (issue #533). Only these two are
- * declared: `complete` has a real producer ([WfTaskFacts]), `available` is a placeholder that is always
- * present until availability rules exist. Eligibility and validity are not declared at all -- the cfact
- * registry is additive, so a name costs nothing when something produces it, and a declared name nothing
- * produces reads as a capability.
+ * The cfact names reported about the task being rendered -- **target facts**, passed to the registry's
+ * `assemble` rather than computed from the request (issue #533). Each is declared because something produces
+ * it: `complete` and `isCta` by the status engine ([WfTaskFacts], [WFC.isCta] since #785), `reviewer` by a
+ * `viewerCfacts` function such as `userHasLabel` (#786), and `available` as a placeholder that is always present
+ * until availability rules exist. Eligibility and validity are not declared as task facts -- the cfact registry
+ * is additive, so a name costs nothing once something produces it, while a declared name nothing produces
+ * reads as a capability the deployment does not have.
+ *
+ * Every value carries the `wf` prefix: these are declared globally, and a global name is one no client may
+ * declare for itself, so the prefix keeps the plain words (`reviewer`, `current`) free for clients.
  */
 @Suppress("ConstPropertyName")
 object WFC {
@@ -219,6 +223,14 @@ object WFC {
      * current, or a later one as waiting on it.
      */
     const val isCta = "wfIsCta"
+
+    /**
+     * The person viewing the task may review it (issue #786): the framework's name for the approval authority a
+     * `viewerCfacts` function concludes -- typically `userHasLabel` over a `reviewer` *label*. **Hardwired**, since
+     * the needsReview flow (#787) looks for exactly this cfact; a workflow may still emit one of its own choosing.
+     * Prefixed like its neighbours, so a client remains free to declare a cfact called plain `reviewer`.
+     */
+    const val reviewer = "wfReviewer"
 }
 
 /**

@@ -10,14 +10,18 @@ object WFGRP {
 }
 
 /**
- * Declares the two workflow cfacts (issue #533) -- and **only** two, on purpose.
+ * Declares the workflow task cfacts (issues #533, #785, #786) -- each one because something produces it.
  *
- * Both are **target facts**: facts about the task being rendered, computed by [WfTaskFacts] and passed to the
- * registry's `assemble` beside the request's own facts, so neither has a request-scoped source here.
- * [WFC.taskComplete] has a real producer; [WFC.taskAvailable] is a placeholder that is always present until
- * availability rules exist, and its description says so. Eligibility, validity, "finished" and "reviewer" are
- * not declared: the registry is additive, so each costs nothing when something produces it, and a declared
- * name nothing produces reads as a capability the deployment does not have.
+ * All four are **target facts**: facts about the task being rendered, passed to the registry's `assemble` beside
+ * the request's own facts, so none has a request-scoped source here. [WFC.taskComplete] and [WFC.isCta] come from
+ * the status engine ([WfTaskFacts]); [WFC.reviewer] from a task's `viewerCfacts` functions (`userHasLabel`), which
+ * is what earned it a declaration -- it was withheld until #786 gave it a producer; and [WFC.taskAvailable] is a
+ * placeholder that is always present until availability rules exist, and its description says so.
+ *
+ * The rule that kept `reviewer` out still holds for everything else: eligibility and validity are not declared
+ * as task facts, because the registry is additive -- a name costs nothing once something produces it, while a
+ * declared name nothing produces reads as a capability the deployment does not have. (`finished` and
+ * `needsReview` are declared, but as form-level singletons in `WSC`, not here.)
  */
 fun addWorkflowCFacts(collector: SchemaCollector) {
     collector.addCFact(
@@ -39,6 +43,14 @@ fun addWorkflowCFacts(collector: SchemaCollector) {
             WFC.isCta, WFGRP.workflow,
             "True, about the task being rendered, when it is the workflow's call to action: the earliest task, in " +
                 "list order, that is not both complete and valid (issue #785).",
+        ),
+    )
+    collector.addCFact(
+        CFactDef(
+            WFC.reviewer, WFGRP.workflow,
+            "True, about the task being rendered, when the person viewing it may review it -- concluded at " +
+                "presentation time by the task's viewerCfacts functions (typically userHasLabel), never stored " +
+                "(issue #786).",
         ),
     )
 }
