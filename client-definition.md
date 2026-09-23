@@ -109,6 +109,11 @@ For the client configuration itself, the client has the following attributes.
  functional group is refused when `audience` is `customer` **and** `usageType` is `production` -- see the
  decision below for why both conditions.
  This list is a **minimum**, not a total: see the traits section below.
+* `userLabels` - The user labels this client suggests (issue #786): what the admin console's label editor
+ offers, and what a workflow function naming a label literally (`userHasLabel`) is checked against when the
+ configuration loads -- so a misspelled label in a workflow is caught there rather than silently never matching.
+ A suggestion, not a bound: any label may be applied to a user. Each label is written once and trimmed; a blank,
+ padded or repeated one is refused.
 * `organizations` - A complex definition of organizations associated with this client, we will implement this
  at a later date.
 

@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
 import com.dynamicruntime.common.gedra.workflow.PrefillFromOwnerCreation
+import com.dynamicruntime.common.gedra.workflow.UserHasLabelCreation
 import com.dynamicruntime.common.gedra.workflow.SurveyStateDeriver
 import com.dynamicruntime.common.gedra.workflow.WorkflowStateDeriver
 import com.dynamicruntime.common.gedra.workflow.addSurveyCFacts
@@ -114,6 +115,8 @@ class CommonComponent : ComponentDefinition {
         // The first prefillData function (issue #679): a task's prefillData usages default a field from the form
         // owner's attributes as the view resolves -- presented as entered, never counted toward requiredness.
         collector.addWorkflowFunction(PrefillFromOwnerCreation)
+        // The first viewerCfacts function (issue #786): a temporary cfact about the viewer, from a user label.
+        collector.addWorkflowFunction(UserHasLabelCreation)
         // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
         // its transaction. This is what makes a raw patch (not only the survey save) keep survey state fresh.
         collector.addWriteHook(DerivedStateWriteHook)

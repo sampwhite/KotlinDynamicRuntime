@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
+import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptStr
 
@@ -97,6 +98,7 @@ object CLD {
     const val customDomain = "customDomain"
     const val includedTraits = "includedTraits"
     const val testFeatures = "testFeatures"
+    const val userLabels = "userLabels"
 
     /** Schema type name for the [ClientDef.toInfo] dump. */
     const val infoTypeName = "ClientInfo"
@@ -292,7 +294,28 @@ data class ClientDef(
      * it; it is empty off a test instance whatever the stored row held.
      */
     val testFeatures: Set<String> = emptySet(),
+    /**
+     * The user labels this client **suggests** (issue #786) -- what an administrator's label editor offers, and
+     * what a workflow function naming a label literally is checked against at boot. Suggestions, not a bound: a
+     * label outside the list may still be applied to a user, since labels are free-form by design; the list is
+     * what makes a typo in a *workflow* visible, where nothing else would notice it.
+     */
+    val userLabels: List<String> = emptyList(),
 ) {
+    init {
+        // Held to the one label rule ([normalizeUserLabels]) that a label on a *user* is held to, and refused here,
+        // where the definition is written: a stray space or a repeat in the client's own list would otherwise
+        // surface later as a workflow's literal `reviewer` failing the suggestion check -- blaming the workflow
+        // for a typo in the client.
+        if (userLabels != normalizeUserLabels(userLabels)) {
+            val bad = userLabels.filterIndexed { i, l -> l.isBlank() || l != l.trim() || userLabels.indexOf(l) != i }
+            throw KdrException.mkConv(
+                "Client '$clientId' suggests user labels ${bad.map { "'$it'" }} that are blank, padded with " +
+                    "spaces, or repeated. Write each label once, trimmed -- a label is matched exactly as written.",
+            )
+        }
+    }
+
     /** Whether [enabledEnvironments] holds [env] -- the whole of whether this client is present on a node. */
     fun isEnabledIn(env: String): Boolean = env in enabledEnvironments
 
@@ -325,6 +348,7 @@ data class ClientDef(
         // Round-trips so it can be authored as data; a non-test instance strips it on the way back in
         // (checkClientDefs), so emitting it here is safe -- the present definition it reads from has none.
         if (testFeatures.isNotEmpty()) put(CLD.testFeatures, testFeatures.toList())
+        if (userLabels.isNotEmpty()) put(CLD.userLabels, userLabels)
     }
 
     companion object {
@@ -351,6 +375,7 @@ data class ClientDef(
             customDomain = m[CLD.customDomain].toOptStr(),
             includedTraits = m[CLD.includedTraits].toJsonListOfStrings(),
             testFeatures = m[CLD.testFeatures].toJsonListOfStrings().toSet(),
+            userLabels = m[CLD.userLabels].toJsonListOfStrings(),
         )
 
         private fun <E : Enum<E>> enumOf(values: List<E>, name: String?, field: String): E =
@@ -397,6 +422,10 @@ data class ClientDef(
                     CLD.testFeatures,
                     "Test/demo feature names, honored only on a test instance (stripped elsewhere).",
                 ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(CLD.userLabels, "User labels the client suggests; a label editor offers them, without binding to them.") {
                     type = SCT.array
                     items { type = SCT.string }
                 }

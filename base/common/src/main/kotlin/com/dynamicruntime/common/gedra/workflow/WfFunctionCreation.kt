@@ -1,6 +1,10 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.coerceAndValidate
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
  * The `base:common` half of a workflow function kind (issue #677): the Kotlin that turns a kernel
@@ -37,4 +41,29 @@ interface WfFunctionCreation {
      * none or computes them, which the design catches at runtime rather than at boot.
      */
     fun emittedCfacts(usage: WfFunctionUsage): Set<String> = emptySet()
+
+    /**
+     * The user labels [usage] names **literally** (issue #786), for the check that they are on the declaring
+     * client's suggestion list (`ClientDef.userLabels`); empty when it names none. Labels are free-form on a user,
+     * so this list is the only place a misspelled label in a *workflow* could be caught -- a user would simply
+     * never carry it, and the function would silently never fire.
+     */
+    fun referencedUserLabels(usage: WfFunctionUsage): Set<String> = emptySet()
+}
+
+/**
+ * [usage]'s initialization data, validated and coerced against its kind's [type] -- the step every creation's
+ * [WfFunctionCreation.create] opens with -- or a thrown `KdrException` naming [fn] and **every** failure, which the
+ * resolution pass reports as a config problem. One copy for all the function kinds rather than one each, so the
+ * wording and the everything-at-once reporting cannot drift apart between them.
+ */
+fun validatedInitData(type: SchType, usage: WfFunctionUsage, fn: String): Map<String, Any?> {
+    val result = coerceAndValidate(type, usage.initData)
+    if (result.failures.isNotEmpty()) {
+        throw KdrException.mkConv(
+            "'$fn' initialization data is invalid: " +
+                result.failures.joinToString("; ") { "${it.path.ifEmpty { "(root)" }}: ${it.message}" },
+        )
+    }
+    return result.value.toJsonMapOrEmpty()
 }

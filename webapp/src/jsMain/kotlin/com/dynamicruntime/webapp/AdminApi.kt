@@ -92,6 +92,8 @@ class AdminUser(
     val activatedAt: String? = null,
     /** When the person claimed the user (issue #750); absent while nobody has, which is what [registered] reads. */
     val registeredAt: String? = null,
+    /** Free-form labels an administrator applied (issue #786) -- what a workflow can test for; they grant nothing. */
+    val labels: List<String> = emptyList(),
 ) {
     /**
      * This user's access level: the highest rung of [RoleLadder] they hold, which is what the Users page's
@@ -234,6 +236,21 @@ object AdminApi {
         Http.sendApi("POST", GEP.adminFormDocForUser, formForUserBody(userRef, payload))[EP.item]
             .toJsonMapOrEmpty()[GDF.gedraId] as? String
 
+    /** Replaces a user's free-form labels (issue #786); an empty list clears them. */
+    suspend fun setLabels(userId: Long, labels: List<String>): AdminUser =
+        Http.sendApi("POST", UADEP.userSetLabels, mapOf(ADF.userId to userId, ADF.labels to labels))
+            .results().toAdminUser()
+
+    /**
+     * The labels [client] suggests (issue #786) -- what the label editor offers. The caller's own client when
+     * null; naming another takes `allClients`, which is the only caller who edits users outside their own.
+     */
+    suspend fun labelSuggestions(client: String?): List<String> {
+        val args = client?.let { mapOf(ADF.client to it) } ?: emptyMap()
+        return Http.getApi(UADEP.userLabelSuggestions + queryString(args))[EP.results].toJsonMapOrEmpty()[ADF.labels]
+            .toJsonListOfStrings()
+    }
+
     /** Replaces a user's roles -- the call that grants or revokes administrator rights. */
     suspend fun setRoles(userId: Long, roles: List<String>): AdminUser =
         Http.sendApi("POST", UADEP.userSetRoles, mapOf(ADF.userId to userId, ADF.roles to roles))
@@ -298,6 +315,7 @@ object AdminApi {
         lastEditedAt = this[USF.lastEdited.at] as? String,
         lastLoggedInAt = this[USF.lastLoggedIn.at] as? String,
         activatedAt = this[USF.activated.at] as? String,
+        labels = this[ADF.labels].toJsonListOfStrings(),
     )
 }
 

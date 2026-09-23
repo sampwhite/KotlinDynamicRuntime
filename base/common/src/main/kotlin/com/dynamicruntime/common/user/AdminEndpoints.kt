@@ -56,12 +56,17 @@ class UserAdminPaths(
     val userSetName: String,
     val userInvite: String,
     val userDelete: String,
+    val userSetLabels: String,
+    val userLabelSuggestions: String,
 )
 
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
 fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, SECT.admin,
-    UserAdminPaths(ADEP.users, ADEP.userSearch, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg, ADEP.userSetName, ADEP.userInvite, ADEP.userDelete),
+    UserAdminPaths(
+        ADEP.users, ADEP.userSearch, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg,
+        ADEP.userSetName, ADEP.userInvite, ADEP.userDelete, ADEP.userSetLabels, ADEP.userLabelSuggestions,
+    ),
 )
 
 /**
@@ -75,7 +80,10 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, SECT.clientAdmin,
-    UserAdminPaths(UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg, UADEP.userSetName, UADEP.userInvite, UADEP.userDelete),
+    UserAdminPaths(
+        UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg,
+        UADEP.userSetName, UADEP.userInvite, UADEP.userDelete, UADEP.userSetLabels, UADEP.userLabelSuggestions,
+    ),
 )
 
 private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPaths): SchModule =
@@ -236,7 +244,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null } ?: c.userProfile.org
         requireAssignableOrg(c, org)
         val userId = service.provisionUser(
-            c, primaryId, assignableClient(c, request[ADF.client].toOptStr()), roles, org, c.now(),
+            c, primaryId, assignableClient(c, request[ADF.client].toOptStr(), "create users in"), roles, org, c.now(),
             persona = persona, personaSuffix = personaSuffix, username = username, registered = ownAddress,
         ) { authUserData ->
             // The address and its contact are the identity's (issue #748), which `provisionUser` creates
@@ -449,22 +457,91 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId name/isEntity=$isEntity." }
         row.toAdminInfo()
     }
+
+    // --- labels (issue #786) --------------------------------------------------
+
+    generalEndpoint(
+        paths.userSetLabels,
+        "Replaces a user's free-form labels -- what a workflow can test for (a reviewer, say). Labels grant nothing.",
+        HttpMethod.POST,
+        outputRef = ADTY.adminUser,
+        inputFields = {
+            field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
+            // Not bound to the client's suggestions: labels are free-form by design, and the suggestion list is
+            // what a label editor *offers* (see userLabelSuggestions), not what it permits. Bounded, though: labels
+            // are the first free-text list on the user row, which every node holds in its user cache. And a real
+            // array only -- no coercing a string, which would comma-split it and make a comma unsendable.
+            field(ADF.labels, "The complete new set of labels (replaces, not merges); empty to clear them.", required = true) {
+                type = SCT.array
+                allowCoerce = false
+                maxItems = ULIM.maxLabels
+                items {
+                    type = SCT.string
+                    maxLength = ULIM.maxLabelLength
+                }
+            }
+        },
+    ) { c, request ->
+        val userId = requireUserId(request)
+        // Loaded first, so a user outside the caller's scope is a 404; the section gate already made the caller an
+        // administrator.
+        //
+        // An administrator **may** label themselves -- deliberately, not by omission. A label grants nothing on any
+        // surface, so there is no escalation here to guard, which is what setRoles' self-edit rule prevents. Once a
+        // label backs approval authority (the approval task, #787), "may the approver be the person who labelled
+        // themselves reviewer?" is a real question -- and it belongs to the approval endpoint, which knows it is
+        // approving; a guard here would only move the question, since another administrator could apply the label.
+        val row = loadEditableUser(c, userId)
+        val previous = row.labels
+        row.labels = request[ADF.labels].toJsonListOfStrings() // the row normalizes
+        userService(c).updateUser(c, row)
+        LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId labels: $previous -> ${row.labels}." }
+        row.toAdminInfo()
+    }
+
+    generalEndpoint(
+        paths.userLabelSuggestions,
+        "The user labels a client suggests -- what a label editor offers. Suggestions only: any label may be applied.",
+        HttpMethod.GET,
+        outputRef = ADTY.labelSuggestions,
+        inputFields = {
+            field(ADF.client, "The client whose suggestions to read; the caller's own when absent.")
+        },
+    ) { c, request ->
+        // The same rule as naming a client on create: your own, or any present one with `allClients`.
+        val client = assignableClient(c, request[ADF.client].toOptStr(), "read the label suggestions of")
+        mapOf(
+            ADF.client to client,
+            ADF.labels to (ClientService.get(c).present(client)?.userLabels ?: emptyList()),
+        )
+    }
+
+    type(ADTY.labelSuggestions) {
+        type = SCT.kObject
+        description = "A client's suggested user labels."
+        property(ADF.client, "The client the suggestions belong to.", required = true)
+        property(ADF.labels, "The suggested labels, in the client's order.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+    }
 }
 
 /**
- * The client a created user belongs to: [named] when the caller may say so, and their own otherwise (issue
- * #352).
+ * The client an administrator may name: [named] when the caller may say so, and their own otherwise. Asked by
+ * create (which client a new user belongs to, issue #352) and by the label-suggestions read (whose suggestions to
+ * show, issue #786); [action] is the verb phrase the refusal uses, so each caller's message says what was refused.
  *
  * Two refusals, and they are different questions. Naming a client **other than your own** takes
  * [ROLE.allClients] -- a client-scoped administrator creating a user elsewhere would immediately lose sight of
  * them, which is the same reason the organization defaults the way it does. And any named client has to be one
  * this node **carries**, since a user in a client that is not present cannot get in.
  *
- * There is no set-client call to match this, and there should not be: a user's content carries their client
- * both in the `client` column and inside every `GedraId`, so moving one would strand it. Create is the only
- * point at which this is answerable, which is why the console offers the choice only there.
+ * There is no set-client call to match the create case, and there should not be: a user's content carries their
+ * client both in the `client` column and inside every `GedraId`, so moving one would strand it. Create is the only
+ * point at which a user's client is answerable, which is why the console offers the choice only there.
  */
-private fun assignableClient(cxt: KdrCxt, named: String?): String {
+private fun assignableClient(cxt: KdrCxt, named: String?, action: String): String {
     val own = cxt.userProfile.client
     val client = named?.trim()?.ifEmpty { null } ?: return own
     if (client == own) {
@@ -472,7 +549,7 @@ private fun assignableClient(cxt: KdrCxt, named: String?): String {
     }
     if (AdminRules.adminScope(cxt) != AdminScope.allClients) {
         throw KdrException.mkInput(
-            "You may only create users in your own client ('$own'); naming another takes the " +
+            "You may only $action your own client ('$own'); naming another takes the " +
                 "'${ROLE.allClients}' capability.",
         )
     }

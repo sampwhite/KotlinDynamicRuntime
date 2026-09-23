@@ -1,11 +1,9 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
-import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.schemaDefs
 import com.dynamicruntime.common.util.pluckDataPath
@@ -92,14 +90,7 @@ object ComputeCFactsFromDataCreation : WfFunctionCreation {
     override val event: WfEventType = WfEventType.cfactCalc
 
     override fun create(cxt: KdrCxt, usage: WfFunctionUsage): WfFunction {
-        val result = coerceAndValidate(initDataType(cxt), usage.initData)
-        if (result.failures.isNotEmpty()) {
-            throw KdrException.mkConv(
-                "'${CFD.fn}' initialization data is invalid: " +
-                    result.failures.joinToString("; ") { "${it.path.ifEmpty { "(root)" }}: ${it.message}" },
-            )
-        }
-        val m = result.value.toJsonMapOrEmpty()
+        val m = validatedInitData(initDataType(cxt), usage, CFD.fn)
         return ComputeCFactsFromDataFn(
             priority = usage.priority,
             trait = m[CFD.trait].toOptStr() ?: "",
