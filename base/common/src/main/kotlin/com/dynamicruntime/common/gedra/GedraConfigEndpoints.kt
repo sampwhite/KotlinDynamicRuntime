@@ -8,8 +8,9 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.SECT
-import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.logging.LogStartup
+import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.util.getReqNonBlankStr
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -282,11 +283,18 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
 // client for its write/publish, but building the config id and reload/tier calls off `cxt.client` is what makes
 // one body serve both -- so the cross-client surface is the same logic under a different bound client, not a
 // second implementation that could drift.
+//
+// Each also opens with `AdminRules.requireClientAdministrator` (issue #805): the `clientAdmin` section admits any
+// administrator, including one in `public` who administers only their own users -- and the `public` client's
+// configuration is every `public` user's, not theirs.
 
-private fun cfgBundlesBody(c: KdrCxt): List<Map<String, Any?>> =
-    GedraConfigService.get(c).listConfigs(c).map { summaryOf(it) }
+private fun cfgBundlesBody(c: KdrCxt): List<Map<String, Any?>> {
+    AdminRules.requireClientAdministrator(c)
+    return GedraConfigService.get(c).listConfigs(c).map { summaryOf(it) }
+}
 
 private fun cfgBundleBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
     val name = requireName(request)
     val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
         ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
@@ -294,6 +302,7 @@ private fun cfgBundleBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
 }
 
 private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
     val name = requireName(request)
     val namespace = request[CFEP.namespaceField].toOptStr()
         ?: throw KdrException.mkInput("A configuration bundle must name its '${CFEP.namespaceField}'.")
@@ -310,6 +319,7 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
 }
 
 private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
     val name = requireName(request)
     val edits = request[CFEP.edits].toJsonListOfMaps()
     if (edits.isEmpty()) {
@@ -334,6 +344,7 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
  * not be applied.
  */
 private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
     val bundles = request[ACEP.bundlesField].toJsonListOfMaps()
     if (bundles.isEmpty()) {
         throw KdrException.mkInput("A config import must carry at least one bundle.")
@@ -433,6 +444,7 @@ fun strippedOfTestFeatures(
 }
 
 private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
     val name = requireName(request)
     // Publish refuses a class with no revision; surface that as a 404 rather than a 400, since to this caller a
     // config they cannot find is one that is not there.
@@ -443,6 +455,7 @@ private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, A
 }
 
 private fun cfgRevertBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
     val name = requireName(request)
     // As with publish, a config the caller cannot find reads as a 404 rather than the service's 400.
     if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
@@ -452,6 +465,7 @@ private fun cfgRevertBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
 }
 
 private fun cfgTraitsBody(c: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
+    AdminRules.requireClientAdministrator(c)
     val name = requireName(request)
     val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
         ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
@@ -461,6 +475,7 @@ private fun cfgTraitsBody(c: KdrCxt, request: Map<String, Any?>): List<Map<Strin
 }
 
 private fun cfgReloadBody(c: KdrCxt): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
     val result = GedraConfigReload.reloadClient(c, c.client)
     // Announce to peers that this node reloaded newer configuration (issue #618), so a node behind catches up.
     ClientSyncService.get(c).announceAndMark(c, c.client, result.marker)
@@ -473,6 +488,7 @@ private fun cfgReloadBody(c: KdrCxt): Map<String, Any?> {
 }
 
 private fun cfgPublishedOnlyBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
     val value = request[CFEP.publishedOnlyField] as? Boolean
         ?: throw KdrException.mkInput("'${CFEP.publishedOnlyField}' is required.")
     val effective = GedraConfigService.get(c).setPublishedOnly(c, c.client, value)

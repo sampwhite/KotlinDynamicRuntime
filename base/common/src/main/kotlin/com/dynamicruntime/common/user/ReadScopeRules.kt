@@ -54,6 +54,10 @@ object ReadScopeRules {
         // The capability outranks a primary organization. Someone who may reach every client is not confined
         // by which organization they happen to belong to -- different axes, and this is the wider.
         AdminScope.allClients -> ReadScope.unrestricted
+        // An administrator in `public` (issue #805): the admin level never widens what is readable there, so
+        // their data reach is their own rows, as an ordinary user's is. Their reach over *users* -- the rest of
+        // their own identity -- is [forUserAdmin]'s, which only user administration asks.
+        AdminScope.ownIdentity -> ReadScope.ofUser(cxt.userProfile.userId)
         // Not an administrator: their own rows and nothing else. This branch once returned `unrestricted`,
         // reasoning that the section gate closes the admin surface to such a caller so there was no read left
         // to constrain. The reasoning was sound and the premise was false -- while the `admin` section
@@ -61,5 +65,21 @@ object ReadScopeRules {
         // endpoints and this handed them every client's rows. Failing closed costs nothing and does not depend
         // on another component staying correct.
         AdminScope.none -> ReadScope.ofUser(cxt.userProfile.userId)
+    }
+
+    /**
+     * Which **users** [cxt]'s caller may administer (issue #805): [forCaller] for everyone but an administrator
+     * in `public`, whose reach is their own identity's users -- their variants -- rather than their own row
+     * alone ([ReadScope.ofIdentity]). Asked only by user administration: the identity width answers nothing on
+     * a content table, and `SqlScopeUtil` refuses it there.
+     *
+     * A session with no identity cannot be an `ownIdentity` administrator's in practice (identities predate
+     * `public` admins); should one appear, it falls back to the own-user width, the narrower answer.
+     */
+    fun forUserAdmin(cxt: KdrCxt): ReadScope {
+        if (AdminRules.adminScope(cxt) != AdminScope.ownIdentity) return forCaller(cxt)
+        val profile = cxt.userProfile
+        val identityId = profile.identityId ?: return ReadScope.ofUser(profile.userId)
+        return ReadScope.ofIdentity(profile.client, identityId)
     }
 }

@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
@@ -8,9 +10,9 @@ import com.dynamicruntime.common.user.AERR
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.PERSONASUFFIX
 import com.dynamicruntime.common.user.USF
+import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.userLabelChoices
-import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.user.userSortKeys
@@ -896,9 +898,13 @@ val Users = FC<Props> {
 
             div {
                 className = ClassName("row")
-                Button {
-                    onClick = { startCreate() }
-                    +"Create user"
+                // In `public` an administrator creates only users of their own (issue #805), so the ordinary create,
+                // which mails an invitation to any other address, is not offered; "for me" is.
+                if (config?.user?.let { mayCreateForOthers(it) } != false) {
+                    Button {
+                        onClick = { startCreate() }
+                        +"Create user"
+                    }
                 }
                 // A further user for the caller's own address (issue #797): registered on creation and switchable
                 // at once from the badge, with no invitation -- the case that otherwise meant typing your own address.
@@ -1205,6 +1211,13 @@ private const val personaHint =
     "What kind of user this is: a member of the client, or one of its administrators. Chosen once, at " +
         "creation. It follows the access level until you pick one; picking one sets the level to its usual " +
         "value, which you may still change."
+
+/**
+ * Whether [user] may create users at other people's addresses (issue #805): everyone who reaches the page except
+ * an administrator in `public` without `allClients`, whose reach is their own users only -- the backend refuses
+ * them the ordinary create, which would mail an invitation to somebody else. Pure, jsNodeTest-covered.
+ */
+fun mayCreateForOthers(user: UserProfile): Boolean = user.client != CL.public || ROLE.allClients in user.roles
 
 /** The editor's heading: which record it is open on (issue #797 adds the caller's own). Pure, jsNodeTest-covered. */
 fun editorTitle(creating: Boolean, forSelf: Boolean): String = when {

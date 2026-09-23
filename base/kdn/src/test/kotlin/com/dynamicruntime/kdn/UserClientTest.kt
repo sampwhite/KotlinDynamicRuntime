@@ -82,7 +82,10 @@ class UserClientTest : StringSpec({
         val user = TestUser.register(boot(), "reg+hub%admin@example.com", "reghubadmin")
         user.selfClient() shouldBe CL.public
         user.selfRoles() shouldContain ROLE.user
-        user.selfRoles() shouldNotContain ROLE.admin
+        // Every `public` user administers their own users (issue #805) -- but nothing more: the tag grants no
+        // reach, and the auto-admin grant's capability is not there.
+        user.selfRoles() shouldContain ROLE.admin
+        user.selfRoles() shouldNotContain ROLE.allClients
     }
 
     // --- the administrator's choice, on create only ------------------------------
@@ -101,11 +104,13 @@ class UserClientTest : StringSpec({
     // outside their own scope would immediately lose sight of them.
     "an administrator without allClients may not name another client" {
         val cxt = boot()
+        // A client administrator with no client named lands in the hub (issue #805), so `public` is "another".
         val scoped = TestUser.create(cxt, "create-scoped@other.test", level = ROLE.admin)
+        scoped.selfClient() shouldBe CL.hub
         val envelope = scoped.expectError(
             EXC.badInput,
             UADEP.userCreate,
-            data = mapOf(ADF.primaryId to "created-refused@other.test", ADF.client to CL.hub),
+            data = mapOf(ADF.primaryId to "created-refused@other.test", ADF.client to CL.public),
         )
         envelope[EP.errorMessage].toOptStr()!! shouldContain ROLE.allClients
     }
@@ -115,9 +120,9 @@ class UserClientTest : StringSpec({
         val scoped = TestUser.create(cxt, "create-own@other.test", level = ROLE.admin)
         val made = scoped.postData(
             UADEP.userCreate,
-            mapOf(ADF.primaryId to "created-in-own@other.test", ADF.client to CL.public),
+            mapOf(ADF.primaryId to "created-in-own@other.test", ADF.client to CL.hub),
         )
-        made[ADF.client].toOptStr() shouldBe CL.public
+        made[ADF.client].toOptStr() shouldBe CL.hub
     }
 
     "a client this node does not carry is refused even to a full-scope administrator" {

@@ -174,8 +174,10 @@ class AuthIdentityTest : StringSpec({
         users.queryByUserId(cxt, original.userId).shouldNotBeNull().enabled shouldBe false
         // Provisioning the same key again is not a create: the same user comes back, enabled and unregistered
         // (placeholder username, no password, the provisioned roles), its name kept.
-        // The original was created at the admin level, so it is an admin-persona user: the key to provision again.
-        val recovered = users.provisionUser(cxt, address, CL.public, listOf(ROLE.user), createdAt = cxt.now(), persona = PERSONA.admin)
+        // The original was created at the admin level, so it is an admin-persona user in the hub (an administrator
+        // with no client named lands there, issue #805): the key to provision again.
+        before.client shouldBe CL.hub
+        val recovered = users.provisionUser(cxt, address, CL.hub, listOf(ROLE.user), createdAt = cxt.now(), persona = PERSONA.admin)
         recovered shouldBe original.userId
         val row = users.queryByUserId(cxt, recovered).shouldNotBeNull()
         row.enabled shouldBe true

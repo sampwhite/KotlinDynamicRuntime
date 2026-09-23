@@ -1,13 +1,12 @@
 package com.dynamicruntime.kdn
 
-import io.kotest.matchers.nulls.shouldBeNull
-import io.kotest.matchers.nulls.shouldNotBeNull
-import com.dynamicruntime.common.context.ReadScope
-import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.context.ACFG
-import com.dynamicruntime.common.context.KdrInstanceConfig
-import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
@@ -18,15 +17,18 @@ import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.PERSONA
+import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.user.USF
-import com.dynamicruntime.common.context.UPF
-import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -91,10 +93,14 @@ class AdminUserTest : StringSpec({
         boss.selfRoles() shouldContain ROLE.admin
         boss.getItems(ADEP.users).isEmpty() shouldBe false // the role actually opens the door
 
-        // The same mailbox, plus-addressed: an ordinary user, which is the point of the exclusion.
+        // The same mailbox, plus-addressed: no grant, which is the point of the exclusion. It lands in `public`,
+        // where every user administers their own users and nobody else's (issue #805) -- so it is refused the
+        // full-scope surface, and its own list holds only its own user.
         val bossQa = TestUser.register(cxt, "boss+qa@acme.com", "bossqa")
-        bossQa.selfRoles() shouldNotContain ROLE.admin
+        bossQa.selfClient() shouldBe CL.public
+        bossQa.selfRoles() shouldNotContain ROLE.allClients
         bossQa.expectError(EXC.notAuthorized, ADEP.users)
+        bossQa.getItems(UADEP.users).map { it[ADF.userId] } shouldBe listOf(bossQa.userId)
     }
 
     "a plain address on a controlled domain is provisioned as a full-scope administrator" {

@@ -256,7 +256,7 @@ class ClientScopedAdminTest : StringSpec({
     "a scoped administrator cannot grant reach they do not hold" {
         val cxt = Startup.mkTestBootCxt("scopedEscalate", "scopedEscalateTest")
         val scoped = TestUser.create(cxt, "surface-granter@example.com", level = ROLE.admin)
-        val target = TestUser.create(cxt, "surface-target@example.com")
+        val target = TestUser.create(cxt, "surface-target@example.com", userClient = CL.hub)
 
         scoped.selfRoles().contains(ROLE.allClients) shouldBe false
         scoped.expectError(
@@ -283,7 +283,7 @@ class ClientScopedAdminTest : StringSpec({
     "a scoped administrator cannot grant the operator level either" {
         val cxt = Startup.mkTestBootCxt("scopedEscalateOp", "scopedEscalateOpTest")
         val scoped = TestUser.create(cxt, "op-granter@example.com", level = ROLE.admin)
-        val target = TestUser.create(cxt, "op-target@example.com")
+        val target = TestUser.create(cxt, "op-target@example.com", userClient = CL.hub)
 
         scoped.selfRoles().contains(ROLE.allClients) shouldBe false
         scoped.expectError(
@@ -375,7 +375,7 @@ class ClientScopedAdminTest : StringSpec({
         val cxt = Startup.mkTestBootCxt("preserveCap", "preserveCapTest")
         val full = TestUser.createFullAdmin(cxt, "preserve-full@example.com")
         val scoped = TestUser.create(cxt, "preserve-scoped@example.com", level = ROLE.admin)
-        val target = TestUser.create(cxt, "preserve-target@example.com")
+        val target = TestUser.create(cxt, "preserve-target@example.com", userClient = CL.hub)
 
         // The full-scope administrator grants it; the scoped one then edits that user's *level*.
         full.postData(
@@ -395,7 +395,7 @@ class ClientScopedAdminTest : StringSpec({
         after.contains(ROLE.allClients) shouldBe true // preserved, not granted
 
         // Adding it to somebody who does not have it is still refused.
-        val other = TestUser.create(cxt, "preserve-other@example.com")
+        val other = TestUser.create(cxt, "preserve-other@example.com", userClient = CL.hub)
         scoped.expectError(
             EXC.badInput,
             UADEP.userSetRoles,
@@ -416,9 +416,9 @@ class ClientScopedAdminTest : StringSpec({
 
         val inEng = TestUser.create(cxt, "org-eng@example.com", level = ROLE.admin)
         full.postData(UADEP.userSetOrg, mapOf(ADF.userId to inEng.userId, ADF.org to "eng"))
-        val inSales = TestUser.create(cxt, "org-sales@example.com")
+        val inSales = TestUser.create(cxt, "org-sales@example.com", userClient = CL.hub)
         full.postData(UADEP.userSetOrg, mapOf(ADF.userId to inSales.userId, ADF.org to "sales"))
-        TestUser.create(cxt, "org-none@example.com") // no organization at all
+        TestUser.create(cxt, "org-none@example.com", userClient = CL.hub) // no organization at all
 
         // The org lands on the profile, so it reaches the scope without a database read per request.
         val engAdmin = TestUser.create(cxt, "org-eng@example.com")

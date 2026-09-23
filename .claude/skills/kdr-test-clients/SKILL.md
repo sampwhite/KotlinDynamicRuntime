@@ -211,8 +211,10 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
   number** — `narrowcap589`, the way Cedar suffixed test fixtures with the Jira number — which makes a collision
   essentially impossible without thinking about it. (A per-spec prefix works too; the examples above keep short
   names only for readability.) A user created with no `userClient` lands in the default client — `public`, or
-  `hub` for one holding `allClients` (`createFullAdmin`, issue #799) — whose stored config accumulates across
-  the spec's cases; prefer placing users in your own client.
+  `hub` for one holding `allClients` (`createFullAdmin`, issue #799) or created at the `admin` level (issue
+  #805: an administrator in `public` reaches only their own users, so a client admin belongs in a real client)
+  — whose stored config accumulates across the spec's cases; prefer placing users in your own client. A scoped
+  admin and the users it administers must share a client, so place both.
 - **Collisions are strict in `unit`/`local`, degraded in production:** two clients claiming one `traitId`, or a
   namespace with two owners, fails the reload in a test (which is what `GedraConfigReloadTest`'s rollback case
   checks) but is tolerated live.

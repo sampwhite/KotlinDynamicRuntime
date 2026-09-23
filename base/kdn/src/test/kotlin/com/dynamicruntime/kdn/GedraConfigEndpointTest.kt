@@ -255,16 +255,17 @@ class GedraConfigEndpointTest : StringSpec({
     }
 
     "authoring into another client's namespace is refused" {
-        // The caller's client is `public`; `hubconfig` belongs to `hub`, so the general ownership rule refuses
-        // it -- the same rule the reserved-namespace refusal is one case of.
+        // The caller's client is `hub` (a client administrator lands there, issue #805); `publicconfig` belongs
+        // to `public`, so the general ownership rule refuses it -- the same rule the reserved-namespace refusal
+        // is one case of.
         val u = admin()
-        u.selfClient() shouldNotBe CL.hub // guard: the test only means something from a non-hub client
+        u.selfClient() shouldNotBe CL.public // guard: the test only means something from a client not `public`
         u.expectError(
             EXC.badInput,
             CFEP.bundleWrite,
             mapOf(
                 CFEP.name to "hijack",
-                CFEP.namespaceField to CLC.namespaceOf(CL.hub),
+                CFEP.namespaceField to CLC.namespaceOf(CL.public),
                 CFEP.slots to mapOf(
                     CCT.cfactDef to listOf(mapOf(CCT.name to "x", CCT.group to "g", CCT.description to "d")),
                 ),

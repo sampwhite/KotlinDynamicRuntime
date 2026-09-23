@@ -53,21 +53,29 @@ class ReadScopeTest {
     @Test
     fun admitsUserRowAppliesEveryConstraint() {
         // Unrestricted admits anyone.
-        assertTrue(ReadScope.unrestricted.admitsUserRow("acme", "eng", 1L))
+        assertTrue(ReadScope.unrestricted.admitsUserRow("acme", "eng", 1L, "id-1L"))
         // Client-confined: own client yes, another no; the lenient org still applies within it.
         val client = ReadScope.ofClient("acme")
-        assertTrue(client.admitsUserRow("acme", "eng", 1L))
-        assertTrue(client.admitsUserRow("acme", null, 2L))
-        assertFalse(client.admitsUserRow("globex", "eng", 3L))
+        assertTrue(client.admitsUserRow("acme", "eng", 1L, "id-1L"))
+        assertTrue(client.admitsUserRow("acme", null, 2L, "id-2L"))
+        assertFalse(client.admitsUserRow("globex", "eng", 3L, "id-3L"))
         // Org-confined: own org, and the client's org-less rows, but not another org.
         val org = ReadScope.ofOrg("acme", "eng")
-        assertTrue(org.admitsUserRow("acme", "eng", 1L))
-        assertTrue(org.admitsUserRow("acme", null, 2L))
-        assertFalse(org.admitsUserRow("acme", "sales", 3L))
+        assertTrue(org.admitsUserRow("acme", "eng", 1L, "id-1L"))
+        assertTrue(org.admitsUserRow("acme", null, 2L, "id-2L"))
+        assertFalse(org.admitsUserRow("acme", "sales", 3L, "id-3L"))
         // Own-user: only that user's own row.
         val self = ReadScope.ofUser(7L)
-        assertTrue(self.admitsUserRow("acme", "eng", 7L))
-        assertFalse(self.admitsUserRow("acme", "eng", 8L))
+        assertTrue(self.admitsUserRow("acme", "eng", 7L, "id-7L"))
+        assertFalse(self.admitsUserRow("acme", "eng", 8L, "id-8L"))
+        // One person's users (issue #805): that identity's rows in that client, and no one else's.
+        val person = ReadScope.ofIdentity("public", "id-A")
+        assertTrue(person.admitsUserRow("public", null, 1L, "id-A"))
+        assertTrue(person.admitsUserRow("public", null, 2L, "id-A"))
+        assertFalse(person.admitsUserRow("public", null, 3L, "id-B"))
+        assertFalse(person.admitsUserRow("hub", null, 4L, "id-A"))
+        assertFalse(person.isUnrestricted)
+        assertEquals("CI", person.shapeKey)
     }
 
     /**

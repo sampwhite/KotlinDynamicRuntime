@@ -46,8 +46,12 @@ object AddressRules {
      * A user holding [ROLE.allClients] goes to [CL.hub], the deployment's own client (issue #799): such a user
      * is the house's -- most often the deployment's first admin, whom [AdminRules.initialRoles] grants the
      * capability on the auto-admin domain -- and parking them in the guests' placeholder client made the first
-     * thing an operator saw a client that is nobody's. Everyone else lands in [CL.public], the placeholder for a
-     * person who has not yet been invited anywhere.
+     * thing an operator saw a client that is nobody's. So does a user provisioned as an administrator
+     * ([ROLE.admin]) with no client named (issue #805): `public` has no client administrators -- an
+     * administrator there reaches only their own users -- so an administrator meant to administer a client
+     * belongs in a real one. Everyone else lands in [CL.public], the placeholder for a person who has not yet
+     * been invited anywhere; a `public` user is made an administrator of themselves only *after* landing there
+     * (`AdminRules.rolesInClient`), so that grant never moves them.
      *
      * The address used to be able to name a client (retired, issue #750); the request's host will be able to,
      * later (the "default client" rule the Google sign-in and the registration share). Kept as a function so
@@ -55,7 +59,7 @@ object AddressRules {
      */
     @Suppress("UNUSED_PARAMETER")
     fun defaultClient(cxt: KdrCxt, roles: Collection<String>): String =
-        if (ROLE.allClients in roles) CL.hub else CL.public
+        if (ROLE.allClients in roles || ROLE.admin in roles) CL.hub else CL.public
 
     /**
      * Whether [address] sits on a domain this deployment treats as its own.

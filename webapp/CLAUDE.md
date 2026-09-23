@@ -176,6 +176,10 @@ A fourth is **belonging**, and behaves unlike the other three:
   the page bumps the refresh bus, so a user created, disabled or deleted for yourself shows in the badge's
   switcher at once. The list shows both in a **Persona** column (`Member B`), and a **Registered** column says
   when the person claimed the user.
+  **In `public`** (issue #805) every self-registered user is an administrator of themselves only: the Users page
+  lists their own identity's users, "Create user" is not offered (`mayCreateForOthers`; the backend refuses any
+  other address and any other client), and "Create a user for me" is how they make variants. Their data reads
+  stay their own, and the `clientAdmin/config` endpoints refuse them.
 
 Two are **identity**, and sit at the top of the editor beside the email for that reason — they say who the
 account is, not what it may do:

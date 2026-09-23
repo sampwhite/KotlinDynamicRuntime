@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
@@ -104,7 +105,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
         // listUsers trims to the page and reports the whole-set total (issue #499), so a truncated listing says
         // how many there are. Only the page is mapped to admin info.
-        val page = userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, ReadScopeRules.forCaller(c))
+        val page = userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, ReadScopeRules.forUserAdmin(c))
         ListPage(page.rows.map { it.toAdminInfo() }, numAvailable = page.numAvailable, hasMore = page.numAvailable > limit)
     }
 
@@ -159,7 +160,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         },
     ) { c, request ->
         val criteria = parseUserSearch(request)
-        val page = userService(c).searchUsers(c, criteria, ReadScopeRules.forCaller(c))
+        val page = userService(c).searchUsers(c, criteria, ReadScopeRules.forUserAdmin(c))
         ListPage(
             page.rows.map { it.toAdminInfo() },
             numAvailable = page.numAvailable,
@@ -232,6 +233,16 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // a new identity). Guarded on `isRowBacked` like every other read of the actor's row: an env-authed
         // administrator has no row, and asking would send a query after the system user id.
         val ownAddress = c.userProfile.isRowBacked && service.queryByUserId(c, c.userProfile.userId)?.primaryId == primaryId
+        // An administrator in `public` administers only their own users (issue #805), so they create only
+        // users of their own -- at their own address, which is registered at once and mails nothing. Anything
+        // else would let anyone who registers make this deployment mail an invitation to an arbitrary address,
+        // and leave them a user they could neither see nor undo.
+        if (AdminRules.adminScope(c) == AdminScope.ownIdentity && !ownAddress) {
+            throw KdrException.mkInput(
+                "In '${CL.public}' you can create users only at your own address -- further users of your own, " +
+                    "registered at once. Nothing is sent to any other address.",
+            )
+        }
         if (username != null && service.queryByUsername(c, username) != null) {
             throw KdrException.mkInput("Username '$username' has already been taken.")
         }
@@ -595,7 +606,7 @@ private fun userService(cxt: KdrCxt): UserService = UserService.get(cxt)
  * endpoint to discover that an id belongs to somebody in a client they cannot see.
  */
 private fun loadUser(cxt: KdrCxt, userId: Long): AuthUserRow =
-    userService(cxt).queryAdministrableUser(cxt, userId, ReadScopeRules.forCaller(cxt))
+    userService(cxt).queryAdministrableUser(cxt, userId, ReadScopeRules.forUserAdmin(cxt))
         ?: throw KdrException("No user with id $userId.", code = EXC.notFound)
 
 /**

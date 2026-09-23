@@ -42,9 +42,17 @@ class ReadScope(
     val org: String? = null,
     /** Confine to rows owned by this user, or null for any owner. */
     val userId: Long? = null,
+    /**
+     * Confine to the users of this identity -- one person's users -- or null for any (issue #805). A width for
+     * **user administration only**: the reach of an administrator in the `public` placeholder client, who
+     * administers their own users and nobody else's. Only the user table carries an identity, so a query on any
+     * other table under this scope is refused by `SqlScopeUtil` rather than widened; the data a `public`
+     * administrator reads is scoped per user instead (`ReadScopeRules.forCaller`).
+     */
+    val identityId: String? = null,
 ) {
     /** Whether nothing is constrained -- the reach of an `allClients` administrator. */
-    val isUnrestricted: Boolean get() = client == null && org == null && userId == null
+    val isUnrestricted: Boolean get() = client == null && org == null && userId == null && identityId == null
 
     /**
      * Whether a row whose organization is [rowOrg] is admitted. An unconfined scope admits everything; a
@@ -70,10 +78,11 @@ class ReadScope(
      * carries no `org` column, so [org] cannot be an SQL predicate anyway (see the class doc) -- the scope is
      * only ever checked a row at a time.
      */
-    fun admitsUserRow(rowClient: String, rowOrg: String?, rowUserId: Long): Boolean {
+    fun admitsUserRow(rowClient: String, rowOrg: String?, rowUserId: Long, rowIdentityId: String): Boolean {
         if (client != null && rowClient != client) return false
         if (!admitsOrg(rowOrg)) return false
         if (userId != null && rowUserId != userId) return false
+        if (identityId != null && rowIdentityId != identityId) return false
         return true
     }
 
@@ -87,10 +96,11 @@ class ReadScope(
             if (client != null) append("C")
             if (org != null) append("O")
             if (userId != null) append("U")
+            if (identityId != null) append("I")
             if (isEmpty()) append("Any")
         }
 
-    override fun toString(): String = "ReadScope(client=$client, org=$org, userId=$userId)"
+    override fun toString(): String = "ReadScope(client=$client, org=$org, userId=$userId, identityId=$identityId)"
 
     companion object {
         /** No constraint at all. */
@@ -104,5 +114,14 @@ class ReadScope(
 
         /** Only what [userId] owns -- an ordinary user's own reach. */
         fun ofUser(userId: Long): ReadScope = ReadScope(userId = userId)
+
+        /**
+         * One person's users within [client] -- the user-administration reach of an administrator in the
+         * `public` placeholder client (issue #805). User rows only; see [identityId].
+         */
+        fun ofIdentity(client: String, identityId: String): ReadScope = ReadScope(client = client, identityId = identityId)
+
+        /** The user-table column [identityId] is matched against, for the SQL composer. */
+        const val identityIdColumn = "identityId"
     }
 }

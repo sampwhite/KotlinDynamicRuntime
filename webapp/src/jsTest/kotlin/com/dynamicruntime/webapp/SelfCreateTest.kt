@@ -1,5 +1,8 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.PERSONASUFFIX
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,6 +40,14 @@ class SelfCreateTest {
         // Both state the limit the backend enforces.
         assertTrue(plain.contains("${PERSONASUFFIX.maxLength}"))
         assertTrue(collided.contains("${PERSONASUFFIX.maxLength}"))
+    }
+
+    @Test
+    fun aPublicAdministratorCreatesOnlyUsersOfTheirOwn() {
+        // In `public` the ordinary create is not offered (issue #805); anywhere else, and with allClients, it is.
+        assertTrue(!mayCreateForOthers(UserProfile(client = CL.public, roles = setOf(ROLE.user, ROLE.admin))))
+        assertTrue(mayCreateForOthers(UserProfile(client = CL.public, roles = setOf(ROLE.user, ROLE.admin, ROLE.allClients))))
+        assertTrue(mayCreateForOthers(UserProfile(client = CL.hub, roles = setOf(ROLE.user, ROLE.admin))))
     }
 
     @Test
