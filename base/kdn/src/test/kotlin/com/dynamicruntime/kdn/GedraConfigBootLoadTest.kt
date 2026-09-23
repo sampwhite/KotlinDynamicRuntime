@@ -26,10 +26,10 @@ import io.kotest.matchers.shouldBe
  * The boot-time load of stored client configurations (issue #614): a node that restarts picks up config a peer
  * wrote to the database, beside the source-declared ones. The first restart-visible behavior in #611.
  *
- * Each case pins its **own** `KDR_DB_NAME`, so its two boots share one isolated in-memory database and its
- * client-defining configs do not leak into the default database every other spec boots against. The two boots
- * take different instance names, so the second is a genuine fresh boot (the registry caches by instance name)
- * rather than the first one handed back.
+ * Each case pins its **own** `KDR_DB_NAME`, so its two boots share one in-memory database: without it, each
+ * boot would get a database named after its instance (issue #836) and the second would find nothing stored. The
+ * two boots take different instance names, so the second is a genuine fresh boot (the registry caches by
+ * instance name) rather than the first one handed back.
  */
 class GedraConfigBootLoadTest : StringSpec({
 

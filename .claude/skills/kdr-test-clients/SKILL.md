@@ -204,14 +204,15 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
 
 ## Gotchas
 
-- **The default in-memory DB is shared across specs in a JVM,** so name your clients uniquely. A durable scheme
-  is to **suffix the client id with the issue number** — `narrowcap589`, the way Cedar suffixed test fixtures
-  with the Jira number — which makes a cross-spec collision essentially impossible without thinking about it.
-  (A per-spec prefix works too; the examples above keep short names only for readability.) Or give the spec its
-  own DB with a `KDR_DB_NAME` overlay (`mkTestBootCxt("x", "x", mapOf("KDR_DB_NAME" to "mySpecDb"))`). A user
-  created with no `userClient` lands in the default client — `public`, or `hub` for one holding `allClients`
-  (`createFullAdmin`, issue #799) — whose stored config accumulates across specs; prefer placing users in your
-  own client.
+- **Each instance name gets its own in-memory DB** (issue #836), so specs no longer see each other's rows —
+  but every case sharing a spec's instance shares its DB, and so do instances pointed at one `KDR_DB_NAME`
+  (`mkTestBootCxt("x", "x", mapOf("KDR_DB_NAME" to "mySpecDb"))`, the way a restart test gives both its boots
+  one database). So still name clients uniquely: a durable scheme is to **suffix the client id with the issue
+  number** — `narrowcap589`, the way Cedar suffixed test fixtures with the Jira number — which makes a collision
+  essentially impossible without thinking about it. (A per-spec prefix works too; the examples above keep short
+  names only for readability.) A user created with no `userClient` lands in the default client — `public`, or
+  `hub` for one holding `allClients` (`createFullAdmin`, issue #799) — whose stored config accumulates across
+  the spec's cases; prefer placing users in your own client.
 - **Collisions are strict in `unit`/`local`, degraded in production:** two clients claiming one `traitId`, or a
   namespace with two owners, fails the reload in a test (which is what `GedraConfigReloadTest`'s rollback case
   checks) but is tolerated live.

@@ -36,8 +36,10 @@ object DbEnv {
     )
 
     val dbName = EnvVarDef(
-        "KDR_DB_NAME", group = ENVGRP.database, defaultDoc = "`kdr`",
-        description = "Database name, used by file-backed H2 and PostgreSQL.",
+        "KDR_DB_NAME", group = ENVGRP.database, defaultDoc = "`kdr` (in-memory H2: the instance name)",
+        description = "Database name, used by file-backed H2 and PostgreSQL. It also names an in-memory H2 " +
+            "database, which otherwise takes the instance name, so separate instances in one JVM do not share " +
+            "tables; set it to make instances share one.",
     )
 
     val dbUser = EnvVarDef(

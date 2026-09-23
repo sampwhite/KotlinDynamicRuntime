@@ -24,7 +24,7 @@ import io.kotest.matchers.shouldBe
  * The `traitPresenceByYear` derivation (registered by `SampleComponent`) runs inside the create transaction for
  * a client that opted in via `testFeatures` (acme) on a test instance, and is skipped otherwise. And a form's
  * stored `cfacts` state flows into `CFactRegistry.assemble` as target facts. Its own clients, as the other
- * gedra sample tests explain: every test shares one in-memory database.
+ * gedra sample tests do.
  */
 class GedraStateDerivationTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(

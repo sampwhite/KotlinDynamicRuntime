@@ -36,7 +36,7 @@ import kotlin.time.Duration.Companion.seconds
  * The instance clock is frozen and stepped by hand so the stamps a write leaves are deterministic: the whole
  * point of storing a config as one entry per slot is that each slot carries *when it last changed*, and that is
  * only observable if two writes land at two known, distinct times. Its own client, as `GedraDataCacheTest`
- * explains -- every test shares one in-memory database.
+ * explains.
  */
 class GedraConfigWriteTest : StringSpec({
     val cxt = Startup.mkTestBootCxt("gedraCfgWrite", "gedraCfgWriteTest")

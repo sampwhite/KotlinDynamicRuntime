@@ -34,8 +34,8 @@ import kotlin.time.Duration.Companion.days
  * shared mutable row leaking one caller's edit into another's, a disabled user disappearing instead of
  * falling through to SQL, and a change failing to reach the row other nodes read.
  *
- * Email addresses are prefixed `ucache-`: every test in a run shares one in-memory database, so a plain
- * address would collide with another spec's fixture and fail *that* test instead of this one.
+ * Email addresses are prefixed `ucache-`, as the `kdr-testing` skill advises, so they stay unique even if this
+ * instance is ever made to share a database (`KDR_DB_NAME`) with another spec.
  */
 class AuthUserCacheTest : StringSpec({
 
@@ -109,12 +109,12 @@ class AuthUserCacheTest : StringSpec({
         val cxt = Startup.mkTestBootCxt("userCacheState", "userCacheStateTest")
         val caches = SqlTableCacheService.get(cxt)
 
-        // The state row is one row shared by the whole database, and every test in this run shares one
-        // in-memory database -- so another spec's request has almost certainly written an `AuthUsers` entry
-        // already, and asserting the entry merely *appears* would pass without this request doing anything.
-        // Hence the assertion is on the date. This instance's clock is pushed well past anything another spec
-        // travels to (the furthest is a thirty-day session expiry), so the entry can only be this later date
-        // if this request is what wrote it: `mergeState` never moves a date backwards.
+        // The state row is one row shared by the whole database, and earlier cases in this spec have almost
+        // certainly written an `AuthUsers` entry already -- so asserting the entry merely *appears* would pass
+        // without this request doing anything. Hence the assertion is on the date. This instance's clock is
+        // pushed well past anything those cases travel to (the furthest is a thirty-day session expiry), so the
+        // entry can only be this later date if this request is what wrote it: `mergeState` never moves a date
+        // backwards.
         cxt.instanceConfig.clock.advanceBy(400.days)
         // Truncated, because the two sides do not carry the same precision: `instanceNow` is
         // `Clock.System.now()` plus an offset, while `published` has been through a database timestamp. An

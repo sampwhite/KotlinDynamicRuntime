@@ -26,7 +26,7 @@ import io.kotest.matchers.shouldBe
  * The `GedraDataStates` cache (issue #598, phase C): that it holds what was written, indexes it by client, and
  * -- the assertion the design rests on -- **answers a scoped by-id state read identically to the SQL path it
  * replaces**. A cache over user content is safe only if it cannot widen an answer, so the scope cases are the
- * point. Its own client, as `GedraStateTest` explains: every test shares one in-memory database.
+ * point. Its own client, like `GedraStateTest`.
  */
 class GedraStatesCacheTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(

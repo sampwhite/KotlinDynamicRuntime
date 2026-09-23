@@ -181,9 +181,10 @@ class GedraConfigReloadTest : StringSpec({
         ownSchema().storeFor(client).types.keys shouldNotContain "${ns(client)}.offsetEntry"
     }
 
-    // Its own database: an admin created without a client lands in `public`, and on the default in-memory
-    // database shared across specs `public` accumulates other specs' stored configs -- several declaring one
-    // cfact, which a reload rightly refuses. The endpoint is what is under test here, not that leftover.
+    // Its own database, named explicitly: an admin created without a client lands in `public`, and when the
+    // default in-memory database was shared across specs (before issue #836), `public` accumulated other specs'
+    // stored configs -- several declaring one cfact, which a reload rightly refuses. The name is redundant now
+    // that each instance has its own, and is kept so this case never depends on that default.
     "the endpoint reloads the caller's own client" {
         val own = Startup.mkTestBootCxt("gedraCfgReloadEp", "gedraCfgReloadEpTest", mapOf("KDR_DB_NAME" to "cfgReload_endpoint"))
         val admin = TestUser.create(own, "reloadadmin@example.com", level = ROLE.admin)

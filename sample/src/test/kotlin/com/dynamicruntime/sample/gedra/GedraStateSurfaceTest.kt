@@ -20,8 +20,7 @@ import io.kotest.matchers.shouldBe
  * The gedra-state inspection & admin surfaces (issue #600, phase E): the `withStates` parameter that attaches a
  * form's state to the listing, and the global admin endpoints that read and replace a gedra's state directly.
  * Driven over HTTP through `TestHttpClient`, since these are endpoints; `sample` because the state entries it
- * writes (`externalId`) are sample-declared. Its own users, as the other sample gedra tests explain: every test
- * shares one in-memory database.
+ * writes (`externalId`) are sample-declared. Its own users, as the other sample gedra tests do.
  */
 class GedraStateSurfaceTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(

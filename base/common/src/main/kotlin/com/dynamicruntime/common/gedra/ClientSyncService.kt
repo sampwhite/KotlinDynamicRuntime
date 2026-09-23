@@ -30,8 +30,8 @@ import kotlin.time.Instant
  * begins caught up, and [checkSync] reloads only a client a peer later advances.
  *
  * Off exactly when the boot load is off ([GedraConfigLoadService.loadEnabled]): a node that does not load stored
- * configuration has nothing to sync, and an in-memory test shares one database across specs, so syncing there
- * would drag one spec's reload into another's node -- the same reason the load itself is gated.
+ * configuration has nothing to sync -- which includes an in-memory node by default, since nothing it stores
+ * outlives the JVM, and a test whose boots do share a database (`KDR_DB_NAME`) opts into the load explicitly.
  */
 class ClientSyncService : ServiceInitializer {
     override val serviceName: String = ClientSyncService.serviceName

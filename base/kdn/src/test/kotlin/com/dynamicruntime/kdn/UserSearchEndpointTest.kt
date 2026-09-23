@@ -19,18 +19,18 @@ import io.kotest.matchers.shouldBe
  * in-process pipeline, so the section gate, the input coercion, the list envelope, and the response-schema
  * validation (which `mkTestBootCxt` turns on) are all exercised for real.
  *
- * The in-memory database is **shared across every spec in the JVM run** (the #408 pollution lesson), so this
- * one cannot assert on the whole population. Every assertion is instead scoped by a globally-unique marker --
- * the `usrch.test` email domain and the `usrch_` username prefix, which no other spec uses -- so another
- * spec's users can never drift into a count here.
+ * The assertions do not count the whole user population: the admin and the odd-one-out are in it too, and
+ * before issue #836 gave each instance its own in-memory database, so was every other spec's user (the #408
+ * pollution lesson). Every assertion is instead scoped by a globally-unique marker -- the `usrch.test` email
+ * domain and the `usrch_` username prefix, which no other spec uses.
  */
 class UserSearchEndpointTest : StringSpec({
 
     val cxt = Startup.mkTestBootCxt("userSearch", "userSearchEndpointTest")
     val admin = TestUser.createFullAdmin(cxt, "chief@admin.test")
 
-    // Three users under the unique `usrch.test` domain (so a search isolates them from the admin, from the
-    // odd-one-out, and from every other spec's users in the shared db), plus one that must never match it.
+    // Three users under the unique `usrch.test` domain (so a search isolates them from the admin and from the
+    // odd-one-out), plus one that must never match it.
     fun create(email: String, username: String) {
         admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to email, ADF.username to username))
     }

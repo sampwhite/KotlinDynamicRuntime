@@ -29,7 +29,7 @@ import io.kotest.matchers.string.shouldNotBeBlank
  *
  * It lives in `sample` rather than beside the phase-A plumbing because the interesting cases need a real
  * declared state trait, and the state union that validates one is built from the sample config's state traits.
- * Its own client, as `GedraPatchTest` explains: every test shares one in-memory database.
+ * Its own client, so its assertions see only the entries written here.
  */
 class GedraStateTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(
