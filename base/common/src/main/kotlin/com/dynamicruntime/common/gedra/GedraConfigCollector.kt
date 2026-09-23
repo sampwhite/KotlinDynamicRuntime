@@ -202,6 +202,8 @@ fun reportConfigProblem(
     val where = if (stored) " (stored config '${problem.storedConfigId}')" else ""
     LogStartup.error(cxt, "${problem.message}$where ${problem.degradedTo}")
     issues.add(problem)
+    // Kept on the client it belongs to (issue #840), so the client's own reads can say what was forgiven.
+    ClientConfigIssues.get(cxt).record(problem)
     // Also recorded for the operator report (issue #303): what a production node dropped is precisely what
     // somebody arriving later needs, and the error log said it once while nobody was watching. Stored and source
     // problems are reported under separate checks, each naming the variable that governs it.

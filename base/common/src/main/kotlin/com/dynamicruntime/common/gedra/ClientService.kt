@@ -65,6 +65,14 @@ class ClientService : ServiceInitializer {
     /** [clientId]'s definition whether or not this node carries it; null when nothing declares it. */
     fun known(clientId: String): ClientDef? = clients[clientId]
 
+    /**
+     * [clientId]'s definition **as declared** by the first config declaring it, whether or not a check kept it
+     * (issue #840) -- so a client whose definition was dropped can still be shown, with the issues saying why.
+     * Null when no kept config declares it (including when the declaring config itself was refused).
+     */
+    fun declared(clientId: String): ClientDef? = clients[clientId]
+        ?: collector?.gedraConfigs?.configs?.firstNotNullOfOrNull { it.client?.takeIf { d -> d.clientId == clientId } }
+
     override fun onCreate(cxt: KdrCxt) {
         collector = SchemaCollector.get(cxt)
             ?: throw KdrException("Schema collector was not created for $serviceName.")

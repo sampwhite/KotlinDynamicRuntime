@@ -150,6 +150,27 @@ object CLD {
      * caller's own client.
      */
     const val hasSurvey = "hasSurvey"
+
+    // --- a client's configuration issues (issue #840) -------------------------------------------------------
+
+    /**
+     * Schema type name for one configuration issue a check forgave -- what was wrong, what was dropped, and
+     * where it came from. Declared in [catalogNamespace], which every node loads, so the config endpoints (an
+     * app-only module) reference it as [configIssueTypeQualified].
+     */
+    const val configIssueTypeName = "ConfigIssue"
+
+    /** [configIssueTypeName] qualified by [catalogNamespace], for a cross-namespace `$ref`. */
+    const val configIssueTypeQualified = "$catalogNamespace.$configIssueTypeName"
+
+    /** On a definition, summary, stored config or reload result: the configuration issues it carries. */
+    const val issues = "issues"
+
+    /**
+     * On a definition: whether this node carries the client. False for one whose definition a check dropped --
+     * returned anyway, with its [issues], so an administrator can see why it is not working.
+     */
+    const val present = "present"
 }
 
 /**

@@ -262,6 +262,11 @@ workflow naming a function a code change unregistered is a stored problem, and f
 inside source code still refuses the boot outside production. Each reported problem names its client, the
 stored config holding it (when stored), and the definition at fault.
 
+**A forgiven problem is kept on its client** (issue #840), whatever its origin: the client's definition
+(`/admin/client/definition`), its summary row, each stored config's summary and bundle, and a reload's result all
+carry an `issues` list, replaced each time the client is loaded. A client whose definition a check dropped still
+answers its definition read -- `present: false`, with the issues that say why -- rather than a bare 404.
+
 The production path is only survivable because of the default branch above: entries carrying a dropped trait
 fall through as unrecognized rather than failing validation. The two decisions hold each other up, which is
 worth knowing before changing either.

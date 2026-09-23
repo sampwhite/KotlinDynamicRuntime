@@ -10,6 +10,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.util.getReqNonBlankStr
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -106,6 +107,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         property(CFEP.publishedAt, "When the latest revision was published; absent while it is still editable.") { dateTime() }
         property(CFEP.createdAt, "When this revision was created.") { dateTime() }
         property(CFEP.updatedAt, "When this revision was last written.") { dateTime() }
+        configIssuesProperty()
     }
 
     // The whole bundle: a summary plus the config contents, one array of entries per slot -- the shape a
@@ -125,6 +127,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         }
         property(CFEP.createdAt, "When this revision was created.") { dateTime() }
         property(CFEP.updatedAt, "When this revision was last written.") { dateTime() }
+        configIssuesProperty()
     }
 
     // What a caller sends to write a bundle: identity, contents, and the delete mode. The version, publish
@@ -235,9 +238,12 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         property(CFEP.client, "The client reloaded.", required = true)
         property(CFEP.loaded, "How many stored configurations the node now runs for the client.", required = true) { type = SCT.integer }
         property(CFEP.evictedTypes, "Compiled-type cache entries dropped for the client's endpoints.", required = true) { type = SCT.integer }
-        property(CFEP.issues, "Problems reported while taking the configurations, as messages.") {
+        property(
+            CFEP.issues,
+            "Every problem the client's configuration now has, found in any phase of the reload and forgiven (issue #840).",
+        ) {
             type = SCT.array
-            items { type = SCT.string }
+            items { ref(CLD.configIssueTypeQualified) }
         }
     }
 
@@ -290,7 +296,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
 
 private fun cfgBundlesBody(c: KdrCxt): List<Map<String, Any?>> {
     AdminRules.requireClientAdministrator(c)
-    return GedraConfigService.get(c).listConfigs(c).map { summaryOf(it) }
+    return GedraConfigService.get(c).listConfigs(c).map { summaryOf(c, it) }
 }
 
 private fun cfgBundleBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -405,7 +411,7 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
                 // namespace. That is reported by the reload, not thrown, so surface it as a failure rather than
                 // letting the client read as cleanly reloaded (issue #733 review).
                 for (issue in result.issues) {
-                    failures.add(linkedMapOf(CFEP.client to client, ACEP.message to "not loaded: ${issue.message}"))
+                    failures.add(linkedMapOf(CFEP.client to client, ACEP.message to "${issue.message} ${issue.degradedTo}"))
                 }
             } catch (e: Throwable) {
                 failures.add(linkedMapOf(CFEP.client to client, ACEP.message to "reload failed: ${e.message ?: "unknown error"}"))
@@ -451,7 +457,7 @@ private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, A
     if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
         throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
     }
-    return summaryOf(GedraConfigService.get(c).publish(c, configId(c, name)))
+    return summaryOf(c, GedraConfigService.get(c).publish(c, configId(c, name)))
 }
 
 private fun cfgRevertBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -461,7 +467,7 @@ private fun cfgRevertBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
     if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
         throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
     }
-    return summaryOf(GedraConfigService.get(c).revertToEditable(c, configId(c, name)))
+    return summaryOf(c, GedraConfigService.get(c).revertToEditable(c, configId(c, name)))
 }
 
 private fun cfgTraitsBody(c: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
@@ -483,7 +489,7 @@ private fun cfgReloadBody(c: KdrCxt): Map<String, Any?> {
         CFEP.client to result.client,
         CFEP.loaded to result.loaded,
         CFEP.evictedTypes to result.evictedTypes,
-        CFEP.issues to result.issues.map { it.message },
+        CFEP.issues to result.issues.map { it.toWireMap() },
     )
 }
 
@@ -597,7 +603,7 @@ fun applyConfigSlotEdits(
 }
 
 /** A listing summary of one config revision. */
-private fun summaryOf(row: GedraConfigRow): Map<String, Any?> = dropNulls(
+private fun summaryOf(cxt: KdrCxt, row: GedraConfigRow): Map<String, Any?> = dropNulls(
     linkedMapOf(
         CFEP.name to row.configId.baseId,
         CFEP.client to row.client,
@@ -606,8 +612,24 @@ private fun summaryOf(row: GedraConfigRow): Map<String, Any?> = dropNulls(
         CFEP.publishedAt to row.publishedAt,
         CFEP.createdAt to row.createdAt,
         CFEP.updatedAt to row.updatedAt,
+        CFEP.issues to configIssuesOf(cxt, row),
     ),
 )
+
+/**
+ * The issues this stored config holds on this node (issue #840): the problems forgiven in its definitions when the
+ * node last loaded the client. Keyed by the config's revision class, which is the id a loaded config carries.
+ */
+private fun configIssuesOf(cxt: KdrCxt, row: GedraConfigRow): List<Map<String, Any?>> =
+    ClientConfigIssues.get(cxt).issuesForConfig(row.client, row.configId.fullId).map { it.toWireMap() }
+
+/** The `issues` property a stored-config summary and bundle carry (issue #840). */
+private fun SchTypeBuilder.configIssuesProperty() {
+    property(CFEP.issues, "Problems forgiven in this configuration's definitions when this node last loaded it (issue #840).", required = true) {
+        type = SCT.array
+        items { ref(CLD.configIssueTypeQualified) }
+    }
+}
 
 /**
  * A whole config revision as a bundle: its summary plus its contents by slot. The slots come from
@@ -625,6 +647,7 @@ private fun bundleOf(cxt: KdrCxt, row: GedraConfigRow): Map<String, Any?> = drop
         CFEP.slots to row.slotsForEmission(cxt.instanceConfig.isTestInstance),
         CFEP.createdAt to row.createdAt,
         CFEP.updatedAt to row.updatedAt,
+        CFEP.issues to configIssuesOf(cxt, row),
     ),
 )
 
