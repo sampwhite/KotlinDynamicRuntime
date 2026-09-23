@@ -37,7 +37,7 @@ class LayoutCopyTest {
     ).getValue("acme.Q")
 
     private fun optsWith(layout: SchLayout?): FormOpts =
-        FormOpts(friendly = true, layouts = layout?.let { mapOf("acme.Q" to it) } ?: emptyMap())
+        FormOpts(friendly = true, fieldLayouts = layout?.let { mapOf("acme.Q" to it) } ?: emptyMap())
 
     private val layout = SchLayout(
         fragmentFileId = "acme",
@@ -84,7 +84,8 @@ class LayoutCopyTest {
     @Test
     fun theWireDocumentingViewIgnoresLayoutsEntirely() {
         // Not friendly (the catalog): layouts are never consulted, so the key/title path is left to decide.
-        assertNull(layoutCopy(type, "topic", emptyMap(), FormOpts(friendly = false, layouts = mapOf("acme.Q" to layout))))
+        val unfriendly = FormOpts(friendly = false, fieldLayouts = mapOf("acme.Q" to layout))
+        assertNull(layoutCopy(type, "topic", emptyMap(), unfriendly))
     }
 
     @Test

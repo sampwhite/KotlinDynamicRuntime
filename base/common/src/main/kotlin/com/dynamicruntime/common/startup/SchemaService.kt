@@ -837,8 +837,8 @@ class SchemaService : ServiceInitializer {
                     type = SCT.kObject
                 }
                 property(
-                    EI.layouts,
-                    $$"The per-type layouts (issue #585): a map from a type name in `$defs` to its `g-layout` " +
+                    EI.fieldLayouts,
+                    $$"The per-type field layouts (issue #585): a map from a type name in `$defs` to its `g-layout` " +
                         "block, for the types that declare one. Delivered here rather than inside the schema, " +
                         "so the schema stays documentation-grade; a friendly form joins a type to its layout by " +
                         "name. A type with no layout has no entry.",
@@ -1331,7 +1331,7 @@ class SchemaService : ServiceInitializer {
                 // The layouts for exactly the types the closure carries (issue #585): what the friendly forms
                 // off-workflow (`NewFormPage`, `EditFormPage`, the read-only view) join to a type by name. Over
                 // the surface's own store, so a client that overlaid or narrowed a type gets that variant's.
-                EI.layouts to resolveDeliveredLayouts(cxt, surface.schema.layoutsFor(defs)),
+                EI.fieldLayouts to resolveDeliveredLayouts(cxt, surface.schema.layoutsFor(defs)),
             )
             val providers = svc?.optionsProviders.orEmpty()
             return resolveOptionsSources(cxt, result, providers)

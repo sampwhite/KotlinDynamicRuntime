@@ -43,59 +43,60 @@ class LayoutDeliveryTest : StringSpec({
 
     fun catalog(user: TestUser): Map<String, Any?> = user.getData("/schema/endpoints", mapOf(EP.limit to 1000))
 
-    fun fieldNames(layouts: Any?, type: String): List<String?> =
-        layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps().map { it[SL.field] as? String }
+    fun fieldNames(fieldLayouts: Any?, type: String): List<String?> =
+        fieldLayouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
+            .map { it[SL.field] as? String }
 
-    fun hintOf(layouts: Any?, type: String, field: String): Any? =
-        layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
+    fun hintOf(fieldLayouts: Any?, type: String, field: String): Any? =
+        fieldLayouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
             .first { it[SL.field] == field }[SL.hint]
 
-    fun descriptionOf(layouts: Any?, type: String, field: String): Any? =
-        layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
+    fun descriptionOf(fieldLayouts: Any?, type: String, field: String): Any? =
+        fieldLayouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
             .first { it[SL.field] == field }[SL.description]
 
-    fun headingOf(layouts: Any?, type: String): Any? =
-        layouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.label]
+    fun headingOf(fieldLayouts: Any?, type: String): Any? =
+        fieldLayouts.toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.label]
 
     $$"the catalog carries the layouts beside a $defs that does not, the hint as a raw template" {
         val c = catalog(everyone)
         val defs = c[SCH.dDefs].toJsonMapOrEmpty()
         defs.keys shouldContain questionnaire
         defs[questionnaire].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
-        fieldNames(c[EI.layouts], questionnaire) shouldBe allFields
+        fieldNames(c[EI.fieldLayouts], questionnaire) shouldBe allFields
         // The expense report's `hint` (issue #587) is delivered as its raw `${min}`/`${max}` template -- the
         // backend does not resolve it (frontend-resolved against the field's bounds).
-        hintOf(c[EI.layouts], expenseReport, ST.year) shouldBe $$"Any year from ${min} to ${max}."
+        hintOf(c[EI.fieldLayouts], expenseReport, ST.year) shouldBe $$"Any year from ${min} to ${max}."
         // The questionnaire's `topic` description is a backend fragment pull (issue #605): the delivery has
         // already resolved `%{@t("questionnaire.topicHelp")}` server-side, so the caller sees finished copy and
         // never the pull token.
-        val topicDesc = descriptionOf(c[EI.layouts], questionnaire, ST.topic).toString()
+        val topicDesc = descriptionOf(c[EI.fieldLayouts], questionnaire, ST.topic).toString()
         topicDesc shouldContain "pulled from a shared fragment file"
         topicDesc shouldNotContain "@t("
         // The block-level heading (issue #605) is a backend fragment pull too, delivered as resolved Markdown
         // (a `## Questionnaire` header and a line under it), never the raw pull token.
-        val heading = headingOf(c[EI.layouts], questionnaire).toString()
+        val heading = headingOf(c[EI.fieldLayouts], questionnaire).toString()
         heading shouldContain "## Questionnaire"
         heading shouldContain "Choose a topic"
         heading shouldNotContain "@t("
         // "Absent, not empty": another type in the closure -- one with no layout -- gets no entry.
         val noLayoutType = defs.keys.first { it != questionnaire && it != expenseReport }
-        c[EI.layouts].toJsonMapOrEmpty().containsKey(noLayoutType) shouldBe false
+        c[EI.fieldLayouts].toJsonMapOrEmpty().containsKey(noLayoutType) shouldBe false
     }
 
     "acme's catalog carries the inherited layout pruned to the properties its overlay kept" {
         val c = catalog(acme)
-        fieldNames(c[EI.layouts], questionnaire) shouldBe acmeFields
+        fieldNames(c[EI.fieldLayouts], questionnaire) shouldBe acmeFields
         c[SCH.dDefs].toJsonMapOrEmpty()[questionnaire].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
     }
 
     "the workflow view carries the layouts for exactly the traits it collects" {
         val v = acme.getData(clientPath(GEP.workflowView, SC.acme))
         v[WVF.found] shouldBe true
-        fieldNames(v[WVF.layouts], questionnaire) shouldBe acmeFields
-        hintOf(v[WVF.layouts], expenseReport, ST.year) shouldBe $$"Any year from ${min} to ${max}."
+        fieldNames(v[WVF.fieldLayouts], questionnaire) shouldBe acmeFields
+        hintOf(v[WVF.fieldLayouts], expenseReport, ST.year) shouldBe $$"Any year from ${min} to ${max}."
         // Exactly the two collected traits that declare a layout -- no spurious entries.
-        v[WVF.layouts].toJsonMapOrEmpty().keys shouldBe setOf(questionnaire, expenseReport)
+        v[WVF.fieldLayouts].toJsonMapOrEmpty().keys shouldBe setOf(questionnaire, expenseReport)
         v[SCH.dDefs].toJsonMapOrEmpty()[questionnaire].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
     }
 

@@ -137,7 +137,7 @@ val CreateForUserPage = FC<Props> {
                     editable = true
                     friendly = true
                     cfacts = cat.cfacts
-                    layouts = cat.layouts
+                    fieldLayouts = cat.fieldLayouts
                     // The fields the page answers itself, not the form (issue #762): the one list both create pages use.
                     omit = formCreateOmittedFields
                     this.failures = failures
@@ -198,7 +198,7 @@ val CreateForUserPage = FC<Props> {
 
                 failures?.let { fs ->
                     formFailureSummary(
-                        fs, appConfig().envAuthDebug, formTraitLayouts(inputType, cat.layouts),
+                        fs, appConfig().envAuthDebug, formTraitLayouts(inputType, cat.fieldLayouts),
                         defaultSummary = "Please fix these before creating the form",
                         defaultHint = "Fix highlighted errors in entered data before creating the form.",
                     )

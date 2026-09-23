@@ -36,7 +36,7 @@ class WorkflowModelTest {
         // The caller's delivered cfacts (issue #569): the whole frontend vocabulary, present-mapped.
         WVF.cfacts to mapOf("hasAdminLevel" to true, "hasEnvAuth" to false),
         // The per-type layouts (issue #585), keyed like `$defs`: the one type here declares a label override.
-        WVF.layouts to mapOf(
+        WVF.fieldLayouts to mapOf(
             "globalconfig.NameData" to mapOf(
                 SL.schemaFields to listOf(mapOf(SL.field to "name", SL.label to "What is it called?")),
             ),
@@ -66,7 +66,7 @@ class WorkflowModelTest {
         WFD.workflowId to "reviewForm",
         WFD.entry to "survey",
         WVF.showTaskList to false,
-        WVF.layouts to mapOf(
+        WVF.fieldLayouts to mapOf(
             "ns.UserInfoData" to mapOf(
                 SL.schemaFields to listOf(
                     mapOf(SL.field to "name", SL.defaultMode to SLDM.filled),
@@ -128,7 +128,7 @@ class WorkflowModelTest {
     @Test
     fun defaultModeDefaultsToFilledWithoutALayout() {
         // With no layout, a prefilled field defaults to filled, so both fields seed and none is offered.
-        val p = prefillPresentationOf(parseWorkflowView(prefillView(GSRC.prefill) - WVF.layouts)!!)
+        val p = prefillPresentationOf(parseWorkflowView(prefillView(GSRC.prefill) - WVF.fieldLayouts)!!)
         assertEquals(mapOf("name" to "Jane", "email" to "j@x.com"), p.working["userInfo"])
         assertTrue(p.offered.isEmpty())
         assertEquals(SLDM.filled, p.modes.getValue("userInfo")["email"])
@@ -208,12 +208,12 @@ class WorkflowModelTest {
         val wf = parseWorkflowView(view())!!
         val trait = wf.tasks.single().traits.single()
         assertEquals("globalconfig.NameData", trait.typeName)
-        assertEquals("What is it called?", trait.layout?.fields?.single()?.label)
-        assertEquals(setOf("globalconfig.NameData"), wf.layouts.keys)
-        // A view with no layouts key parses to no layout on the trait, not a failure -- the type renders alone.
-        val bare = parseWorkflowView(view() - WVF.layouts)!!
-        assertNull(bare.tasks.single().traits.single().layout)
-        assertTrue(bare.layouts.isEmpty())
+        assertEquals("What is it called?", trait.fieldLayout?.fields?.single()?.label)
+        assertEquals(setOf("globalconfig.NameData"), wf.fieldLayouts.keys)
+        // A view with no `fieldLayouts` key parses to no layout on the trait, not a failure -- the type renders alone.
+        val bare = parseWorkflowView(view() - WVF.fieldLayouts)!!
+        assertNull(bare.tasks.single().traits.single().fieldLayout)
+        assertTrue(bare.fieldLayouts.isEmpty())
     }
 
     @Test

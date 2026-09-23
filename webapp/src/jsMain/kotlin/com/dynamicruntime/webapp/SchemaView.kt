@@ -66,12 +66,12 @@ class Catalog(
      */
     val cfacts: Map<String, Boolean> = emptyMap(),
     /**
-     * The per-type layouts (issue #585), keyed by the same qualified name as [defs] / [defTypes] -- a friendly
+     * The per-type field layouts (issue #585), keyed by the same qualified name as [defs] / [defTypes] -- a friendly
      * form joins a type to its layout by that name. Only the types that declare one appear; a missing key means
      * "no layout", and the schema renders without one. Delivered beside the schema rather than inside it, so
-     * [defs] stays the documentation-grade document. Parsed but not yet consumed by [SchemaForm].
+     * [defs] stays the documentation-grade document.
      */
-    val layouts: Map<String, SchLayout> = emptyMap(),
+    val fieldLayouts: Map<String, SchLayout> = emptyMap(),
 ) {
     /** The shared `$defs` parsed once into resolved kernel [SchType]s (refs bound). */
     val defTypes: Map<String, SchType> by lazy { parseSchemaTypes(defs) }

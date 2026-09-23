@@ -190,7 +190,7 @@ object SchemaCatalogApi {
 /**
  * The `results` map of `/schema/endpoints` (or `/schema/endpoint`) as a [Catalog]. One reader, so the two feeds
  * cannot drift in how they parse the shared shape (issue #489 added `filtersAvailable`, #564 `cfacts`, #585
- * `layouts`). A pure top-level function, like the UI-config mappers, so `jsNodeTest` covers it without a server.
+ * `fieldLayouts`). A pure top-level function, like the UI-config mappers, so `jsNodeTest` covers it without a server.
  */
 fun parseCatalog(results: Map<String, Any?>): Catalog = Catalog(
     endpoints = results[EI.endpoints].toJsonListOfMaps().map { toEndpointInfo(it) },
@@ -203,7 +203,7 @@ fun parseCatalog(results: Map<String, Any?>): Catalog = Catalog(
     cfacts = results[EI.cfacts].toJsonMapOrEmpty().mapValues { it.value == true },
     // typeName -> layout (issue #585), read by the same strict kernel parser the boot ran. Absent -> empty ->
     // every type renders from its schema alone, which is what a node that sends no layouts means.
-    layouts = parseDeliveredLayouts(results[EI.layouts]),
+    fieldLayouts = parseDeliveredLayouts(results[EI.fieldLayouts]),
 )
 
 private fun toEndpointInfo(m: Map<String, Any?>): EndpointInfo = EndpointInfo(

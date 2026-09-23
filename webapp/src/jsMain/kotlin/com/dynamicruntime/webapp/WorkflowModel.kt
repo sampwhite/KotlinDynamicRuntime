@@ -38,13 +38,13 @@ class WfTraitView(
     val required: Boolean,
     /** The trait's data type, resolved from the view's `$defs` — what a field renders and validates against. */
     val type: SchType,
-    /** The qualified name [type] was resolved under -- the key the view's `layouts` are joined on. */
+    /** The qualified name [type] was resolved under -- the key the view's `fieldLayouts` are joined on. */
     val typeName: String,
     /**
-     * The data type's layout (issue #585), joined from the view's `layouts` by [typeName]; null when the type
-     * declares none, and the trait then renders from its schema alone. Not yet consumed by [SchemaForm].
+     * The data type's field layout (issue #585), joined from the view's `fieldLayouts` by [typeName]; null when
+     * the type declares none, and the trait then renders from its schema alone.
      */
-    val layout: SchLayout?,
+    val fieldLayout: SchLayout?,
 )
 
 /** One save option a task offers: what a button says and what it does (`WfSaveKind.name`, e.g. create/edit). */
@@ -107,11 +107,11 @@ class WorkflowView(
      */
     val cfacts: Map<String, Boolean>,
     /**
-     * The per-type layouts the view delivered (issue #585), keyed by qualified type name like its `$defs` --
-     * the same shape the endpoint catalog carries. Each trait's own is already joined onto [WfTraitView.layout];
+     * The per-type field layouts the view delivered (issue #585), keyed by qualified type name like its `$defs` --
+     * the same shape the endpoint catalog carries. Each trait's own is already joined onto [WfTraitView.fieldLayout];
      * this is the whole closure, for a renderer that reaches a nested type by name.
      */
-    val layouts: Map<String, SchLayout> = emptyMap(),
+    val fieldLayouts: Map<String, SchLayout> = emptyMap(),
     /**
      * The earliest task still needing action (issue #700) -- the first, in order, whose status is incomplete or
      * invalid -- or null when every task is done. What the rail opens on when the URL names no task.
@@ -150,7 +150,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
     if (results[WVF.found] != true) return null
     val defTypes = parseSchemaTypes(results[SCH.dDefs].toJsonMapOrEmpty())
     // The third closure (issue #585), keyed like `$defs`; a trait's layout is the entry under its type name.
-    val layouts = parseDeliveredLayouts(results[WVF.layouts])
+    val fieldLayouts = parseDeliveredLayouts(results[WVF.fieldLayouts])
     val tasks = results[WFD.tasks].toJsonListOfMaps().map { t ->
         WfTaskView(
             id = t[WFD.id].toOptStr() ?: "",
@@ -161,7 +161,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
                     ?: error($$"Workflow view trait '$${tr[WFD.traitId]}' has a schemaRef '$$ref' that is not a local $defs pointer.")
                 val type = defTypes[name]
                     ?: error($$"Workflow view references '$$name', which its own $defs does not carry.")
-                WfTraitView(tr[WFD.traitId].toOptStr() ?: "", tr[WFD.required] == true, type, name, layouts[name])
+                WfTraitView(tr[WFD.traitId].toOptStr() ?: "", tr[WFD.required] == true, type, name, fieldLayouts[name])
             },
             saves = t[WFD.saves].toJsonListOfMaps().map { s ->
                 WfSaveView(s[WFD.id].toOptStr() ?: "", s[WFD.label].toOptStr() ?: "", s[WFD.kind].toOptStr() ?: "")
@@ -179,7 +179,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         tasks = tasks,
         label = results[WFD.label].toOptStr().orEmpty(),
         cfacts = cfacts,
-        layouts = layouts,
+        fieldLayouts = fieldLayouts,
         focusTask = results[WVF.focusTask].toOptStr(),
     )
 }
@@ -335,7 +335,7 @@ private fun isPrefillEntry(entry: Map<String, Any?>): Boolean = entry[GE.source]
  * so a layout carries the mode only to override it.
  */
 fun defaultModeOf(trait: WfTraitView, field: String): String =
-    trait.layout?.fieldFor(field)?.defaultMode ?: SLDM.filled
+    trait.fieldLayout?.fieldFor(field)?.defaultMode ?: SLDM.filled
 
 /**
  * How a resolved view's **supplied defaults** are presented (issue #710). A default is any entry with

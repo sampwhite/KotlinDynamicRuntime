@@ -83,8 +83,9 @@ class FormErrorStringsTest {
     fun reachesTraitLayoutsThroughTheFormType() {
         val formType = parseSchemaTypes(formDocDefs()).getValue("t.FormDoc")
         // A client set the hint on their expense trait's data-type layout; nothing on the name trait.
-        val layouts = mapOf("t.ExpenseData" to layoutWith(mapOf(LAYSTR.formErrorHint to "Check the expense fields.")))
-        val reached = formTraitLayouts(formType, layouts)
+        val fieldLayouts =
+            mapOf("t.ExpenseData" to layoutWith(mapOf(LAYSTR.formErrorHint to "Check the expense fields.")))
+        val reached = formTraitLayouts(formType, fieldLayouts)
         // Both branches' data types are visited, in union order; only the expense one has a layout.
         assertEquals(1, reached.size)
         val (_, hint) = formErrorStrings(reached, "S-default", "H-default")
