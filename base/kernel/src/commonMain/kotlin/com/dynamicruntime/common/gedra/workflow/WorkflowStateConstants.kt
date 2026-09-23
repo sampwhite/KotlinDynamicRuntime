@@ -203,3 +203,23 @@ object WSC {
     /** The whole list: what `WfDef.singletons` is checked against. */
     val all: Set<String> = setOf(needsReview, finished)
 }
+
+/**
+ * The fields of what stands behind a form's Needs Review / Finished chip (issue #789) -- the answer of
+ * `GEP.formDocSingletonWorkflows`: one entry per engaged workflow emitting the chip's singleton cfact.
+ */
+@Suppress("ConstPropertyName")
+object SWF {
+    /** The engaged workflows emitting the cfact, in the form's state order. */
+    const val workflows = "workflows"
+
+    /**
+     * On a workflow: what its current task asks of the caller, in words -- the CTA task's display resolved for this
+     * caller from stored state (an approval task's button text for a reviewer, "wait for a reviewer" for anyone
+     * else), falling back to the task's label. Absent when the workflow has no current task.
+     */
+    const val actionText = "actionText"
+
+    /** On a workflow: whether the caller is a reviewer of its current task (`wfReviewer` from its functions). */
+    const val isReviewer = "isReviewer"
+}

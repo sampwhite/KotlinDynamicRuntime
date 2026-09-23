@@ -6,6 +6,9 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.SVYS
+import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WDSP
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -25,6 +28,7 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
@@ -62,11 +66,11 @@ class WorkflowApprovalTest : StringSpec({
 
     // Survey-complete (so auditReview is eligible) and, with [recorded], the audit recorded -- which completes the
     // first task and makes the approval the current one.
-    fun engagedForm(user: TestUser = owner, recorded: Boolean = true): String {
+    fun engagedForm(user: TestUser = owner, recorded: Boolean = true, findings: String = "seen"): String {
         val entries = buildList {
             add(mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 2026)))
             add(mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "A Person")))
-            if (recorded) add(mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A Person", SC.findings to "seen")))
+            if (recorded) add(mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A Person", SC.findings to findings)))
         }
         val gid = user.postItem(create, mapOf(GDF.entries to entries))[GDF.gedraId].toOptStr()!!
         user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview))
@@ -201,6 +205,64 @@ class WorkflowApprovalTest : StringSpec({
         done[WVF.approval].toJsonMapOrEmpty()[WVF.approvedByName] shouldBe "approve-reviewer@acme.test"
         // Only the chosen branch travels: no other branch, and no condition.
         done[WFD.display].toJsonMapOrEmpty().containsKey(UIB.select) shouldBe false
+    }
+
+    // --- the Needs Review / Finished chips (issue #789) --------------------------------------------------------
+
+    val chipWorkflows = clientPath(GEP.formDocSingletonWorkflows, SC.acme)
+
+    fun listedAs(status: String): List<Any?> =
+        owner.getItems(GEP.formDocs, mapOf(SVY.surveyStatus to status)).map { it[GDF.gedraId] }
+
+    fun chip(user: TestUser, gid: String, cfact: String) =
+        user.getData(chipWorkflows, mapOf(GDF.gedraId to gid, WFD.cfact to cfact))[SWF.workflows].toJsonListOfMaps()
+
+    "a form awaiting review reads as Needs Review, and its chip names the workflow and what it asks of each caller" {
+        // Open findings: acme's audit review emits needsReview, which takes the place of a Valid chip.
+        val gid = engagedForm(findings = SC.findingsOpen)
+        listedAs(SVYS.needsReview) shouldContain gid
+        listedAs(SVYS.valid) shouldNotContain gid
+
+        // What stands behind the chip, from the form's state and the caller -- the same current task, told to each
+        // person as their own display: the approve button for a reviewer, a wait for anyone else.
+        val forReviewer = chip(reviewer, gid, WSC.needsReview).single()
+        forReviewer[WFD.workflowId] shouldBe SW.auditReview
+        forReviewer[WFD.label] shouldBe "Audit review"
+        forReviewer[WFS.ctaTask] shouldBe SW.approveAudit
+        forReviewer[SWF.actionText] shouldBe "Approve the audit"
+        forReviewer[SWF.isReviewer] shouldBe true
+        val forOwner = chip(owner, gid, WSC.needsReview).single()
+        forOwner[SWF.actionText] shouldBe "You must wait for a reviewer to approve this form."
+        forOwner[SWF.isReviewer] shouldBe false
+        // Nothing has finished, so the other chip has nothing behind it.
+        chip(owner, gid, WSC.finished).shouldBeEmpty()
+    }
+
+    "an approved review reads as Finished, and Needs Review still wins while something waits" {
+        val closed = engagedForm()
+        reviewer.postData(approve, approveBody(closed))
+        listedAs(SVYS.finished) shouldContain closed
+        listedAs(SVYS.valid) shouldNotContain closed
+        // Finished: the workflow is listed with no current task -- there is nothing left to do.
+        val done = chip(owner, closed, WSC.finished).single()
+        done[WFD.workflowId] shouldBe SW.auditReview
+        done.containsKey(WFS.ctaTask) shouldBe false
+
+        // Findings still open after approval: both singletons at once, and Needs Review is the chip.
+        val open = engagedForm(findings = SC.findingsOpen)
+        reviewer.postData(approve, approveBody(open))
+        listedAs(SVYS.needsReview) shouldContain open
+        listedAs(SVYS.finished) shouldNotContain open
+    }
+
+    "Needs Info still trumps a pending review: the chip describes the owner's own work first" {
+        // The survey is incomplete (no expense report), so the form Needs Info whatever a workflow emits.
+        val gid = owner.postItem(
+            create,
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A", SC.findings to SC.findingsOpen)))),
+        )[GDF.gedraId].toOptStr()!!
+        listedAs(SVYS.needsInfo) shouldContain gid
+        listedAs(SVYS.needsReview) shouldNotContain gid
     }
 
     "an approval waits for the work before it" {

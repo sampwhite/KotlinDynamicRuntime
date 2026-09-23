@@ -17,7 +17,10 @@ import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.SVYS
-import com.dynamicruntime.common.gedra.workflow.surveyStatusOf
+import com.dynamicruntime.common.gedra.workflow.SWF
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WSC
+import com.dynamicruntime.common.gedra.workflow.formStatusOf
 import com.dynamicruntime.common.home.HMENU
 import react.ChildrenBuilder
 import react.dom.html.ReactHTML.div
@@ -536,16 +539,30 @@ fun entriesUnionOf(type: SchType?): SchType? = type?.properties?.get(GDF.entries
 class DisplayValue(val traitId: String, val label: String, val value: String)
 
 /**
- * A form's global survey status for the forms-list column (issue #694) and its filter (issue #695): the
- * kernel's [SVYS] value on the [wire], the label the chip and the filter's choice show, and the [PSTAT] colour
- * class the chip renders in. The derivation itself is the kernel's `surveyStatusOf`, shared with the backend
- * filter, so the column and the filter cannot disagree -- **invalid trumps incomplete** there.
+ * A form's status for the forms-list column (issues #694, #789) and its filter (issue #695): the kernel's [SVYS]
+ * value on the [wire], the label the chip and the filter's choice show, and the [PSTAT] colour class the chip
+ * renders in. The derivation itself is the kernel's `formStatusOf`, shared with the backend filter, so the column
+ * and the filter cannot disagree -- **invalid trumps incomplete**, and a workflow's Needs Review or Finished takes
+ * the place of Valid only.
  */
 enum class SurveyStatus(val wire: String, val label: String, val pstat: String) {
     valid(SVYS.valid, "Valid", PSTAT.ok),
     needsInfo(SVYS.needsInfo, "Needs Info", PSTAT.warning),
     invalid(SVYS.invalid, "Invalid", PSTAT.error),
+    needsReview(SVYS.needsReview, "Needs Review", PSTAT.info),
+    finished(SVYS.finished, "Finished", PSTAT.ok),
     ;
+
+    /**
+     * The framework singleton cfact behind this chip (issue #789) -- what its click asks the backend about -- or
+     * null for a survey status, whose chip links into the survey instead.
+     */
+    val singletonCfact: String?
+        get() = when (this) {
+            needsReview -> WSC.needsReview
+            finished -> WSC.finished
+            else -> null
+        }
 
     companion object {
         /** The status a [SVYS] wire value names, or null for anything else. */
@@ -554,11 +571,33 @@ enum class SurveyStatus(val wire: String, val label: String, val pstat: String) 
 }
 
 /**
- * The [SurveyStatus] from a row's state entries (issue #694), or null when the form has no survey state — a
- * client with no survey, or a row not yet computed — in which case the column shows nothing for it. The
- * kernel's `surveyStatusOf`, mapped onto the enum; covered under `jsNodeTest`.
+ * The [SurveyStatus] from a row's state entries (issues #694, #789), or null when the form has no survey state —
+ * a client with no survey, or a row not yet computed — in which case the column shows nothing for it. The
+ * kernel's `formStatusOf`, mapped onto the enum; covered under `jsNodeTest`.
  */
-fun surveyStatusFrom(states: List<Map<String, Any?>>): SurveyStatus? = SurveyStatus.fromWire(surveyStatusOf(states))
+fun surveyStatusFrom(states: List<Map<String, Any?>>): SurveyStatus? = SurveyStatus.fromWire(formStatusOf(states))
+
+/**
+ * One workflow behind a Needs Review / Finished chip (issue #789), as `formDocSingletonWorkflows` answers: its
+ * name, and -- when it has a current task -- what that task asks of the caller, and whether they may review it.
+ */
+class SingletonWorkflow(
+    val workflowId: String,
+    val label: String,
+    val actionText: String?,
+    val isReviewer: Boolean,
+)
+
+/** The workflows in a `formDocSingletonWorkflows` answer's `results`, in the order the backend listed them. */
+fun parseSingletonWorkflows(results: Map<String, Any?>): List<SingletonWorkflow> =
+    results[SWF.workflows].toJsonListOfMaps().map {
+        SingletonWorkflow(
+            workflowId = it[WFD.workflowId].toOptStr() ?: "",
+            label = it[WFD.label].toOptStr() ?: it[WFD.workflowId].toOptStr() ?: "",
+            actionText = it[SWF.actionText].toOptStr(),
+            isReviewer = it[SWF.isReviewer] == true,
+        )
+    }
 
 class FormSummary(
     val gedraId: String,

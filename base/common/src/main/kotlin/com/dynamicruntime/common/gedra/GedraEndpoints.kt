@@ -16,11 +16,15 @@ import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.SVYS
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
-import com.dynamicruntime.common.gedra.workflow.surveyStatusOf
+import com.dynamicruntime.common.gedra.workflow.formStatusOf
 import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WSC
+import com.dynamicruntime.common.gedra.workflow.SingletonWorkflows
+import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WorkflowApprovals
 import com.dynamicruntime.common.gedra.workflow.ViewerCfacts
 import com.dynamicruntime.common.gedra.workflow.WFC
@@ -256,15 +260,23 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             emptyIsAbsent = true
             allowCoerce = true
         }
-        // Filter by the form's global survey status (issue #695): a closed choice over the three statuses the
-        // column shows. Not a trait search field -- it reads the form's state, not a display value -- so it is
-        // applied over the states cache before paging, and `numAvailable` counts what matched. A form with no
-        // computed state matches none of them. Not admin-gated: a caller filters the forms they can already see.
-        property(SVY.surveyStatus, "Only forms whose survey status is this: ${SVYS.valid} / ${SVYS.needsInfo} / ${SVYS.invalid}. Absent means any.") {
+        // Filter by the form's status (issues #695, #789): a closed choice over the statuses the column's chip
+        // shows, read by the same rule (`formStatusOf`) so the two cannot disagree -- "Valid" means what a Valid
+        // chip means, nothing pending or finished. Not a trait search field -- it reads the form's state, not a
+        // display value -- so it is applied over the states cache before paging, and `numAvailable` counts what
+        // matched. A form with no computed state matches none. Not admin-gated: a caller filters the forms they
+        // can already see. The wire name stays `surveyStatus`, which the first three statuses still are.
+        property(
+            SVY.surveyStatus,
+            "Only forms whose status chip is this: ${SVYS.valid} / ${SVYS.needsInfo} / ${SVYS.invalid} / " +
+                "${SVYS.needsReview} / ${SVYS.finished}. Absent means any.",
+        ) {
             emptyIsAbsent = true
             option(SVYS.valid, "Valid")
             option(SVYS.needsInfo, "Needs Info")
             option(SVYS.invalid, "Invalid")
+            option(SVYS.needsReview, "Needs Review")
+            option(SVYS.finished, "Finished")
         }
         // The sort (issue #666): a column to order by -- a display trait id, or a fixed column -- and a
         // direction. Absent means the default (most recently written first). Not admin-gated: any caller may
@@ -322,7 +334,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // schema has already settled the value: a blank is absent (`emptyIsAbsent`), anything but the three
         // options was refused, so what arrives is one of them or nothing.
         val statusWanted = request[SVY.surveyStatus] as? String
-        val stateFilter: ((List<Map<String, Any?>>) -> Boolean)? = statusWanted?.let { wanted -> { states -> surveyStatusOf(states) == wanted } }
+        val stateFilter: ((List<Map<String, Any?>>) -> Boolean)? = statusWanted?.let { wanted -> { states -> formStatusOf(states) == wanted } }
         val svc = GedraDataService.get(c)
         val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort, stateFilter)
         // Attach each form's state (issue #600) only when asked. One batch read over the page's ids -- cache-
@@ -768,6 +780,53 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         }
         val states = WorkflowApprovals.approve(c, row, declared, task)
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to states)
+    }
+
+    // What stands behind a form's Needs Review / Finished chip (issue #789): the engaged workflows emitting that
+    // singleton, each with its name and its current action as *this caller* would see it -- worked out from the
+    // form's stored state and the caller, never the form's data. See SingletonWorkflows.
+    type(GEP.singletonWorkflowsType) {
+        type = SCT.kObject
+        description = "The engaged workflows behind a form's Needs Review or Finished chip."
+        property(GDF.gedraId, "The form.", required = true)
+        property(WFD.cfact, "The singleton cfact asked about.", required = true)
+        property(SWF.workflows, "The workflows emitting it, each with its name and current action.", required = true) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(WFD.workflowId, "The workflow.", required = true)
+                property(WFD.label, "Its name, resolved; its id when it has none.", required = true)
+                property(WFS.ctaTask, "Its current task, when it has one.")
+                property(SWF.actionText, "What its current task asks of this caller, in words.")
+                property(SWF.isReviewer, "Whether this caller is a reviewer of its current task.") { type = SCT.boolean }
+            }
+        }
+    }
+
+    generalEndpoint(
+        GEP.formDocSingletonWorkflows,
+        "Lists the engaged workflows behind a form's Needs Review or Finished chip, with each one's name and what " +
+            "its current task asks of the caller.",
+        HttpMethod.GET,
+        outputRef = GEP.singletonWorkflowsType,
+        inputFields = {
+            field(GDF.gedraId, "The form whose chip was clicked.", required = true)
+            field(WFD.cfact, "Which chip: the singleton cfact to list the workflows of.", required = true) {
+                option(WSC.needsReview, "Needs Review")
+                option(WSC.finished, "Finished")
+            }
+        },
+        publicApi = true,
+        needsClientConfig = true,
+    ) { c, request ->
+        val cfact = request[WFD.cfact].toOptStr() ?: throw KdrException.mkInput("A ${WFD.cfact} is required.")
+        val row = stateTargetRow(c, request)
+        val states = GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c))
+        mapOf(
+            GDF.gedraId to row.gedraId.fullId,
+            WFD.cfact to cfact,
+            SWF.workflows to SingletonWorkflows.of(c, row.client, states, cfact),
+        )
     }
 
     // Recomputes one form's derived state on demand (issue #794). Batch jobs (issue #793) will do this in bulk;
