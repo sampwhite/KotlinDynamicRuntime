@@ -8,6 +8,7 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.schemaDefs
+import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -99,6 +100,13 @@ object WFD {
 
     /** On an approval: the button's own text -- a template, like a label. */
     const val button = "button"
+
+    /**
+     * On a task: how it is shown (issue #788) -- one display branch ([WDSP]), or, usually, a UiBlock **selector**
+     * (`select`) choosing among several by the caller's task facts. What turns an approval task into "approved by
+     * ...", "waiting on earlier work", the approve button, or "wait for a reviewer", as the case may be.
+     */
+    const val display = "display"
 
     /** Separates a bundle id from a workflow id in a [WfRef]'s text form. */
     const val refSep = '#'
@@ -373,6 +381,11 @@ class WfTask(
     functionUsages: List<WfFunctionUsage> = emptyList(),
     /** Present on an **approval task** (issue #787), which collects no traits and offers no saves. */
     val approval: WfApproval? = null,
+    /**
+     * How the task is shown (issue #788): a display branch ([WDSP]) or a UiBlock selector choosing among several.
+     * Kept as data -- the resolver chooses per caller, and a boot check holds its conditions and copy to account.
+     */
+    val display: Map<String, Any?>? = null,
 ) {
     /** The task-scoped function **usages** this task declares (e.g. `prefillData`), in priority order (issue #677). */
     val functionUsages: List<WfFunctionUsage> = functionUsages.sortedBy { it.priority }
@@ -734,6 +747,10 @@ object WfDefSchema {
             property(WFD.approval, "Makes this an approval task: it collects no traits and is complete when a reviewer approves it.") {
                 ref(WFD.approvalType)
             }
+            property(WFD.display, "How the task is shown: a display branch (mode, text, disabled), or a selector choosing among several by the caller's task facts.") {
+                type = SCT.kObject
+                additionalProperties = true
+            }
         }
         type(WFD.defType) {
             type = SCT.kObject
@@ -803,6 +820,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
                 task.approval?.let {
                     put(WFD.approval, linkedMapOf(WFD.cfact to it.cfact, WFD.prompt to it.prompt, WFD.button to it.button))
                 }
+                task.display?.let { put(WFD.display, it) }
             }
         },
     )
@@ -864,6 +882,7 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
                     val am = a.toJsonMapOrEmpty()
                     WfApproval(am[WFD.cfact].toOptStr() ?: "", am[WFD.prompt].toOptStr() ?: "", am[WFD.button].toOptStr() ?: "")
                 },
+                display = (t[WFD.display] as? Map<*, *>)?.toJsonMapOrEmpty(),
             )
         },
         functionUsages = usagesOf(m[WFD.functions]),
@@ -954,6 +973,7 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     private var layout: Map<String, Any?>? = null
     private val functions = mutableListOf<Map<String, Any?>>()
     private var approval: Map<String, Any?>? = null
+    private var display: Map<String, Any?>? = null
 
     /**
      * Declares a task-scoped function usage (a `prefillData`, e.g.) -- the `{fn, ...}` initialization data a
@@ -982,6 +1002,14 @@ class WfTaskBuilder(private val id: String, private val label: String) {
         approval = linkedMapOf(WFD.cfact to cfact, WFD.prompt to prompt, WFD.button to button)
     }
 
+    /**
+     * How the task is shown (issue #788): the branches [WfDisplayBuilder] collects, tried **in order** against the
+     * caller's task facts -- the first whose condition holds is what the view delivers.
+     */
+    fun display(build: WfDisplayBuilder.() -> Unit) {
+        display = WfDisplayBuilder().apply(build).build()
+    }
+
     /** How the task is drawn; traits not named in [order] follow in declaration order. */
     fun layout(order: List<String>, edit: WfEditMode = WfEditMode.inline) {
         layout = linkedMapOf(WFD.order to order, WFD.edit to edit.name)
@@ -997,7 +1025,57 @@ class WfTaskBuilder(private val id: String, private val label: String) {
         layout?.let { out[WFD.layout] = it }
         if (functions.isNotEmpty()) out[WFD.functions] = functions.toList()
         approval?.let { out[WFD.approval] = it }
+        display?.let { out[WFD.display] = it }
         return out
+    }
+}
+
+/**
+ * Authors a task's display selector (issue #788): branches tried in the order they are declared, the first whose
+ * cfact expression the caller's task facts satisfy winning. It produces the UiBlock selector shape --
+ * `{select: [{cfactExpression, mode, text, disabled}, ...]}` -- so the resolver needs no workflow knowledge.
+ */
+class WfDisplayBuilder {
+    private val branches = mutableListOf<Map<String, Any?>>()
+
+    /** A branch shown when [cfacts] -- a cfact expression -- matches the caller's task facts. */
+    fun whenCfacts(cfacts: String, build: WfDisplayBranchBuilder.() -> Unit) {
+        branches.add(WfDisplayBranchBuilder(cfacts).apply(build).build())
+    }
+
+    /** The unguarded last branch: shown when nothing before it matched. */
+    fun otherwise(build: WfDisplayBranchBuilder.() -> Unit) {
+        branches.add(WfDisplayBranchBuilder(null).apply(build).build())
+    }
+
+    fun build(): Map<String, Any?> = linkedMapOf(UIB.select to branches.toList())
+}
+
+/** One display branch; see [WfDisplayBuilder]. */
+class WfDisplayBranchBuilder(private val cfacts: String?) {
+    private var mode: String = WDSP.defaultMode
+    private var text: String? = null
+
+    /** Show the task greyed, and its rail link not clickable. */
+    var disabled: Boolean = false
+
+    /** Show [template] in place of the task's own rendering. */
+    fun text(template: String) {
+        mode = WDSP.textMode
+        text = template
+    }
+
+    /** Show the task's own rendering -- the default, and what an approval's reviewer is given. */
+    fun defaultRendering() {
+        mode = WDSP.defaultMode
+        text = null
+    }
+
+    fun build(): Map<String, Any?> = linkedMapOf<String, Any?>().apply {
+        cfacts?.let { put(UIB.cfactExpression, it) }
+        put(WDSP.mode, mode)
+        text?.let { put(WDSP.text, it) }
+        if (disabled) put(WDSP.disabled, true)
     }
 }
 
@@ -1025,6 +1103,35 @@ object WfEngine {
 }
 
 /**
+ * The keys of one task **display branch** (issue #788) -- what a [WFD.display] selector chooses among, and what the
+ * view delivers for the frontend to draw.
+ */
+@Suppress("ConstPropertyName")
+object WDSP {
+    /** How the task is drawn: [textMode] or [defaultMode]; [defaultMode] when absent. */
+    const val mode = "mode"
+
+    /** [mode]: draw [text] in place of the task's own rendering. */
+    const val textMode = "text"
+
+    /** [mode]: draw the task's own rendering -- its traits and saves, or an approval task's button. */
+    const val defaultMode = "default"
+
+    /** The modes a branch may name. */
+    val modes: Set<String> = setOf(textMode, defaultMode)
+
+    /**
+     * The text a [textMode] branch shows -- a template like a label: `%{…}` pulls resolve on the backend, and
+     * `${'$'}{…}` is left for the frontend to substitute from the task view's own data (an approval's
+     * `approvedByName`, say), per the layout rule that frontend substitution lives only in a layout.
+     */
+    const val text = "text"
+
+    /** Whether the task is shown disabled -- greyed, and its rail link not clickable. */
+    const val disabled = "disabled"
+}
+
+/**
  * The target facts about one task (issue #533) -- what a view passes to the cfact registry's `assemble`
  * beside the request's own facts, so a task's layout can select on them.
  *
@@ -1033,7 +1140,9 @@ object WfEngine {
  * say (issue #785): which task is the CTA is a judgment over the whole task list, and content validity, which
  * needs the client's schema -- neither is this one task's to decide. So is `approved`, for an **approval task**
  * (issue #787): it collects no traits, so trait presence would call it complete before anyone approved it --
- * its completion is the approval, which lives in the form's state.
+ * its completion is the approval, which lives in the form's state. An approved approval task also carries its
+ * **own approval cfact** (issue #788), so a display selector can say `acmeAuditApproved` rather than the
+ * generic `wfTaskComplete`.
  */
 object WfTaskFacts {
     fun of(task: WfTask, entries: List<Map<String, Any?>>, isCta: Boolean = false, approved: Boolean = false): Set<String> {
@@ -1042,6 +1151,9 @@ object WfTaskFacts {
         val complete = if (task.approval != null) approved else WfEngine.taskComplete(task, entries)
         if (complete) {
             facts.add(WFC.taskComplete)
+        }
+        if (approved) {
+            task.approval?.let { facts.add(it.cfact) }
         }
         if (isCta) {
             facts.add(WFC.isCta)

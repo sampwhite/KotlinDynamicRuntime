@@ -21,6 +21,7 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
@@ -451,6 +452,18 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 // ...and a reviewer is whoever carries acme's `reviewer` label (issue #786): the `wfReviewer` cfact
                 // on this task's view, which the approve endpoint asks for too.
                 function(userHasLabel { label = SC.reviewerLabel })
+                // How the step shows, per viewer and per moment (issue #788) -- tried in order, the first that
+                // applies winning. "Approved" comes first: once approved the step is no longer the CTA, so the
+                // "not yet your turn" branch would otherwise claim it.
+                display {
+                    whenCfacts(SC.auditApproved) { text($$"The form has been approved by ${approvedByName}.") }
+                    whenCfacts("~${WFC.isCta}") {
+                        text("Previous data entry must be completed before review.")
+                        disabled = true
+                    }
+                    whenCfacts(WFC.reviewer) { defaultRendering() }
+                    otherwise { text("You must wait for a reviewer to approve this form.") }
+                }
             }
             // An approved audit review is finished: the ordinary singleton rule turns the approval's cfact into the
             // form's Finished status -- no special case for approvals.

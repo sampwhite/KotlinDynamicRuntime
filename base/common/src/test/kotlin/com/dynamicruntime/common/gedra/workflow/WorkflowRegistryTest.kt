@@ -206,6 +206,38 @@ class WorkflowRegistryTest : StringSpec({
         }.message shouldContain "approval prompt of task 'approve'"
     }
 
+    // A task display (issue #788): its conditions parse against the scope's cfacts, its branches name real modes,
+    // and a text branch's copy rides the label check.
+    "a task display's conditions, modes and copy are checked at boot" {
+        fun displaying(build: WfDisplayBuilder.() -> Unit): GedraConfig = client(devCxt, "acme", listOf("name")) {
+            workflow("auditReview", WfEntry.normal) {
+                task("record", "Record") { trait("name"); save("s", "S", WfSaveKind.edit); display(build) }
+            }
+        }
+        build(devCxt, listOf(globalTraits(devCxt), displaying {
+            whenCfacts("acmeOnly") { text("Yours.") }
+            otherwise { defaultRendering() }
+        })).second.shouldBeEmpty()
+        shouldThrow<KdrException> {
+            build(devCxt, listOf(globalTraits(devCxt), displaying { whenCfacts("acmeOnlee") { text("Typo.") } }))
+        }.message shouldContain "condition that does not parse"
+        shouldThrow<KdrException> {
+            build(devCxt, listOf(globalTraits(devCxt), displaying { otherwise { text("""%{@t("wfCopy.identify.gone")}""") } }))
+        }.message shouldContain "display text of task 'record'"
+        val badMode = client(devCxt, "acme", listOf("name")) {
+            workflowFromMap(
+                WfDefBuilder("auditReview", WfEntry.normal).apply {
+                    task("record", "Record") { trait("name"); save("s", "S", WfSaveKind.edit) }
+                }.build().let { raw ->
+                    val task = (raw[WFD.tasks] as List<*>).single() as Map<*, *>
+                    raw + (WFD.tasks to listOf(task.entries.associate { it.key.toString() to it.value } +
+                        (WFD.display to mapOf(WDSP.mode to "sparkly"))))
+                },
+            )
+        }
+        shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), badMode)) }.message shouldContain "mode 'sparkly'"
+    }
+
     "an eligibility explanation rides the label check" {
         val bad = client(devCxt, "acme", listOf("name")) {
             workflow("auditReview", WfEntry.normal) {

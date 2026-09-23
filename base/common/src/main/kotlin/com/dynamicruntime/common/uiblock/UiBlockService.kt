@@ -236,12 +236,14 @@ private fun arrayAtPath(content: Map<String, Any?>, path: String): List<*>? {
 }
 
 /**
- * Removes every object whose [UIB.cfactExpression] expression is not satisfied by [present].
+ * Removes every object whose [UIB.cfactExpression] expression is not satisfied by [present], and puts each
+ * **selector** ([UIB.select], issue #788) in place of the first of its branches that is.
  *
  * **Recursive, and keyed on the presence of the field rather than on where the object sits.** One rule, so a
  * UiBlock can grow a shape the resolver has never seen -- a section, an action inside an item -- and its
  * conditions work without this learning about it. An object dropped from an array is removed; an object
- * dropped from a field leaves that field absent.
+ * dropped from a field leaves that field absent. A selector is the ordered sibling of the same rule: a selector
+ * none of whose branches matches is dropped exactly like an object whose condition failed.
  */
 fun filterByCFacts(
     node: Map<String, Any?>,
@@ -256,23 +258,46 @@ fun filterByCFacts(
         // invite a frontend to re-sort a list the backend already ordered.
         if (key == UIB.cfactExpression || key == UIB.displayOrder) continue
         when (value) {
-            is Map<*, *> -> {
-                val child = asObject(value)
-                if (matches(child, present, predicate)) out[key] = filterByCFacts(child, present, predicate)
-            }
+            is Map<*, *> -> resolveObject(asObject(value), present, predicate)?.let { out[key] = it }
             is List<*> -> out[key] = value.mapNotNull { element ->
-                if (element is Map<*, *>) {
-                    val child = asObject(element)
-                    if (matches(child, present, predicate)) filterByCFacts(child, present, predicate) else null
-                } else {
-                    element
-                }
+                if (element is Map<*, *>) resolveObject(asObject(element), present, predicate) else element
             }
             else -> out[key] = value
         }
     }
     return out
 }
+
+/**
+ * [node] as the caller sees it, or null when it is absent for them: its own condition first, then -- when it is a
+ * selector -- the first branch whose condition holds, taken in its place (a branch may itself be a selector, so
+ * the choice repeats, to a bounded depth), and finally its contents filtered by the same rules.
+ */
+private fun resolveObject(
+    node: Map<String, Any?>,
+    present: Set<String>,
+    predicate: (String) -> CFactPredicate,
+): Map<String, Any?>? {
+    if (!matches(node, present, predicate)) {
+        return null
+    }
+    var chosen = node
+    var depth = 0
+    while (chosen.containsKey(UIB.select)) {
+        if (++depth > maxSelectorDepth) {
+            throw KdrException("A UiBlock selector nests more than $maxSelectorDepth deep; refusing to resolve it.")
+        }
+        chosen = (chosen[UIB.select] as? List<*>).orEmpty()
+            .filterIsInstance<Map<*, *>>()
+            .map { asObject(it) }
+            .firstOrNull { matches(it, present, predicate) }
+            ?: return null
+    }
+    return filterByCFacts(chosen, present, predicate)
+}
+
+/** How deep selectors may nest directly inside one another -- far beyond any real use, and a guard on bad data. */
+private const val maxSelectorDepth = 10
 
 /** Whether [node]'s condition (if it states one) is satisfied; an object stating none always matches. */
 private fun matches(node: Map<String, Any?>, present: Set<String>, predicate: (String) -> CFactPredicate): Boolean {
