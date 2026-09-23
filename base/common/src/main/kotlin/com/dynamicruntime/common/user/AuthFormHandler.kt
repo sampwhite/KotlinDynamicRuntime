@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -717,6 +719,49 @@ class AuthFormHandler(
             userService.updateIdentity(cxt, identity)
         }
         return selfUsers(cxt)
+    }
+
+    /**
+     * Permanently removes [userId], one of the person's own `public` users (issue #752), and returns the user
+     * info of whoever the session is acting as afterward -- anonymous when nothing is left.
+     *
+     * `public` is the placeholder client: where a person's first user lands when they register before anybody
+     * has placed them anywhere, on a deployment that allows anonymous self-registration. Such a person may
+     * remove their `public` users themselves, **up to and including the last of everything**: a `public` user
+     * exists only because its owner registered, so its owner can always register again (Sam, 2026-09-22).
+     *
+     * The removal is the ordinary permanent one (`UserService.deleteUser`): the row becomes a tombstone and gives
+     * up its key, and when it was the identity's last live user the identity is retired with it -- the address
+     * freed, the credentials, links and devices gone. When the removed user is the one the session is acting
+     * as, the session moves to the person's default user, as a switch does, or ends when there is none.
+     */
+    fun removePublicUser(cxt: KdrCxt, userId: Long): Map<String, Any?> {
+        val identityId = cxt.userProfile.identityId
+            ?: throw KdrException("This session predates identities; log in again to remove a user.", code = EXC.authNeeded)
+        val target = userService.queryByUserId(cxt, userId)
+        // One message for every way the target is not the caller's own live `public` user, so this confirms
+        // nothing about users that are not theirs.
+        if (target == null || target.identityId != identityId || target.isDeleted || target.client != CL.public) {
+            throw KdrException.mkInput("User $userId is not one of your '${CL.public}' users.")
+        }
+        val identity = userService.identityOfUser(cxt, target)
+        userService.deleteUser(cxt, target, permanent = true)
+        LogAuth.info(cxt) { "User ${target.userId} ('${target.primaryId}') removed their own '${CL.public}' user." }
+        // A default pointing at the removed user would name a tombstone. Re-read, since a retirement just wrote it.
+        userService.queryIdentityById(cxt, identity.identityId)
+            ?.takeIf { it.defaultUserId == target.userId }
+            ?.let { it.defaultUserId = null; userService.updateIdentity(cxt, it) }
+        if (cxt.userProfile.userId != target.userId) {
+            return currentUserInfo(cxt)
+        }
+        // The session was acting as the user just removed: move it, as a switch would, to the person's default
+        // -- or, when no registered user of theirs remains, end it.
+        val next = userService.queryIdentityById(cxt, identity.identityId)?.let { userService.registeredDefaultOf(cxt, it) }
+        if (next != null) {
+            return completeLogin(cxt, next, byCode = false)
+        }
+        cxt.request?.clearAuth = true
+        return UserProfile.anonymous().toUserInfo()
     }
 
     /**

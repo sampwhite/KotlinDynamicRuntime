@@ -289,6 +289,18 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
         }) { c, req ->
         authHandler(c).setDefaultUser(c, req.getReqLong(AFLD.userId))
     }
+    generalEndpoint(AEP.removePublicUser, "Permanently removes one of the signed-in person's own users in the 'public' placeholder client.",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(
+                AFLD.userId,
+                "The user to remove: a '${CL.public}' user of the caller's own identity. Removing the acting " +
+                    "user switches the session to the person's default user, or ends it when none remains; " +
+                    "removing the identity's last user retires the identity too.",
+                required = true,
+            ) { type = SCT.integer }
+        }) { c, req ->
+        authHandler(c).removePublicUser(c, req.getReqLong(AFLD.userId))
+    }
 
     // Log out: flag the request so the auth hook clears the session cookie.
     generalEndpoint(AEP.logout, "Logs the current user out (clears the session cookie).",

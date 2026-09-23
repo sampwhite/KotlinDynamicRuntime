@@ -37,6 +37,11 @@ object AEP {
     const val switchUser = "/user/self/switch"
     /** Choose which of the person's users an address logs in as. */
     const val setDefaultUser = "/user/self/setDefault"
+    /**
+     * Permanently remove one of the person's own `public` users (issue #752) -- the placeholder a person holds
+     * before anybody places them in a real client -- up to and including their last user.
+     */
+    const val removePublicUser = "/user/self/removePublic"
 
     // Invitations (issue #751), anonymous like the rest of the register/login flow: the mailed link is the
     // proof, and the person opening it has no session yet.

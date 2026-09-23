@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.exception.EXC
@@ -197,7 +198,7 @@ class UserService : ServiceInitializer {
      * sits on the shell config, fetched on every refresh by every signed-in caller, so it must not be the SQL
      * read `usersOfIdentity` is. SQL only when the cache is absent.
      */
-    private fun registeredUsersOf(cxt: KdrCxt, identity: AuthIdentityRow): List<AuthUserRow> {
+    internal fun registeredUsersOf(cxt: KdrCxt, identity: AuthIdentityRow): List<AuthUserRow> {
         val cache = userCache
         val rows = if (cache != null) {
             cache.checkRefresh(cxt)
@@ -257,8 +258,13 @@ class UserService : ServiceInitializer {
 
     private fun pickDefault(identity: AuthIdentityRow, users: List<AuthUserRow>): AuthUserRow? {
         if (users.isEmpty()) return null
+        // The person's own choices first -- the explicit default, then the one they last acted as -- even when
+        // that is a `public` user: they chose it. Only the last resort passes over `public` (issue #752): the
+        // earliest user is usually the placeholder a person registered into before anybody placed them, and
+        // with a user in a real client that is the one they came for.
         return listOfNotNull(identity.defaultUserId, identity.lastUsedUserId)
             .firstNotNullOfOrNull { wanted -> users.firstOrNull { it.userId == wanted } }
+            ?: users.firstOrNull { it.client != CL.public }
             ?: users.first()
     }
 

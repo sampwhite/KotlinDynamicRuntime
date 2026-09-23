@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.user.passwordRuleError
 import com.dynamicruntime.common.util.evalTemplate
 import kotlinx.coroutines.MainScope
@@ -46,6 +48,10 @@ val Profile = FC<Props> {
      * (or a change made elsewhere) re-seeds it instead of leaving a stale value sitting in the field.
      */
     var draftName by useState("")
+    // The person's users (issue #752), for offering to remove a `public` placeholder once they hold a user in a
+    // real client; and which removal is armed (a two-step confirm, since it is permanent).
+    var myUsers by useState<List<UserChoice>>(emptyList())
+    var confirmingRemove by useState<Long?>(null)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
 
@@ -68,6 +74,7 @@ val Profile = FC<Props> {
     useEffect(config) { draftName = config?.user?.name ?: "" }
 
     useEffect(generation) {
+        profileScope.launch { myUsers = runCatching { AuthApi.fetchUsers() }.getOrDefault(emptyList()) }
         loadConfig { c ->
             profileScope.launch {
                 // Recover a stale build id (a rolling deploy) via the shared retry, rather than silently
@@ -149,6 +156,23 @@ val Profile = FC<Props> {
         ProfileApi.clearPassword()
         note = t("password", "removedNote", "Your password was removed. You can still sign in with a code.")
         bump()
+    }
+
+    /**
+     * Removes [target], one of the person's `public` users (issue #752). Removing the user the session acts as
+     * moves the session to another of theirs, so the whole app reloads, as after a switch; removing another
+     * only needs the page and the badge to re-read.
+     */
+    fun removePublic(target: UserChoice) = run {
+        AuthApi.removePublicUser(target.userId)
+        confirmingRemove = null
+        if (target.isCurrent) {
+            navigateHash(emptyList())
+            reloadWebApp()
+        } else {
+            note = t("placeholder", "removedNote", "The public account was removed.")
+            bump()
+        }
     }
 
     fun logout() = run {
@@ -317,6 +341,55 @@ val Profile = FC<Props> {
             }
         }
 
+        // The `public` placeholder (issue #752): a person may remove their `public` users, up to and including the
+        // last of everything -- they registered themselves, so they can register again. The copy says which.
+        val removable = removablePublicUsers(myUsers)
+        if (removable.isNotEmpty()) {
+            h2 { +t("placeholder", "title", "Your public account") }
+            p {
+                className = ClassName("subtitle")
+                +if (removalEndsEverything(myUsers)) {
+                    t(
+                        "placeholder", "helpOnly",
+                        "This is your only account. Removing it permanently deletes your registration: you are " +
+                            "signed out, and your email address is free to register again.",
+                    )
+                } else {
+                    t(
+                        "placeholder", "help",
+                        "You registered before being placed anywhere, so you have an account in the public " +
+                            "placeholder client. You can remove it. This is permanent, and your other accounts are " +
+                            "not affected.",
+                    )
+                }
+            }
+            for (target in removable) {
+                val label = target.qualifierWithin(myUsers).ifEmpty { target.label() }
+                div {
+                    className = ClassName("row")
+                    if (confirmingRemove == target.userId) {
+                        Button {
+                            danger = true
+                            disabled = busy
+                            onClick = { removePublic(target) }
+                            +(t("placeholder", "confirm", "Permanently remove") + " [$label]")
+                        }
+                        Button {
+                            disabled = busy
+                            onClick = { confirmingRemove = null }
+                            +t("placeholder", "cancel", "Cancel")
+                        }
+                    } else {
+                        Button {
+                            disabled = busy
+                            onClick = { confirmingRemove = target.userId }
+                            +(t("placeholder", "remove", "Remove") + " [$label]")
+                        }
+                    }
+                }
+            }
+        }
+
         div {
             className = ClassName("row")
             Button {
@@ -328,3 +401,17 @@ val Profile = FC<Props> {
         }
     }
 }
+
+/**
+ * The person's users the profile page offers to remove (issue #752): every `public` one. A person may remove
+ * their placeholder users down to nothing, since they registered themselves and can register again. [users] is
+ * the switcher's list (registered, enabled). Pure, covered under `jsNodeTest`.
+ */
+fun removablePublicUsers(users: List<UserChoice>): List<UserChoice> = users.filter { it.client == CL.public }
+
+/**
+ * Whether removing a `public` user would leave the person with no user at all (issue #752) -- when it is the
+ * only one in [users] -- so the page can say that the whole registration goes, and the session with it. Pure,
+ * covered under `jsNodeTest`.
+ */
+fun removalEndsEverything(users: List<UserChoice>): Boolean = users.size == 1
