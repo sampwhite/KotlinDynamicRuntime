@@ -62,8 +62,9 @@ fun WfTask.viewerCfactsFns(): List<ViewerCfactsFn> =
 /**
  * The `viewerCfacts` evaluation for **one view** (issue #786) of [client]'s workflow, as the person [cxt] acts as:
  * [forTask] answers each task's viewer facts, which the workflow view adds to the task's own target facts so a
- * layout can select on them -- and which the approve endpoint (#787) asks for the same way, so the button a page
- * shows and the permission the endpoint grants are one computation.
+ * selector can choose on them (today a task's display selector, issue #788; field-layout selectors are to follow)
+ * -- and which the approve endpoint (#787) asks for the same way, so the button a page shows and the permission
+ * the endpoint grants are one computation.
  *
  * One object per view, so what is about the *viewer* is looked up once however many tasks carry functions: a
  * workflow with two approval points asks twice and reads the labels once. A task with no functions costs nothing,

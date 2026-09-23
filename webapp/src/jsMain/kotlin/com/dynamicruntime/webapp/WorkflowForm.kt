@@ -301,8 +301,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         if (unsaved) localTaskStatus(task, valuesByTrait) else statuses[task.id]
 
     // One task's body -- the "TaskPanel" (issue #700): its label (when something else does not already name the
-    // task, issue #719), each trait's form, and its Save while editing. The rail layout shows one of these at a
-    // time; the single-panel layout shows each task's in turn.
+    // task, issue #719), each trait's form, and its Save while editing. In rail mode one of these shows at a
+    // time; in single-panel mode each task's shows in turn.
     fun ChildrenBuilder.taskPanel(task: WfTaskView, showLabel: Boolean = true) {
         div {
             className = ClassName("wf-task")
@@ -357,7 +357,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // nothing to save (issue #717) -- the working values match the stored snapshot, the same comparison
             // that drives the rail's unsaved badge, so a prefilled task the user never touched offers no Save
             // and a saved task's Save disables itself once the snapshot refreshes -- and while ANY task's save
-            // is in flight: `loading` blocks only the button being saved, and the single-panel layout shows
+            // is in flight: `loading` blocks only the button being saved, and single-panel mode shows
             // every task's. Disabled means "nothing to do", never "you did it wrong": a task with known
             // validation failures keeps its Save, so clicking it shows the errors rather than a dead button.
             if (editing) {

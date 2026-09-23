@@ -19,10 +19,10 @@ import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * Resolves a declared workflow into the **view** the creation page renders (issue #534): tasks in layout
- * order, each trait a `$ref` into *this client's* schema with the workflow's required flag beside it, saves
- * with resolved labels, and the target facts about each task -- run through the same content pipeline every
- * other rendered surface uses, so the page renders JSON and never learns what a task is.
+ * Resolves a declared workflow into the **view** the creation page renders (issue #534): tasks with their
+ * traits in task-layout order, each trait a `$ref` into *this client's* schema with the workflow's required flag
+ * beside it, saves with resolved labels, and the target facts about each task -- run through the same content
+ * pipeline every other rendered surface uses, so the page renders JSON and never learns what a task is.
  *
  * The resolution is the pipeline the design settled on:
  *  - **Labels** get `MarkdownFragmentService.backendPass`: a `%{...}` block resolves here -- a fragment pull
@@ -104,7 +104,7 @@ fun resolveWorkflowView(
     }
     val statusById = statuses.associate { (task, status) -> task.id to status }
     // The CTA (issue #785): the earliest task not both complete and valid. The rail opens on it when the URL names
-    // no task (`focusTask`, issue #700), and its task carries the `wfIsCta` fact a layout selects on.
+    // no task (`focusTask`, issue #700), and its task carries the `wfIsCta` fact a selector can choose on.
     val ctaTaskId = WorkflowTaskStatus.cta(statuses)?.first?.id
 
     // The task's status for the task rail: complete/valid in the survey's words, plus each problem as the
@@ -137,8 +137,9 @@ fun resolveWorkflowView(
 
     fun taskView(task: WfTask): Map<String, Any?> {
         val entries = entriesByTask[task.id] ?: emptyList()
-        // Draw the traits in the page's order, each already a ref+flag; the layout named the order, and any
-        // trait it left out follows in declaration order (`WfTask.displayOrder`).
+        // Draw the traits in the page's order, each already a ref+flag; the task layout named the order, and any
+        // trait it left out follows in declaration order (`WfTask.displayOrder`). Today that order is all the task
+        // layout does, so the layout itself is not sent: nothing on the page would read it (issue #834).
         val byId = task.traits.associateBy { it.traitId }
         val orderedTraits = task.displayOrder.mapNotNull { byId[it] }.map { traitView(it) }
         // The task's own facts, plus what its viewerCfacts functions conclude about the person looking at it
@@ -153,7 +154,6 @@ fun resolveWorkflowView(
             WVF.facts to taskFacts.toList(),
             WVF.status to taskStatus(statusById.getValue(task.id)),
         )
-        task.layout?.let { raw[WFD.layout] = linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name) }
         task.approval?.let { raw[WVF.approval] = approvalView(it, approvals[task.id]) }
         // How the task is shown (issue #788): usually a selector, which the filter below resolves against this
         // caller's task facts -- so what arrives is the one branch that applies, never the others or their tests.
@@ -204,8 +204,8 @@ fun resolveWorkflowView(
         WVF.cfacts to cfacts.deliveredCfacts(requestFacts),
         // The third parallel closure (issue #585): the `g-layout` of each type in `$defs` that has one, joined
         // to a trait's data type by name on the page. From the same store the closure came from, so a client
-        // that narrowed a trait's type gets the layout pruned to what it kept. The task-level layout (order,
-        // edit mode) is a different thing and already rides on each task above.
+        // that narrowed a trait's type gets the layout pruned to what it kept. These are field layouts; the task
+        // layout is a different thing, already applied to each task's trait order above.
         WVF.fieldLayouts to resolveDeliveredLayouts(cxt, clientStore.layoutsFor(defs)),
     )
     focusTask?.let { view[WVF.focusTask] = it }

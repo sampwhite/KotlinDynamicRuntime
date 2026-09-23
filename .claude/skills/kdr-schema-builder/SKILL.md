@@ -211,7 +211,10 @@ validates exactly as before.
 
 ## Layouts: `g-layout` (issues #584, #585)
 
-A type may carry a **layout** — how a friendly form renders its fields — under the custom `g-layout` keyword.
+A type may carry a **field layout** — how a friendly form renders its fields — under the custom `g-layout`
+keyword. (Always qualify it: the *task* layout, `WfLayout` on a workflow task, orders the traits within a task and
+is a placeholder until how a task arranges its traits is designed. Today a type has at most one field layout;
+selectors — which already choose a task's display (#788) — are to come down here too, choosing among several.)
 It is the one kd2 keyword that is **never read into `SchType`**: a layout varies by surface, not by validity,
 so it is read out by its own kernel function into a `SchLayout` held **beside** the compiled types
 (`KdrSchemaStore.layouts`, keyed by qualified type name), stripped from the served schema
@@ -262,6 +265,11 @@ is equivalent):
   a forbidden field) stays hidden even when `authoritative` lists it. The kernel decides the order in
   `orderedFieldNames(type, layout)` (`SchFormPlan.kt`) — the render loop calls it and applies its gates on top,
   so the same rule is JVM-testable and browser-run.
+  **Why a mode (issue #834):** two kinds of author. A *form author* lives with the schema's defaults and tweaks
+  copy or order (`overlay`/`reorder`); an *application builder* treats the field layout as the source of truth
+  for every GUI decision (`authoritative`). For the latter, repeating the schema — listing every field, even in
+  the schema's own order — is **intended**, not redundancy to remove. Guidance, not a rule: a change that does
+  not alter the schema's API semantics (order, copy) belongs in the field layout rather than a schema overlay.
 - **Default handling** (`defaultMode`, issue #709): a per-field `field(..., defaultMode = SLDM.filled)` says how
   a **supplied default** (a value the backend hands the form that a person did not enter — a `prefillData`
   default, later other sources) is presented: `SLDM.filled` (shown in the control, marked) or `SLDM.offer` (an
