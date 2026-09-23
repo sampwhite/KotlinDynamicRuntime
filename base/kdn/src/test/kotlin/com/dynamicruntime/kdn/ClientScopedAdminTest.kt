@@ -529,8 +529,8 @@ class ClientScopedAdminTest : StringSpec({
         // ...while email still matches as before, and the name term does not drag in the other account.
         emails("person@example.com") shouldBe listOf("person@example.com")
 
-        // A person's full name is searched by the same rule -- the field is not business-only. The name has to
-        // be unique across the whole suite: every test in a run shares one in-memory database.
+        // A person's full name is searched by the same rule -- the field is not business-only. The name is
+        // specific to this spec, so the search can only find the user created here.
         val named = service.queryAdministrableUser(cxt, personaSuffix, ReadScope.unrestricted)
             ?: error("Seeded person should be readable.")
         named.name = "Grace Hopper"

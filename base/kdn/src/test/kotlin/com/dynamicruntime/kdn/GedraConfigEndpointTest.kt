@@ -31,7 +31,7 @@ import kotlin.time.Duration.Companion.seconds
  * version/publish transition through the endpoints, the trait-level accounting view, the reserved-namespace
  * refusal, and the section gate.
  *
- * Its own client, since the in-memory database is shared across specs.
+ * Its own client, so nothing here depends on which configs `public` happens to hold.
  */
 class GedraConfigEndpointTest : StringSpec({
     val cxt: KdrCxt = Startup.mkTestBootCxt("gedraCfgEp", "gedraCfgEpTest")

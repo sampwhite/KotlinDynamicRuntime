@@ -37,8 +37,7 @@ import io.kotest.matchers.string.shouldContain
  * that simplification fail. The stray key is planted by raw SQL for exactly that reason: there is no producer to
  * plant it any other way, which is the whole point.
  *
- * Its own client, as `GedraDataCacheTest` explains: every test shares one in-memory database, and another spec
- * asserts exhaustively over the shared client's documents.
+ * Its own client, as `GedraDataCacheTest` explains.
  */
 class GedraDataExtraTest : StringSpec({
     val cxt = Startup.mkTestBootCxt("gedraExtra", "gedraExtraTest")

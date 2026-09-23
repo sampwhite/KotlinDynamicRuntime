@@ -45,7 +45,7 @@ object SqlDbBuilder {
      */
     fun resolveDbConfig(cxt: KdrCxt, isInMemory: Boolean): Map<String, Any?> {
         if (isInMemory) {
-            return linkedMapOf(DBC.dbType to DbType.h2Memory.name, DBC.dbName to dbNameOf(cxt))
+            return linkedMapOf(DBC.dbType to DbType.h2Memory.name, DBC.dbName to inMemoryDbNameOf(cxt))
         }
         val explicit = cxt.instanceConfig.get(DBC.db)
         if (explicit is Map<*, *>) {
@@ -59,7 +59,7 @@ object SqlDbBuilder {
     fun envConfigFor(cxt: KdrCxt, type: DbType): Map<String, Any?> {
         val name = dbNameOf(cxt)
         return when (type) {
-            DbType.h2Memory -> linkedMapOf(DBC.dbType to DbType.h2Memory.name, DBC.dbName to name)
+            DbType.h2Memory -> linkedMapOf(DBC.dbType to DbType.h2Memory.name, DBC.dbName to inMemoryDbNameOf(cxt))
             DbType.h2File -> linkedMapOf(
                 DBC.dbType to DbType.h2File.name,
                 DBC.dbName to name,
@@ -108,6 +108,15 @@ object SqlDbBuilder {
 
     /** The database name from the `KDR_DB_NAME` env var, or [defaultDbName]. */
     fun dbNameOf(cxt: KdrCxt): String = cxt.getEnvVar(DbEnv.dbName) ?: defaultDbName
+
+    /**
+     * The name of an **in-memory** H2 database (issue #836): the `KDR_DB_NAME` env var, or else the **instance
+     * name** -- not [defaultDbName]. An in-memory database lives for the whole JVM (`DB_CLOSE_DELAY=-1`) and is found by name,
+     * so a shared default name would make every instance booted in one JVM -- every spec in a module's test run
+     * -- share one set of tables. Keyed by instance, each instance gets its own; instances meant to share a
+     * database (a multi-node test) name it explicitly with `KDR_DB_NAME`.
+     */
+    fun inMemoryDbNameOf(cxt: KdrCxt): String = cxt.getEnvVar(DbEnv.dbName) ?: cxt.instanceConfig.instanceName
 
     /** The database name from a resolved [config], or [defaultDbName]. */
     fun dbNameOf(config: Map<String, Any?>): String = config[DBC.dbName] as? String ?: defaultDbName

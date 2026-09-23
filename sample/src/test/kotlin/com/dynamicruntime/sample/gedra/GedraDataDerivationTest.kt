@@ -28,7 +28,7 @@ import io.kotest.matchers.shouldBe
  * raw read-only view is built from a listing row), and the survey workflow view -- plus the compute-on-read
  * contract itself: the value is present on a read and absent from what is stored.
  *
- * Its own clients on one shared in-memory database, as the neighbouring gedra sample tests explain. `acme`
+ * Its own clients, as the neighboring gedra sample tests do. `acme`
  * collects `expenseReport` (its creation and survey workflows), so both the endpoints and the view resolve
  * against a real trait.
  */

@@ -32,9 +32,10 @@ import kotlin.time.Duration.Companion.seconds
  * replaces**. A cache over user content is only safe if it cannot widen an answer, so the scope cases are the
  * point rather than the coverage.
  *
- * Everything here is created in this spec's **own client**, not `CL.public`. Every test in a run shares one
- * in-memory database, and `GedraDataEndpointTest` asserts *exhaustively* over the documents a client-scoped
- * administrator sees in `CL.public` -- so a document created here would fail that test instead of this one.
+ * Everything here is created in this spec's **own client**, not `CL.public`. Its in-memory database is its own
+ * (one per instance name, issue #836), but a spec that asserts *exhaustively* over the documents a client-scoped
+ * administrator sees in `CL.public` -- as `GedraDataEndpointTest` does -- should not depend on that alone: a
+ * shared `KDR_DB_NAME` would bring the documents created here into its count.
  * Rows are written through `GedraDataService.createGedra` on a sub-context bound to this client, which keeps
  * the ids, the envelope and the storage entirely real while leaving the shared client alone.
  */

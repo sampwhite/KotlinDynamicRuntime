@@ -34,7 +34,7 @@ import kotlinx.datetime.toLocalDateTime
  * transaction. This pins the mechanism -- a create and a patch both run it, a rejection is a 400 with nothing
  * stored, a merge that does not touch the field is unaffected, and a trait with no function is untouched.
  *
- * Its own clients on one shared in-memory database, as the neighbouring gedra sample tests explain. `acme`
+ * Its own clients, as the neighboring gedra sample tests do. `acme`
  * carries `expenseReport`, and the validation turns on the instance clock rather than a static bound, so the
  * "future" year is computed from the same clock the function reads.
  */

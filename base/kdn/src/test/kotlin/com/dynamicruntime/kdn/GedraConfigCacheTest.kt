@@ -20,7 +20,7 @@ import io.kotest.matchers.shouldBe
  *
  * The three states the issue names, walked in order on one class: latest with nothing published; latest equal
  * to published; latest ahead of published; and the transition when the newer revision is published. Its own
- * client, since the in-memory database is shared across specs.
+ * client, so the revisions counted are only the ones written here.
  */
 class GedraConfigCacheTest : StringSpec({
     val cxt = Startup.mkTestBootCxt("gedraCfgCache", "gedraCfgCacheTest")

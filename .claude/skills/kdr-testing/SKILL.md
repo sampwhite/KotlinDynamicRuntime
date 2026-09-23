@@ -356,13 +356,15 @@ already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
 - **Use a unique `instanceName` per test.** `InstanceRegistry` caches an instance by name, so a reused name
   returns the earlier config and silently ignores your overlay.
 
-- **Every test in a run shares one database, so fixture identifiers must be unique across the whole suite.**
-  The in-memory H2 name is a constant and the URL carries `DB_CLOSE_DELAY=-1`, so rows outlive the instance
-  that made them and every boot sees the same `AuthUsers`. A plain-looking `chief@example.com` in a new test
-  therefore *takes* the address another test builds its administrator from — and the failure lands in **that**
-  test, which passed yesterday and whose code you did not touch. The same applies to any value a test asserts
-  by content: a search test looking for "Ada Lovelace" matches a user another test named. Prefix fixture
-  addresses and names with something specific to the test.
+- **An in-memory database is one per instance name, and outlives the instance.** Unless `KDR_DB_NAME` names
+  it, an in-memory H2 database takes the instance's name (issue #836), and the URL carries `DB_CLOSE_DELAY=-1`,
+  so its rows last for the whole JVM and are found by name. Two consequences. Cases that boot the **same**
+  instance name — the common spec-level `val cxt` — share every row, so a value one case asserts by content (a
+  search for "Ada Lovelace") can match a user an earlier case created. And separate instances meant to share
+  data — a restart, a second node — must name one database with `KDR_DB_NAME`, or the second boot finds an
+  empty one. Prefixing fixture addresses and names with something specific to the test is still cheap
+  insurance: before #836 every spec shared one database, and a plain `chief@example.com` in one test took the
+  address another built its administrator from.
 
 - **A malformed Markdown fragment fails the whole suite**, not one test. Tests run in `ENV.unit`, where the
   startup fragment check is `strict` (issue #294), so every `mkTestBootCxt` refuses. That is deliberate — it is

@@ -117,6 +117,27 @@ class SqlDbBuilderTest : StringSpec({
         SqlDbBuilder.resolveDbConfig(c, isInMemory = true)[DBC.dbType] shouldBe DbType.h2Memory.name
     }
 
+    // Issue #836: a shared default name made every instance in one JVM -- every spec in a module's test run --
+    // share one set of tables. The file and PostgreSQL defaults are untouched: they are real, named databases.
+    "an in-memory database is named after its instance unless KDR_DB_NAME names it" {
+        fun instanceCxt(name: String) = KdrCxt(name, KdrInstanceConfig(name, ENV.unit, ENV.liveSource))
+        val a = instanceCxt("dbNameInstA")
+        val b = instanceCxt("dbNameInstB")
+        SqlDbBuilder.dbNameOf(SqlDbBuilder.resolveDbConfig(a, isInMemory = true)) shouldBe "dbNameInstA"
+        SqlDbBuilder.dbNameOf(SqlDbBuilder.resolveDbConfig(b, isInMemory = true)) shouldBe "dbNameInstB"
+
+        // Named explicitly, separate instances share one -- how a restart or multi-node test gets its data back.
+        a.instanceConfig.put(DbEnv.dbName.name, "sharedDb")
+        b.instanceConfig.put(DbEnv.dbName.name, "sharedDb")
+        SqlDbBuilder.dbNameOf(SqlDbBuilder.resolveDbConfig(a, isInMemory = true)) shouldBe "sharedDb"
+        SqlDbBuilder.dbNameOf(SqlDbBuilder.resolveDbConfig(b, isInMemory = true)) shouldBe "sharedDb"
+
+        // A file-backed database still defaults to the shared name, not the instance's.
+        val fileCfg = SqlDbBuilder.resolveDbConfig(instanceCxt("dbNameInstFile"), isInMemory = false)
+        SqlDbBuilder.dbNameOf(fileCfg) shouldBe SqlDbBuilder.defaultDbName
+        fileCfg[DBC.filePath] shouldBe SqlDbBuilder.defaultH2FilePath
+    }
+
     "env vars fully configure a PostgreSQL database, parsing an optional :port on the host" {
         val c = KdrCxt.mkSimpleCxt("pgenv")
         c.instanceConfig.put(DbEnv.dbType.name, "postgres")

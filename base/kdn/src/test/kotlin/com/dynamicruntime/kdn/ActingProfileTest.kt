@@ -22,9 +22,9 @@ import io.kotest.matchers.shouldBe
  * So the assertion here is deliberately on the **whole profile**, not a list of fields. Naming the fields would
  * reproduce the bug in the test: it would pass while ignoring whatever field nobody remembered to add.
  *
- * The email addresses are prefixed to keep them unique across the whole suite: every test in a run shares one
- * in-memory database, so a plain `chief@example.com` here quietly stole the one `HomeMenuTest` builds its
- * administrator from, and that test failed instead of this one.
+ * The email addresses are prefixed to keep them unique across the whole suite. When every test shared one
+ * in-memory database (before issue #836), a plain `chief@example.com` here quietly stole the one `HomeMenuTest`
+ * builds its administrator from, and that test failed instead of this one.
  */
 class ActingProfileTest : StringSpec({
 

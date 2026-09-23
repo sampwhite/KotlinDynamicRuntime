@@ -110,10 +110,10 @@ class GedraConfigLoadService : ServiceInitializer {
         val sql = sqlTopicService ?: throw KdrException("$serviceName.checkInit ran before onCreate.")
 
         // Load on a persistent node, not an in-memory one. A production node is Postgres-backed and loads what
-        // was stored; an in-memory node is a test or a throwaway, whose database is shared across specs within a
-        // JVM -- so loading there would drag a config one spec wrote into every other spec's node, for no gain
-        // (nothing meaningfully persists across an in-memory node's life). [loadEnvVar] overrides either way, so
-        // a test that means to exercise the load turns it on with a database of its own. `isInMemory` is
+        // was stored; an in-memory node is a test or a throwaway, and nothing meaningfully persists across its
+        // life, so there is nothing to load. [loadEnvVar] overrides either way, so a test that means to exercise
+        // the load turns it on -- with a `KDR_DB_NAME` its boots share, since each in-memory instance otherwise
+        // has a database of its own (issue #836). `isInMemory` is
         // resolved by the topic service's own `checkInit`, called here (idempotently) because this may run
         // before the startup pass reaches it.
         sql.checkInit(cxt)
@@ -313,8 +313,8 @@ class GedraConfigLoadService : ServiceInitializer {
         /**
          * Whether to load stored client configurations at boot (issue #614). Unset, a node loads iff it is
          * persistent (not in-memory) -- so a real deployment loads and an in-memory test does not, since an
-         * in-memory database is shared across specs within a JVM and has nothing to meaningfully persist. Set it
-         * explicitly to force either way; a test exercising the load sets it on with a database of its own.
+         * in-memory node has nothing to meaningfully persist. Set it explicitly to force either way; a test
+         * exercising the load sets it on, with a `KDR_DB_NAME` shared by the boots that write and then load.
          */
         val loadEnvVar = EnvVarDef(
             "KDR_LOAD_STORED_CONFIG", group = ENVGRP.gedra,

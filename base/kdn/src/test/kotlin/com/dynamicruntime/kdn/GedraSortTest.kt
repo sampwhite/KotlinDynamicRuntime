@@ -20,7 +20,7 @@ import io.kotest.matchers.shouldBe
  * the same `orderBySort`. The comparator itself (number-by-value, blanks-last, direction) is unit-tested in
  * `GedraSearchTest`; this pins that the service applies it, keeps the total order, and does not disturb paging.
  *
- * Its own client -- every spec shares one in-memory database, and another asserts exhaustively over its own.
+ * Its own client, as `GedraDataCacheTest` explains.
  */
 class GedraSortTest : StringSpec({
     val cxt = Startup.mkTestBootCxt("gedraSort", "gedraSortTest")

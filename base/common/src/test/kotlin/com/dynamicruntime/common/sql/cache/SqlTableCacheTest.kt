@@ -31,9 +31,10 @@ private const val labelField = "label"
  * Coverage for [SqlTableCache]: the incremental reload, the snapshot's lookups and indexes, the tombstone a
  * disabled row leaves for [SqlCacheCursor], and the shared state row [SqlTableCacheService] coordinates on.
  *
- * Each case declares its **own table and topic**. Every test in a module's run shares one in-memory H2
- * database (the URL carries `DB_CLOSE_DELAY=-1`), so a shared table name would let one case's rows show up in
- * another's assertions.
+ * Each case declares its **own table and topic**. An in-memory H2 database outlives the instance that made it
+ * (the URL carries `DB_CLOSE_DELAY=-1`) and is found by name, so cases booting one instance name -- or sharing
+ * a `KDR_DB_NAME` -- share its tables, and a shared table name would let one case's rows show up in another's
+ * assertions.
  *
  * The caches here are left **detached**, so each `checkRefresh` queries directly rather than going through the
  * service -- which is what makes the reload deterministic under test instead of gated on the state row.

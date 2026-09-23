@@ -35,7 +35,7 @@ import io.kotest.matchers.shouldBe
  * configuration, including creating a brand-new client purely over the API. Driven over the in-process HTTP
  * client so the `admin` section gate (which requires `allClients`) is exercised for real.
  *
- * Its own client ids, since the in-memory database is shared across specs.
+ * Its own client ids, so nothing here depends on which clients other code declares.
  */
 class AdminGedraConfigEndpointTest : StringSpec({
     val cxt: KdrCxt = Startup.mkTestBootCxt("adminCfgEp", "adminCfgEpTest")
