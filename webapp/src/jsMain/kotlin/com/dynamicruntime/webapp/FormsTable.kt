@@ -1,11 +1,21 @@
 package com.dynamicruntime.webapp
 
 import react.FC
+import react.Key
 import react.Props
 import react.create
 import react.dom.html.ReactHTML.a
-import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.li
+import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.strong
+import react.dom.html.ReactHTML.ul
+import react.useRef
+import react.useState
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import web.cssom.ClassName
 import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.schema.PSTAT
@@ -175,8 +185,16 @@ val FormsTable = FC<FormsTableProps> { props ->
             summary.surveyStatus?.let {
                 row.svyLabel = it.label
                 row.svyPstat = it.pstat
-                // The unfinished chip links straight into the survey's edit mode; Valid is a plain chip.
-                if (it != SurveyStatus.valid) row.svyEditHref = props.surveyEditHref(id)
+                // The unfinished chip links straight into the survey's edit mode; a workflow's Needs Review or
+                // Finished chip (issue #789) opens the workflows behind it instead; Valid is a plain chip.
+                val cfact = it.singletonCfact
+                when {
+                    cfact != null -> {
+                        row.svyCfact = cfact
+                        row.svyGedraId = id
+                    }
+                    it != SurveyStatus.valid -> row.svyEditHref = props.surveyEditHref(id)
+                }
             }
             row
         }.toTypedArray()
@@ -255,6 +273,8 @@ private fun statusColumn(props: FormsTableProps): dynamic {
             this.label = record.svyLabel as? String
             this.pstat = record.svyPstat as? String
             this.editHref = record.svyEditHref as? String
+            this.cfact = record.svyCfact as? String
+            this.gedraId = record.svyGedraId as? String
         }
     }
     return c
@@ -267,6 +287,10 @@ private external interface FormStatusCellProps : Props {
     var pstat: String?
     /** The survey edit-mode href the chip links to on an unfinished row; null makes it a plain chip. */
     var editHref: String?
+    /** On a Needs Review / Finished chip (issue #789): the singleton cfact whose workflows its click lists. */
+    var cfact: String?
+    /** The form the chip belongs to, for that lookup. */
+    var gedraId: String?
 }
 
 /** One Status cell: the coloured chip -- a link straight into the survey's edit mode on an unfinished row. */
@@ -274,8 +298,16 @@ private val FormStatusCell = FC<FormStatusCellProps> { props ->
     val label = props.label
     val cls = ClassName("op-status " + (props.pstat ?: PSTAT.info))
     val href = props.editHref
+    val cfact = props.cfact
+    val gedraId = props.gedraId
     when {
         label == null -> +"—"
+        cfact != null && gedraId != null -> SingletonChip {
+            this.label = label
+            this.pstat = props.pstat
+            this.cfact = cfact
+            this.gedraId = gedraId
+        }
         href != null -> a {
             className = cls
             this.href = href
@@ -433,3 +465,93 @@ private fun column(title: String, dataIndex: String, width: Int?): dynamic {
     if (width != null) c.width = width
     return c
 }
+
+private external interface SingletonChipProps : Props {
+    var label: String
+    var pstat: String?
+    var cfact: String
+    var gedraId: String
+}
+
+/**
+ * A Needs Review / Finished chip (issue #789): a button-like chip that opens a popover listing the workflows behind
+ * it -- each one's name and what its current task asks of *this* caller (the approve button's words for a reviewer,
+ * a wait for anyone else). Fetched the first time it opens, not for every row: the answer is per caller and per
+ * form, and most chips are never opened.
+ */
+private val SingletonChip = FC<SingletonChipProps> { props ->
+    var open by useState(false)
+    var workflows by useState<List<SingletonWorkflow>?>(null)
+    var failed by useState<String?>(null)
+    // Which load is the latest: a reopen starts a new one, and an older answer arriving after it is dropped.
+    val loadSeq = useRef(0)
+
+    // Fetched on every open, not once: the row can stay mounted while a reviewer acts elsewhere, and the status
+    // alone does not say so (open findings keep a form at Needs Review). The last answer stays up meanwhile.
+    fun load() {
+        val seq = (loadSeq.current ?: 0) + 1
+        loadSeq.current = seq
+        chipScope.launch {
+            try {
+                val fresh = WorkflowApi.fetchSingletonWorkflows(props.gedraId, props.cfact)
+                if (loadSeq.current == seq) {
+                    workflows = fresh
+                    failed = null
+                }
+            } catch (e: Throwable) {
+                if (loadSeq.current == seq) failed = userFacingError(e).text
+            }
+        }
+    }
+
+    Popover {
+        this.open = open
+        trigger = "click"
+        placement = "bottomLeft"
+        title = props.label
+        onOpenChange = { next ->
+            open = next
+            if (next) load()
+        }
+        content = SingletonChipBody.create {
+            this.workflows = workflows
+            this.failed = failed
+        }
+        // A real button, so the chip is reachable and operable from the keyboard like any control; styled as a
+        // chip (`button.op-status`). The type is set as a plain attribute, as the catalog does, so the chip can
+        // never submit a form it ends up inside.
+        button {
+            className = ClassName("op-status " + (props.pstat ?: PSTAT.info))
+            asDynamic()["type"] = "button"
+            onClick = { it.stopPropagation() }
+            +props.label
+        }
+    }
+}
+
+private external interface SingletonChipBodyProps : Props {
+    var workflows: List<SingletonWorkflow>?
+    var failed: String?
+}
+
+/** What the chip's popover shows: loading, a failure, or one line per workflow -- its name, then its action. */
+private val SingletonChipBody = FC<SingletonChipBodyProps> { props ->
+    val workflows = props.workflows
+    when {
+        props.failed != null -> p { className = ClassName("error-text"); +props.failed!! }
+        workflows == null -> p { +"Loading\u2026" }
+        workflows.isEmpty() -> p { +"No workflow is behind this status any more." }
+        else -> ul {
+            className = ClassName("chip-workflows")
+            workflows.forEach { wf ->
+                li {
+                    key = wf.workflowId.unsafeCast<Key>()
+                    strong { +wf.label }
+                    wf.actionText?.let { +" \u2014 $it" }
+                }
+            }
+        }
+    }
+}
+
+private val chipScope = MainScope()

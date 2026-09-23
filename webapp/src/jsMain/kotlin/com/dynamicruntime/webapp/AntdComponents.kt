@@ -218,6 +218,25 @@ external interface DatePickerProps : PropsWithChildren {
 
 external val DatePicker: ComponentType<DatePickerProps>
 
+/**
+ * A floating card anchored to its child (issue #789): the forms list's Needs Review / Finished chip opens one on
+ * click to show the workflows behind it. Controlled through [open] / [onOpenChange] so the content can be fetched
+ * the first time it opens rather than for every row up front.
+ */
+external interface PopoverProps : PropsWithChildren {
+    /** The card's heading -- a string or a React node. */
+    var title: dynamic
+    /** The card's body -- a React node. */
+    var content: dynamic
+    /** What opens it: `"click"` here, since a chip is a control, not a hover target. */
+    var trigger: String?
+    var open: Boolean?
+    var onOpenChange: ((Boolean) -> Unit)?
+    var placement: String?
+}
+
+external val Popover: ComponentType<PopoverProps>
+
 /** Layout helper that spaces its children; used to lay out the demo row. */
 external interface SpaceProps : PropsWithChildren
 

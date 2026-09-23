@@ -1,9 +1,11 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
@@ -40,6 +42,19 @@ object WorkflowApi {
      */
     suspend fun save(body: Map<String, Any?>, client: String? = null): WorkflowSaveOutcome =
         parseSaveOutcome(Http.sendApi("POST", pathFor(GEP.workflowSave, client), body)[EP.results].toJsonMapOrEmpty())
+
+    /**
+     * The workflows behind form [gedraId]'s Needs Review or Finished chip (issue #789) -- [cfact] names which.
+     * Asked of the form's own client's surface, resolved by the backend (a client that varies nothing has only
+     * the shared endpoint, bound to the caller's own client), for the reason the survey page resolves its path:
+     * an `allClients` admin may be looking at another client's form.
+     */
+    suspend fun fetchSingletonWorkflows(gedraId: String, cfact: String): List<SingletonWorkflow> {
+        val path = fetchFormEndpoint(HttpMethod.GET.name, GEP.formDocSingletonWorkflows, formClientOf(gedraId))
+            .endpoints.firstOrNull()?.path ?: GEP.formDocSingletonWorkflows
+        val results = Http.getApi(path + queryString(mapOf(GDF.gedraId to gedraId, WFD.cfact to cfact)))[EP.results]
+        return parseSingletonWorkflows(results.toJsonMapOrEmpty())
+    }
 
     /** The client's copy of a bare workflow path when a [client] is given, else the shared path. */
     private fun pathFor(barePath: String, client: String?): String =

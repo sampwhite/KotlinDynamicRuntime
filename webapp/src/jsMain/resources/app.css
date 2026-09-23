@@ -722,6 +722,14 @@ input {
    the survey editor. Keeps the chip look; underlines on hover so it reads as a link. */
 a.op-status { text-decoration: none; cursor: pointer; }
 a.op-status:hover { text-decoration: underline; }
+/* A status chip that opens something (issue #789): the forms list's Needs Review / Finished chip is a button that
+   pops up the workflows behind it. The button's own chrome is reset so it keeps the chip look. */
+button.op-status { border: none; font-family: inherit; cursor: pointer; }
+button.op-status:hover { text-decoration: underline; }
+button.op-status:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
+/* The popover's list: one workflow per line, its name then what it asks of you. */
+.chip-workflows { margin: 0; padding-left: 18px; max-width: 360px; }
+.chip-workflows li { margin: 2px 0; }
 
 /* presentation:table -- an array rendered as rows/columns. */
 .op-table { width: 100%; border-collapse: collapse; margin-top: 8px; }

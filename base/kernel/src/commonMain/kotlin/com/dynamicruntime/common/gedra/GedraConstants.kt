@@ -70,6 +70,15 @@ object GEP {
     const val workflowApprove = "/gedra/workflow/approve"
 
     /**
+     * What stands behind a form's Needs Review or Finished chip (issue #789): the engaged workflows emitting that
+     * singleton cfact, each with its name and its current action as the caller would see it.
+     */
+    const val formDocSingletonWorkflows = "/gedra/formDoc/singletonWorkflows"
+
+    /** Response type of [formDocSingletonWorkflows]. */
+    const val singletonWorkflowsType = "SingletonWorkflows"
+
+    /**
      * Recomputes one form's derived state, per-workflow entries included (issue #794). The design asks for this
      * before batch jobs exist, and expects it to stay the preferred way to force a recompute in a test after
      * they do.

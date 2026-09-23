@@ -7,6 +7,7 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
@@ -14,6 +15,9 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.WSC
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.SVYS
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -776,6 +780,43 @@ class GedraFormsTest {
             mapOf(GE.traitId to "otherState", GE.data to mapOf("x" to 1)),
             mapOf(GE.traitId to SVY.surveyCompletion, GE.data to data),
         )
+    }
+
+    /**
+     * A workflow's Needs Review / Finished (issue #789) takes the place of Valid, and only Valid; the chip carries
+     * the singleton cfact its click asks about, and a survey status carries none (its chip links to the survey).
+     */
+    @Test
+    fun aWorkflowSingletonTakesThePlaceOfValid() {
+        fun withFacts(complete: Boolean, valid: Boolean, vararg facts: String) = surveyStates(complete, valid) +
+            mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to facts.toList()))
+        assertEquals(SurveyStatus.needsReview, surveyStatusFrom(withFacts(true, true, WSC.needsReview)))
+        assertEquals(SurveyStatus.finished, surveyStatusFrom(withFacts(true, true, WSC.finished)))
+        assertEquals(SurveyStatus.needsReview, surveyStatusFrom(withFacts(true, true, WSC.finished, WSC.needsReview)))
+        assertEquals(SurveyStatus.needsInfo, surveyStatusFrom(withFacts(false, true, WSC.needsReview)))
+        assertEquals(WSC.needsReview, SurveyStatus.needsReview.singletonCfact)
+        assertEquals(WSC.finished, SurveyStatus.finished.singletonCfact)
+        assertNull(SurveyStatus.needsInfo.singletonCfact)
+        // The filter offers every status the chip can show, from the same enum.
+        assertEquals(SurveyStatus.needsReview, SurveyStatus.fromWire(SVYS.needsReview))
+    }
+
+    /** What the chip's popover lists (issue #789): each workflow's name, its action for this caller, if any. */
+    @Test
+    fun parsesTheWorkflowsBehindAChip() {
+        val parsed = parseSingletonWorkflows(
+            mapOf(
+                SWF.workflows to listOf(
+                    mapOf(WFD.workflowId to "auditReview", WFD.label to "Audit review", SWF.actionText to "Approve the audit", SWF.isReviewer to true),
+                    mapOf(WFD.workflowId to "plain"),
+                ),
+            ),
+        )
+        assertEquals(listOf("Audit review", "plain"), parsed.map { it.label })
+        assertEquals("Approve the audit", parsed[0].actionText)
+        assertEquals(true, parsed[0].isReviewer)
+        assertNull(parsed[1].actionText)
+        assertEquals(false, parsed[1].isReviewer)
     }
 
     /**

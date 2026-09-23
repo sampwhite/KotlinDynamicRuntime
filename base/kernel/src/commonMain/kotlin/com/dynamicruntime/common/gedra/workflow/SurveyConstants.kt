@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
@@ -54,13 +56,14 @@ object SVY {
 }
 
 /**
- * The three survey statuses a form's `surveyCompletion` state reads as (issue #694), as the forms list shows
- * them and as its filter takes them (issue #695) -- one vocabulary on both sides of the wire. Derived by
- * [surveyStatusOf], the one rule the status column and the backend filter share.
+ * The statuses a form reads as in the forms list (issues #694, #789), as its chip shows them and as its filter
+ * takes them (issue #695) -- one vocabulary on both sides of the wire. The first three are the survey's, read off
+ * its `surveyCompletion` state ([surveyStatusOf]); the last two are the framework singletons an engaged workflow
+ * contributes, which take the place of [valid] ([formStatusOf], the one rule the chip and the filter share).
  */
 @Suppress("ConstPropertyName")
 object SVYS {
-    /** Every required survey trait present, and the present data passes its schema. */
+    /** Every required survey trait present, the present data passes its schema, and nothing is pending or finished. */
     const val valid = "valid"
 
     /** Present data passes, but a required survey trait is missing. */
@@ -68,6 +71,12 @@ object SVYS {
 
     /** Present data fails its schema, whether or not something is also missing. */
     const val invalid = "invalid"
+
+    /** Valid, and a workflow the form is engaged with is waiting on a review (issue #789). */
+    const val needsReview = WSC.needsReview
+
+    /** Valid, and a workflow the form is engaged with has finished (issue #789). */
+    const val finished = WSC.finished
 }
 
 /**
@@ -86,6 +95,32 @@ fun surveyStatusOf(states: List<Map<String, Any?>>): String? {
     return when {
         !valid -> SVYS.invalid
         !complete -> SVYS.needsInfo
+        else -> SVYS.valid
+    }
+}
+
+/**
+ * The status a form's chip shows and its filter matches (issue #789): the survey's ([surveyStatusOf]), except that
+ * where the survey would read **Valid** the form's merged cfacts may say more -- [SVYS.needsReview] when some engaged
+ * workflow is waiting on a review, else [SVYS.finished] when some has finished. Only Valid gives way: Needs Info and
+ * Invalid still describe work the owner has to do, which trumps a review or a finish. Needs Review beats Finished,
+ * since it is something waiting on someone. Null when the form has no survey status, as [surveyStatusOf] is.
+ *
+ * Pure over the state entries -- the form's cfacts are its [GT.cfacts] entry -- so the frontend's chip and the
+ * backend's filter run the same code and cannot disagree.
+ */
+fun formStatusOf(states: List<Map<String, Any?>>): String? {
+    val survey = surveyStatusOf(states) ?: return null
+    if (survey != SVYS.valid) {
+        return survey
+    }
+    val facts = states.filter { it[GE.traitId] == GT.cfacts }
+        .flatMap { it[GE.data].toJsonMapOrEmpty()[GT.facts].toJsonListOrEmpty() }
+        .mapNotNull { it?.toString() }
+        .toSet()
+    return when {
+        WSC.needsReview in facts -> SVYS.needsReview
+        WSC.finished in facts -> SVYS.finished
         else -> SVYS.valid
     }
 }
