@@ -372,29 +372,40 @@ private fun labelProblem(client: String?, label: String, fragments: WfFragmentLo
 }
 
 /**
- * A task display's branches (issue #788): a selector's, or the display itself when it is a single branch.
+ * A task display's **leaf** branches (issue #788) -- what can actually be shown: the display itself when it is a
+ * single branch, and otherwise every branch of its selector, following a branch that is itself a selector down to
+ * its own. Nested selectors are allowed by the resolver, so the boot check has to reach every branch they could
+ * choose. [depth] bounds the walk over what is, for stored config, external data.
  */
-fun displayBranches(display: Map<String, Any?>): List<Map<String, Any?>> =
-    if (display.containsKey(UIB.select)) {
-        (display[UIB.select] as? List<*>).orEmpty().filterIsInstance<Map<*, *>>().map { it.toJsonMapOrEmpty() }
-    } else {
-        listOf(display)
+fun displayBranches(display: Map<String, Any?>, depth: Int = 0): List<Map<String, Any?>> {
+    if (depth > maxDisplayDepth) {
+        throw KdrException.mkConv("A task display nests selectors more than $maxDisplayDepth deep.")
     }
+    if (!display.containsKey(UIB.select)) {
+        return listOf(display)
+    }
+    return (display[UIB.select] as? List<*>).orEmpty()
+        .filterIsInstance<Map<*, *>>()
+        .flatMap { displayBranches(it.toJsonMapOrEmpty(), depth + 1) }
+}
+
+/** How deep a task display's selectors may nest -- far beyond any real use, a guard on bad stored config. */
+private const val maxDisplayDepth = 10
 
 /**
- * The first thing wrong with a task [display] (issue #788), or null: a selector that is not a list of branches, a
- * branch naming a mode there is not, a text branch with no text, or a condition anywhere in it that does not parse
- * against [allowed] -- the scope's cfact names, which include the task facts (`wfIsCta`, `wfReviewer`, an
- * approval's cfact) since those are declared too.
+ * The first thing wrong with a task [display] (issue #788), or null: a selector, at any depth, that is not a
+ * non-empty list of branches; a leaf branch naming a mode there is not, or a text branch with no text; or a
+ * condition anywhere in it that does not parse against [allowed] -- the scope's cfact names, which include the task
+ * facts (`wfIsCta`, `wfReviewer`, an approval's cfact) since those are declared too.
  */
 fun displayProblem(display: Map<String, Any?>, allowed: Set<String>): String? {
-    if (display.containsKey(UIB.select)) {
-        val raw = display[UIB.select] as? List<*>
-        if (raw == null || raw.isEmpty() || raw.any { it !is Map<*, *> }) {
-            return "has a '${UIB.select}' that is not a non-empty list of branches."
-        }
+    selectorShapeProblem(display, 0)?.let { return it }
+    val branches = try {
+        displayBranches(display)
+    } catch (e: KdrException) {
+        return "is malformed: ${e.message}"
     }
-    for (branch in displayBranches(display)) {
+    for (branch in branches) {
         val mode = branch[WDSP.mode].toOptStr() ?: WDSP.defaultMode
         if (mode !in WDSP.modes) {
             return "has a branch with mode '$mode'; a branch is one of ${WDSP.modes.sorted()}."
@@ -411,4 +422,16 @@ fun displayProblem(display: Map<String, Any?>, allowed: Set<String>): String? {
         }
     }
     return null
+}
+
+/** A selector in [node], at any depth down its branches, that is not a non-empty list of objects; or null. */
+private fun selectorShapeProblem(node: Map<String, Any?>, depth: Int): String? {
+    if (!node.containsKey(UIB.select) || depth > maxDisplayDepth) {
+        return null
+    }
+    val raw = node[UIB.select] as? List<*>
+    if (raw == null || raw.isEmpty() || raw.any { it !is Map<*, *> }) {
+        return "has a '${UIB.select}' that is not a non-empty list of branches."
+    }
+    return raw.firstNotNullOfOrNull { selectorShapeProblem((it as Map<*, *>).toJsonMapOrEmpty(), depth + 1) }
 }

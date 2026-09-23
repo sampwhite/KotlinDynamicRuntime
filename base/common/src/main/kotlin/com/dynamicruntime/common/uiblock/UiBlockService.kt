@@ -244,12 +244,19 @@ private fun arrayAtPath(content: Map<String, Any?>, path: String): List<*>? {
  * conditions work without this learning about it. An object dropped from an array is removed; an object
  * dropped from a field leaves that field absent. A selector is the ordered sibling of the same rule: a selector
  * none of whose branches matches is dropped exactly like an object whose condition failed.
+ *
+ * A selector is resolved wherever it sits -- including at [node] itself, which then stands for its chosen branch
+ * (or for nothing, an empty object, when no branch applies). The root's own condition is not consulted, as it
+ * never has been: whether to resolve a node at all is the caller's question.
  */
 fun filterByCFacts(
     node: Map<String, Any?>,
     present: Set<String>,
     predicate: (String) -> CFactPredicate,
 ): Map<String, Any?> {
+    if (node.containsKey(UIB.select)) {
+        return chooseBranch(node, present, predicate)?.let { filterByCFacts(it, present, predicate) } ?: emptyMap()
+    }
     val out = LinkedHashMap<String, Any?>()
     for ((key, value) in node) {
         // Neither the condition nor the order travels. Both have already done their work by now -- the
@@ -281,6 +288,20 @@ private fun resolveObject(
     if (!matches(node, present, predicate)) {
         return null
     }
+    val chosen = chooseBranch(node, present, predicate) ?: return null
+    return filterByCFacts(chosen, present, predicate)
+}
+
+/**
+ * [node] with every selector it *is* resolved away: when it carries [UIB.select], the first branch whose condition
+ * holds, repeated while that branch is itself a selector (to a bounded depth); otherwise [node] unchanged. Null when
+ * a selector has no branch that applies. The one place a selector is chosen, so a root and a child agree.
+ */
+private fun chooseBranch(
+    node: Map<String, Any?>,
+    present: Set<String>,
+    predicate: (String) -> CFactPredicate,
+): Map<String, Any?>? {
     var chosen = node
     var depth = 0
     while (chosen.containsKey(UIB.select)) {
@@ -293,7 +314,7 @@ private fun resolveObject(
             .firstOrNull { matches(it, present, predicate) }
             ?: return null
     }
-    return filterByCFacts(chosen, present, predicate)
+    return chosen
 }
 
 /** How deep selectors may nest directly inside one another -- far beyond any real use, and a guard on bad data. */

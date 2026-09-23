@@ -63,6 +63,14 @@ class UiBlockSelectorTest : StringSpec({
         resolve(mapOf("d" to withChild), emptySet())["d"] shouldBe mapOf("text" to "T")
     }
 
+    "a selector at the root stands for its chosen branch, or for nothing" {
+        // The walked node itself may be the selector -- not only a value inside it.
+        resolve(display, setOf("approved")) shouldBe mapOf("text" to "Approved.")
+        resolve(display, setOf("isCta")) shouldBe mapOf("text" to "Wait for a reviewer.")
+        val guarded = mapOf(UIB.select to listOf(mapOf(UIB.cfactExpression to "reviewer", "text" to "Yours.")))
+        resolve(guarded, emptySet()) shouldBe emptyMap()
+    }
+
     "every branch condition is found by the boot check's walk" {
         collectExpressions(mapOf("display" to display)).toSet() shouldBe setOf("approved", "~isCta", "reviewer")
     }
