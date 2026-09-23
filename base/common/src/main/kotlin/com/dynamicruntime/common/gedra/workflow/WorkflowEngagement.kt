@@ -22,8 +22,8 @@ import kotlin.time.Instant
  *
  * Disengaging sets [WFS.engaged] false and records a [WFS.disengagedEvent] rather than removing the entry: that
  * a form was once in a workflow is part of its history, and an entry that vanished would take the reason with
- * it. The entry is declared open, so the later slices can record their own milestones (an approval, a finish)
- * against the same workflow.
+ * it. The entry is declared open, so each slice records its own milestones against the same workflow ([withEvent];
+ * an approval appends `approved`, issue #787).
  */
 object WorkflowEngagement {
     /**

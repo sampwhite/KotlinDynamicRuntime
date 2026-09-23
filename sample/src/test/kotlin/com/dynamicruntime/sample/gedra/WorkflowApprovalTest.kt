@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.ADF
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -23,6 +24,7 @@ import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -46,6 +48,7 @@ class WorkflowApprovalTest : StringSpec({
     val engage = clientPath(GEP.workflowEngage, SC.acme)
     val approve = clientPath(GEP.workflowApprove, SC.acme)
     val view = clientPath(GEP.workflowView, SC.acme)
+    val recompute = clientPath(GEP.formDocRecomputeState, SC.acme)
 
     val owner = TestUser.create(cxt, "approve-owner@acme.test", userClient = SC.acme)
     // A reviewer has to be able to read the form, which an acme administrator can; the label is what makes one a
@@ -88,6 +91,8 @@ class WorkflowApprovalTest : StringSpec({
         before[WVF.facts].toJsonListOrEmpty().map { it.toOptStr() }.let {
             it shouldContain WFC.isCta
             it shouldContain WFC.reviewer
+            // Not complete until approved -- trait presence would say otherwise, since the task has no traits.
+            it shouldNotContain WFC.taskComplete
         }
         before[WVF.approval].toJsonMapOrEmpty()[WVF.approved] shouldBe false
 
@@ -107,13 +112,67 @@ class WorkflowApprovalTest : StringSpec({
         lastEvent[WFS.kind] shouldBe WFS.approvedEvent
         lastEvent[WFS.note] shouldBe SW.approveAudit
 
-        // After: the view says approved, and by whom -- what "approved by ..." shows.
-        val after = approvalTaskView(owner, gid)[WVF.approval].toJsonMapOrEmpty()
+        // After: the view says approved, and by whom -- the reviewer's public name, what "approved by ..." shows,
+        // and not their user id: the owner could not read the reviewer's row. The task's facts say complete now.
+        val afterTask = approvalTaskView(owner, gid)
+        val after = afterTask[WVF.approval].toJsonMapOrEmpty()
         after[WVF.approved] shouldBe true
         after[WVF.approvedByName] shouldBe "approve-reviewer@acme.test"
+        after.containsKey(WFS.approvedBy) shouldBe false
+        afterTask[WVF.facts].toJsonListOrEmpty().map { it.toOptStr() } shouldContain WFC.taskComplete
+
+        // A standalone recompute -- a batch job's, say -- leaves the approval standing: it is asserted.
+        auditState(owner.postData(recompute, mapOf(GDF.gedraId to gid))[GDF.states].toJsonListOfMaps())[WFS.tasksDone] shouldBe true
 
         // Once: a second approval is a conflict, not a second record.
         reviewer.expectError(EXC.conflict, approve, data = approveBody(gid))
+    }
+
+    "an approval belongs to its engagement: re-engaging starts over, and the task may be approved again" {
+        val gid = engagedForm()
+        reviewer.postData(approve, approveBody(gid))
+        // Out and back in -- the owner might have changed the audit in between. The old approval stays as history
+        // but no longer finishes the workflow: the approval is the current task again.
+        owner.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview, WFS.engaged to false))
+        val reEngaged = owner.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview))[GDF.states]
+            .toJsonListOfMaps()
+        auditState(reEngaged)[WFS.ctaTask] shouldBe SW.approveAudit
+        auditState(reEngaged)[WFS.cfacts].toJsonListOrEmpty().map { it.toOptStr() } shouldNotContain SC.auditApproved
+        // Approvable again rather than a 409, and the new record replaces the stale one.
+        val states = reviewer.postData(approve, approveBody(gid))[GDF.states].toJsonListOfMaps()
+        entriesOf(states, WFS.workflowApproval).size shouldBe 1
+        auditState(states)[WFS.tasksDone] shouldBe true
+    }
+
+    "on a test instance, another persona of the owner may review -- one tester plays both parts" {
+        // The owner's own address with an administrator persona: the same person, a different user. On a real node
+        // the identity would be compared and this refused (WorkflowApprovalsTest pins that half).
+        val ownerAsAdmin = TestUser.create(
+            cxt, "approve-owner@acme.test", userClient = SC.acme, level = ROLE.admin, persona = PERSONA.admin,
+        )
+        labeller.postData(UADEP.userSetLabels, mapOf(ADF.userId to ownerAsAdmin.userId, ADF.labels to listOf(SC.reviewerLabel)))
+        val gid = engagedForm()
+        auditState(ownerAsAdmin.postData(approve, approveBody(gid))[GDF.states].toJsonListOfMaps())[WFS.tasksDone] shouldBe true
+    }
+
+    "an approval record for a task the workflow no longer has is kept, and counts for nothing" {
+        // Config can rename an approval task away. Its record is a person's act, so it stays; with no task to
+        // match, it adds no cfact and completes nothing -- and the recompute does not fail over it.
+        val gid = engagedForm()
+        val full = TestUser.createFullAdmin(cxt, "approve-full@example.com")
+        val current = full.getItem(GEP.adminGedraState, mapOf(GDF.gedraId to gid))[GDF.states].toJsonListOfMaps()
+        val orphan = mapOf(
+            GE.traitId to WFS.workflowApproval,
+            GE.data to mapOf(
+                WFD.workflowId to SW.auditReview, WFS.taskId to "renamedAway",
+                WFS.approvedAt to "2099-01-01T00:00:00Z", WFS.approvedBy to reviewer.userId,
+            ),
+        )
+        full.postItem(GEP.adminGedraState, mapOf(GDF.gedraId to gid, GDF.states to current + orphan))
+        val states = owner.postData(recompute, mapOf(GDF.gedraId to gid))[GDF.states].toJsonListOfMaps()
+        entriesOf(states, WFS.workflowApproval).map { it[WFS.taskId] } shouldBe listOf("renamedAway")
+        auditState(states)[WFS.ctaTask] shouldBe SW.approveAudit
+        auditState(states)[WFS.cfacts].toJsonListOrEmpty().map { it.toOptStr() } shouldNotContain SC.auditApproved
     }
 
     "an approval waits for the work before it" {

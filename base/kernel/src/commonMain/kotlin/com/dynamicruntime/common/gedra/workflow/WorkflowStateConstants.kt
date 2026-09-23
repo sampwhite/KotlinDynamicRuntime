@@ -1,31 +1,33 @@
 package com.dynamicruntime.common.gedra.workflow
 
 /**
- * The wire names of a form's **per-workflow** state (issue #794): the computed [workflowState] and the asserted
- * [workflowEngagement] beside it, both keyed by [WFD.workflowId].
+ * The wire names of a form's **per-workflow** state (issue #794): the computed [workflowState], and beside it the
+ * asserted [workflowEngagement] and -- since #787 -- [workflowApproval], all keyed by [WFD.workflowId].
  *
  * In `base:kernel` for the reason [SVY] is: a later slice draws these on the forms listing and the workflow
  * column, so the frontend reads them by name and a rename here breaks its compile rather than its runtime.
  *
- * ### Two traits, because they are two different kinds of fact
+ * ### Separate traits, because they are different kinds of fact
  *
  * A form's survey state is **form-singleton** -- one "is the survey done?" per form. A normal workflow is
  * **many-per-form**, so its state is keyed by the workflow it is about. That much is just the key. The reason
- * there are *two* traits is the state class:
+ * there are *several* traits is the state class:
  *
  *  - [workflowState] is `StateTraitClass.derived` -- a projection of the form's data against a workflow
  *    definition, which every recompute rebuilds from scratch and a batch job may overwrite freely.
  *  - [workflowEngagement] is `StateTraitClass.asserted` -- a person chose to put this form into this workflow,
  *    which is exactly the "human act a batch must never recompute away" the state classes were drawn for.
+ *  - [workflowApproval] (issue #787) is asserted for the same reason -- a reviewer approved a task -- and keyed
+ *    by task as well as workflow, since a workflow may have several approval points.
  *
- * Modelling engagement as its own asserted trait is what makes the recompute rule fall out of machinery that
+ * Modelling each act as its own asserted trait is what makes the recompute rule fall out of machinery that
  * already works: `recomputeDerivedStateUnderLock` preserves asserted entries verbatim and replaces derived
- * ones, so an engagement survives every recompute with no field-level carve-out, and a [workflowState] the
- * deriver stops emitting is implicitly deleted by the same whole-replace.
+ * ones, so an engagement or an approval survives every recompute with no field-level carve-out, and a
+ * [workflowState] the deriver stops emitting is implicitly deleted by the same whole-replace.
  */
 @Suppress("ConstPropertyName")
 object WFS {
-    /** The bundle the two state traits are declared in: `gc.cd.global.workflowState`. */
+    /** The bundle the per-workflow state traits are declared in: `gc.cd.global.workflowState`. */
     const val stateBundle = "workflowState"
 
     // --- the derived per-workflow projection ---
@@ -57,9 +59,10 @@ object WFS {
     const val eligibilityFailures = "eligibilityFailures"
 
     /**
-     * The workflow's **own** cfacts, as its `cfactCalc` functions concluded them from the form's data (issue
-     * #784) -- per workflow, so kept on its entry rather than in the form's set. Stored so a later evaluation
-     * (the needsReview listing, #785) can work from state alone, without reading the form.
+     * The workflow's **own** cfacts (issue #784): what its `cfactCalc` functions concluded from the form's data,
+     * plus the configured cfact of each approval task approved in the current engagement (issue #787) -- per
+     * workflow, so kept on its entry rather than in the form's set. Stored so a later evaluation (the needsReview
+     * listing) can work from state alone, without reading the form.
      */
     const val cfacts = "cfacts"
 
@@ -109,9 +112,6 @@ object WFS {
     /** On an approval: the numeric userId of the reviewer who approved it. */
     const val approvedBy = "approvedBy"
 
-    /** [kind] of the engagement event recording an approval; its [note] names the task. */
-    const val approvedEvent = "approved"
-
     /** The named type of one [eligibilityFailures] element. */
     const val workflowEligibilityFailure = "WorkflowEligibilityFailure"
 
@@ -148,8 +148,8 @@ object WFS {
     /**
      * The evolution of this form's relationship with this workflow, oldest first: an append-only trail of what
      * happened and who did it. Deliberately **open** -- the entry takes additional properties and an event's
-     * [kind] is not a closed set -- because the later slices each add a milestone worth recording (approved,
-     * finished) and none of them should need this trait redefined to say so.
+     * [kind] is not a closed set -- because each slice adds the milestones it records (`approved`, issue #787)
+     * and none of them should need this trait redefined to say so.
      */
     const val events = "events"
 
@@ -168,13 +168,16 @@ object WFS {
     /** On an event: free text a producer wanted to record beside the milestone. */
     const val note = "note"
 
-    // --- event kinds this slice writes; later slices add their own ---
+    // --- the event kinds written today; a later slice adds its own ---
 
     /** [kind] of the event recording that a form was put into the workflow. */
     const val engagedEvent = "engaged"
 
     /** [kind] of the event recording that a form was taken back out of the workflow. */
     const val disengagedEvent = "disengaged"
+
+    /** [kind] of the event recording an approval (issue #787); its [note] names the approval task. */
+    const val approvedEvent = "approved"
 }
 
 /**

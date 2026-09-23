@@ -743,9 +743,18 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             ?: throw KdrException.mkInput("'$taskId' is not an approval task of workflow '$workflowId'.")
         // The second-person rule (issue #787): whoever owns the form cannot approve it, however they came to be a
         // reviewer -- which is why a label an administrator put on themselves (#786) cannot become self-approval.
-        if (row.userId == c.userProfile.userId) {
+        // In production that means the owner's *person* (any of their users); on a test instance only the owning
+        // user, so one tester's personas can play submitter and reviewer (see WorkflowApprovals.isOwnForm).
+        val isTest = c.instanceConfig.isTestInstance
+        val ownerIdentity = UserService.getOrNull(c)?.queryByUserId(c, row.userId)?.identityId
+        if (WorkflowApprovals.isOwnForm(row.userId, ownerIdentity, c.userProfile.userId, c.userProfile.identityId, isTest)) {
             throw KdrException(
-                "You cannot approve your own form; approval needs a reviewer other than its owner.",
+                if (row.userId == c.userProfile.userId) {
+                    "You cannot approve your own form; approval needs a reviewer other than its owner."
+                } else {
+                    "You cannot approve a form owned by another of your own users; approval needs a different " +
+                        "person as reviewer."
+                },
                 code = EXC.notAuthorized,
             )
         }

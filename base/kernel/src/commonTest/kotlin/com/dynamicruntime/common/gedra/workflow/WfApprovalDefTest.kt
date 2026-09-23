@@ -50,4 +50,31 @@ class WfApprovalDefTest {
         }.build()
         assertFailsWith<KdrException> { parseWfDef(cxt, raw) }
     }
+
+    @Test
+    fun anApprovalNamesACfactAndCarriesItsCopy() {
+        // A blank cfact would be an approval that emits nothing.
+        assertFailsWith<KdrException> {
+            parseWfDef(cxt, WfDefBuilder("audit", WfEntry.normal).apply {
+                task("approve", "Approve") { approval(" ", "P", "B") }
+            }.build())
+        }
+        // Stored config missing the button's copy is refused by the schema, not drawn as an unlabelled button.
+        val raw = WfDefBuilder("audit", WfEntry.normal).apply {
+            task("approve", "Approve") { approval("x", "P", "B") }
+        }.build()
+        val tasks = (raw[WFD.tasks] as List<*>).map { (it as Map<*, *>).entries.associate { e -> e.key.toString() to e.value } }
+        val stripped = raw + (WFD.tasks to tasks.map { t ->
+            t + (WFD.approval to (t[WFD.approval] as Map<*, *>).filterKeys { it != WFD.button })
+        })
+        assertFailsWith<KdrException> { parseWfDef(cxt, stripped) }
+    }
+
+    @Test
+    fun anApprovalTasksFactsFollowItsApprovalNotItsTraits() {
+        val task = parseWfDef(cxt, normalWithApproval()).task("approve")!!
+        // No traits, so presence alone would call it complete; until approved it is not.
+        assertEquals(setOf(WFC.taskAvailable, WFC.isCta), WfTaskFacts.of(task, emptyList(), isCta = true))
+        assertEquals(setOf(WFC.taskAvailable, WFC.taskComplete), WfTaskFacts.of(task, emptyList(), approved = true))
+    }
 }

@@ -189,6 +189,23 @@ class WorkflowRegistryTest : StringSpec({
         e.message shouldContain "'needsReview' singleton rule"
     }
 
+    // Approval tasks (issue #787): the cfact an approval emits must be declared in the scope, and its copy rides
+    // the label check -- the same two rules an eligibility test's test and explanation are held to.
+    "an approval task's cfact must be declared, and its copy rides the label check" {
+        fun approving(cfact: String, prompt: String = "Approve it."): GedraConfig = client(devCxt, "acme", listOf("name")) {
+            workflow("auditReview", WfEntry.normal) {
+                task("record", "Record") { trait("name"); save("s", "S", WfSaveKind.edit) }
+                task("approve", "Approve") { approval(cfact, prompt, "Approve") }
+            }
+        }
+        build(devCxt, listOf(globalTraits(devCxt), approving("acmeOnly"))).second.shouldBeEmpty()
+        shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), approving("acmeOnlee"))) }
+            .message shouldContain "emitting the cfact 'acmeOnlee'"
+        shouldThrow<KdrException> {
+            build(devCxt, listOf(globalTraits(devCxt), approving("acmeOnly", prompt = """%{@t("wfCopy.identify.gone")}""")))
+        }.message shouldContain "approval prompt of task 'approve'"
+    }
+
     "an eligibility explanation rides the label check" {
         val bad = client(devCxt, "acme", listOf("name")) {
             workflow("auditReview", WfEntry.normal) {

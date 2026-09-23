@@ -88,8 +88,9 @@ object SW {
     /**
      * Acme's **normal** workflow (issue #794) -- many-per-form and chosen rather than automatic, unlike the
      * one-per-form creation and survey. It is what the per-workflow state is computed against: a form in acme
-     * carries a `workflowState` entry for it, and can be engaged with it. Deliberately plain for this slice --
-     * eligibility (#783), a CTA (#785) and an approval task (#787) each arrive with their own.
+     * carries a `workflowState` entry for it, and can be engaged with it. The sample's fullest workflow: it has
+     * eligibility tests (#783), its own cfact and a singleton rule (#784), a record task then an approval task
+     * (#785, #787) -- so not the fixture to reach for when a plain normal workflow is wanted.
      */
     const val auditReview = "auditReview"
     const val recordAudit = "recordAudit"

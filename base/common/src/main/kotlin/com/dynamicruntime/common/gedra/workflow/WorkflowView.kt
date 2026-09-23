@@ -116,7 +116,9 @@ fun resolveWorkflowView(
     }
 
     // An approval task's approval, resolved for the page (issue #787): its copy through the backend pass like any
-    // label, and -- once approved -- when and by whom, with the approver's display name for "approved by ...".
+    // label, and -- once approved -- when, and by whom as the name the reviewer shows others (`publicName`). Not
+    // their private full name nor their internal user id: this view reaches the form's owner, who could not read
+    // the reviewer's user row, and "approved by ..." needs neither.
     fun approvalView(approval: WfApproval, record: Map<String, Any?>?): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>(
             WFD.cfact to approval.cfact,
@@ -126,9 +128,9 @@ fun resolveWorkflowView(
         )
         if (record != null) {
             out[WFS.approvedAt] = record[WFS.approvedAt]
-            val by = record[WFS.approvedBy].toOptLong()
-            out[WFS.approvedBy] = by
-            by?.let { UserService.getOrNull(cxt)?.queryByUserId(cxt, it) }?.let { out[WVF.approvedByName] = it.name ?: it.publicName() }
+            record[WFS.approvedBy].toOptLong()
+                ?.let { UserService.getOrNull(cxt)?.queryByUserId(cxt, it) }
+                ?.let { out[WVF.approvedByName] = it.publicName() }
         }
         return out
     }
@@ -141,7 +143,8 @@ fun resolveWorkflowView(
         val orderedTraits = task.displayOrder.mapNotNull { byId[it] }.map { traitView(it) }
         // The task's own facts, plus what its viewerCfacts functions conclude about the person looking at it
         // (issue #786) -- a reviewer, say. Temporary by nature: they are about this viewer, so never stored.
-        val taskFacts = WfTaskFacts.of(task, entries, isCta = task.id == ctaTaskId) + viewerCfacts.forTask(task)
+        val taskFacts = WfTaskFacts.of(task, entries, isCta = task.id == ctaTaskId, approved = task.id in approvals) +
+            viewerCfacts.forTask(task)
         val raw = linkedMapOf<String, Any?>(
             WFD.id to task.id,
             WFD.label to label(task.label),

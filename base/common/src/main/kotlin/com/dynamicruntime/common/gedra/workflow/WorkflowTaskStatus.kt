@@ -5,7 +5,8 @@ import com.dynamicruntime.common.schema.SchFailure
 
 /**
  * One task's general status (issues #700, #785): whether its required traits are all present ([complete]) and
- * whether the present ones pass their schema ([valid]), with the traits behind each answer. [failures] keeps the
+ * whether the present ones pass their schema ([valid]), with the traits behind each answer -- or, for an approval
+ * task (issue #787), [complete] when approved and always [valid]. [failures] keeps the
  * content failures themselves, for a surface that shows them (the task rail's tooltip).
  */
 class WfTaskStatus(

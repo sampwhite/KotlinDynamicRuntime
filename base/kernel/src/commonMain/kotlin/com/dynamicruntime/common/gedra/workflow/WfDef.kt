@@ -185,8 +185,9 @@ object WVF {
 
     /**
      * On an **approval task**'s view (issue #787): its approval, resolved for the page -- the [WFD.cfact], the
-     * backend-passed [WFD.prompt] and [WFD.button] copy, whether it is [approved], and when so `approvedAt`,
-     * `approvedBy` and the approver's [approvedByName] (what "approved by ..." shows).
+     * backend-passed [WFD.prompt] and [WFD.button] copy, whether it is [approved], and when so `approvedAt` and the
+     * approver's [approvedByName] -- their public name, what "approved by ..." shows. Not their user id or private
+     * name: the view reaches the form's owner, who could not read the reviewer's user row.
      */
     const val approval = "approval"
 
@@ -253,7 +254,8 @@ object WFC {
     /**
      * The person viewing the task may review it (issue #786): the framework's name for the approval authority a
      * `viewerCfacts` function concludes -- typically `userHasLabel` over a `reviewer` *label*. **Hardwired**, since
-     * the needsReview flow (#787) looks for exactly this cfact; a workflow may still emit one of its own choosing.
+     * the approve endpoint (#787) asks for exactly this cfact -- as the needsReview listing will -- though a workflow
+     * may still emit other cfacts of its own choosing.
      * Prefixed like its neighbours, so a client remains free to declare a cfact called plain `reviewer`.
      */
     const val reviewer = "wfReviewer"
@@ -353,7 +355,8 @@ class WfApproval(val cfact: String, val prompt: String, val button: String)
 class WfLayout(val order: List<String>, val edit: WfEditMode = WfEditMode.inline)
 
 /**
- * One **task**: a unit of work in a workflow, collecting some traits and offering some saves.
+ * One **task**: a unit of work in a workflow, collecting some traits and offering some saves -- or, as an
+ * **approval task** ([approval], issue #787), collecting nothing and completed by a reviewer's approval.
  *
  * Structural coherence is checked here, where the definition is written: two traits with one id, two saves
  * with one id, or a layout ordering a trait the task does not collect are authoring mistakes with no coherent
@@ -707,7 +710,7 @@ object WfDefSchema {
         }
         type(WFD.taskType) {
             type = SCT.kObject
-            description = "One task of a workflow: the traits it collects and the saves it offers."
+            description = "One task of a workflow: the traits it collects and the saves it offers -- or, with an approval, none, completed by a reviewer."
             property(WFD.id, "Stable id of this task, unique within the workflow.", required = true)
             property(WFD.label, "What the task is called -- a template, evaluated in two passes.", required = true)
             property(WFD.traits, "The traits this task collects.", required = true) {
@@ -1028,13 +1031,16 @@ object WfEngine {
  * [WFC.taskAvailable] is **always present**: a placeholder that keeps the shape visible until availability
  * rules (dates, prior tasks) exist. Said here so nobody reads it as computed. [WFC.isCta] is the caller's to
  * say (issue #785): which task is the CTA is a judgment over the whole task list, and content validity, which
- * needs the client's schema -- neither is this one task's to decide.
+ * needs the client's schema -- neither is this one task's to decide. So is `approved`, for an **approval task**
+ * (issue #787): it collects no traits, so trait presence would call it complete before anyone approved it --
+ * its completion is the approval, which lives in the form's state.
  */
 object WfTaskFacts {
-    fun of(task: WfTask, entries: List<Map<String, Any?>>, isCta: Boolean = false): Set<String> {
+    fun of(task: WfTask, entries: List<Map<String, Any?>>, isCta: Boolean = false, approved: Boolean = false): Set<String> {
         val facts = LinkedHashSet<String>()
         facts.add(WFC.taskAvailable)
-        if (WfEngine.taskComplete(task, entries)) {
+        val complete = if (task.approval != null) approved else WfEngine.taskComplete(task, entries)
+        if (complete) {
             facts.add(WFC.taskComplete)
         }
         if (isCta) {

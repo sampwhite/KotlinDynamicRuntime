@@ -19,15 +19,15 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * A form's **per-workflow** state (issue #794), declared globally as state schema always is: the derived
- * [WFS.workflowState] projection and the asserted [WFS.workflowEngagement] beside it, both keyed by
- * [WFD.workflowId].
+ * [WFS.workflowState] projection, and beside it the asserted [WFS.workflowEngagement] and [WFS.workflowApproval]
+ * (issue #787), all keyed by [WFD.workflowId] -- an approval by its task as well.
  *
- * Both are **keyed**, where the survey's [SVY.surveyCompletion] is form-singleton, and for the reason that file
+ * All are **keyed**, where the survey's [SVY.surveyCompletion] is form-singleton, and for the reason that file
  * gives: creation and survey are the one-per-form front end of a form's data, while a normal workflow is
  * many-per-form, so its state is about *a* workflow rather than about the form.
  *
- * Splitting engagement out as its own asserted trait is what keeps the recompute rule simple. Every recompute
- * preserves asserted entries verbatim and replaces derived ones wholesale, so an engagement survives with no
+ * Splitting each act out as its own asserted trait is what keeps the recompute rule simple. Every recompute
+ * preserves asserted entries verbatim and replaces derived ones wholesale, so an engagement or approval survives with no
  * field-level carve-out, and a [WFS.workflowState] entry the deriver stops emitting is implicitly deleted by
  * the same whole-replace -- which is exactly the batch-job rule the design asks for, arrived at without a batch
  * job.

@@ -487,10 +487,11 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // administrator.
         //
         // An administrator **may** label themselves -- deliberately, not by omission. A label grants nothing on any
-        // surface, so there is no escalation here to guard, which is what setRoles' self-edit rule prevents. Once a
-        // label backs approval authority (the approval task, #787), "may the approver be the person who labelled
-        // themselves reviewer?" is a real question -- and it belongs to the approval endpoint, which knows it is
-        // approving; a guard here would only move the question, since another administrator could apply the label.
+        // surface, so there is no escalation here to guard, which is what setRoles' self-edit rule prevents. Where a
+        // label backs approval authority, the approve endpoint (#787) settles the second-person question itself: it
+        // refuses whoever owns the form -- in production any user of the owner's identity -- so a self-labelled
+        // reviewer may approve colleagues' forms but never their own. A guard here would only move the question,
+        // since another administrator could apply the label.
         val row = loadEditableUser(c, userId)
         val previous = row.labels
         row.labels = request[ADF.labels].toJsonListOfStrings() // the row normalizes
