@@ -9,7 +9,10 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.StateTraitClass
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.cfact.CFactDef
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -65,6 +68,14 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
     ) {
         property(WFD.workflowId, "The workflow this entry is about; the entry's primary key.", required = true)
         property(WFS.computedAgainstRef, "The workflow revision this was computed against, as WfRef text.")
+        property(WFS.cfacts, "The workflow's own cfacts, as its cfactCalc functions concluded them from the form's data.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(WFS.singletonCfacts, "The framework singleton cfacts this workflow contributes to the form; empty unless engaged.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
         property(WFS.eligible, "Whether the form meets every eligibility test of the workflow.") { type = SCT.boolean }
         property(WFS.eligibilityFailures, "The eligibility tests the form fails, in the workflow's order; empty when eligible.") {
             type = SCT.array
@@ -102,6 +113,30 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
 }
 
 /**
+ * Declares the framework singleton cfacts ([WSC]) globally (issue #784), so every scope's expressions -- an
+ * eligibility test, a `g-visibleWhen`, a search -- may name them, and so the frontend receives them. Declared by
+ * the framework rather than by any workflow, since the list is hardwired: a workflow may only emit these.
+ */
+fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
+    collector.addCFact(
+        CFactDef(
+            WSC.needsReview, WSC.group,
+            "True, about a form, when a workflow it is engaged with is waiting on a review -- contributed by that " +
+                "workflow's singleton rule.",
+            toFrontend = true,
+        ),
+    )
+    collector.addCFact(
+        CFactDef(
+            WSC.finished, WSC.group,
+            "True, about a form, when a workflow it is engaged with has finished -- contributed by that " +
+                "workflow's singleton rule.",
+            toFrontend = true,
+        ),
+    )
+}
+
+/**
  * Computes a form's per-workflow [WFS.workflowState] entries (issue #794) -- one per normal workflow the form
  * is being evaluated against. Registered as a production [GedraStateDeriver] (no `featureName`), so it runs
  * inside the same create/patch/import transaction the survey's deriver does, and on the standalone recompute.
@@ -119,10 +154,22 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
  * [WFS.computedAgainstRef], since there is no definition left to compute against -- rather than silently losing
  * the workflow it is engaged with because configuration changed underneath it.
  *
- * A declared workflow's entry also carries its **eligibility** (issue #783): [WFS.eligible] and the ids of the
- * tests the form fails, evaluated against the cfacts the derivers before this one emitted in the same pass
- * ([GedraStateContext.derivedThisPass]) -- see [WorkflowEligibility] for why only the form's own cfacts. A
- * retired-but-engaged workflow's bare entry has none, having no tests left to evaluate. The CTA task and its
+ * A declared workflow's entry also carries, in this order of computation:
+ *
+ *  1. **Its own cfacts** (issue #784): what its `cfactCalc` functions conclude from the form's data --
+ *     [WFS.cfacts], per workflow and so kept on its entry, not in the form's set.
+ *  2. **The singleton cfacts it contributes** ([WFS.singletonCfacts]): each of its [WfDef.singletons] rules
+ *     whose condition matches its *current* cfacts -- the form's (from the derivers before this one) plus its
+ *     own. Only an **engaged** workflow contributes; the union is emitted as a [GT.cfacts] contribution, which
+ *     the recompute merges into the form's one set beside the survey's.
+ *  3. **Its eligibility** (issue #783): [WFS.eligible] and the ids of the tests the form fails, against the
+ *     form's cfacts **plus the singletons of every *other* engaged workflow** -- so one workflow can gate on
+ *     another (a form already `finished` somewhere else, say). Never its own: a workflow's own `finished` must
+ *     not make it ineligible for itself once engaged, which would read as "ineligible" where "finished" is
+ *     meant (issue #784 review). No cycle either way: a singleton never reads eligibility.
+ *
+ * See [WorkflowEligibility] for why only the form's own cfacts, never the caller's. A retired-but-engaged
+ * workflow's bare entry has none of these, having no definition left to compute against. The CTA task and its
  * status (#785) and the time windows (#790) add their own fields to the open entry.
  */
 object WorkflowStateDeriver : GedraStateDeriver {
@@ -138,17 +185,34 @@ object WorkflowStateDeriver : GedraStateDeriver {
         // ordering is stable and a vanished-but-engaged workflow lands at the end rather than reordering the rest.
         val ids = declared.keys + engaged.filterNot { it in declared.keys }
         val registry = SchemaService.get(cxt).cfactsFor(state.row.client)
-        val facts = WorkflowEligibility.formFacts(state.derivedThisPass)
-        return ids.map { workflowId ->
+        val formFacts = WorkflowEligibility.formFacts(state.derivedThisPass)
+
+        // Each declared workflow's own cfacts, then the singletons its rules emit over its current cfacts.
+        val own = declared.mapValues { (_, w) -> runCfactCalc(cxt, w.def, state.row.entries, state.row.client) }
+        val singletons = declared.mapValues { (id, w) ->
+            if (id in engaged) WorkflowSingletons.emitted(registry, w.def, formFacts + own.getValue(id)) else emptyList()
+        }
+        // What the engaged workflows contribute to the form's set, in declaration order, once each.
+        val contributed = LinkedHashSet<String>().apply { singletons.values.forEach { addAll(it) } }
+        // Eligibility sees the earlier derivers' facts and what the *other* engaged workflows contribute -- a
+        // workflow is gated by its peers, never by itself.
+        fun eligibilityFacts(workflowId: String): Set<String> =
+            formFacts + singletons.filterKeys { it != workflowId }.values.flatten()
+
+        val out = ids.map { workflowId ->
             val data = linkedMapOf<String, Any?>(WFD.workflowId to workflowId)
             declared[workflowId]?.let {
                 data[WFS.computedAgainstRef] = it.ref.text
-                val failures = WorkflowEligibility.failures(registry, it.def, facts)
+                data[WFS.cfacts] = own.getValue(workflowId).sorted()
+                data[WFS.singletonCfacts] = singletons.getValue(workflowId)
+                val failures = WorkflowEligibility.failures(registry, it.def, eligibilityFacts(workflowId))
                 data[WFS.eligible] = failures.isEmpty()
                 data[WFS.eligibilityFailures] = WorkflowEligibility.failureEntries(failures)
             }
             mapOf(GE.traitId to WFS.workflowState, GE.data to data)
         }
+        // The contribution to the form's one cfacts set; the recompute merges it with the survey's.
+        return if (contributed.isEmpty()) out else out + mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to contributed.toList()))
     }
 }
 

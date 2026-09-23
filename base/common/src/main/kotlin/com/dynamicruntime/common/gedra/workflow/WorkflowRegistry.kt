@@ -184,6 +184,20 @@ fun buildWorkflowRegistries(
                 }
             }
         }
+        // Singleton-cfact rules (issue #784): the condition parses against the scope's cfacts, like a test. The
+        // emitted name itself was held to the framework list when the definition was built.
+        for (r in w.def.singletons) {
+            try {
+                parseCFactOrAlways(r.whenExpr, cfactNames(scope))
+            } catch (ex: KdrException) {
+                reportConfigProblem(
+                    cxt, mode,
+                    problem(scope, w, "has a '${r.cfact}' singleton rule whose condition does not parse: ${ex.message}"),
+                    issues,
+                )
+                return false
+            }
+        }
         for (task in w.def.tasks) {
             task.traits.firstOrNull { it.traitId !in usable }?.let {
                 reportConfigProblem(

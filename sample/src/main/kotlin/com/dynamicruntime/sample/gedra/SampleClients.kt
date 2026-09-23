@@ -21,7 +21,9 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
 import com.dynamicruntime.common.gedra.workflow.prefillFromOwner
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.schema.LAYSTR
@@ -98,6 +100,21 @@ object SW {
      */
     const val surveyDone = "surveyDone"
     const val surveyClean = "surveyClean"
+
+    /**
+     * An eligibility test on both acme normal workflows (issue #784 review): not while a review is pending. It
+     * reads `needsReview`, which `auditReview` itself emits -- so it shows both halves of the rule that a
+     * workflow is gated by its *peers'* singletons and never its own.
+     */
+    const val noOpenReview = "noOpenReview"
+
+    /**
+     * Acme's second normal workflow (issue #784): a follow-up visit that waits for any pending review. Exists so
+     * one workflow's singleton can be seen gating another.
+     */
+    const val siteFollowUp = "siteFollowUp"
+    const val recordFollowUp = "recordFollowUp"
+    const val saveFollowUp = "saveFollowUp"
 }
 
 /** The sample UiBlock and the keys inside it (issue #457). */
@@ -138,6 +155,9 @@ object SC {
     const val auditor = "auditor"
     const val findings = "findings"
 
+    /** The [findings] value that means the audit is still open (issue #784) -- what sets [underAudit]. */
+    const val findingsOpen = "open"
+
     // The supplied-defaults demo trait (issue #711): the owner's name and email, both prefilled from the form
     // owner, presented by their `defaultMode` -- name filled, email offered.
     const val userInfo = "userInfo"
@@ -146,8 +166,9 @@ object SC {
     const val userEmail = "email"
 
     /**
-     * A cfact acme declares and nothing yet produces (issue #455) -- the ordinary shape of a client
-     * declaration, since a client's config is data and cannot carry the Kotlin that would decide it.
+     * A cfact acme declares (issue #455) -- the ordinary shape of a client declaration, since a client's config
+     * is data and cannot carry the Kotlin that would decide it. Produced, since issue #784, by the audit review's
+     * `cfactCalc` from the audit's findings: data-driven, which is how a client's own cfact gets a producer.
      */
     const val underAudit = "acmeUnderAudit"
 
@@ -308,14 +329,14 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
 
         // --- a cfact of its own -------------------------------------------------------------------------
         //
-        // Declared and not produced, which is what a client declaration *is*: acme is saying the name exists
-        // so that its own data may write `acmeUnderAudit` in an expression. Nothing else's registry has it,
-        // which is the half that matters -- a global expression naming it would refuse to parse everywhere,
-        // rather than parsing here and quietly meaning nothing anywhere else.
+        // A client declaration is what lets acme's own data write `acmeUnderAudit` in an expression. Nothing
+        // else's registry has it, which is the half that matters -- a global expression naming it would refuse
+        // to parse everywhere, rather than parsing here and quietly meaning nothing anywhere else. Declared
+        // ahead of its producer at first; the audit review's cfactCalc now sets it (issue #784).
         cfact(
             SC.underAudit, SC.auditGroup,
-            "True while a site acme is looking at has an audit open against it. Nothing sets it yet: acme " +
-                "declares it ahead of the workflow that will.",
+            "True while a site acme is looking at has an audit open against it -- the audit review concludes it " +
+                "when the audit's findings are '${SC.findingsOpen}'.",
         )
 
         // --- a creation workflow (issue #533) --------------------------------------------------------------
@@ -384,9 +405,34 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             // once its review is done and still valid. Every test is evaluated, so a form failing both says both.
             eligibility(SW.surveyDone, SVY.surveyComplete, "%{@t(\"${SF.acmeWf}.${SW.auditReview}.${SW.surveyDone}\")}")
             eligibility(SW.surveyClean, SVY.surveyValid, "Some of the form's entries no longer pass their checks.")
+            // The workflow's own cfact (issue #784): an audit whose findings are still open means the site is under
+            // audit. Its own, so it stays on the workflow's state entry rather than in the form's set...
+            function(computeCFactsFromData {
+                trait = SC.siteAudit
+                valuePath = SC.findings
+                map(SC.findingsOpen, SC.underAudit)
+            })
+            // ...while this rule turns it into the framework's `needsReview` on the form -- for as long as the form
+            // is engaged with the review, since only an engaged workflow contributes.
+            singleton(WSC.needsReview, SC.underAudit)
+            // Not while a review is pending -- which this very workflow's rule above can cause. A workflow's own
+            // singleton never counts against its own eligibility, so an engaged review that raises `needsReview`
+            // stays eligible for itself; it is its peers (the follow-up below) that the pending review holds off.
+            eligibility(SW.noOpenReview, "~${WSC.needsReview}", "A review of this form is already waiting.")
             task(SW.recordAudit, "Record the audit") {
                 trait(SC.siteAudit)
                 save(SW.saveAudit, "Save the audit", WfSaveKind.edit)
+            }
+        }
+
+        // A second normal workflow (issue #784): a follow-up visit, held off while any review is pending. What
+        // shows one workflow's singleton (`auditReview`'s `needsReview`) gating another.
+        workflow(SW.siteFollowUp, WfEntry.normal) {
+            label = "Site follow-up"
+            eligibility(SW.noOpenReview, "~${WSC.needsReview}", "Wait for the pending review of this form to finish.")
+            task(SW.recordFollowUp, "Record the follow-up") {
+                trait(SC.siteAudit)
+                save(SW.saveFollowUp, "Save the follow-up", WfSaveKind.edit)
             }
         }
 

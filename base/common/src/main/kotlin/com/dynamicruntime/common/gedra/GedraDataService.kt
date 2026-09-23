@@ -560,6 +560,10 @@ class GedraDataService : ServiceInitializer {
      * The derivers run **in registration order, each seeing what the earlier ones produced**
      * ([GedraStateContext.derivedThisPass], issue #783), so a projection built on another's output -- eligibility
      * on the survey's cfacts -- is current with this write rather than one behind it.
+     *
+     * The form's one [GT.cfacts] set is **merged from contributions** (issue #784): any deriver may emit a
+     * [GT.cfacts] entry -- the survey its facts, the per-workflow deriver its engaged workflows' singletons --
+     * and they are folded into one entry here ([mergeCfactContributions]), so no producer clobbers another's.
      */
     private fun computeDerivedState(
         cxt: KdrCxt,
@@ -570,7 +574,7 @@ class GedraDataService : ServiceInitializer {
         SchemaService.get(cxt).stateDerivers()
             .filter { row.kind in it.appliesTo && featureEnabled(cxt, it.featureName) }
             .forEach { derived.addAll(it.derive(cxt, GedraStateContext(row, existingState, derived.toList()))) }
-        return derived
+        return mergeCfactContributions(derived)
     }
 
     /** Fires the registered post-write hooks (issue #675) after a data write, inside its transaction. */
