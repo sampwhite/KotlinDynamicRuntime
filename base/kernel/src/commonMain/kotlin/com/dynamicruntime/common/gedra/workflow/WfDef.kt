@@ -161,9 +161,10 @@ object WVF {
     /**
      * On the view's top level: the **per-type field layouts** (issue #585), `{ typeName -> g-layout block }` over
      * exactly the types the view's `$defs` closure carries -- the third parallel closure beside the schema and
-     * the cfacts, joined to a trait's data type by name on the frontend. The task-level layout (order, edit
-     * mode) is a different thing and already rides on each task under `WFD.layout`. The same wire name and
-     * shape as the endpoint catalog's `fieldLayouts` (`EI.fieldLayouts`), so a page reads either surface identically.
+     * the cfacts, joined to a trait's data type by name on the frontend. The task layout (`WfLayout`) is a
+     * different thing, and is not sent: its order is applied to each task's traits before the view is built. The
+     * same wire name and shape as the endpoint catalog's `fieldLayouts` (`EI.fieldLayouts`), so a page reads
+     * either surface identically.
      */
     const val fieldLayouts = "fieldLayouts"
 
@@ -356,9 +357,16 @@ class WfSingleton(val cfact: String, val whenExpr: String)
 class WfApproval(val cfact: String, val prompt: String, val button: String)
 
 /**
- * The minimum a page needs to draw a task: the order its traits appear in, and how they are edited. The
- * fuller layout family -- summaries, pop-ups, headers, static text -- is deferred; this is only what a creation
- * workflow cannot do without.
+ * A task's **task layout** -- as opposed to a *field* layout (`SchLayout`, `g-layout`), which presents the fields
+ * within one trait's data type (issue #834). [order] names traits to draw first, in that order; every trait of
+ * the task it leaves out follows in declaration order (`WfTask.displayOrder`), applied on the backend when the
+ * workflow view is built. [edit] has one value, `inline`, and no consumer.
+ *
+ * **A placeholder, not a design.** How a task arranges its traits has not been designed -- unlike a task's
+ * *display* (issue #788), which is, and is chosen by a selector. This holds only what a creation workflow could
+ * not do without, and is no declaration of what that design will contain. It has no `mode` -- membership at this
+ * level already *is* `WfTask.traits`, and [order] behaves like a field layout's `reorder` -- and it should be
+ * neither extended nor renamed ahead of that design.
  */
 class WfLayout(val order: List<String>, val edit: WfEditMode = WfEditMode.inline)
 
@@ -1133,7 +1141,8 @@ object WDSP {
 
 /**
  * The target facts about one task (issue #533) -- what a view passes to the cfact registry's `assemble`
- * beside the request's own facts, so a task's layout can select on them.
+ * beside the request's own facts, so a selector can choose on them. Today that is a task's display selector
+ * (issue #788); selectors are to come down to field layouts too, choosing which one a task's traits render with.
  *
  * [WFC.taskAvailable] is **always present**: a placeholder that keeps the shape visible until availability
  * rules (dates, prior tasks) exist. Said here so nobody reads it as computed. [WFC.isCta] is the caller's to

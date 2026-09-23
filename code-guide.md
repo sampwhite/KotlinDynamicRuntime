@@ -237,6 +237,18 @@ JSON schema as a whole. The same will be true for complex application configurat
 Besides using "$ref" constructs to do linkage, we will also allow overrides where recursive map merges can
 modify either schema or configuration.
 
+A schema says what data *is*; how a form presents it belongs in a **field layout** (`g-layout`), kept beside the
+schema rather than inside it. A change that does not alter a schema's API semantics -- field order, copy --
+belongs in the field layout, though reordering properties in a schema overlay still works (property order is the
+payload order and the default presentation order). Field layouts have a `mode` because two kinds of author use
+them: a form author who lives with the schema's defaults and tweaks copy or order (`overlay`), and an application
+builder who treats the layout as the source of truth for every GUI decision (`authoritative`). For the second,
+repeating what the schema already says, such as listing every field in the schema's own order, is intended, not
+redundancy to remove; the boot's completeness check keeps it safe as the schema changes. Always say *field*
+layout or *task* layout: the task layout (`WfLayout`, the order of traits within a workflow task) is a different
+thing, and a placeholder until how a task arranges its traits is designed. Selectors, which already choose a
+task's display, are to come down to field layouts too, choosing which one applies; today a type has at most one.
+
 ### Relaxed validation and coercion is the default
 
 When a schema processes an incoming value, we lean toward **accepting and cleaning it** rather than refusing it

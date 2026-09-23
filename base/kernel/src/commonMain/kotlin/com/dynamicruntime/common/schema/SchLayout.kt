@@ -7,7 +7,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * The **layout** for a schema type (issue #584): how a friendly form renders that type's fields, kept apart
+ * The **field layout** for a schema type (issue #584): how a friendly form renders that type's fields, kept apart
  * from `SchType` because it varies by surface rather than by validity (`thoughts-schema-direction.md` §9, in
  * the private `sampwhite/Actions` design notes). It is authored inline in the schema document under the
  * `g-layout` keyword, but read out by its own function ([collectLayouts]) into this model, held **beside** the
@@ -19,6 +19,20 @@ import com.dynamicruntime.common.util.toOptStr
  * [strings] (#641), and — [mode] (#777) — authority over field order and membership, decided by the kernel's
  * `orderedFieldNames`. The model is delivered to every friendly surface ([deliveredLayouts]) and parsed back on
  * the frontend ([parseDeliveredLayouts]), which now renders it.
+ *
+ * **Two things are called "layout"; always qualify which** (issue #834). This is the *field* layout: the fields
+ * within one trait's data type. The *task* layout (`WfLayout`, on a workflow task) orders the traits within a
+ * task, and is a placeholder until task-level presentation is designed. Both follow one definition: a layout
+ * presents the members its level already defines -- it may order them, and a field layout may also annotate or
+ * hide them for display -- but it never adds one.
+ *
+ * **One per type, for now.** Today a type has at most one field layout (a client may overlay it on their
+ * variant). Selectors are to come down to this level -- choosing which of several field layouts applies, on
+ * facts about the task and the viewer, as a task's display selector (issue #788) chooses its display -- so do
+ * not build on the one-to-one as if it were permanent. The definition above holds for each candidate.
+ *
+ * Why a field layout has a [mode], and why an `authoritative` one may repeat what the schema already says, is
+ * on [SLM].
  */
 class SchLayout(
     /** The fragment file the block's `${'$'}{…}` substitutions resolve against, declared once for the block. */
@@ -287,9 +301,21 @@ object SLDM {
 }
 
 /**
- * The wire values of the layout's [SL.mode] (issue #777): how much authority the layout has over which of a
- * type's fields are presented, and in what order. A closed set resolved onto [SchLayoutMode]; an unrecognized
+ * The wire values of the field layout's [SL.mode] (issue #777): how much authority the layout has over which of
+ * a type's fields are presented, and in what order. A closed set resolved onto [SchLayoutMode]; an unrecognized
  * value fails the boot. The default when the key is absent is [overlay] -- today's behavior.
+ *
+ * **Why there is a mode: two kinds of author** (issue #834). The *form author* treats a form as a convenient
+ * way to enter an endpoint call's data: they live with the schema's defaults and tweak some copy or order, which
+ * is [overlay] (or [reorder]). The *application builder* wants full control of how workflows and forms render,
+ * and treats the field layout as the **source of truth for every GUI decision**, which is [authoritative]. For
+ * them, repeating what the schema already says -- listing every field, even in exactly the schema's order -- is
+ * intended rather than redundant: every GUI decision is then findable in the layout. The boot's completeness
+ * check ([layoutFieldProblems]) is what keeps that duplication safe when the schema later gains a required field.
+ *
+ * **Guidance, not a rule:** a change that does not alter a schema's API semantics (order, copy) belongs in the
+ * field layout. Reordering properties in a schema overlay still works; the schema's property order is the
+ * *default* presentation order, and the payload order.
  *
  * All three **narrow and order**; none can *widen*. A field the schema hides (a `g-derived` value in a
  * friendly form, a `g-visibleWhen` field the caller's cfacts fail, a conditionally-forbidden field) stays

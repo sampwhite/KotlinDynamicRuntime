@@ -58,16 +58,18 @@ class WorkflowViewTest : StringSpec({
         task[WVF.facts] as List<*> shouldBe listOf(WFC.taskAvailable, WFC.isCta)
     }
 
-    "acme resolves its richer workflow, labels pulled from the backend fragment file, traits in layout order" {
+    "acme resolves its richer workflow, labels pulled from the backend fragment file, traits in task-layout order" {
         val v = creationView(acme, SC.acme)
         v[WVF.found] shouldBe true
         val task = v[WFD.tasks].toJsonListOfMaps().single()
         // Pulled from acmeWf.md (%{@t("acmeWf.identify.label")}) rather than a literal.
         task[WFD.label] shouldBe "Answer an issues question and enter your expense report"
         task[WFD.saves].toJsonListOfMaps().single()[WFD.label] shouldBe "Create expense form"
-        // The layout ordered the optional trait first; both carry a ref and their required flag.
+        // The task layout ordered the optional trait first; both carry a ref and their required flag. Today that
+        // order is all the task layout does, so the layout itself is not sent (issue #834).
         val traits = task[WFD.traits].toJsonListOfMaps()
         traits.map { it[WFD.traitId] } shouldBe listOf(ST.questionnaire, ST.expenseReport)
+        task.containsKey(WFD.layout) shouldBe false
         traits.first { it[WFD.traitId] == ST.expenseReport }[WFD.required] shouldBe true
         traits.first { it[WFD.traitId] == ST.questionnaire }[WFD.required] shouldBe false
         (traits.first()[WVF.schemaRef] as String) shouldContain ST.namespace
