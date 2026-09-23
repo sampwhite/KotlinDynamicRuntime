@@ -707,7 +707,9 @@ private fun ChildrenBuilder.renderProperties(
         // A field gated by g-visibleWhen (issue #564) is hidden when the caller's cfacts fail its expression --
         // but only in an *editable* form, where the caller would be entering a value. A read-only render (the
         // catalog documenting the wire, a stored form on display) shows the field regardless, and so does a form
-        // that supplies no cfacts. The backend enforces the condition either way.
+        // that supplies no cfacts. This is presentation, not access control: for trait data the backend neither
+        // refuses a gated value on write nor withholds it on read, so hiding the box is the whole of the gate.
+        // (An endpoint input may be enforced by its own handler -- the admin-only list filters are.)
         if (editable) {
             prop.visibleWhen?.let { if (!opts.gateAllows(it)) return@forEach }
         }
