@@ -176,6 +176,14 @@ A fourth is **belonging**, and behaves unlike the other three:
   the page bumps the refresh bus, so a user created, disabled or deleted for yourself shows in the badge's
   switcher at once. The list shows both in a **Persona** column (`Member B`), and a **Registered** column says
   when the person claimed the user.
+  **The person behind the user** (issue #770): the editor opens with the identity's view from
+  `GET /clientAdmin/user/identity?userId=` (`AdminIdentity`) -- the person's other users as a list, when there
+  is more than one, each choosable to edit that one instead (the open one marked, what tells each apart as the
+  badge says it, its status), then a read-only **Summary**: whether the address is proven, whether a password
+  is set, which user an unnamed login lands on, and the open user's dates. The read runs through the same
+  user-admin scope as the rest, so a client administrator sees only the person's users in their own client,
+  and "Signs in as" is a dash rather than a hint when the login lands outside it (`identitySiblings`,
+  `identitySummary`).
   **In `public`** (issue #805) every self-registered user is an administrator of themselves only: the Users page
   lists their own identity's users, "Create user" is not offered (`mayCreateForOthers`; the backend refuses any
   other address and any other client), and "Create a user for me" is how they make variants. Their data reads

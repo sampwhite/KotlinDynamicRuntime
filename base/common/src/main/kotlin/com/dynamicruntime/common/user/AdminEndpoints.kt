@@ -59,6 +59,7 @@ class UserAdminPaths(
     val userDelete: String,
     val userSetLabels: String,
     val userLabelSuggestions: String,
+    val userIdentity: String,
 )
 
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
@@ -67,6 +68,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     UserAdminPaths(
         ADEP.users, ADEP.userSearch, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg,
         ADEP.userSetName, ADEP.userInvite, ADEP.userDelete, ADEP.userSetLabels, ADEP.userLabelSuggestions,
+        ADEP.userIdentity,
     ),
 )
 
@@ -84,6 +86,7 @@ fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     UserAdminPaths(
         UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg,
         UADEP.userSetName, UADEP.userInvite, UADEP.userDelete, UADEP.userSetLabels, UADEP.userLabelSuggestions,
+        UADEP.userIdentity,
     ),
 )
 
@@ -307,6 +310,30 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val row = loadEditableUser(c, requireUserId(request))
         authHandler(c).inviteUser(c, row)
         row.toAdminInfo()
+    }
+
+    // The person behind a user (issue #770): what the editor shows above the editable data. Read through the
+    // same user-admin scope as everything else here, so the users listed, and the one a login lands on, are
+    // only ever ones the caller may administer -- a client administrator does not learn from this that the
+    // person also has a user in another client.
+    type(ADTY.adminIdentity) {
+        type = SCT.kObject
+        property(ADF.verifiedAt, "When the address was proven (a code or an invitation link); absent while unproven.") { dateTime() }
+        property(ADF.hasPassword, "Whether the identity has a password set.", required = true) { type = SCT.boolean }
+        property(ADF.signsInAsUserId, "The user an unnamed login at this address lands on, when it is one you administer.") { type = SCT.integer }
+        property(ADF.users, "The identity's users you administer, this one included, lowest id first.", required = true) {
+            type = SCT.array
+            items { ref(ADTY.adminUser) }
+        }
+    }
+    generalEndpoint(
+        paths.userIdentity,
+        "The person behind a user: their identity's facts, and the users of it you administer.",
+        HttpMethod.GET,
+        outputRef = ADTY.adminIdentity,
+        inputFields = { field(ADF.userId, "Id of the user whose person to describe.", required = true) { type = SCT.integer } },
+    ) { c, request ->
+        adminIdentityInfo(c, loadUser(c, requireUserId(request)))
     }
 
     // --- edit ---------------------------------------------------------------
@@ -599,6 +626,27 @@ private fun requireAssignableOrg(cxt: KdrCxt, org: String?) {
 }
 
 private fun userService(cxt: KdrCxt): UserService = UserService.get(cxt)
+
+/**
+ * The person behind [user] as the caller may see them (issue #770): the identity's own facts, and those of its
+ * users the caller's user-admin scope admits. Tombstones are left out -- a permanently deleted user is nobody's
+ * any more. [ADF.signsInAsUserId] is given only when it names an admitted user: the alternative would tell a
+ * client administrator that the person has a user somewhere they cannot see.
+ */
+private fun adminIdentityInfo(cxt: KdrCxt, user: AuthUserRow): Map<String, Any?> {
+    val service = userService(cxt)
+    val scope = ReadScopeRules.forUserAdmin(cxt)
+    val identity = service.identityOfUser(cxt, user)
+    val admitted = service.usersOfIdentity(cxt, identity.identityId)
+        .filter { !it.isDeleted && scope.admitsUserRow(it.client, it.org, it.userId, it.identityId) }
+    val signsInAs = service.registeredDefaultOf(cxt, identity)?.userId?.takeIf { id -> admitted.any { it.userId == id } }
+    return buildMap {
+        identity.verifiedAt?.let { put(ADF.verifiedAt, it) }
+        put(ADF.hasPassword, identity.hasPassword)
+        signsInAs?.let { put(ADF.signsInAsUserId, it) }
+        put(ADF.users, admitted.map { it.toAdminInfo() })
+    }
+}
 
 /**
  * Loads a user by id, or a 404 -- **within the caller's administration scope** (issue #225). A user in
