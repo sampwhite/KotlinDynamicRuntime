@@ -212,7 +212,25 @@ fun buildWorkflowRegistries(
                 )
                 return false
             }
-            val labels = listOf("task '${task.id}'" to task.label) + task.saves.map { "save '${it.id}'" to it.label }
+            // An approval task (issue #787): the cfact an approval emits must be one this scope declares -- an
+            // approval that emitted an unknown name could gate nothing -- and its copy rides the label check.
+            task.approval?.let { approval ->
+                if (approval.cfact !in cfactNames(scope)) {
+                    reportConfigProblem(
+                        cxt, mode,
+                        problem(
+                            scope, w,
+                            "has an approval task '${task.id}' emitting the cfact '${approval.cfact}', which this " +
+                                "scope does not declare.",
+                        ),
+                        issues,
+                    )
+                    return false
+                }
+            }
+            val labels = listOf("task '${task.id}'" to task.label) + task.saves.map { "save '${it.id}'" to it.label } +
+                (task.approval?.let { listOf("approval prompt of task '${task.id}'" to it.prompt, "approval button of task '${task.id}'" to it.button) }
+                    ?: emptyList())
             for ((where, label) in labels) {
                 labelProblem(scope, label, fragments)?.let {
                     reportConfigProblem(cxt, mode, problem(scope, w, "has a label on $where that $it"), issues)

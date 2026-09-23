@@ -14,6 +14,8 @@ import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.schema.toWireMap
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.filterByCFacts
+import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -47,6 +49,8 @@ fun resolveWorkflowView(
     declared: WfDeclared,
     entriesByTask: Map<String, List<Map<String, Any?>>> = emptyMap(),
     ownerAttributes: Map<String, Any?> = emptyMap(),
+    /** The form's approvals of this workflow's approval tasks (issue #787), task id to entry data; see WorkflowApprovals.forView. */
+    approvals: Map<String, Map<String, Any?>> = emptyMap(),
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -95,7 +99,9 @@ fun resolveWorkflowView(
 
     // Each task's status (issues #700, #785), from the one computation the stored CTA also uses
     // (`WorkflowTaskStatus`), so the rail, `focusTask`, the `wfIsCta` fact and the forms list cannot disagree.
-    val statuses = declared.def.tasks.map { it to WorkflowTaskStatus.of(cxt, client, it, entriesByTask[it.id] ?: emptyList()) }
+    val statuses = declared.def.tasks.map {
+        it to WorkflowTaskStatus.of(cxt, client, it, entriesByTask[it.id] ?: emptyList(), approved = it.id in approvals)
+    }
     val statusById = statuses.associate { (task, status) -> task.id to status }
     // The CTA (issue #785): the earliest task not both complete and valid. The rail opens on it when the URL names
     // no task (`focusTask`, issue #700), and its task carries the `wfIsCta` fact a layout selects on.
@@ -109,6 +115,26 @@ fun resolveWorkflowView(
         return status.toStateMap() + (WVF.problems to problems)
     }
 
+    // An approval task's approval, resolved for the page (issue #787): its copy through the backend pass like any
+    // label, and -- once approved -- when, and by whom as the name the reviewer shows others (`publicName`). Not
+    // their private full name nor their internal user id: this view reaches the form's owner, who could not read
+    // the reviewer's user row, and "approved by ..." needs neither.
+    fun approvalView(approval: WfApproval, record: Map<String, Any?>?): Map<String, Any?> {
+        val out = linkedMapOf<String, Any?>(
+            WFD.cfact to approval.cfact,
+            WFD.prompt to label(approval.prompt),
+            WFD.button to label(approval.button),
+            WVF.approved to (record != null),
+        )
+        if (record != null) {
+            out[WFS.approvedAt] = record[WFS.approvedAt]
+            record[WFS.approvedBy].toOptLong()
+                ?.let { UserService.getOrNull(cxt)?.queryByUserId(cxt, it) }
+                ?.let { out[WVF.approvedByName] = it.publicName() }
+        }
+        return out
+    }
+
     fun taskView(task: WfTask): Map<String, Any?> {
         val entries = entriesByTask[task.id] ?: emptyList()
         // Draw the traits in the page's order, each already a ref+flag; the layout named the order, and any
@@ -117,7 +143,8 @@ fun resolveWorkflowView(
         val orderedTraits = task.displayOrder.mapNotNull { byId[it] }.map { traitView(it) }
         // The task's own facts, plus what its viewerCfacts functions conclude about the person looking at it
         // (issue #786) -- a reviewer, say. Temporary by nature: they are about this viewer, so never stored.
-        val taskFacts = WfTaskFacts.of(task, entries, isCta = task.id == ctaTaskId) + viewerCfacts.forTask(task)
+        val taskFacts = WfTaskFacts.of(task, entries, isCta = task.id == ctaTaskId, approved = task.id in approvals) +
+            viewerCfacts.forTask(task)
         val raw = linkedMapOf<String, Any?>(
             WFD.id to task.id,
             WFD.label to label(task.label),
@@ -127,6 +154,7 @@ fun resolveWorkflowView(
             WVF.status to taskStatus(statusById.getValue(task.id)),
         )
         task.layout?.let { raw[WFD.layout] = linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name) }
+        task.approval?.let { raw[WVF.approval] = approvalView(it, approvals[task.id]) }
         // The entries the page seeds each field from: the task's stored ones (a survey edit; a creation view has
         // none), each trait's g-derived data values computed on read (issue #712) and then decorated with any
         // prefillData defaults (issue #679). Both enrich only the *presented* set, never the `entries` above that

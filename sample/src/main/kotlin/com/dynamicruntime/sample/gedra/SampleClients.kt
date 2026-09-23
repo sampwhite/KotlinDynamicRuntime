@@ -88,12 +88,16 @@ object SW {
     /**
      * Acme's **normal** workflow (issue #794) -- many-per-form and chosen rather than automatic, unlike the
      * one-per-form creation and survey. It is what the per-workflow state is computed against: a form in acme
-     * carries a `workflowState` entry for it, and can be engaged with it. Deliberately plain for this slice --
-     * eligibility (#783), a CTA (#785) and an approval task (#787) each arrive with their own.
+     * carries a `workflowState` entry for it, and can be engaged with it. The sample's fullest workflow: it has
+     * eligibility tests (#783), its own cfact and a singleton rule (#784), a record task then an approval task
+     * (#785, #787) -- so not the fixture to reach for when a plain normal workflow is wanted.
      */
     const val auditReview = "auditReview"
     const val recordAudit = "recordAudit"
     const val saveAudit = "saveAudit"
+
+    /** `auditReview`'s approval task (issue #787). */
+    const val approveAudit = "approveAudit"
 
     /**
      * `auditReview`'s eligibility test ids (issue #783): the survey is complete, and its entries are valid. The
@@ -174,6 +178,9 @@ object SC {
      * `cfactCalc` from the audit's findings: data-driven, which is how a client's own cfact gets a producer.
      */
     const val underAudit = "acmeUnderAudit"
+
+    /** The cfact an approved audit review emits (issue #787) -- acme's own, declared beside [underAudit]. */
+    const val auditApproved = "acmeAuditApproved"
 
     /** The user labels acme suggests (issue #786); the first is the one its audit review tests for. */
     const val reviewerLabel = "reviewer"
@@ -344,6 +351,10 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         // to parse everywhere, rather than parsing here and quietly meaning nothing anywhere else. Declared
         // ahead of its producer at first; the audit review's cfactCalc now sets it (issue #784).
         cfact(
+            SC.auditApproved, SC.auditGroup,
+            "True, in the audit review, once a reviewer has approved the recorded audit (issue #787).",
+        )
+        cfact(
             SC.underAudit, SC.auditGroup,
             "True while a site acme is looking at has an audit open against it -- the audit review concludes it " +
                 "when the audit's findings are '${SC.findingsOpen}'.",
@@ -431,11 +442,19 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             eligibility(SW.noOpenReview, "~${WSC.needsReview}", "A review of this form is already waiting.")
             task(SW.recordAudit, "Record the audit") {
                 trait(SC.siteAudit)
-                // Approval authority (issue #786): a viewer carrying acme's `reviewer` label is a reviewer of this
-                // task -- the `reviewer` cfact on its view, which the approval task (#787) will key on.
-                function(userHasLabel { label = SC.reviewerLabel })
                 save(SW.saveAudit, "Save the audit", WfSaveKind.edit)
             }
+            // The approval step (issue #787): once the audit is recorded, a reviewer approves it. Approving records
+            // who and when, and gives the workflow the `acmeAuditApproved` cfact...
+            task(SW.approveAudit, "Approve the audit") {
+                approval(SC.auditApproved, "Read the recorded audit, then approve it.", "Approve the audit")
+                // ...and a reviewer is whoever carries acme's `reviewer` label (issue #786): the `wfReviewer` cfact
+                // on this task's view, which the approve endpoint asks for too.
+                function(userHasLabel { label = SC.reviewerLabel })
+            }
+            // An approved audit review is finished: the ordinary singleton rule turns the approval's cfact into the
+            // form's Finished status -- no special case for approvals.
+            singleton(WSC.finished, SC.auditApproved)
         }
 
         // A second normal workflow (issue #784): a follow-up visit, held off while any review is pending. What

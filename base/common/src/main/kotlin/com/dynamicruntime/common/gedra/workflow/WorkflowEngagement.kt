@@ -22,8 +22,8 @@ import kotlin.time.Instant
  *
  * Disengaging sets [WFS.engaged] false and records a [WFS.disengagedEvent] rather than removing the entry: that
  * a form was once in a workflow is part of its history, and an entry that vanished would take the reason with
- * it. The entry is declared open, so the later slices can record their own milestones (an approval, a finish)
- * against the same workflow.
+ * it. The entry is declared open, so each slice records its own milestones against the same workflow ([withEvent];
+ * an approval appends `approved`, issue #787).
  */
 object WorkflowEngagement {
     /**
@@ -76,6 +76,25 @@ object WorkflowEngagement {
             withEngagement(current, workflowId, engaged, at, by)
         }
     }
+
+    /**
+     * [current] with [event] appended to the [workflowId] engagement entry's trail -- the way a later step records a
+     * milestone against the workflow (an approval, issue #787), which is what the open trail was declared for.
+     * Everything else rides through unchanged. The entry must exist: a milestone happens in a workflow the form is
+     * in, and the caller has already checked that it is.
+     */
+    fun withEvent(current: List<Map<String, Any?>>, workflowId: String, event: Map<String, Any?>): List<Map<String, Any?>> =
+        current.map { entry ->
+            if (!isEngagementFor(entry, workflowId)) {
+                entry
+            } else {
+                val data = entry[GE.data].toJsonMapOrEmpty()
+                mapOf(
+                    GE.traitId to WFS.workflowEngagement,
+                    GE.data to data + (WFS.events to data[WFS.events].toJsonListOfMaps() + listOf(event)),
+                )
+            }
+        }
 
     /** Whether [entries] hold an engagement entry for [workflowId], engaged or not. */
     fun hasEngagement(entries: List<Map<String, Any?>>, workflowId: String): Boolean =

@@ -35,6 +35,7 @@ object WFD {
     const val layoutType = "WfLayout"
     const val eligibilityType = "WfEligibility"
     const val singletonType = "WfSingleton"
+    const val approvalType = "WfApproval"
 
     const val workflowId = "workflowId"
     const val entry = "entry"
@@ -86,6 +87,18 @@ object WFD {
 
     /** On a singleton rule: the cfact expression over the workflow's current cfacts that emits it. */
     const val kWhen = "when"
+
+    /**
+     * On a task: makes it an **approval task** (issue #787) -- a button a reviewer presses rather than traits a
+     * person fills in. Holds the [cfact] an approval emits, and the [prompt] and [button] copy.
+     */
+    const val approval = "approval"
+
+    /** On an approval: the text shown above the button -- a template, evaluated in two passes like a label. */
+    const val prompt = "prompt"
+
+    /** On an approval: the button's own text -- a template, like a label. */
+    const val button = "button"
 
     /** Separates a bundle id from a workflow id in a [WfRef]'s text form. */
     const val refSep = '#'
@@ -169,6 +182,20 @@ object WVF {
      * task rail opens on it when the URL names no task, so a status-chip link lands on the work.
      */
     const val focusTask = "focusTask"
+
+    /**
+     * On an **approval task**'s view (issue #787): its approval, resolved for the page -- the [WFD.cfact], the
+     * backend-passed [WFD.prompt] and [WFD.button] copy, whether it is [approved], and when so `approvedAt` and the
+     * approver's [approvedByName] -- their public name, what "approved by ..." shows. Not their user id or private
+     * name: the view reaches the form's owner, who could not read the reviewer's user row.
+     */
+    const val approval = "approval"
+
+    /** Under [approval]: whether the task has been approved. */
+    const val approved = "approved"
+
+    /** Under [approval]: the approver's display name, for "approved by ...". */
+    const val approvedByName = "approvedByName"
 }
 
 /**
@@ -227,7 +254,8 @@ object WFC {
     /**
      * The person viewing the task may review it (issue #786): the framework's name for the approval authority a
      * `viewerCfacts` function concludes -- typically `userHasLabel` over a `reviewer` *label*. **Hardwired**, since
-     * the needsReview flow (#787) looks for exactly this cfact; a workflow may still emit one of its own choosing.
+     * the approve endpoint (#787) asks for exactly this cfact -- as the needsReview listing will -- though a workflow
+     * may still emit other cfacts of its own choosing.
      * Prefixed like its neighbours, so a client remains free to declare a cfact called plain `reviewer`.
      */
     const val reviewer = "wfReviewer"
@@ -310,6 +338,16 @@ class WfEligibility(val id: String, val test: String, val explanation: String)
 class WfSingleton(val cfact: String, val whenExpr: String)
 
 /**
+ * What makes a task an **approval task** (issue #787): instead of collecting traits, it asks a reviewer to approve
+ * the form at this point in the workflow. Approving records the fact (who, when) in the form's state, and from then
+ * on the workflow's own cfacts include [cfact] -- the name is the task's choice, so a workflow with several approval
+ * points can tell them apart (`siteApproved`, `financeApproved`), and one that names `finished` feeds the Finished
+ * status through an ordinary singleton rule. [prompt] is the text above the button and [button] the button's own;
+ * both are templates evaluated like a label.
+ */
+class WfApproval(val cfact: String, val prompt: String, val button: String)
+
+/**
  * The minimum a page needs to draw a task: the order its traits appear in, and how they are edited. The
  * fuller layout family -- summaries, pop-ups, headers, static text -- is deferred; this is only what a creation
  * workflow cannot do without.
@@ -317,7 +355,8 @@ class WfSingleton(val cfact: String, val whenExpr: String)
 class WfLayout(val order: List<String>, val edit: WfEditMode = WfEditMode.inline)
 
 /**
- * One **task**: a unit of work in a workflow, collecting some traits and offering some saves.
+ * One **task**: a unit of work in a workflow, collecting some traits and offering some saves -- or, as an
+ * **approval task** ([approval], issue #787), collecting nothing and completed by a reviewer's approval.
  *
  * Structural coherence is checked here, where the definition is written: two traits with one id, two saves
  * with one id, or a layout ordering a trait the task does not collect are authoring mistakes with no coherent
@@ -332,6 +371,8 @@ class WfTask(
     val saves: List<WfSave>,
     val layout: WfLayout? = null,
     functionUsages: List<WfFunctionUsage> = emptyList(),
+    /** Present on an **approval task** (issue #787), which collects no traits and offers no saves. */
+    val approval: WfApproval? = null,
 ) {
     /** The task-scoped function **usages** this task declares (e.g. `prefillData`), in priority order (issue #677). */
     val functionUsages: List<WfFunctionUsage> = functionUsages.sortedBy { it.priority }
@@ -358,6 +399,19 @@ class WfTask(
                 "Task '$id' orders the trait '$it' in its layout but does not collect it. A layout arranges " +
                     "what the task collects; it cannot add to it.",
             )
+        }
+        if (approval != null) {
+            // An approval is pressed, not filled in: its completion is the approval itself (issue #787), so a
+            // trait or a save on it would be a second, competing idea of what finishing the task means.
+            if (traits.isNotEmpty() || saves.isNotEmpty()) {
+                throw KdrException.mkConv(
+                    "Approval task '$id' collects traits or offers saves; an approval task does neither -- it is " +
+                        "complete when a reviewer approves it.",
+                )
+            }
+            if (approval.cfact.isBlank()) {
+                throw KdrException.mkConv("Approval task '$id' names no cfact for its approval to emit.")
+            }
         }
     }
 
@@ -534,6 +588,15 @@ class WfDef(
                 )
             }
         }
+        tasks.firstOrNull { it.approval != null }?.let {
+            if (entry != WfEntry.normal) {
+                throw KdrException.mkConv(
+                    "${entry.name.replaceFirstChar { c -> c.uppercase() }} workflow '$workflowId' has an approval " +
+                        "task '${it.id}'; only a normal workflow has approval tasks, since an approval is a step a " +
+                        "form reaches after it exists and has been put into the workflow.",
+                )
+            }
+        }
         if (singletons.isNotEmpty() && entry != WfEntry.normal) {
             throw KdrException.mkConv(
                 "${entry.name.replaceFirstChar { it.uppercase() }} workflow '$workflowId' declares singleton " +
@@ -638,9 +701,16 @@ object WfDefSchema {
             property(WFD.cfact, "The framework singleton cfact emitted (needsReview, finished).", required = true)
             property(WFD.kWhen, "The cfact expression over the workflow's current cfacts that emits it.", required = true)
         }
+        type(WFD.approvalType) {
+            type = SCT.kObject
+            description = "What makes a task an approval task: the cfact an approval emits, and the copy around its button."
+            property(WFD.cfact, "The cfact the workflow gains once this task is approved.", required = true)
+            property(WFD.prompt, "The text above the approve button -- a template, evaluated in two passes.", required = true)
+            property(WFD.button, "The approve button's own text -- a template, evaluated in two passes.", required = true)
+        }
         type(WFD.taskType) {
             type = SCT.kObject
-            description = "One task of a workflow: the traits it collects and the saves it offers."
+            description = "One task of a workflow: the traits it collects and the saves it offers -- or, with an approval, none, completed by a reviewer."
             property(WFD.id, "Stable id of this task, unique within the workflow.", required = true)
             property(WFD.label, "What the task is called -- a template, evaluated in two passes.", required = true)
             property(WFD.traits, "The traits this task collects.", required = true) {
@@ -660,6 +730,9 @@ object WfDefSchema {
                 type = SCT.array
                 allowCoerce = true
                 items { type = SCT.kObject }
+            }
+            property(WFD.approval, "Makes this an approval task: it collects no traits and is complete when a reviewer approves it.") {
+                ref(WFD.approvalType)
             }
         }
         type(WFD.defType) {
@@ -727,6 +800,9 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
                 // A usage re-emits its own initialization data, so a code-built and a stored definition
                 // round-trip identically (issue #677).
                 if (task.functionUsages.isNotEmpty()) put(WFD.functions, task.functionUsages.map { it.toJsonMap() })
+                task.approval?.let {
+                    put(WFD.approval, linkedMapOf(WFD.cfact to it.cfact, WFD.prompt to it.prompt, WFD.button to it.button))
+                }
             }
         },
     )
@@ -784,6 +860,10 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
                     )
                 },
                 functionUsages = usagesOf(t[WFD.functions]),
+                approval = (t[WFD.approval] as? Map<*, *>)?.let { a ->
+                    val am = a.toJsonMapOrEmpty()
+                    WfApproval(am[WFD.cfact].toOptStr() ?: "", am[WFD.prompt].toOptStr() ?: "", am[WFD.button].toOptStr() ?: "")
+                },
             )
         },
         functionUsages = usagesOf(m[WFD.functions]),
@@ -873,6 +953,7 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     private val saves = mutableListOf<Map<String, Any?>>()
     private var layout: Map<String, Any?>? = null
     private val functions = mutableListOf<Map<String, Any?>>()
+    private var approval: Map<String, Any?>? = null
 
     /**
      * Declares a task-scoped function usage (a `prefillData`, e.g.) -- the `{fn, ...}` initialization data a
@@ -892,6 +973,15 @@ class WfTaskBuilder(private val id: String, private val label: String) {
         saves.add(linkedMapOf(WFD.id to id, WFD.label to label, WFD.kind to kind.name))
     }
 
+    /**
+     * Makes this an **approval task** (issue #787): no traits and no saves -- a reviewer approves it, which emits
+     * [cfact] into the workflow's cfacts. [prompt] is the text above the button and [button] the button's; both are
+     * templates, like a label.
+     */
+    fun approval(cfact: String, prompt: String, button: String) {
+        approval = linkedMapOf(WFD.cfact to cfact, WFD.prompt to prompt, WFD.button to button)
+    }
+
     /** How the task is drawn; traits not named in [order] follow in declaration order. */
     fun layout(order: List<String>, edit: WfEditMode = WfEditMode.inline) {
         layout = linkedMapOf(WFD.order to order, WFD.edit to edit.name)
@@ -906,6 +996,7 @@ class WfTaskBuilder(private val id: String, private val label: String) {
         )
         layout?.let { out[WFD.layout] = it }
         if (functions.isNotEmpty()) out[WFD.functions] = functions.toList()
+        approval?.let { out[WFD.approval] = it }
         return out
     }
 }
@@ -940,13 +1031,16 @@ object WfEngine {
  * [WFC.taskAvailable] is **always present**: a placeholder that keeps the shape visible until availability
  * rules (dates, prior tasks) exist. Said here so nobody reads it as computed. [WFC.isCta] is the caller's to
  * say (issue #785): which task is the CTA is a judgment over the whole task list, and content validity, which
- * needs the client's schema -- neither is this one task's to decide.
+ * needs the client's schema -- neither is this one task's to decide. So is `approved`, for an **approval task**
+ * (issue #787): it collects no traits, so trait presence would call it complete before anyone approved it --
+ * its completion is the approval, which lives in the form's state.
  */
 object WfTaskFacts {
-    fun of(task: WfTask, entries: List<Map<String, Any?>>, isCta: Boolean = false): Set<String> {
+    fun of(task: WfTask, entries: List<Map<String, Any?>>, isCta: Boolean = false, approved: Boolean = false): Set<String> {
         val facts = LinkedHashSet<String>()
         facts.add(WFC.taskAvailable)
-        if (WfEngine.taskComplete(task, entries)) {
+        val complete = if (task.approval != null) approved else WfEngine.taskComplete(task, entries)
+        if (complete) {
             facts.add(WFC.taskComplete)
         }
         if (isCta) {

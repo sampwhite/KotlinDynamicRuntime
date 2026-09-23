@@ -21,6 +21,9 @@ import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WorkflowApprovals
+import com.dynamicruntime.common.gedra.workflow.ViewerCfacts
+import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
@@ -651,7 +654,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             // The owner a prefillData function defaults from: the form's user for a survey, the caller for a
             // creation view. Read only when the workflow actually declares a prefill (issue #679).
             val ownerAttributes = prefillOwnerAttributes(c, declared, row?.userId ?: c.userId)
-            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes)
+            // A form's approvals (issue #787) -- only read when the workflow has an approval task.
+            val approvals = WorkflowApprovals.forView(c, declared.def, row?.gedraId?.fullId)
+            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes, approvals)
         }
     }
 
@@ -707,6 +712,61 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         }
         // Engaging a declared workflow is gated on its eligibility tests (issue #783); disengaging is not.
         val states = WorkflowEngagement.setEngaged(c, row, workflowId, engaged, declared?.def?.takeIf { isNormal })
+        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to states)
+    }
+
+    // A reviewer approves an approval task (issue #787). Who may is settled here -- a reviewer of the task, and not
+    // the form's owner -- and when is settled under the lock by WorkflowApprovals.approve: engaged, the current
+    // task, not already approved. The button a page draws is presentation; this is the permission.
+    generalEndpoint(
+        GEP.workflowApprove,
+        "Approves an approval task of a normal workflow for a form, as a reviewer of that task, and answers with " +
+            "the form's state as it then stands.",
+        HttpMethod.POST,
+        outputRef = GEP.workflowStatesType,
+        inputFields = {
+            field(GDF.gedraId, "The form to approve.", required = true)
+            field(GDF.workflowId, "The normal workflow the approval task belongs to.", required = true)
+            field(GDF.taskId, "The approval task to approve.", required = true)
+        },
+        publicApi = true,
+        needsClientConfig = true,
+    ) { c, request ->
+        val workflowId = request[GDF.workflowId].toOptStr()
+            ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
+        val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
+        val row = stateTargetRow(c, request)
+        val declared = WorkflowService.get(c).forClient(row.client).workflow(workflowId)
+            ?.takeIf { it.def.entry == WfEntry.normal }
+            ?: throw KdrException.mkInput("'$workflowId' is not a normal workflow of client '${row.client}'.")
+        val task = declared.def.task(taskId)?.takeIf { it.approval != null }
+            ?: throw KdrException.mkInput("'$taskId' is not an approval task of workflow '$workflowId'.")
+        // The second-person rule (issue #787): whoever owns the form cannot approve it, however they came to be a
+        // reviewer -- which is why a label an administrator put on themselves (#786) cannot become self-approval.
+        // In production that means the owner's *person* (any of their users); on a test instance only the owning
+        // user, so one tester's personas can play submitter and reviewer (see WorkflowApprovals.isOwnForm).
+        val isTest = c.instanceConfig.isTestInstance
+        val ownerIdentity = UserService.getOrNull(c)?.queryByUserId(c, row.userId)?.identityId
+        if (WorkflowApprovals.isOwnForm(row.userId, ownerIdentity, c.userProfile.userId, c.userProfile.identityId, isTest)) {
+            throw KdrException(
+                if (row.userId == c.userProfile.userId) {
+                    "You cannot approve your own form; approval needs a reviewer other than its owner."
+                } else {
+                    "You cannot approve a form owned by another of your own users; approval needs a different " +
+                        "person as reviewer."
+                },
+                code = EXC.notAuthorized,
+            )
+        }
+        // Authority is the task's own reviewer cfact -- the one its page shows the button on -- asked of the caller
+        // here rather than trusted from the page, since a cfact decides presentation and never permission.
+        if (WFC.reviewer !in ViewerCfacts(c, row.client).forTask(task)) {
+            throw KdrException(
+                "You are not a reviewer of task '$taskId' of workflow '$workflowId'.",
+                code = EXC.notAuthorized,
+            )
+        }
+        val states = WorkflowApprovals.approve(c, row, declared, task)
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to states)
     }
 
@@ -798,7 +858,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val item = result[WSF.item].toJsonMapOrEmpty()
             val entriesByTask = entriesByTaskOf(declared, item[GDF.entries].toJsonListOfMaps())
             val owner = prefillOwnerAttributes(c, declared, item[GDF.userId].toOptLong() ?: c.userId)
-            result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner))
+            val approvals = WorkflowApprovals.forView(c, declared.def, gedraId)
+            result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner, approvals))
         } else {
             result
         }

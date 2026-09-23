@@ -189,8 +189,9 @@ One more is neither authority nor identity:
   rather than beside it. A tags `Select` offering the *user's* client's suggestions (`labelSuggestions`, fetched
   the first time that client is edited and kept keyed by client, so a slow reply can only fill its own client's
   entry — never land on the next user's editor) while accepting any other label typed. On an existing user
-  only: create has no labels field. Editable on your **own** row too, deliberately — a label is not privilege;
-  a second-person rule for approving, if one is wanted, belongs to the approval endpoint (#787). Saving compares
+  only: create has no labels field. Editable on your **own** row too, deliberately — a label is not privilege,
+  and the approve endpoint (#787) enforces the second-person rule itself: a reviewer can never approve a form
+  they own (in production, a form owned by any of their users). Saving compares
   after `normalizeUserLabels`, the kernel rule the backend stores by, so re-spacing a label is no change.
 
 **Unticking "Business account" keeps the name.** It used to clear it, which was right while only a business

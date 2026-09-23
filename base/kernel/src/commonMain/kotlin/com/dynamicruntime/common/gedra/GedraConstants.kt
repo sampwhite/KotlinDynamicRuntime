@@ -66,6 +66,9 @@ object GEP {
     /** Puts a form into a normal workflow, or takes it back out (issue #794). */
     const val workflowEngage = "/gedra/workflow/engage"
 
+    /** A reviewer approves a workflow's approval task for a form (issue #787). */
+    const val workflowApprove = "/gedra/workflow/approve"
+
     /**
      * Recomputes one form's derived state, per-workflow entries included (issue #794). The design asks for this
      * before batch jobs exist, and expects it to stay the preferred way to force a recompute in a test after
