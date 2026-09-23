@@ -45,13 +45,14 @@ object SingletonWorkflows {
                 val workflowId = data[WFD.workflowId].toOptStr() ?: return@mapNotNull null
                 // A retired workflow contributes no singletons, so a declared one is always found; skip if not. Nor
                 // does one outside its lifetime (issue #790), though its entry lingers until the form's next recompute.
-                val def = registry.workflow(workflowId)?.def?.takeIf { WorkflowPhases.of(cxt, it).exists }
-                    ?: return@mapNotNull null
+                val def = WorkflowPhases.live(cxt, registry, workflowId)?.def ?: return@mapNotNull null
                 val out = linkedMapOf<String, Any?>(
                     WFD.workflowId to workflowId,
                     WFD.label to (def.label.takeIf { it.isNotBlank() }?.let { label(it) } ?: workflowId),
                 )
-                val task = data[WFS.ctaTask].toOptStr()?.let { def.task(it) }
+                // A frozen workflow (past its relevancy) still stands behind the chip, but nothing can be done in it
+                // -- its saves and approvals are refused -- so it is listed without an action.
+                val task = data[WFS.ctaTask].toOptStr()?.takeIf { WorkflowPhases.of(cxt, def).calculates }?.let { def.task(it) }
                 if (task != null) {
                     val viewerFacts = viewer.forTask(task)
                     val complete = data[WFS.ctaStatus].toJsonMapOrEmpty()[SVY.complete] == true

@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptInstant
 import kotlin.time.Instant
 
 /**
@@ -29,7 +30,7 @@ class WfWindow(val start: Instant? = null, val end: Instant? = null) {
         /** A window from its JSON form, already coerced by the definition schema; absent reads as [always]. */
         fun fromJson(raw: Any?): WfWindow {
             val m = raw.toJsonMapOrEmpty()
-            return WfWindow(m[WFD.start] as? Instant, m[WFD.end] as? Instant)
+            return WfWindow(m[WFD.start].toOptInstant(), m[WFD.end].toOptInstant())
         }
     }
 }
@@ -76,7 +77,7 @@ enum class WfPhase {
  * window's start, an **end** forward to its end -- so a relevancy with no end lasts as long as the lifetime.
  * A bound nothing supplies constrains nothing.
  *
- * Every bound is an absolute instant, and the moment compared against is the caller's (`cxt.now()`), so a
+ * Every bound is an absolute instant, and the moment compared against is the instance clock's, so a
  * window opens and closes with no batch job -- what is stored about a form catches up on its next recompute.
  */
 class WfWindows(
@@ -111,21 +112,32 @@ class WfWindows(
     fun check(workflowId: String) {
         fun refuse(reason: String): Nothing =
             throw KdrException.mkConv("The time windows of workflow '$workflowId' are not valid: $reason")
-        for ((name, w) in listOf(WFD.lifetime to lifetime, WFD.relevancy to effectiveRelevancy, WFD.engagement to effectiveEngagement)) {
-            if (w.start != null && w.end != null && w.start >= w.end) {
-                refuse("its $name window $w does not start before it ends.")
+        val ls = lifetime.start
+        val le = lifetime.end
+        if (ls != null && le != null && ls >= le) refuse("its lifetime starts at $ls, not before it ends at $le.")
+
+        // A narrower window against the one enclosing it (already resolved): its own bounds must lie inside, and
+        // once resolved it must still start before it ends. Each bound is described by where it came from, so a
+        // refusal points at a date the author wrote rather than one they inherited.
+        fun nested(name: String, own: WfWindow, outerName: String, outer: WfWindow) {
+            val os = own.start
+            val oe = own.end
+            if (os != null && outer.start != null && os < outer.start) {
+                refuse("its $name window starts at $os, before its $outerName window does (${outer.start}).")
+            }
+            if (oe != null && outer.end != null && oe > outer.end) {
+                refuse("its $name window ends at $oe, after its $outerName window does (${outer.end}).")
+            }
+            val start = os ?: outer.start
+            val end = oe ?: outer.end
+            if (start != null && end != null && start >= end) {
+                val from = if (os != null) "starts at $start" else "starts when its $outerName window does ($start)"
+                val to = if (oe != null) "ends at $end" else "ends when its $outerName window does ($end)"
+                refuse("its $name window $from but $to, so it is never open.")
             }
         }
-        fun within(name: String, own: WfWindow, outerName: String, outer: WfWindow) {
-            if (own.start != null && outer.start != null && own.start < outer.start) {
-                refuse("its $name window starts at ${own.start}, before its $outerName window does (${outer.start}).")
-            }
-            if (own.end != null && outer.end != null && own.end > outer.end) {
-                refuse("its $name window ends at ${own.end}, after its $outerName window does (${outer.end}).")
-            }
-        }
-        within(WFD.relevancy, relevancy, WFD.lifetime, lifetime)
-        within(WFD.engagement, engagement, WFD.relevancy, effectiveRelevancy)
+        nested(WFD.relevancy, relevancy, WFD.lifetime, lifetime)
+        nested(WFD.engagement, engagement, WFD.relevancy, effectiveRelevancy)
     }
 
     companion object {

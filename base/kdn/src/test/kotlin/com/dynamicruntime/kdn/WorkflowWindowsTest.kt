@@ -18,6 +18,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WVF
@@ -96,6 +97,12 @@ class WorkflowWindowsTest : StringSpec({
                 function(userHasLabel { label = "reviewer" })
             }
         }
+        // A peer with no windows, held off while any workflow says the form is finished -- so a frozen Finished is
+        // seen gating it, and a workflow past its lifetime is seen to stop.
+        workflow("followUp", WfEntry.normal) {
+            eligibility("notFinished", "~${WSC.finished}", "Already finished elsewhere.")
+            task("note", "Note") { trait("visit"); save("saveNote", "Save", WfSaveKind.edit) }
+        }
     }
     GedraConfigService.get(cxt).writeConfig(asClient(client), config)
     GedraConfigReload.reloadClient(cxt, client)
@@ -108,9 +115,12 @@ class WorkflowWindowsTest : StringSpec({
     )[GDF.gedraId].toOptStr()!!
 
     fun recompute(gid: String) = user.postData(GEP.formDocRecomputeState, mapOf(GDF.gedraId to gid))[GDF.states].toJsonListOfMaps()
-    fun entry(states: List<Map<String, Any?>>): Map<String, Any?>? = states
-        .firstOrNull { it[GE.traitId].toOptStr() == WFS.workflowState && it[GE.data].toJsonMapOrEmpty()[WFD.workflowId] == "inspection" }
+    fun entry(states: List<Map<String, Any?>>, workflowId: String = "inspection"): Map<String, Any?>? = states
+        .firstOrNull { it[GE.traitId].toOptStr() == WFS.workflowState && it[GE.data].toJsonMapOrEmpty()[WFD.workflowId] == workflowId }
         ?.get(GE.data)?.toJsonMapOrEmpty()
+    // What the Finished chip's popover lists for the form (issue #789), as this caller sees it.
+    fun behindFinished(gid: String) = user.getData(GEP.formDocSingletonWorkflows, mapOf(GDF.gedraId to gid, WFD.cfact to WSC.finished))[
+        SWF.workflows].toJsonListOfMaps()
     fun formFacts(states: List<Map<String, Any?>>) = states.filter { it[GE.traitId].toOptStr() == GT.cfacts }
         .flatMap { it[GE.data].toJsonMapOrEmpty()[GT.facts].toJsonListOrEmpty() }
     fun engage(gid: String, engaged: Boolean = true) =
@@ -176,6 +186,8 @@ class WorkflowWindowsTest : StringSpec({
         val states = recompute(engagedForm)
         entry(states).shouldNotBeNull()[WFS.singletonCfacts] shouldBe listOf(WSC.finished)
         formFacts(states) shouldContain WSC.finished
+        // Live: the popover names the current task and what it asks.
+        behindFinished(engagedForm).single()[WFS.ctaTask] shouldBe "approve"
     }
 
     "once engagement closes, only the engaged form still sees the workflow" {
@@ -196,8 +208,15 @@ class WorkflowWindowsTest : StringSpec({
         patchNotes(engagedForm, "reopened")
         val states = recompute(engagedForm)
         entry(states) shouldBe before
-        // Its singleton still counts: the form still reads Finished while the workflow lives.
+        // Its singleton still counts: the form still reads Finished while the workflow lives, and still holds off
+        // the peer that waits on it.
         formFacts(states) shouldContain WSC.finished
+        entry(states, "followUp").shouldNotBeNull()[WFS.eligible] shouldBe false
+        // The popover still lists it, but with no action: nothing can be done in a frozen workflow.
+        val frozenRow = behindFinished(engagedForm).single()
+        frozenRow[WFD.workflowId] shouldBe "inspection"
+        frozenRow[WFS.ctaTask].shouldBeNull()
+        frozenRow[SWF.actionText].shouldBeNull()
         entry(recompute(otherForm)).shouldBeNull()
         view(engagedForm)[WVF.phase] shouldBe WfPhase.lifetimeOnly.name
         user.expectError(EXC.conflict, GEP.workflowSave, saveBody(engagedForm))["errorMessage"].toOptStr()
@@ -210,9 +229,12 @@ class WorkflowWindowsTest : StringSpec({
 
     "past its lifetime the workflow vanishes, but the engagement is kept and can still be withdrawn" {
         moveTo(110)
+        // Before any recompute the stored entry still says Finished; the popover already knows better.
+        behindFinished(engagedForm) shouldBe emptyList()
         val states = recompute(engagedForm)
         entry(states).shouldBeNull()
         formFacts(states) shouldNotContain WSC.finished
+        entry(states, "followUp").shouldNotBeNull()[WFS.eligible] shouldBe true
         states.any { it[GE.traitId].toOptStr() == WFS.workflowEngagement } shouldBe true
         viewFails(engagedForm)
         engage(engagedForm, engaged = false)

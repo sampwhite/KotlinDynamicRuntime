@@ -215,7 +215,7 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  *
  * ### Time windows (issue #790)
  *
- * Each workflow's [WfPhase] is taken once, at `cxt.now()`. Outside its **lifetime** a workflow is not emitted at
+ * Each workflow's [WfPhase] is taken once, on the instance clock (see [WorkflowPhases]). Outside its **lifetime** a workflow is not emitted at
  * all, engaged or not: it is as good as not configured, and it contributes no singletons -- though the form's
  * engagement and approvals, being asserted, are kept for when it returns. Past its **relevancy** nothing is
  * calculated: a form not engaged with it loses its entry (the design's implicit delete), and an engaged form's
@@ -238,7 +238,7 @@ object WorkflowStateDeriver : GedraStateDeriver {
         // lifetime a workflow is as good as not configured, so it is not emitted -- even for an engaged form,
         // whose engagement (asserted) survives regardless. Past its relevancy only an engaged form keeps an entry,
         // frozen as last calculated; everything else is calculated below.
-        val now = cxt.now()
+        val now = cxt.instanceNow()
         val phases = normal.mapValues { (_, w) -> w.def.phaseAt(now) }
         val declared = normal.filterKeys { phases.getValue(it).calculates }
         val frozen = normal.keys.filter { phases.getValue(it) == WfPhase.lifetimeOnly && it in engaged }

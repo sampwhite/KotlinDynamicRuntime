@@ -73,10 +73,12 @@ class WfWindowsTest {
         assertFailsWith<KdrException> {
             parseWfDef(cxt, normal { lifetime(start = "2026-03-01T00:00:00Z"); relevancy(start = "2026-01-01T00:00:00Z") })
         }
-        // A window that closes before it opens -- here only once the engagement start meets relevancy's end.
-        assertFailsWith<KdrException> {
+        // A window that closes before it opens -- here only once the engagement start meets relevancy's end. The
+        // refusal says the end was inherited, so the author is not sent looking for an engagement end they never wrote.
+        val never = assertFailsWith<KdrException> {
             parseWfDef(cxt, normal { relevancy(end = "2026-06-01T00:00:00Z"); engagement(start = "2026-09-01T00:00:00Z") })
         }
+        assertTrue(never.message.orEmpty().contains("ends when its relevancy window does"), never.message)
         // A date that is not one.
         assertFailsWith<KdrException> { parseWfDef(cxt, normal { lifetime(end = "next year") }) }
     }
