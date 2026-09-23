@@ -13,6 +13,7 @@ import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import kotlin.time.Instant
 
 /**
  * The field names of a workflow definition's JSON, and the names of the schema types that describe it
@@ -37,6 +38,7 @@ object WFD {
     const val eligibilityType = "WfEligibility"
     const val singletonType = "WfSingleton"
     const val approvalType = "WfApproval"
+    const val windowType = "WfWindow"
 
     const val workflowId = "workflowId"
     const val entry = "entry"
@@ -108,6 +110,21 @@ object WFD {
      */
     const val display = "display"
 
+    /**
+     * A normal workflow's three nested, optional time windows (issue #790), outermost first: outside its
+     * [lifetime] the workflow is as good as not configured; outside [relevancy] nothing is calculated for it;
+     * outside [engagement] no form may newly engage. See [WfWindows].
+     */
+    const val lifetime = "lifetime"
+    const val relevancy = "relevancy"
+    const val engagement = "engagement"
+
+    /** On a time window: its first instant, inclusive. */
+    const val start = "start"
+
+    /** On a time window: the instant it closes, exclusive. */
+    const val end = "end"
+
     /** Separates a bundle id from a workflow id in a [WfRef]'s text form. */
     const val refSep = '#'
 }
@@ -125,6 +142,12 @@ object WFD {
 object WVF {
     /** Whether the call resolved a workflow at all -- false when the client has no such (or no creation) one. */
     const val found = "found"
+
+    /**
+     * A normal workflow's [WfPhase] at the moment of the view (issue #790), by name -- so a page can draw a frozen
+     * workflow (`lifetimeOnly`) read-only and offer engaging only when `engageable`. Absent for creation and survey.
+     */
+    const val phase = "phase"
 
     /** The workflow's stored reference, as [WfRef] text -- what a created gedra records under `creationWorkflowId`. */
     const val ref = "ref"
@@ -485,6 +508,8 @@ class WfDef(
     val label: String = "",
     eligibility: List<WfEligibility> = emptyList(),
     singletons: List<WfSingleton> = emptyList(),
+    /** The time windows (issue #790); only a [WfEntry.normal] workflow may declare any. */
+    val windows: WfWindows = WfWindows.none,
 ) {
     /** The tasks, in the order they are presented. */
     val tasks: List<WfTask> = tasks.toList()
@@ -624,6 +649,17 @@ class WfDef(
                     "cfacts; only a normal workflow emits them, since only an engaged workflow contributes one.",
             )
         }
+        if (!windows.isEmpty) {
+            // A creation or survey workflow is how every form is made and kept -- switching one off by date would
+            // strand the forms, and nothing chooses to engage with them, so the windows have nothing to govern.
+            if (entry != WfEntry.normal) {
+                throw KdrException.mkConv(
+                    "${entry.name.replaceFirstChar { it.uppercase() }} workflow '$workflowId' declares time " +
+                        "windows; only a normal workflow has them, since only a normal workflow is chosen for a form.",
+                )
+            }
+            windows.check(workflowId)
+        }
         val seenSingletons = HashSet<String>()
         for (r in singletons) {
             // The list is hardwired because each name carries code behavior; a workflow cannot invent one, and a
@@ -651,6 +687,9 @@ class WfDef(
 
     /** The task named, or null. */
     fun task(id: String): WfTask? = tasksById[id]
+
+    /** Where the workflow stands in its time windows at [now] (issue #790); always engageable when it has none. */
+    fun phaseAt(now: Instant): WfPhase = windows.phaseAt(now)
 
     /**
      * Whether a page shows the list of tasks: **behavior, not configuration** -- a workflow with one task has
@@ -729,6 +768,12 @@ object WfDefSchema {
             property(WFD.prompt, "The text above the approve button -- a template, evaluated in two passes.", required = true)
             property(WFD.button, "The approve button's own text -- a template, evaluated in two passes.", required = true)
         }
+        type(WFD.windowType) {
+            type = SCT.kObject
+            description = "A time window: from its start (inclusive) to its end (exclusive); a missing bound falls back to the enclosing window's."
+            property(WFD.start, "When the window opens; absent, the enclosing window's start, or no limit.") { dateTime() }
+            property(WFD.end, "When the window closes; absent, the enclosing window's end, or no limit.") { dateTime() }
+        }
         type(WFD.taskType) {
             type = SCT.kObject
             description = "One task of a workflow: the traits it collects and the saves it offers -- or, with an approval, none, completed by a reviewer."
@@ -786,6 +831,15 @@ object WfDefSchema {
                 allowCoerce = true
                 items { ref(WFD.singletonType) }
             }
+            property(WFD.lifetime, "A normal workflow's lifetime: outside it, the workflow is as good as not configured.") {
+                ref(WFD.windowType)
+            }
+            property(WFD.relevancy, "Inside the lifetime: when the workflow is calculated. Outside it, an engaged form's state is frozen.") {
+                ref(WFD.windowType)
+            }
+            property(WFD.engagement, "Inside relevancy: when a form may engage with the workflow.") {
+                ref(WFD.windowType)
+            }
         }
     }
 
@@ -842,6 +896,10 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
     if (singletons.isNotEmpty()) {
         put(WFD.singletons, singletons.map { linkedMapOf(WFD.cfact to it.cfact, WFD.kWhen to it.whenExpr) })
     }
+    // As declared, not resolved: a stored definition keeps which bounds were written and which fall back.
+    if (!windows.lifetime.isEmpty) put(WFD.lifetime, windows.lifetime.toJsonMap())
+    if (!windows.relevancy.isEmpty) put(WFD.relevancy, windows.relevancy.toJsonMap())
+    if (!windows.engagement.isEmpty) put(WFD.engagement, windows.engagement.toJsonMap())
 }
 
 /**
@@ -904,6 +962,11 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
         singletons = m[WFD.singletons].toJsonListOfMaps().map { r ->
             WfSingleton(r[WFD.cfact].toOptStr() ?: "", r[WFD.kWhen].toOptStr() ?: "")
         },
+        windows = WfWindows(
+            lifetime = WfWindow.fromJson(m[WFD.lifetime]),
+            relevancy = WfWindow.fromJson(m[WFD.relevancy]),
+            engagement = WfWindow.fromJson(m[WFD.engagement]),
+        ),
     )
 }
 
@@ -924,6 +987,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     private val functions = mutableListOf<Map<String, Any?>>()
     private val eligibility = mutableListOf<Map<String, Any?>>()
     private val singletons = mutableListOf<Map<String, Any?>>()
+    private val windows = linkedMapOf<String, Map<String, Any?>>()
 
     /**
      * What the workflow is called (issue #719): a page's title over its form. A template like a task's label,
@@ -962,6 +1026,28 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
         singletons.add(linkedMapOf(WFD.cfact to cfact, WFD.kWhen to whenExpr))
     }
 
+    /**
+     * The workflow's lifetime (issue #790): outside it, the workflow is as good as not configured. Bounds are
+     * ISO-8601 instants (`2026-10-01T00:00:00Z`); leave one out for no limit on that side.
+     */
+    fun lifetime(start: String? = null, end: String? = null) = window(WFD.lifetime, start, end)
+
+    /**
+     * When the workflow is calculated, inside its [lifetime] (issue #790). A missing bound falls back to the
+     * lifetime's. Outside it, a form engaged with the workflow keeps its last state, read-only.
+     */
+    fun relevancy(start: String? = null, end: String? = null) = window(WFD.relevancy, start, end)
+
+    /** When a form may engage with the workflow, inside its [relevancy] (issue #790); a missing bound falls back. */
+    fun engagement(start: String? = null, end: String? = null) = window(WFD.engagement, start, end)
+
+    private fun window(name: String, start: String?, end: String?) {
+        windows[name] = buildMap {
+            start?.let { put(WFD.start, it) }
+            end?.let { put(WFD.end, it) }
+        }
+    }
+
     /** The definition as JSON, ready for [parseWfDef]. */
     fun build(): Map<String, Any?> = buildMap {
         put(WFD.workflowId, workflowId)
@@ -971,6 +1057,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
         if (functions.isNotEmpty()) put(WFD.functions, functions.toList())
         if (eligibility.isNotEmpty()) put(WFD.eligibility, eligibility.toList())
         if (singletons.isNotEmpty()) put(WFD.singletons, singletons.toList())
+        putAll(windows)
     }
 }
 

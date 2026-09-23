@@ -1,0 +1,222 @@
+package com.dynamicruntime.kdn
+
+import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GED
+import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GPF
+import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WFS
+import com.dynamicruntime.common.gedra.workflow.WSC
+import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfPhase
+import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
+import com.dynamicruntime.common.gedra.workflow.userHasLabel
+import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOrEmpty
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
+
+/**
+ * A normal workflow's time windows end to end (issue #790), walking the instance clock through every phase of one
+ * workflow: before its lifetime, lifetime only, relevant, open for engagement, relevant again, past relevancy
+ * (frozen), and past its lifetime. At each step it checks what the stored state says and what the engage, view,
+ * save and approve endpoints allow.
+ *
+ * A per-test dynamic client, so the windows can be placed relative to the clock the test controls -- minutes
+ * apart rather than days, so the test user's session outlives the walk.
+ */
+class WorkflowWindowsTest : StringSpec({
+    val cxt = Startup.mkTestBootCxt("wfWindows790", "wfWindows790")
+    val client = "wfwin790"
+    val clock = cxt.instanceConfig.clock
+    clock.freeze()
+    // Whole seconds: a stored definition keeps its instants to the millisecond, as the wire does.
+    val t0 = Instant.fromEpochSeconds(cxt.instanceNow().epochSeconds)
+    fun at(minutes: Int) = (t0 + minutes.minutes).toString()
+    fun moveTo(minutes: Int) = clock.setAbsolute(t0 + minutes.minutes)
+
+    fun asClient(c: String): KdrCxt = cxt.mkSubContext("setup", c).also { it.userId = 9000L }
+
+    // Lifetime [10, 100), relevancy [20, 80), engagement [30, 50): every phase has room to be visited.
+    val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+        defineClient(
+            ClientDef(
+                clientId = client, name = client, usageType = ClientUsageType.dev,
+                audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                userLabels = listOf("reviewer"),
+            ),
+        )
+        cfact("inspApproved", "Inspection", "The inspection was approved.")
+        cfact("inspDone", "Inspection", "The visit's notes say it is done.")
+        trait("VisitEntry", "visit", setOf(GedraDataType.formDoc), "A site visit.") {
+            property("notes", "What was seen.") { type = SCT.string }
+        }
+        workflow("inspection", WfEntry.normal) {
+            label = "Inspection"
+            lifetime(at(10), at(100))
+            relevancy(at(20), at(80))
+            engagement(at(30), at(50))
+            // Finished once the notes say "done" -- data-driven, so a frozen entry is told apart from a recalculated
+            // one by changing the notes after relevancy closes.
+            function(computeCFactsFromData {
+                trait = "visit"
+                valuePath = "notes"
+                map("done", "inspDone")
+            })
+            singleton(WSC.finished, "inspDone")
+            task("record", "Record the visit") { trait("visit"); save("saveVisit", "Save", WfSaveKind.edit) }
+            task("approve", "Approve") {
+                approval("inspApproved", "Read it.", "Approve")
+                function(userHasLabel { label = "reviewer" })
+            }
+        }
+    }
+    GedraConfigService.get(cxt).writeConfig(asClient(client), config)
+    GedraConfigReload.reloadClient(cxt, client)
+
+    val user = TestUser.create(cxt, "u@$client.test", userClient = client)
+
+    fun newForm(): String = user.postItem(
+        GEP.formDocCreate,
+        mapOf(GDF.entries to listOf(mapOf(GE.traitId to "visit", GE.data to mapOf("notes" to "fine")))),
+    )[GDF.gedraId].toOptStr()!!
+
+    fun recompute(gid: String) = user.postData(GEP.formDocRecomputeState, mapOf(GDF.gedraId to gid))[GDF.states].toJsonListOfMaps()
+    fun entry(states: List<Map<String, Any?>>): Map<String, Any?>? = states
+        .firstOrNull { it[GE.traitId].toOptStr() == WFS.workflowState && it[GE.data].toJsonMapOrEmpty()[WFD.workflowId] == "inspection" }
+        ?.get(GE.data)?.toJsonMapOrEmpty()
+    fun formFacts(states: List<Map<String, Any?>>) = states.filter { it[GE.traitId].toOptStr() == GT.cfacts }
+        .flatMap { it[GE.data].toJsonMapOrEmpty()[GT.facts].toJsonListOrEmpty() }
+    fun engage(gid: String, engaged: Boolean = true) =
+        user.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, GDF.workflowId to "inspection", WFS.engaged to engaged))
+    fun engageFails(gid: String) =
+        user.expectError(EXC.badInput, GEP.workflowEngage, mapOf(GDF.gedraId to gid, GDF.workflowId to "inspection"))[
+            "errorMessage"].toOptStr().orEmpty()
+    fun view(gid: String) = user.getData(GEP.workflowView, mapOf(GDF.workflowId to "inspection", GDF.gedraId to gid))
+    fun viewFails(gid: String) =
+        user.expectError(EXC.notFound, GEP.workflowView, args = mapOf(GDF.workflowId to "inspection", GDF.gedraId to gid))
+    fun saveBody(gid: String, notes: String = "done") = mapOf(
+        GDF.workflowId to "inspection", GDF.taskId to "record", GDF.saveId to "saveVisit", GDF.gedraId to gid,
+        GDF.entries to listOf(mapOf(GE.traitId to "visit", GE.data to mapOf("notes" to notes))),
+    )
+    // A raw patch, which no workflow window governs -- how the data changes underneath a frozen workflow.
+    fun patchNotes(gid: String, notes: String) = user.postItems(
+        GEP.patch,
+        mapOf(
+            GPF.targets to mapOf(
+                GedraDataType.formDoc.name to listOf(
+                    mapOf(
+                        GDF.gedraId to gid,
+                        GPF.edits to listOf(
+                            mapOf(
+                                GED.action to GedraEditAction.addOrReplace.name,
+                                GE.traitId to "visit", GE.data to mapOf("notes" to notes),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    val engagedForm = newForm()
+    val otherForm = newForm()
+
+    "before its lifetime a workflow is not there at all" {
+        entry(recompute(engagedForm)).shouldBeNull()
+        viewFails(engagedForm)
+        engageFails(engagedForm) shouldContain "is not a normal workflow"
+    }
+
+    "in its lifetime but before relevancy, nothing is calculated and nothing may engage" {
+        moveTo(15)
+        entry(recompute(engagedForm)).shouldBeNull()
+        viewFails(engagedForm)
+        engageFails(engagedForm) shouldContain "engagement opens at ${at(30)}"
+    }
+
+    "relevant: calculated, eligibility and all, but engagement has not opened" {
+        moveTo(25)
+        entry(recompute(engagedForm)).shouldNotBeNull()[WFS.eligible] shouldBe true
+        viewFails(engagedForm)
+        engageFails(engagedForm) shouldContain "engagement opens at ${at(30)}"
+    }
+
+    "in the engagement window a form engages, and the workflow is shown and saved" {
+        moveTo(35)
+        view(otherForm)[WVF.phase] shouldBe WfPhase.engageable.name
+        entry(engage(engagedForm)[GDF.states].toJsonListOfMaps()).shouldNotBeNull()[WFS.singletonCfacts] shouldBe emptyList<String>()
+        user.postData(GEP.workflowSave, saveBody(engagedForm))
+        val states = recompute(engagedForm)
+        entry(states).shouldNotBeNull()[WFS.singletonCfacts] shouldBe listOf(WSC.finished)
+        formFacts(states) shouldContain WSC.finished
+    }
+
+    "once engagement closes, only the engaged form still sees the workflow" {
+        moveTo(60)
+        view(engagedForm)[WVF.phase] shouldBe WfPhase.relevant.name
+        viewFails(otherForm)
+        engageFails(otherForm) shouldContain "engagement closed at ${at(50)}"
+        // Still calculated, so the engaged form's work goes on.
+        user.postData(GEP.workflowSave, saveBody(engagedForm))
+    }
+
+    "past relevancy an engaged form's state is frozen and read-only, and an unengaged one's is gone" {
+        moveTo(60)
+        val before = entry(recompute(engagedForm)).shouldNotBeNull()
+        before[WFS.singletonCfacts] shouldBe listOf(WSC.finished)
+        moveTo(90)
+        // The notes no longer say "done": a recalculation would drop Finished, and the frozen entry must not.
+        patchNotes(engagedForm, "reopened")
+        val states = recompute(engagedForm)
+        entry(states) shouldBe before
+        // Its singleton still counts: the form still reads Finished while the workflow lives.
+        formFacts(states) shouldContain WSC.finished
+        entry(recompute(otherForm)).shouldBeNull()
+        view(engagedForm)[WVF.phase] shouldBe WfPhase.lifetimeOnly.name
+        user.expectError(EXC.conflict, GEP.workflowSave, saveBody(engagedForm))["errorMessage"].toOptStr()
+            .orEmpty() shouldContain "closed at ${at(80)}"
+        user.expectError(
+            EXC.conflict, GEP.workflowApprove,
+            mapOf(GDF.gedraId to engagedForm, GDF.workflowId to "inspection", GDF.taskId to "approve"),
+        )
+    }
+
+    "past its lifetime the workflow vanishes, but the engagement is kept and can still be withdrawn" {
+        moveTo(110)
+        val states = recompute(engagedForm)
+        entry(states).shouldBeNull()
+        formFacts(states) shouldNotContain WSC.finished
+        states.any { it[GE.traitId].toOptStr() == WFS.workflowEngagement } shouldBe true
+        viewFails(engagedForm)
+        engage(engagedForm, engaged = false)
+    }
+
+    afterSpec { clock.reset() }
+})

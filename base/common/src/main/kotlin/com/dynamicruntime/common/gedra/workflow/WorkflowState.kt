@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -210,21 +211,41 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  * (its view computes the same answer live, from the same [WorkflowTaskStatus]).
  *
  * See [WorkflowEligibility] for why only the form's own cfacts, never the caller's. A retired-but-engaged
- * workflow's bare entry has none of these, having no definition left to compute against. The CTA task and its
- * status (#785) and the time windows (#790) add their own fields to the open entry.
+ * workflow's bare entry has none of these, having no definition left to compute against.
+ *
+ * ### Time windows (issue #790)
+ *
+ * Each workflow's [WfPhase] is taken once, at `cxt.now()`. Outside its **lifetime** a workflow is not emitted at
+ * all, engaged or not: it is as good as not configured, and it contributes no singletons -- though the form's
+ * engagement and approvals, being asserted, are kept for when it returns. Past its **relevancy** nothing is
+ * calculated: a form not engaged with it loses its entry (the design's implicit delete), and an engaged form's
+ * entry is **frozen** -- carried forward from [GedraStateContext.currentState] exactly as last calculated, singletons
+ * and all, so the form still reads Finished or Needs Review while the workflow lives. That carry-forward is the
+ * one deliberate exception to a deriver never reading its own last answer: the design says nothing is calculated
+ * there, so the last calculation is the answer. The workflow's endpoints refuse saves and approvals while frozen,
+ * so the data cannot move underneath it.
  */
 object WorkflowStateDeriver : GedraStateDeriver {
     override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
 
     override fun derive(cxt: KdrCxt, state: GedraStateContext): List<Map<String, Any?>> {
-        val declared = WorkflowService.get(cxt).forClient(state.row.client).workflows.values
+        val normal = WorkflowService.get(cxt).forClient(state.row.client).workflows.values
             .filter { it.def.entry == WfEntry.normal }
             .associateBy { it.def.workflowId }
         // The workflows this form is engaged with, read off the asserted entries the recompute preserves.
         val engaged = engagedWorkflowIds(state.currentState)
+        // Where each stands in its time windows (issue #790), at one moment for the whole recompute. Outside its
+        // lifetime a workflow is as good as not configured, so it is not emitted -- even for an engaged form,
+        // whose engagement (asserted) survives regardless. Past its relevancy only an engaged form keeps an entry,
+        // frozen as last calculated; everything else is calculated below.
+        val now = cxt.now()
+        val phases = normal.mapValues { (_, w) -> w.def.phaseAt(now) }
+        val declared = normal.filterKeys { phases.getValue(it).calculates }
+        val frozen = normal.keys.filter { phases.getValue(it) == WfPhase.lifetimeOnly && it in engaged }
+            .associateWith { previousEntry(state.currentState, it) }
         // Declared first, in registry order, then any engaged workflow the registry no longer offers -- so the
         // ordering is stable and a vanished-but-engaged workflow lands at the end rather than reordering the rest.
-        val ids = declared.keys + engaged.filterNot { it in declared.keys }
+        val ids = normal.keys.filter { it in declared || it in frozen } + engaged.filterNot { it in normal.keys }
         val registry = SchemaService.get(cxt).cfactsFor(state.row.client)
         val formFacts = WorkflowEligibility.formFacts(state.derivedThisPass)
 
@@ -235,8 +256,11 @@ object WorkflowStateDeriver : GedraStateDeriver {
             runCfactCalc(cxt, w.def, state.row.entries, state.row.client) +
                 WorkflowApprovals.cfacts(w.def, approvals.getValue(id))
         }
+        // A frozen workflow still contributes what it last did: the form reads Finished after the review closes.
         val singletons = declared.mapValues { (id, w) ->
             if (id in engaged) WorkflowSingletons.emitted(registry, w.def, formFacts + own.getValue(id)) else emptyList()
+        } + frozen.mapValues { (_, entry) ->
+            entry[WFS.singletonCfacts].toJsonListOrEmpty().mapNotNull { it.toOptStr() }
         }
         // What the engaged workflows contribute to the form's set, in declaration order, once each.
         val contributed = LinkedHashSet<String>().apply { singletons.values.forEach { addAll(it) } }
@@ -246,6 +270,8 @@ object WorkflowStateDeriver : GedraStateDeriver {
             formFacts + singletons.filterKeys { it != workflowId }.values.flatten()
 
         val out = ids.map { workflowId ->
+            // Frozen: its last calculated entry, carried forward as it stood.
+            frozen[workflowId]?.let { return@map mapOf(GE.traitId to WFS.workflowState, GE.data to it) }
             val data = linkedMapOf<String, Any?>(WFD.workflowId to workflowId)
             declared[workflowId]?.let {
                 data[WFS.computedAgainstRef] = it.ref.text
@@ -271,6 +297,15 @@ object WorkflowStateDeriver : GedraStateDeriver {
         return if (contributed.isEmpty()) out else out + mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to contributed.toList()))
     }
 }
+
+/**
+ * The stored [WFS.workflowState] entry for [workflowId] among [entries] (issue #790), or a bare one naming only the
+ * workflow when there is none -- what a frozen workflow carries forward.
+ */
+fun previousEntry(entries: List<Map<String, Any?>>, workflowId: String): Map<String, Any?> = entries
+    .firstOrNull { it[GE.traitId].toOptStr() == WFS.workflowState && it[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() == workflowId }
+    ?.get(GE.data)?.toJsonMapOrEmpty()
+    ?: mapOf(WFD.workflowId to workflowId)
 
 /**
  * The workflow ids [entries] say this form is currently engaged with (issue #794) -- read from the asserted
