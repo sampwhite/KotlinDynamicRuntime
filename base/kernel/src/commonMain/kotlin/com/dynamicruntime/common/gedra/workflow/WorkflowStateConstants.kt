@@ -89,6 +89,29 @@ object WFS {
      */
     const val tasksDone = "tasksDone"
 
+    // --- approvals (issue #787) ---
+
+    /** Generated entry type of the [workflowApproval] trait. */
+    const val workflowApprovalEntry = "WorkflowApprovalEntry"
+
+    /**
+     * Trait id: one **asserted** entry per approved approval task, keyed by workflow and task (issue #787). Apart
+     * from the derived [workflowState] -- an approval is a person's act, which no recompute may compute away.
+     */
+    const val workflowApproval = "workflowApproval"
+
+    /** On an approval: the approval task it records; with [WFD.workflowId], the entry's primary key. */
+    const val taskId = "taskId"
+
+    /** On an approval: when it was approved. */
+    const val approvedAt = "approvedAt"
+
+    /** On an approval: the numeric userId of the reviewer who approved it. */
+    const val approvedBy = "approvedBy"
+
+    /** [kind] of the engagement event recording an approval; its [note] names the task. */
+    const val approvedEvent = "approved"
+
     /** The named type of one [eligibilityFailures] element. */
     const val workflowEligibilityFailure = "WorkflowEligibilityFailure"
 

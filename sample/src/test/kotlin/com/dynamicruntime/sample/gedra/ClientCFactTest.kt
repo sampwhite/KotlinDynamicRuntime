@@ -64,7 +64,8 @@ class ClientCFactTest : StringSpec({
         val global = SchemaService.get(cxt).cfactsFor(null).names
         val acme = SchemaService.get(cxt).cfactsFor(SC.acme).names
         acme.containsAll(global) shouldBe true
-        acme shouldBe global + SC.underAudit
+        // Acme's own two: the audit it is under, and (issue #787) an approved audit review.
+        acme shouldBe global + setOf(SC.underAudit, SC.auditApproved)
     }
 
     "the shared reference answers with the caller's own client" {

@@ -45,6 +45,7 @@ fun resolveWorkflowFunctions(
                     def.workflowId, "task '${task.id}'", task.functionUsages, WfEventScope.task,
                     collectedTraits = task.traits.map { it.traitId }.toSet(),
                 )
+                bundleScope.checkApprovalAuthority(def, task)
             }
         }
     }
@@ -64,6 +65,32 @@ private class ResolutionScope(
     val mode: BootCheckMode,
     val issues: MutableList<GedraConfigIssue>,
 )
+
+/**
+ * An approval task (issue #787) is approved only by a caller the task's `viewerCfacts` functions call a
+ * [WFC.reviewer] -- the approve endpoint asks exactly that. So a task none of whose *resolved* functions can emit
+ * it could never be approved by anyone, which is reported here rather than discovered by the first reviewer who
+ * cannot press the button. Reported, not dropped: there is nothing to drop that would make the task work.
+ */
+private fun ResolutionScope.checkApprovalAuthority(def: WfDef, task: WfTask) {
+    task.approval ?: return
+    val resolved = task.resolvedFunctions.map { it.fn }.toSet()
+    val grantsReview = task.functionUsages.any { usage ->
+        val creation = byFn[usage.fn]
+        usage.fn in resolved && creation?.event == WfEventType.viewerCfacts && WFC.reviewer in creation.emittedCfacts(usage)
+    }
+    if (!grantsReview) {
+        reportConfigProblem(
+            cxt, mode,
+            GedraConfigIssue(
+                "Workflow '${def.workflowId}' in client '$client' has an approval task '${task.id}' with no " +
+                    "viewerCfacts function emitting '${WFC.reviewer}' (a userHasLabel, say), so nobody could approve it.",
+                "Keeping the task; it cannot be approved until one is added.",
+            ),
+            issues,
+        )
+    }
+}
 
 /**
  * Resolves one placement's usage list, dropping (with a reported problem) any that will not build.

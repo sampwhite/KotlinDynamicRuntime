@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.ULH
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WfFunction
@@ -66,6 +67,8 @@ class WfFunctionResolutionTest : StringSpec({
         reported("emitBadCfact", "does not declare") shouldBe true
         reported("testPing", "does not belong on a task") shouldBe true
         reported("userHasLabel", "does not suggest") shouldBe true
+        // An approval task nobody could approve (issue #787): no function on it can emit the reviewer cfact.
+        reported("approveNothing", "nobody could approve it") shouldBe true
     }
 
     "a global workflow's literal label is not held to any client's suggestions" {
@@ -169,6 +172,10 @@ private class WfFnFixture : ComponentDefinition {
                     // A literal label the client does not suggest -- a misspelling of its `reviewer` (issue #786).
                     function(userHasLabel { label = "reviwer" })
                 }
+            }
+            // An approval task with no viewerCfacts function emitting the reviewer cfact (issue #787).
+            workflow("approveNothing", WfEntry.normal) {
+                task("approve", "Approve") { approval(WSC.finished, "Approve it.", "Approve") }
             }
         }
 

@@ -130,6 +130,21 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
         // Open so a later slice can record against this entry without reshaping a type every consumer parsed.
         additionalProperties = true
     }
+
+    stateTrait(
+        WFS.workflowApprovalEntry, WFS.workflowApproval, setOf(GedraDataType.formDoc),
+        StateTraitClass.asserted,
+        "That a reviewer approved an approval task of a workflow for this form, and when -- an asserted fact a " +
+            "recompute or a batch job must never compute away.",
+        primaryKey = listOf(WFD.workflowId, WFS.taskId),
+    ) {
+        property(WFD.workflowId, "The workflow the approval belongs to; with the task, the entry's primary key.", required = true)
+        property(WFS.taskId, "The approval task approved.", required = true)
+        property(WFS.approvedAt, "When it was approved.", required = true) { dateTime() }
+        property(WFS.approvedBy, "Numeric userId of the reviewer who approved it.", required = true) { type = SCT.integer }
+        // Open, as the other per-workflow entries are: a revocation or a comment would add a field here.
+        additionalProperties = true
+    }
 }
 
 /**
@@ -176,8 +191,9 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  *
  * A declared workflow's entry also carries, in this order of computation:
  *
- *  1. **Its own cfacts** (issue #784): what its `cfactCalc` functions conclude from the form's data --
- *     [WFS.cfacts], per workflow and so kept on its entry, not in the form's set.
+ *  1. **Its own cfacts** (issue #784): what its `cfactCalc` functions conclude from the form's data, plus the
+ *     configured cfact of each approval task a reviewer has approved (issue #787) -- [WFS.cfacts], per workflow
+ *     and so kept on its entry, not in the form's set.
  *  2. **The singleton cfacts it contributes** ([WFS.singletonCfacts]): each of its [WfDef.singletons] rules
  *     whose condition matches its *current* cfacts -- the form's (from the derivers before this one) plus its
  *     own. Only an **engaged** workflow contributes; the union is emitted as a [GT.cfacts] contribution, which
@@ -213,7 +229,12 @@ object WorkflowStateDeriver : GedraStateDeriver {
         val formFacts = WorkflowEligibility.formFacts(state.derivedThisPass)
 
         // Each declared workflow's own cfacts, then the singletons its rules emit over its current cfacts.
-        val own = declared.mapValues { (_, w) -> runCfactCalc(cxt, w.def, state.row.entries, state.row.client) }
+        // Approvals (issue #787) are asserted entries the recompute preserves; read them once for every workflow.
+        val approvals = declared.mapValues { (id, _) -> WorkflowApprovals.of(state.currentState, id) }
+        val own = declared.mapValues { (id, w) ->
+            runCfactCalc(cxt, w.def, state.row.entries, state.row.client) +
+                WorkflowApprovals.cfacts(w.def, approvals.getValue(id))
+        }
         val singletons = declared.mapValues { (id, w) ->
             if (id in engaged) WorkflowSingletons.emitted(registry, w.def, formFacts + own.getValue(id)) else emptyList()
         }
@@ -231,7 +252,9 @@ object WorkflowStateDeriver : GedraStateDeriver {
                 data[WFS.cfacts] = own.getValue(workflowId).sorted()
                 data[WFS.singletonCfacts] = singletons.getValue(workflowId)
                 if (workflowId in engaged) {
-                    val cta = WorkflowTaskStatus.ctaOf(cxt, state.row.client, it.def, state.row.entries)
+                    val cta = WorkflowTaskStatus.ctaOf(
+                        cxt, state.row.client, it.def, state.row.entries, approvals.getValue(workflowId).keys,
+                    )
                     data[WFS.tasksDone] = cta == null
                     cta?.let { (task, status) ->
                         data[WFS.ctaTask] = task.id

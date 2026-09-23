@@ -77,6 +77,25 @@ object WorkflowEngagement {
         }
     }
 
+    /**
+     * [current] with [event] appended to the [workflowId] engagement entry's trail -- the way a later step records a
+     * milestone against the workflow (an approval, issue #787), which is what the open trail was declared for.
+     * Everything else rides through unchanged. The entry must exist: a milestone happens in a workflow the form is
+     * in, and the caller has already checked that it is.
+     */
+    fun withEvent(current: List<Map<String, Any?>>, workflowId: String, event: Map<String, Any?>): List<Map<String, Any?>> =
+        current.map { entry ->
+            if (!isEngagementFor(entry, workflowId)) {
+                entry
+            } else {
+                val data = entry[GE.data].toJsonMapOrEmpty()
+                mapOf(
+                    GE.traitId to WFS.workflowEngagement,
+                    GE.data to data + (WFS.events to data[WFS.events].toJsonListOfMaps() + listOf(event)),
+                )
+            }
+        }
+
     /** Whether [entries] hold an engagement entry for [workflowId], engaged or not. */
     fun hasEngagement(entries: List<Map<String, Any?>>, workflowId: String): Boolean =
         entries.any { isEngagementFor(it, workflowId) }
