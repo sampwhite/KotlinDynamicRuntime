@@ -161,7 +161,7 @@ class WorkflowStateFoundationTest : StringSpec({
         // The deriver keeps a bare entry for it -- no revision, since there is no definition left to compute
         // against -- beside the declared workflow's.
         val before = entriesOf(statesOf(user.postData(recompute, mapOf(GDF.gedraId to gid))), WFS.workflowState)
-        before.map { it[WFD.workflowId].toOptStr() } shouldContainExactly listOf(SW.auditReview, retired)
+        before.map { it[WFD.workflowId].toOptStr() } shouldContainExactly listOf(SW.auditReview, SW.siteFollowUp, retired)
         before.single { it[WFD.workflowId].toOptStr() == retired }[WFS.computedAgainstRef].shouldBeNull()
 
         // Re-engaging it is still refused -- the form cannot be put *into* a workflow that no longer exists...
@@ -171,7 +171,7 @@ class WorkflowStateFoundationTest : StringSpec({
             user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to retired, WFS.engaged to false)),
         )
         entriesOf(after, WFS.workflowState).map { it[WFD.workflowId].toOptStr() } shouldContainExactly
-            listOf(SW.auditReview)
+            listOf(SW.auditReview, SW.siteFollowUp)
         entriesOf(after, WFS.workflowEngagement).single()[WFS.engaged] shouldBe false
     }
 
@@ -249,6 +249,28 @@ class WorkflowStateFoundationTest : StringSpec({
             user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview, WFS.engaged to false)),
         )
         formFacts(out) shouldContainExactly listOf(SVY.surveyComplete, SVY.surveyValid)
+    }
+
+    "a workflow is gated by its peers' singletons, never by its own" {
+        val user = TestUser.create(cxt, "wfs-peers@acme.test", userClient = SC.acme)
+        val gid = newForm(user, findings = SC.findingsOpen)
+        fun state(states: List<Map<String, Any?>>, workflowId: String) =
+            entriesOf(states, WFS.workflowState).single { it[WFD.workflowId].toOptStr() == workflowId }
+
+        // Engaging the review raises `needsReview`. Both workflows test `~needsReview`: the review, whose own
+        // singleton it is, stays eligible -- it must not read as ineligible for itself -- while the follow-up, a
+        // peer, is held off by it.
+        val states = statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview)))
+        state(states, SW.auditReview)[WFS.eligible] shouldBe true
+        state(states, SW.siteFollowUp)[WFS.eligible] shouldBe false
+        failureIds(state(states, SW.siteFollowUp)) shouldContainExactly listOf(SW.noOpenReview)
+
+        // The gate agrees with the stored verdict, being the same computation: the follow-up is refused...
+        user.expectError(EXC.badInput, engage, data = mapOf(GDF.gedraId to gid, GDF.workflowId to SW.siteFollowUp))
+            .toString() shouldContain "Wait for the pending review"
+        // ...and re-engaging the review, which its own `needsReview` must not block, is not.
+        val again = statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview)))
+        state(again, SW.auditReview)[WFS.eligible] shouldBe true
     }
 
     "a workflow's own cfacts follow the form's data, so an engaged workflow need not emit anything" {

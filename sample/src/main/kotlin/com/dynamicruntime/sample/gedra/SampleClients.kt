@@ -100,6 +100,21 @@ object SW {
      */
     const val surveyDone = "surveyDone"
     const val surveyClean = "surveyClean"
+
+    /**
+     * An eligibility test on both acme normal workflows (issue #784 review): not while a review is pending. It
+     * reads `needsReview`, which `auditReview` itself emits -- so it shows both halves of the rule that a
+     * workflow is gated by its *peers'* singletons and never its own.
+     */
+    const val noOpenReview = "noOpenReview"
+
+    /**
+     * Acme's second normal workflow (issue #784): a follow-up visit that waits for any pending review. Exists so
+     * one workflow's singleton can be seen gating another.
+     */
+    const val siteFollowUp = "siteFollowUp"
+    const val recordFollowUp = "recordFollowUp"
+    const val saveFollowUp = "saveFollowUp"
 }
 
 /** The sample UiBlock and the keys inside it (issue #457). */
@@ -400,9 +415,24 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             // ...while this rule turns it into the framework's `needsReview` on the form -- for as long as the form
             // is engaged with the review, since only an engaged workflow contributes.
             singleton(WSC.needsReview, SC.underAudit)
+            // Not while a review is pending -- which this very workflow's rule above can cause. A workflow's own
+            // singleton never counts against its own eligibility, so an engaged review that raises `needsReview`
+            // stays eligible for itself; it is its peers (the follow-up below) that the pending review holds off.
+            eligibility(SW.noOpenReview, "~${WSC.needsReview}", "A review of this form is already waiting.")
             task(SW.recordAudit, "Record the audit") {
                 trait(SC.siteAudit)
                 save(SW.saveAudit, "Save the audit", WfSaveKind.edit)
+            }
+        }
+
+        // A second normal workflow (issue #784): a follow-up visit, held off while any review is pending. What
+        // shows one workflow's singleton (`auditReview`'s `needsReview`) gating another.
+        workflow(SW.siteFollowUp, WfEntry.normal) {
+            label = "Site follow-up"
+            eligibility(SW.noOpenReview, "~${WSC.needsReview}", "Wait for the pending review of this form to finish.")
+            task(SW.recordFollowUp, "Record the follow-up") {
+                trait(SC.siteAudit)
+                save(SW.saveFollowUp, "Save the follow-up", WfSaveKind.edit)
             }
         }
 

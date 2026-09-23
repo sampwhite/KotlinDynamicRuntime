@@ -163,8 +163,10 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  *     own. Only an **engaged** workflow contributes; the union is emitted as a [GT.cfacts] contribution, which
  *     the recompute merges into the form's one set beside the survey's.
  *  3. **Its eligibility** (issue #783): [WFS.eligible] and the ids of the tests the form fails, against the
- *     form's cfacts **including every engaged workflow's singletons** -- so one workflow can gate on another
- *     (a form already `finished` somewhere, say). No cycle: a singleton never reads eligibility.
+ *     form's cfacts **plus the singletons of every *other* engaged workflow** -- so one workflow can gate on
+ *     another (a form already `finished` somewhere else, say). Never its own: a workflow's own `finished` must
+ *     not make it ineligible for itself once engaged, which would read as "ineligible" where "finished" is
+ *     meant (issue #784 review). No cycle either way: a singleton never reads eligibility.
  *
  * See [WorkflowEligibility] for why only the form's own cfacts, never the caller's. A retired-but-engaged
  * workflow's bare entry has none of these, having no definition left to compute against. The CTA task and its
@@ -192,8 +194,10 @@ object WorkflowStateDeriver : GedraStateDeriver {
         }
         // What the engaged workflows contribute to the form's set, in declaration order, once each.
         val contributed = LinkedHashSet<String>().apply { singletons.values.forEach { addAll(it) } }
-        // Eligibility sees the form's set as it will stand: the earlier derivers' facts and the contribution.
-        val eligibilityFacts = formFacts + contributed
+        // Eligibility sees the earlier derivers' facts and what the *other* engaged workflows contribute -- a
+        // workflow is gated by its peers, never by itself.
+        fun eligibilityFacts(workflowId: String): Set<String> =
+            formFacts + singletons.filterKeys { it != workflowId }.values.flatten()
 
         val out = ids.map { workflowId ->
             val data = linkedMapOf<String, Any?>(WFD.workflowId to workflowId)
@@ -201,7 +205,7 @@ object WorkflowStateDeriver : GedraStateDeriver {
                 data[WFS.computedAgainstRef] = it.ref.text
                 data[WFS.cfacts] = own.getValue(workflowId).sorted()
                 data[WFS.singletonCfacts] = singletons.getValue(workflowId)
-                val failures = WorkflowEligibility.failures(registry, it.def, eligibilityFacts)
+                val failures = WorkflowEligibility.failures(registry, it.def, eligibilityFacts(workflowId))
                 data[WFS.eligible] = failures.isEmpty()
                 data[WFS.eligibilityFailures] = WorkflowEligibility.failureEntries(failures)
             }

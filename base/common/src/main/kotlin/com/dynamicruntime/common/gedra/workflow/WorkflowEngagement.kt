@@ -37,11 +37,12 @@ object WorkflowEngagement {
      * form as the caller was admitted to it.
      *
      * **Engaging is gated on eligibility** (issue #783) when [def] -- the workflow's definition -- is given: a form
-     * that fails any of its tests is refused, and the refusal carries every reason. Evaluated here, under the
-     * lock, against the form's cfacts as [GedraDataService.changeState] has just recomputed them -- not as they
-     * were last stored, which can predate a configuration change -- and against the *definition* rather than a
-     * stored `eligible` flag, so a test added since already binds. Disengaging is never gated: taking a form out
-     * of a workflow needs no qualification.
+     * that fails any of its tests is refused, and the refusal carries every reason. The verdict is the one the
+     * workflow's own [WFS.workflowState] entry holds as [GedraDataService.changeState] has **just recomputed**
+     * it under the lock -- current with the definition and the data, not as last stored -- so the gate and the
+     * stored state are one computation and cannot disagree (which facts a workflow's eligibility sees is subtle:
+     * its peers' singletons, never its own). Disengaging is never gated: taking a form out of a workflow needs no
+     * qualification.
      */
     fun setEngaged(
         cxt: KdrCxt,
@@ -56,7 +57,14 @@ object WorkflowEngagement {
         val registry = SchemaService.get(cxt).cfactsFor(row.client)
         return GedraDataService.get(cxt).changeState(cxt, row) { current ->
             if (engaged && def != null) {
-                val failures = WorkflowEligibility.failures(registry, def, WorkflowEligibility.formFacts(current))
+                // Read off the freshly derived entry. Falling back to an evaluation is only for an entry that is
+                // somehow absent -- the deriver emits one for every declared normal workflow.
+                val entry = current.firstOrNull {
+                    it[GE.traitId].toOptStr() == WFS.workflowState &&
+                        it[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() == workflowId
+                }?.get(GE.data)?.toJsonMapOrEmpty()
+                val failures = entry?.get(WFS.eligibilityFailures)?.toJsonListOfMaps()?.mapNotNull { it[WFD.id].toOptStr() }
+                    ?: WorkflowEligibility.failures(registry, def, WorkflowEligibility.formFacts(current))
                 if (failures.isNotEmpty()) {
                     val reasons = WorkflowEligibility.explain(cxt, def, failures)
                     throw KdrException.mkInput(
