@@ -71,17 +71,26 @@ object SingletonWorkflows {
      * What [task] asks of a caller with [facts], in words: its display branch for them when it declares one -- the
      * text of a text branch, or for the task's own rendering its approval button (an approval task) or its label --
      * and its label when it declares none.
+     *
+     * A branch's text may carry `${…}` blocks, which the layout rule leaves for the frontend to resolve against
+     * the **form's data** -- exactly what this listing never reads. Such a text cannot be finished here or in the
+     * popover, so the task's own words stand in for it rather than a half-rendered template.
      */
-    private fun actionText(
+    fun actionText(
         task: WfTask,
         facts: Set<String>,
         parse: (String) -> CFactPredicate,
         label: (String) -> String,
     ): String {
-        val own = task.approval?.button ?: task.label
+        fun own() = label(task.approval?.button ?: task.label)
         val branch = task.display?.let { filterByCFacts(mapOf(WFD.display to it), facts, parse)[WFD.display] }
             .toJsonMapOrEmpty()
         val mode = branch[WDSP.mode].toOptStr() ?: WDSP.defaultMode
-        return label(if (mode == WDSP.textMode) branch[WDSP.text].toOptStr() ?: own else own)
+        if (mode != WDSP.textMode) return own()
+        val text = branch[WDSP.text].toOptStr()?.let(label) ?: return own()
+        return if (needsFormData(text)) own() else text
     }
+
+    /** Whether [text] still holds a frontend `${…}` block after the backend pass. */
+    fun needsFormData(text: String): Boolean = "\${" in text
 }

@@ -12,6 +12,7 @@ import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.strong
 import react.dom.html.ReactHTML.ul
+import react.useRef
 import react.useState
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -482,13 +483,23 @@ private val SingletonChip = FC<SingletonChipProps> { props ->
     var open by useState(false)
     var workflows by useState<List<SingletonWorkflow>?>(null)
     var failed by useState<String?>(null)
+    // Which load is the latest: a reopen starts a new one, and an older answer arriving after it is dropped.
+    val loadSeq = useRef(0)
 
+    // Fetched on every open, not once: the row can stay mounted while a reviewer acts elsewhere, and the status
+    // alone does not say so (open findings keep a form at Needs Review). The last answer stays up meanwhile.
     fun load() {
+        val seq = (loadSeq.current ?: 0) + 1
+        loadSeq.current = seq
         chipScope.launch {
             try {
-                workflows = WorkflowApi.fetchSingletonWorkflows(props.gedraId, props.cfact)
+                val fresh = WorkflowApi.fetchSingletonWorkflows(props.gedraId, props.cfact)
+                if (loadSeq.current == seq) {
+                    workflows = fresh
+                    failed = null
+                }
             } catch (e: Throwable) {
-                failed = userFacingError(e).text
+                if (loadSeq.current == seq) failed = userFacingError(e).text
             }
         }
     }
@@ -500,7 +511,7 @@ private val SingletonChip = FC<SingletonChipProps> { props ->
         title = props.label
         onOpenChange = { next ->
             open = next
-            if (next && workflows == null && failed == null) load()
+            if (next) load()
         }
         content = SingletonChipBody.create {
             this.workflows = workflows
